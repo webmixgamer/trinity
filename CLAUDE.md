@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code when working with this repository.
 
+**Repository**: https://github.com/abilityai/trinity (PUBLIC)
+
+---
+
+## ⚠️ PUBLIC REPOSITORY WARNING
+
+**This is a PUBLIC open-source repository.** Never commit:
+- API keys, tokens, or credentials
+- Internal URLs, IP addresses, or domain names
+- User emails or personal information
+- Database dumps or backup files
+- `.env` files or deployment configs
+- Auth0 client secrets or OAuth credentials
+
+**Safe patterns**:
+- Use `deploy.config.example` with placeholder values (committed)
+- Keep `deploy.config` with real values (gitignored)
+- Reference environment variables, not hardcoded values
+- Use `example.com` or `localhost` in documentation examples
+
+---
+
 ## Project Overview
 
 **Trinity** is a **Deep Agent Orchestration Platform** — sovereign infrastructure for deploying, orchestrating, and governing autonomous AI systems that plan, reason, and execute independently.
@@ -46,11 +68,14 @@ After **EVERY** change, update:
 - `feature-flows/` - If modifying feature behavior
 - `requirements.md` - If changing feature scope
 
-### 5. Security First
-- Never expose credentials in logs or files
-- Use environment variables for secrets
-- All credential operations logged via audit logger
-- Never commit secrets to git
+### 5. Security First (PUBLIC REPO)
+- **This is a public repository** - assume all commits are visible worldwide
+- Never expose credentials, API keys, or tokens in code or logs
+- Never commit internal URLs, IP addresses, or email addresses
+- Use environment variables for all secrets
+- All credential operations logged via audit logger (values masked)
+- Use placeholder values in example configs (e.g., `your-domain.com`, `your-api-key`)
+- Review diffs before committing for accidental sensitive data
 
 ---
 
