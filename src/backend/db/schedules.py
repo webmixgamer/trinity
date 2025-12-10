@@ -1,0 +1,479 @@
+"""
+Schedule and execution management database operations.
+
+Handles schedule CRUD, execution tracking, and Git configuration.
+"""
+
+import json
+import secrets
+import sqlite3
+from datetime import datetime
+from typing import Optional, List, Dict
+
+from .connection import get_db_connection
+from db_models import Schedule, ScheduleCreate, ScheduleExecution, AgentGitConfig
+
+
+class ScheduleOperations:
+    """Schedule and execution database operations."""
+
+    def __init__(self, user_ops, agent_ops):
+        """Initialize with references to user and agent operations."""
+        self._user_ops = user_ops
+        self._agent_ops = agent_ops
+
+    @staticmethod
+    def _generate_id() -> str:
+        """Generate a unique ID."""
+        return secrets.token_urlsafe(16)
+
+    @staticmethod
+    def _row_to_schedule(row) -> Schedule:
+        """Convert a schedule row to a Schedule model."""
+        return Schedule(
+            id=row["id"],
+            agent_name=row["agent_name"],
+            name=row["name"],
+            cron_expression=row["cron_expression"],
+            message=row["message"],
+            enabled=bool(row["enabled"]),
+            timezone=row["timezone"],
+            description=row["description"],
+            owner_id=row["owner_id"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            last_run_at=datetime.fromisoformat(row["last_run_at"]) if row["last_run_at"] else None,
+            next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None
+        )
+
+    @staticmethod
+    def _row_to_schedule_execution(row) -> ScheduleExecution:
+        """Convert a schedule_executions row to a ScheduleExecution model."""
+        row_keys = row.keys()
+        return ScheduleExecution(
+            id=row["id"],
+            schedule_id=row["schedule_id"],
+            agent_name=row["agent_name"],
+            status=row["status"],
+            started_at=datetime.fromisoformat(row["started_at"]),
+            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            duration_ms=row["duration_ms"],
+            message=row["message"],
+            response=row["response"],
+            error=row["error"],
+            triggered_by=row["triggered_by"],
+            context_used=row["context_used"] if "context_used" in row_keys else None,
+            context_max=row["context_max"] if "context_max" in row_keys else None,
+            cost=row["cost"] if "cost" in row_keys else None,
+            tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None
+        )
+
+    @staticmethod
+    def _row_to_git_config(row) -> AgentGitConfig:
+        """Convert an agent_git_config row to an AgentGitConfig model."""
+        return AgentGitConfig(
+            id=row["id"],
+            agent_name=row["agent_name"],
+            github_repo=row["github_repo"],
+            working_branch=row["working_branch"],
+            instance_id=row["instance_id"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            last_sync_at=datetime.fromisoformat(row["last_sync_at"]) if row["last_sync_at"] else None,
+            last_commit_sha=row["last_commit_sha"],
+            sync_enabled=bool(row["sync_enabled"]),
+            sync_paths=row["sync_paths"]
+        )
+
+    # =========================================================================
+    # Schedule Management
+    # =========================================================================
+
+    def create_schedule(self, agent_name: str, username: str, schedule_data: ScheduleCreate) -> Optional[Schedule]:
+        """Create a new schedule for an agent."""
+        user = self._user_ops.get_user_by_username(username)
+        if not user:
+            return None
+
+        # Check user has access to this agent
+        if not self._agent_ops.can_user_access_agent(username, agent_name):
+            return None
+
+        schedule_id = self._generate_id()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT INTO agent_schedules (
+                        id, agent_name, name, cron_expression, message, enabled,
+                        timezone, description, owner_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    schedule_id,
+                    agent_name,
+                    schedule_data.name,
+                    schedule_data.cron_expression,
+                    schedule_data.message,
+                    1 if schedule_data.enabled else 0,
+                    schedule_data.timezone,
+                    schedule_data.description,
+                    user["id"],
+                    now,
+                    now
+                ))
+                conn.commit()
+
+                return Schedule(
+                    id=schedule_id,
+                    agent_name=agent_name,
+                    name=schedule_data.name,
+                    cron_expression=schedule_data.cron_expression,
+                    message=schedule_data.message,
+                    enabled=schedule_data.enabled,
+                    timezone=schedule_data.timezone,
+                    description=schedule_data.description,
+                    owner_id=user["id"],
+                    created_at=datetime.fromisoformat(now),
+                    updated_at=datetime.fromisoformat(now)
+                )
+            except sqlite3.IntegrityError:
+                return None
+
+    def get_schedule(self, schedule_id: str) -> Optional[Schedule]:
+        """Get a schedule by ID."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM agent_schedules WHERE id = ?", (schedule_id,))
+            row = cursor.fetchone()
+            return self._row_to_schedule(row) if row else None
+
+    def list_agent_schedules(self, agent_name: str) -> List[Schedule]:
+        """List all schedules for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM agent_schedules WHERE agent_name = ?
+                ORDER BY created_at DESC
+            """, (agent_name,))
+            return [self._row_to_schedule(row) for row in cursor.fetchall()]
+
+    def list_all_enabled_schedules(self) -> List[Schedule]:
+        """List all enabled schedules (for scheduler initialization)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM agent_schedules WHERE enabled = 1
+                ORDER BY agent_name, name
+            """)
+            return [self._row_to_schedule(row) for row in cursor.fetchall()]
+
+    def update_schedule(self, schedule_id: str, username: str, updates: Dict) -> Optional[Schedule]:
+        """Update a schedule."""
+        user = self._user_ops.get_user_by_username(username)
+        if not user:
+            return None
+
+        schedule = self.get_schedule(schedule_id)
+        if not schedule:
+            return None
+
+        # Check permission (owner or admin)
+        if user["role"] != "admin" and schedule.owner_id != user["id"]:
+            return None
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            set_clauses = []
+            params = []
+            allowed_fields = ["name", "cron_expression", "message", "enabled", "timezone", "description"]
+
+            for key, value in updates.items():
+                if key in allowed_fields:
+                    if key == "enabled":
+                        value = 1 if value else 0
+                    set_clauses.append(f"{key} = ?")
+                    params.append(value)
+
+            if not set_clauses:
+                return schedule
+
+            set_clauses.append("updated_at = ?")
+            params.append(datetime.utcnow().isoformat())
+            params.append(schedule_id)
+
+            cursor.execute(f"""
+                UPDATE agent_schedules SET {", ".join(set_clauses)} WHERE id = ?
+            """, params)
+            conn.commit()
+
+            return self.get_schedule(schedule_id)
+
+    def delete_schedule(self, schedule_id: str, username: str) -> bool:
+        """Delete a schedule and its executions."""
+        user = self._user_ops.get_user_by_username(username)
+        if not user:
+            return False
+
+        schedule = self.get_schedule(schedule_id)
+        if not schedule:
+            return False
+
+        # Check permission (owner or admin)
+        if user["role"] != "admin" and schedule.owner_id != user["id"]:
+            return False
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Delete executions first
+            cursor.execute("DELETE FROM schedule_executions WHERE schedule_id = ?", (schedule_id,))
+            # Delete schedule
+            cursor.execute("DELETE FROM agent_schedules WHERE id = ?", (schedule_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def set_schedule_enabled(self, schedule_id: str, enabled: bool) -> bool:
+        """Enable or disable a schedule."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_schedules SET enabled = ?, updated_at = ? WHERE id = ?
+            """, (1 if enabled else 0, datetime.utcnow().isoformat(), schedule_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_schedule_run_times(self, schedule_id: str, last_run_at: datetime = None, next_run_at: datetime = None) -> bool:
+        """Update schedule run timestamps."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            updates = ["updated_at = ?"]
+            params = [datetime.utcnow().isoformat()]
+
+            if last_run_at:
+                updates.append("last_run_at = ?")
+                params.append(last_run_at.isoformat())
+            if next_run_at:
+                updates.append("next_run_at = ?")
+                params.append(next_run_at.isoformat())
+
+            params.append(schedule_id)
+            cursor.execute(f"""
+                UPDATE agent_schedules SET {", ".join(updates)} WHERE id = ?
+            """, params)
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_agent_schedules(self, agent_name: str) -> int:
+        """Delete all schedules for an agent (when agent is deleted)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Get schedule IDs first
+            cursor.execute("SELECT id FROM agent_schedules WHERE agent_name = ?", (agent_name,))
+            schedule_ids = [row["id"] for row in cursor.fetchall()]
+
+            # Delete executions for all schedules
+            for sid in schedule_ids:
+                cursor.execute("DELETE FROM schedule_executions WHERE schedule_id = ?", (sid,))
+
+            # Delete schedules
+            cursor.execute("DELETE FROM agent_schedules WHERE agent_name = ?", (agent_name,))
+            conn.commit()
+            return len(schedule_ids)
+
+    # =========================================================================
+    # Schedule Execution Management
+    # =========================================================================
+
+    def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule") -> Optional[ScheduleExecution]:
+        """Create a new execution record."""
+        execution_id = self._generate_id()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO schedule_executions (
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                execution_id,
+                schedule_id,
+                agent_name,
+                "running",
+                now,
+                message,
+                triggered_by
+            ))
+            conn.commit()
+
+            return ScheduleExecution(
+                id=execution_id,
+                schedule_id=schedule_id,
+                agent_name=agent_name,
+                status="running",
+                started_at=datetime.fromisoformat(now),
+                message=message,
+                triggered_by=triggered_by
+            )
+
+    def update_execution_status(
+        self,
+        execution_id: str,
+        status: str,
+        response: str = None,
+        error: str = None,
+        context_used: int = None,
+        context_max: int = None,
+        cost: float = None,
+        tool_calls: str = None
+    ) -> bool:
+        """Update execution status when completed."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get started_at for duration calculation
+            cursor.execute("SELECT started_at FROM schedule_executions WHERE id = ?", (execution_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            started_at = datetime.fromisoformat(row["started_at"])
+            completed_at = datetime.utcnow()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+            cursor.execute("""
+                UPDATE schedule_executions
+                SET status = ?, completed_at = ?, duration_ms = ?, response = ?, error = ?,
+                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?
+                WHERE id = ?
+            """, (
+                status,
+                completed_at.isoformat(),
+                duration_ms,
+                response,
+                error,
+                context_used,
+                context_max,
+                cost,
+                tool_calls,
+                execution_id
+            ))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_schedule_executions(self, schedule_id: str, limit: int = 50) -> List[ScheduleExecution]:
+        """Get execution history for a schedule."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM schedule_executions
+                WHERE schedule_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+            """, (schedule_id, limit))
+            return [self._row_to_schedule_execution(row) for row in cursor.fetchall()]
+
+    def get_agent_executions(self, agent_name: str, limit: int = 50) -> List[ScheduleExecution]:
+        """Get all executions for an agent across all schedules."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM schedule_executions
+                WHERE agent_name = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+            """, (agent_name, limit))
+            return [self._row_to_schedule_execution(row) for row in cursor.fetchall()]
+
+    def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
+        """Get a specific execution by ID."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM schedule_executions WHERE id = ?", (execution_id,))
+            row = cursor.fetchone()
+            return self._row_to_schedule_execution(row) if row else None
+
+    # =========================================================================
+    # Git Configuration Management (Phase 7: GitHub Bidirectional Sync)
+    # =========================================================================
+
+    def create_git_config(self, agent_name: str, github_repo: str, working_branch: str, instance_id: str, sync_paths: List[str] = None) -> Optional[AgentGitConfig]:
+        """Create git configuration for an agent."""
+        config_id = self._generate_id()
+        now = datetime.utcnow().isoformat()
+        sync_paths_json = json.dumps(sync_paths) if sync_paths else json.dumps(["memory/", "outputs/", "CLAUDE.md", ".claude/"])
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT INTO agent_git_config (
+                        id, agent_name, github_repo, working_branch, instance_id,
+                        created_at, sync_enabled, sync_paths
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                """, (config_id, agent_name, github_repo, working_branch, instance_id, now, sync_paths_json))
+                conn.commit()
+
+                return AgentGitConfig(
+                    id=config_id,
+                    agent_name=agent_name,
+                    github_repo=github_repo,
+                    working_branch=working_branch,
+                    instance_id=instance_id,
+                    created_at=datetime.fromisoformat(now),
+                    sync_enabled=True,
+                    sync_paths=sync_paths_json
+                )
+            except sqlite3.IntegrityError:
+                # Already exists
+                return None
+
+    def get_git_config(self, agent_name: str) -> Optional[AgentGitConfig]:
+        """Get git configuration for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM agent_git_config WHERE agent_name = ?", (agent_name,))
+            row = cursor.fetchone()
+            return self._row_to_git_config(row) if row else None
+
+    def update_git_sync(self, agent_name: str, commit_sha: str) -> bool:
+        """Update git sync timestamp and commit SHA after successful sync."""
+        now = datetime.utcnow().isoformat()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_git_config
+                SET last_sync_at = ?, last_commit_sha = ?
+                WHERE agent_name = ?
+            """, (now, commit_sha, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def set_git_sync_enabled(self, agent_name: str, enabled: bool) -> bool:
+        """Enable or disable git sync for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_git_config SET sync_enabled = ? WHERE agent_name = ?
+            """, (1 if enabled else 0, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_git_config(self, agent_name: str) -> bool:
+        """Delete git configuration for an agent (when agent is deleted)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM agent_git_config WHERE agent_name = ?", (agent_name,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_git_enabled_agents(self) -> List[AgentGitConfig]:
+        """List all agents with git sync enabled."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM agent_git_config WHERE sync_enabled = 1
+                ORDER BY agent_name
+            """)
+            return [self._row_to_git_config(row) for row in cursor.fetchall()]

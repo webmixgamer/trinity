@@ -1,0 +1,2012 @@
+"""
+Agent management routes for the Trinity backend.
+"""
+import os
+import json
+import docker
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+import yaml
+
+from models import AgentConfig, AgentStatus, User
+from database import db
+from dependencies import get_current_user
+from services.audit_service import log_audit_event
+from services.docker_service import (
+    docker_client,
+    get_agent_container,
+    get_agent_status_from_container,
+    list_all_agents,
+    get_agent_by_name,
+    get_next_available_port,
+)
+from services.template_service import (
+    get_github_template,
+    generate_credential_files,
+)
+from services.scheduler_service import scheduler_service
+from services.execution_queue import get_execution_queue
+from services import git_service
+from utils.helpers import sanitize_agent_name
+from credentials import CredentialManager
+
+router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+# Initialize credential manager
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+credential_manager = CredentialManager(REDIS_URL)
+
+# WebSocket manager will be injected from main.py
+manager = None
+
+def set_websocket_manager(ws_manager):
+    """Set the WebSocket manager for broadcasting events."""
+    global manager
+    manager = ws_manager
+
+
+async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
+    """
+    Inject Trinity meta-prompt into an agent via its internal API.
+
+    This is called after agent startup to inject planning commands
+    and create the necessary directory structure.
+
+    Args:
+        agent_name: Name of the agent
+        max_retries: Number of retries for connection
+        retry_delay: Seconds between retries
+
+    Returns:
+        dict with injection status or error info
+    """
+    import httpx
+    import asyncio
+    import logging
+
+    logger = logging.getLogger(__name__)
+    agent_url = f"http://agent-{agent_name}:8000"
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(f"{agent_url}/api/trinity/inject")
+
+                if response.status_code == 200:
+                    result = response.json()
+                    logger.info(f"Trinity injection successful for {agent_name}: {result.get('status')}")
+                    return result
+                else:
+                    logger.warning(f"Trinity injection returned {response.status_code}: {response.text}")
+                    return {"status": "error", "error": f"HTTP {response.status_code}: {response.text}"}
+
+        except httpx.ConnectError:
+            # Agent server not ready yet - retry
+            if attempt < max_retries - 1:
+                logger.info(f"Agent {agent_name} not ready yet (attempt {attempt + 1}/{max_retries}), retrying...")
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.warning(f"Could not connect to agent {agent_name} after {max_retries} attempts")
+                return {"status": "error", "error": "Agent server not reachable after retries"}
+
+        except Exception as e:
+            logger.error(f"Trinity injection error for {agent_name}: {e}")
+            return {"status": "error", "error": str(e)}
+
+    return {"status": "error", "error": "Max retries exceeded"}
+
+
+def get_accessible_agents(current_user: User):
+    """
+    Get list of all agents accessible to the current user.
+
+    Helper function for use by other routers that need agent access control.
+    Returns list of agent dictionaries with ownership metadata.
+    """
+    all_agents = list_all_agents()
+    user_data = db.get_user_by_username(current_user.username)
+    is_admin = user_data and user_data["role"] == "admin"
+
+    accessible_agents = []
+    for agent in all_agents:
+        agent_dict = agent.dict() if hasattr(agent, 'dict') else dict(agent)
+        agent_name = agent_dict.get("name")
+
+        if not db.can_user_access_agent(current_user.username, agent_name):
+            continue
+
+        owner = db.get_agent_owner(agent_name)
+        agent_dict["owner"] = owner["owner_username"] if owner else None
+        agent_dict["is_owner"] = owner and owner["owner_username"] == current_user.username
+        agent_dict["is_shared"] = not agent_dict["is_owner"] and not is_admin and \
+                                   db.is_agent_shared_with_user(agent_name, current_user.username)
+
+        # Add GitHub repo info if agent was created from GitHub template
+        git_config = db.get_git_config(agent_name)
+        if git_config:
+            agent_dict["github_repo"] = git_config.github_repo
+        else:
+            agent_dict["github_repo"] = None
+
+        accessible_agents.append(agent_dict)
+
+    return accessible_agents
+
+
+@router.get("")
+async def list_agents_endpoint(request: Request, current_user: User = Depends(get_current_user)):
+    """List all agents accessible to the current user."""
+    await log_audit_event(
+        event_type="agent_access",
+        action="list",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success"
+    )
+
+    return get_accessible_agents(current_user)
+
+
+@router.get("/context-stats")
+async def get_agents_context_stats(current_user: User = Depends(get_current_user)):
+    """
+    Get context window stats and activity state for all accessible agents.
+
+    Returns: List of agent stats with context usage and active/idle/offline state
+    """
+    import httpx
+    from datetime import timedelta
+
+    # Get all accessible agents
+    accessible_agents = get_accessible_agents(current_user)
+    agent_stats = []
+
+    for agent in accessible_agents:
+        agent_name = agent["name"]
+        status = agent["status"]
+
+        # Initialize default stats
+        stats = {
+            "name": agent_name,
+            "status": status,  # Docker status: running/stopped/etc
+            "activityState": "offline",  # Activity state: active/idle/offline
+            "contextPercent": 0,
+            "contextUsed": 0,
+            "contextMax": 200000,
+            "lastActivityTime": None
+        }
+
+        # Only fetch context stats for running agents
+        if status == "running":
+            try:
+                # Get agent container
+                container = get_agent_container(agent_name)
+                if container:
+                    # Fetch context stats from agent's internal API
+                    agent_url = f"http://{container.name}:8000/api/chat/session"
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        response = await client.get(agent_url)
+                        if response.status_code == 200:
+                            session_data = response.json()
+                            stats["contextPercent"] = session_data.get("context_percent", 0)
+                            stats["contextUsed"] = session_data.get("context_tokens", 0)
+                            stats["contextMax"] = session_data.get("context_window", 200000)
+            except Exception as e:
+                # Log error but continue with default values
+                print(f"Error fetching context stats for {agent_name}: {e}")
+
+            # Determine active/idle state based on recent activity
+            try:
+                # Look for any activity in last 60 seconds
+                cutoff_time = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+                recent_activities = db.get_agent_activities(
+                    agent_name=agent_name,
+                    limit=1
+                )
+
+                if recent_activities and len(recent_activities) > 0:
+                    last_activity = recent_activities[0]
+                    activity_time = last_activity.get("created_at")
+                    stats["lastActivityTime"] = activity_time
+
+                    # Check if activity is within last 60 seconds
+                    if activity_time and activity_time > cutoff_time:
+                        # Check if activity is currently running
+                        if last_activity.get("activity_state") == "started":
+                            stats["activityState"] = "active"
+                        else:
+                            stats["activityState"] = "idle"
+                    else:
+                        stats["activityState"] = "idle"
+                else:
+                    stats["activityState"] = "idle"
+            except Exception as e:
+                # Default to idle if we can't determine activity
+                print(f"Error determining activity state for {agent_name}: {e}")
+                stats["activityState"] = "idle"
+
+        agent_stats.append(stats)
+
+    return {"agents": agent_stats}
+@router.get("/{agent_name}")
+async def get_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    """Get details of a specific agent."""
+    agent = get_agent_by_name(agent_name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    await log_audit_event(
+        event_type="agent_access",
+        action="get",
+        user_id=current_user.username,
+        agent_name=agent_name,
+        ip_address=request.client.host if request.client else None,
+        result="success"
+    )
+
+    agent_dict = agent.dict() if hasattr(agent, 'dict') else dict(agent)
+    user_data = db.get_user_by_username(current_user.username)
+    is_admin = user_data and user_data["role"] == "admin"
+
+    owner = db.get_agent_owner(agent_name)
+    agent_dict["owner"] = owner["owner_username"] if owner else None
+    agent_dict["is_owner"] = owner and owner["owner_username"] == current_user.username
+    agent_dict["is_shared"] = not agent_dict["is_owner"] and not is_admin and \
+                               db.is_agent_shared_with_user(agent_name, current_user.username)
+    agent_dict["can_share"] = db.can_user_share_agent(current_user.username, agent_name)
+    agent_dict["can_delete"] = db.can_user_delete_agent(current_user.username, agent_name)
+
+    if agent_dict["can_share"]:
+        shares = db.get_agent_shares(agent_name)
+        agent_dict["shares"] = [s.dict() for s in shares]
+    else:
+        agent_dict["shares"] = []
+
+    return agent_dict
+
+
+@router.post("")
+async def create_agent_endpoint(config: AgentConfig, request: Request, current_user: User = Depends(get_current_user)):
+    """Create a new agent."""
+    original_name = config.name
+    config.name = sanitize_agent_name(config.name)
+
+    if not config.name:
+        raise HTTPException(status_code=400, detail="Invalid agent name - must contain at least one alphanumeric character")
+
+    if get_agent_by_name(config.name):
+        raise HTTPException(status_code=400, detail="Agent already exists")
+
+    template_data = {}
+    github_template_path = None
+    github_repo_for_agent = None
+    github_pat_for_agent = None
+
+    # Load template configuration
+    if config.template:
+        if config.template.startswith("github:"):
+            gh_template = get_github_template(config.template)
+            if not gh_template:
+                raise HTTPException(status_code=400, detail=f"Unknown GitHub template: {config.template}")
+
+            github_repo = gh_template["github_repo"]
+            github_cred_id = gh_template["github_credential_id"]
+
+            github_cred = credential_manager.get_credential(github_cred_id, "admin")
+            if not github_cred:
+                raise HTTPException(status_code=500, detail="GitHub credential not found in credential store")
+
+            github_secret = credential_manager.get_credential_secret(github_cred_id, "admin")
+            if not github_secret:
+                raise HTTPException(status_code=500, detail="GitHub credential secret not found")
+
+            github_pat = github_secret.get("token") or github_secret.get("api_key")
+            if not github_pat:
+                raise HTTPException(status_code=500, detail="GitHub PAT not found in credential")
+
+            github_repo_for_agent = github_repo
+            github_pat_for_agent = github_pat
+            config.resources = gh_template.get("resources", config.resources)
+            config.mcp_servers = gh_template.get("mcp_servers", config.mcp_servers)
+
+            # Generate git sync instance ID and branch for Phase 7
+            git_instance_id = git_service.generate_instance_id()
+            git_working_branch = git_service.generate_working_branch(config.name, git_instance_id)
+        elif config.template.startswith("local:"):
+            # Local template - strip "local:" prefix
+            template_name = config.template[6:]  # Remove "local:" prefix
+            templates_dir = Path("/agent-configs/templates")
+            if not templates_dir.exists():
+                templates_dir = Path("./config/agent-templates")
+
+            template_path = templates_dir / template_name
+            template_yaml = template_path / "template.yaml"
+
+            if template_yaml.exists():
+                try:
+                    with open(template_yaml) as f:
+                        template_data = yaml.safe_load(f)
+                        config.type = template_data.get("type", config.type)
+                        config.resources = template_data.get("resources", config.resources)
+                        config.tools = template_data.get("tools", config.tools)
+                        creds = template_data.get("credentials", {})
+                        mcp_servers = list(creds.get("mcp_servers", {}).keys())
+                        if mcp_servers:
+                            config.mcp_servers = mcp_servers
+                except Exception as e:
+                    print(f"Error loading template config: {e}")
+
+    if config.port is None:
+        config.port = get_next_available_port()
+
+    agent_credentials = credential_manager.get_agent_credentials(config.name, config.mcp_servers, current_user.username)
+
+    flat_credentials = {}
+    for server, creds in agent_credentials.items():
+        if isinstance(creds, dict):
+            for key, value in creds.items():
+                flat_credentials[key.upper()] = value
+        else:
+            flat_credentials[server.upper()] = creds
+
+    generated_files = {}
+    if template_data:
+        generated_files = generate_credential_files(
+            template_data, flat_credentials, config.name,
+            template_base_path=github_template_path
+        )
+
+    cred_files_dir = Path(f"/tmp/agent-{config.name}-creds")
+    cred_files_dir.mkdir(exist_ok=True)
+    for filepath, content in generated_files.items():
+        file_path = cred_files_dir / filepath
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+
+    agent_config = {
+        "agent": {
+            "type": config.type,
+            "base_image": config.base_image,
+            "resources": config.resources,
+            "tools": config.tools,
+            "mcp_servers": config.mcp_servers,
+            "custom_instructions": config.custom_instructions,
+            "credentials": {server: "injected" for server in config.mcp_servers}
+        }
+    }
+
+    config_path = Path(f"/tmp/agent-{config.name}.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump(agent_config, f)
+
+    credentials_path = Path(f"/tmp/agent-{config.name}-credentials.json")
+    with open(credentials_path, "w") as f:
+        json.dump(agent_credentials, f)
+
+    template_volume = None
+    cred_files_volume = None
+    if config.template:
+        if config.template.startswith("github:"):
+            pass  # Agent clones at startup
+        elif config.template.startswith("local:"):
+            # Local template - strip "local:" prefix for path resolution
+            template_name = config.template[6:]  # Remove "local:" prefix
+            templates_dir = Path("/agent-configs/templates")
+            template_path_in_backend = templates_dir / template_name
+
+            if template_path_in_backend.exists():
+                host_templates_base = os.getenv("HOST_TEMPLATES_PATH", "./config/agent-templates")
+                host_template_path = Path(host_templates_base) / template_name
+                template_volume = {str(host_template_path): {'bind': '/template', 'mode': 'ro'}}
+
+        if generated_files:
+            cred_files_volume = {str(cred_files_dir): {'bind': '/generated-creds', 'mode': 'ro'}}
+
+    # Phase: Agent-to-Agent Collaboration
+    # Generate agent-scoped MCP API key for Trinity MCP access
+    agent_mcp_key = None
+    trinity_mcp_url = os.getenv('TRINITY_MCP_URL', 'http://mcp-server:8080/mcp')
+    try:
+        agent_mcp_key = db.create_agent_mcp_api_key(
+            agent_name=config.name,
+            owner_username=current_user.username,
+            description=f"Auto-generated Trinity MCP key for agent {config.name}"
+        )
+        if agent_mcp_key:
+            print(f"Created MCP API key for agent {config.name}: {agent_mcp_key.key_prefix}...")
+    except Exception as e:
+        print(f"Warning: Failed to create MCP API key for agent {config.name}: {e}")
+
+    env_vars = {
+        'AGENT_NAME': config.name,
+        'AGENT_TYPE': config.type,
+        'CREDENTIALS_FILE': '/config/credentials.json',
+        'ANTHROPIC_API_KEY': os.getenv('ANTHROPIC_API_KEY', ''),
+        'ENABLE_SSH': 'true',
+        'ENABLE_AGENT_UI': 'true',
+        'AGENT_SERVER_PORT': '8000',
+        'TEMPLATE_NAME': config.template if config.template else ''
+    }
+
+    # Phase: Agent-to-Agent Collaboration - Inject Trinity MCP credentials
+    if agent_mcp_key:
+        env_vars['TRINITY_MCP_URL'] = trinity_mcp_url
+        env_vars['TRINITY_MCP_API_KEY'] = agent_mcp_key.api_key
+
+    if github_repo_for_agent and github_pat_for_agent:
+        env_vars['GITHUB_REPO'] = github_repo_for_agent
+        env_vars['GITHUB_PAT'] = github_pat_for_agent
+        # Phase 7: Enable git sync for GitHub-native agents
+        env_vars['GIT_SYNC_ENABLED'] = 'true'
+        env_vars['GIT_WORKING_BRANCH'] = git_working_branch
+
+    for server, creds in agent_credentials.items():
+        server_upper = server.upper().replace('-', '_')
+        if 'api_key' in creds:
+            env_vars[f'{server_upper}_API_KEY'] = creds['api_key']
+        if 'token' in creds:
+            env_vars[f'{server_upper}_TOKEN'] = creds['token']
+        if 'access_token' in creds:
+            env_vars[f'{server_upper}_ACCESS_TOKEN'] = creds['access_token']
+        if 'refresh_token' in creds:
+            env_vars[f'{server_upper}_REFRESH_TOKEN'] = creds['refresh_token']
+        if 'username' in creds and 'password' in creds:
+            env_vars[f'{server_upper}_USERNAME'] = creds['username']
+            env_vars[f'{server_upper}_PASSWORD'] = creds['password']
+
+    if docker_client:
+        try:
+            # Create per-agent persistent volume for /home/developer (Pillar III: Persistent Memory)
+            # This ensures files created by the agent survive container restarts
+            agent_volume_name = f"agent-{config.name}-workspace"
+            try:
+                docker_client.volumes.get(agent_volume_name)
+            except docker.errors.NotFound:
+                docker_client.volumes.create(
+                    name=agent_volume_name,
+                    labels={
+                        'trinity.platform': 'agent-workspace',
+                        'trinity.agent-name': config.name
+                    }
+                )
+
+            volumes = {
+                str(config_path): {'bind': '/config/agent-config.yaml', 'mode': 'ro'},
+                str(credentials_path): {'bind': '/config/credentials.json', 'mode': 'ro'},
+                'encrypted-data': {'bind': '/data', 'mode': 'rw'},
+                'audit-logs': {'bind': '/logs', 'mode': 'rw'},
+                agent_volume_name: {'bind': '/home/developer', 'mode': 'rw'}  # Persistent workspace
+            }
+
+            if template_volume:
+                volumes.update(template_volume)
+            if cred_files_volume:
+                volumes.update(cred_files_volume)
+
+            # Phase 9: Mount Trinity meta-prompt for task DAG planning
+            # Check if meta-prompt exists in container, but use HOST path for agent volume mount
+            container_meta_prompt_path = Path("/trinity-meta-prompt")
+            host_meta_prompt_path = os.getenv("HOST_META_PROMPT_PATH", "./config/trinity-meta-prompt")
+            if container_meta_prompt_path.exists():
+                volumes[host_meta_prompt_path] = {'bind': '/trinity-meta-prompt', 'mode': 'ro'}
+
+            container = docker_client.containers.run(
+                config.base_image,
+                detach=True,
+                name=f"agent-{config.name}",
+                ports={'22/tcp': config.port},
+                volumes=volumes,
+                environment=env_vars,
+                labels={
+                    'trinity.platform': 'agent',
+                    'trinity.agent-name': config.name,
+                    'trinity.agent-type': config.type,
+                    'trinity.ssh-port': str(config.port),
+                    'trinity.cpu': config.resources['cpu'],
+                    'trinity.memory': config.resources['memory'],
+                    'trinity.created': datetime.now().isoformat(),
+                    'trinity.template': config.template or ''
+                },
+                security_opt=['no-new-privileges:true', 'apparmor:docker-default'],
+                cap_drop=['ALL'],
+                cap_add=['NET_BIND_SERVICE'],
+                read_only=False,
+                tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
+                network='trinity-agent-network',
+                mem_limit=config.resources.get('memory', '4Gi'),
+                cpu_count=int(config.resources.get('cpu', '2'))
+            )
+
+            agent_status = get_agent_status_from_container(container)
+
+            if manager:
+                await manager.broadcast(json.dumps({
+                    "event": "agent_created",
+                    "data": {
+                        "name": agent_status.name,
+                        "type": agent_status.type,
+                        "status": agent_status.status,
+                        "port": agent_status.port,
+                        "created": agent_status.created.isoformat(),
+                        "resources": agent_status.resources,
+                        "container_id": agent_status.container_id
+                    }
+                }))
+
+            db.register_agent_owner(config.name, current_user.username)
+
+            # Phase 9.10: Grant default permissions (Option B - same-owner agents)
+            try:
+                permissions_count = db.grant_default_permissions(config.name, current_user.username)
+                if permissions_count > 0:
+                    print(f"Granted {permissions_count} default permissions for agent {config.name}")
+            except Exception as e:
+                print(f"Warning: Failed to grant default permissions for {config.name}: {e}")
+
+            # Phase 7: Create git config for GitHub-native agents
+            if github_repo_for_agent:
+                try:
+                    db.create_git_config(
+                        agent_name=config.name,
+                        github_repo=github_repo_for_agent,
+                        working_branch=git_working_branch,
+                        instance_id=git_instance_id
+                    )
+                except Exception as e:
+                    print(f"Warning: Failed to create git config for {config.name}: {e}")
+
+            await log_audit_event(
+                event_type="agent_management",
+                action="create",
+                user_id=current_user.username,
+                agent_name=config.name,
+                resource=f"agent-{config.name}",
+                ip_address=request.client.host if request.client else None,
+                result="success",
+                details={
+                    "type": config.type,
+                    "port": config.port,
+                    "owner": current_user.username,
+                    "git_sync": bool(github_repo_for_agent),
+                    "git_branch": git_working_branch if github_repo_for_agent else None
+                }
+            )
+
+            return agent_status
+        except Exception as e:
+            await log_audit_event(
+                event_type="agent_management",
+                action="create",
+                user_id=current_user.username,
+                agent_name=config.name,
+                resource=f"agent-{config.name}",
+                ip_address=request.client.host if request.client else None,
+                result="failed",
+                severity="error",
+                details={"error": str(e)}
+            )
+            raise HTTPException(status_code=500, detail=f"Failed to create agent: {str(e)}")
+    else:
+        raise HTTPException(
+            status_code=503,
+            detail="Docker not available - cannot create agents in demo mode"
+        )
+
+
+@router.delete("/{agent_name}")
+async def delete_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    """Delete an agent."""
+    if not db.can_user_delete_agent(current_user.username, agent_name):
+        await log_audit_event(
+            event_type="agent_management",
+            action="delete",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="unauthorized",
+            severity="warning"
+        )
+        raise HTTPException(status_code=403, detail="You don't have permission to delete this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        container.stop()
+        container.remove()
+    except Exception as e:
+        print(f"Error stopping/removing container: {e}")
+
+    # Delete per-agent persistent volume (Pillar III: Persistent Memory cleanup)
+    try:
+        agent_volume_name = f"agent-{agent_name}-workspace"
+        volume = docker_client.volumes.get(agent_volume_name)
+        volume.remove()
+    except docker.errors.NotFound:
+        pass  # Volume doesn't exist
+    except Exception as e:
+        print(f"Warning: Failed to delete workspace volume for agent {agent_name}: {e}")
+
+    # Delete all schedules for this agent (also removes from scheduler)
+    schedules = db.list_agent_schedules(agent_name)
+    for schedule in schedules:
+        scheduler_service.remove_schedule(schedule.id)
+    db.delete_agent_schedules(agent_name)
+
+    # Phase 7: Delete git config if exists
+    git_service.delete_agent_git_config(agent_name)
+
+    # Phase: Agent-to-Agent Collaboration - Delete agent's MCP API key
+    try:
+        db.delete_agent_mcp_api_key(agent_name)
+    except Exception as e:
+        print(f"Warning: Failed to delete MCP API key for agent {agent_name}: {e}")
+
+    # Phase 9.10: Delete agent permissions (both as source and target)
+    try:
+        db.delete_agent_permissions(agent_name)
+    except Exception as e:
+        print(f"Warning: Failed to delete permissions for agent {agent_name}: {e}")
+
+    db.delete_agent_ownership(agent_name)
+
+    if manager:
+        await manager.broadcast(json.dumps({
+            "event": "agent_deleted",
+            "data": {"name": agent_name}
+        }))
+
+    await log_audit_event(
+        event_type="agent_management",
+        action="delete",
+        user_id=current_user.username,
+        agent_name=agent_name,
+        ip_address=request.client.host if request.client else None,
+        result="success"
+    )
+
+    return {"message": f"Agent {agent_name} deleted"}
+
+
+@router.post("/{agent_name}/start")
+async def start_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    """Start an agent."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        container.start()
+
+        # Inject Trinity meta-prompt (non-blocking, runs in background)
+        # This provides planning commands and directory structure
+        import asyncio
+        trinity_result = await inject_trinity_meta_prompt(agent_name)
+        trinity_status = trinity_result.get("status", "unknown")
+
+        if manager:
+            await manager.broadcast(json.dumps({
+                "event": "agent_started",
+                "data": {"name": agent_name, "trinity_injection": trinity_status}
+            }))
+
+        await log_audit_event(
+            event_type="agent_management",
+            action="start",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"trinity_injection": trinity_status}
+        )
+
+        return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
+    except Exception as e:
+        await log_audit_event(
+            event_type="agent_management",
+            action="start",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="failed",
+            severity="error",
+            details={"error": str(e)}
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to start agent: {str(e)}")
+
+
+@router.post("/{agent_name}/stop")
+async def stop_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    """Stop an agent."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        container.stop()
+
+        if manager:
+            await manager.broadcast(json.dumps({
+                "event": "agent_stopped",
+                "data": {"name": agent_name}
+            }))
+
+        await log_audit_event(
+            event_type="agent_management",
+            action="stop",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="success"
+        )
+
+        return {"message": f"Agent {agent_name} stopped"}
+    except Exception as e:
+        await log_audit_event(
+            event_type="agent_management",
+            action="stop",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="failed",
+            severity="error",
+            details={"error": str(e)}
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to stop agent: {str(e)}")
+
+
+@router.get("/{agent_name}/logs")
+async def get_agent_logs_endpoint(
+    agent_name: str,
+    request: Request,
+    tail: int = 100,
+    current_user: User = Depends(get_current_user)
+):
+    """Get agent container logs."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        logs = container.logs(tail=tail).decode('utf-8')
+
+        await log_audit_event(
+            event_type="agent_access",
+            action="view_logs",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="success"
+        )
+
+        return {"logs": logs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get logs: {str(e)}")
+
+
+@router.get("/{agent_name}/stats")
+async def get_agent_stats_endpoint(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get live container stats (CPU, memory, network) for an agent."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent is not running")
+
+    try:
+        stats = container.stats(stream=False)
+
+        cpu_percent = 0.0
+        cpu_stats = stats.get("cpu_stats", {})
+        precpu_stats = stats.get("precpu_stats", {})
+
+        cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - \
+                    precpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+        system_delta = cpu_stats.get("system_cpu_usage", 0) - \
+                       precpu_stats.get("system_cpu_usage", 0)
+
+        if system_delta > 0 and cpu_delta > 0:
+            num_cpus = len(cpu_stats.get("cpu_usage", {}).get("percpu_usage", [])) or 1
+            cpu_percent = (cpu_delta / system_delta) * num_cpus * 100.0
+
+        memory_stats = stats.get("memory_stats", {})
+        memory_used = memory_stats.get("usage", 0)
+        memory_limit = memory_stats.get("limit", 0)
+        cache = memory_stats.get("stats", {}).get("cache", 0)
+        memory_used_actual = max(0, memory_used - cache)
+
+        networks = stats.get("networks", {})
+        network_rx = sum(net.get("rx_bytes", 0) for net in networks.values())
+        network_tx = sum(net.get("tx_bytes", 0) for net in networks.values())
+
+        started_at = container.attrs.get("State", {}).get("StartedAt", "")
+        uptime_seconds = 0
+        if started_at:
+            try:
+                start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00").split(".")[0])
+                uptime_seconds = int((datetime.now(start_time.tzinfo) - start_time).total_seconds())
+            except Exception:
+                pass
+
+        return {
+            "cpu_percent": round(cpu_percent, 1),
+            "memory_used_bytes": memory_used_actual,
+            "memory_limit_bytes": memory_limit,
+            "memory_percent": round((memory_used_actual / memory_limit * 100) if memory_limit > 0 else 0, 1),
+            "network_rx_bytes": network_rx,
+            "network_tx_bytes": network_tx,
+            "uptime_seconds": uptime_seconds,
+            "status": container.status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+@router.get("/{agent_name}/queue")
+async def get_agent_queue_status(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get execution queue status for an agent.
+
+    Returns:
+    - is_busy: Whether the agent is currently executing a request
+    - current_execution: Details of the currently running execution (if any)
+    - queue_length: Number of requests waiting in the queue
+    - queued_executions: Details of queued requests
+
+    This endpoint is useful for checking if an agent is available before
+    sending a chat request, or for monitoring agent workload.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        queue = get_execution_queue()
+        status = await queue.get_status(agent_name)
+        return status.model_dump()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get queue status: {str(e)}")
+
+
+@router.post("/{agent_name}/queue/clear")
+async def clear_agent_queue(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Clear all queued executions for an agent.
+
+    This does NOT stop the currently running execution - only clears pending requests.
+    Use this if you want to cancel all waiting requests for an agent.
+
+    Returns the number of cleared executions.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        queue = get_execution_queue()
+        cleared_count = await queue.clear_queue(agent_name)
+
+        await log_audit_event(
+            event_type="agent_queue",
+            action="clear_queue",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            resource=f"agent-{agent_name}",
+            result="success",
+            details={"cleared_count": cleared_count}
+        )
+
+        return {
+            "status": "cleared",
+            "agent": agent_name,
+            "cleared_count": cleared_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear queue: {str(e)}")
+
+
+@router.post("/{agent_name}/queue/release")
+async def force_release_agent(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Force release an agent from its running state.
+
+    CAUTION: This is an emergency operation for when an agent is stuck.
+    Use only if an execution is hung or the agent died without completing.
+
+    This clears the "running" state in the queue, allowing new executions.
+    It does NOT stop any actual agent process - just resets the queue state.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        queue = get_execution_queue()
+        was_running = await queue.force_release(agent_name)
+
+        await log_audit_event(
+            event_type="agent_queue",
+            action="force_release",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            resource=f"agent-{agent_name}",
+            result="success",
+            details={"was_running": was_running},
+            severity="warning"
+        )
+
+        return {
+            "status": "released",
+            "agent": agent_name,
+            "was_running": was_running,
+            "warning": "Agent queue state has been reset. Any in-progress execution may still be running."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to release agent: {str(e)}")
+
+
+@router.get("/{agent_name}/info")
+async def get_agent_info_endpoint(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get template info and metadata for an agent.
+
+    Returns the agent's template.yaml metadata including:
+    - display_name, description, version, author
+    - capabilities, sub_agents, commands, platforms
+    - resource allocation
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+
+    # If agent is not running, return basic info from container labels
+    if container.status != "running":
+        labels = container.labels
+        return {
+            "has_template": bool(labels.get("trinity.template")),
+            "agent_name": agent_name,
+            "template_name": labels.get("trinity.template", ""),
+            "type": labels.get("trinity.agent-type", ""),
+            "resources": {
+                "cpu": labels.get("trinity.cpu", ""),
+                "memory": labels.get("trinity.memory", "")
+            },
+            "status": "stopped",
+            "message": "Agent is stopped. Start the agent to see full template info."
+        }
+
+    # Agent is running - fetch template info from agent's internal API
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/template/info"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                data = response.json()
+                data["status"] = "running"
+                return data
+            else:
+                # Fallback to container labels if endpoint not available
+                labels = container.labels
+                return {
+                    "has_template": bool(labels.get("trinity.template")),
+                    "agent_name": agent_name,
+                    "template_name": labels.get("trinity.template", ""),
+                    "type": labels.get("trinity.agent-type", ""),
+                    "resources": {
+                        "cpu": labels.get("trinity.cpu", ""),
+                        "memory": labels.get("trinity.memory", "")
+                    },
+                    "status": "running",
+                    "message": "Template info endpoint not available in this agent version"
+                }
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent is starting up, please try again")
+    except Exception as e:
+        labels = container.labels
+        return {
+            "has_template": bool(labels.get("trinity.template")),
+            "agent_name": agent_name,
+            "template_name": labels.get("trinity.template", ""),
+            "type": labels.get("trinity.agent-type", ""),
+            "resources": {
+                "cpu": labels.get("trinity.cpu", ""),
+                "memory": labels.get("trinity.memory", "")
+            },
+            "status": "running",
+            "message": f"Could not fetch template info: {str(e)}"
+        }
+
+
+@router.get("/{agent_name}/files")
+async def list_agent_files_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str = "/home/developer",
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List files in the agent's workspace directory.
+    Returns a flat list of files with metadata (name, size, modified date).
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to browse files")
+
+    try:
+        # Call agent's internal file listing API
+        agent_url = f"http://agent-{agent_name}:8000/api/files"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(agent_url, params={"path": path})
+            if response.status_code == 200:
+                # Audit log the file list access
+                await log_audit_event(
+                    event_type="file_access",
+                    action="file_list",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    details={"path": path},
+                    result="success"
+                )
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Failed to list files: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="File listing timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_audit_event(
+            event_type="file_access",
+            action="file_list",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            details={"path": path, "error": str(e)},
+            result="error"
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+
+@router.get("/{agent_name}/files/download")
+async def download_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Download a file from the agent's workspace.
+    Returns the file content as plain text.
+    """
+    import httpx
+    from fastapi.responses import PlainTextResponse
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to download files")
+
+    try:
+        # Call agent's internal file download API
+        agent_url = f"http://agent-{agent_name}:8000/api/files/download"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(agent_url, params={"path": path})
+            if response.status_code == 200:
+                # Audit log the file download
+                await log_audit_event(
+                    event_type="file_access",
+                    action="file_download",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    details={"file_path": path},
+                    result="success"
+                )
+                return PlainTextResponse(content=response.text)
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Failed to download file: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="File download timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_audit_event(
+            event_type="file_access",
+            action="file_download",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            details={"file_path": path, "error": str(e)},
+            result="error"
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+
+
+# ============================================================================
+# Activity Stream Endpoints (Phase 9.7)
+# ============================================================================
+
+@router.get("/{agent_name}/activities")
+async def get_agent_activities(
+    agent_name: str,
+    activity_type: Optional[str] = None,
+    activity_state: Optional[str] = None,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get activity history for a specific agent.
+
+    Filters:
+    - activity_type: chat_start, chat_end, tool_call, schedule_start, schedule_end, agent_collaboration
+    - activity_state: started, completed, failed
+    - limit: max number of activities to return (default 100)
+    """
+    # Check user permissions
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    # Verify agent exists
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get activities from database
+    activities = db.get_agent_activities(
+        agent_name=agent_name,
+        activity_type=activity_type,
+        activity_state=activity_state,
+        limit=limit
+    )
+
+    return {
+        "agent_name": agent_name,
+        "count": len(activities),
+        "activities": activities
+    }
+
+
+@router.get("/activities/timeline")
+async def get_activity_timeline(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    activity_types: Optional[str] = None,  # Comma-separated list
+    limit: int = 100,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get cross-agent activity timeline.
+
+    Filters:
+    - start_time: ISO8601 timestamp (e.g., "2025-12-02T10:00:00")
+    - end_time: ISO8601 timestamp
+    - activity_types: comma-separated list (e.g., "chat_start,tool_call")
+    - limit: max number of activities to return (default 100)
+
+    Note: Only returns activities for agents the user has access to.
+    """
+    # Parse activity types if provided
+    types_list = activity_types.split(",") if activity_types else None
+
+    # Get all activities
+    all_activities = db.get_activities_in_range(
+        start_time=start_time,
+        end_time=end_time,
+        activity_types=types_list,
+        limit=limit * 2  # Get more since we'll filter by access
+    )
+
+    # Filter activities to only include agents the user can access
+    filtered_activities = []
+    for activity in all_activities:
+        agent_name = activity.get("agent_name")
+        if db.can_user_access_agent(current_user.username, agent_name):
+            filtered_activities.append(activity)
+            if len(filtered_activities) >= limit:
+                break
+
+    return {
+        "count": len(filtered_activities),
+        "start_time": start_time,
+        "end_time": end_time,
+        "activity_types": types_list,
+        "timeline": filtered_activities
+    }
+
+
+# ============================================================================
+# Task DAG / Plan Proxy Endpoints (Phase 9 - Pillar I: Explicit Planning)
+# ============================================================================
+
+# NOTE: The aggregate endpoint must come BEFORE agent-specific routes
+# to avoid FastAPI matching "plans" as an agent_name
+
+@router.get("/plans/aggregate")
+async def get_plans_aggregate(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get aggregated plan summary across all accessible agents.
+
+    Returns:
+    - Per-agent summaries with plan counts and current task
+    - Global totals (total plans, tasks, completion rate)
+    - List of currently active tasks across all agents
+
+    Useful for dashboard overview of all agent planning activity.
+    """
+    import httpx
+    import asyncio
+
+    # Get all accessible agents
+    accessible_agents = get_accessible_agents(current_user)
+
+    aggregate = {
+        "total_agents": len(accessible_agents),
+        "running_agents": 0,
+        "agents_with_plans": 0,
+        "total_plans": 0,
+        "active_plans": 0,
+        "completed_plans": 0,
+        "failed_plans": 0,
+        "total_tasks": 0,
+        "completed_tasks": 0,
+        "active_tasks": 0,
+        "current_tasks": [],  # List of currently active tasks across all agents
+        "agent_summaries": []
+    }
+
+    async def fetch_agent_summary(agent):
+        """Fetch plan summary for a single agent"""
+        agent_name = agent.get("name")
+        status = agent.get("status")
+
+        summary = {
+            "agent_name": agent_name,
+            "status": status,
+            "total_plans": 0,
+            "active_plans": 0,
+            "completed_plans": 0,
+            "total_tasks": 0,
+            "completed_tasks": 0,
+            "active_tasks": 0,
+            "current_task": None,
+            "recent_plans": []
+        }
+
+        if status != "running":
+            return summary
+
+        try:
+            agent_url = f"http://agent-{agent_name}:8000/api/plans/summary"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(agent_url)
+                if response.status_code == 200:
+                    data = response.json()
+                    summary.update({
+                        "total_plans": data.get("total_plans", 0),
+                        "active_plans": data.get("active_plans", 0),
+                        "completed_plans": data.get("completed_plans", 0),
+                        "failed_plans": data.get("failed_plans", 0),
+                        "total_tasks": data.get("total_tasks", 0),
+                        "completed_tasks": data.get("completed_tasks", 0),
+                        "active_tasks": data.get("active_tasks", 0),
+                        "current_task": data.get("current_task"),
+                        "recent_plans": data.get("recent_plans", [])
+                    })
+        except Exception as e:
+            # Log but don't fail - agent may be starting up
+            print(f"Failed to fetch plan summary for {agent_name}: {e}")
+
+        return summary
+
+    # Fetch summaries in parallel
+    tasks = [fetch_agent_summary(agent) for agent in accessible_agents]
+    summaries = await asyncio.gather(*tasks)
+
+    # Aggregate results
+    for summary in summaries:
+        if summary.get("status") == "running":
+            aggregate["running_agents"] += 1
+
+        if summary.get("total_plans", 0) > 0:
+            aggregate["agents_with_plans"] += 1
+
+        aggregate["total_plans"] += summary.get("total_plans", 0)
+        aggregate["active_plans"] += summary.get("active_plans", 0)
+        aggregate["completed_plans"] += summary.get("completed_plans", 0)
+        aggregate["failed_plans"] += summary.get("failed_plans", 0)
+        aggregate["total_tasks"] += summary.get("total_tasks", 0)
+        aggregate["completed_tasks"] += summary.get("completed_tasks", 0)
+        aggregate["active_tasks"] += summary.get("active_tasks", 0)
+
+        # Collect current tasks
+        current_task = summary.get("current_task")
+        if current_task:
+            current_task["agent_name"] = summary.get("agent_name")
+            aggregate["current_tasks"].append(current_task)
+
+        aggregate["agent_summaries"].append(summary)
+
+    # Calculate completion rate
+    if aggregate["total_tasks"] > 0:
+        aggregate["completion_rate"] = round(
+            aggregate["completed_tasks"] / aggregate["total_tasks"] * 100, 1
+        )
+    else:
+        aggregate["completion_rate"] = 0
+
+    return aggregate
+
+
+@router.get("/{agent_name}/plans")
+async def get_agent_plans(
+    agent_name: str,
+    request: Request,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all plans for a specific agent.
+
+    Proxies to the agent's internal /api/plans endpoint.
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to view plans")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans"
+        params = {"status": status} if status else {}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url, params=params)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch plans: {str(e)}")
+
+
+@router.post("/{agent_name}/plans")
+async def create_agent_plan(
+    agent_name: str,
+    request: Request,
+    plan_data: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new plan for an agent.
+
+    Proxies to the agent's internal /api/plans endpoint.
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to create plans")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(agent_url, json=plan_data)
+            if response.status_code == 200:
+                await log_audit_event(
+                    event_type="plan_management",
+                    action="create",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    result="success",
+                    details={"plan_name": plan_data.get("name")}
+                )
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create plan: {str(e)}")
+
+
+@router.get("/{agent_name}/plans/summary")
+async def get_agent_plans_summary(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get plan summary for an agent.
+
+    Returns aggregate statistics about plans and current task.
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        # Return empty summary for stopped agents
+        return {
+            "agent_name": agent_name,
+            "total_plans": 0,
+            "active_plans": 0,
+            "completed_plans": 0,
+            "failed_plans": 0,
+            "total_tasks": 0,
+            "completed_tasks": 0,
+            "active_tasks": 0,
+            "current_task": None,
+            "recent_plans": [],
+            "status": "stopped"
+        }
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans/summary"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                data = response.json()
+                data["status"] = "running"
+                return data
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch plan summary: {str(e)}")
+
+
+@router.get("/{agent_name}/plans/{plan_id}")
+async def get_agent_plan(
+    agent_name: str,
+    plan_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get a specific plan by ID.
+
+    Returns the full plan with all tasks.
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to view plans")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans/{plan_id}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch plan: {str(e)}")
+
+
+@router.put("/{agent_name}/plans/{plan_id}")
+async def update_agent_plan(
+    agent_name: str,
+    plan_id: str,
+    request: Request,
+    updates: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update a plan's metadata.
+
+    Body can contain: name, description, status
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to update plans")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans/{plan_id}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.put(agent_url, json=updates)
+            if response.status_code == 200:
+                await log_audit_event(
+                    event_type="plan_management",
+                    action="update",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    result="success",
+                    details={"plan_id": plan_id, "updates": updates}
+                )
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update plan: {str(e)}")
+
+
+@router.delete("/{agent_name}/plans/{plan_id}")
+async def delete_agent_plan(
+    agent_name: str,
+    plan_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a plan.
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to delete plans")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans/{plan_id}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.delete(agent_url)
+            if response.status_code == 200:
+                await log_audit_event(
+                    event_type="plan_management",
+                    action="delete",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    result="success",
+                    details={"plan_id": plan_id}
+                )
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete plan: {str(e)}")
+
+
+@router.put("/{agent_name}/plans/{plan_id}/tasks/{task_id}")
+async def update_agent_task(
+    agent_name: str,
+    plan_id: str,
+    task_id: str,
+    request: Request,
+    task_update: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update a task's status within a plan.
+
+    Body:
+    - status: New status (pending, active, completed, failed)
+    - result: Optional result/output from task
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to update tasks")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/plans/{plan_id}/tasks/{task_id}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.put(agent_url, json=task_update)
+            if response.status_code == 200:
+                await log_audit_event(
+                    event_type="plan_management",
+                    action="task_update",
+                    user_id=current_user.username,
+                    agent_name=agent_name,
+                    ip_address=request.client.host if request.client else None,
+                    result="success",
+                    details={"plan_id": plan_id, "task_id": task_id, "update": task_update}
+                )
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent request timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+
+
+# ============================================================================
+# Agent Permissions Endpoints (Phase 9.10: Agent-to-Agent Permissions)
+# ============================================================================
+
+@router.get("/{agent_name}/permissions")
+async def get_agent_permissions(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get permissions for an agent.
+
+    Returns:
+    - source_agent: The agent name
+    - permitted_agents: List of agents this agent can communicate with
+    - available_agents: List of all other accessible agents with permission status
+    """
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get permitted agents
+    permitted_list = db.get_permitted_agents(agent_name)
+
+    # Get all agents accessible to this user
+    accessible_agents = get_accessible_agents(current_user)
+
+    # Build available agents list with permission status
+    available_agents = []
+    permitted_agents = []
+
+    for agent in accessible_agents:
+        if agent["name"] == agent_name:
+            continue  # Skip self
+
+        agent_info = {
+            "name": agent["name"],
+            "status": agent["status"],
+            "type": agent.get("type", ""),
+            "permitted": agent["name"] in permitted_list
+        }
+
+        if agent_info["permitted"]:
+            permitted_agents.append(agent_info)
+        available_agents.append(agent_info)
+
+    return {
+        "source_agent": agent_name,
+        "permitted_agents": permitted_agents,
+        "available_agents": available_agents
+    }
+
+
+@router.put("/{agent_name}/permissions")
+async def set_agent_permissions(
+    agent_name: str,
+    request: Request,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set permissions for an agent (full replacement).
+
+    Body:
+    - permitted_agents: List of agent names to permit
+    """
+    # Only owner or admin can modify permissions
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only the owner can modify agent permissions")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    permitted_agents = body.get("permitted_agents", [])
+
+    # Validate all target agents exist and are accessible
+    for target in permitted_agents:
+        if not db.can_user_access_agent(current_user.username, target):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Agent '{target}' does not exist or is not accessible"
+            )
+
+    # Set permissions
+    db.set_agent_permissions(agent_name, permitted_agents, current_user.username)
+
+    await log_audit_event(
+        event_type="agent_permissions",
+        action="set_permissions",
+        user_id=current_user.username,
+        agent_name=agent_name,
+        ip_address=request.client.host if request.client else None,
+        result="success",
+        details={"permitted_count": len(permitted_agents)}
+    )
+
+    return {
+        "status": "updated",
+        "source_agent": agent_name,
+        "permitted_count": len(permitted_agents)
+    }
+
+
+@router.post("/{agent_name}/permissions/{target_agent}")
+async def add_agent_permission(
+    agent_name: str,
+    target_agent: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Add permission for an agent to communicate with another agent.
+    """
+    # Only owner or admin can modify permissions
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only the owner can modify agent permissions")
+
+    # Verify source agent exists
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Verify target agent exists and is accessible
+    if not db.can_user_access_agent(current_user.username, target_agent):
+        raise HTTPException(status_code=400, detail=f"Target agent '{target_agent}' does not exist or is not accessible")
+
+    # Can't permit self
+    if agent_name == target_agent:
+        raise HTTPException(status_code=400, detail="Agent cannot be permitted to call itself")
+
+    # Add permission
+    result = db.add_agent_permission(agent_name, target_agent, current_user.username)
+
+    if result:
+        await log_audit_event(
+            event_type="agent_permissions",
+            action="add_permission",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"target_agent": target_agent}
+        )
+        return {"status": "added", "source_agent": agent_name, "target_agent": target_agent}
+    else:
+        return {"status": "already_exists", "source_agent": agent_name, "target_agent": target_agent}
+
+
+@router.delete("/{agent_name}/permissions/{target_agent}")
+async def remove_agent_permission(
+    agent_name: str,
+    target_agent: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Remove permission for an agent to communicate with another agent.
+    """
+    # Only owner or admin can modify permissions
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only the owner can modify agent permissions")
+
+    # Verify source agent exists
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Remove permission
+    removed = db.remove_agent_permission(agent_name, target_agent)
+
+    if removed:
+        await log_audit_event(
+            event_type="agent_permissions",
+            action="remove_permission",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"target_agent": target_agent}
+        )
+        return {"status": "removed", "source_agent": agent_name, "target_agent": target_agent}
+    else:
+        return {"status": "not_found", "source_agent": agent_name, "target_agent": target_agent}
+
+
+# ============================================================================
+# Custom Metrics Endpoints (Phase 9.9)
+# ============================================================================
+
+@router.get("/{agent_name}/metrics")
+async def get_agent_metrics(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get agent custom metrics.
+
+    Returns metric definitions from agent's template.yaml and current values
+    from metrics.json in the agent's workspace.
+
+    Metric types supported:
+    - counter: Monotonically increasing value
+    - gauge: Current value that can go up/down
+    - percentage: 0-100 value with progress bar
+    - status: Enum/state value with colored badge
+    - duration: Time in seconds (formatted)
+    - bytes: Size in bytes (formatted)
+
+    Returns:
+    - agent_name: Name of the agent
+    - has_metrics: Whether agent has custom metrics defined
+    - definitions: List of metric definitions from template.yaml
+    - values: Current metric values from metrics.json
+    - last_updated: Timestamp from metrics.json (if available)
+    - status: Agent status (running/stopped)
+    """
+    import httpx
+
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+
+    # If agent is not running, return basic info
+    if container.status != "running":
+        return {
+            "agent_name": agent_name,
+            "has_metrics": False,
+            "status": "stopped",
+            "message": "Agent must be running to read metrics"
+        }
+
+    # Agent is running - fetch metrics from agent's internal API
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/metrics"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                data = response.json()
+                data["agent_name"] = agent_name
+                data["status"] = "running"
+                return data
+            else:
+                return {
+                    "agent_name": agent_name,
+                    "has_metrics": False,
+                    "status": "running",
+                    "message": f"Failed to fetch metrics: HTTP {response.status_code}"
+                }
+    except httpx.TimeoutException:
+        return {
+            "agent_name": agent_name,
+            "has_metrics": False,
+            "status": "running",
+            "message": "Agent is starting up, please try again"
+        }
+    except Exception as e:
+        return {
+            "agent_name": agent_name,
+            "has_metrics": False,
+            "status": "running",
+            "message": f"Failed to read metrics: {str(e)}"
+        }
+
