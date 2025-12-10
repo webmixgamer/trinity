@@ -92,10 +92,30 @@ docker-compose logs -f backend
 - **MCP Server**: http://localhost:8080/mcp
 - **Audit Logger**: http://localhost:8001/docs
 
-### Production URLs
-- **Web UI**: https://your-domain.com
-- **Backend API**: https://your-domain.com/api/
-- **MCP Server**: https://your-domain.com:8080/mcp
+### Production Deployment (GCP)
+
+Deployment uses a config-based approach. Settings are stored in `deploy.config` (gitignored).
+
+```bash
+# Set up deployment (one-time)
+cp deploy.config.example deploy.config
+# Edit deploy.config with your GCP project, zone, instance, domain
+
+# Deploy to GCP
+./scripts/deploy/gcp-deploy.sh
+
+# Other commands
+./scripts/deploy/gcp-firewall.sh      # Set up firewall rules
+./scripts/deploy/backup-database.sh   # Backup database
+./scripts/deploy/restore-database.sh  # Restore database
+```
+
+**Key deployment files:**
+| File | Purpose |
+|------|---------|
+| `deploy.config.example` | Template (committed) |
+| `deploy.config` | Your settings (gitignored, never commit) |
+| `scripts/deploy/gcp-deploy.sh` | Main deployment script |
 
 ---
 
