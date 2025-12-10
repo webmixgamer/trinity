@@ -1,0 +1,75 @@
+# Trinity Deployment Configuration
+# Copy this file to deploy.config and fill in your values
+# DO NOT commit deploy.config to git
+
+# ===========================================
+# GCP Configuration
+# ===========================================
+
+# Your GCP project ID
+GCP_PROJECT="your-gcp-project-id"
+
+# Zone where your VM is located
+GCP_ZONE="us-central1-a"
+
+# Name of your GCP VM instance
+GCP_INSTANCE="your-vm-name"
+
+# External IP of your VM (or leave empty to auto-detect)
+GCP_EXTERNAL_IP=""
+
+# ===========================================
+# Domain Configuration
+# ===========================================
+
+# Your domain name (e.g., trinity.example.com)
+DOMAIN="your-domain.com"
+
+# Backend URL (used for OAuth callbacks)
+BACKEND_URL="https://${DOMAIN}/api"
+
+# ===========================================
+# Port Configuration
+# ===========================================
+
+# Trinity services ports (change if you have conflicts)
+BACKEND_PORT="8005"
+FRONTEND_PORT="3005"
+AUDIT_PORT="8006"
+MCP_PORT="8007"
+
+# Agent SSH port range start (agents use consecutive ports)
+AGENT_SSH_PORT_START="2223"
+
+# ===========================================
+# Authentication
+# ===========================================
+
+# Admin password for dev mode (change this!)
+ADMIN_PASSWORD="changeme"
+
+# Secret key for JWT tokens (generate with: openssl rand -hex 32)
+SECRET_KEY=""
+
+# ===========================================
+# OAuth Credentials (optional, for Google/Slack integrations)
+# ===========================================
+
+# Google OAuth (get from Google Cloud Console)
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+
+# Slack OAuth (get from Slack API)
+SLACK_CLIENT_ID=""
+SLACK_CLIENT_SECRET=""
+
+# GitHub OAuth (get from GitHub Developer Settings)
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""
+
+# ===========================================
+# Remote Directory
+# ===========================================
+
+# Where Trinity is deployed on the remote VM
+REMOTE_DIR="~/trinity-platform"

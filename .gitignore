@@ -71,6 +71,7 @@ api.log
 
 # Config files with sensitive data (if any)
 config.env
+deploy.config
 
 # Deployment data
 deployment/

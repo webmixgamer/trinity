@@ -235,12 +235,74 @@ docker logs agent-myagent
 
 ## Cloud Deployment Options
 
-Trinity can be deployed to any cloud provider:
+Trinity can be deployed to any cloud provider.
 
-### Google Cloud Platform
-- Use Compute Engine VM with Container-Optimized OS
-- Cloud SQL can replace SQLite for multi-instance
-- Cloud Memorystore for Redis
+---
+
+### Google Cloud Platform (GCP)
+
+We provide automated deployment scripts for GCP. These scripts use a configuration file that you create locally (not committed to git).
+
+#### Step 1: Create Your Configuration
+
+```bash
+# Copy the template
+cp deploy.config.example deploy.config
+
+# Edit with your settings
+nano deploy.config  # or your preferred editor
+```
+
+Required settings in `deploy.config`:
+```bash
+GCP_PROJECT="your-gcp-project-id"
+GCP_ZONE="us-central1-a"
+GCP_INSTANCE="your-vm-name"
+DOMAIN="your-domain.com"
+```
+
+#### Step 2: Set Up Firewall Rules
+
+```bash
+./scripts/deploy/gcp-firewall.sh
+```
+
+This creates firewall rules for:
+- Trinity services (frontend, backend, MCP server)
+- Agent SSH ports
+
+#### Step 3: Deploy to GCP
+
+```bash
+# Full deployment (sync files, create env, restart services)
+./scripts/deploy/gcp-deploy.sh
+
+# Or individual steps:
+./scripts/deploy/gcp-deploy.sh sync      # Sync files only
+./scripts/deploy/gcp-deploy.sh restart   # Restart services only
+./scripts/deploy/gcp-deploy.sh status    # Check status
+```
+
+#### Step 4: Set Up SSL (Recommended)
+
+On your GCP VM, install nginx and certbot:
+
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com
+```
+
+#### Backup & Restore (GCP)
+
+```bash
+# Backup database from GCP to local
+./scripts/deploy/backup-database.sh
+
+# Restore database to GCP
+./scripts/deploy/restore-database.sh ./backups/trinity_backup_20251201.db
+```
+
+---
 
 ### AWS
 - EC2 instance with Docker
