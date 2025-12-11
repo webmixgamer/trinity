@@ -31,15 +31,16 @@ services:
       - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # Host paths for volumes (used when creating agent containers)
-      - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-/home/eugene_ability_ai/trinity-platform/config/agent-templates}
-      - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-/home/eugene_ability_ai/trinity-platform/config/trinity-meta-prompt}
+      # These MUST be set in your environment or deploy.config
+      - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH}
+      - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - agent-configs:/agent-configs
       - audit-logs:/logs
-      - /home/eugene_ability_ai/trinity-data:/data
+      - ${TRINITY_DATA_PATH:-./trinity-data}:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -181,7 +182,7 @@ volumes:
   redis-data:
   audit-data:
   audit-logs:
-  # trinity-data removed - using bind mount at /home/eugene_ability_ai/trinity-data
+  # trinity-data: using bind mount via TRINITY_DATA_PATH env var
 
 networks:
   trinity-network:

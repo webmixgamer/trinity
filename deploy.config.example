@@ -68,8 +68,16 @@ GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
 
 # ===========================================
-# Remote Directory
+# Remote Directory & Paths
 # ===========================================
 
 # Where Trinity is deployed on the remote VM
 REMOTE_DIR="~/trinity-platform"
+
+# Full paths on the remote host (required for docker-compose.prod.yml)
+# These are absolute paths to the config directories
+HOST_TEMPLATES_PATH="${REMOTE_DIR}/config/agent-templates"
+HOST_META_PROMPT_PATH="${REMOTE_DIR}/config/trinity-meta-prompt"
+
+# Where to store Trinity data (SQLite database)
+TRINITY_DATA_PATH="${REMOTE_DIR}/trinity-data"
