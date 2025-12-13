@@ -19,19 +19,12 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
             cd /home/developer
             git fetch origin 2>&1 || echo "Note: Could not fetch from remote"
 
-            # Restore infrastructure files from base image (may have been updated)
-            cp /home/developer/agent-server.py.base /home/developer/agent-server.py 2>/dev/null || true
-            cp -r /home/developer/agent_server.base /home/developer/agent_server 2>/dev/null || true
-
             echo "Existing repository ready with persisted files"
         else
             echo "Git sync enabled - cloning with full history for bidirectional sync"
             echo "Cloning repository..."
 
-            # Preserve agent-server.py, agent_server/, startup.sh, and Python packages before cloning
-            cp /home/developer/agent-server.py /tmp/agent-server.py.bak 2>/dev/null || true
-            cp -r /home/developer/agent_server /tmp/agent_server.bak 2>/dev/null || true
-            cp /home/developer/startup.sh /tmp/startup.sh.bak 2>/dev/null || true
+            # Preserve Python packages before cloning
             cp -r /home/developer/.local /tmp/.local.bak 2>/dev/null || true
 
             # Clone directly into /home/developer (first time setup on empty volume)
@@ -66,20 +59,13 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
             # Store git remote URL with credentials for push operations
             git remote set-url origin "${CLONE_URL}"
 
-            # Restore agent-server.py, agent_server/, startup.sh, and Python packages (these are from the base image, not the repo)
-            cp /tmp/agent-server.py.bak /home/developer/agent-server.py 2>/dev/null || true
-            cp -r /tmp/agent_server.bak /home/developer/agent_server 2>/dev/null || true
-            cp /tmp/startup.sh.bak /home/developer/startup.sh 2>/dev/null || true
+            # Restore Python packages (these are from the base image, not the repo)
             cp -r /tmp/.local.bak /home/developer/.local 2>/dev/null || true
-            chmod +x /home/developer/agent-server.py /home/developer/startup.sh 2>/dev/null || true
 
-            # Add infrastructure files to .gitignore (don't sync these to GitHub)
+            # Add Python packages to .gitignore (don't sync these to GitHub)
             if [ ! -f /home/developer/.gitignore ]; then
                 echo "# Trinity agent infrastructure files" > /home/developer/.gitignore
             fi
-            grep -q "agent-server.py" /home/developer/.gitignore || echo "agent-server.py" >> /home/developer/.gitignore
-            grep -q "agent_server/" /home/developer/.gitignore || echo "agent_server/" >> /home/developer/.gitignore
-            grep -q "startup.sh" /home/developer/.gitignore || echo "startup.sh" >> /home/developer/.gitignore
             grep -q ".local/" /home/developer/.gitignore || echo ".local/" >> /home/developer/.gitignore
 
             echo "Git sync initialization complete"
@@ -212,7 +198,7 @@ fi
 # Load agent configuration
 if [ -f "/config/agent-config.yaml" ]; then
     echo "Loading agent configuration..."
-    python3 /home/developer/configure_agent.py
+    python3 /app/configure_agent.py
 fi
 
 # Configure MCP servers
@@ -220,7 +206,7 @@ if [ -d "/config/mcp-servers" ]; then
     for mcp in /config/mcp-servers/*.yaml; do
         if [ -f "$mcp" ]; then
             echo "Configuring MCP: $mcp"
-            python3 /home/developer/setup_mcp.py "$mcp"
+            python3 /app/setup_mcp.py "$mcp"
         fi
     done
 fi
@@ -228,7 +214,7 @@ fi
 # Start Agent Web Server (self-contained UI)
 if [ "${ENABLE_AGENT_UI}" = "true" ]; then
     echo "Starting Agent Web UI on port ${AGENT_SERVER_PORT:-8000}..."
-    python3 /home/developer/agent-server.py &
+    python3 /app/agent-server.py &
 fi
 
 echo "Agent ready. Keeping container alive..."

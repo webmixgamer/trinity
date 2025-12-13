@@ -74,10 +74,19 @@ RUN python3 -m pip install --user --upgrade pip && \
 
 RUN mkdir -p /home/developer/.claude-agent
 
-COPY --chown=developer:developer ./agent-server.py /home/developer/agent-server.py
-COPY --chown=developer:developer ./agent_server /home/developer/agent_server
-COPY --chown=developer:developer ./startup.sh /home/developer/startup.sh
-RUN chmod +x /home/developer/startup.sh /home/developer/agent-server.py
+# Copy agent server code to /app (outside persistent volume)
+# This ensures code updates reach agents without volume conflicts
+USER root
+RUN mkdir -p /app && chown -R developer:developer /app
+USER developer
+
+COPY --chown=developer:developer ./agent-server.py /app/agent-server.py
+COPY --chown=developer:developer ./agent_server /app/agent_server
+COPY --chown=developer:developer ./startup.sh /app/startup.sh
+RUN chmod +x /app/startup.sh /app/agent-server.py
+
+# Add /app to Python path so agent_server module can be imported
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 EXPOSE 22 8000
 
@@ -92,5 +101,5 @@ RUN mkdir -p /tmp/secure && \
 
 USER developer
 
-CMD ["/home/developer/startup.sh"]
+CMD ["/app/startup.sh"]
 

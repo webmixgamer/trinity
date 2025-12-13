@@ -46,17 +46,10 @@ async def chat(request: ChatRequest):
         if metadata.cost_usd:
             agent_state.session_total_cost += metadata.cost_usd
         agent_state.session_total_output_tokens += metadata.output_tokens
-        # Calculate total context window usage:
-        # - input_tokens: New non-cached tokens this turn
-        # - cache_creation_tokens: Tokens written to cache this turn (part of context)
-        # - cache_read_tokens: Tokens read from existing cache (part of context)
-        # Total = all tokens that count against the context window
-        total_context_tokens = (
-            metadata.input_tokens +
-            metadata.cache_creation_tokens +
-            metadata.cache_read_tokens
-        )
-        agent_state.session_context_tokens = total_context_tokens
+        # Context window usage: metadata.input_tokens already contains the complete total
+        # (from modelUsage.inputTokens which includes all turns and cached tokens)
+        # cache_creation_tokens and cache_read_tokens are billing breakdowns, NOT additional tokens
+        agent_state.session_context_tokens = metadata.input_tokens
         agent_state.session_context_window = metadata.context_window
 
         logger.info(f"[Chat] Execution lock releasing after completion")
