@@ -6,21 +6,35 @@ This file provides guidance to Claude Code when working with this repository.
 
 ---
 
-## ⚠️ PUBLIC REPOSITORY WARNING
+## ⚠️ PUBLIC OPEN SOURCE REPOSITORY
 
-**This is a PUBLIC open-source repository.** Never commit:
-- API keys, tokens, or credentials
-- Internal URLs, IP addresses, or domain names
-- User emails or personal information
-- Database dumps or backup files
-- `.env` files or deployment configs
-- Auth0 client secrets or OAuth credentials
+**This is a PUBLIC open-source repository visible to the entire world.**
 
-**Safe patterns**:
-- Use `deploy.config.example` with placeholder values (committed)
-- Keep `deploy.config` with real values (gitignored)
-- Reference environment variables, not hardcoded values
-- Use `example.com` or `localhost` in documentation examples
+### What NEVER to Commit
+- ❌ API keys, tokens, PATs, or any credentials (even in comments or docs)
+- ❌ Internal company URLs, production domains, IP addresses
+- ❌ Real user emails, personal information, or PII
+- ❌ Database dumps, backups, or data exports
+- ❌ `.env` files or deployment configs with real values
+- ❌ Auth0 client secrets, OAuth credentials, or service account keys
+- ❌ Private repository references or internal tooling details
+- ❌ Customer names, company-specific configurations, or business data
+
+### Open Source Best Practices
+✅ **Use placeholders**: `your-domain.com`, `your-api-key`, `user@example.com`
+✅ **Example files**: Commit `.example` templates (e.g., `deploy.config.example`)
+✅ **Environment variables**: Reference `${VAR_NAME}` instead of hardcoded values
+✅ **Local examples**: Use `localhost:3000` or `127.0.0.1` in documentation
+✅ **Review diffs**: Always check `git diff` before committing to catch accidental secrets
+✅ **Public-first mindset**: Assume every commit will be visible forever and indexed by search engines
+
+### Git Safety Checklist
+Before every commit:
+1. Run `git diff` and review all changes line by line
+2. Search for patterns: API keys (often start with `sk-`, `pk-`, `ghp_`), emails (`@`), IPs (`192.168.`, `10.0.`)
+3. Verify no `.env` or config files with real credentials are staged
+4. Check that examples use placeholder values
+5. Confirm commit message doesn't reference internal systems
 
 ---
 
