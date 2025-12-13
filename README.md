@@ -129,6 +129,31 @@ my-template/
 
 See [docs/AGENT_TEMPLATE_SPEC.md](docs/AGENT_TEMPLATE_SPEC.md) for the complete specification.
 
+### Public Agent Templates
+
+Trinity includes three reference agent implementations that demonstrate real-world agent patterns. These repositories are **public and available for use as templates** for your own agents:
+
+| Agent | Repository | Purpose |
+|-------|------------|---------|
+| **Cornelius** | [github.com/abilityai/agent-cornelius](https://github.com/abilityai/agent-cornelius) | Knowledge Base Manager — Obsidian vault management, insight synthesis, research coordination |
+| **Corbin** | [github.com/abilityai/agent-corbin](https://github.com/abilityai/agent-corbin) | Business Assistant — Google Workspace integration, task coordination, team management |
+| **Ruby** | [github.com/abilityai/agent-ruby](https://github.com/abilityai/agent-ruby) | Content Creator — Multi-platform publishing, social media distribution, content strategy |
+
+These agents demonstrate:
+- Production-ready template structure with `template.yaml`, `CLAUDE.md`, and `.claude/` configuration
+- Agent-to-agent collaboration patterns via Trinity MCP
+- Custom metrics definitions for specialized tracking
+- Credential management for external API integrations
+- Real-world slash commands and workflow automation
+
+**Usage**: Create agents from these templates via the Trinity UI:
+```bash
+# Via UI: Create Agent → Select "github:abilityai/agent-cornelius"
+# Via MCP: trinity_create_agent(name="my-agent", template="github:abilityai/agent-cornelius")
+```
+
+**Note**: You'll need to configure a `GITHUB_PAT` environment variable in `.env` to use GitHub templates.
+
 ## MCP Integration
 
 Trinity includes an MCP server for external orchestration of agents:
