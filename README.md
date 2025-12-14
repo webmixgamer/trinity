@@ -127,7 +127,7 @@ my-template/
 └── .env.example              # Documents required env vars
 ```
 
-See [docs/AGENT_TEMPLATE_SPEC.md](docs/AGENT_TEMPLATE_SPEC.md) for the complete specification.
+See [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) for the complete specification.
 
 ### Public Agent Templates
 
@@ -220,7 +220,7 @@ AUTH0_DOMAIN=your-tenant.us.auth0.com
 ## Documentation
 
 - [Deployment Guide](docs/DEPLOYMENT.md) — Production deployment instructions
-- [Agent Template Spec](docs/AGENT_TEMPLATE_SPEC.md) — Creating custom agent templates
+- [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards
 - [Known Issues](docs/KNOWN_ISSUES.md) — Current limitations and workarounds
 
