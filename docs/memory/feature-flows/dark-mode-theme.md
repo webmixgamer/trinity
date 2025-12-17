@@ -169,6 +169,10 @@ Dark mode classes follow Tailwind's `dark:` variant pattern:
 | ApiKeys | `ApiKeys.vue` | Full dark mode support |
 | ConfirmDialog | `ConfirmDialog.vue:7,16,19,24,29,41,45,54,58,70` | Backdrop, dialog, buttons |
 | CreateAgentModal | `CreateAgentModal.vue:4,8,10,15,20,38,51,54,87,106,121,140,145,154,159,163,174` | Full modal dark support |
+| UnifiedActivityPanel | `UnifiedActivityPanel.vue` | Session activity, timeline, modal |
+| InfoPanel | `InfoPanel.vue` | Template info sections, colored badges |
+| MetricsPanel | `MetricsPanel.vue` | Metrics grid, empty states |
+| WorkplanPanel | `WorkplanPanel.vue` | Summary stats, plans list, modal |
 
 ## Data Flow Diagram
 
@@ -296,6 +300,10 @@ localStorage.getItem('trinity-theme')  // Should return current theme
 - [x] ConfirmDialog dark mode
 - [x] CreateAgentModal dark mode
 - [x] System preference listener
+- [x] UnifiedActivityPanel dark mode
+- [x] InfoPanel dark mode
+- [x] MetricsPanel dark mode
+- [x] WorkplanPanel dark mode
 
 ## Files Modified
 
@@ -315,3 +323,7 @@ localStorage.getItem('trinity-theme')  // Should return current theme
 | `src/frontend/src/views/ApiKeys.vue` | Dark mode Tailwind classes |
 | `src/frontend/src/components/ConfirmDialog.vue` | Dark mode Tailwind classes |
 | `src/frontend/src/components/CreateAgentModal.vue` | Dark mode Tailwind classes |
+| `src/frontend/src/components/UnifiedActivityPanel.vue` | Dark mode Tailwind classes |
+| `src/frontend/src/components/InfoPanel.vue` | Dark mode Tailwind classes |
+| `src/frontend/src/components/MetricsPanel.vue` | Dark mode Tailwind classes |
+| `src/frontend/src/components/WorkplanPanel.vue` | Dark mode Tailwind classes |

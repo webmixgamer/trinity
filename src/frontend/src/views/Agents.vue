@@ -210,8 +210,8 @@ const getActivityDotClass = (agentName) => {
 
 const getActivityLabelClass = (agentName) => {
   const state = getActivityState(agentName)
-  if (state === 'Active' || state === 'Idle') return 'text-green-600'
-  return 'text-gray-500'
+  if (state === 'Active' || state === 'Idle') return 'text-green-600 dark:text-green-400'
+  return 'text-gray-500 dark:text-gray-400'
 }
 
 // Context helpers

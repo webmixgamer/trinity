@@ -7,30 +7,30 @@
 
     <!-- Agent Not Running State -->
     <div v-else-if="agentStatus !== 'running'" class="text-center py-8">
-      <div class="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+        <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       </div>
-      <h3 class="text-lg font-medium text-gray-900">Agent Not Running</h3>
-      <p class="mt-2 text-sm text-gray-500">
+      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Agent Not Running</h3>
+      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
         Start the agent to view custom metrics.
       </p>
     </div>
 
     <!-- No Metrics Defined State -->
     <div v-else-if="!metricsData?.has_metrics" class="text-center py-8">
-      <div class="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+        <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       </div>
-      <h3 class="text-lg font-medium text-gray-900">No Metrics Defined</h3>
-      <p class="mt-2 text-sm text-gray-500 max-w-sm mx-auto">
+      <h3 class="text-lg font-medium text-gray-900 dark:text-white">No Metrics Defined</h3>
+      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
         {{ metricsData?.message || 'This agent does not have custom metrics defined in its template.yaml.' }}
       </p>
-      <div class="mt-4 text-xs text-gray-400">
-        To add metrics, include a <code class="bg-gray-100 px-1 py-0.5 rounded">metrics:</code> section in template.yaml
+      <div class="mt-4 text-xs text-gray-400 dark:text-gray-500">
+        To add metrics, include a <code class="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">metrics:</code> section in template.yaml
       </div>
     </div>
 
@@ -38,20 +38,20 @@
     <div v-else>
       <!-- Header with last updated -->
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider flex items-center">
-          <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center">
+          <svg class="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Custom Metrics
         </h3>
-        <div class="flex items-center space-x-3 text-xs text-gray-500">
+        <div class="flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400">
           <span v-if="metricsData.last_updated">
             Updated {{ formatRelativeTime(metricsData.last_updated) }}
           </span>
           <button
             @click="loadMetrics"
             :disabled="loading"
-            class="p-1 rounded hover:bg-gray-100"
+            class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
             title="Refresh metrics"
           >
             <svg :class="['w-4 h-4', loading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,26 +66,26 @@
         <div
           v-for="metric in metricsData.definitions"
           :key="metric.name"
-          class="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow"
+          class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-sm transition-shadow"
           :title="metric.description"
         >
           <!-- Counter Type -->
           <template v-if="metric.type === 'counter'">
-            <div class="text-3xl font-bold text-gray-900">
+            <div class="text-3xl font-bold text-gray-900 dark:text-white">
               {{ formatNumber(getValue(metric.name)) }}
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Gauge Type -->
           <template v-else-if="metric.type === 'gauge'">
             <div class="flex items-baseline space-x-1">
-              <span class="text-3xl font-bold text-gray-900">
+              <span class="text-3xl font-bold text-gray-900 dark:text-white">
                 {{ formatNumber(getValue(metric.name)) }}
               </span>
-              <span v-if="metric.unit" class="text-sm text-gray-400">{{ metric.unit }}</span>
+              <span v-if="metric.unit" class="text-sm text-gray-400 dark:text-gray-500">{{ metric.unit }}</span>
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Percentage Type -->
@@ -94,16 +94,16 @@
               <span class="text-3xl font-bold" :class="getPercentageColor(getValue(metric.name), metric)">
                 {{ formatNumber(getValue(metric.name)) }}
               </span>
-              <span class="text-lg text-gray-400">%</span>
+              <span class="text-lg text-gray-400 dark:text-gray-500">%</span>
             </div>
-            <div class="mt-2 w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div class="mt-2 w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 class="h-full rounded-full transition-all duration-500"
                 :class="getPercentageBarColor(getValue(metric.name), metric)"
                 :style="{ width: `${Math.min(100, getValue(metric.name) || 0)}%` }"
               ></div>
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Status Type -->
@@ -116,42 +116,42 @@
                 {{ getStatusLabel(getValue(metric.name), metric) }}
               </span>
             </div>
-            <div class="mt-2 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Duration Type -->
           <template v-else-if="metric.type === 'duration'">
-            <div class="text-2xl font-bold text-gray-900">
+            <div class="text-2xl font-bold text-gray-900 dark:text-white">
               {{ formatDuration(getValue(metric.name)) }}
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Bytes Type -->
           <template v-else-if="metric.type === 'bytes'">
-            <div class="text-2xl font-bold text-gray-900">
+            <div class="text-2xl font-bold text-gray-900 dark:text-white">
               {{ formatBytes(getValue(metric.name)) }}
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
 
           <!-- Unknown Type (fallback) -->
           <template v-else>
-            <div class="text-2xl font-bold text-gray-900">
+            <div class="text-2xl font-bold text-gray-900 dark:text-white">
               {{ getValue(metric.name) ?? '—' }}
             </div>
-            <div class="mt-1 text-sm text-gray-500">{{ metric.label }}</div>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           </template>
         </div>
       </div>
 
       <!-- No Values Yet Message -->
-      <div v-if="!hasAnyValues" class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <div class="flex items-center space-x-2 text-sm text-yellow-700">
+      <div v-if="!hasAnyValues" class="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+        <div class="flex items-center space-x-2 text-sm text-yellow-700 dark:text-yellow-300">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span>Metrics are defined but no values have been recorded yet. The agent needs to write to <code class="bg-yellow-100 px-1 py-0.5 rounded">metrics.json</code>.</span>
+          <span>Metrics are defined but no values have been recorded yet. The agent needs to write to <code class="bg-yellow-100 dark:bg-yellow-900/50 px-1 py-0.5 rounded">metrics.json</code>.</span>
         </div>
       </div>
     </div>

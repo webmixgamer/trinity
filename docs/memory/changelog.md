@@ -18,6 +18,23 @@
 
 ## Recent Changes (Full Detail)
 
+### 2025-12-17 10:35:02
+🔧 **Dark Mode: Fix Agent Detail Panel Components**
+
+Added dark mode support to 4 components on the Agent Detail page that were displaying with light mode styles:
+
+**Files updated:**
+- `UnifiedActivityPanel.vue` - Session activity panel (header, timeline, tool chips, modal)
+- `InfoPanel.vue` - Agent info tab (template info, use cases, resources, capabilities sections)
+- `MetricsPanel.vue` - Custom metrics tab (empty states, metrics grid, progress bars)
+- `WorkplanPanel.vue` - Workplan tab (summary stats, current task banner, plans list, modal)
+
+**Changes:**
+- Added `dark:` variants to all background, border, and text color classes
+- Updated gradients (e.g., `from-indigo-50 to-purple-50` → `dark:from-indigo-900/30 dark:to-purple-900/30`)
+- Fixed modal overlays, buttons, and interactive states for dark mode
+- Updated status badge helper functions with dark mode color variants
+
 ### 2025-12-17 10:05:28
 🔒 **Security: Pre-Commit Security Check Command**
 
