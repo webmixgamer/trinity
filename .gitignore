@@ -63,8 +63,11 @@ logs/
 tmp/
 temp/
 
-# Claude specific
-.claude/
+# Claude Code local settings (not the .claude folder itself)
+.claude/settings.local.json
+
+# Local deployment configuration (contains sensitive data)
+CLAUDE.local.md
 
 # API logs
 api.log

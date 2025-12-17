@@ -281,7 +281,7 @@ All Connected Dashboards (animate edge A→B)
 
 ## See Also
 
-- **Feature Flow**: `.claude/memory/feature-flows/collaboration-dashboard.md`
-- **Requirements**: `.claude/memory/requirements.md` (REQ-9.6)
-- **Architecture**: `.claude/memory/architecture.md` (Collaboration Dashboard section)
-- **Agent-to-Agent**: `.claude/memory/feature-flows/agent-to-agent-collaboration.md`
+- **Feature Flow**: `docs/memory/feature-flows/collaboration-dashboard.md`
+- **Requirements**: `docs/memory/requirements.md` (REQ-9.6)
+- **Architecture**: `docs/memory/architecture.md` (Collaboration Dashboard section)
+- **Agent-to-Agent**: `docs/memory/feature-flows/agent-to-agent-collaboration.md`

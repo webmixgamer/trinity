@@ -60,7 +60,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 ## Rules of Engagement
 
 ### 1. Requirements-Driven Development
-- Update `.claude/memory/requirements.md` **BEFORE** implementing new features
+- Update `docs/memory/requirements.md` **BEFORE** implementing new features
 - All features must trace back to documented requirements
 - Never add features without requirements update first
 
@@ -257,6 +257,7 @@ curl -X POST http://localhost:8000/api/agents \
 
 ## See Also
 
+- **Development Workflow**: `docs/DEVELOPMENT_WORKFLOW.md` ← Start here for dev process
 - **Full Architecture**: `.claude/memory/architecture.md`
 - **All Requirements**: `.claude/memory/requirements.md`
 - **Current Roadmap**: `.claude/memory/roadmap.md`

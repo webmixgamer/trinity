@@ -1,29 +1,29 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
 
     <main class="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 py-6 sm:px-0">
         <div class="mb-8">
-          <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
-          <p class="mt-1 text-sm text-gray-500">
+          <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             System-wide configuration for the Trinity platform
           </p>
         </div>
 
         <!-- Loading State -->
-        <div v-if="loading" class="bg-white rounded-lg shadow p-8 text-center">
+        <div v-if="loading" class="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900 p-8 text-center">
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p class="mt-4 text-gray-500">Loading settings...</p>
+          <p class="mt-4 text-gray-500 dark:text-gray-400">Loading settings...</p>
         </div>
 
         <!-- Settings Content -->
         <div v-else class="space-y-6">
           <!-- Trinity Prompt Section -->
-          <div class="bg-white shadow rounded-lg">
-            <div class="px-6 py-4 border-b border-gray-200">
-              <h2 class="text-lg font-medium text-gray-900">Trinity Prompt</h2>
-              <p class="mt-1 text-sm text-gray-500">
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Trinity Prompt</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Custom instructions that are injected into all agents' CLAUDE.md at startup.
                 Changes apply to newly started or restarted agents.
               </p>
@@ -32,7 +32,7 @@
             <div class="px-6 py-4">
               <div class="space-y-4">
                 <div>
-                  <label for="trinity-prompt" class="block text-sm font-medium text-gray-700">
+                  <label for="trinity-prompt" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Custom Instructions
                   </label>
                   <div class="mt-1">
@@ -40,7 +40,7 @@
                       id="trinity-prompt"
                       v-model="trinityPrompt"
                       rows="15"
-                      class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 rounded-md font-mono"
+                      class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md font-mono bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                       placeholder="Enter custom instructions for all agents...
 
 Example:
@@ -50,16 +50,16 @@ Example:
                       :disabled="saving"
                     ></textarea>
                   </div>
-                  <p class="mt-2 text-sm text-gray-500">
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     This content will appear under a "## Custom Instructions" section in each agent's CLAUDE.md.
                     Supports Markdown formatting.
                   </p>
                 </div>
 
                 <!-- Character Count -->
-                <div class="flex justify-between text-sm text-gray-500">
+                <div class="flex justify-between text-sm text-gray-500 dark:text-gray-400">
                   <span>{{ trinityPrompt.length }} characters</span>
-                  <span v-if="hasChanges" class="text-amber-600">Unsaved changes</span>
+                  <span v-if="hasChanges" class="text-amber-600 dark:text-amber-400">Unsaved changes</span>
                 </div>
 
                 <!-- Action Buttons -->
@@ -67,7 +67,7 @@ Example:
                   <button
                     @click="clearPrompt"
                     :disabled="saving || !trinityPrompt"
-                    class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Clear
                   </button>
@@ -88,7 +88,7 @@ Example:
           </div>
 
           <!-- Info Box -->
-          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <div class="flex">
               <div class="flex-shrink-0">
                 <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
@@ -96,8 +96,8 @@ Example:
                 </svg>
               </div>
               <div class="ml-3">
-                <h3 class="text-sm font-medium text-blue-800">How it works</h3>
-                <div class="mt-2 text-sm text-blue-700">
+                <h3 class="text-sm font-medium text-blue-800 dark:text-blue-300">How it works</h3>
+                <div class="mt-2 text-sm text-blue-700 dark:text-blue-400">
                   <ul class="list-disc list-inside space-y-1">
                     <li>The Trinity Prompt is injected into each agent's CLAUDE.md when the agent starts</li>
                     <li>Existing agents need to be restarted to receive the updated prompt</li>
@@ -111,7 +111,7 @@ Example:
         </div>
 
         <!-- Error Display -->
-        <div v-if="error" class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+        <div v-if="error" class="mt-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <div class="flex">
             <div class="flex-shrink-0">
               <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
@@ -119,14 +119,14 @@ Example:
               </svg>
             </div>
             <div class="ml-3">
-              <h3 class="text-sm font-medium text-red-800">Error</h3>
-              <p class="mt-1 text-sm text-red-700">{{ error }}</p>
+              <h3 class="text-sm font-medium text-red-800 dark:text-red-300">Error</h3>
+              <p class="mt-1 text-sm text-red-700 dark:text-red-400">{{ error }}</p>
             </div>
           </div>
         </div>
 
         <!-- Success Message -->
-        <div v-if="showSuccess" class="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+        <div v-if="showSuccess" class="mt-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
           <div class="flex">
             <div class="flex-shrink-0">
               <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
@@ -134,7 +134,7 @@ Example:
               </svg>
             </div>
             <div class="ml-3">
-              <p class="text-sm font-medium text-green-800">Settings saved successfully!</p>
+              <p class="text-sm font-medium text-green-800 dark:text-green-300">Settings saved successfully!</p>
             </div>
           </div>
         </div>

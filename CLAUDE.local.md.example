@@ -1,0 +1,53 @@
+# Local Deployment Configuration
+
+> **Private file** - Copy this to `CLAUDE.local.md` and customize for your environment.
+> `CLAUDE.local.md` is gitignored - your settings won't be committed.
+
+## My Deployment
+
+| Setting | Value |
+|---------|-------|
+| **Production URL** | https://your-domain.com |
+| **Server IP** | your-server-ip |
+| **GCP Project** | your-gcp-project |
+| **GCP Zone** | us-central1-a |
+| **VM Name** | your-vm-name |
+
+## My Identity
+
+| Setting | Value |
+|---------|-------|
+| **Primary Email** | user@example.com |
+| **Admin Email** | admin@example.com |
+| **Domain Restriction** | @your-domain.com |
+
+## Production Ports
+
+| Service | Port |
+|---------|------|
+| Frontend (nginx) | 3005 |
+| Backend (FastAPI) | 8005 |
+| Audit Logger | 8006 |
+| MCP Server | 8007 |
+| Agent SSH | 2224-2242 |
+
+## MCP Server Endpoint
+
+```
+http://your-server-ip:8007/mcp
+```
+
+## Quick Access
+
+- **Production UI**: https://your-domain.com
+- **Production API Docs**: https://your-domain.com/api/docs
+- **SSH to Server**: `gcloud compute ssh your-vm-name --zone=us-central1-a`
+
+---
+
+## How to Use
+
+1. Copy this file: `cp CLAUDE.local.md.example CLAUDE.local.md`
+2. Replace all placeholders with your actual values
+3. Claude Code will automatically load this alongside CLAUDE.md
+4. Your local settings won't be committed to the repository

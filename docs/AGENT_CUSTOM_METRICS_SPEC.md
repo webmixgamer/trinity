@@ -632,7 +632,7 @@ metrics:
 ### New Files
 - `docs/AGENT_CUSTOM_METRICS_SPEC.md` (this file)
 - `src/frontend/src/components/MetricsPanel.vue`
-- `.claude/memory/feature-flows/agent-custom-metrics.md`
+- `docs/memory/feature-flows/agent-custom-metrics.md`
 
 ### Modified Files
 - `docs/AGENT_TEMPLATE_SPEC.md` - Add metrics schema
@@ -641,7 +641,7 @@ metrics:
 - `src/backend/routers/agents.py` - Add metrics proxy endpoint
 - `src/frontend/src/views/AgentDetail.vue` - Add Metrics tab
 - `src/frontend/src/stores/agents.js` - Add getAgentMetrics action
-- `.claude/memory/requirements.md` - Add requirement 9.9
+- `docs/memory/requirements.md` - Add requirement 9.9
 - All 8 test agent template.yaml files
 
 ---
@@ -650,5 +650,5 @@ metrics:
 
 - [Agent Template Spec](./AGENT_TEMPLATE_SPEC.md)
 - [GitHub Native Agents](./GITHUB_NATIVE_AGENTS.md)
-- [Agent Info Display](../.claude/memory/feature-flows/agent-info-display.md)
-- [Requirements](../.claude/memory/requirements.md)
+- [Agent Info Display](../docs/memory/feature-flows/agent-info-display.md)
+- [Requirements](../docs/memory/requirements.md)

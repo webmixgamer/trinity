@@ -10,7 +10,7 @@
 
 ### 1. Every Feature Flow Has a Testing Section
 
-Each feature flow document (`.claude/memory/feature-flows/*.md`) includes:
+Each feature flow document (`docs/memory/feature-flows/*.md`) includes:
 
 ```markdown
 ## Testing
@@ -64,7 +64,7 @@ When implementing or modifying a feature:
 
 ## Feature Flows Reference
 
-All feature flows are indexed in `.claude/memory/feature-flows.md`. Key flows:
+All feature flows are indexed in `docs/memory/feature-flows.md`. Key flows:
 
 ### Core Features (High Priority)
 | Flow | Document | Status |

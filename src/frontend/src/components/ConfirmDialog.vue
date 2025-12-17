@@ -4,7 +4,7 @@
       <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <!-- Backdrop -->
         <div
-          class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+          class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity"
           @click="onCancel"
           data-testid="confirm-dialog-backdrop"
         ></div>
@@ -13,20 +13,20 @@
 
         <!-- Dialog -->
         <div
-          class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
           data-testid="confirm-dialog-content"
         >
-          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div class="sm:flex sm:items-start">
               <!-- Icon -->
               <div :class="[
                 'mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10',
-                variant === 'danger' ? 'bg-red-100' : 'bg-yellow-100'
+                variant === 'danger' ? 'bg-red-100 dark:bg-red-900/50' : 'bg-yellow-100 dark:bg-yellow-900/50'
               ]">
                 <svg
                   :class="[
                     'h-6 w-6',
-                    variant === 'danger' ? 'text-red-600' : 'text-yellow-600'
+                    variant === 'danger' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'
                   ]"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -38,11 +38,11 @@
 
               <!-- Content -->
               <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
-                <h3 class="text-lg leading-6 font-medium text-gray-900" data-testid="confirm-dialog-title">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" data-testid="confirm-dialog-title">
                   {{ title }}
                 </h3>
                 <div class="mt-2">
-                  <p class="text-sm text-gray-500" data-testid="confirm-dialog-message">
+                  <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="confirm-dialog-message">
                     {{ message }}
                   </p>
                 </div>
@@ -51,11 +51,11 @@
           </div>
 
           <!-- Actions -->
-          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+          <div class="bg-gray-50 dark:bg-gray-900 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
             <button
               type="button"
               :class="[
-                'w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm',
+                'w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 sm:ml-3 sm:w-auto sm:text-sm',
                 variant === 'danger'
                   ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
                   : 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
@@ -67,7 +67,7 @@
             </button>
             <button
               type="button"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
               @click="onCancel"
               data-testid="confirm-dialog-cancel"
             >

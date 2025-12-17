@@ -353,7 +353,7 @@ curl -X DELETE http://localhost:8000/api/settings/trinity_prompt \
 
 ## Related Documentation
 
-- Feature Flow: `.claude/memory/feature-flows/system-wide-trinity-prompt.md`
+- Feature Flow: `docs/memory/feature-flows/system-wide-trinity-prompt.md`
 - API Tests: `tests/test_settings.py`
 - Requirements: `requirements.md` section 10.6
 - NavBar Component: `src/frontend/src/components/NavBar.vue`

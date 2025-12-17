@@ -1,37 +1,37 @@
 <template>
-  <div class="h-screen flex flex-col bg-gray-100 overflow-hidden">
+  <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 overflow-hidden">
     <NavBar />
 
     <main class="flex-1 flex flex-col overflow-hidden">
       <div class="flex flex-col flex-1 overflow-hidden">
         <!-- Compact Header -->
-        <div class="bg-white border-b border-gray-200 px-4 py-2">
+        <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2">
           <div class="flex items-center justify-between">
             <!-- Left: Stats -->
             <div class="flex items-center">
-              <div class="flex items-center space-x-3 text-xs text-gray-500">
+              <div class="flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400">
                 <span class="flex items-center space-x-1">
-                  <span class="font-medium text-gray-700">{{ agents.length }}</span>
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ agents.length }}</span>
                   <span>agents</span>
                 </span>
-                <span class="text-gray-300">·</span>
+                <span class="text-gray-300 dark:text-gray-600">·</span>
                 <span class="flex items-center space-x-1">
                   <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                  <span class="font-medium text-green-600">{{ runningCount }}</span>
+                  <span class="font-medium text-green-600 dark:text-green-400">{{ runningCount }}</span>
                   <span>running</span>
                 </span>
-                <span v-if="aggregatePlanStats.active_plans > 0" class="text-gray-300">·</span>
+                <span v-if="aggregatePlanStats.active_plans > 0" class="text-gray-300 dark:text-gray-600">·</span>
                 <span v-if="aggregatePlanStats.active_plans > 0" class="flex items-center space-x-1">
-                  <span class="font-medium text-purple-600">{{ aggregatePlanStats.active_plans }}</span>
+                  <span class="font-medium text-purple-600 dark:text-purple-400">{{ aggregatePlanStats.active_plans }}</span>
                   <span>plans</span>
                 </span>
-                <span class="text-gray-300">·</span>
+                <span class="text-gray-300 dark:text-gray-600">·</span>
                 <span class="flex items-center space-x-1">
-                  <span class="font-medium text-blue-600">{{ totalCollaborationCount }}</span>
+                  <span class="font-medium text-blue-600 dark:text-blue-400">{{ totalCollaborationCount }}</span>
                   <span>messages ({{ timeRangeHours }}h)</span>
                 </span>
-                <span v-if="activeCollaborationCount > 0" class="text-gray-300">·</span>
-                <span v-if="activeCollaborationCount > 0" class="flex items-center space-x-1 text-green-600">
+                <span v-if="activeCollaborationCount > 0" class="text-gray-300 dark:text-gray-600">·</span>
+                <span v-if="activeCollaborationCount > 0" class="flex items-center space-x-1 text-green-600 dark:text-green-400">
                   <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                   <span class="font-medium">{{ activeCollaborationCount }}</span>
                   <span>active</span>
@@ -42,12 +42,12 @@
             <!-- Right: Controls -->
             <div class="flex items-center space-x-2">
               <!-- Mode Toggle -->
-              <div class="flex rounded-md border border-gray-300 p-0.5 bg-gray-50">
+              <div class="flex rounded-md border border-gray-300 dark:border-gray-600 p-0.5 bg-gray-50 dark:bg-gray-700">
                 <button
                   @click="toggleMode('live')"
                   :class="[
                     'px-2 py-1 rounded text-xs font-medium transition-all',
-                    !isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                    !isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   ]"
                 >
                   Live
@@ -56,7 +56,7 @@
                   @click="toggleMode('replay')"
                   :class="[
                     'px-2 py-1 rounded text-xs font-medium transition-all',
-                    isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'
+                    isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   ]"
                 >
                   Replay
@@ -67,7 +67,7 @@
               <select
                 v-model="selectedTimeRange"
                 @change="onTimeRangeChange"
-                class="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option :value="1">1h</option>
                 <option :value="6">6h</option>
@@ -86,7 +86,7 @@
               ></div>
 
               <!-- Loading -->
-              <svg v-if="isLoadingHistory" class="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <svg v-if="isLoadingHistory" class="animate-spin h-4 w-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -95,7 +95,7 @@
               <button
                 @click="refreshAll"
                 :disabled="isLoadingHistory"
-                class="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
+                class="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-50"
                 title="Refresh"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +106,7 @@
               <!-- Reset Layout -->
               <button
                 @click="resetLayout"
-                class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                class="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                 title="Reset Layout"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,7 +118,7 @@
         </div>
 
     <!-- Replay Controls (only visible in replay mode) -->
-    <div v-if="isReplayMode" class="bg-gradient-to-r from-slate-50 to-gray-50 border-b-2 border-gray-300 px-6 py-4">
+    <div v-if="isReplayMode" class="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-gray-800 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600 px-6 py-4">
       <!-- Playback Controls -->
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-4">
@@ -159,11 +159,11 @@
 
           <!-- Speed selector -->
           <div class="flex items-center space-x-2">
-            <label class="text-xs text-gray-600 font-medium">Speed:</label>
+            <label class="text-xs text-gray-600 dark:text-gray-400 font-medium">Speed:</label>
             <select
               :value="replaySpeed"
               @change="handleSpeedChange"
-              class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              class="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-gray-200"
             >
               <option :value="1">1x</option>
               <option :value="2">2x</option>
@@ -176,18 +176,18 @@
         </div>
 
         <!-- Progress stats -->
-        <div class="flex items-center space-x-6 text-sm text-gray-600">
+        <div class="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
           <div class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500">Event:</span>
+            <span class="text-xs text-gray-500 dark:text-gray-500">Event:</span>
             <span class="font-medium">{{ currentEventIndex }} / {{ totalEvents }}</span>
-            <span class="text-gray-400">({{ Math.round((currentEventIndex / totalEvents) * 100) || 0 }}%)</span>
+            <span class="text-gray-400 dark:text-gray-500">({{ Math.round((currentEventIndex / totalEvents) * 100) || 0 }}%)</span>
           </div>
           <div class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500">Time:</span>
+            <span class="text-xs text-gray-500 dark:text-gray-500">Time:</span>
             <span class="font-medium">{{ formatDuration(replayElapsedMs) }} / {{ formatDuration(totalDuration) }}</span>
           </div>
           <div v-if="isPlaying" class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500">Remaining:</span>
+            <span class="text-xs text-gray-500 dark:text-gray-500">Remaining:</span>
             <span class="font-medium">{{ formatDuration(totalDuration - replayElapsedMs) }}</span>
           </div>
         </div>
@@ -195,21 +195,21 @@
 
       <!-- Timeline Scrubber -->
       <div class="timeline-scrubber">
-        <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
           <span>{{ formatTimestamp(timelineStart) }}</span>
-          <span class="font-medium text-gray-700">{{ formatTimestamp(currentTime) }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ formatTimestamp(currentTime) }}</span>
           <span>{{ formatTimestamp(timelineEnd) }}</span>
         </div>
 
         <div
-          class="timeline-track relative h-10 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-250 transition-colors"
+          class="timeline-track relative h-10 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-250 dark:hover:bg-gray-600 transition-colors"
           @click="handleTimelineClick"
         >
           <!-- Event markers -->
           <div
             v-for="(event, i) in historicalCollaborations"
             :key="'marker-' + i"
-            class="event-marker absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 rounded-full hover:bg-blue-500 hover:w-3 hover:h-3 transition-all cursor-pointer"
+            class="event-marker absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full hover:bg-blue-500 hover:w-3 hover:h-3 transition-all cursor-pointer"
             :style="{ left: networkStore.getEventPosition(event) + '%' }"
             :title="`${event.source_agent} → ${event.target_agent} at ${formatTimestamp(event.timestamp)}`"
           ></div>
@@ -219,25 +219,25 @@
             class="playback-marker absolute top-0 bottom-0 w-1 bg-blue-600 cursor-ew-resize"
             :style="{ left: playbackPosition + '%' }"
           >
-            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 rounded-full border-2 border-white shadow-lg"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 rounded-full border-2 border-white dark:border-gray-800 shadow-lg"></div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Graph Canvas - Full Height (expands to fill remaining space) -->
-    <div class="relative bg-white shadow-sm flex-1 min-h-0">
+    <div class="relative bg-white dark:bg-gray-800 shadow-sm dark:shadow-gray-900 flex-1 min-h-0">
       <!-- Empty state -->
       <div
         v-if="nodes.length === 0"
         class="absolute inset-0 flex items-center justify-center"
       >
         <div class="text-center">
-          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
-          <h3 class="mt-2 text-sm font-medium text-gray-900">No agents</h3>
-          <p class="mt-1 text-sm text-gray-500">Create an agent to get started.</p>
+          <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No agents</h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Create an agent to get started.</p>
           <div class="mt-4">
             <router-link
               to="/agents"
@@ -262,7 +262,7 @@
         :max-zoom="2"
         :fit-view-on-init="true"
         @node-drag-stop="onNodeDragStop"
-        class="bg-gradient-to-br from-slate-50 to-slate-100"
+        class="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-gray-800 dark:to-gray-900"
       >
         <!-- Custom node template -->
         <template #node-agent="nodeProps">
@@ -320,13 +320,13 @@
       <button
         v-if="historicalCollaborations.length > 0"
         @click="isHistoryPanelOpen = !isHistoryPanelOpen"
-        class="absolute bottom-4 right-4 bg-white hover:bg-gray-50 rounded-full shadow-lg border border-gray-200 p-3 transition-all duration-200"
+        class="absolute bottom-4 right-4 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-full shadow-lg border border-gray-200 dark:border-gray-600 p-3 transition-all duration-200"
         :class="{ 'right-96': isHistoryPanelOpen }"
       >
-        <svg v-if="!isHistoryPanelOpen" class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg v-if="!isHistoryPanelOpen" class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
-        <svg v-else class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg v-else class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -334,18 +334,18 @@
       <!-- Collaboration History Panel (collapsible) -->
       <div
         v-if="historicalCollaborations.length > 0 && isHistoryPanelOpen"
-        class="absolute bottom-4 right-16 bg-white rounded-lg shadow-lg border border-gray-200 p-4 max-w-sm max-h-80 overflow-y-auto transition-all duration-300"
+        class="absolute bottom-4 right-16 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 max-w-sm max-h-80 overflow-y-auto transition-all duration-300"
       >
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold text-gray-900">Message History</h3>
-          <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Message History</h3>
+          <span class="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full font-medium">
             {{ totalCollaborationCount }} total
           </span>
         </div>
 
         <!-- Real-time feed (last 10) -->
-        <div v-if="collaborationHistory.length > 0" class="mb-3 pb-3 border-b border-gray-200">
-          <div class="text-xs font-semibold text-gray-500 mb-2 flex items-center">
+        <div v-if="collaborationHistory.length > 0" class="mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+          <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center">
             <svg class="w-3 h-3 mr-1 text-green-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
             </svg>
@@ -355,7 +355,7 @@
             <div
               v-for="(event, index) in collaborationHistory.slice(0, 5)"
               :key="'live-' + index"
-              class="text-xs text-gray-600 flex items-center space-x-2 animate-fade-in"
+              class="text-xs text-gray-600 dark:text-gray-400 flex items-center space-x-2 animate-fade-in"
             >
               <svg class="w-3 h-3 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -365,23 +365,23 @@
                 →
                 <span class="font-medium">{{ event.target_agent }}</span>
               </span>
-              <span class="text-gray-400 flex-shrink-0">{{ formatTime(event.timestamp) }}</span>
+              <span class="text-gray-400 dark:text-gray-500 flex-shrink-0">{{ formatTime(event.timestamp) }}</span>
             </div>
           </div>
         </div>
 
         <!-- Historical data -->
         <div>
-          <div class="text-xs font-semibold text-gray-500 mb-2">
+          <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
             Last {{ timeRangeHours }}h
           </div>
           <div class="space-y-2">
             <div
               v-for="(event, index) in historicalCollaborations.slice(0, 15)"
               :key="'hist-' + index"
-              class="text-xs text-gray-600 flex items-center space-x-2"
+              class="text-xs text-gray-600 dark:text-gray-400 flex items-center space-x-2"
             >
-              <svg class="w-3 h-3 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
               </svg>
               <span class="truncate flex-1">
@@ -389,7 +389,7 @@
                 →
                 <span class="font-medium">{{ event.target_agent }}</span>
               </span>
-              <span class="text-gray-400 flex-shrink-0">{{ formatTime(event.timestamp) }}</span>
+              <span class="text-gray-400 dark:text-gray-500 flex-shrink-0">{{ formatTime(event.timestamp) }}</span>
             </div>
           </div>
         </div>
@@ -594,6 +594,11 @@ function formatTimestamp(timestamp) {
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
 }
 
+:root.dark :deep(.vue-flow__minimap) {
+  background: linear-gradient(135deg, rgba(31, 41, 55, 0.95), rgba(17, 24, 39, 0.95));
+  border-color: rgba(75, 85, 99, 0.5);
+}
+
 /* Style for controls */
 :deep(.vue-flow__controls) {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95));
@@ -601,6 +606,11 @@ function formatTimestamp(timestamp) {
   border-radius: 0.75rem;
   backdrop-filter: blur(8px);
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+}
+
+:root.dark :deep(.vue-flow__controls) {
+  background: linear-gradient(135deg, rgba(31, 41, 55, 0.95), rgba(17, 24, 39, 0.95));
+  border-color: rgba(75, 85, 99, 0.5);
 }
 
 :deep(.vue-flow__controls-button) {
@@ -611,9 +621,19 @@ function formatTimestamp(timestamp) {
   transition: all 0.2s ease;
 }
 
+:root.dark :deep(.vue-flow__controls-button) {
+  border-bottom-color: rgba(55, 65, 81, 0.8);
+  color: #9ca3af;
+}
+
 :deep(.vue-flow__controls-button:hover) {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
   color: #3b82f6;
+}
+
+:root.dark :deep(.vue-flow__controls-button:hover) {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+  color: #60a5fa;
 }
 
 :deep(.vue-flow__controls-button:last-child) {

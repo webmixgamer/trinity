@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -12,33 +12,33 @@
         <div v-if="notification"
           :class="[
             'fixed top-20 right-4 z-50 px-4 py-3 rounded-lg shadow-lg transition-all duration-300',
-            notification.type === 'success' ? 'bg-green-100 border border-green-400 text-green-700' : 'bg-red-100 border border-red-400 text-red-700'
+            notification.type === 'success' ? 'bg-green-100 dark:bg-green-900/50 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300'
           ]"
         >
           {{ notification.message }}
         </div>
 
-        <div v-if="error && !agent" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div v-if="error && !agent" class="bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded mb-4">
           {{ error }}
         </div>
 
         <div v-if="agent">
           <!-- Agent Header - Compact -->
-          <div class="bg-white shadow rounded-lg p-4 mb-4">
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg p-4 mb-4">
             <!-- Top row: Name, status, and actions -->
             <div class="flex justify-between items-center">
               <div class="flex items-center space-x-3">
-                <h1 class="text-xl font-bold text-gray-900">{{ agent.name }}</h1>
+                <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ agent.name }}</h1>
                 <span :class="[
                   'px-2 py-0.5 text-xs font-medium rounded-full',
-                  agent.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  agent.status === 'running' ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                 ]">
                   {{ agent.status }}
                 </span>
-                <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
                   Shared by {{ agent.owner }}
                 </span>
-                <span class="text-xs text-gray-400">{{ agent.type }}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ agent.type }}</span>
               </div>
               <div class="flex items-center space-x-2">
                 <button
@@ -67,14 +67,14 @@
                 </button>
                 <!-- Git Sync Controls (only for GitHub-native agents when running) -->
                 <template v-if="hasGitSync && agent.status === 'running'">
-                  <div class="h-4 w-px bg-gray-300 mx-1"></div>
+                  <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
                   <button
                     @click="syncToGithub"
                     :disabled="gitSyncing"
                     class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors"
                     :class="gitHasChanges
                       ? 'bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white'
-                      : 'bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 text-gray-600'"
+                      : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 text-gray-600 dark:text-gray-300'"
                     :title="gitHasChanges ? 'Push changes to GitHub' : 'No changes to sync'"
                   >
                     <svg v-if="gitSyncing" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@
                   <button
                     @click="refreshGitStatus"
                     :disabled="gitLoading"
-                    class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-100"
+                    class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                     title="Refresh git status"
                   >
                     <svg :class="['w-4 h-4', gitLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,8 +99,8 @@
                 </template>
                 <!-- Git status indicator (when stopped but has git) -->
                 <template v-else-if="hasGitSync && agent.status === 'stopped'">
-                  <div class="h-4 w-px bg-gray-300 mx-1"></div>
-                  <span class="text-xs text-gray-400 flex items-center">
+                  <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500 flex items-center">
                     <svg class="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                     </svg>
@@ -110,7 +110,7 @@
                 <button
                   v-if="agent.can_delete"
                   @click="deleteAgent"
-                  class="text-gray-400 hover:text-red-600 p-1.5 rounded"
+                  class="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded"
                   title="Delete agent"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,68 +121,68 @@
             </div>
 
             <!-- Live Stats Row (only when running) -->
-            <div v-if="agent.status === 'running'" class="mt-3 pt-3 border-t border-gray-100">
-              <div v-if="statsLoading && !agentStats" class="flex items-center space-x-2 text-xs text-gray-400">
-                <div class="animate-spin h-3 w-3 border border-gray-300 border-t-gray-600 rounded-full"></div>
+            <div v-if="agent.status === 'running'" class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <div v-if="statsLoading && !agentStats" class="flex items-center space-x-2 text-xs text-gray-400 dark:text-gray-500">
+                <div class="animate-spin h-3 w-3 border border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-300 rounded-full"></div>
                 <span>Loading stats...</span>
               </div>
               <div v-else-if="agentStats" class="flex items-center space-x-6 text-xs">
                 <!-- CPU -->
                 <div class="flex items-center space-x-2">
-                  <span class="text-gray-400 w-8">CPU</span>
-                  <div class="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <span class="text-gray-400 dark:text-gray-500 w-8">CPU</span>
+                  <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div
                       class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
                       :class="agentStats.cpu_percent > 80 ? 'bg-red-500' : agentStats.cpu_percent > 50 ? 'bg-yellow-500' : 'bg-green-500'"
                       :style="{ width: `${Math.min(100, agentStats.cpu_percent)}%` }"
                     ></div>
                   </div>
-                  <span class="text-gray-600 font-mono w-12 text-right">{{ agentStats.cpu_percent }}%</span>
+                  <span class="text-gray-600 dark:text-gray-400 font-mono w-12 text-right">{{ agentStats.cpu_percent }}%</span>
                 </div>
                 <!-- Memory -->
                 <div class="flex items-center space-x-2">
-                  <span class="text-gray-400 w-8">MEM</span>
-                  <div class="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <span class="text-gray-400 dark:text-gray-500 w-8">MEM</span>
+                  <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div
                       class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
                       :class="agentStats.memory_percent > 80 ? 'bg-red-500' : agentStats.memory_percent > 50 ? 'bg-yellow-500' : 'bg-green-500'"
                       :style="{ width: `${Math.min(100, agentStats.memory_percent)}%` }"
                     ></div>
                   </div>
-                  <span class="text-gray-600 font-mono w-20 text-right">{{ formatBytes(agentStats.memory_used_bytes) }}</span>
+                  <span class="text-gray-600 dark:text-gray-400 font-mono w-20 text-right">{{ formatBytes(agentStats.memory_used_bytes) }}</span>
                 </div>
                 <!-- Network -->
-                <div class="flex items-center space-x-1.5 text-gray-500">
-                  <span class="text-gray-400">NET</span>
-                  <span class="text-green-600">↓{{ formatBytes(agentStats.network_rx_bytes) }}</span>
-                  <span class="text-blue-600">↑{{ formatBytes(agentStats.network_tx_bytes) }}</span>
+                <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
+                  <span class="text-gray-400 dark:text-gray-500">NET</span>
+                  <span class="text-green-600 dark:text-green-400">↓{{ formatBytes(agentStats.network_rx_bytes) }}</span>
+                  <span class="text-blue-600 dark:text-blue-400">↑{{ formatBytes(agentStats.network_tx_bytes) }}</span>
                 </div>
                 <!-- Uptime -->
-                <div class="flex items-center space-x-1.5 text-gray-500">
-                  <span class="text-gray-400">UP</span>
+                <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
+                  <span class="text-gray-400 dark:text-gray-500">UP</span>
                   <span class="font-mono">{{ formatUptime(agentStats.uptime_seconds) }}</span>
                 </div>
               </div>
-              <div v-else class="text-xs text-gray-400">Stats unavailable</div>
+              <div v-else class="text-xs text-gray-400 dark:text-gray-500">Stats unavailable</div>
             </div>
 
             <!-- Stopped state info -->
-            <div v-else class="mt-2 text-xs text-gray-400">
+            <div v-else class="mt-2 text-xs text-gray-400 dark:text-gray-500">
               Created {{ formatRelativeTime(agent.created) }}
             </div>
           </div>
 
           <!-- Tabs -->
-          <div class="bg-white shadow rounded-lg">
-            <div class="border-b border-gray-200 overflow-x-auto">
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
               <nav class="-mb-px flex whitespace-nowrap">
                 <button
                   @click="activeTab = 'info'"
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'info'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Info
@@ -192,8 +192,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'metrics'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                   title="Agent-specific KPIs and stats"
                 >
@@ -204,8 +204,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'chat'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Chat
@@ -215,8 +215,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'logs'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Logs
@@ -226,12 +226,12 @@
                   :class="[
                     'inline-flex items-center px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'credentials'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Credentials
-                  <span v-if="credentialsData && credentialsData.missing_count > 0" class="ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 rounded-full leading-none">
+                  <span v-if="credentialsData && credentialsData.missing_count > 0" class="ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-full leading-none">
                     {{ credentialsData.missing_count }}
                   </span>
                 </button>
@@ -241,8 +241,8 @@
                   :class="[
                     'inline-flex items-center px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'sharing'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Sharing
@@ -253,8 +253,8 @@
                   :class="[
                     'inline-flex items-center px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'permissions'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Permissions
@@ -264,8 +264,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'schedules'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Schedules
@@ -275,8 +275,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'executions'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Executions
@@ -286,8 +286,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'plans'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                   title="This agent's internal task breakdown"
                 >
@@ -299,8 +299,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'git'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Git
@@ -310,8 +310,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'files'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
                   Files
@@ -322,8 +322,8 @@
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
                     activeTab === 'folders'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                   title="Shared folders for file-based collaboration"
                 >
@@ -346,8 +346,8 @@
             <div v-if="activeTab === 'chat'" class="p-6">
               <div v-if="agent.status === 'running'">
                 <!-- Context Usage Bar (always visible) -->
-                <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <div class="flex items-center justify-between text-xs text-gray-600 mb-1.5">
+                <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1.5">
                     <div class="flex items-center space-x-3">
                       <span class="font-medium">Context Window</span>
                       <!-- Model Selector -->
@@ -355,7 +355,7 @@
                         v-model="currentModel"
                         @change="changeModel"
                         :disabled="modelLoading"
-                        class="text-xs border border-gray-300 rounded px-2 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                        class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
                         title="Select Claude model"
                       >
                         <option value="">Default</option>
@@ -370,12 +370,12 @@
                     <div class="flex items-center space-x-3">
                       <span class="font-mono">
                         {{ formatTokenCount(sessionInfo.context_tokens) }} / {{ formatTokenCount(sessionInfo.context_window) }}
-                        <span class="text-gray-400 ml-1">({{ sessionInfo.context_percent || 0 }}%)</span>
+                        <span class="text-gray-400 dark:text-gray-500 ml-1">({{ sessionInfo.context_percent || 0 }}%)</span>
                       </span>
                       <button
                         @click="startNewSession"
                         :disabled="newSessionLoading || chatMessages.length === 0"
-                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <svg v-if="newSessionLoading" class="animate-spin -ml-0.5 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -388,14 +388,14 @@
                       </button>
                     </div>
                   </div>
-                  <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div
                       class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
                       :class="getContextBarColor(sessionInfo.context_percent || 0)"
                       :style="{ width: `${Math.min(100, sessionInfo.context_percent || 0)}%` }"
                     ></div>
                   </div>
-                  <div class="flex items-center justify-between text-xs text-gray-500 mt-1.5">
+                  <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1.5">
                     <span>{{ chatMessages.length }} messages</span>
                     <span v-if="sessionInfo.total_cost_usd > 0">Session cost: ${{ sessionInfo.total_cost_usd.toFixed(4) }}</span>
                   </div>
@@ -410,8 +410,8 @@
                 />
 
                 <!-- Chat Messages -->
-                <div ref="chatContainer" class="border border-gray-300 rounded-lg h-96 overflow-y-auto p-4 mb-4 bg-gray-50">
-                  <div v-if="chatMessages.length === 0" class="text-center text-gray-500 py-8">
+                <div ref="chatContainer" class="border border-gray-300 dark:border-gray-600 rounded-lg h-96 overflow-y-auto p-4 mb-4 bg-gray-50 dark:bg-gray-900">
+                  <div v-if="chatMessages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
                     Start a conversation with your agent
                   </div>
                   <div v-else class="space-y-3">
@@ -421,12 +421,12 @@
                         v-if="msg.role === 'assistant' && msg.execution_log?.length > 0"
                         class="flex justify-center"
                       >
-                        <div class="inline-flex items-center space-x-1 px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-500">
+                        <div class="inline-flex items-center space-x-1 px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-500 dark:text-gray-400">
                           <template v-for="(tool, tidx) in getToolSequence(msg.execution_log)" :key="tidx">
-                            <span v-if="tidx > 0" class="text-gray-300">→</span>
+                            <span v-if="tidx > 0" class="text-gray-300 dark:text-gray-600">→</span>
                             <span class="font-mono">{{ tool }}</span>
                           </template>
-                          <span class="ml-1 text-gray-400">{{ formatDuration(msg.metadata?.duration_ms) }}</span>
+                          <span class="ml-1 text-gray-400 dark:text-gray-500">{{ formatDuration(msg.metadata?.duration_ms) }}</span>
                         </div>
                       </div>
 
@@ -437,7 +437,7 @@
                             'max-w-xl px-4 py-3 rounded-lg',
                             msg.role === 'user'
                               ? 'bg-indigo-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-900'
+                              : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
                           ]"
                         >
                           <!-- User messages: plain text -->
@@ -445,15 +445,15 @@
                           <!-- Assistant messages: rendered markdown -->
                           <div
                             v-else
-                            class="prose prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-indigo-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded"
+                            class="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-gray-800 dark:prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded"
                             v-html="renderMarkdown(msg.content)"
                           ></div>
                           <!-- Tool stats for assistant messages -->
                           <div
                             v-if="msg.role === 'assistant' && msg.metadata?.tool_count > 0"
-                            class="mt-2 pt-2 border-t border-gray-200"
+                            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"
                           >
-                            <span class="text-xs text-gray-500 flex items-center space-x-1">
+                            <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-1">
                               <span>{{ msg.metadata.tool_count }} tool{{ msg.metadata.tool_count !== 1 ? 's' : '' }}</span>
                               <span v-if="msg.metadata.cost_usd">&bull; ${{ msg.metadata.cost_usd.toFixed(4) }}</span>
                             </span>
@@ -464,7 +464,7 @@
 
                     <!-- Loading indicator with current tool -->
                     <div v-if="chatLoading" class="flex justify-center">
-                      <div class="inline-flex items-center space-x-2 px-3 py-1 bg-blue-50 rounded-full text-xs text-blue-600 animate-pulse">
+                      <div class="inline-flex items-center space-x-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-full text-xs text-blue-600 dark:text-blue-400 animate-pulse">
                         <span class="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
                         <span>{{ currentToolDisplay }}</span>
                       </div>
@@ -481,18 +481,18 @@
                     :disabled="chatLoading"
                     type="text"
                     placeholder="Type your message..."
-                    class="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                    class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                   />
                   <button
                     @click="sendChatMessage"
                     :disabled="chatLoading || !chatInput.trim()"
-                    class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-semibold px-6 py-2 rounded-lg transition duration-200"
+                    class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-semibold px-6 py-2 rounded-lg transition duration-200"
                   >
                     {{ chatLoading ? 'Sending...' : 'Send' }}
                   </button>
                 </div>
               </div>
-              <div v-else class="text-center text-gray-500 py-8">
+              <div v-else class="text-center text-gray-500 dark:text-gray-400 py-8">
                 Agent is not running. Start the agent to chat.
               </div>
             </div>
@@ -514,14 +514,14 @@
                   >
                     Refresh Logs
                   </button>
-                  <label class="flex items-center space-x-2 text-sm text-gray-600">
-                    <input type="checkbox" v-model="autoRefreshLogs" class="rounded border-gray-300" />
+                  <label class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                    <input type="checkbox" v-model="autoRefreshLogs" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700" />
                     <span>Auto-refresh (10s)</span>
                   </label>
                 </div>
                 <div class="flex items-center space-x-2">
-                  <label class="text-sm text-gray-600">Lines:</label>
-                  <select v-model="logLines" @change="refreshLogs" class="border-gray-300 rounded-md shadow-sm text-sm">
+                  <label class="text-sm text-gray-600 dark:text-gray-400">Lines:</label>
+                  <select v-model="logLines" @change="refreshLogs" class="border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
                     <option value="50">50</option>
                     <option value="100">100</option>
                     <option value="200">200</option>
@@ -535,11 +535,11 @@
             <div v-if="activeTab === 'credentials'" class="p-6">
               <div v-if="credentialsLoading" class="text-center py-8">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-                <p class="text-gray-500 mt-2">Loading credential requirements...</p>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading credential requirements...</p>
               </div>
 
               <div v-else-if="!credentialsData || !credentialsData.template">
-                <div class="text-center py-8 text-gray-500">
+                <div class="text-center py-8 text-gray-500 dark:text-gray-400">
                   <p>No template associated with this agent.</p>
                   <p class="text-sm mt-2">Credential requirements are based on agent templates.</p>
                 </div>
@@ -549,20 +549,20 @@
                 <div class="mb-6">
                   <div class="flex justify-between items-center">
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900">Required Credentials</h3>
-                      <p class="text-sm text-gray-500 mt-1">
-                        Template: <span class="font-mono bg-gray-100 px-2 py-0.5 rounded">{{ credentialsData.template }}</span>
+                      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Required Credentials</h3>
+                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Template: <span class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{{ credentialsData.template }}</span>
                       </p>
                     </div>
                     <div class="text-right">
                       <div class="flex items-center space-x-4">
                         <span class="text-sm">
-                          <span class="text-green-600 font-semibold">{{ credentialsData.configured_count }}</span>
-                          <span class="text-gray-500"> configured</span>
+                          <span class="text-green-600 dark:text-green-400 font-semibold">{{ credentialsData.configured_count }}</span>
+                          <span class="text-gray-500 dark:text-gray-400"> configured</span>
                         </span>
                         <span class="text-sm">
-                          <span class="text-red-600 font-semibold">{{ credentialsData.missing_count }}</span>
-                          <span class="text-gray-500"> missing</span>
+                          <span class="text-red-600 dark:text-red-400 font-semibold">{{ credentialsData.missing_count }}</span>
+                          <span class="text-gray-500 dark:text-gray-400"> missing</span>
                         </span>
                       </div>
                     </div>
@@ -571,11 +571,11 @@
 
                 <!-- Progress bar -->
                 <div class="mb-6">
-                  <div class="flex justify-between text-sm text-gray-600 mb-1">
+                  <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
                     <span>Configuration Progress</span>
                     <span>{{ Math.round((credentialsData.configured_count / credentialsData.total) * 100) }}%</span>
                   </div>
-                  <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
                       class="bg-green-600 h-2 rounded-full transition-all duration-300"
                       :style="{ width: `${(credentialsData.configured_count / credentialsData.total) * 100}%` }"
@@ -588,8 +588,8 @@
                   <div
                     v-for="cred in credentialsData.required_credentials"
                     :key="cred.name"
-                    class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
-                    :class="cred.configured ? 'border-green-200' : 'border-red-200'"
+                    class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border"
+                    :class="cred.configured ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'"
                   >
                     <div class="flex items-center space-x-3">
                       <!-- Status icon -->
@@ -602,8 +602,8 @@
                         </svg>
                       </div>
                       <div>
-                        <p class="font-mono text-sm text-gray-900">{{ cred.name }}</p>
-                        <p class="text-xs text-gray-500">{{ formatSource(cred.source) }}</p>
+                        <p class="font-mono text-sm text-gray-900 dark:text-gray-100">{{ cred.name }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatSource(cred.source) }}</p>
                       </div>
                     </div>
                     <div>
@@ -611,8 +611,8 @@
                         :class="[
                           'px-2 py-1 text-xs font-medium rounded',
                           cred.configured
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
+                            : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
                         ]"
                       >
                         {{ cred.configured ? 'Configured' : 'Missing' }}
@@ -636,17 +636,17 @@
               </div>
 
               <!-- Hot Reload Section -->
-              <div class="mt-8 border-t pt-6">
+              <div class="mt-8 border-t dark:border-gray-700 pt-6">
                 <div class="flex items-center justify-between mb-4">
                   <div>
-                    <h3 class="text-lg font-medium text-gray-900">Hot Reload Credentials</h3>
-                    <p class="text-sm text-gray-500 mt-1">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Hot Reload Credentials</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       Paste .env-style credentials to update the running agent instantly
                     </p>
                   </div>
                   <span
                     v-if="agent.status !== 'running'"
-                    class="px-3 py-1 text-sm bg-yellow-100 text-yellow-800 rounded-full"
+                    class="px-3 py-1 text-sm bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded-full"
                   >
                     Agent must be running
                   </span>
@@ -663,11 +663,11 @@ TWITTER_API_SECRET=your_secret_here
 HEYGEN_API_KEY=your_heygen_key
 
 # Lines starting with # are ignored"
-                    class="w-full font-mono text-sm border border-gray-300 rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    class="w-full font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
                   ></textarea>
 
                   <div class="flex items-center justify-between">
-                    <div class="text-sm text-gray-500">
+                    <div class="text-sm text-gray-500 dark:text-gray-400">
                       {{ hotReloadText ? countCredentials(hotReloadText) : 0 }} credentials detected
                     </div>
                     <button
@@ -691,7 +691,7 @@ HEYGEN_API_KEY=your_heygen_key
                     v-if="hotReloadResult"
                     :class="[
                       'p-4 rounded-lg',
-                      hotReloadResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                      hotReloadResult.success ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
                     ]"
                   >
                     <div class="flex items-start">
@@ -702,13 +702,13 @@ HEYGEN_API_KEY=your_heygen_key
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
                       </svg>
                       <div>
-                        <p :class="hotReloadResult.success ? 'text-green-800' : 'text-red-800'" class="font-medium">
+                        <p :class="hotReloadResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'" class="font-medium">
                           {{ hotReloadResult.message }}
                         </p>
-                        <p v-if="hotReloadResult.credentials" class="text-sm text-gray-600 mt-1">
+                        <p v-if="hotReloadResult.credentials" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
                           Updated: {{ hotReloadResult.credentials.join(', ') }}
                         </p>
-                        <p v-if="hotReloadResult.note" class="text-sm text-gray-500 mt-1">
+                        <p v-if="hotReloadResult.note" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                           {{ hotReloadResult.note }}
                         </p>
                       </div>
@@ -721,8 +721,8 @@ HEYGEN_API_KEY=your_heygen_key
             <!-- Sharing Tab Content -->
             <div v-if="activeTab === 'sharing' && agent.can_share" class="p-6">
               <div class="mb-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-2">Share Agent</h3>
-                <p class="text-sm text-gray-500 mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Share Agent</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
                   Share this agent with other team members by entering their email address.
                 </p>
 
@@ -733,12 +733,12 @@ HEYGEN_API_KEY=your_heygen_key
                     type="email"
                     placeholder="user@ability.ai"
                     :disabled="shareLoading"
-                    class="flex-1 max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                    class="flex-1 max-w-md px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                   />
                   <button
                     type="submit"
                     :disabled="shareLoading || !shareEmail.trim()"
-                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
                   >
                     <svg v-if="shareLoading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -751,7 +751,7 @@ HEYGEN_API_KEY=your_heygen_key
                 <!-- Share Error/Success Message -->
                 <div v-if="shareMessage" :class="[
                   'mt-3 p-3 rounded-lg text-sm',
-                  shareMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                  shareMessage.type === 'success' ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                 ]">
                   {{ shareMessage.text }}
                 </div>
@@ -759,28 +759,28 @@ HEYGEN_API_KEY=your_heygen_key
 
               <!-- Shared Users List -->
               <div>
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Shared With</h3>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Shared With</h3>
 
-                <div v-if="!agent.shares || agent.shares.length === 0" class="text-center py-8 text-gray-500">
-                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div v-if="!agent.shares || agent.shares.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   <p class="mt-2">Not shared with anyone</p>
                 </div>
 
-                <ul v-else class="divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                <ul v-else class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
                   <li v-for="share in agent.shares" :key="share.id" class="px-4 py-3 flex items-center justify-between">
                     <div class="flex items-center space-x-3">
-                      <div class="flex-shrink-0 h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center">
-                        <span class="text-sm font-medium text-gray-600">
+                      <div class="flex-shrink-0 h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                        <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
                           {{ (share.shared_with_name || share.shared_with_email || '?')[0].toUpperCase() }}
                         </span>
                       </div>
                       <div>
-                        <p class="text-sm font-medium text-gray-900">
+                        <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
                           {{ share.shared_with_name || share.shared_with_email }}
                         </p>
-                        <p v-if="share.shared_with_name" class="text-xs text-gray-500">
+                        <p v-if="share.shared_with_name" class="text-xs text-gray-500 dark:text-gray-400">
                           {{ share.shared_with_email }}
                         </p>
                       </div>
@@ -788,7 +788,7 @@ HEYGEN_API_KEY=your_heygen_key
                     <button
                       @click="removeShare(share.shared_with_email)"
                       :disabled="unshareLoading === share.shared_with_email"
-                      class="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
+                      class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium disabled:opacity-50"
                     >
                       <span v-if="unshareLoading === share.shared_with_email">Removing...</span>
                       <span v-else>Remove</span>
@@ -801,15 +801,15 @@ HEYGEN_API_KEY=your_heygen_key
             <!-- Permissions Tab Content (Phase 9.10) -->
             <div v-if="activeTab === 'permissions' && agent.can_share" class="p-6">
               <div class="mb-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-2">Agent Collaboration Permissions</h3>
-                <p class="text-sm text-gray-500 mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Agent Collaboration Permissions</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
                   Control which other agents this agent can communicate with via the Trinity MCP tools.
                 </p>
 
                 <!-- Loading State -->
                 <div v-if="permissionsLoading" class="text-center py-4">
                   <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-                  <p class="mt-2 text-sm text-gray-500">Loading permissions...</p>
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading permissions...</p>
                 </div>
 
                 <!-- Permissions List -->
@@ -819,26 +819,26 @@ HEYGEN_API_KEY=your_heygen_key
                     <button
                       @click="allowAllAgents"
                       :disabled="permissionsSaving"
-                      class="text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
+                      class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium disabled:opacity-50"
                     >
                       Allow All
                     </button>
-                    <span class="text-gray-300">|</span>
+                    <span class="text-gray-300 dark:text-gray-600">|</span>
                     <button
                       @click="allowNoAgents"
                       :disabled="permissionsSaving"
-                      class="text-sm text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                      class="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 font-medium disabled:opacity-50"
                     >
                       Allow None
                     </button>
-                    <span v-if="permissionsDirty" class="text-amber-600 text-xs ml-4">
+                    <span v-if="permissionsDirty" class="text-amber-600 dark:text-amber-400 text-xs ml-4">
                       Unsaved changes
                     </span>
                   </div>
 
                   <!-- Agent Checkboxes -->
-                  <ul class="divide-y divide-gray-200 border border-gray-200 rounded-lg mb-4">
-                    <li v-for="targetAgent in availableAgents" :key="targetAgent.name" class="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
+                  <ul class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg mb-4">
+                    <li v-for="targetAgent in availableAgents" :key="targetAgent.name" class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700">
                       <label :for="'perm-' + targetAgent.name" class="flex items-center space-x-3 cursor-pointer flex-1">
                         <input
                           :id="'perm-' + targetAgent.name"
@@ -846,15 +846,15 @@ HEYGEN_API_KEY=your_heygen_key
                           v-model="targetAgent.permitted"
                           @change="permissionsDirty = true"
                           :disabled="permissionsSaving"
-                          class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
                         />
                         <div class="flex-1">
-                          <span class="text-sm font-medium text-gray-900">{{ targetAgent.name }}</span>
-                          <span v-if="targetAgent.type" class="ml-2 text-xs text-gray-500">[{{ targetAgent.type }}]</span>
+                          <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ targetAgent.name }}</span>
+                          <span v-if="targetAgent.type" class="ml-2 text-xs text-gray-500 dark:text-gray-400">[{{ targetAgent.type }}]</span>
                         </div>
                         <span :class="[
                           'px-2 py-0.5 text-xs font-medium rounded-full',
-                          targetAgent.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                          targetAgent.status === 'running' ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                         ]">
                           {{ targetAgent.status }}
                         </span>
@@ -867,7 +867,7 @@ HEYGEN_API_KEY=your_heygen_key
                     <button
                       @click="savePermissions"
                       :disabled="permissionsSaving || !permissionsDirty"
-                      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
                     >
                       <svg v-if="permissionsSaving" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -879,7 +879,7 @@ HEYGEN_API_KEY=your_heygen_key
                     <!-- Status Message -->
                     <div v-if="permissionsMessage" :class="[
                       'text-sm',
-                      permissionsMessage.type === 'success' ? 'text-green-600' : 'text-red-600'
+                      permissionsMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ permissionsMessage.text }}
                     </div>
@@ -887,8 +887,8 @@ HEYGEN_API_KEY=your_heygen_key
                 </div>
 
                 <!-- No Other Agents -->
-                <div v-else class="text-center py-8 text-gray-500">
-                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div v-else class="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   <p class="mt-2">No other agents available</p>
@@ -920,10 +920,10 @@ HEYGEN_API_KEY=your_heygen_key
             <!-- Files Tab Content -->
             <div v-if="activeTab === 'files'" class="p-6">
               <div v-if="agent.status !== 'running'" class="text-center py-12">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p class="mt-4 text-gray-500">Agent must be running to browse files</p>
+                <p class="mt-4 text-gray-500 dark:text-gray-400">Agent must be running to browse files</p>
               </div>
               <div v-else>
                 <!-- Search Box -->
@@ -932,7 +932,7 @@ HEYGEN_API_KEY=your_heygen_key
                     v-model="fileSearchQuery"
                     type="text"
                     placeholder="Search files by name..."
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
@@ -942,24 +942,24 @@ HEYGEN_API_KEY=your_heygen_key
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <p class="mt-2 text-gray-500">Loading files...</p>
+                  <p class="mt-2 text-gray-500 dark:text-gray-400">Loading files...</p>
                 </div>
 
                 <div v-else-if="filesError" class="text-center py-8">
-                  <p class="text-red-600">{{ filesError }}</p>
+                  <p class="text-red-600 dark:text-red-400">{{ filesError }}</p>
                   <button @click="loadFiles" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
                     Retry
                   </button>
                 </div>
 
-                <div v-else-if="fileTree.length === 0" class="text-center py-8 text-gray-500">
+                <div v-else-if="fileTree.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
                   <p>No files found in workspace</p>
                 </div>
 
                 <div v-else>
-                  <div class="flex items-center justify-between mb-4 text-sm text-gray-600">
+                  <div class="flex items-center justify-between mb-4 text-sm text-gray-600 dark:text-gray-400">
                     <span>{{ totalFileCount }} file(s)</span>
-                    <button @click="loadFiles" class="text-indigo-600 hover:text-indigo-800">
+                    <button @click="loadFiles" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                       <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
@@ -1064,13 +1064,13 @@ const FileTreeNode = defineComponent({
         return h('div', [
           // Folder row
           h('div', {
-            class: 'flex items-center py-1.5 px-2 hover:bg-gray-50 rounded cursor-pointer group',
+            class: 'flex items-center py-1.5 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer group',
             style: { paddingLeft: `${indent}px` },
             onClick: toggleFolder
           }, [
             // Expand/collapse icon
             h('svg', {
-              class: `w-4 h-4 mr-1 text-gray-500 transition-transform ${isExpanded() ? 'rotate-90' : ''}`,
+              class: `w-4 h-4 mr-1 text-gray-500 dark:text-gray-400 transition-transform ${isExpanded() ? 'rotate-90' : ''}`,
               fill: 'currentColor',
               viewBox: '0 0 20 20'
             }, [
@@ -1082,7 +1082,7 @@ const FileTreeNode = defineComponent({
             ]),
             // Folder icon
             h('svg', {
-              class: `w-5 h-5 mr-2 ${isExpanded() ? 'text-indigo-500' : 'text-gray-400'}`,
+              class: `w-5 h-5 mr-2 ${isExpanded() ? 'text-indigo-500 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`,
               fill: 'currentColor',
               viewBox: '0 0 20 20'
             }, [
@@ -1092,11 +1092,11 @@ const FileTreeNode = defineComponent({
             ]),
             // Folder name
             h('span', {
-              class: 'font-medium text-gray-700 flex-1'
+              class: 'font-medium text-gray-700 dark:text-gray-200 flex-1'
             }, props.item.name),
             // File count badge
             h('span', {
-              class: 'text-xs text-gray-500 mr-2'
+              class: 'text-xs text-gray-500 dark:text-gray-400 mr-2'
             }, `${props.item.file_count}`)
           ]),
           // Children (when expanded)
@@ -1117,12 +1117,12 @@ const FileTreeNode = defineComponent({
       } else {
         // File row
         return h('div', {
-          class: 'flex items-center py-1.5 px-2 hover:bg-gray-50 rounded group',
+          class: 'flex items-center py-1.5 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded group',
           style: { paddingLeft: `${indent + 20}px` }
         }, [
           // File icon
           h('svg', {
-            class: 'w-4 h-4 mr-2 text-gray-400',
+            class: 'w-4 h-4 mr-2 text-gray-400 dark:text-gray-500',
             fill: 'currentColor',
             viewBox: '0 0 20 20'
           }, [
@@ -1134,15 +1134,15 @@ const FileTreeNode = defineComponent({
           ]),
           // File name
           h('span', {
-            class: 'text-gray-700 flex-1 truncate'
+            class: 'text-gray-700 dark:text-gray-200 flex-1 truncate'
           }, props.item.name),
           // File size
           h('span', {
-            class: 'text-xs text-gray-500 mr-4'
+            class: 'text-xs text-gray-500 dark:text-gray-400 mr-4'
           }, formatFileSizeHelper(props.item.size)),
           // Download button
           h('button', {
-            class: 'p-1 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-50 rounded',
+            class: 'p-1 text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded',
             title: 'Download file',
             onClick: downloadFile
           }, [

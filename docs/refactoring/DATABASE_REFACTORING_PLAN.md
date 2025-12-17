@@ -268,5 +268,5 @@ from db.users import create_user, get_user_by_id
 ## Feature Flows to Update
 
 After refactoring, update line references in:
-- `.claude/memory/feature-flows/persistent-chat-tracking.md`
+- `docs/memory/feature-flows/persistent-chat-tracking.md`
 - Any other flows referencing `database.py`

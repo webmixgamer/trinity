@@ -1,0 +1,836 @@
+# Feature: Unified Activity Stream
+
+## Overview
+Centralized activity tracking system that persists all agent activities (chat sessions, tool calls, schedule executions) to SQLite with real-time WebSocket broadcasting. Provides granular observability, cross-agent timeline queries, and full audit trail with parent-child relationships for tool calls within chat sessions.
+
+## User Story
+As a platform operator, I want to track all agent activities in a unified system so that I can monitor performance, debug issues, analyze usage patterns, and build visualizations across multiple agents and time ranges.
+
+## Entry Points
+- **Backend Service**: `src/backend/services/activity_service.py:46-107` - `track_activity()` method
+- **Backend Service**: `src/backend/services/activity_service.py:109-159` - `complete_activity()` method
+- **API Endpoints**:
+  - `GET /api/agents/{name}/activities` - Per-agent query
+  - `GET /api/activities/timeline` - Cross-agent timeline query
+
+---
+
+## Architecture
+
+### Design Decisions
+
+**1. Dual Storage for Tool Calls**
+- **chat_messages.tool_calls**: JSON array for fast access with chat history
+- **agent_activities**: Granular rows for filtering, indexing, and timeline queries
+- Rationale: Different access patterns require different structures
+
+**2. Cost/Context in Existing Tables**
+- Observability metrics stay in source tables (chat_messages, schedule_executions)
+- Accessed via JOIN on related_chat_message_id / related_execution_id
+- Rationale: Avoid data duplication, single source of truth
+
+**3. Full Backward Compatibility**
+- Existing APIs unchanged
+- In-memory activity tracking still works
+- New system runs in parallel
+- Rationale: Zero-risk deployment
+
+**4. Parent-Child Relationships**
+- Tool calls link to parent chat via parent_activity_id
+- Enables hierarchical queries and drill-down
+- Rationale: Essential for understanding tool execution context
+
+---
+
+## Data Layer
+
+### Database Schema (`src/backend/database.py:503-525`)
+
+**Table: agent_activities**
+```sql
+CREATE TABLE agent_activities (
+    id TEXT PRIMARY KEY,                           -- UUID
+    agent_name TEXT NOT NULL,                      -- Which agent
+    activity_type TEXT NOT NULL,                   -- chat_start, tool_call, schedule_start, etc.
+    activity_state TEXT NOT NULL,                  -- started, completed, failed
+    parent_activity_id TEXT,                       -- Link to parent (tool → chat)
+    started_at TEXT NOT NULL,                      -- ISO8601 timestamp
+    completed_at TEXT,                             -- ISO8601 timestamp
+    duration_ms INTEGER,                           -- Calculated on completion
+    user_id INTEGER,                               -- FK to users table
+    triggered_by TEXT NOT NULL,                    -- user, schedule, agent, system
+    related_chat_message_id TEXT,                  -- FK to chat_messages
+    related_execution_id TEXT,                     -- FK to schedule_executions
+    details TEXT,                                  -- JSON: activity-specific metadata
+    error TEXT,                                    -- Error message if failed
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_activity_id) REFERENCES agent_activities(id),
+    FOREIGN KEY (related_chat_message_id) REFERENCES chat_messages(id),
+    FOREIGN KEY (related_execution_id) REFERENCES schedule_executions(id)
+)
+```
+
+**Indexes** (`database.py:553-559`)
+```sql
+idx_activities_agent         ON (agent_name, created_at DESC)  -- Per-agent queries
+idx_activities_type          ON (activity_type)                -- Filter by type
+idx_activities_state         ON (activity_state)               -- Filter by state
+idx_activities_user          ON (user_id)                      -- Per-user queries
+idx_activities_parent        ON (parent_activity_id)           -- Hierarchy traversal
+idx_activities_chat_msg      ON (related_chat_message_id)      -- JOIN to chat
+idx_activities_execution     ON (related_execution_id)         -- JOIN to schedules
+```
+
+### Activity Types (`src/backend/models.py:95-114`)
+
+```python
+class ActivityType(str, Enum):
+    # Chat activities
+    CHAT_START = "chat_start"          # Chat message received
+    CHAT_END = "chat_end"              # Chat completed (not yet used)
+    TOOL_CALL = "tool_call"            # Tool execution (child of chat_start)
+
+    # Schedule activities
+    SCHEDULE_START = "schedule_start"  # Schedule execution started
+    SCHEDULE_END = "schedule_end"      # Schedule completed (not yet used)
+
+    # Collaboration activities
+    AGENT_COLLABORATION = "agent_collaboration"  # Future: agent-to-agent
+
+    # Future activity types (not yet implemented)
+    FILE_ACCESS = "file_access"
+    MODEL_CHANGE = "model_change"
+    CREDENTIAL_RELOAD = "credential_reload"
+    GIT_SYNC = "git_sync"
+```
+
+### Activity States (`models.py:116-121`)
+```python
+class ActivityState(str, Enum):
+    STARTED = "started"      # Activity in progress
+    COMPLETED = "completed"  # Successfully completed
+    FAILED = "failed"        # Failed with error
+```
+
+---
+
+## Service Layer
+
+### ActivityService (`src/backend/services/activity_service.py`)
+
+**Initialization** (lines 18-31)
+```python
+class ActivityService:
+    def __init__(self):
+        self.websocket_manager = None       # Set by main.py
+        self.subscribers: List[Callable] = []  # Future extensibility
+
+    def set_websocket_manager(self, manager):
+        """Called from main.py:79 during app startup"""
+        self.websocket_manager = manager
+```
+
+**Core Methods**
+
+| Line | Method | Purpose |
+|------|--------|---------|
+| 46-107 | `track_activity()` | Create new activity, broadcast start |
+| 109-159 | `complete_activity()` | Update completion, broadcast end |
+| 161-163 | `get_current_activities()` | Query in-progress activities |
+| 165-200 | `_broadcast_activity_event()` | WebSocket broadcasting |
+| 202-212 | `_notify_subscribers()` | Extensibility for plugins |
+| 214-244 | `_get_action_description()` | Human-readable descriptions |
+
+**Activity Creation Flow** (`activity_service.py:46-107`)
+```python
+async def track_activity(
+    agent_name: str,
+    activity_type: ActivityType,
+    user_id: Optional[int] = None,
+    triggered_by: str = "user",
+    parent_activity_id: Optional[str] = None,
+    related_chat_message_id: Optional[str] = None,
+    related_execution_id: Optional[str] = None,
+    details: Optional[Dict] = None
+) -> str:
+    # 1. Create database record
+    activity = ActivityCreate(...)
+    activity_id = db.create_activity(activity)
+
+    # 2. Broadcast via WebSocket
+    await self._broadcast_activity_event(
+        agent_name=agent_name,
+        activity_id=activity_id,
+        activity_type=activity_type.value,
+        activity_state="started",
+        action=self._get_action_description(activity_type, details),
+        details=details
+    )
+
+    # 3. Notify subscribers (future extensibility)
+    await self._notify_subscribers({...})
+
+    return activity_id
+```
+
+**Activity Completion Flow** (`activity_service.py:109-159`)
+```python
+async def complete_activity(
+    activity_id: str,
+    status: str = "completed",  # or "failed"
+    details: Optional[Dict] = None,
+    error: Optional[str] = None
+) -> bool:
+    # 1. Get existing activity
+    activity = db.get_activity(activity_id)
+    if not activity:
+        return False
+
+    # 2. Update database (calculates duration)
+    success = db.complete_activity(activity_id, status, details, error)
+
+    # 3. Broadcast completion
+    await self._broadcast_activity_event(...)
+
+    # 4. Notify subscribers
+    await self._notify_subscribers({...})
+
+    return success
+```
+
+---
+
+## Integration Points
+
+### Chat Integration (`src/backend/routers/chat.py`)
+
+**Chat Start Tracking** (lines 74-84)
+```python
+# Track chat start activity
+chat_activity_id = await activity_service.track_activity(
+    agent_name=name,
+    activity_type=ActivityType.CHAT_START,
+    user_id=current_user.id,
+    triggered_by="agent" if x_source_agent else "user",
+    details={
+        "message_preview": request.message[:100],
+        "source_agent": x_source_agent
+    }
+)
+```
+
+**Tool Call Tracking** (lines 138-151)
+```python
+# Track each tool call (granular tracking)
+for tool_call in execution_log:
+    await activity_service.track_activity(
+        agent_name=name,
+        activity_type=ActivityType.TOOL_CALL,
+        user_id=current_user.id,
+        triggered_by="agent" if x_source_agent else "user",
+        parent_activity_id=chat_activity_id,  # Link to parent chat
+        related_chat_message_id=assistant_message.id,
+        details={
+            "tool_name": tool_call.get("tool", "unknown"),
+            "duration_ms": tool_call.get("duration_ms"),
+            "success": tool_call.get("success", True)
+        }
+    )
+```
+
+**Chat Completion** (lines 153-165)
+```python
+# Track chat completion
+await activity_service.complete_activity(
+    activity_id=chat_activity_id,
+    status="completed",
+    details={
+        "related_chat_message_id": assistant_message.id,
+        "context_used": session_data.get("context_tokens"),
+        "context_max": session_data.get("context_window"),
+        "cost_usd": metadata.get("cost_usd"),
+        "execution_time_ms": execution_time_ms,
+        "tool_count": len(execution_log)
+    }
+)
+```
+
+**Error Handling** (lines 178-183)
+```python
+await activity_service.complete_activity(
+    activity_id=chat_activity_id,
+    status="failed",
+    error=str(e)
+)
+```
+
+### Schedule Integration (`src/backend/services/scheduler_service.py`)
+
+**Schedule Start Tracking** (lines 187-198)
+```python
+# Track schedule start activity
+schedule_activity_id = await activity_service.track_activity(
+    agent_name=schedule.agent_name,
+    activity_type=ActivityType.SCHEDULE_START,
+    user_id=schedule.owner_id,
+    triggered_by="schedule",
+    details={
+        "schedule_id": schedule.id,
+        "schedule_name": schedule.name,
+        "cron_expression": schedule.cron_expression
+    }
+)
+```
+
+**Schedule Completion** (lines 277-288)
+```python
+# Track schedule completion
+await activity_service.complete_activity(
+    activity_id=schedule_activity_id,
+    status="completed",
+    details={
+        "related_execution_id": execution.id,
+        "context_used": context_used,
+        "context_max": context_max,
+        "cost_usd": cost,
+        "tool_count": len(execution_log) if execution_log else 0
+    }
+)
+```
+
+**Schedule Failure** (lines 303-309)
+```python
+# Track schedule failure
+await activity_service.complete_activity(
+    activity_id=schedule_activity_id,
+    status="failed",
+    error=error_msg,
+    details={"related_execution_id": execution.id}
+)
+```
+
+---
+
+## API Layer
+
+### Per-Agent Activity Query (`src/backend/routers/agents.py:865-902`)
+
+**Endpoint**: `GET /api/agents/{agent_name}/activities`
+
+**Parameters**:
+- `activity_type` (optional): Filter by type (chat_start, tool_call, etc.)
+- `activity_state` (optional): Filter by state (started, completed, failed)
+- `limit` (default: 100): Max activities to return
+
+**Authorization**: Checks `db.can_user_access_agent()` - owner, shared, or admin
+
+**Response**:
+```json
+{
+  "agent_name": "my-agent",
+  "count": 25,
+  "activities": [
+    {
+      "id": "uuid-123",
+      "agent_name": "my-agent",
+      "activity_type": "chat_start",
+      "activity_state": "completed",
+      "parent_activity_id": null,
+      "started_at": "2025-12-02T10:30:00.000Z",
+      "completed_at": "2025-12-02T10:30:05.234Z",
+      "duration_ms": 5234,
+      "user_id": 1,
+      "triggered_by": "user",
+      "related_chat_message_id": "msg-456",
+      "related_execution_id": null,
+      "details": {
+        "message_preview": "Hello, list files...",
+        "context_used": 2500,
+        "context_max": 200000,
+        "cost_usd": 0.003,
+        "tool_count": 3
+      },
+      "error": null,
+      "created_at": "2025-12-02T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+### Cross-Agent Timeline Query (`routers/agents.py:905-950`)
+
+**Endpoint**: `GET /api/activities/timeline`
+
+**Parameters**:
+- `start_time` (optional): ISO8601 timestamp (e.g., "2025-12-02T10:00:00")
+- `end_time` (optional): ISO8601 timestamp
+- `activity_types` (optional): Comma-separated list (e.g., "chat_start,tool_call")
+- `limit` (default: 100): Max activities to return
+
+**Authorization**: Filters results to only agents user has access to
+
+**Response**:
+```json
+{
+  "count": 42,
+  "start_time": "2025-12-02T10:00:00",
+  "end_time": "2025-12-02T12:00:00",
+  "activity_types": ["chat_start", "schedule_start"],
+  "timeline": [
+    {
+      "id": "uuid-789",
+      "agent_name": "agent-1",
+      "activity_type": "schedule_start",
+      "activity_state": "completed",
+      "started_at": "2025-12-02T11:45:00.000Z",
+      "duration_ms": 12340,
+      "details": {
+        "schedule_name": "Daily Report",
+        "cost_usd": 0.015
+      }
+    }
+  ]
+}
+```
+
+---
+
+## WebSocket Events
+
+### Activity Started Event (`activity_service.py:179-189`)
+
+```json
+{
+  "type": "agent_activity",
+  "agent_name": "my-agent",
+  "activity_id": "uuid-123",
+  "activity_type": "chat_start",
+  "activity_state": "started",
+  "action": "Processing: Hello, list files...",
+  "timestamp": "2025-12-02T10:30:00.000Z",
+  "details": {
+    "message_preview": "Hello, list files..."
+  },
+  "error": null
+}
+```
+
+### Activity Completed Event
+
+```json
+{
+  "type": "agent_activity",
+  "agent_name": "my-agent",
+  "activity_id": "uuid-123",
+  "activity_type": "chat_start",
+  "activity_state": "completed",
+  "action": "Completed: chat_start",
+  "timestamp": "2025-12-02T10:30:05.234Z",
+  "details": {
+    "context_used": 2500,
+    "context_max": 200000,
+    "cost_usd": 0.003,
+    "context": {
+      "used": 2500,
+      "max": 200000,
+      "percentage": 1.25
+    }
+  },
+  "error": null
+}
+```
+
+### Tool Call Event
+
+```json
+{
+  "type": "agent_activity",
+  "agent_name": "my-agent",
+  "activity_id": "uuid-456",
+  "activity_type": "tool_call",
+  "activity_state": "started",
+  "action": "Using tool: Read",
+  "timestamp": "2025-12-02T10:30:01.000Z",
+  "details": {
+    "tool_name": "Read",
+    "duration_ms": null,
+    "success": null
+  },
+  "error": null
+}
+```
+
+---
+
+## Database Operations
+
+### CRUD Methods (`src/backend/database.py:2006-2179`)
+
+| Line | Method | Purpose |
+|------|--------|---------|
+| 2006-2039 | `create_activity()` | Insert new activity, returns UUID |
+| 2041-2082 | `complete_activity()` | Update state, duration, merge details |
+| 2084-2092 | `get_activity()` | Get single activity by ID |
+| 2094-2118 | `get_agent_activities()` | Query per-agent with filters |
+| 2120-2151 | `get_activities_in_range()` | Cross-agent timeline query |
+| 2153-2159 | `get_current_activities()` | Get in-progress activities |
+| 2161-2179 | `_row_to_activity()` | Convert row to dict |
+
+**Details Merging** (`database.py:2060-2063`)
+```python
+# Merge existing details with new details
+existing_details = json.loads(row[1]) if row[1] else {}
+if details:
+    existing_details.update(details)
+```
+
+**Duration Calculation** (`database.py:2056-2058`)
+```python
+started_at = datetime.fromisoformat(row[0])
+completed_at = datetime.utcnow()
+duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+```
+
+---
+
+## Query Patterns
+
+### Get Chat Session with Tool Calls
+```sql
+-- Get chat activity with all child tool calls
+SELECT a.*, tc.*
+FROM agent_activities a
+LEFT JOIN agent_activities tc ON tc.parent_activity_id = a.id
+WHERE a.activity_type = 'chat_start'
+  AND a.agent_name = 'my-agent'
+  AND a.created_at > '2025-12-02T00:00:00'
+ORDER BY a.created_at DESC, tc.started_at ASC
+```
+
+### Get Activities with Cost/Context
+```sql
+-- JOIN to chat_messages for observability data
+SELECT a.*, cm.cost, cm.context_used, cm.context_max, cm.tool_calls
+FROM agent_activities a
+LEFT JOIN chat_messages cm ON a.related_chat_message_id = cm.id
+WHERE a.activity_type = 'chat_start'
+  AND a.agent_name = 'my-agent'
+ORDER BY a.created_at DESC
+```
+
+### Get Schedule Execution History
+```sql
+-- JOIN to schedule_executions for full details
+SELECT a.*, se.response, se.error, se.cost, se.tool_calls
+FROM agent_activities a
+JOIN schedule_executions se ON a.related_execution_id = se.id
+WHERE a.activity_type = 'schedule_start'
+  AND a.agent_name = 'my-agent'
+ORDER BY a.started_at DESC
+```
+
+### Cross-Agent Activity Timeline
+```sql
+-- All activities across agents in time range
+SELECT *
+FROM agent_activities
+WHERE created_at >= '2025-12-02T10:00:00'
+  AND created_at <= '2025-12-02T12:00:00'
+  AND activity_type IN ('chat_start', 'schedule_start')
+ORDER BY created_at DESC
+LIMIT 100
+```
+
+---
+
+## Error Handling
+
+| Error Case | HTTP Status | Message |
+|------------|-------------|---------|
+| Agent not found | 404 | "Agent not found" |
+| No access permission | 403 | "You don't have permission to access this agent" |
+| Activity not found | 404 | Activity not found (complete_activity returns False) |
+| Invalid time range | 400 | (Handled by datetime parsing) |
+| Database error | 500 | Internal error |
+
+---
+
+## Security Considerations
+
+1. **Authorization**: All queries check `can_user_access_agent()` - owner, shared user, or admin
+2. **User Filtering**: Timeline query filters to only accessible agents
+3. **No Sensitive Data**: Tool inputs/outputs NOT stored in activities (stored in chat_messages)
+4. **Audit Compliance**: All activities have user_id, timestamp, and audit trail
+5. **Rate Limiting**: Not implemented (consider for timeline queries)
+
+---
+
+## Performance Considerations
+
+1. **Indexes**: 7 indexes for fast queries on common patterns
+2. **JSON Details**: Stored as TEXT, parsed on read (acceptable for current scale)
+3. **Limit Enforcement**: All queries use LIMIT (default 100)
+4. **Pagination**: Not implemented (future enhancement)
+5. **Archival**: No automatic cleanup (consider retention policy)
+
+---
+
+## Testing
+
+**Prerequisites**:
+- [ ] Backend running: `./scripts/deploy/start.sh`
+- [ ] Database initialized with agent_activities table
+- [ ] At least one running agent
+- [ ] User authenticated
+
+### 1. Verify Table Schema
+**Action**:
+```bash
+sqlite3 ~/trinity-data/trinity.db "PRAGMA table_info(agent_activities)"
+```
+
+**Expected**:
+- 15 columns: id, agent_name, activity_type, activity_state, parent_activity_id, started_at, completed_at, duration_ms, user_id, triggered_by, related_chat_message_id, related_execution_id, details, error, created_at
+
+**Verify**:
+- [ ] All columns present
+- [ ] Correct types (TEXT, INTEGER)
+- [ ] created_at has DEFAULT
+
+### 2. Test Chat Activity Tracking
+**Action**:
+- Send chat message: `POST /api/agents/{name}/chat {"message": "List files"}`
+- Wait for response
+
+**Expected**:
+- chat_start activity created
+- tool_call activities created for each tool
+- chat_start activity completed
+
+**Verify**:
+```bash
+# Check activities were created
+sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_activities WHERE agent_name='my-agent' ORDER BY created_at DESC LIMIT 10"
+
+# Verify tool calls link to parent
+sqlite3 ~/trinity-data/trinity.db "SELECT id, activity_type, parent_activity_id FROM agent_activities WHERE agent_name='my-agent' ORDER BY created_at DESC"
+```
+
+- [ ] chat_start activity exists with status "completed"
+- [ ] tool_call activities exist with parent_activity_id pointing to chat_start
+- [ ] duration_ms calculated for completed activities
+- [ ] details JSON contains expected fields
+
+### 3. Test WebSocket Broadcasting
+**Action**:
+- Open browser console to network tab, filter WebSocket
+- Send chat message
+- Watch WebSocket frames
+
+**Expected**:
+- `{"type": "agent_activity", "activity_state": "started", "activity_type": "chat_start"}`
+- `{"type": "agent_activity", "activity_state": "started", "activity_type": "tool_call"}`
+- `{"type": "agent_activity", "activity_state": "completed"}`
+
+**Verify**:
+- [ ] Started events broadcast immediately
+- [ ] Completed events include duration_ms
+- [ ] Context percentage calculated if present
+- [ ] Tool call events include tool_name
+
+### 4. Test Per-Agent Query API
+**Action**:
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/agents/my-agent/activities?limit=10"
+```
+
+**Expected**:
+```json
+{
+  "agent_name": "my-agent",
+  "count": 10,
+  "activities": [...]
+}
+```
+
+**Verify**:
+- [ ] Returns expected count
+- [ ] Activities sorted by created_at DESC
+- [ ] All fields populated
+- [ ] details parsed as JSON
+
+**Test Filters**:
+```bash
+# Filter by type
+curl "http://localhost:8000/api/agents/my-agent/activities?activity_type=tool_call"
+
+# Filter by state
+curl "http://localhost:8000/api/agents/my-agent/activities?activity_state=completed"
+
+# Combine filters
+curl "http://localhost:8000/api/agents/my-agent/activities?activity_type=chat_start&activity_state=completed&limit=5"
+```
+
+- [ ] Type filter works
+- [ ] State filter works
+- [ ] Limit respected
+
+### 5. Test Timeline Query API
+**Action**:
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/activities/timeline?start_time=2025-12-02T00:00:00&limit=20"
+```
+
+**Expected**:
+```json
+{
+  "count": 20,
+  "start_time": "2025-12-02T00:00:00",
+  "end_time": null,
+  "activity_types": null,
+  "timeline": [...]
+}
+```
+
+**Verify**:
+- [ ] Returns activities from all accessible agents
+- [ ] Respects start_time filter
+- [ ] Activities sorted by created_at DESC
+
+**Test Access Control**:
+- [ ] Admin sees all agents
+- [ ] Regular user only sees owned/shared agents
+- [ ] Unauthorized agent activities filtered out
+
+### 6. Test Schedule Integration
+**Action**:
+- Create schedule: `POST /api/agents/{name}/schedules`
+- Trigger manually: `POST /api/agents/{name}/schedules/{id}/trigger`
+- Wait for completion
+
+**Expected**:
+- schedule_start activity created
+- schedule_start activity completed with execution details
+
+**Verify**:
+```bash
+sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_activities WHERE activity_type='schedule_start' ORDER BY created_at DESC LIMIT 5"
+```
+
+- [ ] schedule_start activity exists
+- [ ] related_execution_id links to schedule_executions
+- [ ] details contains schedule_id, schedule_name, cron_expression
+- [ ] cost and tool_count in completion details
+
+### 7. Test Error Handling
+**Action**:
+- Send chat to stopped agent (should fail quickly)
+- Check activity status
+
+**Expected**:
+- chat_start activity created
+- chat_start activity marked as "failed" with error message
+
+**Verify**:
+- [ ] Failed activity has error field populated
+- [ ] activity_state = "failed"
+- [ ] WebSocket broadcast includes error
+
+**Test Schedule Failure**:
+- Create schedule with invalid agent
+- Trigger execution
+
+- [ ] schedule_start marked as "failed"
+- [ ] error field contains error message
+
+### Edge Cases
+
+**Large Result Sets**:
+```bash
+# Request more than 100 activities
+curl "http://localhost:8000/api/agents/my-agent/activities?limit=500"
+```
+- [ ] Verify limit is respected (no more than limit returned)
+
+**Parent-Child Relationships**:
+```bash
+# Verify tool calls link to correct parent
+sqlite3 ~/trinity-data/trinity.db "
+  SELECT a.id, a.activity_type, tc.activity_type, tc.parent_activity_id
+  FROM agent_activities a
+  LEFT JOIN agent_activities tc ON tc.parent_activity_id = a.id
+  WHERE a.activity_type = 'chat_start'
+  LIMIT 1
+"
+```
+- [ ] Tool calls have correct parent_activity_id
+- [ ] parent_activity_id is NULL for top-level activities
+
+**Time Range Queries**:
+```bash
+# Query with no results
+curl "http://localhost:8000/api/activities/timeline?start_time=2020-01-01T00:00:00&end_time=2020-01-02T00:00:00"
+```
+- [ ] Returns empty timeline: {"count": 0, "timeline": []}
+
+**Details Merging**:
+- [ ] Verify complete_activity() merges new details with existing
+- [ ] Test: Create activity with details, complete with additional details
+- [ ] Check: Both sets of details present in final record
+
+**Cleanup**:
+```bash
+# Optional: Clear test activities
+sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name='test-agent'"
+```
+
+**Last Tested**: Not yet tested
+**Tested By**: N/A
+**Status**: 🚧 Not Tested
+**Issues**: None known
+
+---
+
+## Related Flows
+
+- **Upstream**:
+  - Agent Chat (`agent-chat.md`) - Creates chat_start and tool_call activities
+  - Scheduling (`scheduling.md`) - Creates schedule_start activities
+
+- **Downstream**:
+  - Activity Monitoring (`activity-monitoring.md`) - Uses in-memory tracking (parallel system)
+  - Collaboration Dashboard (`collaboration-dashboard.md`) - Could visualize activity streams
+
+- **Related**:
+  - Persistent Chat Tracking (`persistent-chat-tracking.md`) - Shares database infrastructure
+  - Agent Logs & Telemetry (`agent-logs-telemetry.md`) - Complementary observability
+
+---
+
+## Future Enhancements
+
+1. **Pagination**: Cursor-based pagination for large result sets
+2. **Aggregations**: Summary statistics, cost totals, tool usage reports
+3. **Retention Policy**: Automatic archival/deletion of old activities
+4. **Frontend UI**: Timeline visualization, activity explorer
+5. **Real-time Dashboard**: WebSocket-powered live activity feed
+6. **Export**: CSV/JSON export for analysis
+7. **Webhooks**: Trigger external systems on activity events
+8. **Rate Limiting**: Protect timeline endpoint from abuse
+9. **Caching**: Redis cache for frequently accessed activities
+10. **Archival**: Move old activities to separate table for performance
+
+---
+
+## Implementation Notes
+
+**Date**: 2025-12-02
+**Requirement**: 9.7 - Unified Activity Stream
+**Implemented By**: Feature implementation commit
+**Related Docs**:
+- `docs/ACTIVITY_TRACKING_ARCHITECTURE.md`
+- `docs/CHANGE_REQUIREMENTS_ACTIVITY_STREAM.md`

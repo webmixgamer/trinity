@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
     <div class="max-w-md w-full space-y-8">
       <div>
-        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
           Trinity
         </h2>
-        <p class="mt-2 text-center text-sm text-gray-600">
+        <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
           Sign in to manage your agents
         </p>
       </div>
@@ -13,15 +13,15 @@
       <!-- Loading State (detecting mode or authenticating) -->
       <div v-if="isLoading" class="text-center">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p class="mt-4 text-gray-600">{{ loadingMessage }}</p>
+        <p class="mt-4 text-gray-600 dark:text-gray-400">{{ loadingMessage }}</p>
       </div>
 
       <!-- Error State -->
-      <div v-else-if="authError" class="bg-white rounded-lg shadow-lg p-8">
+      <div v-else-if="authError" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900 p-8">
         <div class="text-center">
           <div class="text-red-500 text-5xl mb-4">⚠️</div>
-          <h3 class="text-xl font-bold text-gray-900 mb-4">Access Denied</h3>
-          <p class="text-gray-600 mb-6">{{ authError }}</p>
+          <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Access Denied</h3>
+          <p class="text-gray-600 dark:text-gray-400 mb-6">{{ authError }}</p>
           <button
             @click="handleRetry"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -32,12 +32,12 @@
       </div>
 
       <!-- Login Forms -->
-      <div v-else class="mt-8 space-y-6 bg-white rounded-lg shadow-lg p-8">
+      <div v-else class="mt-8 space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900 p-8">
 
         <!-- Dev Mode: Username/Password Form -->
         <div v-if="authStore.devModeEnabled">
-          <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p class="text-sm text-yellow-800 flex items-center">
+          <div class="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p class="text-sm text-yellow-800 dark:text-yellow-300 flex items-center">
               <span class="mr-2">🔧</span>
               Development Mode - Local authentication enabled
             </p>
@@ -45,27 +45,27 @@
 
           <form @submit.prevent="handleDevLogin" class="space-y-4">
             <div>
-              <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+              <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
               <input
                 id="username"
                 v-model="username"
                 type="text"
                 required
                 autocomplete="username"
-                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="admin"
               />
             </div>
 
             <div>
-              <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+              <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
               <input
                 id="password"
                 v-model="password"
                 type="password"
                 required
                 autocomplete="current-password"
-                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="••••••••"
               />
             </div>
@@ -73,7 +73,7 @@
             <button
               type="submit"
               :disabled="loginLoading || !username || !password"
-              class="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+              class="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800 disabled:opacity-50 transition-colors"
             >
               {{ loginLoading ? 'Signing in...' : 'Sign In' }}
             </button>
@@ -85,7 +85,7 @@
           <button
             @click="handleGoogleLogin"
             :disabled="loginLoading"
-            class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+            class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800 disabled:opacity-50 transition-colors"
           >
             <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -96,7 +96,7 @@
             {{ loginLoading ? 'Signing in...' : 'Sign in with Google' }}
           </button>
 
-          <div class="mt-4 text-center text-sm text-gray-500">
+          <div class="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
             <p>Access restricted to <span class="font-semibold">@{{ authStore.allowedDomain }}</span> accounts only</p>
           </div>
         </div>

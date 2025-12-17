@@ -159,7 +159,7 @@ Expected: Agent uses `chroma_add_documents` and `chroma_query_documents` tools.
 | `docker/base-image/Dockerfile` | Add `chroma-mcp` to pip install |
 | `docker/base-image/agent_server/routers/trinity.py` | Auto-inject chroma MCP config |
 | `config/trinity-meta-prompt/vector-memory.md` | Update with MCP tool examples |
-| `.claude/memory/requirements.md` | Add requirement 10.5 |
+| `docs/memory/requirements.md` | Add requirement 10.5 |
 
 ## Rollout
 

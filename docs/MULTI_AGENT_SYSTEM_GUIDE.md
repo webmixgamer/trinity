@@ -64,11 +64,29 @@ Trinity provides the infrastructure for multi-agent orchestration:
 
 Before designing your multi-agent system, understand what Trinity provides **automatically to every agent**. These capabilities are injected at runtime and available without configuration.
 
+> **IMPORTANT FOR SYSTEM DESIGNERS**: The sections below marked with ⚡ **RUNTIME INJECTION** describe features that Trinity **automatically injects** when agents start. **Do NOT duplicate this information in your agent templates.** Your CLAUDE.md and template files should focus on domain-specific instructions only. Trinity will handle platform infrastructure documentation automatically.
+
+### Runtime Injection System
+
+When an agent starts, Trinity calls `POST /api/trinity/inject` on the agent container. This:
+
+1. **Creates directories**: `.trinity/`, `.claude/commands/trinity/`, `plans/active/`, `plans/archive/`, `vector-store/`
+2. **Copies documentation**: Platform docs to `.trinity/` directory
+3. **Injects MCP servers**: Adds Trinity and Chroma MCP to `.mcp.json`
+4. **Updates CLAUDE.md**: Appends planning commands, collaboration tools, and vector memory sections
+
+**What this means for you**: Don't document these features in your agent's CLAUDE.md. Trinity will inject them automatically. Focus your CLAUDE.md on domain-specific instructions.
+
 ### Per-Agent Infrastructure
 
-#### 1. Vector Database (Chroma)
+#### 1. Vector Database (Chroma) ⚡ RUNTIME INJECTION
 
 Every agent has a dedicated **Chroma vector database** for semantic memory storage.
+
+> **DO NOT** add vector memory documentation to your CLAUDE.md. Trinity injects this automatically including:
+> - `.trinity/vector-memory.md` (usage examples)
+> - Chroma MCP server config in `.mcp.json`
+> - Vector memory section appended to CLAUDE.md
 
 | Aspect | Details |
 |--------|---------|
@@ -164,9 +182,15 @@ Worker B:     "10,40 * * * *"  (at :10 and :40)
 Worker C:     "15,45 * * * *"  (at :15 and :45)
 ```
 
-#### 3. Workplan System (Task DAGs)
+#### 3. Workplan System (Task DAGs) ⚡ RUNTIME INJECTION
 
 Trinity injects a **planning system** for persistent task tracking outside the context window.
+
+> **DO NOT** document planning commands in your CLAUDE.md. Trinity injects:
+> - `.trinity/prompt.md` (system prompt)
+> - `.claude/commands/trinity/trinity-plan-*.md` (4 planning commands)
+> - `plans/active/` and `plans/archive/` directories
+> - Planning instructions appended to CLAUDE.md
 
 | Aspect | Details |
 |--------|---------|
@@ -208,9 +232,11 @@ tasks:
     depends_on: ["task-002"]
 ```
 
-#### 4. Trinity MCP Tools (Agent-to-Agent)
+#### 4. Trinity MCP Tools (Agent-to-Agent) ⚡ RUNTIME INJECTION
 
 Every agent gets **Trinity MCP tools** auto-injected for inter-agent communication.
+
+> **DO NOT** add Trinity MCP server config to your `.mcp.json.template`. Trinity injects this automatically including collaboration instructions in CLAUDE.md.
 
 | Tool | Purpose |
 |------|---------|
@@ -250,20 +276,117 @@ File-based collaboration via **Docker volumes**.
 - Requires agent restart to apply
 - Permission-gated (only permitted agents can mount)
 
-#### 6. Credential Hot-Reload
+> **Note**: Shared folder paths are NOT injected into CLAUDE.md. If your agent uses shared folders, document the paths and expected file formats in your agent's CLAUDE.md.
 
-Update secrets **without restarting** the agent.
+#### 6. Credential System
+
+Trinity provides a comprehensive credential management system. Understanding how it works is essential for multi-agent systems.
+
+##### How Credentials Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Credential Flow                                  │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  1. STORAGE (Redis)                                                  │
+│     ┌──────────────────────────────────────────────────────────┐    │
+│     │ User stores credentials via UI/API                        │    │
+│     │ → credentials:{id}:metadata (name, service, type)         │    │
+│     │ → credentials:{id}:secret (actual values, encrypted)      │    │
+│     └──────────────────────────────────────────────────────────┘    │
+│                           │                                          │
+│                           ▼                                          │
+│  2. INJECTION (at agent creation or hot-reload)                      │
+│     ┌──────────────────────────────────────────────────────────┐    │
+│     │ Backend fetches credentials from Redis                    │    │
+│     │ → Matches against .mcp.json.template ${VAR} placeholders  │    │
+│     │ → Generates .env file                                     │    │
+│     │ → Generates .mcp.json from template                       │    │
+│     └──────────────────────────────────────────────────────────┘    │
+│                           │                                          │
+│                           ▼                                          │
+│  3. AGENT CONTAINER                                                  │
+│     ┌──────────────────────────────────────────────────────────┐    │
+│     │ /home/developer/                                          │    │
+│     │ ├── .env                 # KEY=VALUE pairs                │    │
+│     │ ├── .mcp.json            # Generated with actual values   │    │
+│     │ └── .mcp.json.template   # Your template with ${VAR}      │    │
+│     └──────────────────────────────────────────────────────────┘    │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+##### What YOU Provide (in your template)
+
+1. **`.mcp.json.template`** - MCP server config with `${VAR}` placeholders:
+   ```json
+   {
+     "mcpServers": {
+       "twitter": {
+         "command": "uvx",
+         "args": ["twitter-mcp"],
+         "env": {
+           "TWITTER_API_KEY": "${TWITTER_API_KEY}",
+           "TWITTER_API_SECRET": "${TWITTER_API_SECRET}"
+         }
+       }
+     }
+   }
+   ```
+
+2. **`.env.example`** - Documentation of required credentials:
+   ```bash
+   # Twitter API credentials (get from developer.twitter.com)
+   TWITTER_API_KEY=
+   TWITTER_API_SECRET=
+   ```
+
+3. **`template.yaml`** - Credential requirements:
+   ```yaml
+   credentials:
+     required:
+       - name: TWITTER_API_KEY
+         description: Twitter API Key
+         service: twitter
+       - name: TWITTER_API_SECRET
+         description: Twitter API Secret
+         service: twitter
+   ```
+
+##### What Trinity Does (automatically)
+
+1. **At agent creation**: Reads `.mcp.json.template`, fetches matching credentials from Redis, generates `.mcp.json` and `.env`
+2. **At hot-reload**: User pastes `KEY=VALUE` pairs or triggers reload from Redis → updates `.env` and regenerates `.mcp.json`
+3. **Never exposes secrets**: Values masked in logs, stored encrypted in Redis
+
+##### Credential Hot-Reload
+
+Update secrets **without restarting** the agent:
 
 ```bash
-# Via API
+# Via API (paste format)
 POST /api/agents/{name}/credentials/hot-reload
-Content-Type: text/plain
+Content-Type: application/json
 
-API_KEY=new-value
-ANOTHER_KEY=another-value
+{"credentials_text": "API_KEY=new-value\nANOTHER_KEY=another-value"}
+```
+
+Or reload from Redis store:
+```bash
+POST /api/agents/{name}/credentials/reload
 ```
 
 **Multi-Agent Benefit:** Update all agents' credentials centrally without disrupting running workflows.
+
+##### Important Notes for System Designers
+
+1. **Credential names must be UPPERCASE with underscores** (e.g., `TWITTER_API_KEY`)
+2. **Each agent has its own credentials** - no cross-agent credential sharing by default
+3. **User must store credentials before agent creation** - they're injected at creation time
+4. **Hot-reload is available** for updates after creation
+5. **Credentials go in `.mcp.json.template`** - NOT in `.mcp.json` (which is generated)
+6. **Never commit actual credentials** - only `.mcp.json.template` with `${VAR}` placeholders
 
 ### Platform-Level Features
 
@@ -342,6 +465,36 @@ Bidirectional GitHub synchronization for agents from GitHub templates:
 | **Context Tracking** | Per-agent | Dashboard/API | Monitor resource usage |
 | **Custom Metrics** | Per-agent | template.yaml | Domain-specific KPIs |
 | **Git Sync** | Per-agent | UI/API | Version control of agent state |
+
+### What NOT to Include in Your Agent Templates
+
+Because Trinity automatically injects platform infrastructure, your agent templates should **NOT** include:
+
+| DO NOT Include | Reason |
+|----------------|--------|
+| Vector memory documentation in CLAUDE.md | Trinity injects `.trinity/vector-memory.md` and CLAUDE.md section |
+| Planning commands documentation in CLAUDE.md | Trinity injects `.claude/commands/trinity/` and CLAUDE.md section |
+| Trinity MCP server in `.mcp.json.template` | Trinity injects this with agent-scoped API key |
+| Chroma MCP server in `.mcp.json.template` | Trinity injects this pointing to `vector-store/` |
+| `plans/` directory | Trinity creates `plans/active/` and `plans/archive/` |
+| `vector-store/` directory | Trinity creates this |
+| `.trinity/` directory | Trinity creates and populates this |
+| `.claude/commands/trinity/` directory | Trinity creates and populates this |
+| Agent collaboration instructions | Trinity injects section about `mcp__trinity__*` tools |
+
+### What TO Include in Your Agent Templates
+
+Your templates should focus on **domain-specific content**:
+
+| DO Include | Purpose |
+|------------|---------|
+| **CLAUDE.md** | Domain-specific instructions, workflows, persona |
+| **template.yaml** | Agent metadata, credential requirements, custom metrics |
+| **`.mcp.json.template`** | Domain-specific MCP servers with `${VAR}` placeholders |
+| **`.env.example`** | Document required credentials |
+| **Shared folder documentation** | If using shared folders, document paths and file formats |
+| **memory/** directory | Agent-specific persistent state files |
+| **scripts/** directory | Helper scripts for the domain |
 
 ### Design Implications
 
@@ -1089,14 +1242,41 @@ Each repository follows the [Trinity Compatible Agent Guide](TRINITY_COMPATIBLE_
 ```
 my-agent/
 ├── template.yaml            # Trinity metadata
-├── CLAUDE.md                # Agent instructions
-├── .mcp.json.template       # MCP config with placeholders
-├── .env.example             # Required credentials
-├── .gitignore               # Excludes secrets + platform dirs
+├── CLAUDE.md                # Agent instructions (domain-specific only)
+├── .mcp.json.template       # MCP config with ${VAR} placeholders
+├── .env.example             # Document required credentials
+├── .gitignore               # CRITICAL: Excludes secrets + injected dirs
 ├── memory/                  # Agent's persistent state
 ├── scripts/                 # Helper scripts
 └── README.md                # Human documentation
 ```
+
+### Required .gitignore
+
+Every agent repository MUST include a `.gitignore` that excludes platform-injected content:
+
+```gitignore
+# Trinity platform injection (DO NOT COMMIT)
+.trinity/
+.claude/commands/trinity/
+plans/
+vector-store/
+
+# Generated files (DO NOT COMMIT)
+.mcp.json
+.env
+
+# Keep templates (DO COMMIT)
+!.mcp.json.template
+!.env.example
+```
+
+**Why this matters:**
+- `.mcp.json` contains actual credentials (generated from template)
+- `.env` contains actual credentials
+- `.trinity/`, `plans/`, `vector-store/` are created by Trinity injection
+- `.claude/commands/trinity/` contains platform commands (not your custom commands)
+- Committing these would either expose secrets or cause conflicts on next deploy
 
 ### System Documentation Repository (Optional)
 
@@ -1701,6 +1881,7 @@ See the Ruby Content Management System for a complete example:
 | Date | Changes |
 |------|---------|
 | 2025-12-14 | Initial version |
+| 2025-12-14 | Added Runtime Injection System documentation, clarified what NOT to include in templates, expanded credential system documentation with flow diagram |
 
 ---
 

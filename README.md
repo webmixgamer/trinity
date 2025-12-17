@@ -231,10 +231,12 @@ AUTH0_DOMAIN=your-tenant.us.auth0.com
 
 ## Documentation
 
+- [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — How to develop Trinity (context loading, testing, documentation)
 - [Deployment Guide](docs/DEPLOYMENT.md) — Production deployment instructions
 - [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) — Building multi-agent systems with coordinated workflows
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards
+- [Contributing Guide](CONTRIBUTING.md) — How to contribute (PRs, code standards)
 - [Known Issues](docs/KNOWN_ISSUES.md) — Current limitations and workarounds
 
 ## Development

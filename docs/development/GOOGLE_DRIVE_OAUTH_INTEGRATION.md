@@ -414,8 +414,8 @@ If issues arise:
 After implementation, update:
 - `docs/development/CREDENTIAL_MANAGEMENT.md` - Add Google Drive example
 - `docs/AGENT_TEMPLATE_SPEC.md` - Add Google OAuth credential pattern
-- `.claude/memory/changelog.md` - Document feature addition
-- `.claude/memory/requirements.md` - Mark OAuth credential enhancement complete
+- `docs/memory/changelog.md` - Document feature addition
+- `docs/memory/requirements.md` - Mark OAuth credential enhancement complete
 
 ---
 

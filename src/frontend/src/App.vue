@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <router-view />
   </div>
 </template>
@@ -8,12 +8,17 @@
 import { onMounted } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from './stores/auth'
+import { useThemeStore } from './stores/theme'
 import { useWebSocket } from './utils/websocket'
 
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const { connect } = useWebSocket()
 
 onMounted(async () => {
+  // Initialize theme immediately to prevent flash
+  themeStore.initTheme()
+
   // Check if user is authenticated
   const token = localStorage.getItem('token')
   if (token) {

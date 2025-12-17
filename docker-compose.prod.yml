@@ -17,7 +17,7 @@ services:
       - "8005:8005"
     environment:
       - SECRET_KEY=${SECRET_KEY}
-      - DEV_MODE_ENABLED=false  # Production: Auth0 only, no local login
+      - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-false}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
       - AUDIT_URL=http://audit-logger:8006
       - REDIS_URL=redis://redis:6379
@@ -30,6 +30,9 @@ services:
       - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
       - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_PAT=${GITHUB_PAT}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
       # Host paths for volumes (used when creating agent containers)
       # These MUST be set in your environment or deploy.config
       - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH}
@@ -71,6 +74,9 @@ services:
       dockerfile: ../../docker/frontend/Dockerfile.prod
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:8005}
+        - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN:-dev-10tz4lo7hcoijxav.us.auth0.com}
+        - VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID:-bFeIEm4WAwaalgSnxsfS1V6vd4gOk0li}
+        - VITE_AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
     image: trinity-frontend:prod
     container_name: trinity-frontend
     restart: unless-stopped
@@ -171,7 +177,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/mcp"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -10,6 +10,7 @@
 #   ./scripts/deploy/gcp-deploy.sh          # Full deployment
 #   ./scripts/deploy/gcp-deploy.sh sync     # Sync files only
 #   ./scripts/deploy/gcp-deploy.sh restart  # Restart services only
+#   ./scripts/deploy/gcp-deploy.sh status   # Check status
 
 set -e
 
@@ -67,24 +68,59 @@ fi
 # Set project
 gcloud config set project "${GCP_PROJECT}" 2>/dev/null
 
-# Function to sync files
+# Function to sync files (using rsync to exclude node_modules, __pycache__, etc.)
 sync_files() {
     echo "Syncing files to ${GCP_INSTANCE}..."
 
-    # Create remote directory if it doesn't exist
+    # Create remote directories
+    echo "  Creating remote directories..."
     gcloud compute ssh "${GCP_INSTANCE}" \
         --zone="${GCP_ZONE}" \
-        --command="mkdir -p ${REMOTE_DIR}"
+        --command="mkdir -p ${REMOTE_DIR} && mkdir -p ~/trinity-data && chmod 777 ~/trinity-data"
 
-    # Sync project files (excluding local dev files)
+    # Create a temporary directory with files to upload
+    echo "  Preparing files (excluding node_modules, __pycache__, .git)..."
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf ${TEMP_DIR}" EXIT
+
+    # Copy necessary files to temp directory
+    cp "${PROJECT_ROOT}/docker-compose.prod.yml" "${TEMP_DIR}/"
+    cp -r "${PROJECT_ROOT}/docker" "${TEMP_DIR}/"
+
+    mkdir -p "${TEMP_DIR}/src"
+
+    # Backend: copy .py files and module directories (no venv, __pycache__)
+    mkdir -p "${TEMP_DIR}/src/backend"
+    cp "${PROJECT_ROOT}/src/backend/"*.py "${TEMP_DIR}/src/backend/" 2>/dev/null || true
+    # Copy routers, services, utils, db modules
+    for module in routers services utils db; do
+        if [ -d "${PROJECT_ROOT}/src/backend/${module}" ]; then
+            rsync -a --exclude '__pycache__' "${PROJECT_ROOT}/src/backend/${module}" "${TEMP_DIR}/src/backend/"
+        fi
+    done
+
+    # Audit logger
+    if [ -d "${PROJECT_ROOT}/src/audit-logger" ]; then
+        rsync -a --exclude '__pycache__' "${PROJECT_ROOT}/src/audit-logger" "${TEMP_DIR}/src/"
+    fi
+
+    # Frontend: copy without node_modules (will npm install on server)
+    mkdir -p "${TEMP_DIR}/src/frontend"
+    rsync -a --exclude 'node_modules' --exclude '.git' --exclude 'dist' "${PROJECT_ROOT}/src/frontend/" "${TEMP_DIR}/src/frontend/"
+
+    # MCP Server: copy without node_modules
+    mkdir -p "${TEMP_DIR}/src/mcp-server"
+    rsync -a --exclude 'node_modules' --exclude '.git' --exclude 'dist' "${PROJECT_ROOT}/src/mcp-server/" "${TEMP_DIR}/src/mcp-server/"
+
+    # Config directory
+    cp -r "${PROJECT_ROOT}/config" "${TEMP_DIR}/"
+
+    # Upload
+    echo "  Uploading to ${GCP_INSTANCE}..."
     gcloud compute scp --recurse \
         --zone="${GCP_ZONE}" \
         --compress \
-        "${PROJECT_ROOT}/src" \
-        "${PROJECT_ROOT}/docker" \
-        "${PROJECT_ROOT}/docker-compose.prod.yml" \
-        "${PROJECT_ROOT}/config" \
-        "${GCP_INSTANCE}:${REMOTE_DIR}/"
+        "${TEMP_DIR}/"* "${GCP_INSTANCE}:${REMOTE_DIR}/"
 
     echo "Files synced."
 }
@@ -101,6 +137,14 @@ DEV_MODE_ENABLED=false
 BACKEND_URL=${BACKEND_URL:-https://${DOMAIN}/api}
 VITE_API_URL=${BACKEND_URL:-https://${DOMAIN}/api}
 
+# Auth0 (defaults match docker-compose.prod.yml)
+AUTH0_DOMAIN=${AUTH0_DOMAIN:-dev-10tz4lo7hcoijxav.us.auth0.com}
+AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
+VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID:-bFeIEm4WAwaalgSnxsfS1V6vd4gOk0li}
+
+# GitHub PAT for template cloning
+GITHUB_PAT=${GITHUB_PAT:-}
+
 # OAuth (optional)
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -108,10 +152,20 @@ SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
 SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
 GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
 GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+NOTION_CLIENT_ID=${NOTION_CLIENT_ID:-}
+NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET:-}
+
+# Anthropic
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 
 # Ports
 BACKEND_PORT=${BACKEND_PORT:-8005}
 FRONTEND_PORT=${FRONTEND_PORT:-3005}
+
+# Host paths for agent volumes
+HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${REMOTE_DIR}/config/agent-templates}
+HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-${REMOTE_DIR}/config/trinity-meta-prompt}
+TRINITY_DATA_PATH=${TRINITY_DATA_PATH:-${REMOTE_DIR}/trinity-data}
 "
 
     # Write to remote
@@ -120,6 +174,15 @@ FRONTEND_PORT=${FRONTEND_PORT:-3005}
         --command="cat > ${REMOTE_DIR}/.env"
 
     echo ".env file created."
+}
+
+# Function to build base image
+build_base_image() {
+    echo "Building base agent image on remote..."
+    gcloud compute ssh "${GCP_INSTANCE}" \
+        --zone="${GCP_ZONE}" \
+        --command="cd ${REMOTE_DIR} && sudo docker build -t trinity-agent-base:latest -f docker/base-image/Dockerfile docker/base-image/"
+    echo "Base image built."
 }
 
 # Function to restart services
@@ -158,10 +221,19 @@ case "${1:-full}" in
     status)
         show_status
         ;;
+    base)
+        build_base_image
+        ;;
     full|*)
         sync_files
         create_remote_env
+        build_base_image
         restart_services
+
+        echo ""
+        echo "Waiting for services to start..."
+        sleep 10
+
         show_status
 
         echo ""
@@ -173,14 +245,11 @@ case "${1:-full}" in
             echo "Access your deployment at:"
             echo "  Web UI:  https://${DOMAIN}"
             echo "  API:     https://${DOMAIN}/api/docs"
+            echo "  MCP:     http://${GCP_EXTERNAL_IP:-$DOMAIN}:${MCP_PORT:-8007}/mcp"
         else
-            # Get external IP
-            EXTERNAL_IP=$(gcloud compute instances describe "${GCP_INSTANCE}" \
-                --zone="${GCP_ZONE}" \
-                --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
             echo "Access your deployment at:"
-            echo "  Web UI:  http://${EXTERNAL_IP}:${FRONTEND_PORT:-3005}"
-            echo "  API:     http://${EXTERNAL_IP}:${BACKEND_PORT:-8005}/docs"
+            echo "  Web UI:  http://${GCP_EXTERNAL_IP}:${FRONTEND_PORT:-3005}"
+            echo "  API:     http://${GCP_EXTERNAL_IP}:${BACKEND_PORT:-8005}/docs"
         fi
         ;;
 esac

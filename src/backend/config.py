@@ -102,34 +102,34 @@ GITHUB_TEMPLATES = [
         "id": "github:abilityai/ruby-orchestrator",
         "display_name": "Ruby Orchestrator - Calendar & State Manager",
         "description": "Master coordinator for content scheduling, state management, and agent triggering",
-        "github_repo": "Abilityai/ruby-orchestrator",
+        "github_repo": "abilityai/ruby-orchestrator",
         "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
         "source": "github",
         "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": []
+        "mcp_servers": ["trinity"],
+        "required_credentials": ["TRINITY_API_URL", "TRINITY_API_KEY"]
     },
     {
         "id": "github:abilityai/ruby-content",
         "display_name": "Ruby Content - Discovery & Production",
         "description": "Content discovery, classification, and production agent with AI short generation",
-        "github_repo": "Abilityai/ruby-content",
+        "github_repo": "abilityai/ruby-content",
         "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
         "source": "github",
         "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": []
+        "mcp_servers": ["heygen", "cloudinary-asset-mgmt", "aistudio", "giphy"],
+        "required_credentials": ["HEYGEN_API_KEY", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "CLOUDINARY_CLOUD_NAME", "GEMINI_API_KEY", "GIPHY_API_KEY", "KLAP_API_KEY", "KLAP_BASE_URL", "CREATOMATE_API_KEY"]
     },
     {
         "id": "github:abilityai/ruby-engagement",
         "display_name": "Ruby Engagement - Social & Growth",
         "description": "Engagement monitoring, viral reply hunting, and comment response agent",
-        "github_repo": "Abilityai/ruby-engagement",
+        "github_repo": "abilityai/ruby-engagement",
         "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
         "source": "github",
         "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": []
+        "mcp_servers": ["twitter-mcp", "mcp-metricool", "aistudio"],
+        "required_credentials": ["TWITTER_API_KEY", "TWITTER_API_SECRET_KEY", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET", "METRICOOL_USER_TOKEN", "METRICOOL_USER_ID", "GEMINI_API_KEY", "BLOTATO_API_KEY", "BLOTATO_BASE_URL", "BLOTATO_YOUTUBE_ID", "BLOTATO_INSTAGRAM_ID", "BLOTATO_LINKEDIN_ID", "BLOTATO_TWITTER_ID", "BLOTATO_THREADS_ID", "BLOTATO_TIKTOK_ID"]
     }
 ]
 
