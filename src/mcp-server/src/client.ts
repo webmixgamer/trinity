@@ -83,7 +83,10 @@ export class TrinityClient {
     return this.baseUrl;
   }
 
-  private async request<T>(
+  /**
+   * Public request method for custom API calls
+   */
+  async request<T>(
     method: string,
     path: string,
     body?: unknown,
@@ -122,6 +125,12 @@ export class TrinityClient {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`API error (${response.status}): ${error}`);
+    }
+
+    // Check content type - if text/plain or text/yaml, return as string
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("text/plain") || contentType.includes("text/yaml") || contentType.includes("application/x-yaml")) {
+      return (await response.text()) as T;
     }
 
     return (await response.json()) as T;

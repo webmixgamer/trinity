@@ -111,6 +111,49 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
     return {"status": "error", "error": "Max retries exceeded"}
 
 
+async def start_agent_internal(agent_name: str) -> dict:
+    """
+    Internal function to start an agent.
+
+    Used by both the API endpoint and system deployment.
+    Triggers Trinity meta-prompt injection.
+
+    Args:
+        agent_name: Name of the agent to start
+
+    Returns:
+        dict with start status and trinity_injection result
+
+    Raises:
+        HTTPException: If agent not found or start fails
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Phase 9.11: Check if shared folder config requires container recreation
+    container.reload()
+    needs_recreation = not _check_shared_folder_mounts_match(container, agent_name)
+
+    if needs_recreation:
+        # Recreate container with updated mounts
+        # Use system user for internal operations
+        await _recreate_container_with_shared_folders(agent_name, container, "system")
+        container = get_agent_container(agent_name)
+
+    container.start()
+
+    # Inject Trinity meta-prompt
+    trinity_result = await inject_trinity_meta_prompt(agent_name)
+    trinity_status = trinity_result.get("status", "unknown")
+
+    return {
+        "message": f"Agent {agent_name} started",
+        "trinity_injection": trinity_status,
+        "trinity_result": trinity_result
+    }
+
+
 def get_accessible_agents(current_user: User):
     """
     Get list of all agents accessible to the current user.
@@ -283,11 +326,32 @@ async def get_agent_endpoint(agent_name: str, request: Request, current_user: Us
     return agent_dict
 
 
-@router.post("")
-async def create_agent_endpoint(config: AgentConfig, request: Request, current_user: User = Depends(get_current_user)):
-    """Create a new agent."""
+async def create_agent_internal(
+    config: AgentConfig,
+    current_user: User,
+    request: Request,
+    skip_name_sanitization: bool = False
+) -> AgentStatus:
+    """
+    Internal function to create an agent.
+
+    Used by both the API endpoint and system deployment.
+
+    Args:
+        config: Agent configuration
+        current_user: Authenticated user
+        request: FastAPI request object
+        skip_name_sanitization: If True, don't sanitize the name (used when name is pre-validated)
+
+    Returns:
+        AgentStatus of the created agent
+
+    Raises:
+        HTTPException: On validation or creation errors
+    """
     original_name = config.name
-    config.name = sanitize_agent_name(config.name)
+    if not skip_name_sanitization:
+        config.name = sanitize_agent_name(config.name)
 
     if not config.name:
         raise HTTPException(status_code=400, detail="Invalid agent name - must contain at least one alphanumeric character")
@@ -659,6 +723,12 @@ async def create_agent_endpoint(config: AgentConfig, request: Request, current_u
         )
 
 
+@router.post("")
+async def create_agent_endpoint(config: AgentConfig, request: Request, current_user: User = Depends(get_current_user)):
+    """Create a new agent."""
+    return await create_agent_internal(config, current_user, request, skip_name_sanitization=False)
+
+
 @router.delete("/{agent_name}")
 async def delete_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
     """Delete an agent."""
@@ -908,27 +978,10 @@ def _check_shared_folder_mounts_match(container, agent_name: str) -> bool:
 @router.post("/{agent_name}/start")
 async def start_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
     """Start an agent."""
-    container = get_agent_container(agent_name)
-    if not container:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
     try:
-        # Phase 9.11: Check if shared folder config requires container recreation
-        container.reload()
-        needs_recreation = not _check_shared_folder_mounts_match(container, agent_name)
-
-        if needs_recreation:
-            # Recreate container with updated mounts
-            await _recreate_container_with_shared_folders(agent_name, container, current_user.username)
-            container = get_agent_container(agent_name)
-
-        container.start()
-
-        # Inject Trinity meta-prompt (non-blocking, runs in background)
-        # This provides planning commands and directory structure
-        import asyncio
-        trinity_result = await inject_trinity_meta_prompt(agent_name)
-        trinity_status = trinity_result.get("status", "unknown")
+        # Use internal function for core start logic
+        result = await start_agent_internal(agent_name)
+        trinity_status = result.get("trinity_injection", "unknown")
 
         if manager:
             await manager.broadcast(json.dumps({
@@ -947,6 +1000,8 @@ async def start_agent_endpoint(agent_name: str, request: Request, current_user: 
         )
 
         return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
+    except HTTPException:
+        raise
     except Exception as e:
         await log_audit_event(
             event_type="agent_management",

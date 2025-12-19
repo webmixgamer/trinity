@@ -207,3 +207,48 @@ class QueueStatus(BaseModel):
     current_execution: Optional[Execution] = None
     queue_length: int
     queued_executions: List[Execution] = []
+
+
+# ============================================================================
+# System Manifest Models (Recipe-based Multi-Agent Deployment)
+# ============================================================================
+
+class SystemAgentConfig(BaseModel):
+    """Configuration for a single agent in a system manifest."""
+    template: str  # e.g., "github:Org/repo" or "local:business-assistant"
+    resources: Optional[dict] = None  # {"cpu": "2", "memory": "4g"}
+    folders: Optional[dict] = None  # {"expose": bool, "consume": bool}
+    schedules: Optional[List[dict]] = None  # [{name, cron, message, ...}]
+
+
+class SystemPermissions(BaseModel):
+    """Permission configuration for system agents."""
+    preset: Optional[str] = None  # "full-mesh", "orchestrator-workers", "none"
+    explicit: Optional[Dict[str, List[str]]] = None  # {"orchestrator": ["worker1", "worker2"]}
+
+
+class SystemManifest(BaseModel):
+    """Parsed system manifest from YAML."""
+    name: str
+    description: Optional[str] = None
+    prompt: Optional[str] = None
+    agents: Dict[str, SystemAgentConfig]
+    permissions: Optional[SystemPermissions] = None
+
+
+class SystemDeployRequest(BaseModel):
+    """Request to deploy a system from YAML manifest."""
+    manifest: str  # Raw YAML string
+    dry_run: bool = False
+
+
+class SystemDeployResponse(BaseModel):
+    """Response from system deployment."""
+    status: str  # "deployed" or "valid" (for dry_run)
+    system_name: str
+    agents_created: List[str]  # Final agent names created
+    agents_to_create: Optional[List[dict]] = None  # For dry_run: [{name, template}]
+    prompt_updated: bool
+    permissions_configured: int = 0
+    schedules_created: int = 0
+    warnings: List[str] = []

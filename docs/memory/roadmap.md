@@ -50,10 +50,12 @@
 | ⏳ | Vectorized Episodic Memory | Auto-store conversations for "Have I solved this before?" | LOW |
 
 ### Phase 11: Ecosystem & Enterprise
-⏳ **Pending**
+🚧 **In Progress**
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
+| ✅ | **System Manifest (10.7)** | Recipe-based multi-agent deployment via YAML - complete (agent creation, conflict resolution, trinity_prompt, folders, schedules, permissions, auto-start). Completed 2025-12-18. | HIGH |
+| ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |
 | ⏳ | Automated sync modes (scheduled, on-stop) | GitOps enhancement | LOW |

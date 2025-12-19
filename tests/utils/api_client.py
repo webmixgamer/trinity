@@ -25,7 +25,7 @@ class ApiConfig:
         return cls(
             base_url=os.getenv("TRINITY_API_URL", "http://localhost:8000"),
             username=os.getenv("TRINITY_TEST_USERNAME", "admin"),
-            password=os.getenv("TRINITY_TEST_PASSWORD", "changeme"),
+            password=os.getenv("TRINITY_TEST_PASSWORD", "password"),
             mcp_api_key=os.getenv("TRINITY_MCP_API_KEY"),
             test_agent_name=os.getenv("TEST_AGENT_NAME"),
         )

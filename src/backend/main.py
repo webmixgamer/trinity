@@ -37,6 +37,7 @@ from routers.schedules import router as schedules_router
 from routers.git import router as git_router
 from routers.activities import router as activities_router
 from routers.settings import router as settings_router
+from routers.systems import router as systems_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -203,6 +204,7 @@ app.include_router(chat_router)
 app.include_router(schedules_router)
 app.include_router(git_router)
 app.include_router(settings_router)
+app.include_router(systems_router)
 
 
 # WebSocket endpoint

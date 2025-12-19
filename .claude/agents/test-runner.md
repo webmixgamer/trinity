@@ -141,6 +141,8 @@ The test suite covers:
 - **Credentials** (test_credentials.py) - Credential management, hot reload
 - **Schedules** (test_schedules.py) - Scheduled executions
 - **Execution Queue** (test_execution_queue.py) - Queue management
+- **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules (Req 10.7)
+- **Settings** (test_settings.py) - System settings and Trinity prompt management
 - **Agent Server Direct** (agent_server/) - Direct agent server tests [SKIPPED unless TEST_AGENT_NAME set]
 
 ## Performance Notes (2025-12-09)

@@ -189,6 +189,17 @@ if [ -d "/generated-creds" ]; then
     echo "Credential files copied"
 fi
 
+# Ensure core agent-server dependencies are installed correctly
+# This prevents template repos from breaking the agent server with incompatible packages
+echo "Verifying agent-server dependencies..."
+python3 -m pip install --user --quiet --upgrade \
+    fastapi \
+    uvicorn \
+    httpx \
+    pydantic \
+    python-multipart \
+    pyyaml
+
 # Start SSH if enabled
 if [ "${ENABLE_SSH}" = "true" ]; then
     echo "Starting SSH server..."

@@ -886,10 +886,85 @@ Place directory in `config/agent-templates/` on the Trinity server. It will auto
 
 ---
 
+## Multi-Agent Systems
+
+This guide covers **single-agent template development**. If you're building a **multi-agent system** where multiple agents collaborate:
+
+### Deployment Options
+
+**Option 1: System Manifest (Recommended)**
+
+Deploy multiple coordinated agents from a single YAML manifest:
+
+```yaml
+name: content-production
+description: Autonomous content pipeline
+
+agents:
+  orchestrator:
+    template: github:YourOrg/content-orchestrator
+    folders:
+      expose: true
+      consume: true
+    schedules:
+      - name: daily-planning
+        cron: "0 9 * * *"
+        message: "Plan today's tasks"
+
+  ruby:
+    template: github:YourOrg/ruby-content
+    folders:
+      expose: true
+      consume: true
+
+permissions:
+  preset: full-mesh  # or orchestrator-workers, none, explicit
+```
+
+Deploy via API or MCP:
+```bash
+POST /api/systems/deploy
+{"manifest": "...YAML content..."}
+```
+
+See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for complete System Manifest documentation.
+
+**Option 2: Manual Deployment**
+
+Create agents individually, then configure permissions, folders, and schedules via API. See [Multi-Agent System Guide - Manual Deployment](MULTI_AGENT_SYSTEM_GUIDE.md#manual-deployment-workflow-alternative) for step-by-step instructions.
+
+### Design Considerations for Multi-Agent Systems
+
+When building agents intended for multi-agent systems:
+
+1. **Design for Coordination**
+   - Plan how your agent will communicate with others (MCP chat, shared folders)
+   - Document expected file formats in shared-out/ directory
+   - Define clear responsibilities (what this agent does vs. what others do)
+
+2. **Shared Folder Conventions**
+   - Use structured file formats (JSON, YAML)
+   - Include timestamps in shared files
+   - Document file contracts in README.md
+
+3. **System-Wide Prompts**
+   - If deploying via manifest with `prompt:` field, all agents receive the same global instructions
+   - Keep agent-specific CLAUDE.md focused on the agent's domain expertise
+   - Global prompts are useful for system-wide conventions (file formats, communication protocols)
+
+4. **Template Defaults**
+   - Set sensible defaults in `template.yaml` for `shared_folders:` if your agent is designed for collaboration
+   - Don't enable by default if the agent works standalone
+
+See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensive multi-agent architecture patterns, communication strategies, and deployment workflows.
+
+---
+
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |
 | 2025-12-14 | Consolidated from AGENT_TEMPLATE_SPEC.md and trinity-compatible-agent.md |
 | 2025-12-13 | Added shared folders and Chroma MCP integration |
 | 2025-12-10 | Added custom metrics specification |

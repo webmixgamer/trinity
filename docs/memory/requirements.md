@@ -941,6 +941,75 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   5. Clear prompt, restart agent, verify section removed
   6. Non-admin users should not see Settings link in nav
 
+#### 10.7 System Manifest (Multi-Agent Deployment)
+- **Status**: ✅ Complete (2025-12-18)
+- **Priority**: High
+- **Description**: Recipe-based deployment of multi-agent systems via YAML manifest
+- **Design Doc**: `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md`
+- **Implementation**: `docs/drafts/SYSTEM_MANIFEST_PHASE1.md`
+- **Approach**: Recipe (one-shot deployment, not declarative/binding)
+- **Key Decisions**:
+  - Agent naming: `{system}-{agent}` format
+  - Re-deploy creates new agents with `_N` suffix (e.g., `ruby_2`, `ruby_3`)
+  - Updates global `trinity_prompt` setting (reuses existing 10.6)
+  - No `systems` table - agents are independent after creation
+- **YAML Format**:
+  ```yaml
+  name: content-production
+  description: Autonomous content pipeline
+
+  prompt: |  # Updates global trinity_prompt
+    System-wide instructions here...
+
+  agents:
+    orchestrator:
+      template: github:YourOrg/repo
+      resources: {cpu: "2", memory: "4g"}
+      folders: {expose: true, consume: true}
+      schedules:
+        - name: daily-task
+          cron: "0 9 * * *"
+          message: "Do the thing"
+
+    worker:
+      template: local:business-assistant
+      folders: {expose: true, consume: true}
+
+  permissions:
+    preset: full-mesh  # or: orchestrator-workers, none, explicit
+  ```
+- **Acceptance Criteria**:
+  - [x] YAML parsing with pydantic validation *(Phase 1 - 2025-12-17)*
+  - [x] `POST /api/systems/deploy` endpoint *(Phase 1 - 2025-12-17)*
+  - [x] Dry run mode for validation (`dry_run: true` in body) *(Phase 1 - 2025-12-17)*
+  - [x] Agent creation with `{system}-{agent}` naming *(Phase 1 - 2025-12-17)*
+  - [x] Incremental suffix for conflicts (`_2`, `_3`) *(Phase 1 - 2025-12-17)*
+  - [x] Global `trinity_prompt` update from manifest *(Phase 1 - 2025-12-17)*
+  - [x] Dry run returns validation + warnings *(Phase 1 - 2025-12-17)*
+  - [x] All agents started after configuration *(Phase 1 - 2025-12-17)*
+  - [x] Permission presets: `full-mesh`, `orchestrator-workers`, `none` *(Phase 2 - 2025-12-18)*
+  - [x] Explicit permission matrix support *(Phase 2 - 2025-12-18)*
+  - [x] Shared folder configuration per agent *(Phase 2 - 2025-12-18)*
+  - [x] Schedule creation per agent *(Phase 2 - 2025-12-18)*
+  - [x] MCP tools for system deployment (`deploy_system`, `list_systems`, `restart_system`, `get_system_manifest`) *(Phase 3 - 2025-12-18)*
+  - [x] Backend API endpoints for system management (`GET /systems`, `GET /systems/{name}`, `POST /systems/{name}/restart`, `GET /systems/{name}/manifest`) *(Phase 3 - 2025-12-18)*
+  - [x] Export manifest function to generate YAML from deployed systems *(Phase 3 - 2025-12-18)*
+- **Maps to Existing APIs**:
+  - `prompt` → `PUT /api/settings/trinity_prompt`
+  - `agents.*` → `POST /api/agents`
+  - `agents.*.folders` → `PUT /api/agents/{name}/folders`
+  - `agents.*.schedules[]` → `POST /api/agents/{name}/schedules`
+  - `permissions` → `PUT /api/agents/{name}/permissions`
+- **Testing**:
+  1. Create `system.yaml` with 2+ agents
+  2. `POST /api/systems/deploy` with YAML
+  3. Verify agents created with correct names
+  4. Verify permissions configured per preset
+  5. Verify shared folders enabled
+  6. Verify schedules created
+  7. Re-deploy same YAML, verify `_2` suffix agents created
+  8. Dry run returns warnings for existing agents
+
 ---
 
 ## Non-Functional Requirements

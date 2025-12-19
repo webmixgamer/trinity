@@ -1298,7 +1298,235 @@ system-docs/
 
 ---
 
-## Deployment Workflow
+## System Manifest Deployment (Recommended)
+
+Trinity supports **declarative multi-agent deployment** via YAML manifests. This is the recommended approach for deploying multi-agent systems as it's faster, more consistent, and less error-prone than manual step-by-step deployment.
+
+### What is a System Manifest?
+
+A **System Manifest** is a YAML file that declares your entire multi-agent system configuration in one place:
+
+- System name and description
+- All agents and their templates
+- Global Trinity prompt (optional)
+- Shared folder configuration
+- Agent permissions (full-mesh, orchestrator-workers, or custom)
+- Schedules (cron-based automation)
+
+When you deploy a manifest, Trinity creates all agents, configures permissions, sets up shared folders, creates schedules, and starts everything automatically.
+
+### Minimal Example
+
+```yaml
+name: my-system
+agents:
+  worker:
+    template: local:default
+```
+
+### Complete Example
+
+```yaml
+name: content-production
+description: Autonomous content creation pipeline
+
+# Optional: Global instructions injected into all agents
+prompt: |
+  You are part of the Content Production system.
+  Always save outputs to shared-out folder.
+  Use JSON for inter-agent communication.
+
+agents:
+  orchestrator:
+    template: github:YourOrg/content-orchestrator
+    resources:
+      cpu: "2"
+      memory: "4g"
+    folders:
+      expose: true    # Share files with other agents
+      consume: true   # Mount other agents' shared folders
+    schedules:
+      - name: daily-planning
+        cron: "0 9 * * *"
+        message: "Plan today's content production tasks"
+        timezone: America/New_York
+        enabled: true
+
+  ruby:
+    template: github:YourOrg/ruby-content
+    folders:
+      expose: true
+      consume: true
+    schedules:
+      - name: check-jobs
+        cron: "*/30 * * * *"
+        message: "Check shared-in/ for new work from orchestrator"
+
+  cornelius:
+    template: github:YourOrg/cornelius-research
+    folders:
+      expose: true
+      consume: true
+
+# Permission configuration
+permissions:
+  preset: full-mesh  # Options: full-mesh, orchestrator-workers, none, explicit
+```
+
+### Permission Presets
+
+| Preset | Behavior |
+|--------|----------|
+| **full-mesh** | Every agent can communicate with every other agent |
+| **orchestrator-workers** | Only the agent named "orchestrator" can call workers |
+| **none** | No permissions granted (isolated agents) |
+| **explicit** | Custom permission matrix (see below) |
+
+**Explicit Permission Example:**
+```yaml
+permissions:
+  explicit:
+    orchestrator:
+      - ruby
+      - cornelius
+    ruby:
+      - cornelius
+    cornelius: []  # No permissions
+```
+
+### Deploying a System
+
+#### Option 1: Via API
+
+```bash
+# Deploy from YAML file
+curl -X POST http://localhost:8000/api/systems/deploy \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"manifest\": \"$(cat system.yaml)\"}"
+
+# Dry run (validation only)
+curl -X POST http://localhost:8000/api/systems/deploy \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"manifest\": \"$(cat system.yaml)\", \"dry_run\": true}"
+```
+
+#### Option 2: Via MCP Tools
+
+Agents with Trinity MCP can deploy systems programmatically:
+
+```
+mcp__trinity__deploy_system(
+    manifest="name: my-system\nagents:\n  worker:\n    template: local:default",
+    dry_run=false
+)
+```
+
+### Agent Naming Convention
+
+Agents are automatically named `{system}-{agent}`:
+
+```yaml
+name: content-production
+agents:
+  orchestrator: ...  # → content-production-orchestrator
+  ruby: ...          # → content-production-ruby
+  cornelius: ...     # → content-production-cornelius
+```
+
+**Conflict Resolution**: If you redeploy the same system, conflicting agent names get a `_N` suffix:
+
+```
+First deploy:   content-production-ruby
+Second deploy:  content-production-ruby_2
+Third deploy:   content-production-ruby_3
+```
+
+### What Happens on Deployment
+
+When you deploy a manifest, Trinity:
+
+1. **Validates** the YAML (syntax, required fields, name formats, permissions)
+2. **Resolves names** (handles conflicts with `_N` suffix)
+3. **Updates trinity_prompt** (if specified in manifest)
+4. **Creates all agents** (with templates, resources, credentials)
+5. **Configures shared folders** (expose/consume settings)
+6. **Grants permissions** (applies preset or explicit rules)
+7. **Creates schedules** (adds to scheduler service)
+8. **Starts all agents** (triggers Trinity injection with custom prompt)
+
+### Managing Deployed Systems
+
+**List all systems:**
+```bash
+GET /api/systems
+
+# Response:
+{
+  "systems": [
+    {
+      "name": "content-production",
+      "agent_count": 3,
+      "agents": [...],
+      "created_at": "2025-12-18T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Get system details:**
+```bash
+GET /api/systems/content-production
+
+# Returns full system info with agents, permissions, folders, schedules
+```
+
+**Restart entire system:**
+```bash
+POST /api/systems/content-production/restart
+
+# Stops and starts all agents (applies any config changes)
+```
+
+**Export system as YAML:**
+```bash
+GET /api/systems/content-production/manifest
+
+# Returns YAML representation of deployed system
+# Useful for backup, documentation, or replication
+```
+
+### Recipe vs. Declarative Model
+
+**Important**: System Manifest is a **recipe** (one-shot deployment), not a declarative system of record.
+
+- **After deployment**, agents become independent entities
+- **Modifications** via UI/API don't update the original manifest
+- **Re-deploying** the same manifest creates new agents with `_N` suffix (doesn't update existing)
+- **Export manifest** to capture current state of a deployed system
+
+### Best Practices
+
+1. **Version control your manifests** - Keep YAML files in git alongside agent templates
+2. **Use dry run first** - Validate before deploying with `dry_run: true`
+3. **Start simple** - Begin with 2-3 agents, add more as needed
+4. **Descriptive names** - Use clear system names that indicate purpose
+5. **Document prompts** - If using global `prompt`, explain what it does
+6. **Export for backup** - Periodically export deployed systems to YAML
+
+### Full Documentation
+
+For complete System Manifest documentation including validation rules, error handling, and implementation details, see:
+- **Feature Flow**: `docs/memory/feature-flows/system-manifest.md`
+- **Design Document**: `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md`
+- **Requirements**: `docs/memory/requirements.md` (Req 10.7)
+
+---
+
+## Manual Deployment Workflow (Alternative)
+
+If you prefer manual step-by-step deployment (or need fine-grained control), you can create and configure agents individually:
 
 ### Step 1: Create Agents in Order
 
@@ -1880,6 +2108,7 @@ See the Ruby Content Management System for a complete example:
 
 | Date | Changes |
 |------|---------|
+| 2025-12-18 | Added System Manifest Deployment section (recommended method for deploying multi-agent systems) |
 | 2025-12-14 | Initial version |
 | 2025-12-14 | Added Runtime Injection System documentation, clarified what NOT to include in templates, expanded credential system documentation with flow diagram |
 

@@ -125,14 +125,30 @@ class TestCreateAgent:
 
         assert_status_in(response, [400, 409])
 
-    def test_invalid_name_returns_400(self, api_client: TrinityApiClient):
-        """POST /api/agents with invalid name returns 400."""
+    def test_invalid_name_is_sanitized(self, api_client: TrinityApiClient, resource_tracker):
+        """POST /api/agents with invalid name sanitizes it for Docker compatibility.
+
+        Note: The API sanitizes names rather than rejecting them to ensure Docker
+        container name compatibility. Names are converted to lowercase, spaces/special
+        chars become hyphens. This is by design per sanitize_agent_name() in helpers.py.
+        """
+        invalid_name = "invalid name with spaces!"
+        expected_sanitized = "invalid-name-with-spaces"
+
         response = api_client.post(
             "/api/agents",
-            json={"name": "invalid name with spaces!"},
+            json={"name": invalid_name},
         )
 
-        assert_status_in(response, [400, 422])
+        # API should accept and sanitize the name (200/201) OR reject if agent exists (400/409)
+        if response.status_code in [200, 201]:
+            data = response.json()
+            # Verify name was sanitized
+            assert data.get("name") == expected_sanitized
+            resource_tracker.track_agent(expected_sanitized)
+        else:
+            # Agent may already exist from previous test run
+            assert_status_in(response, [400, 409])
 
     def test_agent_auto_started_after_creation(
         self,

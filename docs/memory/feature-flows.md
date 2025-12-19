@@ -56,6 +56,7 @@
 | **Agent Vector Memory** | Medium | [vector-memory.md](feature-flows/vector-memory.md) | Per-agent Chroma vector database with MCP server integration for semantic memory (Implemented 2025-12-13, Req 10.4 + 10.5) |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Implemented 2025-12-13) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
+| **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 
 ---
 
