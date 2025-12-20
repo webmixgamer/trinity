@@ -11,7 +11,7 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 ## Entry Points
 
 ### Create Agent
-- **UI**: `src/frontend/src/views/Agents.vue:19-24` - "Create Agent" button
+- **UI**: `src/frontend/src/views/Agents.vue:34-39` - "Create Agent" button
 - **API**: `POST /api/agents`
 
 ### Start Agent
@@ -23,7 +23,7 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 - **API**: `POST /api/agents/{agent_name}/stop`
 
 ### Delete Agent
-- **UI**: `src/frontend/src/views/AgentDetail.vue:68-77` - Delete button (trash icon)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:110-119` - Delete button (trash icon)
 - **API**: `DELETE /api/agents/{agent_name}`
 
 ---
@@ -33,33 +33,33 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 ### Components
 
 **Agents List View** - `src/frontend/src/views/Agents.vue`
-- Line 19-24: Create Agent button opens modal
-- Line 56-67: Start agent inline button with spinner
-- Line 68-79: Stop agent inline button with spinner
-- Line 117-128: `startAgent()` method
-- Line 130-141: `stopAgent()` method
+- Line 34-39: Create Agent button opens modal
+- Line 113-124: Start agent inline button with spinner
+- Line 125-136: Stop agent inline button with spinner
+- Line 248-258: `startAgent()` method
+- Line 261-272: `stopAgent()` method
 
 **Agent Detail View** - `src/frontend/src/views/AgentDetail.vue`
 - Line 44-55: Start button (conditional on `agent.status === 'stopped'`)
 - Line 56-67: Stop button (conditional on `agent.status === 'running'`)
-- Line 68-77: Delete button (conditional on `agent.can_delete`)
-- Line 825-837: `startAgent()` method
-- Line 839-851: `stopAgent()` method
-- Line 853-862: `deleteAgent()` method
+- Line 110-119: Delete button (conditional on `agent.can_delete`)
+- Line 1430-1442: `startAgent()` method
+- Line 1444-1456: `stopAgent()` method
+- Line 1458-1472: `deleteAgent()` method with confirmation dialog
 
-**Create Agent Modal** - `src/frontend/src/components/CreateAgentModal.vue` (Updated 2025-12-07)
+**Create Agent Modal** - `src/frontend/src/components/CreateAgentModal.vue`
 - Line 9: Form submit calls `createAgent()`
 - Line 15-22: Agent name input
-- Line 26-133: Template selection (blank, GitHub, local)
-- Lines 173-178: **NEW** `initialTemplate` prop - Pre-selects template when modal opens
-- Line 180: **NEW** `emit('created', agent)` - Emits created agent for navigation
-- Lines 189-192: Watch for `initialTemplate` prop changes
-- Lines 238-260: `createAgent()` method - emits `created` event on success
+- Line 26-151: Template selection (blank, GitHub, local)
+- Lines 191-196: `initialTemplate` prop - Pre-selects template when modal opens
+- Line 198: `emit('created', agent)` - Emits created agent for navigation
+- Lines 207-210: Watch for `initialTemplate` prop changes
+- Lines 263-285: `createAgent()` method - emits `created` event on success
 
 ### State Management (`src/frontend/src/stores/agents.js`)
 
 ```javascript
-// Line 58-74: Create agent
+// Line 86-102: Create agent
 async createAgent(config) {
   const response = await axios.post('/api/agents', config, {
     headers: authStore.authHeader
@@ -68,7 +68,7 @@ async createAgent(config) {
   return response.data
 }
 
-// Line 76-91: Delete agent
+// Line 104-119: Delete agent
 async deleteAgent(name) {
   await axios.delete(`/api/agents/${name}`, {
     headers: authStore.authHeader
@@ -76,7 +76,7 @@ async deleteAgent(name) {
   this.agents = this.agents.filter(agent => agent.name !== name)
 }
 
-// Line 93-107: Start agent
+// Line 121-135: Start agent
 async startAgent(name) {
   const response = await axios.post(`/api/agents/${name}/start`, {}, {
     headers: authStore.authHeader
@@ -86,7 +86,7 @@ async startAgent(name) {
   return { success: true, message: response.data?.message }
 }
 
-// Line 109-123: Stop agent
+// Line 137-151: Stop agent
 async stopAgent(name) {
   const response = await axios.post(`/api/agents/${name}/stop`, {}, {
     headers: authStore.authHeader
@@ -106,7 +106,7 @@ All agent endpoints are now in **modular router**: `src/backend/routers/agents.p
 
 The router is registered in `src/backend/main.py` with prefix `/api/agents`.
 
-### Pydantic Models (`src/backend/models.py:9-39`)
+### Pydantic Models (`src/backend/models.py:10-40`)
 
 ```python
 class AgentConfig(BaseModel):
@@ -135,33 +135,39 @@ class AgentStatus(BaseModel):
 
 ### Endpoints
 
-#### Create Agent (`src/backend/routers/agents.py:272-571`)
+#### Create Agent (`src/backend/routers/agents.py:726-729`)
 ```python
 @router.post("")
 async def create_agent_endpoint(config: AgentConfig, request: Request, current_user: User = Depends(get_current_user)):
+    """Create a new agent."""
+    return await create_agent_internal(config, current_user, request, skip_name_sanitization=False)
 ```
 
-**Business Logic:**
-1. **Sanitize name** (line 275-279): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
-2. **Check existence** (line 281-282): Query Docker for existing container via `get_agent_by_name()`
-3. **Load template** (line 290-339): GitHub or local template processing
-4. **Auto-assign port** (line 341-342): Find next available SSH port (2290+) via `get_next_available_port()`
-5. **Get credentials** (line 344): `credential_manager.get_agent_credentials()`
-6. **Generate credential files** (line 354-367): Process template placeholders via `generate_credential_files()`
-7. **Create MCP API key** (line 406-419): Generate agent-scoped Trinity MCP access key
-8. **Build env vars** (line 421-456): ANTHROPIC_API_KEY, MCP server credentials, GitHub repo/PAT
-9. **Mount Trinity meta-prompt** (line 472-477): Mount `/trinity-meta-prompt` volume for planning commands
-10. **Create container** (line 479-504): Docker SDK `containers.run()` with security options
-11. **Register ownership** (line 522): `db.register_agent_owner(current_user.username)`
-12. **Create git config** (line 524-534): For GitHub-native agents (Phase 7)
-13. **Broadcast WebSocket** (line 508-520): `agent_created` event
-14. **Audit log** (line 536-551): `event_type="agent_management", action="create"`
+**Internal Function** (`src/backend/routers/agents.py:329-718`):
 
-#### Delete Agent (`src/backend/routers/agents.py:574-631`)
+**Business Logic:**
+1. **Sanitize name** (line 352-357): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
+2. **Check existence** (line 359-360): Query Docker for existing container via `get_agent_by_name()`
+3. **Load template** (line 368-419): GitHub or local template processing
+4. **Auto-assign port** (line 421-422): Find next available SSH port (2289+) via `get_next_available_port()`
+5. **Get credentials** (line 424): `credential_manager.get_agent_credentials()`
+6. **Generate credential files** (line 434-447): Process template placeholders via `generate_credential_files()`
+7. **Create MCP API key** (line 492-501): Generate agent-scoped Trinity MCP access key
+8. **Build env vars** (line 503-538): ANTHROPIC_API_KEY, MCP server credentials, GitHub repo/PAT
+9. **Create persistent volume** (line 544-554): Per-agent workspace volume for Pillar III compliance
+10. **Mount Trinity meta-prompt** (line 569-574): Mount `/trinity-meta-prompt` volume for planning commands
+11. **Create container** (line 623-648): Docker SDK `containers.run()` with security options
+12. **Register ownership** (line 666): `db.register_agent_owner(current_user.username)`
+13. **Grant default permissions** (line 668-674): Same-owner agent permissions (Phase 9.10)
+14. **Create git config** (line 676-686): For GitHub-native agents (Phase 7)
+15. **Broadcast WebSocket** (line 652-664): `agent_created` event
+16. **Audit log** (line 688-703): `event_type="agent_management", action="create"`
+
+#### Delete Agent (`src/backend/routers/agents.py:732-818`)
 ```python
 @router.delete("/{agent_name}")
-async def delete_agent_endpoint(agent_name: str, ...):
-    # Authorization check: owner or admin (line 577-587)
+async def delete_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    # Authorization check: owner or admin (line 735-745)
     if not db.can_user_delete_agent(current_user.username, agent_name):
         raise HTTPException(403, "Permission denied")
 
@@ -169,51 +175,77 @@ async def delete_agent_endpoint(agent_name: str, ...):
     container.stop()
     container.remove()
 
-    # Delete schedules (line 599-603)
+    # Delete persistent volume (line 757-765)
+    volume = docker_client.volumes.get(f"agent-{agent_name}-workspace")
+    volume.remove()
+
+    # Delete schedules (line 767-771)
     schedules = db.list_agent_schedules(agent_name)
     for schedule in schedules:
         scheduler_service.remove_schedule(schedule.id)
     db.delete_agent_schedules(agent_name)
 
-    # Delete git config (line 605-606)
+    # Delete git config (line 773-774)
     git_service.delete_agent_git_config(agent_name)
 
-    # Delete MCP API key (line 608-612)
+    # Delete MCP API key (line 776-780)
     db.delete_agent_mcp_api_key(agent_name)
 
-    # Delete ownership (line 614) - cascades to shares
+    # Delete agent permissions (line 782-786)
+    db.delete_agent_permissions(agent_name)
+
+    # Delete shared folder config (line 788-799)
+    db.delete_shared_folder_config(agent_name)
+
+    # Delete ownership (line 801) - cascades to shares
     db.delete_agent_ownership(agent_name)
 
-    # Broadcast WebSocket (line 616-620), audit log (line 622-629)
+    # Broadcast WebSocket (line 803-807), audit log (line 809-816)
 ```
 
-#### Start Agent (`src/backend/routers/agents.py:634-678`)
+#### Start Agent (`src/backend/routers/agents.py:978-1016`)
 ```python
 @router.post("/{agent_name}/start")
-async def start_agent_endpoint(agent_name: str, ...):
-    container = get_agent_container(agent_name)
-    if not container:
-        raise HTTPException(status_code=404, detail="Agent not found")
+async def start_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+    # Use internal function for core start logic (line 983)
+    result = await start_agent_internal(agent_name)
+    trinity_status = result.get("trinity_injection", "unknown")
 
-    container.start()
-
-    # NEW: Trinity meta-prompt injection (line 644-648)
-    # Injects planning commands and creates directory structure
-    trinity_result = await inject_trinity_meta_prompt(agent_name)
-    trinity_status = trinity_result.get("status", "unknown")
-
-    # Broadcast WebSocket with injection status (line 650-654)
+    # Broadcast WebSocket with injection status (line 986-990)
     if manager:
         await manager.broadcast(json.dumps({
             "event": "agent_started",
             "data": {"name": agent_name, "trinity_injection": trinity_status}
         }))
 
-    # Audit log with injection status (line 656-664)
+    # Audit log with injection status (line 992-1000)
     await log_audit_event(..., details={"trinity_injection": trinity_status})
 ```
 
-**Trinity Meta-Prompt Injection Helper** (`src/backend/routers/agents.py:49-97`)
+**Internal Start Function** (`src/backend/routers/agents.py:114-154`):
+```python
+async def start_agent_internal(agent_name: str) -> dict:
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Phase 9.11: Check if shared folder config requires container recreation
+    needs_recreation = not _check_shared_folder_mounts_match(container, agent_name)
+    if needs_recreation:
+        await _recreate_container_with_shared_folders(agent_name, container, "system")
+        container = get_agent_container(agent_name)
+
+    container.start()
+
+    # Inject Trinity meta-prompt
+    trinity_result = await inject_trinity_meta_prompt(agent_name)
+    return {
+        "message": f"Agent {agent_name} started",
+        "trinity_injection": trinity_result.get("status", "unknown")
+    }
+```
+
+**Trinity Meta-Prompt Injection Helper** (`src/backend/routers/agents.py:50-111`)
 ```python
 async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
     """
@@ -229,17 +261,17 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
     response = await client.post(f"{agent_url}/api/trinity/inject")
 ```
 
-#### Stop Agent (`src/backend/routers/agents.py:681-718`)
+#### Stop Agent (`src/backend/routers/agents.py:1019-1056`)
 ```python
 @router.post("/{agent_name}/stop")
-async def stop_agent_endpoint(agent_name: str, ...):
+async def stop_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     container.stop()
 
-    # Broadcast WebSocket (line 691-695), audit log (line 697-704)
+    # Broadcast WebSocket (line 1029-1033), audit log (line 1035-1042)
 ```
 
 ### Docker Service (`src/backend/services/docker_service.py`)
@@ -252,7 +284,7 @@ async def stop_agent_endpoint(agent_name: str, ...):
 | `get_agent_status_from_container()` | 31-58 | Convert Docker container to AgentStatus model |
 | `list_all_agents()` | 61-73 | List all containers with `trinity.platform=agent` label |
 | `get_agent_by_name()` | 76-81 | Get specific agent status |
-| `get_next_available_port()` | 84-88 | Find next SSH port (2290+) |
+| `get_next_available_port()` | 84-88 | Find next SSH port (2289+) |
 
 **Status Normalization (line 38-44):**
 ```python
@@ -268,7 +300,7 @@ else:
 
 ---
 
-## Database Layer (`src/backend/database.py`)
+## Database Layer (`src/backend/db/agents.py`)
 
 ### Tables
 
@@ -314,21 +346,21 @@ CREATE TABLE agent_mcp_api_keys (
 )
 ```
 
-### Operations
+### Operations (`src/backend/db/agents.py`)
 
 | Method | Line | Purpose |
 |--------|------|---------|
-| `register_agent_owner()` | 479-496 | Record owner on creation |
-| `delete_agent_ownership()` | 526-535 | Delete ownership + cascade shares |
-| `can_user_delete_agent()` | 558-572 | Authorization check (owner or admin) |
-| `get_agent_owner()` | 498-524 | Get owner info |
-| `can_user_access_agent()` | 537-556 | Check if user can view agent |
+| `register_agent_owner()` | 38-55 | Record owner on creation |
+| `get_agent_owner()` | 57-70 | Get owner info |
+| `delete_agent_ownership()` | 85-94 | Delete ownership + cascade shares |
+| `can_user_access_agent()` | 96-115 | Check if user can view agent |
+| `can_user_delete_agent()` | 117-132 | Authorization check (owner or admin) |
 
 ---
 
 ## Docker Configuration
 
-### Container Labels (`src/backend/routers/agents.py:486-495`)
+### Container Labels (`src/backend/routers/agents.py:630-638`)
 | Label | Purpose |
 |-------|---------|
 | `trinity.platform=agent` | Identifies Trinity agents |
@@ -340,7 +372,7 @@ CREATE TABLE agent_mcp_api_keys (
 | `trinity.created` | Creation timestamp (ISO format) |
 | `trinity.template` | Template used (empty string if none) |
 
-### Security Options (line 496-500)
+### Security Options (line 640-644)
 ```python
 security_opt=['no-new-privileges:true', 'apparmor:docker-default'],
 cap_drop=['ALL'],
@@ -349,18 +381,28 @@ read_only=False,
 tmpfs={'/tmp': 'noexec,nosuid,size=100m'}
 ```
 
-### Network Isolation (line 501)
+### Network Isolation (line 645)
 - Network: `trinity-agent-network` (Docker network)
 - Only SSH port (22) mapped externally via `ports={'22/tcp': config.port}`
 - UI port (8000) NOT exposed - accessed via backend proxy at `/api/agents/{name}/ui/`
 
-### Resource Limits (line 502-503)
+### Resource Limits (line 646-647)
 ```python
 mem_limit=config.resources.get('memory', '4Gi'),
 cpu_count=int(config.resources.get('cpu', '2'))
 ```
 
-### Trinity Meta-Prompt Volume (line 472-477)
+### Persistent Volume (line 542-561)
+```python
+# Create per-agent persistent volume for /home/developer (Pillar III: Persistent Memory)
+agent_volume_name = f"agent-{config.name}-workspace"
+volumes = {
+    ...
+    agent_volume_name: {'bind': '/home/developer', 'mode': 'rw'}  # Persistent workspace
+}
+```
+
+### Trinity Meta-Prompt Volume (line 569-574)
 ```python
 # Mount Trinity meta-prompt for task DAG planning (Phase 9)
 container_meta_prompt_path = Path("/trinity-meta-prompt")
@@ -376,10 +418,10 @@ if container_meta_prompt_path.exists():
 ### WebSocket Broadcasts
 | Event | Payload | Trigger |
 |-------|---------|---------|
-| `agent_created` | `{name, type, status, port, created, resources, container_id}` | After container.run() (line 508-520) |
-| `agent_started` | `{name, trinity_injection}` | After container.start() + Trinity injection (line 650-654) |
-| `agent_stopped` | `{name}` | After container.stop() (line 691-695) |
-| `agent_deleted` | `{name}` | After container.remove() (line 616-620) |
+| `agent_created` | `{name, type, status, port, created, resources, container_id}` | After container.run() (line 652-664) |
+| `agent_started` | `{name, trinity_injection}` | After container.start() + Trinity injection (line 986-990) |
+| `agent_stopped` | `{name}` | After container.stop() (line 1029-1033) |
+| `agent_deleted` | `{name}` | After container.remove() (line 803-807) |
 
 ### Audit Logging
 ```python
@@ -396,11 +438,14 @@ await log_audit_event(
 ```
 
 ### Cascading Deletes (on agent deletion)
-1. **Schedules**: All scheduled tasks removed from scheduler and database
-2. **Git Config**: GitHub sync configuration deleted
-3. **MCP API Key**: Agent's Trinity MCP access key revoked
-4. **Ownership**: Ownership record deleted
-5. **Shares**: All shares cascade deleted via foreign key constraint
+1. **Persistent Volume**: Agent workspace volume deleted
+2. **Schedules**: All scheduled tasks removed from scheduler and database
+3. **Git Config**: GitHub sync configuration deleted
+4. **MCP API Key**: Agent's Trinity MCP access key revoked
+5. **Permissions**: Agent-to-agent permissions deleted (source and target)
+6. **Shared Folders**: Shared folder config and shared volume deleted
+7. **Ownership**: Ownership record deleted
+8. **Shares**: All shares cascade deleted via foreign key constraint
 
 ---
 
@@ -524,7 +569,7 @@ await log_audit_event(
 
 ---
 
-**Last Tested**: 2025-12-07
+**Last Updated**: 2025-12-19
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with modular router architecture and Trinity meta-prompt injection
 
@@ -534,6 +579,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2025-12-19 | **Line number updates**: Updated all line number references to match current codebase. Added Phase 9.10 (agent permissions) and Phase 9.11 (shared folders) cleanup in delete flow. Updated frontend component references. |
 | 2025-12-09 | **Critical Bug Fix - File Persistence**: Added checks in `startup.sh` to skip re-cloning if repo already exists. Git-sync agents check for `.git` directory; non-git-sync agents check for `.trinity-initialized` marker. Files now persist across container restarts (Pillar III compliance). |
 | 2025-12-07 | **CreateAgentModal enhancements**: Added `initialTemplate` prop for pre-selection, `created` event for navigation after success. Used by Templates.vue to open modal with template pre-selected and navigate to new agent's detail page. |
 

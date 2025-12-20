@@ -52,6 +52,12 @@ export function createAgentTools(
         const apiClient = getClient(authContext);
         const agents = await apiClient.listAgents();
 
+        // Phase 11.1: System-scoped keys see all agents (no filtering)
+        if (authContext?.scope === "system") {
+          console.log(`[list_agents] System agent - showing all ${agents.length} agents`);
+          return JSON.stringify(agents, null, 2);
+        }
+
         // Phase 9.10: Filter agents for agent-scoped keys
         // Agent-scoped keys only see permitted agents + self
         if (authContext?.scope === "agent" && authContext?.agentName) {
@@ -205,6 +211,18 @@ export function createAgentTools(
       }),
       execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
         const authContext = context?.session;
+
+        // Phase 11.1: Prevent system agent from deleting itself
+        // This is an extra safety check - backend also blocks this
+        if (authContext?.scope === "system" && authContext?.agentName === name) {
+          console.log(`[delete_agent] System agent cannot delete itself`);
+          return JSON.stringify({
+            error: "Cannot delete system agent",
+            reason: "System agents cannot be deleted. Use re-initialization instead.",
+            agent: name
+          }, null, 2);
+        }
+
         const apiClient = getClient(authContext);
         const result = await apiClient.deleteAgent(name);
         return result.message;

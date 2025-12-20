@@ -45,6 +45,17 @@
             </router-link>
             <router-link
               v-if="isAdmin"
+              to="/system-agent"
+              class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              :class="{ 'border-purple-500 dark:border-purple-400 text-gray-900 dark:text-white': $route.path === '/system-agent' }"
+            >
+              <svg class="w-4 h-4 mr-1 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              System
+            </router-link>
+            <router-link
+              v-if="isAdmin"
               to="/settings"
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/settings' }"
@@ -216,7 +227,9 @@ onMounted(async () => {
 
   // Fetch user role from backend
   try {
-    const response = await axios.get('/api/users/me')
+    const response = await axios.get('/api/users/me', {
+      headers: authStore.authHeader
+    })
     userRole.value = response.data.role
   } catch (e) {
     console.warn('Failed to fetch user role:', e)

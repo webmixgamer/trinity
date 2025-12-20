@@ -3,13 +3,13 @@
     <!-- Header -->
     <div class="flex justify-between items-center">
       <div>
-        <h3 class="text-lg font-medium text-gray-900">Execution History</h3>
-        <p class="text-sm text-gray-500">All scheduled and manual executions for this agent</p>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Execution History</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">All scheduled and manual executions for this agent</p>
       </div>
       <button
         @click="loadExecutions"
         :disabled="loading"
-        class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+        class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
       >
         <svg v-if="loading" class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -24,70 +24,70 @@
 
     <!-- Summary Stats -->
     <div v-if="executions.length > 0" class="grid grid-cols-4 gap-4">
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <p class="text-xs text-gray-500 mb-1">Total Executions</p>
-        <p class="text-2xl font-semibold text-gray-900">{{ executions.length }}</p>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Executions</p>
+        <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ executions.length }}</p>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <p class="text-xs text-gray-500 mb-1">Success Rate</p>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Success Rate</p>
         <p class="text-2xl font-semibold" :class="successRate >= 90 ? 'text-green-600' : successRate >= 70 ? 'text-yellow-600' : 'text-red-600'">
           {{ successRate }}%
         </p>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <p class="text-xs text-gray-500 mb-1">Total Cost</p>
-        <p class="text-2xl font-semibold text-gray-900 font-mono">${{ totalCost.toFixed(4) }}</p>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Cost</p>
+        <p class="text-2xl font-semibold text-gray-900 dark:text-white font-mono">${{ totalCost.toFixed(4) }}</p>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <p class="text-xs text-gray-500 mb-1">Avg Duration</p>
-        <p class="text-2xl font-semibold text-gray-900">{{ formatDuration(avgDuration) }}</p>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg Duration</p>
+        <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDuration(avgDuration) }}</p>
       </div>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading && executions.length === 0" class="text-center py-8">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-      <p class="text-sm text-gray-500 mt-2">Loading executions...</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Loading executions...</p>
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="executions.length === 0" class="text-center py-12 bg-gray-50 rounded-lg">
-      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div v-else-if="executions.length === 0" class="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
-      <p class="mt-2 text-gray-500">No executions yet</p>
-      <p class="text-sm text-gray-400">Configure schedules to automate agent tasks</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">No executions yet</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500">Configure schedules to automate agent tasks</p>
     </div>
 
     <!-- Executions Table -->
-    <div v-else class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
+    <div v-else class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <thead class="bg-gray-50 dark:bg-gray-800/50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Context</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trigger</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Started</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Context</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cost</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trigger</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Message</th>
           </tr>
         </thead>
-        <tbody class="bg-white divide-y divide-gray-200">
+        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
           <tr
             v-for="exec in executions"
             :key="exec.id"
             @click="viewExecutionDetail(exec)"
-            class="hover:bg-gray-50 cursor-pointer transition-colors"
+            class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
           >
             <td class="px-4 py-3 whitespace-nowrap">
               <span
                 :class="[
                   'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-                  exec.status === 'success' ? 'bg-green-100 text-green-800' :
-                  exec.status === 'failed' ? 'bg-red-100 text-red-800' :
-                  exec.status === 'running' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-gray-100 text-gray-800'
+                  exec.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                  exec.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                  exec.status === 'running' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' :
+                  'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                 ]"
               >
                 <span
@@ -102,39 +102,39 @@
                 {{ exec.status }}
               </span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
               {{ formatDateTime(exec.started_at) }}
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-mono">
+            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 font-mono">
               {{ formatDuration(exec.duration_ms) || '-' }}
             </td>
             <td class="px-4 py-3 whitespace-nowrap">
               <div v-if="exec.context_used && exec.context_max" class="flex items-center space-x-2">
-                <div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div class="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
                     class="h-full rounded-full"
                     :class="getContextBarColor(exec.context_used, exec.context_max)"
                     :style="{ width: Math.min(100, (exec.context_used / exec.context_max) * 100) + '%' }"
                   ></div>
                 </div>
-                <span class="text-xs text-gray-500">{{ formatContextPercent(exec.context_used, exec.context_max) }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatContextPercent(exec.context_used, exec.context_max) }}</span>
               </div>
-              <span v-else class="text-xs text-gray-400">-</span>
+              <span v-else class="text-xs text-gray-400 dark:text-gray-500">-</span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600">
+            <td class="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
               {{ exec.cost ? '$' + exec.cost.toFixed(4) : '-' }}
             </td>
             <td class="px-4 py-3 whitespace-nowrap">
               <span
                 :class="[
                   'px-1.5 py-0.5 rounded text-xs',
-                  exec.triggered_by === 'manual' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  exec.triggered_by === 'manual' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 ]"
               >
                 {{ exec.triggered_by }}
               </span>
             </td>
-            <td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
+            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 max-w-xs truncate">
               {{ exec.message.substring(0, 50) }}{{ exec.message.length > 50 ? '...' : '' }}
             </td>
           </tr>
@@ -146,25 +146,25 @@
     <div v-if="selectedExecution" class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" @click="selectedExecution = null"></div>
-        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full relative z-10 max-h-[85vh] overflow-hidden flex flex-col">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full relative z-10 max-h-[85vh] overflow-hidden flex flex-col">
           <!-- Header -->
-          <div class="p-4 border-b border-gray-200 flex justify-between items-start">
+          <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-start">
             <div>
-              <h3 class="text-lg font-medium text-gray-900">Execution Details</h3>
-              <p class="text-sm text-gray-500 mt-1">{{ formatDateTime(selectedExecution.started_at) }}</p>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Execution Details</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ formatDateTime(selectedExecution.started_at) }}</p>
             </div>
             <div class="flex items-center space-x-3">
               <span
                 :class="[
                   'px-2 py-1 rounded-full text-xs font-medium',
-                  selectedExecution.status === 'success' ? 'bg-green-100 text-green-800' :
-                  selectedExecution.status === 'failed' ? 'bg-red-100 text-red-800' :
-                  'bg-yellow-100 text-yellow-800'
+                  selectedExecution.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                  selectedExecution.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                  'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
                 ]"
               >
                 {{ selectedExecution.status }}
               </span>
-              <button @click="selectedExecution = null" class="text-gray-400 hover:text-gray-600">
+              <button @click="selectedExecution = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -173,20 +173,20 @@
           </div>
 
           <!-- Stats Row -->
-          <div class="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-5 gap-4">
+          <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 grid grid-cols-5 gap-4">
             <div>
-              <p class="text-xs text-gray-500">Duration</p>
-              <p class="text-sm font-medium">{{ formatDuration(selectedExecution.duration_ms) || '-' }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Duration</p>
+              <p class="text-sm font-medium dark:text-white">{{ formatDuration(selectedExecution.duration_ms) || '-' }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Cost</p>
-              <p class="text-sm font-medium font-mono">${{ selectedExecution.cost?.toFixed(4) || '0.0000' }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Cost</p>
+              <p class="text-sm font-medium font-mono dark:text-white">${{ selectedExecution.cost?.toFixed(4) || '0.0000' }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Context Used</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Context Used</p>
               <div class="flex items-center space-x-2">
-                <p class="text-sm font-medium">{{ formatTokens(selectedExecution.context_used) }}</p>
-                <div v-if="selectedExecution.context_max" class="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <p class="text-sm font-medium dark:text-white">{{ formatTokens(selectedExecution.context_used) }}</p>
+                <div v-if="selectedExecution.context_max" class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
                     class="h-full rounded-full"
                     :class="getContextBarColor(selectedExecution.context_used, selectedExecution.context_max)"
@@ -196,12 +196,12 @@
               </div>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Context Max</p>
-              <p class="text-sm font-medium">{{ formatTokens(selectedExecution.context_max) }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Context Max</p>
+              <p class="text-sm font-medium dark:text-white">{{ formatTokens(selectedExecution.context_max) }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Triggered By</p>
-              <p class="text-sm font-medium capitalize">{{ selectedExecution.triggered_by }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Triggered By</p>
+              <p class="text-sm font-medium capitalize dark:text-white">{{ selectedExecution.triggered_by }}</p>
             </div>
           </div>
 
@@ -209,33 +209,33 @@
           <div class="flex-1 overflow-y-auto p-4 space-y-4">
             <!-- Message Sent -->
             <div>
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Message Sent</h4>
-              <div class="bg-gray-100 rounded p-3 text-sm font-mono whitespace-pre-wrap">{{ selectedExecution.message }}</div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Message Sent</h4>
+              <div class="bg-gray-100 dark:bg-gray-700 rounded p-3 text-sm font-mono whitespace-pre-wrap dark:text-gray-300">{{ selectedExecution.message }}</div>
             </div>
 
             <!-- Error (if any) -->
             <div v-if="selectedExecution.error">
-              <h4 class="text-sm font-medium text-red-700 mb-2">Error</h4>
-              <div class="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700 whitespace-pre-wrap">{{ selectedExecution.error }}</div>
+              <h4 class="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Error</h4>
+              <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap">{{ selectedExecution.error }}</div>
             </div>
 
             <!-- Tool Calls -->
             <div v-if="parsedToolCalls.length > 0">
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Tool Calls ({{ parsedToolCalls.length }})</h4>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tool Calls ({{ parsedToolCalls.length }})</h4>
               <div class="space-y-1 max-h-48 overflow-y-auto">
                 <div
                   v-for="(tool, idx) in parsedToolCalls"
                   :key="idx"
-                  class="flex items-center justify-between text-xs bg-gray-100 rounded px-2 py-1.5"
+                  class="flex items-center justify-between text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1.5"
                 >
                   <div class="flex items-center space-x-2">
-                    <span class="font-medium text-indigo-600">{{ tool.tool }}</span>
-                    <span v-if="tool.input" class="text-gray-500 truncate max-w-md">
+                    <span class="font-medium text-indigo-600 dark:text-indigo-400">{{ tool.tool }}</span>
+                    <span v-if="tool.input" class="text-gray-500 dark:text-gray-400 truncate max-w-md">
                       {{ summarizeToolInput(tool) }}
                     </span>
                   </div>
                   <div class="flex items-center space-x-2">
-                    <span v-if="tool.duration_ms" class="text-gray-400">{{ formatDuration(tool.duration_ms) }}</span>
+                    <span v-if="tool.duration_ms" class="text-gray-400 dark:text-gray-500">{{ formatDuration(tool.duration_ms) }}</span>
                     <span v-if="tool.success !== undefined" :class="tool.success ? 'text-green-600' : 'text-red-600'">
                       {{ tool.success ? '✓' : '✗' }}
                     </span>
@@ -246,16 +246,16 @@
 
             <!-- Response -->
             <div v-if="selectedExecution.response">
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Response</h4>
-              <div class="bg-gray-100 rounded p-3 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">{{ selectedExecution.response }}</div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Response</h4>
+              <div class="bg-gray-100 dark:bg-gray-700 rounded p-3 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto dark:text-gray-300">{{ selectedExecution.response }}</div>
             </div>
           </div>
 
           <!-- Footer -->
-          <div class="p-4 border-t border-gray-200 flex justify-end">
+          <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
             <button
               @click="selectedExecution = null"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
             >
               Close
             </button>

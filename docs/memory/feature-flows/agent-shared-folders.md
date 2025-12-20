@@ -1,5 +1,7 @@
 # Feature: Agent Shared Folders
 
+> **Last Updated**: 2025-12-19
+
 ## Overview
 
 File-based collaboration between agents via shared Docker volumes. Agents can expose a shared folder that other permitted agents can mount, enabling asynchronous file exchange between agents.
@@ -16,7 +18,7 @@ As an operator, I want agents to share files with each other so that an orchestr
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:321` - Shared Folders tab (visible to owners)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:320` - Shared Folders tab (visible to owners)
 - **API**: `GET/PUT /api/agents/{name}/folders`
 - **API**: `GET /api/agents/{name}/folders/available`
 - **API**: `GET /api/agents/{name}/folders/consumers`
@@ -28,7 +30,7 @@ As an operator, I want agents to share files with each other so that an orchestr
 ### Components
 
 - `AgentDetail.vue:319-331` - Shared Folders tab button (v-if="agent.can_share")
-- `AgentDetail.vue:987-989` - FoldersPanel content render
+- `AgentDetail.vue:989` - FoldersPanel content render
 - `FoldersPanel.vue` - Complete folder configuration UI (306 lines)
 
 ### FoldersPanel.vue Features
@@ -49,10 +51,10 @@ As an operator, I want agents to share files with each other so that an orchestr
 
 4. **Restart Required Banner**:
    - Shown when config changed but agent not restarted
-   - Line 24-36 in FoldersPanel.vue
+   - Lines 23-36 in FoldersPanel.vue
 
 5. **How It Works** Help Section:
-   - Lines 194-214 in FoldersPanel.vue
+   - Lines 193-214 in FoldersPanel.vue
 
 ### State Management
 
@@ -84,14 +86,14 @@ await axios.get(`/api/agents/${name}/folders/consumers`)
 
 ## Backend Layer
 
-### Endpoints
+### Endpoints (src/backend/routers/agents.py)
 
 | Method | Path | Handler | Line | Description |
 |--------|------|---------|------|-------------|
-| GET | `/api/agents/{name}/folders` | `get_agent_folders()` | 2244 | Get folder config and mount status |
-| PUT | `/api/agents/{name}/folders` | `update_agent_folders()` | 2327 | Update expose/consume settings |
-| GET | `/api/agents/{name}/folders/available` | `get_available_shared_folders()` | 2384 | List mountable folders |
-| GET | `/api/agents/{name}/folders/consumers` | `get_folder_consumers()` | 2426 | List consuming agents |
+| GET | `/api/agents/{name}/folders` | `get_agent_folders()` | 2312 | Get folder config and mount status |
+| PUT | `/api/agents/{name}/folders` | `update_agent_folders()` | 2395 | Update expose/consume settings |
+| GET | `/api/agents/{name}/folders/available` | `get_available_shared_folders()` | 2452 | List mountable folders |
+| GET | `/api/agents/{name}/folders/consumers` | `get_folder_consumers()` | 2494 | List consuming agents |
 
 ### Request/Response Models
 
@@ -159,28 +161,28 @@ await axios.get(`/api/agents/${name}/folders/consumers`)
 }
 ```
 
-### Business Logic
+### Business Logic (src/backend/routers/agents.py)
 
-#### Agent Creation Flow (agents.py:499-544)
+#### Agent Creation Flow (lines 570-622)
 
 1. Check if agent has shared folder config: `db.get_shared_folder_config(config.name)`
 2. If `expose_enabled`:
    - Create Docker volume `agent-{name}-shared` with labels
-   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 519-528)
+   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 596-605)
    - Mount at `/home/developer/shared-out` (rw)
 3. If `consume_enabled`:
    - Get available shared folders (permission-filtered): `db.get_available_shared_folders(config.name)`
    - For each available folder, check if source volume exists
    - Mount volume at `/home/developer/shared-in/{agent}` (rw)
 
-#### Agent Start Flow - Container Recreation (agents.py:895-948)
+#### Agent Start Flow - Container Recreation (lines 114-154)
 
-1. Check if shared folder mounts match config: `_check_shared_folder_mounts_match(container, agent_name)` (line 905)
-2. If mounts don't match, recreate container: `_recreate_container_with_shared_folders()` (line 909)
+1. Check if shared folder mounts match config: `_check_shared_folder_mounts_match(container, agent_name)` (line 136)
+2. If mounts don't match, recreate container: `_recreate_container_with_shared_folders()` (line 141)
 3. Start the (possibly new) container
 4. WebSocket broadcast: `agent_started` event
 
-#### Helper: `_check_shared_folder_mounts_match()` (agents.py:852-892)
+#### Helper: `_check_shared_folder_mounts_match()` (lines 935-976)
 
 Compares container's actual mounts to database config:
 1. If no config exists, verify no shared mounts present
@@ -188,7 +190,7 @@ Compares container's actual mounts to database config:
 3. If `consume_enabled`, verify all permitted source volumes are mounted
 4. Returns `True` if mounts match, `False` if recreation needed
 
-#### Helper: `_recreate_container_with_shared_folders()` (agents.py:738-850)
+#### Helper: `_recreate_container_with_shared_folders()` (lines 821-932)
 
 Recreates container with updated volume mounts:
 1. Extract config from old container (image, env vars, labels, ports, resources)
@@ -200,7 +202,7 @@ Recreates container with updated volume mounts:
 4. Create new container with same settings + updated mounts
 5. Log recreation message
 
-#### Agent Deletion Flow (agents.py:705-716)
+#### Agent Deletion Flow (lines 788-799)
 
 1. Delete shared folder config from database: `db.delete_shared_folder_config(agent_name)`
 2. Delete shared volume if exists:
@@ -209,7 +211,7 @@ Recreates container with updated volume mounts:
    shared_volume.remove()
    ```
 
-#### Config Update Flow (agents.py:2327-2381)
+#### Config Update Flow (lines 2395-2449)
 
 1. Validate owner permission: `db.can_user_share_agent()`
 2. Update database config: `db.upsert_shared_folder_config()`
@@ -240,7 +242,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_folders_expose ON agent_shared_folder_conf
 CREATE INDEX IF NOT EXISTS idx_shared_folders_consume ON agent_shared_folder_config(consume_enabled);
 ```
 
-### Pydantic Models (db_models.py:243-274)
+### Pydantic Models (src/backend/db_models.py:243-274)
 
 ```python
 class SharedFolderConfig(BaseModel):
@@ -270,7 +272,7 @@ class SharedFolderInfo(BaseModel):
     restart_required: bool = False
 ```
 
-### Database Operations (db/shared_folders.py)
+### Database Operations (src/backend/db/shared_folders.py)
 
 | Method | Line | Description |
 |--------|------|-------------|
@@ -280,8 +282,8 @@ class SharedFolderInfo(BaseModel):
 | `get_agents_exposing_folders()` | 139 | List agents with expose=True |
 | `get_available_shared_folders(requesting_agent)` | 154 | Permission-filtered list |
 | `get_consuming_agents(source_agent)` | 178 | Agents that will mount source |
-| `get_shared_volume_name(agent_name)` | 209 | Static: `agent-{name}-shared` |
-| `get_shared_mount_path(source_agent)` | 218 | Static: `/home/developer/shared-in/{source}` |
+| `get_shared_volume_name(agent_name)` | 210 | Static: `agent-{name}-shared` |
+| `get_shared_mount_path(source_agent)` | 219 | Static: `/home/developer/shared-in/{source}` |
 
 ### Volume Naming
 
@@ -293,7 +295,7 @@ class SharedFolderInfo(BaseModel):
 
 ## Docker Integration
 
-### Volume Creation (agents.py:506-516)
+### Volume Creation (src/backend/routers/agents.py:585-593)
 
 ```python
 docker_client.volumes.create(
@@ -305,7 +307,7 @@ docker_client.volumes.create(
 )
 ```
 
-### Volume Ownership Fix (agents.py:519-528)
+### Volume Ownership Fix (src/backend/routers/agents.py:596-605)
 
 Docker creates volumes as root. Fix by running alpine container:
 
@@ -350,13 +352,13 @@ Shared folders respect the Agent Permissions system (Req 9.10):
    - Agent B has `consume_enabled=True`
    - Agent B has permission to call Agent A (via `agent_permissions` table)
 
-2. Permission check in `get_available_shared_folders()` (db/shared_folders.py:173):
+2. Permission check in `get_available_shared_folders()` (src/backend/db/shared_folders.py:173):
    ```python
    if self._permission_ops.is_permitted(requesting_agent, exposing_agent):
        available.append(exposing_agent)
    ```
 
-3. Consumer discovery in `get_consuming_agents()` (db/shared_folders.py:200):
+3. Consumer discovery in `get_consuming_agents()` (src/backend/db/shared_folders.py:200):
    ```python
    if self._permission_ops.is_permitted(agent, source_agent):
        available.append(agent)
@@ -366,7 +368,7 @@ Shared folders respect the Agent Permissions system (Req 9.10):
 
 ## Side Effects
 
-- **Audit Log**: `agent_folders:update_config` logged on config change (agents.py:2361-2372)
+- **Audit Log**: `agent_folders:update_config` logged on config change (src/backend/routers/agents.py:2429-2440)
 - **Docker Volumes**: Created/deleted on agent lifecycle
 - **Container Recreation**: On start when mounts don't match config
 - **No WebSocket**: No real-time updates (config changes require restart)
@@ -377,10 +379,10 @@ Shared folders respect the Agent Permissions system (Req 9.10):
 
 | Error | HTTP Status | Handler Location | Description |
 |-------|-------------|------------------|-------------|
-| Not owner | 403 | agents.py:2344-2345 | Only owner can modify folder sharing |
-| Agent not found | 404 | agents.py:2348-2349 | Container doesn't exist |
+| Not owner | 403 | routers/agents.py:2412-2413 | Only owner can modify folder sharing |
+| Agent not found | 404 | routers/agents.py:2415-2417 | Container doesn't exist |
 | Volume error | 500 | Container creation | Docker volume operation failed |
-| No access | 403 | agents.py:2260-2261 | User can't access this agent |
+| No access | 403 | routers/agents.py:2328-2329 | User can't access this agent |
 
 ---
 

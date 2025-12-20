@@ -55,6 +55,9 @@
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
 | ✅ | **System Manifest (10.7)** | Recipe-based multi-agent deployment via YAML - complete (agent creation, conflict resolution, trinity_prompt, folders, schedules, permissions, auto-start). Completed 2025-12-18. | HIGH |
+| ✅ | **OpenTelemetry Integration** | OTel Collector + env var injection for Claude Code metrics export. Completed 2025-12-20. | HIGH |
+| ✅ | **OpenTelemetry UI (10.8)** | Display OTel metrics in Dashboard - cost, tokens, productivity. Backend API + header summary + panel detail. Completed 2025-12-20. | HIGH |
+| ✅ | **Internal System Agent (11.1)** | Auto-deployed platform orchestrator (`trinity-system`) with deletion protection, system-scoped MCP key, permission bypass. Completed 2025-12-20. | HIGH |
 | ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |
@@ -228,6 +231,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2025-12-20 | Internal System Agent (11.1) | Platform needs a privileged orchestrator that auto-deploys on startup, executes system-level user requests, and cannot be deleted. Enables unified multi-agent coordination. |
 | 2025-12-08 | Deprioritize Task DAG Graph Viz | Backend workplan system complete; text-based UI sufficient for now; graph viz is nice-to-have |
 | 2025-12-05 | Deep Agent positioning | Trinity = "Four Pillars of Deep Agency" platform. Pillar I (Explicit Planning) is the priority gap. |
 | 2025-11-26 | Docker as source of truth | Eliminates in-memory registry issues with multiple workers |

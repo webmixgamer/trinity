@@ -2,14 +2,26 @@
 
 > **Status**: Implemented and Tested
 > **Created**: 2025-12-07
-> **Last Tested**: 2025-12-08
-> **Purpose**: Systematic verification of Trinity platform functionality using predictable test agents
+> **Last Updated**: 2025-12-19
+> **Last Tested**: 2025-12-17 (179/179 tests passing)
+> **Purpose**: Systematic verification of Trinity platform functionality using predictable test agents and automated pytest suite
 
 ---
 
 ## Overview
 
-Trinity includes a suite of **8 testing agents** designed for systematic platform verification. Each agent performs ONE function well with predictable, deterministic behavior - making them ideal for testing specific Trinity features.
+Trinity includes a comprehensive test suite with **179 automated pytest tests** covering backend APIs, agent-server endpoints, and platform functionality. Additionally, there are **8 testing agent repositories** (local only) designed for manual integration testing with predictable, deterministic behavior.
+
+### Automated Test Suite (Primary)
+- **Location**: `tests/` directory
+- **Framework**: pytest with async support
+- **Coverage**: Backend API, agent-server, schedules, credentials, templates, permissions
+- **Status**: 179/179 passing (as of 2025-12-17)
+
+### Manual Test Agents (Secondary)
+- **Location**: `repositories/test-agent-*` (local repos, not in GitHub)
+- **Purpose**: Manual integration testing with real containers
+- **Note**: Test agent templates removed from `config.py` - use local repos for testing
 
 ## User Story
 
@@ -101,55 +113,65 @@ As a Trinity developer, I want predictable test agents so that I can systematica
 
 ## Configuration
 
-### Backend (`src/backend/config.py`)
+### Backend Configuration
 
-All 8 test agents are defined in `TEST_AGENT_TEMPLATES` (lines 168-268):
+**Current State (2025-12-19)**: Test agent templates have been removed from `config.py`. Only production templates are defined in `GITHUB_TEMPLATES`.
 
-```python
-TEST_AGENT_TEMPLATES = [
-    {
-        "id": "github:abilityai/test-agent-echo",
-        "display_name": "Test: Echo (GitHub)",
-        "description": "Simple echo agent for testing basic chat functionality...",
-        "github_repo": "abilityai/test-agent-echo",
-        "github_credential_id": "4g4p363VFbI4JJqp98Yr0Q",
-        "source": "github",
-        "resources": {"cpu": "1", "memory": "2g"},
-        "mcp_servers": [],
-        "required_credentials": [],
-        "category": "testing"
-    },
-    # ... test-counter, test-worker, test-delegator
-    # ... test-scheduler, test-queue, test-files, test-error
-]
+**Key Files** (modularized backend):
 
-# Combined with production templates
-ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES + TEST_AGENT_TEMPLATES
+| File | Line | Purpose |
+|------|------|---------|
+| `src/backend/config.py` | 64 | `GITHUB_TEMPLATES` - Production templates only |
+| `src/backend/config.py` | 137 | `ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES` |
+| `src/backend/routers/templates.py` | 9 | Imports `ALL_GITHUB_TEMPLATES` |
+| `src/backend/services/template_service.py` | 11 | Imports `ALL_GITHUB_TEMPLATES` |
+| `src/backend/services/template_service.py` | 14-19 | `get_github_template()` function |
+
+### Automated Test Suite Structure
+
+```
+tests/
+  conftest.py                    # Pytest fixtures, test client setup
+  test_agent_lifecycle.py        # Create, start, stop, delete agents
+  test_agent_chat.py             # Chat with agents, streaming
+  test_agent_files.py            # File browser API
+  test_agent_plans.py            # Workplan system
+  test_agent_git.py              # Git sync operations
+  test_agent_sharing.py          # Agent sharing/permissions
+  test_agent_permissions.py      # Agent-to-agent permissions
+  test_auth.py                   # Authentication flows
+  test_credentials.py            # Credential management
+  test_execution_queue.py        # Serial execution, 429 handling
+  test_mcp_keys.py               # MCP API key authentication
+  test_schedules.py              # Cron scheduling
+  test_settings.py               # System settings
+  test_systems.py                # System manifest deployment
+  test_templates.py              # Template API
+  utils/
+    assertions.py                # Test assertion helpers
+    cleanup.py                   # Test cleanup utilities
+  agent_server/                  # Direct agent-server tests
+    conftest.py                  # Agent-server fixtures
+    test_agent_info.py           # Info endpoint tests
+    test_agent_chat_direct.py    # Direct chat tests
+    test_agent_files_direct.py   # Direct file API tests
+    test_agent_plans_direct.py   # Direct workplan tests
 ```
 
-### Template Files Updated
+### Local Repository Structure (Manual Testing Only)
 
-| File | Change |
-|------|--------|
-| `config.py` | Added `TEST_AGENT_TEMPLATES` (8 agents) and `ALL_GITHUB_TEMPLATES` |
-| `routers/templates.py` | Import `ALL_GITHUB_TEMPLATES` instead of `GITHUB_TEMPLATES` |
-| `services/template_service.py` | Use `ALL_GITHUB_TEMPLATES` in `get_github_template()` |
-| `routers/agents.py` | Removed unused `GITHUB_TEMPLATES` import |
-
-### Local Repository Structure
-
-All 8 test agent repositories exist locally in `repositories/`:
+The 8 test agent repositories exist locally in `repositories/` for manual integration testing:
 
 ```
 repositories/
-  test-agent-echo/
-  test-agent-counter/
-  test-agent-worker/
-  test-agent-delegator/
-  test-agent-scheduler/
-  test-agent-queue/
-  test-agent-files/
-  test-agent-error/
+  test-agent-echo/        # Basic chat, streaming
+  test-agent-counter/     # File persistence, state
+  test-agent-worker/      # Workplan system (Pillar I)
+  test-agent-delegator/   # Agent-to-agent (Pillar II)
+  test-agent-scheduler/   # Cron execution (not in GitHub)
+  test-agent-queue/       # Execution queue (not in GitHub)
+  test-agent-files/       # File browser API (not in GitHub)
+  test-agent-error/       # Error handling (not in GitHub)
 ```
 
 Each repository contains:
@@ -161,7 +183,7 @@ test-agent-{name}/
   .gitignore         # Ignore .env, .mcp.json
 ```
 
-> **Note**: GitHub repositories need to be created and pushed. Currently only local repos exist in `repositories/` folder.
+> **Note**: These are local-only repositories. They were removed from `config.py` templates. For automated testing, use the pytest suite in `tests/`.
 
 ---
 
@@ -416,11 +438,24 @@ test-agent-{name}/
 
 ## Related Documentation
 
-- **Design Document**: `docs/TESTING_AGENTS_DESIGN.md`
 - **Testing Guide**: `docs/TESTING_GUIDE.md`
-- **Agent Lifecycle**: `feature-flows/agent-lifecycle.md`
-- **Workplan System**: `feature-flows/workplan-system.md`
-- **Agent Network**: `feature-flows/agent-network.md`
+- **Agent Lifecycle**: `docs/memory/feature-flows/agent-lifecycle.md`
+- **Workplan System**: `docs/memory/feature-flows/workplan-system.md`
+- **Agent Network**: `docs/memory/feature-flows/agent-network.md`
+- **Execution Queue**: `docs/memory/feature-flows/execution-queue.md`
+
+### Key Source Files
+
+| Component | File Path |
+|-----------|-----------|
+| Backend Config | `src/backend/config.py` |
+| Templates Router | `src/backend/routers/templates.py` |
+| Template Service | `src/backend/services/template_service.py` |
+| Agent-Server Main | `docker/base-image/agent_server/main.py` |
+| Agent-Server Chat | `docker/base-image/agent_server/routers/chat.py` |
+| Agent-Server Files | `docker/base-image/agent_server/routers/files.py` |
+| Agent-Server Plans | `docker/base-image/agent_server/routers/plans.py` |
+| Test Fixtures | `tests/conftest.py` |
 
 ---
 
@@ -436,3 +471,5 @@ test-agent-{name}/
 | 2025-12-08 | Full system test via UI - test-echo, test-counter, test-delegator all PASSED |
 | 2025-12-08 | Dashboard collaboration edges verified - "6x" message count label visible |
 | 2025-12-08 | Documented known issues: Template pre-selection bug, session expiration |
+| 2025-12-17 | Automated pytest suite: 179/179 tests passing |
+| 2025-12-19 | Updated documentation: Test agent templates removed from config.py, backend modularized (routers/), agent-server refactored to modular package (docker/base-image/agent_server/) |

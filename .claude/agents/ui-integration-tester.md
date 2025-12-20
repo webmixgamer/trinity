@@ -147,3 +147,4 @@ After completing the phase:
 3. Phase files are the source of truth for test steps
 4. Report issues found but do NOT fix them (testing mode)
 5. Take snapshot at start to confirm browser state
+6. **Re-login after deploy**: JWT tokens are invalidated when backend restarts. If you see 401 errors, logout and login again with fresh credentials

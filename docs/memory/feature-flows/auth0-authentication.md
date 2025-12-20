@@ -57,7 +57,7 @@ The authentication system was refactored from build-time (`VITE_DEV_MODE` env va
 
 ### Mode Detection Flow
 
-1. **App Startup** (`src/frontend/src/main.js:22-24`)
+1. **App Startup** (`src/frontend/src/main.js:23-24`)
    ```javascript
    const authStore = useAuthStore()
    authStore.initializeAuth()  // Calls detectAuthMode()
@@ -136,16 +136,16 @@ This prevents dev mode tokens from being used when the backend switches to produ
 // Line 4-5: Dev mode is now detected at RUNTIME from backend
 // The VITE_DEV_MODE env var is no longer used
 
-export const ALLOWED_DOMAIN = 'ability.ai'  // Fallback only
+export const ALLOWED_DOMAIN = import.meta.env.VITE_AUTH0_ALLOWED_DOMAIN || ''
 
 export const auth0Config = {
-  domain: 'dev-10tz4lo7hcoijxav.us.auth0.com',
-  clientId: 'bFeIEm4WAwaalgSnxsfS1V6vd4gOk0li',
+  domain: import.meta.env.VITE_AUTH0_DOMAIN || '',
+  clientId: import.meta.env.VITE_AUTH0_CLIENT_ID || '',
   authorizationParams: {
     redirect_uri: window.location.origin,
     scope: 'openid profile email',
     connection: 'google-oauth2',
-    hd: ALLOWED_DOMAIN  // Google domain hint
+    hd: ALLOWED_DOMAIN || undefined  // Google domain hint
   },
   useRefreshTokens: true,
   cacheLocation: 'localstorage'
@@ -220,7 +220,7 @@ Auth0 token exchange for production mode.
 
 **Business Logic:**
 1. Validate Auth0 token via `/userinfo` (line 111-132)
-2. Check email domain is @ability.ai (line 143-158)
+2. Check email domain is allowed (line 143-158)
 3. Verify email is verified (line 160-164)
 4. Get or create user in database (line 166-173)
 5. Create JWT with `mode="prod"` claim (line 175-180)
@@ -256,16 +256,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, m
 
 ## Docker Configuration
 
-### Development (`docker-compose.yml:12-13`)
+### Development (`docker-compose.yml:11`)
 ```yaml
 environment:
-  - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-true}  # Enable local login
+  - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-true}  # Enable local login for development
 ```
 
-### Production (`docker-compose.prod.yml:21`)
+### Production (`docker-compose.prod.yml:20`)
 ```yaml
 environment:
-  - DEV_MODE_ENABLED=false  # Auth0 only, no local login
+  - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-false}
 ```
 
 ### Switching Modes
@@ -277,7 +277,7 @@ docker-compose up
 DEV_MODE_ENABLED=false docker-compose up
 
 # Production (uses docker-compose.prod.yml):
-# DEV_MODE_ENABLED is hardcoded to false
+# DEV_MODE_ENABLED defaults to false
 ```
 
 ---
@@ -323,7 +323,7 @@ Auth0 -> auth.js: access_token
 auth.js -> Backend: POST /api/auth/exchange {auth0_token}
 Backend -> Auth0: GET /userinfo
 Auth0 -> Backend: User profile (email, name, etc.)
-Backend -> Backend: Validate @ability.ai domain
+Backend -> Backend: Validate allowed domain
 Backend -> SQLite: get_or_create_auth0_user()
 Backend -> auth.js: {access_token: "jwt-mode-prod", token_type: "bearer"}
 auth.js -> localStorage: Store token + user
@@ -389,7 +389,7 @@ On successful login, App.vue connects to WebSocket for real-time updates.
 | Invalid credentials | 401 | "Incorrect username or password" |
 | Invalid Auth0 token | 401 | "Invalid Auth0 token" |
 | No email in profile | 401 | "No email found in Auth0 profile" |
-| Wrong domain | 403 | "Access restricted to @ability.ai domain users only" |
+| Wrong domain | 403 | "Access restricted to @{domain} domain users only" |
 | Email not verified | 403 | "Email not verified" |
 | Invalid/expired JWT | 401 | "Could not validate credentials" |
 | Auth0 API failure | 500 | "Auth0 token exchange failed: {error}" |
@@ -402,7 +402,7 @@ On successful login, App.vue connects to WebSocket for real-time updates.
 2. **Mode Gating**: `/api/token` returns 403 when `DEV_MODE_ENABLED=false`
 3. **Token Mode Claim**: JWTs include `mode` claim to distinguish dev/prod tokens
 4. **Session Invalidation**: Dev tokens are cleared if backend switches to prod mode
-5. **Domain Restriction**: Server-side validation ensures only @ability.ai emails accepted
+5. **Domain Restriction**: Server-side validation ensures only allowed domain emails accepted
 6. **Token Expiry**: JWT expires in 30 minutes
 7. **Cookie Security**: SameSite=Strict prevents CSRF
 8. **Audit Trail**: All authentication events logged
@@ -423,7 +423,7 @@ On successful login, App.vue connects to WebSocket for real-time updates.
 - [ ] Backend running at http://localhost:8000
 - [ ] Frontend running at http://localhost:3000
 - [ ] Auth0 tenant configured (for production mode testing)
-- [ ] @ability.ai Google account (for production mode testing)
+- [ ] Allowed domain Google account (for production mode testing)
 
 ### Test Steps
 
@@ -469,7 +469,7 @@ DEV_MODE_ENABLED=false docker-compose up
 - Try to POST to `/api/token` directly via curl:
 ```bash
 curl -X POST http://localhost:8000/api/token \
-  -d "username=admin&password=trinity2024!"
+  -d "username=admin&password=yourpassword"
 ```
 
 **Expected**:
@@ -484,7 +484,7 @@ curl -X POST http://localhost:8000/api/token \
 **Action** (requires `DEV_MODE_ENABLED=false`):
 - Navigate to http://localhost:3000/login
 - Click "Sign in with Google"
-- Complete OAuth flow with @ability.ai account
+- Complete OAuth flow with allowed domain account
 
 **Expected**:
 - Redirect to Auth0
@@ -516,11 +516,11 @@ curl -X POST http://localhost:8000/api/token \
 - [ ] User must re-authenticate
 
 #### 6. Domain Restriction (Production)
-**Action**: Login with non-@ability.ai email (requires test setup)
+**Action**: Login with non-allowed domain email (requires test setup)
 
 **Expected**:
 - 403 Forbidden
-- Message: "Access restricted to @ability.ai domain users only"
+- Message: "Access restricted to @{domain} domain users only"
 
 **Verify**:
 - [ ] Backend rejects token exchange
@@ -535,6 +535,6 @@ docker-compose up
 
 ---
 
-**Last Updated**: 2025-12-05
+**Last Updated**: 2025-12-19
 **Status**: Working (dev mode tested, production mode tested)
-**Changes**: Refactored from build-time to runtime mode detection
+**Changes**: Updated line numbers and verified against current codebase

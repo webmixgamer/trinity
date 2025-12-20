@@ -3,8 +3,8 @@
     <!-- Header with Create Button -->
     <div class="flex justify-between items-center">
       <div>
-        <h3 class="text-lg font-medium text-gray-900">Scheduled Tasks</h3>
-        <p class="text-sm text-gray-500">Automate agent tasks with cron schedules</p>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Scheduled Tasks</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">Automate agent tasks with cron schedules</p>
       </div>
       <button
         @click="showCreateForm = true"
@@ -21,70 +21,70 @@
     <div v-if="showCreateForm || editingSchedule" class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" @click="closeForm"></div>
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full relative z-10 p-6">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full relative z-10 p-6">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
             {{ editingSchedule ? 'Edit Schedule' : 'Create Schedule' }}
           </h3>
 
           <form @submit.prevent="saveSchedule" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
               <input
                 v-model="formData.name"
                 type="text"
                 required
                 placeholder="Daily report"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Cron Expression</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cron Expression</label>
               <input
                 v-model="formData.cron_expression"
                 type="text"
                 required
                 placeholder="0 9 * * *"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <p class="text-xs text-gray-500 mt-1">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Format: minute hour day month day_of_week (e.g., "0 9 * * *" for 9 AM daily)
               </p>
               <div class="mt-1 flex flex-wrap gap-1">
-                <button type="button" @click="setCronPreset('0 9 * * *')" class="text-xs px-2 py-0.5 bg-gray-100 rounded hover:bg-gray-200">Daily 9 AM</button>
-                <button type="button" @click="setCronPreset('0 9 * * 1')" class="text-xs px-2 py-0.5 bg-gray-100 rounded hover:bg-gray-200">Weekly Mon</button>
-                <button type="button" @click="setCronPreset('0 */6 * * *')" class="text-xs px-2 py-0.5 bg-gray-100 rounded hover:bg-gray-200">Every 6h</button>
-                <button type="button" @click="setCronPreset('*/30 * * * *')" class="text-xs px-2 py-0.5 bg-gray-100 rounded hover:bg-gray-200">Every 30m</button>
+                <button type="button" @click="setCronPreset('0 9 * * *')" class="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300">Daily 9 AM</button>
+                <button type="button" @click="setCronPreset('0 9 * * 1')" class="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300">Weekly Mon</button>
+                <button type="button" @click="setCronPreset('0 */6 * * *')" class="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300">Every 6h</button>
+                <button type="button" @click="setCronPreset('*/30 * * * *')" class="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300">Every 30m</button>
               </div>
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Task Message</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Task Message</label>
               <textarea
                 v-model="formData.message"
                 required
                 rows="3"
                 placeholder="Generate and post the daily analytics report..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               ></textarea>
-              <p class="text-xs text-gray-500 mt-1">This message will be sent to the agent when the schedule triggers</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">This message will be sent to the agent when the schedule triggers</p>
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description (optional)</label>
               <input
                 v-model="formData.description"
                 type="text"
                 placeholder="Optional description"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
               <select
                 v-model="formData.timezone"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="UTC">UTC</option>
                 <option value="America/New_York">America/New_York (EST/EDT)</option>
@@ -103,10 +103,10 @@
                 id="enabled"
                 class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
               />
-              <label for="enabled" class="ml-2 text-sm text-gray-700">Enable schedule immediately</label>
+              <label for="enabled" class="ml-2 text-sm text-gray-700 dark:text-gray-300">Enable schedule immediately</label>
             </div>
 
-            <div v-if="formError" class="p-3 bg-red-50 text-red-700 text-sm rounded-md">
+            <div v-if="formError" class="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm rounded-md">
               {{ formError }}
             </div>
 
@@ -114,7 +114,7 @@
               <button
                 type="button"
                 @click="closeForm"
-                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
               >
                 Cancel
               </button>
@@ -141,44 +141,44 @@
     <!-- Schedules List -->
     <div v-if="loading" class="text-center py-8">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-      <p class="text-sm text-gray-500 mt-2">Loading schedules...</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Loading schedules...</p>
     </div>
 
-    <div v-else-if="schedules.length === 0" class="text-center py-12 bg-gray-50 rounded-lg">
-      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div v-else-if="schedules.length === 0" class="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <p class="mt-2 text-gray-500">No schedules configured</p>
-      <p class="text-sm text-gray-400">Create a schedule to automate agent tasks</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">No schedules configured</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500">Create a schedule to automate agent tasks</p>
     </div>
 
     <div v-else class="space-y-4">
       <div
         v-for="schedule in schedules"
         :key="schedule.id"
-        class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-sm transition-shadow"
       >
         <div class="flex justify-between items-start">
           <div class="flex-1">
             <div class="flex items-center space-x-2">
-              <h4 class="font-medium text-gray-900">{{ schedule.name }}</h4>
+              <h4 class="font-medium text-gray-900 dark:text-white">{{ schedule.name }}</h4>
               <span
                 :class="[
                   'px-2 py-0.5 text-xs font-medium rounded-full',
-                  schedule.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                  schedule.enabled ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 ]"
               >
                 {{ schedule.enabled ? 'Active' : 'Disabled' }}
               </span>
             </div>
-            <p v-if="schedule.description" class="text-sm text-gray-500 mt-1">{{ schedule.description }}</p>
+            <p v-if="schedule.description" class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ schedule.description }}</p>
 
-            <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+            <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
               <span class="flex items-center">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <code class="font-mono bg-gray-100 px-1 rounded">{{ schedule.cron_expression }}</code>
+                <code class="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">{{ schedule.cron_expression }}</code>
               </span>
               <span class="flex items-center">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -186,7 +186,7 @@
                 </svg>
                 {{ schedule.timezone }}
               </span>
-              <span v-if="schedule.next_run_at" class="flex items-center text-indigo-600">
+              <span v-if="schedule.next_run_at" class="flex items-center text-indigo-600 dark:text-indigo-400">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
@@ -200,7 +200,7 @@
               </span>
             </div>
 
-            <div class="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 font-mono max-h-16 overflow-hidden">
+            <div class="mt-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs text-gray-600 dark:text-gray-400 font-mono max-h-16 overflow-hidden">
               {{ schedule.message.substring(0, 150) }}{{ schedule.message.length > 150 ? '...' : '' }}
             </div>
           </div>
@@ -265,7 +265,7 @@
         <!-- Expand to show executions -->
         <button
           @click="toggleExecutions(schedule.id)"
-          class="mt-3 text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
+          class="mt-3 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center"
         >
           <svg
             class="w-3 h-3 mr-1 transform transition-transform"
@@ -280,11 +280,11 @@
         </button>
 
         <!-- Execution History -->
-        <div v-if="expandedSchedule === schedule.id" class="mt-3 border-t border-gray-100 pt-3">
+        <div v-if="expandedSchedule === schedule.id" class="mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
           <div v-if="executionsLoading" class="text-center py-4">
             <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500 mx-auto"></div>
           </div>
-          <div v-else-if="!executions[schedule.id] || executions[schedule.id].length === 0" class="text-center py-4 text-xs text-gray-400">
+          <div v-else-if="!executions[schedule.id] || executions[schedule.id].length === 0" class="text-center py-4 text-xs text-gray-400 dark:text-gray-500">
             No executions yet
           </div>
           <div v-else class="space-y-2 max-h-60 overflow-y-auto">
@@ -292,7 +292,7 @@
               v-for="exec in executions[schedule.id]"
               :key="exec.id"
               @click="viewExecutionDetail(exec)"
-              class="flex items-center justify-between text-xs p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer transition-colors"
+              class="flex items-center justify-between text-xs p-2 bg-gray-50 dark:bg-gray-800/50 rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
             >
               <div class="flex items-center space-x-2">
                 <span
@@ -301,11 +301,11 @@
                     exec.status === 'success' ? 'bg-green-500' : exec.status === 'failed' ? 'bg-red-500' : exec.status === 'running' ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
                   ]"
                 ></span>
-                <span class="text-gray-600">{{ formatDateTime(exec.started_at) }}</span>
+                <span class="text-gray-600 dark:text-gray-400">{{ formatDateTime(exec.started_at) }}</span>
                 <span
                   :class="[
                     'px-1.5 py-0.5 rounded text-xs',
-                    exec.triggered_by === 'manual' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                    exec.triggered_by === 'manual' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                   ]"
                 >
                   {{ exec.triggered_by }}
@@ -321,13 +321,13 @@
                       :style="{ width: Math.min(100, (exec.context_used / exec.context_max) * 100) + '%' }"
                     ></div>
                   </div>
-                  <span class="text-gray-400 w-8 text-right">{{ formatContextPercent(exec.context_used, exec.context_max) }}</span>
+                  <span class="text-gray-400 dark:text-gray-500 w-8 text-right">{{ formatContextPercent(exec.context_used, exec.context_max) }}</span>
                 </div>
                 <!-- Cost -->
-                <span v-if="exec.cost" class="text-gray-500 font-mono">
+                <span v-if="exec.cost" class="text-gray-500 dark:text-gray-400 font-mono">
                   ${{ exec.cost.toFixed(4) }}
                 </span>
-                <span v-if="exec.duration_ms" class="text-gray-400">{{ formatDuration(exec.duration_ms) }}</span>
+                <span v-if="exec.duration_ms" class="text-gray-400 dark:text-gray-500">{{ formatDuration(exec.duration_ms) }}</span>
                 <span
                   :class="[
                     'font-medium',
@@ -347,25 +347,25 @@
     <div v-if="selectedExecution" class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" @click="selectedExecution = null"></div>
-        <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full relative z-10 max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full relative z-10 max-h-[80vh] overflow-hidden flex flex-col">
           <!-- Header -->
-          <div class="p-4 border-b border-gray-200 flex justify-between items-start">
+          <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-start">
             <div>
-              <h3 class="text-lg font-medium text-gray-900">Execution Details</h3>
-              <p class="text-sm text-gray-500 mt-1">{{ formatDateTime(selectedExecution.started_at) }}</p>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Execution Details</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ formatDateTime(selectedExecution.started_at) }}</p>
             </div>
             <div class="flex items-center space-x-3">
               <span
                 :class="[
                   'px-2 py-1 rounded-full text-xs font-medium',
-                  selectedExecution.status === 'success' ? 'bg-green-100 text-green-800' :
-                  selectedExecution.status === 'failed' ? 'bg-red-100 text-red-800' :
-                  'bg-yellow-100 text-yellow-800'
+                  selectedExecution.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                  selectedExecution.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                  'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
                 ]"
               >
                 {{ selectedExecution.status }}
               </span>
-              <button @click="selectedExecution = null" class="text-gray-400 hover:text-gray-600">
+              <button @click="selectedExecution = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -374,20 +374,20 @@
           </div>
 
           <!-- Stats Row -->
-          <div class="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-4 gap-4">
+          <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 grid grid-cols-4 gap-4">
             <div>
-              <p class="text-xs text-gray-500">Duration</p>
-              <p class="text-sm font-medium">{{ formatDuration(selectedExecution.duration_ms) || '-' }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Duration</p>
+              <p class="text-sm font-medium dark:text-white">{{ formatDuration(selectedExecution.duration_ms) || '-' }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Cost</p>
-              <p class="text-sm font-medium font-mono">${{ selectedExecution.cost?.toFixed(4) || '0.0000' }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Cost</p>
+              <p class="text-sm font-medium font-mono dark:text-white">${{ selectedExecution.cost?.toFixed(4) || '0.0000' }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Context Used</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Context Used</p>
               <div class="flex items-center space-x-2">
-                <p class="text-sm font-medium">{{ formatTokens(selectedExecution.context_used) }}</p>
-                <div v-if="selectedExecution.context_max" class="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <p class="text-sm font-medium dark:text-white">{{ formatTokens(selectedExecution.context_used) }}</p>
+                <div v-if="selectedExecution.context_max" class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
                     class="h-full rounded-full"
                     :class="getContextBarColor(selectedExecution.context_used, selectedExecution.context_max)"
@@ -397,8 +397,8 @@
               </div>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Triggered By</p>
-              <p class="text-sm font-medium capitalize">{{ selectedExecution.triggered_by }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Triggered By</p>
+              <p class="text-sm font-medium capitalize dark:text-white">{{ selectedExecution.triggered_by }}</p>
             </div>
           </div>
 
@@ -406,33 +406,33 @@
           <div class="flex-1 overflow-y-auto p-4 space-y-4">
             <!-- Message Sent -->
             <div>
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Message Sent</h4>
-              <div class="bg-gray-100 rounded p-3 text-sm font-mono whitespace-pre-wrap">{{ selectedExecution.message }}</div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Message Sent</h4>
+              <div class="bg-gray-100 dark:bg-gray-700 rounded p-3 text-sm font-mono whitespace-pre-wrap dark:text-gray-300">{{ selectedExecution.message }}</div>
             </div>
 
             <!-- Error (if any) -->
             <div v-if="selectedExecution.error">
-              <h4 class="text-sm font-medium text-red-700 mb-2">Error</h4>
-              <div class="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700 whitespace-pre-wrap">{{ selectedExecution.error }}</div>
+              <h4 class="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Error</h4>
+              <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap">{{ selectedExecution.error }}</div>
             </div>
 
             <!-- Tool Calls -->
             <div v-if="parsedToolCalls.length > 0">
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Tool Calls ({{ parsedToolCalls.length }})</h4>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tool Calls ({{ parsedToolCalls.length }})</h4>
               <div class="space-y-1">
                 <div
                   v-for="(tool, idx) in parsedToolCalls"
                   :key="idx"
-                  class="flex items-center justify-between text-xs bg-gray-100 rounded px-2 py-1"
+                  class="flex items-center justify-between text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1"
                 >
                   <div class="flex items-center space-x-2">
-                    <span class="font-medium text-indigo-600">{{ tool.tool }}</span>
-                    <span v-if="tool.input" class="text-gray-500 truncate max-w-xs">
+                    <span class="font-medium text-indigo-600 dark:text-indigo-400">{{ tool.tool }}</span>
+                    <span v-if="tool.input" class="text-gray-500 dark:text-gray-400 truncate max-w-xs">
                       {{ summarizeToolInput(tool) }}
                     </span>
                   </div>
                   <div class="flex items-center space-x-2">
-                    <span v-if="tool.duration_ms" class="text-gray-400">{{ formatDuration(tool.duration_ms) }}</span>
+                    <span v-if="tool.duration_ms" class="text-gray-400 dark:text-gray-500">{{ formatDuration(tool.duration_ms) }}</span>
                     <span v-if="tool.success !== undefined" :class="tool.success ? 'text-green-600' : 'text-red-600'">
                       {{ tool.success ? '✓' : '✗' }}
                     </span>
@@ -443,16 +443,16 @@
 
             <!-- Response -->
             <div v-if="selectedExecution.response">
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Response</h4>
-              <div class="bg-gray-100 rounded p-3 text-sm whitespace-pre-wrap max-h-60 overflow-y-auto">{{ selectedExecution.response }}</div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Response</h4>
+              <div class="bg-gray-100 dark:bg-gray-700 rounded p-3 text-sm whitespace-pre-wrap max-h-60 overflow-y-auto dark:text-gray-300">{{ selectedExecution.response }}</div>
             </div>
           </div>
 
           <!-- Footer -->
-          <div class="p-4 border-t border-gray-200 flex justify-end">
+          <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
             <button
               @click="selectedExecution = null"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
             >
               Close
             </button>

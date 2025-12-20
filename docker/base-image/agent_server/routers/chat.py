@@ -46,10 +46,20 @@ async def chat(request: ChatRequest):
         if metadata.cost_usd:
             agent_state.session_total_cost += metadata.cost_usd
         agent_state.session_total_output_tokens += metadata.output_tokens
-        # Context window usage: metadata.input_tokens already contains the complete total
+        # Context window usage: metadata.input_tokens should contain the complete total
         # (from modelUsage.inputTokens which includes all turns and cached tokens)
-        # cache_creation_tokens and cache_read_tokens are billing breakdowns, NOT additional tokens
-        agent_state.session_context_tokens = metadata.input_tokens
+        # However, with --continue flag, Claude Code may sometimes report only new tokens
+        # Fix: Context should monotonically increase during a session, so keep the max
+        if metadata.input_tokens > agent_state.session_context_tokens:
+            agent_state.session_context_tokens = metadata.input_tokens
+            logger.debug(f"Context updated to {metadata.input_tokens} tokens")
+        elif metadata.input_tokens > 0 and metadata.input_tokens < agent_state.session_context_tokens:
+            # Claude reported fewer tokens than before - likely only new input, not cumulative
+            # Keep the previous (higher) value as context should only grow
+            logger.warning(
+                f"Context tokens decreased from {agent_state.session_context_tokens} to {metadata.input_tokens}. "
+                f"Keeping previous value (likely --continue reporting issue)"
+            )
         agent_state.session_context_window = metadata.context_window
 
         logger.info(f"[Chat] Execution lock releasing after completion")

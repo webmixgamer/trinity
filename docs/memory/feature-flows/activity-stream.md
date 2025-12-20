@@ -44,16 +44,16 @@ As a platform operator, I want to track all agent activities in a unified system
 
 ## Data Layer
 
-### Database Schema (`src/backend/database.py:503-525`)
+### Database Schema (`src/backend/database.py:341-364`)
 
 **Table: agent_activities**
 ```sql
-CREATE TABLE agent_activities (
+CREATE TABLE IF NOT EXISTS agent_activities (
     id TEXT PRIMARY KEY,                           -- UUID
     agent_name TEXT NOT NULL,                      -- Which agent
     activity_type TEXT NOT NULL,                   -- chat_start, tool_call, schedule_start, etc.
     activity_state TEXT NOT NULL,                  -- started, completed, failed
-    parent_activity_id TEXT,                       -- Link to parent (tool → chat)
+    parent_activity_id TEXT,                       -- Link to parent (tool -> chat)
     started_at TEXT NOT NULL,                      -- ISO8601 timestamp
     completed_at TEXT,                             -- ISO8601 timestamp
     duration_ms INTEGER,                           -- Calculated on completion
@@ -72,7 +72,7 @@ CREATE TABLE agent_activities (
 )
 ```
 
-**Indexes** (`database.py:553-559`)
+**Indexes** (`database.py:424-430`)
 ```sql
 idx_activities_agent         ON (agent_name, created_at DESC)  -- Per-agent queries
 idx_activities_type          ON (activity_type)                -- Filter by type
@@ -83,7 +83,7 @@ idx_activities_chat_msg      ON (related_chat_message_id)      -- JOIN to chat
 idx_activities_execution     ON (related_execution_id)         -- JOIN to schedules
 ```
 
-### Activity Types (`src/backend/models.py:95-114`)
+### Activity Types (`src/backend/models.py:95-113`)
 
 ```python
 class ActivityType(str, Enum):
@@ -97,7 +97,7 @@ class ActivityType(str, Enum):
     SCHEDULE_END = "schedule_end"      # Schedule completed (not yet used)
 
     # Collaboration activities
-    AGENT_COLLABORATION = "agent_collaboration"  # Future: agent-to-agent
+    AGENT_COLLABORATION = "agent_collaboration"  # Agent-to-agent communication
 
     # Future activity types (not yet implemented)
     FILE_ACCESS = "file_access"
@@ -106,7 +106,7 @@ class ActivityType(str, Enum):
     GIT_SYNC = "git_sync"
 ```
 
-### Activity States (`models.py:116-121`)
+### Activity States (`models.py:116-120`)
 ```python
 class ActivityState(str, Enum):
     STARTED = "started"      # Activity in progress
@@ -120,7 +120,7 @@ class ActivityState(str, Enum):
 
 ### ActivityService (`src/backend/services/activity_service.py`)
 
-**Initialization** (lines 18-31)
+**Initialization** (lines 18-35)
 ```python
 class ActivityService:
     def __init__(self):
@@ -128,7 +128,7 @@ class ActivityService:
         self.subscribers: List[Callable] = []  # Future extensibility
 
     def set_websocket_manager(self, manager):
-        """Called from main.py:79 during app startup"""
+        """Called from main.py:85 during app startup"""
         self.websocket_manager = manager
 ```
 
@@ -206,7 +206,7 @@ async def complete_activity(
 
 ### Chat Integration (`src/backend/routers/chat.py`)
 
-**Chat Start Tracking** (lines 74-84)
+**Chat Start Tracking** (lines 139-152)
 ```python
 # Track chat start activity
 chat_activity_id = await activity_service.track_activity(
@@ -214,14 +214,17 @@ chat_activity_id = await activity_service.track_activity(
     activity_type=ActivityType.CHAT_START,
     user_id=current_user.id,
     triggered_by="agent" if x_source_agent else "user",
+    parent_activity_id=collaboration_activity_id,
     details={
         "message_preview": request.message[:100],
-        "source_agent": x_source_agent
+        "source_agent": x_source_agent,
+        "execution_id": execution.id,
+        "queue_status": queue_result
     }
 )
 ```
 
-**Tool Call Tracking** (lines 138-151)
+**Tool Call Tracking** (lines 206-220)
 ```python
 # Track each tool call (granular tracking)
 for tool_call in execution_log:
@@ -240,7 +243,7 @@ for tool_call in execution_log:
     )
 ```
 
-**Chat Completion** (lines 153-165)
+**Chat Completion** (lines 222-235)
 ```python
 # Track chat completion
 await activity_service.complete_activity(
@@ -252,12 +255,13 @@ await activity_service.complete_activity(
         "context_max": session_data.get("context_window"),
         "cost_usd": metadata.get("cost_usd"),
         "execution_time_ms": execution_time_ms,
-        "tool_count": len(execution_log)
+        "tool_count": len(execution_log),
+        "execution_id": execution.id
     }
 )
 ```
 
-**Error Handling** (lines 178-183)
+**Error Handling** (lines 270-275)
 ```python
 await activity_service.complete_activity(
     activity_id=chat_activity_id,
@@ -268,7 +272,7 @@ await activity_service.complete_activity(
 
 ### Schedule Integration (`src/backend/services/scheduler_service.py`)
 
-**Schedule Start Tracking** (lines 187-198)
+**Schedule Start Tracking** (lines 200-212)
 ```python
 # Track schedule start activity
 schedule_activity_id = await activity_service.track_activity(
@@ -279,12 +283,13 @@ schedule_activity_id = await activity_service.track_activity(
     details={
         "schedule_id": schedule.id,
         "schedule_name": schedule.name,
-        "cron_expression": schedule.cron_expression
+        "cron_expression": schedule.cron_expression,
+        "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Completion** (lines 277-288)
+**Schedule Completion** (lines 318-330)
 ```python
 # Track schedule completion
 await activity_service.complete_activity(
@@ -295,12 +300,13 @@ await activity_service.complete_activity(
         "context_used": context_used,
         "context_max": context_max,
         "cost_usd": cost,
-        "tool_count": len(execution_log) if execution_log else 0
+        "tool_count": len(execution_log) if execution_log else 0,
+        "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Failure** (lines 303-309)
+**Schedule Failure** (lines 345-351, 373-379)
 ```python
 # Track schedule failure
 await activity_service.complete_activity(
@@ -311,11 +317,31 @@ await activity_service.complete_activity(
 )
 ```
 
+### Agent Collaboration Tracking (`src/backend/routers/chat.py:116-130`)
+
+```python
+# Track agent collaboration activity
+collaboration_activity_id = await activity_service.track_activity(
+    agent_name=x_source_agent,  # Activity belongs to source agent
+    activity_type=ActivityType.AGENT_COLLABORATION,
+    user_id=current_user.id,
+    triggered_by="agent",
+    details={
+        "source_agent": x_source_agent,
+        "target_agent": name,
+        "action": "chat",
+        "message_preview": request.message[:100],
+        "execution_id": execution.id,
+        "queue_status": queue_result
+    }
+)
+```
+
 ---
 
 ## API Layer
 
-### Per-Agent Activity Query (`src/backend/routers/agents.py:865-902`)
+### Per-Agent Activity Query (`src/backend/routers/agents.py:1478-1515`)
 
 **Endpoint**: `GET /api/agents/{agent_name}/activities`
 
@@ -359,9 +385,15 @@ await activity_service.complete_activity(
 }
 ```
 
-### Cross-Agent Timeline Query (`routers/agents.py:905-950`)
+### Cross-Agent Timeline Query
 
-**Endpoint**: `GET /api/activities/timeline`
+Two endpoints are available:
+
+**1. agents.py** (`routers/agents.py:1518-1563`)
+- **Endpoint**: `GET /api/agents/activities/timeline`
+
+**2. activities.py** (`routers/activities.py:15-55`)
+- **Endpoint**: `GET /api/activities/timeline`
 
 **Parameters**:
 - `start_time` (optional): ISO8601 timestamp (e.g., "2025-12-02T10:00:00")
@@ -378,7 +410,7 @@ await activity_service.complete_activity(
   "start_time": "2025-12-02T10:00:00",
   "end_time": "2025-12-02T12:00:00",
   "activity_types": ["chat_start", "schedule_start"],
-  "timeline": [
+  "activities": [
     {
       "id": "uuid-789",
       "agent_name": "agent-1",
@@ -466,19 +498,19 @@ await activity_service.complete_activity(
 
 ## Database Operations
 
-### CRUD Methods (`src/backend/database.py:2006-2179`)
+### CRUD Methods (`src/backend/db/activities.py`)
 
 | Line | Method | Purpose |
 |------|--------|---------|
-| 2006-2039 | `create_activity()` | Insert new activity, returns UUID |
-| 2041-2082 | `complete_activity()` | Update state, duration, merge details |
-| 2084-2092 | `get_activity()` | Get single activity by ID |
-| 2094-2118 | `get_agent_activities()` | Query per-agent with filters |
-| 2120-2151 | `get_activities_in_range()` | Cross-agent timeline query |
-| 2153-2159 | `get_current_activities()` | Get in-progress activities |
-| 2161-2179 | `_row_to_activity()` | Convert row to dict |
+| 39-71 | `create_activity()` | Insert new activity, returns UUID |
+| 73-114 | `complete_activity()` | Update state, duration, merge details |
+| 116-124 | `get_activity()` | Get single activity by ID |
+| 126-150 | `get_agent_activities()` | Query per-agent with filters |
+| 152-183 | `get_activities_in_range()` | Cross-agent timeline query |
+| 185-191 | `get_current_activities()` | Get in-progress activities |
+| 18-37 | `_row_to_activity()` | Convert row to dict |
 
-**Details Merging** (`database.py:2060-2063`)
+**Details Merging** (`db/activities.py:92-95`)
 ```python
 # Merge existing details with new details
 existing_details = json.loads(row[1]) if row[1] else {}
@@ -486,7 +518,7 @@ if details:
     existing_details.update(details)
 ```
 
-**Duration Calculation** (`database.py:2056-2058`)
+**Duration Calculation** (`db/activities.py:88-90`)
 ```python
 started_at = datetime.fromisoformat(row[0])
 completed_at = datetime.utcnow()
@@ -689,10 +721,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```json
 {
   "count": 20,
-  "start_time": "2025-12-02T00:00:00",
-  "end_time": null,
-  "activity_types": null,
-  "timeline": [...]
+  "activities": [...]
 }
 ```
 
@@ -747,6 +776,19 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_activities WHERE activity
 - [ ] schedule_start marked as "failed"
 - [ ] error field contains error message
 
+### 8. Test Agent Collaboration Tracking
+**Action**:
+- Send chat from one agent to another using X-Source-Agent header
+- Check activities for both agents
+
+**Expected**:
+- agent_collaboration activity created on source agent
+- chat_start activity created on target agent with parent_activity_id
+
+**Verify**:
+- [ ] Collaboration activity has source_agent and target_agent in details
+- [ ] Parent-child relationship established correctly
+
 ### Edge Cases
 
 **Large Result Sets**:
@@ -775,7 +817,7 @@ sqlite3 ~/trinity-data/trinity.db "
 # Query with no results
 curl "http://localhost:8000/api/activities/timeline?start_time=2020-01-01T00:00:00&end_time=2020-01-02T00:00:00"
 ```
-- [ ] Returns empty timeline: {"count": 0, "timeline": []}
+- [ ] Returns empty timeline: {"count": 0, "activities": []}
 
 **Details Merging**:
 - [ ] Verify complete_activity() merges new details with existing
@@ -788,9 +830,9 @@ curl "http://localhost:8000/api/activities/timeline?start_time=2020-01-01T00:00:
 sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name='test-agent'"
 ```
 
-**Last Tested**: Not yet tested
-**Tested By**: N/A
-**Status**: 🚧 Not Tested
+**Last Tested**: 2025-12-20
+**Tested By**: Code Review Verification
+**Status**: Verified
 **Issues**: None known
 
 ---
@@ -829,6 +871,7 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 ## Implementation Notes
 
 **Date**: 2025-12-02
+**Last Updated**: 2025-12-20
 **Requirement**: 9.7 - Unified Activity Stream
 **Implemented By**: Feature implementation commit
 **Related Docs**:

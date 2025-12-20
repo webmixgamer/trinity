@@ -3,7 +3,7 @@
 > **Status**: IMPLEMENTED
 > **Requirement**: 9.8 (Phase 9 - Pillar I: Explicit Planning)
 > **Created**: 2025-12-06
-> **Updated**: 2025-12-07 (Terminology refactor: Plans -> Workplan, Task DAG -> Workplan)
+> **Last Updated**: 2025-12-19 (Line number verification after dark mode + modular refactor)
 > **Related**: [workplan-system.md](workplan-system.md) (backend infrastructure)
 
 ---
@@ -20,8 +20,8 @@ As a **user**, I want to view and manage my agent's Workplan plans so that I can
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:263-273` - Workplan tab button
-- **Component**: `src/frontend/src/components/WorkplanPanel.vue` - Main Workplan UI component
+- **UI**: `src/frontend/src/views/AgentDetail.vue:284-295` - Workplan tab button
+- **Component**: `src/frontend/src/components/WorkplanPanel.vue` - Main Workplan UI component (537 lines)
 - **API**:
   - `GET /api/agents/{name}/plans` - List plans
   - `GET /api/agents/{name}/plans/summary` - Summary statistics
@@ -36,11 +36,12 @@ As a **user**, I want to view and manage my agent's Workplan plans so that I can
 ### Component: WorkplanPanel.vue
 
 > **File**: `src/frontend/src/components/WorkplanPanel.vue`
-> **Lines**: 1-510
+> **Lines**: 1-537 (318 template, 219 script)
 
 #### Props
 
 ```javascript
+// Lines 324-333
 const props = defineProps({
   agentName: {
     type: String,
@@ -56,6 +57,7 @@ const props = defineProps({
 #### State
 
 ```javascript
+// Lines 338-343
 const plans = ref([])           // List of plan summaries
 const summary = ref(null)       // Aggregate statistics
 const loading = ref(false)      // Loading state
@@ -68,57 +70,58 @@ const agentNotRunning = ref(false)  // Agent availability state
 
 | Property | Line | Description |
 |----------|------|-------------|
-| `filteredPlans` | 335-338 | Plans filtered by statusFilter |
-| `taskProgressPercent` | 340-343 | Overall task completion % from summary |
-| `completedTaskCount` | 345-348 | Tasks completed in selected plan |
-| `planProgressPercent` | 350-353 | Progress % for selected plan |
+| `filteredPlans` | 356-359 | Plans filtered by statusFilter |
+| `taskProgressPercent` | 361-364 | Overall task completion % from summary |
+| `completedTaskCount` | 366-369 | Tasks completed in selected plan |
+| `planProgressPercent` | 371-374 | Progress % for selected plan |
 
 #### Key Methods
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `loadPlans()` | 356-384 | Load summary + plans in parallel |
-| `viewPlan(planId)` | 386-393 | Load full plan and open modal |
-| `pausePlan()` | 395-408 | Update plan status to 'paused' |
-| `resumePlan()` | 410-423 | Update plan status to 'active' |
-| `deletePlan()` | 425-436 | Delete plan with confirmation |
+| `loadPlans()` | 377-405 | Load summary + plans in parallel |
+| `viewPlan(planId)` | 407-414 | Load full plan and open modal |
+| `pausePlan()` | 416-429 | Update plan status to 'paused' |
+| `resumePlan()` | 431-444 | Update plan status to 'active' |
+| `deletePlan()` | 446-463 | Delete plan with confirmation (uses ConfirmDialog) |
 
 #### Watchers
 
 | Watcher | Line | Description |
 |---------|------|-------------|
-| `watch(() => props.agentName)` | 493-496 | Reload on agent change |
-| `watch(() => props.agentStatus)` | 498-500 | Reload on status change |
-| `watch(statusFilter)` | 502-504 | Reload on filter change |
+| `watch(() => props.agentName)` | 520-523 | Reload on agent change |
+| `watch(() => props.agentStatus)` | 525-527 | Reload on status change |
+| `watch(statusFilter)` | 529-531 | Reload on filter change |
 
 ### Integration in AgentDetail.vue
 
 > **File**: `src/frontend/src/views/AgentDetail.vue`
 
-**Import** (line 866):
+**Import** (line 1022):
 ```javascript
 import WorkplanPanel from '../components/WorkplanPanel.vue'
 ```
 
-**Tab Button** (lines 263-273):
+**Tab Button** (lines 284-295):
 ```vue
 <button
-  @click="activeTab = 'workplan'"
+  @click="activeTab = 'plans'"
   :class="[
-    'px-6 py-3 border-b-2 font-medium text-sm transition-colors',
-    activeTab === 'workplan'
-      ? 'border-indigo-500 text-indigo-600'
-      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+    'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
+    activeTab === 'plans'
+      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
   ]"
+  title="This agent's internal task breakdown"
 >
   Workplan
 </button>
 ```
 
-**Tab Content** (lines 771-774):
+**Tab Content** (lines 910-913):
 ```vue
-<!-- Workplan Tab Content -->
-<div v-if="activeTab === 'workplan'" class="p-6">
+<!-- Plans Tab Content -->
+<div v-if="activeTab === 'plans'" class="p-6">
   <WorkplanPanel :agent-name="agent.name" :agent-status="agent.status" />
 </div>
 ```
@@ -126,19 +129,19 @@ import WorkplanPanel from '../components/WorkplanPanel.vue'
 ### State Management: agents.js
 
 > **File**: `src/frontend/src/stores/agents.js`
-> **Lines**: 331-391
+> **Lines**: 378-436
 
 #### Plan Actions
 
 | Action | Line | API Call |
 |--------|------|----------|
-| `getAgentPlans(name, status)` | 332-340 | `GET /api/agents/{name}/plans?status={status}` |
-| `getAgentPlansSummary(name)` | 342-348 | `GET /api/agents/{name}/plans/summary` |
-| `getAgentPlan(name, planId)` | 350-356 | `GET /api/agents/{name}/plans/{planId}` |
-| `createAgentPlan(name, planData)` | 358-364 | `POST /api/agents/{name}/plans` |
-| `updateAgentPlan(name, planId, updates)` | 366-372 | `PUT /api/agents/{name}/plans/{planId}` |
-| `deleteAgentPlan(name, planId)` | 374-380 | `DELETE /api/agents/{name}/plans/{planId}` |
-| `updateAgentTask(name, planId, taskId, taskUpdate)` | 382-390 | `PUT /api/agents/{name}/plans/{planId}/tasks/{taskId}` |
+| `getAgentPlans(name, status)` | 378-386 | `GET /api/agents/{name}/plans?status={status}` |
+| `getAgentPlansSummary(name)` | 388-394 | `GET /api/agents/{name}/plans/summary` |
+| `getAgentPlan(name, planId)` | 396-402 | `GET /api/agents/{name}/plans/{planId}` |
+| `createAgentPlan(name, planData)` | 404-410 | `POST /api/agents/{name}/plans` |
+| `updateAgentPlan(name, planId, updates)` | 412-418 | `PUT /api/agents/{name}/plans/{planId}` |
+| `deleteAgentPlan(name, planId)` | 420-426 | `DELETE /api/agents/{name}/plans/{planId}` |
+| `updateAgentTask(name, planId, taskId, taskUpdate)` | 428-436 | `PUT /api/agents/{name}/plans/{planId}/tasks/{taskId}` |
 
 ---
 
@@ -147,19 +150,19 @@ import WorkplanPanel from '../components/WorkplanPanel.vue'
 ### Proxy Endpoints
 
 > **File**: `src/backend/routers/agents.py`
-> **Lines**: 1229-1694
+> **Lines**: 1692-1979
 
 All endpoints are proxies to the agent container's internal API.
 
 | Endpoint | Method | Line | Description |
 |----------|--------|------|-------------|
-| `/api/agents/{name}/plans` | GET | 1355-1394 | List all plans |
-| `/api/agents/{name}/plans` | POST | 1397-1444 | Create new plan |
-| `/api/agents/{name}/plans/summary` | GET | 1447-1499 | Get summary stats |
-| `/api/agents/{name}/plans/{plan_id}` | GET | 1502-1540 | Get single plan |
-| `/api/agents/{name}/plans/{plan_id}` | PUT | 1543-1591 | Update plan metadata |
-| `/api/agents/{name}/plans/{plan_id}` | DELETE | 1594-1639 | Delete plan |
-| `/api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | PUT | 1642-1693 | Update task status |
+| `/api/agents/{name}/plans` | GET | 1692 | List all plans |
+| `/api/agents/{name}/plans` | POST | 1734 | Create new plan |
+| `/api/agents/{name}/plans/summary` | GET | 1784 | Get summary stats |
+| `/api/agents/{name}/plans/{plan_id}` | GET | 1839 | Get single plan |
+| `/api/agents/{name}/plans/{plan_id}` | PUT | 1880 | Update plan metadata |
+| `/api/agents/{name}/plans/{plan_id}` | DELETE | 1931 | Delete plan |
+| `/api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | PUT | 1979 | Update task status |
 
 ### Authorization
 
@@ -207,7 +210,17 @@ await log_audit_event(
 ### Plans API
 
 > **File**: `docker/base-image/agent_server/routers/plans.py`
-> **Lines**: 1-433
+> **Lines**: 1-433 (19 helper functions, 8 route handlers)
+
+| Endpoint | Line | Function |
+|----------|------|----------|
+| `GET /api/plans` | 124 | `list_plans()` |
+| `POST /api/plans` | 187 | `create_plan()` |
+| `GET /api/plans/summary` | 241 | `get_plans_summary()` |
+| `GET /api/plans/{plan_id}` | 315 | `get_plan()` |
+| `PUT /api/plans/{plan_id}` | 329 | `update_plan()` |
+| `DELETE /api/plans/{plan_id}` | 359 | `delete_plan()` |
+| `PUT /api/plans/{plan_id}/tasks/{task_id}` | 377 | `update_task()` |
 
 See [workplan-system.md](workplan-system.md) for complete API documentation.
 
@@ -221,7 +234,7 @@ Plans are stored as YAML files in the agent container:
 
 ## UI Components
 
-### Summary Stats Cards (lines 38-68)
+### Summary Stats Cards (lines 39-68)
 
 Five statistics cards displayed in a grid:
 1. **Total Plans** - Total count
@@ -230,7 +243,7 @@ Five statistics cards displayed in a grid:
 4. **Total Tasks** - Total task count
 5. **Task Progress** - Completion % with progress bar
 
-### Current Task Banner (lines 70-92)
+### Current Task Banner (lines 70-93)
 
 Displayed when `summary.current_task` exists:
 - Pulsing blue indicator
@@ -246,7 +259,7 @@ For each plan:
 - Relative timestamp
 - Clickable to open detail modal
 
-### Status Filter (lines 10-20)
+### Status Filter (lines 11-20)
 
 Dropdown with options:
 - All Plans
@@ -268,6 +281,10 @@ Full-page modal with:
   - Result (if completed)
   - Start/complete timestamps
 - Footer actions: Pause/Resume, Delete, Close
+
+### ConfirmDialog Integration (lines 307-316)
+
+Uses shared ConfirmDialog component for delete confirmation.
 
 ### Task Status Icons
 
@@ -384,18 +401,18 @@ Full-page modal with:
 | Plan not found | 404 | Error logged, modal closed if relevant |
 | Permission denied | 403 | Error logged, no access |
 
-### Agent Not Running State (lines 100-107)
+### Agent Not Running State (lines 100-108)
 
 Special UI displayed when agent is stopped:
 - Stop sign icon
-- "Agent must be running to view plans" message
-- Explanation: "Start the agent to access its task planning system"
+- "Agent must be running to view workplan" message
+- Explanation: "Start the agent to access its workplan system"
 
-### Empty State (lines 109-116)
+### Empty State (lines 109-117)
 
 When agent is running but has no plans:
 - Clipboard icon
-- "No plans yet" message
+- "No workplan yet" message
 - Explanation about using /workplan commands
 
 ---
@@ -412,16 +429,18 @@ When agent is running but has no plans:
 
 ## Styling
 
-### Status Badge Colors
+All styling includes dark mode variants (Tailwind dark: prefix).
 
-| Status | Background | Text |
-|--------|------------|------|
-| active | bg-blue-100 | text-blue-800 |
-| completed | bg-green-100 | text-green-800 |
-| failed | bg-red-100 | text-red-800 |
-| paused | bg-yellow-100 | text-yellow-800 |
+### Status Badge Colors (getStatusBadgeClass, lines 466-475)
 
-### Progress Bar Colors
+| Status | Light Mode | Dark Mode |
+|--------|------------|-----------|
+| active | bg-blue-100 text-blue-800 | bg-blue-900/50 text-blue-300 |
+| completed | bg-green-100 text-green-800 | bg-green-900/50 text-green-300 |
+| failed | bg-red-100 text-red-800 | bg-red-900/50 text-red-300 |
+| paused | bg-yellow-100 text-yellow-800 | bg-yellow-900/50 text-yellow-300 |
+
+### Progress Bar Colors (getProgressBarClass, lines 477-485)
 
 | Status | Color |
 |--------|-------|
@@ -430,14 +449,14 @@ When agent is running but has no plans:
 | failed | bg-red-500 |
 | paused | bg-yellow-500 |
 
-### Task Border Colors
+### Task Border Colors (getTaskBorderClass, lines 487-495)
 
-| Status | Border | Background |
-|--------|--------|------------|
-| completed | border-green-200 | bg-green-50/50 |
-| active | border-blue-300 | bg-blue-50/50 |
-| failed | border-red-200 | bg-red-50/50 |
-| blocked | border-yellow-200 | bg-yellow-50/50 |
+| Status | Light Border/Background | Dark Border/Background |
+|--------|------------------------|----------------------|
+| completed | border-green-200 bg-green-50/50 | border-green-800 bg-green-900/20 |
+| active | border-blue-300 bg-blue-50/50 | border-blue-700 bg-blue-900/20 |
+| failed | border-red-200 bg-red-50/50 | border-red-800 bg-red-900/20 |
+| blocked | border-yellow-200 bg-yellow-50/50 | border-yellow-800 bg-yellow-900/20 |
 
 ---
 
@@ -516,7 +535,7 @@ When agent is running but has no plans:
 
 ## Test Verification
 
-> **Last Tested**: 2025-12-07
+> **Last Tested**: 2025-12-20
 > **Status**: All Tests Passing
 
 ### Test Results Summary
@@ -541,6 +560,7 @@ None - all features working as documented.
 
 | Date | Changes |
 |------|---------|
+| 2025-12-19 | Line number verification after dark mode and modular agent-server refactor. Updated all frontend line numbers, backend router lines, added dark mode styling details |
 | 2025-12-07 | Terminology refactor: Plans tab -> Workplan tab, PlansPanel -> WorkplanPanel, Task DAG -> Workplan |
 | 2025-12-07 | Added Test Verification section - all tests passing |
 | 2025-12-06 | Initial documentation of WorkplanPanel.vue component |

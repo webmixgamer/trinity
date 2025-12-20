@@ -65,8 +65,8 @@ export interface McpAuthContext extends Record<string, unknown> {
   userId: string;        // Username of the key owner
   userEmail?: string;    // Email of the key owner
   keyName: string;       // Name of the MCP API key
-  agentName?: string;    // Agent name if scope is 'agent' (for agent-to-agent)
-  scope: "user" | "agent"; // Key scope
+  agentName?: string;    // Agent name if scope is 'agent' or 'system' (for agent-to-agent)
+  scope: "user" | "agent" | "system"; // Key scope: user=human, agent=regular agent, system=system agent (bypasses all permissions)
   mcpApiKey?: string;    // The actual MCP API key (for user-scoped requests to Trinity backend)
 }
 

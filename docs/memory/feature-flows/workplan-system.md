@@ -3,8 +3,8 @@
 > **Status**: FULLY IMPLEMENTED (Backend + Frontend)
 > **Requirement**: 9.8 (Phase 9)
 > **Created**: 2025-12-05
-> **Updated**: 2025-12-07 (Terminology refactor: Task DAG -> Workplan)
-> **Verified**: 2025-12-06 (Production tested, Frontend build verified)
+> **Updated**: 2025-12-20 (Line number verification, command naming clarification)
+> **Last Tested**: 2025-12-20
 
 ---
 
@@ -166,14 +166,14 @@ External task graph representation that persists outside the agent's context win
 
 | File | Changes | Status |
 |------|---------|--------|
-| `config/trinity-meta-prompt/prompt.md` | Trinity system prompt with planning instructions | DONE |
+| `config/trinity-meta-prompt/prompt.md` | Trinity system prompt with planning instructions (95 lines) | DONE |
 | `config/trinity-meta-prompt/commands/workplan-*.md` | Planning commands (4 files) | DONE |
-| `docker/base-image/agent_server/routers/plans.py` | Plan API endpoints | DONE |
-| `docker/base-image/agent_server/routers/trinity.py` | Trinity injection API endpoints | DONE |
-| `docker/base-image/startup.sh:142-144` | Injection code removed (comment only) | DONE |
-| `src/backend/routers/agents.py:49-97,634-678,1117-1580` | inject helper + start integration + proxy endpoints | DONE |
-| `src/frontend/src/stores/network.js:23-33,601-667` | Plan stats state + fetchPlanStats() | DONE |
-| `src/frontend/src/components/AgentNode.vue:71-101,204-224` | Task progress display + computed properties | DONE |
+| `docker/base-image/agent_server/routers/plans.py` | Plan API endpoints (433 lines) | DONE |
+| `docker/base-image/agent_server/routers/trinity.py` | Trinity injection API endpoints (354 lines) | DONE |
+| `docker/base-image/startup.sh:155` | Injection code removed (comment only) | DONE |
+| `src/backend/routers/agents.py:50-111,114-154,1573-2030` | inject helper + start integration + proxy endpoints | DONE |
+| `src/frontend/src/stores/network.js:23-24,604-669,965-966,1004` | Plan stats state + fetchPlanStats() | DONE |
+| `src/frontend/src/components/AgentNode.vue:72-102,206-230` | Task progress display + computed properties | DONE |
 | `src/frontend/src/views/Dashboard.vue:23-27` | Header plan stats display (compact inline format) | DONE |
 
 > **Note (2025-12-07)**: AgentNetwork.vue was merged into Dashboard.vue. The plan stats are now shown in the compact header inline with other stats.
@@ -183,14 +183,16 @@ External task graph representation that persists outside the agent's context win
 ## Agent Server Trinity Injection API (IMPLEMENTED)
 
 > **File**: `docker/base-image/agent_server/routers/trinity.py`
-> **Lines**: 1-234
+> **Lines**: 1-354
 
 ### Key Functions
 
-- `check_trinity_injection_status()` (lines 18-48): Check if Trinity has been injected
-- `GET /api/trinity/status` (lines 51-55): Check injection status
-- `POST /api/trinity/inject` (lines 58-184): Inject Trinity meta-prompt
-- `POST /api/trinity/reset` (lines 187-233): Reset injection
+- `check_trinity_injection_status()` (lines 27-76): Check if Trinity has been injected
+- `GET /api/trinity/status` (lines 79-83): Check injection status
+- `POST /api/trinity/inject` (lines 86-304): Inject Trinity meta-prompt
+- `POST /api/trinity/reset` (lines 307-353): Reset injection
+
+> **Note**: The `check_trinity_injection_status()` function at lines 33-36 references `trinity-plan-*` command filenames. However, the actual command files are named `workplan-*.md`. The injection logic at lines 136-141 correctly copies whatever files exist in the `commands/` directory regardless of naming.
 
 ### `POST /api/trinity/inject`
 
@@ -199,7 +201,8 @@ Injects Trinity meta-prompt and planning infrastructure into agent workspace.
 **Request Body** (optional):
 ```json
 {
-  "force": false  // If true, re-inject even if already done
+  "force": false,  // If true, re-inject even if already done
+  "custom_prompt": "..." // Optional custom instructions to add
 }
 ```
 
@@ -210,6 +213,7 @@ Injects Trinity meta-prompt and planning infrastructure into agent workspace.
   "already_injected": false,
   "files_created": [
     ".trinity/prompt.md",
+    ".trinity/vector-memory.md",
     ".claude/commands/trinity/workplan-create.md",
     ".claude/commands/trinity/workplan-status.md",
     ".claude/commands/trinity/workplan-update.md",
@@ -219,7 +223,8 @@ Injects Trinity meta-prompt and planning infrastructure into agent workspace.
     ".trinity",
     ".claude/commands/trinity",
     "plans/active",
-    "plans/archive"
+    "plans/archive",
+    "vector-store"
   ],
   "claude_md_updated": true
 }
@@ -257,14 +262,20 @@ Check current injection status.
   "meta_prompt_mounted": true,
   "files": {
     ".trinity/prompt.md": true,
-    ".claude/commands/trinity/workplan-create.md": true,
-    ".claude/commands/trinity/workplan-status.md": true,
-    ".claude/commands/trinity/workplan-update.md": true,
-    ".claude/commands/trinity/workplan-list.md": true
+    ".claude/commands/trinity/trinity-plan-create.md": true,
+    ".claude/commands/trinity/trinity-plan-status.md": true,
+    ".claude/commands/trinity/trinity-plan-update.md": true,
+    ".claude/commands/trinity/trinity-plan-list.md": true
   },
   "directories": {
     "plans/active": true,
-    "plans/archive": true
+    "plans/archive": true,
+    "vector-store": true
+  },
+  "vector_memory": {
+    "vector-store": true,
+    ".trinity/vector-memory.md": true,
+    "chroma_mcp_configured": true
   },
   "claude_md_has_trinity_section": true
 }
@@ -300,14 +311,16 @@ The `/api/plans/summary` endpoint **MUST** be defined BEFORE `/api/plans/{plan_i
 def load_plan(plan_id: str) -> Optional[dict]:
     """Load a plan from file (active or archive)."""
 
+# Lines 46-79
 def save_plan(plan: dict) -> bool:
     """Save a plan to file, moving to archive if completed/failed."""
 
-# Lines 82-122
+# Lines 82-104
 def update_blocked_tasks(plan: dict) -> None:
     """Update blocked status based on dependencies.
     When a task completes, tasks that depended on it become pending."""
 
+# Lines 107-121
 def check_plan_completion(plan: dict) -> None:
     """Check if plan should be marked as completed.
     When all tasks are completed, plan status becomes completed."""
@@ -318,49 +331,51 @@ def check_plan_completion(plan: dict) -> None:
 ## Backend Proxy Endpoints (IMPLEMENTED)
 
 > **File**: `src/backend/routers/agents.py`
-> **Lines**: 1117-1580
+> **Lines**: 1566-2030
 
 ### IMPORTANT: Route Ordering
 
-The aggregate endpoint **MUST** come BEFORE agent-specific routes. See line 1120-1121.
+The aggregate endpoint **MUST** come BEFORE agent-specific routes. See lines 1570-1571.
 
 ### Endpoints
 
 | Endpoint | Line | Description |
 |----------|------|-------------|
-| `GET /api/agents/plans/aggregate` | 1123 | Cross-agent plan aggregation |
-| `GET /api/agents/{name}/plans` | 1242 | List agent's plans |
-| `POST /api/agents/{name}/plans` | 1284 | Create new plan |
-| `GET /api/agents/{name}/plans/summary` | 1334 | Get agent's plan summary |
-| `GET /api/agents/{name}/plans/{plan_id}` | 1389 | Get specific plan |
-| `PUT /api/agents/{name}/plans/{plan_id}` | 1430 | Update plan |
-| `DELETE /api/agents/{name}/plans/{plan_id}` | 1481 | Delete plan |
-| `PUT /api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | 1529 | Update task status |
+| `GET /api/agents/plans/aggregate` | 1573 | Cross-agent plan aggregation |
+| `GET /api/agents/{name}/plans` | 1692 | List agent's plans |
+| `POST /api/agents/{name}/plans` | 1734 | Create new plan |
+| `GET /api/agents/{name}/plans/summary` | 1784 | Get agent's plan summary |
+| `GET /api/agents/{name}/plans/{plan_id}` | 1839 | Get specific plan |
+| `PUT /api/agents/{name}/plans/{plan_id}` | 1880 | Update plan |
+| `DELETE /api/agents/{name}/plans/{plan_id}` | 1931 | Delete plan |
+| `PUT /api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | 1979 | Update task status |
 
 ### Backend Integration (IMPLEMENTED)
 
 > **File**: `src/backend/routers/agents.py`
-> **Lines**: 49-97 (helper), 634-678 (start_agent integration)
+> **Lines**: 50-111 (helper), 114-154 (start_agent_internal)
 
-**Helper function** `inject_trinity_meta_prompt()` (lines 49-97):
+**Helper function** `inject_trinity_meta_prompt()` (lines 50-111):
 - Calls `POST agent:8000/api/trinity/inject` with retries
 - Max 5 retries with 2-second delay between attempts
 - Handles connection errors gracefully (agent starting up)
+- Fetches system-wide `trinity_prompt` setting for custom instructions (line 73)
 
-**Integration in `start_agent_endpoint()`** (lines 644-666):
+**Integration in `start_agent_internal()`** (lines 114-154):
 ```python
-# After container.start() - lines 644-647
+# After container.start() - lines 144-148
+container.start()
+
+# Inject Trinity meta-prompt
 trinity_result = await inject_trinity_meta_prompt(agent_name)
 trinity_status = trinity_result.get("status", "unknown")
 
-# WebSocket broadcast includes trinity_injection status - lines 649-654
-await manager.broadcast(json.dumps({
-    "event": "agent_started",
-    "data": {"name": agent_name, "trinity_injection": trinity_status}
-}))
-
-# Return message includes injection status - line 666
-return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
+# Return message includes injection status - lines 150-154
+return {
+    "message": f"Agent {agent_name} started",
+    "trinity_injection": trinity_status,
+    "trinity_result": trinity_result
+}
 ```
 
 ---
@@ -544,10 +559,12 @@ tasks:
 
 | Date | Changes |
 |------|---------|
+| 2025-12-20 | Line number verification, command naming note added, Last Tested date updated |
+| 2025-12-19 | Path verification after agent-server modular refactor - updated all line numbers |
 | 2025-12-07 | Terminology refactor: Task DAG -> Workplan, /trinity-plan-* -> /workplan-* |
 | 2025-12-06 | Updated agent-server references to new modular structure |
 | 2025-12-06 | Plans API now in `agent_server/routers/plans.py` (lines 1-433) |
-| 2025-12-06 | Trinity injection API now in `agent_server/routers/trinity.py` (lines 1-234) |
+| 2025-12-06 | Trinity injection API now in `agent_server/routers/trinity.py` (lines 1-354) |
 | 2025-12-05 | Initial design and backend implementation |
 | 2025-12-06 02:30 | Architecture change: Centralized injection via agent-server API |
 | 2025-12-06 02:30 | IMPLEMENTED: All injection logic moved to agent-server.py |
@@ -572,7 +589,7 @@ Real-time Workplan visualization in the Agent Network. Shows agent planning acti
 
 #### 1. Store: `network.js`
 
-**New State**:
+**New State** (lines 23-24):
 ```javascript
 planStats: {}              // Map of agent name -> plan stats
 aggregatePlanStats: {      // Global stats across all agents
@@ -586,7 +603,7 @@ aggregatePlanStats: {      // Global stats across all agents
 }
 ```
 
-**New Function**: `fetchPlanStats()`
+**Function**: `fetchPlanStats()` (lines 604-669)
 - Fetches from `GET /api/agents/plans/aggregate`
 - Parses `agent_summaries` array
 - Updates node data with per-agent plan info
@@ -594,18 +611,19 @@ aggregatePlanStats: {      // Global stats across all agents
 
 #### 2. AgentNode.vue
 
-**New Display Elements**:
+**Task DAG Progress Display** (lines 72-102):
 - Current task name with pulsing icon (when agent has active task)
 - Task progress bar (purple, shows completed/total)
-- Only visible when agent has active plan
+- Always visible for consistent card height
 
-**Computed Properties**:
+**Computed Properties** (lines 206-230):
 ```javascript
 hasActivePlan    // true if agent has plans
 currentTask      // Name of currently active task
 completedTasks   // Number of completed tasks
 totalTasks       // Total task count
 taskProgressPercent  // Percentage complete
+taskProgressDisplay  // "X/Y" format or "-" if no tasks
 ```
 
 **Visual Design**:
@@ -640,7 +658,7 @@ taskProgressPercent  // Percentage complete
 ### Polling Frequency
 
 - Plan stats fetched every 5 seconds (same interval as context stats)
-- Integrated into existing `startContextPolling()` function
+- Integrated into existing `startContextPolling()` function (lines 672-688)
 - Stops when entering Replay mode, resumes in Live mode
 
 ### UI/UX Considerations
@@ -684,5 +702,5 @@ taskProgressPercent  // Percentage complete
 | Plan with 0 tasks | Task section hidden |
 | API error (404) | Silent fail, no console error spam |
 
-**Last Tested**: 2025-12-06
+**Last Tested**: 2025-12-20
 **Status**: Frontend build successful, ready for integration testing

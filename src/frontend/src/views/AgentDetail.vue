@@ -35,6 +35,14 @@
                 ]">
                   {{ agent.status }}
                 </span>
+                <!-- System agent badge -->
+                <span
+                  v-if="agent.is_system"
+                  class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300"
+                  title="System Agent - Platform Orchestrator with full access"
+                >
+                  SYSTEM
+                </span>
                 <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
                   Shared by {{ agent.owner }}
                 </span>

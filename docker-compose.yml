@@ -18,6 +18,13 @@ services:
       - GITHUB_PAT=${GITHUB_PAT:-}
       - HOST_TEMPLATES_PATH=${PWD}/config/agent-templates
       - HOST_META_PROMPT_PATH=${PWD}/config/trinity-meta-prompt
+      # OpenTelemetry Configuration (Optional)
+      - OTEL_ENABLED=${OTEL_ENABLED:-0}
+      - OTEL_COLLECTOR_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT:-http://trinity-otel-collector:4317}
+      - OTEL_METRICS_EXPORTER=${OTEL_METRICS_EXPORTER:-otlp}
+      - OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-otlp}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      - OTEL_METRIC_EXPORT_INTERVAL=${OTEL_METRIC_EXPORT_INTERVAL:-60000}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
@@ -121,6 +128,27 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     restart: unless-stopped
+
+  # OpenTelemetry Collector - receives metrics from Claude Code agents
+  otel-collector:
+    image: otel/opentelemetry-collector:0.91.0
+    container_name: trinity-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # gRPC receiver (OTLP)
+      - "4318:4318"   # HTTP receiver (OTLP)
+      - "8889:8889"   # Prometheus metrics exporter
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks:
+      - trinity-network
+    labels:
+      - "trinity.platform=infrastructure"
+      - "trinity.service=otel-collector"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 volumes:
   agent-configs:

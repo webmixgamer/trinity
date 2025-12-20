@@ -12,6 +12,9 @@ import type { McpAuthContext, AgentAccessCheckResult } from "../types.js";
 /**
  * Check if caller has access to target agent
  *
+ * Access rules for System-scoped keys (Phase 11.1):
+ * - ALWAYS allowed - system agent bypasses all permission checks
+ *
  * Access rules for User-scoped keys:
  * - Same owner: Always allowed
  * - Shared agent: Allowed
@@ -30,6 +33,13 @@ async function checkAgentAccess(
 ): Promise<AgentAccessCheckResult> {
   // If no auth context, allow (auth may be disabled)
   if (!authContext) {
+    return { allowed: true };
+  }
+
+  // Phase 11.1: System-scoped keys bypass ALL permission checks
+  // System agent can communicate with any agent
+  if (authContext.scope === "system") {
+    console.log(`[System Agent Access] ${authContext.agentName || "system"} -> ${targetAgentName} (bypassing permissions)`);
     return { allowed: true };
   }
 

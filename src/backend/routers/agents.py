@@ -178,6 +178,8 @@ def get_accessible_agents(current_user: User):
         agent_dict["is_owner"] = owner and owner["owner_username"] == current_user.username
         agent_dict["is_shared"] = not agent_dict["is_owner"] and not is_admin and \
                                    db.is_agent_shared_with_user(agent_name, current_user.username)
+        # Add is_system flag for system agents (deletion-protected)
+        agent_dict["is_system"] = owner.get("is_system", False) if owner else False
 
         # Add GitHub repo info if agent was created from GitHub template
         git_config = db.get_git_config(agent_name)
@@ -314,6 +316,8 @@ async def get_agent_endpoint(agent_name: str, request: Request, current_user: Us
     agent_dict["is_owner"] = owner and owner["owner_username"] == current_user.username
     agent_dict["is_shared"] = not agent_dict["is_owner"] and not is_admin and \
                                db.is_agent_shared_with_user(agent_name, current_user.username)
+    # Add is_system flag for system agents (deletion-protected)
+    agent_dict["is_system"] = owner.get("is_system", False) if owner else False
     agent_dict["can_share"] = db.can_user_share_agent(current_user.username, agent_name)
     agent_dict["can_delete"] = db.can_user_delete_agent(current_user.username, agent_name)
 
@@ -510,6 +514,16 @@ async def create_agent_internal(
         'AGENT_SERVER_PORT': '8000',
         'TEMPLATE_NAME': config.template if config.template else ''
     }
+
+    # OpenTelemetry Configuration (opt-in via OTEL_ENABLED)
+    # Claude Code has built-in OTel support - these vars enable metrics export
+    if os.getenv('OTEL_ENABLED', '0') == '1':
+        env_vars['CLAUDE_CODE_ENABLE_TELEMETRY'] = '1'
+        env_vars['OTEL_METRICS_EXPORTER'] = os.getenv('OTEL_METRICS_EXPORTER', 'otlp')
+        env_vars['OTEL_LOGS_EXPORTER'] = os.getenv('OTEL_LOGS_EXPORTER', 'otlp')
+        env_vars['OTEL_EXPORTER_OTLP_PROTOCOL'] = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
+        env_vars['OTEL_EXPORTER_OTLP_ENDPOINT'] = os.getenv('OTEL_COLLECTOR_ENDPOINT', 'http://trinity-otel-collector:4317')
+        env_vars['OTEL_METRIC_EXPORT_INTERVAL'] = os.getenv('OTEL_METRIC_EXPORT_INTERVAL', '60000')
 
     # Phase: Agent-to-Agent Collaboration - Inject Trinity MCP credentials
     if agent_mcp_key:
@@ -731,7 +745,28 @@ async def create_agent_endpoint(config: AgentConfig, request: Request, current_u
 
 @router.delete("/{agent_name}")
 async def delete_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
-    """Delete an agent."""
+    """Delete an agent.
+
+    Note: System agents (like trinity-system) cannot be deleted by anyone.
+    They can only be re-initialized by admins.
+    """
+    # Check for system agent first - no one can delete these
+    if db.is_system_agent(agent_name):
+        await log_audit_event(
+            event_type="agent_management",
+            action="delete",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            result="forbidden",
+            severity="warning",
+            details={"reason": "system_agent_protected"}
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="System agents cannot be deleted. Use re-initialization to reset to clean state."
+        )
+
     if not db.can_user_delete_agent(current_user.username, agent_name):
         await log_audit_event(
             event_type="agent_management",

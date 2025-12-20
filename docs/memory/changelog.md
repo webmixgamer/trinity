@@ -1,3 +1,368 @@
+### 2025-12-20 22:30:00
+🖥️ **System Agent UI (Req 11.3) - IMPLEMENTED**
+
+Added dedicated operations dashboard for the system agent at `/system-agent` route.
+
+**New Files**:
+- `src/frontend/src/views/SystemAgent.vue` - Ops-focused UI with fleet overview, quick actions, and chat
+
+**Modified Files**:
+- `src/frontend/src/router/index.js` - Added `/system-agent` route (admin-only)
+- `src/frontend/src/components/NavBar.vue` - Added purple "System" link with CPU icon (admin-only)
+- `docs/memory/feature-flows/internal-system-agent.md` - Added Frontend UI section
+
+**Features**:
+- Purple gradient header with system agent branding
+- Fleet overview cards (Total, Running, Stopped, Issues)
+- Quick action buttons (Emergency Stop, Restart All, Pause/Resume Schedules)
+- Operations console with quick command buttons (/ops/status, /ops/health, /ops/schedules)
+- Chat interface for sending commands to the system agent
+- Auto-refresh every 10 seconds
+
+**Design**: Simplified single-page layout unlike complex AgentDetail.vue - focused purely on operations.
+
+---
+
+### 2025-12-20 21:00:00
+🛠️ **System Agent Operations Scope (Req 11.2) - IMPLEMENTED**
+
+Enhanced the system agent to focus exclusively on platform operations (health, lifecycle, resource governance) rather than workflow orchestration. Implemented comprehensive fleet operations API and ops settings.
+
+**Guiding Principle**: "The system agent manages the orchestra, not the music."
+
+**New Files**:
+- `src/backend/routers/ops.py` - Fleet operations endpoints (status, health, restart, stop, emergency)
+- `config/agent-templates/trinity-system/commands/ops/status.md` - Fleet status report command
+- `config/agent-templates/trinity-system/commands/ops/health.md` - Health check command
+- `config/agent-templates/trinity-system/commands/ops/restart.md` - Restart specific agent command
+- `config/agent-templates/trinity-system/commands/ops/restart-all.md` - Restart fleet command
+- `config/agent-templates/trinity-system/commands/ops/stop.md` - Stop agent command
+- `config/agent-templates/trinity-system/commands/ops/schedules.md` - Schedule overview command
+- `config/agent-templates/trinity-system/commands/ops/costs.md` - Cost report command
+
+**Modified Files**:
+- `config/agent-templates/trinity-system/CLAUDE.md` - Rewrote with ops-only scope
+- `config/agent-templates/trinity-system/template.yaml` - Updated capabilities and slash commands
+- `src/backend/main.py` - Added ops_router import and registration
+- `src/backend/routers/settings.py` - Added ops settings with defaults
+- `src/backend/database.py` - Added `list_all_disabled_schedules` method
+- `src/backend/db/schedules.py` - Added `list_all_disabled_schedules` query
+
+**New API Endpoints**:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ops/fleet/status` | GET | All agents with status, context, activity |
+| `/api/ops/fleet/health` | GET | Health summary with critical/warning issues |
+| `/api/ops/fleet/restart` | POST | Restart all/filtered agents |
+| `/api/ops/fleet/stop` | POST | Stop all/filtered agents |
+| `/api/ops/schedules/pause` | POST | Pause all schedules |
+| `/api/ops/schedules/resume` | POST | Resume all schedules |
+| `/api/ops/emergency-stop` | POST | Halt all executions immediately |
+| `/api/settings/ops/config` | GET/PUT | Get/update ops settings |
+| `/api/settings/ops/reset` | POST | Reset ops settings to defaults |
+
+**Ops Settings**:
+- `ops_context_warning_threshold` (75) - Context % to trigger warning
+- `ops_context_critical_threshold` (90) - Context % to trigger critical
+- `ops_idle_timeout_minutes` (30) - Minutes before stuck detection
+- `ops_cost_limit_daily_usd` (50.0) - Daily cost limit
+- `ops_max_execution_minutes` (10) - Max chat execution time
+- `ops_alert_suppression_minutes` (15) - Suppress duplicate alerts
+- `ops_log_retention_days` (7) - Days to keep container logs
+- `ops_health_check_interval` (60) - Seconds between health checks
+
+**Slash Commands** (system agent only):
+- `/ops/status` - Fleet status report
+- `/ops/health` - Health check with recommendations
+- `/ops/restart <agent>` - Restart specific agent
+- `/ops/restart-all` - Restart entire fleet
+- `/ops/stop <agent>` - Stop specific agent
+- `/ops/schedules` - Schedule overview
+- `/ops/costs` - Cost report from OTel
+
+---
+
+### 2025-12-20 19:30:00
+🤖 **Internal System Agent (Req 11.1) - IMPLEMENTED**
+
+Implemented the privileged, auto-deployed platform orchestrator agent "trinity-system".
+
+**New Files**:
+- `config/agent-templates/trinity-system/template.yaml` - System agent template with orchestration capabilities
+- `config/agent-templates/trinity-system/CLAUDE.md` - Platform orchestrator instructions
+- `src/backend/services/system_agent_service.py` - Auto-deployment service
+- `src/backend/routers/system_agent.py` - Status, restart, reinitialize endpoints
+
+**Backend Changes**:
+- `src/backend/database.py` - Added `is_system` column migration for agent_ownership
+- `src/backend/db/agents.py` - Added system agent checks, SYSTEM_AGENT_NAME constant
+- `src/backend/routers/agents.py` - Deletion protection with specific error message for system agents
+- `src/backend/main.py` - Auto-deploy system agent on startup, registered system_agent router
+
+**MCP Server Changes**:
+- `src/mcp-server/src/types.ts` - Added "system" scope to McpAuthContext
+- `src/mcp-server/src/server.ts` - Handle system scope in authentication
+- `src/mcp-server/src/tools/agents.ts` - System agents see all agents, cannot delete themselves
+- `src/mcp-server/src/tools/chat.ts` - System-scoped keys bypass all permission checks
+
+**Frontend Changes**:
+- `src/frontend/src/components/AgentNode.vue` - Purple "SYSTEM" badge for system agents
+- `src/frontend/src/views/AgentDetail.vue` - System badge in agent header
+
+**Key Features**:
+- Auto-deploys on backend startup if not exists
+- Cannot be deleted (403 error with helpful message)
+- System-scoped MCP key bypasses all permission checks
+- Can communicate with any agent regardless of owner
+- Can list all agents without filtering
+- Purple SYSTEM badge in UI
+
+**API Endpoints**:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/system-agent/status` | GET | Get system agent status |
+| `/api/system-agent/restart` | POST | Restart system agent (admin) |
+| `/api/system-agent/reinitialize` | POST | Reset to clean state (admin) |
+
+---
+
+### 2025-12-20 17:30:00
+📋 **Internal System Agent Requirements (Req 11.1) - DRAFTED**
+
+Created requirements document for a privileged, auto-deployed platform orchestrator agent.
+
+**Document**: `docs/drafts/INTERNAL_SYSTEM_AGENT.md`
+
+**Key Features**:
+- **Auto-Deployment**: System agent created on platform startup if not exists
+- **Deletion Protection**: Cannot be deleted via API, MCP, or UI (only re-initialized)
+- **Re-Initialization**: Admins can reset to clean state without losing identity
+- **Local Template**: `config/agent-templates/trinity-system/` with platform-specific CLAUDE.md
+- **MCP Integration**: Full access to all Trinity MCP tools, bypasses permission checks
+- **System-Scoped Key**: Special MCP API key with `scope: "system"`
+- **UI Visibility**: System badge, special styling, hidden delete button
+
+**Implementation Phases**:
+1. Core Infrastructure (template, deletion protection, auto-deploy)
+2. MCP Integration (system-scoped key, permission bypass)
+3. Re-Initialization (endpoint, MCP tool, audit logging)
+4. UI Integration (badges, styling, admin controls)
+5. Observability (metrics, health check, activity tracking)
+
+**Database Change**: Add `is_system` flag to `agent_ownership` table
+
+**Roadmap**: Added as Phase 11 priority item (11.1)
+
+---
+
+### 2025-12-20 16:00:00
+📊 **OpenTelemetry UI Integration (Req 10.8) - IMPLEMENTED**
+
+Added UI components to display OTel metrics in the Trinity Dashboard.
+
+**Backend Changes**:
+- `src/backend/routers/observability.py` - New router with `/api/observability/metrics` and `/api/observability/status` endpoints
+- `src/backend/main.py` - Registered observability router
+
+**Frontend Changes**:
+- `src/frontend/src/stores/observability.js` - New Pinia store for OTel metrics with polling
+- `src/frontend/src/components/ObservabilityPanel.vue` - Collapsible panel showing full metric breakdown
+- `src/frontend/src/views/Dashboard.vue` - Added OTel stats to header (cost, tokens, status indicator)
+
+**Features**:
+- Dashboard header shows total cost and token count when OTel is active
+- Observability panel (bottom-left) with expand/collapse:
+  - Cost breakdown by model
+  - Token usage by type (input, output, cacheCreation, cacheRead)
+  - Productivity metrics (sessions, active time, commits, PRs)
+  - Lines of code (added/removed)
+- Auto-refresh every 60 seconds
+- Graceful handling when OTel disabled or collector unavailable
+- Full dark mode support
+
+**API Response Format**:
+```json
+{
+  "enabled": true,
+  "available": true,
+  "metrics": { "cost_by_model": {}, "tokens_by_model": {}, ... },
+  "totals": { "total_cost": 0.0246, "total_tokens": 48093, ... }
+}
+```
+
+---
+
+### 2025-12-20 14:30:00
+📋 **Requirements Update: OpenTelemetry UI Integration (10.8)**
+
+Added new requirement 10.8 for displaying OTel metrics in Trinity UI as next priority.
+
+**Requirement Summary**:
+- Backend API: `GET /api/observability/metrics` endpoint to query Prometheus
+- Dashboard Header: Quick stats (total cost, total tokens, OTel status)
+- Dashboard Panel: "Observability" tab with full metric breakdown
+- Opt-in visibility: Only shows when `OTEL_ENABLED=1` and collector reachable
+
+**UI Placement Decided**:
+| Location | What to Show |
+|----------|--------------|
+| Dashboard Header | Total cost, total tokens, OTel status indicator |
+| Dashboard Panel | Full breakdown by model/type in "Observability" tab |
+| AgentDetail | *Future* - Per-agent cost (requires agent_name label) |
+
+**Files Updated**:
+- `docs/memory/requirements.md` - Added 10.8 OpenTelemetry UI Integration
+- `docs/memory/roadmap.md` - Added to Phase 11 as next priority
+
+---
+
+### 2025-12-20 12:00:00
+📊 **OpenTelemetry Integration (Phase 2) - OTEL Collector Service**
+
+Added OTEL Collector service for receiving metrics from Claude Code agents and exposing them in Prometheus format.
+
+**Changes**:
+1. `docker-compose.yml` (lines 132-151)
+   - Added `otel-collector` service using `otel/opentelemetry-collector:0.91.0`
+   - Exposes ports 4317 (gRPC), 4318 (HTTP), 8889 (Prometheus)
+   - Connected to trinity-network for agent access
+
+2. `config/otel-collector.yaml` (new file)
+   - OTLP receiver on gRPC and HTTP
+   - Batch processor for efficiency
+   - Prometheus exporter with `trinity` namespace
+   - Debug exporter for troubleshooting
+
+**Metrics Collected** (verified with test agent):
+- `trinity_claude_code_cost_usage_USD_total` - Cost per model (Haiku, Sonnet)
+- `trinity_claude_code_token_usage_tokens_total` - Token usage by type (input, output, cacheCreation, cacheRead)
+
+**Labels Available**:
+- `model` - Model name (claude-haiku-4-5-20251001, claude-sonnet-4-5-20250929)
+- `session_id` - Unique session identifier
+- `terminal_type` - non-interactive
+- `platform` - trinity
+
+**Testing**:
+- ✅ Collector starts with `docker-compose up`
+- ✅ Agent sends metrics via OTLP gRPC
+- ✅ Prometheus endpoint returns metrics at :8889/metrics
+- ✅ Metrics update after chat activity
+
+---
+
+### 2025-12-20 11:50:00
+📊 **OpenTelemetry Integration (Phase 1) - Environment Variable Injection**
+
+Implemented opt-in OpenTelemetry metrics export for Trinity agents, leveraging Claude Code's built-in OTel support.
+
+**Changes**:
+1. `src/backend/routers/agents.py` (lines 514-522)
+   - Added conditional OTel env var injection during agent container creation
+   - Only injects when `OTEL_ENABLED=1` (default: disabled)
+   - Sets: `CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_METRIC_EXPORT_INTERVAL`
+
+2. `docker-compose.yml` (lines 21-27)
+   - Added OTel configuration environment variables to backend service
+   - All with sensible defaults (`OTEL_ENABLED=0` by default)
+
+3. `.env.example` (lines 76-94)
+   - Documented all OTel configuration options with comments
+
+4. `docs/DEPLOYMENT.md` (lines 336-394)
+   - Added "OpenTelemetry Metrics (Optional)" section
+   - Documents metrics available, quick start, collector setup, verification
+
+**Testing**:
+- ✅ With `OTEL_ENABLED=1`: Agent gets all OTel env vars
+- ✅ With `OTEL_ENABLED=0` (default): No OTel vars injected
+- ✅ Existing agents unaffected
+
+**Draft Doc**: `docs/drafts/OTEL_INTEGRATION.md` - Phase 2 (Collector) and Phase 3 (Prometheus/Grafana) available for future implementation.
+
+---
+
+### 2025-12-19 16:45:00
+🎨 **Dark Mode: Fixed GitPanel, SchedulesPanel, and ExecutionsPanel Components**
+
+Fixed dark mode styling for three additional components in AgentDetail that were displaying white backgrounds in dark mode.
+
+**Files Modified**:
+1. `src/frontend/src/components/GitPanel.vue` - Git tab in AgentDetail
+   - Fixed loading/disabled/error states with dark variants
+   - Fixed repository info header card
+   - Fixed branch and sync status badges
+   - Fixed pending changes and commit sections
+   - Updated `getChangeStatusClass()` function with dark variants
+
+2. `src/frontend/src/components/SchedulesPanel.vue` - Schedules tab in AgentDetail
+   - Fixed header text colors
+   - Fixed create/edit form modal with dark inputs, labels, buttons
+   - Fixed cron preset buttons with dark hover states
+   - Fixed schedule cards and status badges
+   - Fixed execution history rows and modal
+   - Fixed stats row and tool call displays
+
+3. `src/frontend/src/components/ExecutionsPanel.vue` - Executions tab in AgentDetail
+   - Fixed summary stats cards
+   - Fixed executions table header, body, and row hover states
+   - Fixed status and trigger badges with dark variants
+   - Fixed execution detail modal with dark styling
+   - Fixed context bar, tool calls, and response sections
+
+**Pattern Applied**: Consistent with existing dark mode - `dark:bg-gray-800` for cards, `dark:bg-gray-900/30` for colored badges, `dark:text-gray-400` for secondary text.
+
+---
+
+### 2025-12-19 16:15:00
+🎨 **Dark Mode: Fixed FoldersPanel and AgentNode Components**
+
+Fixed dark mode styling for two components that were displaying white backgrounds in dark mode.
+
+**Files Modified**:
+1. `src/frontend/src/components/FoldersPanel.vue` - Folders tab in AgentDetail
+   - Added `dark:bg-gray-800` to all white card sections
+   - Added `dark:border-gray-700` to all borders
+   - Added `dark:text-white/gray-400` to text elements
+   - Fixed toggle switch backgrounds (`dark:bg-gray-600`)
+   - Fixed code element backgrounds (`dark:bg-gray-700`)
+   - Fixed status badges (mounted/pending) with dark variants
+
+2. `src/frontend/src/components/AgentNode.vue` - Agent tiles on Dashboard
+   - Added `dark:bg-gray-800` to main card container
+   - Added `dark:border-gray-700` to card border
+   - Fixed all text colors with dark variants
+   - Fixed progress bar backgrounds (`dark:bg-gray-700`)
+   - Fixed View Details button with dark hover states
+   - Fixed connection handle colors for dark mode
+   - Updated computed `activityStateColor` with dark variants
+
+**Pattern Applied**: Consistent with existing dark mode in NavBar, Dashboard, other panels.
+
+---
+
+### 2025-12-19 15:30:00
+🐛 **Bug Fix: Context Tracking Reset After First Message (P0)**
+
+Fixed critical bug where context window usage would reset to ~4 tokens on subsequent chat messages.
+
+**Root Cause**:
+- Claude Code with `--continue` flag may report only new input tokens, not cumulative context
+- Agent server was overwriting `session_context_tokens` with each response, causing resets
+
+**Fix Applied** (`docker/base-image/agent_server/routers/chat.py`):
+- Context tokens now only increase within a session (monotonic growth)
+- If new value is lower than previous, keep the maximum (with warning logged)
+- Session reset still clears context to 0 as expected
+
+**Testing**: Verified with 3 consecutive messages - context stays at 660 tokens (not resetting to ~4)
+
+**Related Issues Clarified**:
+- P1 Permissions Auth Error: NOT a bug - caused by JWT token invalidation after backend restart (documented behavior)
+- P1 Agent Name Validation: NOT a bug - API sanitizes invalid names by design (converts `@#! ` to `-`)
+
+---
+
 ### 2025-12-19 12:30:00
 ✅ **Test Suite: Fixed 4 Failing Tests - Now 179/179 Pass**
 

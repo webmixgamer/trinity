@@ -14,6 +14,8 @@
 - ✅ Frontend accessible
 - ✅ No test agents exist
 
+> **Note**: JWT tokens are invalidated when backend restarts. If you see 401 errors after a deploy/restart, logout and login again to get a fresh token.
+
 ---
 
 ## Test Steps

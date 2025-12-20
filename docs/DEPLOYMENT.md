@@ -331,6 +331,68 @@ sudo certbot --nginx -d your-domain.com
 - Azure Database for PostgreSQL
 - Azure Cache for Redis
 
+---
+
+## OpenTelemetry Metrics (Optional)
+
+Trinity agents can export metrics to an OpenTelemetry collector for external observability tools like Prometheus and Grafana. This leverages Claude Code's built-in OTel support.
+
+### What You Get
+
+| Metric | Description |
+|--------|-------------|
+| `claude_code.cost.usage` | Cost per API call in USD |
+| `claude_code.token.usage` | Token consumption (input/output/cache) |
+| `claude_code.lines_of_code.count` | Code added/removed |
+| `claude_code.session.count` | Session lifecycle tracking |
+| `claude_code.active_time.total` | Active usage duration |
+
+### Quick Start
+
+1. **Enable OTel in your `.env`**:
+   ```bash
+   OTEL_ENABLED=1
+   OTEL_COLLECTOR_ENDPOINT=http://trinity-otel-collector:4317
+   ```
+
+2. **Restart the backend**:
+   ```bash
+   docker-compose restart backend
+   ```
+
+3. **Create new agents** - They will automatically export metrics
+
+### Adding an OTEL Collector (Phase 2)
+
+Add to your `docker-compose.yml`:
+
+```yaml
+  otel-collector:
+    image: otel/opentelemetry-collector:0.91.0
+    container_name: trinity-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # gRPC receiver
+      - "4318:4318"   # HTTP receiver
+      - "8889:8889"   # Prometheus exporter
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks:
+      - trinity-network
+```
+
+See `docs/drafts/OTEL_INTEGRATION.md` for full collector configuration and Grafana dashboard setup.
+
+### Verifying OTel is Working
+
+```bash
+# Check agent has OTel env vars
+docker exec agent-myagent env | grep OTEL
+
+# If collector is running, check metrics
+curl http://localhost:8889/metrics | grep claude_code
+```
+
 ## Security Recommendations
 
 1. **Never expose Redis externally** - Keep it internal only

@@ -3,6 +3,7 @@
 **Feature ID**: 9.9
 **Status**: Implemented
 **Date**: 2025-12-10
+**Last Updated**: 2025-12-19
 
 ## Overview
 
@@ -125,13 +126,13 @@ Same as above, plus:
 
 ## Key Files
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| Agent Server | `docker/base-image/agent_server/routers/info.py` | GET /api/metrics endpoint |
-| Backend | `src/backend/routers/agents.py` | GET /api/agents/{name}/metrics proxy |
-| Frontend | `src/frontend/src/components/MetricsPanel.vue` | Metrics display component |
-| Frontend | `src/frontend/src/views/AgentDetail.vue` | Metrics tab integration |
-| Store | `src/frontend/src/stores/agents.js` | getAgentMetrics action |
+| Component | File | Line | Purpose |
+|-----------|------|------|---------|
+| Agent Server | `docker/base-image/agent_server/routers/info.py` | 161 | GET /api/metrics endpoint |
+| Backend | `src/backend/routers/agents.py` | 2227 | GET /api/agents/{name}/metrics proxy |
+| Frontend | `src/frontend/src/components/MetricsPanel.vue` | 1 | Metrics display component (350 lines) |
+| Frontend | `src/frontend/src/views/AgentDetail.vue` | 342 | Metrics tab content integration |
+| Store | `src/frontend/src/stores/agents.js` | 439 | getAgentMetrics action |
 
 ## Test Agents with Metrics
 

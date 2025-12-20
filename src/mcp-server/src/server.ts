@@ -28,8 +28,8 @@ export interface McpApiKeyValidationResult {
   user_id?: string;
   user_email?: string;
   key_name?: string;
-  agent_name?: string;  // Agent name if scope is 'agent'
-  scope?: "user" | "agent";  // Key scope
+  agent_name?: string;  // Agent name if scope is 'agent' or 'system'
+  scope?: "user" | "agent" | "system";  // Key scope: user=human, agent=regular agent, system=system agent (bypasses permissions)
 }
 
 /**
@@ -126,17 +126,19 @@ export async function createServer(config: ServerConfig = {}) {
 
           if (result && result.valid) {
             const scope = result.scope || "user";
+            const scopeLabel = scope === "system" ? "SYSTEM (full access)" : scope;
             console.log(
-              `MCP request authenticated: user=${result.user_id}, key=${result.key_name}, scope=${scope}, agent=${result.agent_name || "n/a"}`
+              `MCP request authenticated: user=${result.user_id}, key=${result.key_name}, scope=${scopeLabel}, agent=${result.agent_name || "n/a"}`
             );
             // Return auth context object (FastMCP stores this in session and passes to tools)
             // Includes agent info for agent-to-agent collaboration
+            // System scope agents have full access to all agents (Phase 11.1)
             const authContext: McpAuthContext = {
               userId: result.user_id || "unknown",
               userEmail: result.user_email,
               keyName: result.key_name || "unknown",
-              agentName: result.agent_name,  // Agent name if scope is 'agent'
-              scope: scope as "user" | "agent",
+              agentName: result.agent_name,  // Agent name if scope is 'agent' or 'system'
+              scope: scope as "user" | "agent" | "system",
               mcpApiKey: apiKey,  // Store the actual API key for user-scoped requests
             };
             return authContext;

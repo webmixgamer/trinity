@@ -156,6 +156,17 @@ def _migrate_mcp_api_keys_agent_scope(cursor, conn):
     conn.commit()
 
 
+def _migrate_agent_ownership_system_flag(cursor, conn):
+    """Add is_system column to agent_ownership table for system agent protection."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "is_system" not in columns:
+        print("Adding is_system column to agent_ownership for system agent protection...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN is_system INTEGER DEFAULT 0")
+        conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -179,6 +190,11 @@ def init_database():
             _migrate_mcp_api_keys_agent_scope(cursor, conn)
         except Exception as e:
             print(f"Migration check (mcp_api_keys agent scope): {e}")
+
+        try:
+            _migrate_agent_ownership_system_flag(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership is_system): {e}")
 
         # Users table
         cursor.execute("""
@@ -204,6 +220,7 @@ def init_database():
                 agent_name TEXT UNIQUE NOT NULL,
                 owner_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
+                is_system INTEGER DEFAULT 0,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -523,8 +540,8 @@ class DatabaseManager:
     # Agent Ownership Management (delegated to db/agents.py)
     # =========================================================================
 
-    def register_agent_owner(self, agent_name: str, owner_username: str):
-        return self._agent_ops.register_agent_owner(agent_name, owner_username)
+    def register_agent_owner(self, agent_name: str, owner_username: str, is_system: bool = False):
+        return self._agent_ops.register_agent_owner(agent_name, owner_username, is_system)
 
     def get_agent_owner(self, agent_name: str):
         return self._agent_ops.get_agent_owner(agent_name)
@@ -540,6 +557,9 @@ class DatabaseManager:
 
     def can_user_delete_agent(self, username: str, agent_name: str):
         return self._agent_ops.can_user_delete_agent(username, agent_name)
+
+    def is_system_agent(self, agent_name: str):
+        return self._agent_ops.is_system_agent(agent_name)
 
     # =========================================================================
     # Agent Sharing Management (delegated to db/agents.py)
@@ -615,6 +635,9 @@ class DatabaseManager:
 
     def list_all_enabled_schedules(self):
         return self._schedule_ops.list_all_enabled_schedules()
+
+    def list_all_disabled_schedules(self):
+        return self._schedule_ops.list_all_disabled_schedules()
 
     def update_schedule(self, schedule_id: str, username: str, updates: dict):
         return self._schedule_ops.update_schedule(schedule_id, username, updates)

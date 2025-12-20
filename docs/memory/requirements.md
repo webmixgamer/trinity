@@ -1010,6 +1010,181 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   7. Re-deploy same YAML, verify `_2` suffix agents created
   8. Dry run returns warnings for existing agents
 
+#### 10.8 OpenTelemetry UI Integration
+- **Status**: ✅ Implemented (2025-12-20)
+- **Priority**: High
+- **Depends On**: OpenTelemetry Integration (implemented 2025-12-20)
+- **Description**: Display OTel metrics in Trinity UI - system-wide cost, token usage, and productivity metrics from Claude Code agents
+- **Feature Flow**: `docs/memory/feature-flows/opentelemetry-integration.md`
+- **Architecture**:
+  - Backend API queries Prometheus endpoint at `:8889/metrics`
+  - Frontend displays in Dashboard header (summary) and panel (detail)
+  - Opt-in visibility: only shows when `OTEL_ENABLED=1` and collector reachable
+  - Flexible layout to accommodate new metrics over time
+- **Metrics Available**:
+  - `cost_usage_USD` - Cost per model (counter)
+  - `token_usage_tokens` - Tokens per model/type (input, output, cacheCreation, cacheRead)
+  - `lines_of_code_count` - Lines added/removed (counter)
+  - `session_count` - Session count (counter)
+  - `active_time_total_seconds` - Active usage duration (counter)
+  - `pull_request_count` - PRs created (counter)
+  - `commit_count` - Commits created (counter)
+- **UI Placement**:
+  | Location | What to Show |
+  |----------|--------------|
+  | Dashboard Header | Total cost, total tokens, OTel status indicator |
+  | Dashboard Panel | Full breakdown by model/type in "Observability" tab |
+  | AgentDetail | *Future* - Per-agent cost (requires agent_name label) |
+- **Acceptance Criteria**:
+  - [x] **Phase 1: Backend API**
+    - [x] `GET /api/observability/metrics` endpoint
+    - [x] Returns `{enabled: false}` when `OTEL_ENABLED=0`
+    - [x] Queries Prometheus at `:8889/metrics` when enabled
+    - [x] Parses and returns structured JSON with all metrics
+    - [x] Graceful error handling when collector unreachable
+  - [x] **Phase 1: Dashboard Header**
+    - [x] OTel summary stats in header (cost, tokens, status indicator)
+    - [x] Only visible when OTel enabled and has data
+    - [x] Follows existing header stats pattern
+  - [x] **Phase 1: Dashboard Panel**
+    - [x] "Observability" tab in collapsible panel
+    - [x] Cost breakdown by model (table)
+    - [x] Token usage by type (table)
+    - [x] Productivity metrics (lines, sessions, active time, commits, PRs)
+    - [x] Auto-refresh every 60 seconds
+  - [ ] **Phase 2: Charts (Future)**
+    - [ ] Dedicated `/observability` page
+    - [ ] Time series charts for cost/tokens over time
+    - [ ] Model comparison visualization
+  - [ ] **Phase 3: Per-Agent Attribution (Future)**
+    - [ ] Add `agent_name` label to OTel metrics
+    - [ ] Show per-agent cost in AgentDetail
+- **Testing**:
+  1. With `OTEL_ENABLED=0`: Verify no OTel UI elements shown
+  2. With `OTEL_ENABLED=1` but collector down: Verify graceful "unavailable" state
+  3. With OTel fully working: Verify header shows cost/tokens
+  4. Generate chat activity, wait 60s, verify metrics update
+  5. Check panel shows full breakdown by model/type
+
+---
+
+### 11. Ecosystem & Enterprise (Phase 11)
+
+#### 11.1 Internal System Agent
+- **Status**: ✅ Implemented (2025-12-20)
+- **Priority**: High
+- **Description**: Auto-deployed platform orchestrator that can manage and coordinate all other agents
+- **Feature Flow**: `docs/memory/feature-flows/internal-system-agent.md`
+- **Architecture**:
+  - **Name**: `trinity-system` (fixed, cannot be changed)
+  - **Template**: `local:trinity-system` in `config/agent-templates/trinity-system/`
+  - **Auto-deployment**: Deploys on backend startup, creates container if missing
+  - **Deletion-protected**: Cannot be deleted, only re-initialized
+  - **System MCP scope**: `scope: "system"` bypasses all permission checks
+- **Components**:
+  | Component | Purpose |
+  |-----------|---------|
+  | `template.yaml` | Agent configuration and metrics |
+  | `CLAUDE.md` | System agent instructions for orchestration |
+  | `is_system` column | Database flag for protection |
+  | `system_agent_service.py` | Auto-deployment service |
+  | `system_agent` router | Status, restart, reinitialize endpoints |
+- **API Endpoints**:
+  | Endpoint | Method | Description |
+  |----------|--------|-------------|
+  | `/api/system-agent/status` | GET | Get system agent status |
+  | `/api/system-agent/restart` | POST | Restart system agent (admin) |
+  | `/api/system-agent/reinitialize` | POST | Reset to clean state (admin) |
+- **MCP Permissions**:
+  - System-scoped keys (`scope: "system"`) bypass all permission checks
+  - System agent can communicate with any agent regardless of owner
+  - System agent can list all agents without filtering
+  - System agent cannot delete itself
+- **Acceptance Criteria**:
+  - [x] Template created at `config/agent-templates/trinity-system/`
+  - [x] `is_system` column in `agent_ownership` table
+  - [x] Delete protection in backend (403 for system agents)
+  - [x] Auto-deploy on backend startup
+  - [x] System-scoped MCP key with permission bypass
+  - [x] System badge in UI (agent nodes and detail page)
+  - [x] Admin-only reinitialize endpoint
+- **Testing**:
+  1. Restart backend, verify trinity-system is deployed
+  2. Attempt to delete via API, verify 403 response
+  3. Verify system agent can chat with any agent
+  4. Verify SYSTEM badge appears in UI
+  5. Admin reinitialize resets to clean state
+
+#### 11.2 System Agent Operations Scope
+- **Status**: ✅ Implemented (2025-12-20)
+- **Priority**: High
+- **Description**: The system agent focuses exclusively on platform operations (health, lifecycle, resource governance) rather than workflow orchestration
+- **Design Doc**: `docs/drafts/SYSTEM_AGENT_OPS_REQUIREMENTS.md`
+- **Guiding Principle**: "The system agent manages the orchestra, not the music."
+- **Operational Scope**:
+  | Area | Responsibilities |
+  |------|------------------|
+  | **Health Monitoring** | Detect stuck agents, high context usage, container failures |
+  | **Lifecycle Management** | Start, stop, restart agents based on health |
+  | **Resource Governance** | Monitor cost, context thresholds, memory bounds |
+  | **Schedule Control** | Enable/disable schedules, trigger manual runs, pause automation |
+  | **Validation** | Pre-flight checks before agent operations |
+  | **Alerting** | Notify on anomalies, failures, threshold breaches |
+  | **Cleanup** | Reset stuck sessions, archive old plans |
+  | **Reporting** | Fleet status, cost summaries, health reports |
+- **Out of Scope**:
+  - Task orchestration (agents coordinate themselves via MCP)
+  - Content/output review (domain-specific)
+  - Workflow design (user/developer responsibility)
+  - Agent-to-agent messaging (agents handle directly)
+- **Slash Commands**:
+  | Command | Description |
+  |---------|-------------|
+  | `/ops/status` | Fleet status report |
+  | `/ops/health` | Health check all agents |
+  | `/ops/restart <agent>` | Restart specific agent |
+  | `/ops/restart-all` | Restart entire fleet |
+  | `/ops/stop <agent>` | Stop specific agent |
+  | `/ops/schedules` | Schedule overview |
+  | `/ops/costs` | Cost report from OTel |
+- **API Endpoints**:
+  | Endpoint | Method | Description |
+  |----------|--------|-------------|
+  | `/api/ops/fleet/status` | GET | All agents status with context |
+  | `/api/ops/fleet/health` | GET | Health summary with issues |
+  | `/api/ops/fleet/restart` | POST | Restart all/filtered agents |
+  | `/api/ops/fleet/stop` | POST | Stop all/filtered agents |
+  | `/api/ops/schedules/pause` | POST | Pause all schedules |
+  | `/api/ops/schedules/resume` | POST | Resume all schedules |
+  | `/api/ops/emergency-stop` | POST | Halt all executions |
+  | `/api/settings/ops/config` | GET | Get ops settings |
+  | `/api/settings/ops/config` | PUT | Update ops settings |
+- **Ops Settings** (stored in `system_settings` table):
+  | Key | Type | Default | Description |
+  |-----|------|---------|-------------|
+  | `ops_context_warning_threshold` | int | 75 | Context % to trigger warning |
+  | `ops_context_critical_threshold` | int | 90 | Context % to trigger critical |
+  | `ops_idle_timeout_minutes` | int | 30 | Minutes before stuck detection |
+  | `ops_cost_limit_daily_usd` | float | 50.0 | Daily cost limit (0 = unlimited) |
+  | `ops_max_execution_minutes` | int | 10 | Max chat execution time |
+  | `ops_alert_suppression_minutes` | int | 15 | Suppress duplicate alerts |
+  | `ops_log_retention_days` | int | 7 | Days to keep container logs |
+  | `ops_health_check_interval` | int | 60 | Seconds between health checks |
+- **Acceptance Criteria**:
+  - [x] Updated CLAUDE.md with ops-only scope
+  - [x] Created `/ops/*` slash commands
+  - [x] Fleet operations API endpoints
+  - [x] Schedule control endpoints
+  - [x] Emergency stop functionality
+  - [x] Ops settings with defaults
+  - [x] Settings API for ops configuration
+- **Testing**:
+  1. Chat with system agent, run `/ops/status`
+  2. Verify fleet status report generated
+  3. Run `/ops/health`, verify health issues identified
+  4. Test emergency stop pauses schedules and stops agents
+  5. Verify ops settings have defaults and can be modified
+
 ---
 
 ## Non-Functional Requirements

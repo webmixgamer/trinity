@@ -7,6 +7,7 @@ Per-agent Chroma vector database with auto-configured MCP server for semantic me
 **Requirements**: 10.4 Agent Vector Memory + 10.5 Chroma MCP Server
 **Status**: ✅ Implemented (2025-12-13)
 **Priority**: Medium/High
+**Last Updated**: 2025-12-19
 
 ## User Story
 
@@ -52,13 +53,14 @@ Agent Container
 **File**: `docker/base-image/Dockerfile`
 
 ```dockerfile
-# Python packages (lines 64-75)
+# Python packages (lines 64-76)
 RUN python3 -m pip install --user \
     ...
     chromadb \
-    sentence-transformers
+    sentence-transformers \
+    chroma-mcp
 
-# Pre-download model (line 78)
+# Pre-download model (lines 78-79)
 RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 ```
 
@@ -76,47 +78,70 @@ VECTOR_STORE_DIR = WORKSPACE_DIR / "vector-store"
 ```
 
 ### Models
-**File**: `docker/base-image/agent_server/models.py:192-199`
+**File**: `docker/base-image/agent_server/models.py:193-200`
 
 ```python
 class TrinityStatusResponse(BaseModel):
     ...
-    vector_memory: Dict[str, bool] = {}  # Vector memory status
+    vector_memory: Dict[str, bool] = {}  # Vector memory status (line 199)
 ```
 
 ### Injection Logic
 **File**: `docker/base-image/agent_server/routers/trinity.py`
 
-**Status Check** (lines 36-40):
+**Status Check** (lines 46-60):
 ```python
+# Vector memory status
 vector_memory = {
     "vector-store": (workspace / "vector-store").exists(),
     ".trinity/vector-memory.md": (workspace / ".trinity" / "vector-memory.md").exists(),
 }
+
+# Check if chroma MCP is configured in .mcp.json
+mcp_json_path = workspace / ".mcp.json"
+chroma_mcp_configured = False
+if mcp_json_path.exists():
+    mcp_config = json.loads(mcp_json_path.read_text())
+    chroma_mcp_configured = "chroma" in mcp_config.get("mcpServers", {})
+vector_memory["chroma_mcp_configured"] = chroma_mcp_configured
 ```
 
-**Injection** (lines 130-142):
+**Injection** (lines 150-162):
 ```python
-# Create vector-store directory
+# 4. Create vector-store directory for Chroma persistence
 vector_store_path = workspace / "vector-store"
 vector_store_path.mkdir(parents=True, exist_ok=True)
+directories_created.append("vector-store")
 
-# Copy documentation
+# 5. Copy vector memory documentation
 vector_docs_src = TRINITY_META_PROMPT_DIR / "vector-memory.md"
 vector_docs_dst = trinity_dir / "vector-memory.md"
 if vector_docs_src.exists():
     shutil.copy2(vector_docs_src, vector_docs_dst)
+    files_created.append(".trinity/vector-memory.md")
 ```
 
-**CLAUDE.md Update** (lines 182-190):
+**Chroma MCP Config Injection** (lines 164-188):
+```python
+# 6. Inject chroma MCP server into .mcp.json
+mcp_json_path = workspace / ".mcp.json"
+if mcp_json_path.exists():
+    mcp_config = json.loads(mcp_json_path.read_text())
+else:
+    mcp_config = {"mcpServers": {}}
+
+if "chroma" not in mcp_config["mcpServers"]:
+    mcp_config["mcpServers"]["chroma"] = CHROMA_MCP_CONFIG
+    mcp_json_path.write_text(json.dumps(mcp_config, indent=2))
+```
+
+**CLAUDE.md Update** (lines 228-232 within trinity_section):
 ```markdown
 ### Vector Memory
 
-You have access to a Chroma vector database for semantic memory storage:
-
-- **Data Directory**: `/home/developer/vector-store/`
-- **Embedding Model**: all-MiniLM-L6-v2 (384 dimensions)
-- **Documentation**: See `.trinity/vector-memory.md` for usage examples
+You have a Chroma MCP server configured for semantic memory storage.
+Use `mcp__chroma__*` tools to store and query by similarity.
+Data persists at `/home/developer/vector-store/`.
 ```
 
 ## Meta-Prompt Configuration

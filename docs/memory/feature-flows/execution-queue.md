@@ -66,7 +66,7 @@ Claude Code maintains conversation state in memory. When multiple execution requ
 
 ---
 
-## Data Models (`src/backend/models.py:159-210`)
+## Data Models (`src/backend/models.py:163-210`)
 
 ### ExecutionSource (Enum)
 ```python
@@ -284,7 +284,7 @@ async def chat_with_agent(
 - Always releases queue in `finally` block
 - Adds execution metadata to response
 
-### 2. Scheduler (`src/backend/services/scheduler_service.py:169-401`)
+### 2. Scheduler (`src/backend/services/scheduler_service.py:169-399`)
 
 **Entry Point**: APScheduler cron trigger -> `_execute_schedule()`
 
@@ -296,7 +296,7 @@ async def _execute_schedule(self, schedule_id: str):
         agent_name=schedule.agent_name,
         message=schedule.message,
         source=ExecutionSource.SCHEDULE,
-        source_user_id=schedule.owner_id
+        source_user_id=str(schedule.owner_id) if schedule.owner_id else None
     )
 
     try:
@@ -319,7 +319,7 @@ async def _execute_schedule(self, schedule_id: str):
 - Logs queue full as failure (doesn't retry)
 - Always releases queue in `finally`
 
-### 3. MCP Server (`src/mcp-server/src/tools/chat.ts:101-173`)
+### 3. MCP Server (`src/mcp-server/src/tools/chat.ts:137-189`)
 
 **Entry Point**: `chat_with_agent` MCP tool
 
@@ -346,7 +346,7 @@ execute: async ({ agent_name, message }, context) => {
 }
 ```
 
-**Trinity Client 429 Handling** (`src/mcp-server/src/client.ts:253-296`):
+**Trinity Client 429 Handling** (`src/mcp-server/src/client.ts:288-319`):
 ```typescript
 async chat(name: string, message: string, sourceAgent?: string) {
     const response = await fetch(`${this.baseUrl}/api/agents/${name}/chat`, { ... });
@@ -376,13 +376,13 @@ async chat(name: string, message: string, sourceAgent?: string) {
 > **Architecture Change (2025-12-06)**: The agent-server has been refactored from a monolithic file into a modular package structure at `docker/base-image/agent_server/`.
 
 **Files**:
-- `docker/base-image/agent_server/services/claude_code.py:26-30` - Execution lock and ThreadPoolExecutor
-- `docker/base-image/agent_server/routers/chat.py:18-69` - Chat endpoint with lock
+- `docker/base-image/agent_server/services/claude_code.py:23-30` - Execution lock and ThreadPoolExecutor
+- `docker/base-image/agent_server/routers/chat.py:18-80` - Chat endpoint with lock
 
 **Defense Layer**: asyncio.Lock + ThreadPoolExecutor(max_workers=1)
 
 ```python
-# agent_server/services/claude_code.py:26-30
+# agent_server/services/claude_code.py:23-30
 # Thread pool for running blocking subprocess operations
 # max_workers=1 ensures only one execution at a time within this container
 _executor = ThreadPoolExecutor(max_workers=1)
@@ -390,7 +390,7 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # Asyncio lock for execution serialization (safety net for parallel request prevention)
 _execution_lock = asyncio.Lock()
 
-# agent_server/routers/chat.py:18-69
+# agent_server/routers/chat.py:18-80
 @router.post("/api/chat")
 async def chat(request: ChatRequest):
     """
@@ -420,9 +420,9 @@ async def chat(request: ChatRequest):
 
 ---
 
-## API Endpoints (`src/backend/routers/agents.py:815-924`)
+## API Endpoints (`src/backend/routers/agents.py:1152-1261`)
 
-### GET /api/agents/{name}/queue (lines 815-841)
+### GET /api/agents/{name}/queue (lines 1152-1178)
 Returns current queue status for an agent.
 
 **Response:**
@@ -452,7 +452,7 @@ Returns current queue status for an agent.
 }
 ```
 
-### POST /api/agents/{name}/queue/clear (lines 844-881)
+### POST /api/agents/{name}/queue/clear (lines 1181-1218)
 Clear all queued executions (does not stop running execution).
 
 **Response:**
@@ -466,7 +466,7 @@ Clear all queued executions (does not stop running execution).
 
 **Audit Log**: `event_type="agent_queue", action="clear_queue"`
 
-### POST /api/agents/{name}/queue/release (lines 884-924)
+### POST /api/agents/{name}/queue/release (lines 1221-1261)
 Emergency: force release agent from running state.
 
 **Response:**
@@ -647,7 +647,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 - [ ] TTL expiration: Stuck execution auto-clears after 10 min
 
 **Status**: Ready for testing
-**Last Updated**: 2025-12-06
+**Last Updated**: 2025-12-19
 
 ---
 
@@ -699,6 +699,13 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-19 | Updated line numbers for all source files based on current codebase |
+| 2025-12-19 | Updated models.py reference to lines 163-210 |
+| 2025-12-19 | Updated agents.py queue endpoints to lines 1152-1261 |
+| 2025-12-19 | Updated scheduler_service.py reference to lines 169-399 |
+| 2025-12-19 | Updated MCP chat.ts reference to lines 137-189 |
+| 2025-12-19 | Updated MCP client.ts reference to lines 288-319 |
+| 2025-12-19 | Updated agent_server claude_code.py reference to lines 23-30 |
+| 2025-12-19 | Updated agent_server chat.py reference to lines 18-80 |
 | 2025-12-06 | Updated agent-server references to new modular structure (`agent_server/` package) |
-| 2025-12-06 | Updated line references for `services/claude_code.py` and `routers/chat.py` |
 | 2025-12-06 | Initial documentation |

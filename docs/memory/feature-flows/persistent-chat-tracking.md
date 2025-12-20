@@ -7,7 +7,7 @@ Database-backed chat session persistence that survives agent restarts, container
 As a Trinity platform user, I want all my chat conversations with agents to be permanently stored in the database so that I can review conversation history, audit costs, analyze agent performance, and resume conversations even after restarting or recreating agents.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:284-436` - Chat tab (same interface, transparent persistence)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:345-498` - Chat tab (same interface, transparent persistence)
 - **API**: `POST /api/agents/{name}/chat` (modified to persist messages)
 - **New APIs**:
   - `GET /api/agents/{name}/chat/history/persistent` - Retrieve persisted history
@@ -24,9 +24,9 @@ As a Trinity platform user, I want all my chat conversations with agents to be p
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
 | Line | Element | Purpose |
 |------|---------|---------|
-| 284-436 | Chat tab content | Existing chat UI (no changes) |
-| 1015-1066 | `sendChatMessage()` | Sends message (backend persists) |
-| 1005-1013 | `loadChatHistory()` | Loads in-memory history from container |
+| 345-498 | Chat tab content | Existing chat UI (no changes) |
+| 1484-1535 | `sendChatMessage()` | Sends message (backend persists) |
+| 1474-1482 | `loadChatHistory()` | Loads in-memory history from container |
 
 **Note**: UI currently uses in-memory chat history from agent container (`/chat/history`). The persistent history endpoints are backend-only for now but can be integrated for cross-session history viewing.
 
@@ -34,8 +34,8 @@ As a Trinity platform user, I want all my chat conversations with agents to be p
 
 | Line | Action | Purpose |
 |------|--------|---------|
-| 133-140 | `sendChatMessage(name, message)` | POST to `/api/agents/{name}/chat` (now persists to DB) |
-| 142-148 | `getChatHistory(name)` | GET in-memory history from container |
+| 161-168 | `sendChatMessage(name, message)` | POST to `/api/agents/{name}/chat` (now persists to DB) |
+| 170-176 | `getChatHistory(name)` | GET in-memory history from container |
 
 **Future Enhancement**: Add store actions for persistent history:
 ```javascript
@@ -78,13 +78,13 @@ const response = await axios.get(`/api/agents/${name}/chat/sessions`,
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 18-115 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
-| 368-407 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
-| 410-442 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
-| 445-480 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
-| 483-519 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
+| 50-294 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
+| 586-625 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
+| 628-660 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
+| 663-698 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
+| 701-736 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
 
-### Modified Chat Endpoint (`routers/chat.py:18-115`)
+### Modified Chat Endpoint (`routers/chat.py:50-294`)
 
 **Key Changes**:
 1. Get or create chat session before sending message
@@ -94,7 +94,12 @@ const response = await axios.get(`/api/agents/${name}/chat/sessions`,
 
 ```python
 @router.post("/{name}/chat")
-async def chat_with_agent(name: str, request: ChatMessageRequest, current_user: User):
+async def chat_with_agent(
+    name: str,
+    request: ChatMessageRequest,
+    current_user: User = Depends(get_current_user),
+    x_source_agent: Optional[str] = Header(None)
+):
     container = get_agent_container(name)
     if container.status != "running":
         raise HTTPException(status_code=503, detail="Agent is not running")
@@ -107,7 +112,7 @@ async def chat_with_agent(name: str, request: ChatMessageRequest, current_user: 
     )
 
     # 2. Log user message to database
-    db.add_chat_message(
+    user_message = db.add_chat_message(
         session_id=session.id,
         agent_name=name,
         user_id=current_user.id,
@@ -122,7 +127,7 @@ async def chat_with_agent(name: str, request: ChatMessageRequest, current_user: 
         response = await client.post(
             f"http://agent-{name}:8000/api/chat",
             json={"message": request.message, "stream": False},
-            timeout=120.0
+            timeout=300.0
         )
         response_data = response.json()
 
@@ -134,7 +139,7 @@ async def chat_with_agent(name: str, request: ChatMessageRequest, current_user: 
     tool_calls_json = json.dumps(execution_log) if execution_log else None
 
     # 5. Log assistant response with observability data
-    db.add_chat_message(
+    assistant_message = db.add_chat_message(
         session_id=session.id,
         agent_name=name,
         user_id=current_user.id,
@@ -154,7 +159,7 @@ async def chat_with_agent(name: str, request: ChatMessageRequest, current_user: 
     return response_data
 ```
 
-### New Persistent History Endpoint (`routers/chat.py:368-407`)
+### New Persistent History Endpoint (`routers/chat.py:586-625`)
 
 ```python
 @router.get("/{name}/chat/history/persistent")
@@ -197,7 +202,7 @@ async def get_persistent_chat_history(
     }
 ```
 
-### Sessions List Endpoint (`routers/chat.py:410-442`)
+### Sessions List Endpoint (`routers/chat.py:628-660`)
 
 ```python
 @router.get("/{name}/chat/sessions")
@@ -233,7 +238,7 @@ async def get_agent_chat_sessions(
     }
 ```
 
-### Session Detail Endpoint (`routers/chat.py:445-480`)
+### Session Detail Endpoint (`routers/chat.py:663-698`)
 
 ```python
 @router.get("/{name}/chat/sessions/{session_id}")
@@ -265,7 +270,7 @@ async def get_chat_session_detail(
     }
 ```
 
-### Close Session Endpoint (`routers/chat.py:483-519`)
+### Close Session Endpoint (`routers/chat.py:701-736`)
 
 ```python
 @router.post("/{name}/chat/sessions/{session_id}/close")
@@ -308,7 +313,7 @@ async def close_chat_session(
 
 ### Schema (`src/backend/database.py`)
 
-#### Chat Sessions Table (`database.py:463-479`)
+#### Chat Sessions Table (`database.py:302-318`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -332,7 +337,7 @@ CREATE INDEX idx_chat_sessions_user ON chat_sessions(user_id)
 CREATE INDEX idx_chat_sessions_status ON chat_sessions(status)
 ```
 
-#### Chat Messages Table (`database.py:481-500`)
+#### Chat Messages Table (`database.py:320-339`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -360,7 +365,7 @@ CREATE INDEX idx_chat_messages_user ON chat_messages(user_id)
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp)
 ```
 
-### Models (`database.py:191-222`)
+### Models (`src/backend/db_models.py:185-215`)
 
 ```python
 class ChatSession(BaseModel):
@@ -396,139 +401,61 @@ class ChatMessage(BaseModel):
     execution_time_ms: Optional[int] = None
 ```
 
-### Database Operations (`database.py:1777-1969`)
+### Database Operations (`src/backend/db/chat.py`)
 
-#### Get or Create Session (`database.py:1777-1813`)
+#### ChatOperations Class (`db/chat.py:15-246`)
 
 ```python
-def get_or_create_chat_session(
-    self, agent_name: str, user_id: int, user_email: str
-) -> ChatSession:
-    """
-    Get the active chat session for a user+agent, or create a new one.
-    Returns the most recent active session if it exists.
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+class ChatOperations:
+    """Chat session and message database operations."""
 
+    def get_or_create_chat_session(
+        self, agent_name: str, user_id: int, user_email: str
+    ) -> ChatSession:
+        """
+        Get the active chat session for a user+agent, or create a new one.
+        Returns the most recent active session if it exists.
+        """
         # Try to find an active session for this user+agent
-        cursor.execute("""
-            SELECT * FROM chat_sessions
-            WHERE agent_name = ? AND user_id = ? AND status = 'active'
-            ORDER BY last_message_at DESC
-            LIMIT 1
-        """, (agent_name, user_id))
+        # If none exists, create a new session with secrets.token_urlsafe(16)
 
-        row = cursor.fetchone()
-        if row:
-            return self._row_to_chat_session(row)
+    def add_chat_message(
+        self,
+        session_id: str,
+        agent_name: str,
+        user_id: int,
+        user_email: str,
+        role: str,
+        content: str,
+        cost: Optional[float] = None,
+        context_used: Optional[int] = None,
+        context_max: Optional[int] = None,
+        tool_calls: Optional[str] = None,
+        execution_time_ms: Optional[int] = None
+    ) -> ChatMessage:
+        """Add a message to a chat session and update session stats."""
 
-        # Create a new session
-        session_id = secrets.token_urlsafe(16)
-        now = datetime.utcnow().isoformat()
+    def get_chat_session(self, session_id: str) -> Optional[ChatSession]:
+        """Get a specific chat session by ID."""
 
-        cursor.execute("""
-            INSERT INTO chat_sessions (
-                id, agent_name, user_id, user_email, started_at, last_message_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (session_id, agent_name, user_id, user_email, now, now))
+    def get_chat_messages(self, session_id: str, limit: int = 100) -> List[ChatMessage]:
+        """Get messages for a chat session (newest first)."""
 
-        conn.commit()
+    def get_agent_chat_history(
+        self, agent_name: str, user_id: Optional[int] = None, limit: int = 100
+    ) -> List[ChatMessage]:
+        """Get chat history for an agent, newest first."""
 
-        # Return the newly created session
-        cursor.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,))
-        row = cursor.fetchone()
-        return self._row_to_chat_session(row)
-```
+    def get_agent_chat_sessions(
+        self, agent_name: str, user_id: Optional[int] = None, status: Optional[str] = None
+    ) -> List[ChatSession]:
+        """Get all chat sessions for an agent."""
 
-#### Add Chat Message (`database.py:1815-1867`)
+    def close_chat_session(self, session_id: str) -> bool:
+        """Mark a chat session as closed."""
 
-```python
-def add_chat_message(
-    self,
-    session_id: str,
-    agent_name: str,
-    user_id: int,
-    user_email: str,
-    role: str,
-    content: str,
-    cost: Optional[float] = None,
-    context_used: Optional[int] = None,
-    context_max: Optional[int] = None,
-    tool_calls: Optional[str] = None,
-    execution_time_ms: Optional[int] = None
-) -> ChatMessage:
-    """Add a message to a chat session and update session stats."""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-
-        # Create message
-        message_id = secrets.token_urlsafe(16)
-        now = datetime.utcnow().isoformat()
-
-        cursor.execute("""
-            INSERT INTO chat_messages (
-                id, session_id, agent_name, user_id, user_email,
-                role, content, timestamp,
-                cost, context_used, context_max, tool_calls, execution_time_ms
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            message_id, session_id, agent_name, user_id, user_email,
-            role, content, now,
-            cost, context_used, context_max, tool_calls, execution_time_ms
-        ))
-
-        # Update session stats
-        cursor.execute("""
-            UPDATE chat_sessions
-            SET last_message_at = ?,
-                message_count = message_count + 1,
-                total_cost = total_cost + COALESCE(?, 0),
-                total_context_used = COALESCE(?, total_context_used),
-                total_context_max = COALESCE(?, total_context_max)
-            WHERE id = ?
-        """, (now, cost or 0, context_used, context_max, session_id))
-
-        conn.commit()
-
-        # Return the created message
-        cursor.execute("SELECT * FROM chat_messages WHERE id = ?", (message_id,))
-        row = cursor.fetchone()
-        return self._row_to_chat_message(row)
-```
-
-#### Query Operations
-
-```python
-# Get all messages for an agent (optionally filtered by user)
-def get_agent_chat_history(
-    self, agent_name: str, user_id: Optional[int] = None, limit: int = 100
-) -> List[ChatMessage]:
-    """Get chat history for an agent, newest first."""
-
-# Get all sessions for an agent
-def get_agent_chat_sessions(
-    self, agent_name: str, user_id: Optional[int] = None, status: Optional[str] = None
-) -> List[ChatSession]:
-    """Get all chat sessions for an agent."""
-
-# Get specific session
-def get_chat_session(self, session_id: str) -> Optional[ChatSession]:
-    """Get a specific chat session by ID."""
-
-# Get messages for a session
-def get_chat_messages(self, session_id: str, limit: int = 100) -> List[ChatMessage]:
-    """Get messages for a chat session (newest first)."""
-
-# Close session
-def close_chat_session(self, session_id: str) -> bool:
-    """Mark a chat session as closed."""
-
-# Delete session and messages
-def delete_chat_session(self, session_id: str) -> bool:
-    """Delete a chat session and all its messages."""
+    def delete_chat_session(self, session_id: str) -> bool:
+        """Delete a chat session and all its messages."""
 ```
 
 ---
@@ -536,30 +463,30 @@ def delete_chat_session(self, session_id: str) -> bool:
 ## Data Flow Diagram
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (Vue.js)                            │
-│   User types message → sendChatMessage() → POST /api/agents/{}/chat  │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        BACKEND (FastAPI)                              │
-│  routers/chat.py:18                                                   │
-│    ├─ 1. Get or create session (DB)                                  │
-│    ├─ 2. Log user message (DB)                                       │
-│    ├─ 3. Proxy to agent container (httpx)                            │
-│    └─ 4. Log assistant response with metadata (DB)                   │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                         DATABASE (SQLite)                             │
-│  chat_sessions table:                                                 │
-│    - Session metadata (costs, context, message count)                │
-│  chat_messages table:                                                 │
-│    - User message (content, timestamp)                               │
-│    - Assistant message (content, cost, context, tool_calls, timing)  │
-└──────────────────────────────────────────────────────────────────────┘
++----------------------------------------------------------------------+
+|                         FRONTEND (Vue.js)                            |
+|   User types message -> sendChatMessage() -> POST /api/agents/{}/chat  |
++--------------------------------+-------------------------------------+
+                                 |
+                                 v
++----------------------------------------------------------------------+
+|                        BACKEND (FastAPI)                              |
+|  routers/chat.py:50                                                   |
+|    +- 1. Get or create session (DB)                                  |
+|    +- 2. Log user message (DB)                                       |
+|    +- 3. Proxy to agent container (httpx)                            |
+|    +- 4. Log assistant response with metadata (DB)                   |
++--------------------------------+-------------------------------------+
+                                 |
+                                 v
++----------------------------------------------------------------------+
+|                         DATABASE (SQLite)                             |
+|  chat_sessions table:                                                 |
+|    - Session metadata (costs, context, message count)                |
+|  chat_messages table:                                                 |
+|    - User message (content, timestamp)                               |
+|    - Assistant message (content, cost, context, tool_calls, timing)  |
++----------------------------------------------------------------------+
 ```
 
 ---
@@ -573,12 +500,12 @@ Body: {"message": "Hello, list my files"}
 
 Backend Flow:
 1. db.get_or_create_chat_session("my-agent", user_id=5, user_email="user@example.com")
-   → Returns: ChatSession(id="abc123", started_at="2025-12-01T10:00:00", message_count=0)
+   -> Returns: ChatSession(id="abc123", started_at="2025-12-01T10:00:00", message_count=0)
 
 2. db.add_chat_message(session_id="abc123", role="user", content="Hello, list my files")
-   → Inserts user message, updates session.message_count=1
+   -> Inserts user message, updates session.message_count=1
 
-3. Proxy to agent container → Gets response with metadata:
+3. Proxy to agent container -> Gets response with metadata:
    {
      "response": "Here are your files:\n- file1.txt\n- file2.py",
      "execution_log": [{"type": "tool_use", "tool": "Bash", "command": "ls"}],
@@ -596,7 +523,7 @@ Backend Flow:
      tool_calls='[{"type":"tool_use","tool":"Bash","command":"ls"}]',
      execution_time_ms=1234
    )
-   → Inserts assistant message, updates session:
+   -> Inserts assistant message, updates session:
      - message_count=2
      - total_cost=0.003
      - total_context_used=2500
@@ -610,15 +537,15 @@ Body: {"message": "Read file1.txt"}
 
 Backend Flow:
 1. db.get_or_create_chat_session("my-agent", user_id=5, ...)
-   → Finds existing session "abc123" (same user+agent, status='active')
+   -> Finds existing session "abc123" (same user+agent, status='active')
 
 2. db.add_chat_message(session_id="abc123", role="user", content="Read file1.txt")
-   → message_count=3
+   -> message_count=3
 
-3. Proxy to agent → response with metadata
+3. Proxy to agent -> response with metadata
 
 4. db.add_chat_message(session_id="abc123", role="assistant", ...)
-   → message_count=4, total_cost=0.006, total_context_used=4200
+   -> message_count=4, total_cost=0.006, total_context_used=4200
 ```
 
 ### 3. Query Persistent History
@@ -627,8 +554,8 @@ GET /api/agents/my-agent/chat/history/persistent?limit=100
 
 Backend Flow:
 1. db.get_agent_chat_history("my-agent", user_id=5, limit=100)
-   → Returns all messages for this user across all sessions
-   → Ordered by timestamp DESC (newest first)
+   -> Returns all messages for this user across all sessions
+   -> Ordered by timestamp DESC (newest first)
 
 Response:
 {
@@ -972,12 +899,12 @@ GROUP BY user_email;
 ```
 
 **Edge Cases**:
-- [ ] Send message with stopped agent → 503 error, no DB write
-- [ ] Query history for non-existent agent → 404
-- [ ] Non-admin tries to access another user's session → 403
-- [ ] Close already-closed session → succeeds (idempotent)
-- [ ] Very long conversation (>100 messages) → pagination works
-- [ ] Agent deleted → sessions remain (orphaned but queryable)
+- [ ] Send message with stopped agent -> 503 error, no DB write
+- [ ] Query history for non-existent agent -> 404
+- [ ] Non-admin tries to access another user's session -> 403
+- [ ] Close already-closed session -> succeeds (idempotent)
+- [ ] Very long conversation (>100 messages) -> pagination works
+- [ ] Agent deleted -> sessions remain (orphaned but queryable)
 
 **Cleanup**:
 ```sql
@@ -986,9 +913,9 @@ DELETE FROM chat_messages WHERE agent_name = 'my-agent';
 DELETE FROM chat_sessions WHERE agent_name = 'my-agent';
 ```
 
-**Last Tested**: 2025-12-01
+**Last Tested**: 2025-12-20
 **Tested By**: Production deployment
-**Status**: ✅ Working (deployed and tested)
+**Status**: Working (deployed and tested)
 **Issues**: None
 
 ---
@@ -1036,7 +963,7 @@ LIMIT 100;
 ## Migration Notes
 
 ### Database Migration
-Handled automatically by `init_database()` in `database.py:320-530`:
+Handled automatically by `init_database()` in `database.py:159-438`:
 1. Creates `chat_sessions` table if not exists
 2. Creates `chat_messages` table if not exists
 3. Creates indexes
@@ -1051,5 +978,5 @@ To show persistent history in UI:
 1. Add store action: `getPersistentChatHistory()`
 2. Add UI tab: "History" next to "Chat"
 3. Display sessions list with costs/timestamps
-4. Click session → view all messages
+4. Click session -> view all messages
 5. Filter by date range, user (admin only)

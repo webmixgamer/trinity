@@ -259,6 +259,7 @@ export const useNetworkStore = defineStore('network', () => {
           type: agent.type || 'business-assistant',
           owner: agent.owner,
           githubRepo: agent.github_repo || null,
+          is_system: agent.is_system || false,
           // Set initial activityState based on running status to avoid "Offline" flash
           activityState: agent.status === 'running' ? 'idle' : 'offline'
         },

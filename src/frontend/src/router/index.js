@@ -50,6 +50,12 @@ const routes = [
     component: () => import('../views/Settings.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
+  {
+    path: '/system-agent',
+    name: 'SystemAgent',
+    component: () => import('../views/SystemAgent.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
   // Legacy redirect for /network -> Dashboard
   {
     path: '/network',

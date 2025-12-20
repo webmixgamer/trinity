@@ -2,6 +2,7 @@
 
 > **Status**: ✅ Implemented (2025-12-07)
 > **Tested**: ✅ All features verified working
+> **Last Updated**: 2025-12-19
 
 ## Overview
 
@@ -26,9 +27,9 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 ### Existing APIs to Reuse
 | Endpoint | Purpose | Used By |
 |----------|---------|---------|
-| `GET /api/agents/context-stats` | Context % + activity state for all agents | collaborations.js |
-| `GET /api/agents/plans/aggregate` | Task DAG summary with per-agent stats | collaborations.js |
-| `GET /api/agents` | Base agent list | agents.js, collaborations.js |
+| `GET /api/agents/context-stats` | Context % + activity state for all agents | network.js, agents.js |
+| `GET /api/agents/plans/aggregate` | Task DAG summary with per-agent stats | network.js, agents.js |
+| `GET /api/agents` | Base agent list | agents.js, network.js |
 
 ---
 
@@ -148,22 +149,22 @@ stopContextPolling() {
 }
 ```
 
-### Option B: Reuse collaborations.js Store
+### Option B: Reuse network.js Store
 Import and use existing store (less code, but adds Vue Flow dependency to simple page):
 
 ```javascript
-import { useCollaborationsStore } from '../stores/collaborations'
+import { useNetworkStore } from '../stores/network'
 
-const collaborationsStore = useCollaborationsStore()
+const networkStore = useNetworkStore()
 
 onMounted(() => {
   // Only start context polling, not full collaboration features
-  collaborationsStore.fetchContextStats()
-  collaborationsStore.startContextPolling()
+  networkStore.fetchContextStats()
+  networkStore.startContextPolling()
 })
 
 onUnmounted(() => {
-  collaborationsStore.stopContextPolling()
+  networkStore.stopContextPolling()
 })
 ```
 
@@ -355,7 +356,7 @@ const getTaskProgress = (agentName) => {
 - **API**: `GET /api/agents/plans/aggregate` (already exists)
 - **CSS**: Pulse animation from AgentNode.vue
 - **Logic**: Progress bar color coding from AgentNode.vue
-- **Logic**: Activity state detection from collaborations.js
+- **Logic**: Activity state detection from network.js
 
 ---
 
@@ -415,5 +416,7 @@ const getTaskProgress = (agentName) => {
 ## References
 
 - **AgentNode.vue**: `/src/frontend/src/components/AgentNode.vue` - Visual design reference
-- **collaborations.js**: `/src/frontend/src/stores/collaborations.js` - API polling reference
-- **Backend endpoint**: `/src/backend/routers/agents.py:93-173` - context-stats endpoint
+- **network.js**: `/src/frontend/src/stores/network.js:564-601` - API polling reference (fetchContextStats)
+- **agents.js**: `/src/frontend/src/stores/agents.js:452-537` - Context and plan stats fetching + polling
+- **Backend endpoint**: `/src/backend/routers/agents.py:208-290` - context-stats endpoint
+- **Agents.vue**: `/src/frontend/src/views/Agents.vue:1-295` - Full component with dark mode support

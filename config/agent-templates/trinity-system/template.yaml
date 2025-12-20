@@ -1,0 +1,60 @@
+name: trinity-system
+display_name: Trinity System Agent
+description: Platform operations manager responsible for agent health, lifecycle, resource governance, and schedule control. Auto-deployed, deletion-protected, with full access to all Trinity MCP tools.
+version: "1.1.0"
+author: Trinity Platform
+
+type: system-orchestrator
+
+resources:
+  cpu: "4"
+  memory: "8g"
+
+capabilities:
+  - health-monitoring
+  - lifecycle-management
+  - resource-governance
+  - schedule-control
+  - fleet-operations
+  - platform-alerting
+
+mcp_servers: []
+
+credentials: {}
+
+slash_commands:
+  - name: /ops/status
+    description: Fleet status report - all agents with status, context, activity
+  - name: /ops/health
+    description: Health check - identify unhealthy agents with recommendations
+  - name: /ops/restart
+    description: Restart a specific agent
+    arguments: "<agent-name>"
+  - name: /ops/restart-all
+    description: Restart all agents (use with caution)
+  - name: /ops/stop
+    description: Stop a specific agent
+    arguments: "<agent-name>"
+  - name: /ops/schedules
+    description: Schedule overview - all schedules with next run times
+  - name: /ops/costs
+    description: Cost report from OTel metrics (if enabled)
+
+metrics:
+  - name: agents_managed
+    type: gauge
+    label: "Agents"
+    description: "Total agents in the platform"
+  - name: agents_healthy
+    type: gauge
+    label: "Healthy"
+    description: "Agents in healthy state"
+  - name: agents_unhealthy
+    type: gauge
+    label: "Unhealthy"
+    description: "Agents with issues"
+  - name: system_health
+    type: status
+    label: "Health"
+    description: "Overall platform health"
+    values: ["healthy", "degraded", "critical"]

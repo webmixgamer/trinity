@@ -9,7 +9,7 @@ Real-time chat interface allowing users to communicate with Claude Code agents r
 As a Trinity platform user, I want to chat with my Claude Code agents so that I can interact with AI assistants that have access to configured tools and MCP servers.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:192-344` - Chat tab content
+- **UI**: `src/frontend/src/views/AgentDetail.vue:360-494` - Chat tab content
 - **API**: `POST /api/agents/{name}/chat`
 
 ---
@@ -21,11 +21,11 @@ As a Trinity platform user, I want to chat with my Claude Code agents so that I 
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
 | Line | Element | Purpose |
 |------|---------|---------|
-| 322-339 | Chat input + Send button | Message entry point |
-| 326 | `@keypress.enter="sendChatMessage"` | Enter key handler |
-| 259-319 | Chat messages container | Displays conversation history |
-| 312-317 | Loading indicator | Shows `currentToolDisplay` during execution |
-| 874-925 | `sendChatMessage()` | Main message submission handler |
+| 476-493 | Chat input + Send button | Message entry point |
+| 480 | `@keypress.enter="sendChatMessage"` | Enter key handler |
+| 412-473 | Chat messages container | Displays conversation history |
+| 465-471 | Loading indicator | Shows `currentToolDisplay` during execution |
+| 1484-1535 | `sendChatMessage()` | Main message submission handler |
 
 **UnifiedActivityPanel.vue** (`src/frontend/src/components/UnifiedActivityPanel.vue`)
 | Line | Element | Purpose |
@@ -39,10 +39,10 @@ As a Trinity platform user, I want to chat with my Claude Code agents so that I 
 
 | Line | Action | Purpose |
 |------|--------|---------|
-| 133-140 | `sendChatMessage(name, message)` | POST to `/api/agents/{name}/chat` |
-| 142-148 | `getChatHistory(name)` | GET chat history from agent |
-| 150-156 | `getSessionInfo(name)` | GET session info (tokens, cost) |
-| 158-164 | `clearSession(name)` | DELETE `/api/agents/{name}/chat/history` |
+| 161-168 | `sendChatMessage(name, message)` | POST to `/api/agents/{name}/chat` |
+| 170-176 | `getChatHistory(name)` | GET chat history from agent |
+| 178-184 | `getSessionInfo(name)` | GET session info (tokens, cost) |
+| 186-192 | `clearSession(name)` | DELETE `/api/agents/{name}/chat/history` |
 
 ### API Calls
 ```javascript
@@ -62,12 +62,13 @@ return response.data
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 15-66 | `/api/agents/{name}/chat` | POST | Send chat message |
-| 69-97 | `/api/agents/{name}/chat/history` | GET | Get chat history |
-| 100-128 | `/api/agents/{name}/chat/session` | GET | Get session info |
-| 133-175 | `/api/agents/{name}/activity` | GET | Get activity summary |
+| 50-294 | `/api/agents/{name}/chat` | POST | Send chat message |
+| 296-324 | `/api/agents/{name}/chat/history` | GET | Get chat history |
+| 366-394 | `/api/agents/{name}/chat/session` | GET | Get session info |
+| 327-363 | `/api/agents/{name}/chat/history` | DELETE | Clear/reset session |
+| 399-441 | `/api/agents/{name}/activity` | GET | Get activity summary |
 
-### Chat Endpoint Flow (`routers/chat.py:50-293`)
+### Chat Endpoint Flow (`routers/chat.py:50-294`)
 ```python
 @router.post("/{name}/chat")
 async def chat_with_agent(
@@ -83,7 +84,7 @@ async def chat_with_agent(
     if container.status != "running":
         raise HTTPException(status_code=503, detail="Agent is not running")
 
-    # 2.5. EXECUTION QUEUE - Prevent parallel execution (NEW)
+    # 2.5. EXECUTION QUEUE - Prevent parallel execution
     source = ExecutionSource.AGENT if x_source_agent else ExecutionSource.USER
     queue = get_execution_queue()
     execution = queue.create_execution(
@@ -104,7 +105,7 @@ async def chat_with_agent(
             "retry_after": 30
         })
 
-    # 3. AGENT COLLABORATION DETECTION (Lines 59-80) - NEW
+    # 3. AGENT COLLABORATION DETECTION (Lines 107-130)
     collaboration_activity_id = None
     if x_source_agent:
         # Broadcast real-time collaboration event
@@ -158,15 +159,15 @@ async def chat_with_agent(
         content=request.message
     )
 
-    # 6. Proxy to agent's internal server via Docker network
+    # 7. Proxy to agent's internal server via Docker network
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"http://agent-{name}:8000/api/chat",
             json={"message": request.message, "stream": False},
-            timeout=120.0  # 2 minute timeout
+            timeout=300.0  # 5 minute timeout
         )
 
-    # 7. Log assistant response with observability data
+    # 8. Log assistant response with observability data
     assistant_message = db.add_chat_message(
         session_id=session.id,
         agent_name=name,
@@ -181,7 +182,7 @@ async def chat_with_agent(
         execution_time_ms=execution_time_ms
     )
 
-    # 8. Track individual tool calls (granular activity tracking)
+    # 9. Track individual tool calls (granular activity tracking)
     for tool_call in execution_log:
         await activity_service.track_activity(
             agent_name=name,
@@ -196,7 +197,7 @@ async def chat_with_agent(
             }
         )
 
-    # 9. Complete chat activity
+    # 10. Complete chat activity
     await activity_service.complete_activity(
         activity_id=chat_activity_id,
         status="completed",
@@ -207,7 +208,7 @@ async def chat_with_agent(
         }
     )
 
-    # 10. Log audit event
+    # 11. Log audit event
     await log_audit_event(
         event_type="agent_interaction",
         action="chat",
@@ -237,17 +238,22 @@ async def chat_with_agent(
 
 | Line | Endpoint | Purpose |
 |------|----------|---------|
-| 18-69 | `POST /api/chat` | Claude Code execution with lock |
-| 72-75 | `GET /api/chat/history` | Get conversation history |
-| 78-91 | `GET /api/chat/session` | Get session info (tokens, cost) |
-| 127-140 | `DELETE /api/chat/history` | Clear/reset session |
+| 18-80 | `POST /api/chat` | Claude Code execution with lock |
+| 83-86 | `GET /api/chat/history` | Get conversation history |
+| 89-102 | `GET /api/chat/session` | Get session info (tokens, cost) |
+| 138-151 | `DELETE /api/chat/history` | Clear/reset session |
 
-### Claude Code Execution (`agent_server/services/claude_code.py:293-425`)
+### Claude Code Execution (`agent_server/services/claude_code.py:312-450`)
 ```python
 async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None):
     # Build command
     cmd = ["claude", "--print", "--output-format", "stream-json",
            "--verbose", "--dangerously-skip-permissions"]
+
+    # Add MCP config if .mcp.json exists
+    mcp_config_path = Path.home() / ".mcp.json"
+    if mcp_config_path.exists():
+        cmd.extend(["--mcp-config", str(mcp_config_path)])
 
     # Add model selection if set
     if agent_state.current_model:
@@ -257,7 +263,7 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     if agent_state.session_started:
         cmd.append("--continue")
 
-    # Use ThreadPoolExecutor for non-blocking subprocess I/O
+    # Use Popen for real-time streaming
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, ...)
 
     # Read output in thread pool (allows activity polling during execution)
@@ -265,7 +271,7 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     stderr_output, return_code = await loop.run_in_executor(_executor, read_subprocess_output)
 ```
 
-### Stream-JSON Parsing (`agent_server/services/claude_code.py:33-167`)
+### Stream-JSON Parsing (`agent_server/services/claude_code.py:33-173`)
 
 Claude Code outputs one JSON object per line:
 ```json
@@ -275,7 +281,7 @@ Claude Code outputs one JSON object per line:
 {"type": "result", "total_cost_usd": 0.003, "duration_ms": 1234, "usage": {...}}
 ```
 
-### Session State (`agent_server/state.py:15-90`)
+### Session State (`agent_server/state.py:15-91`)
 ```python
 class AgentState:
     def __init__(self):
@@ -288,7 +294,7 @@ class AgentState:
         self.session_activity = {...}  # Real-time tool tracking
 ```
 
-### Execution Lock (`agent_server/services/claude_code.py:26-30`)
+### Execution Lock (`agent_server/services/claude_code.py:23-30`)
 ```python
 # Thread pool for running blocking subprocess operations
 # max_workers=1 ensures only one execution at a time within this container
@@ -311,7 +317,7 @@ _execution_lock = asyncio.Lock()
                                    v
 +-----------------------------------------------------------------------+
 |                       BACKEND (FastAPI)                                |
-|  routers/chat.py:15  ->  httpx proxy  ->  http://agent-{name}:8000/api/chat |
+|  routers/chat.py:50  ->  httpx proxy  ->  http://agent-{name}:8000/api/chat |
 +----------------------------------+------------------------------------+
                                    | Docker Internal Network
                                    v
@@ -326,7 +332,7 @@ _execution_lock = asyncio.Lock()
 
 ## Context Window Tracking
 
-### Frontend Display (`AgentDetail.vue:194-248`)
+### Frontend Display (`AgentDetail.vue:370-401`)
 ```vue
 <span class="font-mono">
   {{ formatTokenCount(sessionInfo.context_tokens) }} /
@@ -335,41 +341,54 @@ _execution_lock = asyncio.Lock()
 </span>
 ```
 
-### Token Tracking in Agent (`agent_server/routers/chat.py:45-53`)
+### Token Tracking in Agent (`agent_server/routers/chat.py:46-63`)
 ```python
 agent_state.session_total_cost += metadata.cost_usd
 agent_state.session_total_output_tokens += metadata.output_tokens
-# Context window usage: metadata.input_tokens already contains the complete total
+# Context window usage: metadata.input_tokens should contain the complete total
 # (from modelUsage.inputTokens which includes all turns and cached tokens)
-# cache_creation_tokens and cache_read_tokens are billing breakdowns, NOT additional tokens
-agent_state.session_context_tokens = metadata.input_tokens
+# However, with --continue flag, Claude Code may sometimes report only new tokens
+# Fix: Context should monotonically increase during a session, so keep the max
+if metadata.input_tokens > agent_state.session_context_tokens:
+    agent_state.session_context_tokens = metadata.input_tokens
+elif metadata.input_tokens > 0 and metadata.input_tokens < agent_state.session_context_tokens:
+    # Claude reported fewer tokens than before - likely only new input, not cumulative
+    # Keep the previous (higher) value as context should only grow
+    logger.warning(...)
 agent_state.session_context_window = metadata.context_window
 ```
 
 **Bug Fix (2025-12-11)**: Previously, context tracking incorrectly summed `input_tokens + cache_creation_tokens + cache_read_tokens`, causing context percentages >100% (e.g., 130%, 289%). The issue: `cache_creation_tokens` and `cache_read_tokens` are billing **breakdowns** (subsets) of `input_tokens`, not additional tokens. The fix uses `metadata.input_tokens` directly, which already contains the authoritative total from Claude's `modelUsage.inputTokens` (includes all conversation turns).
 
+**Bug Fix (2025-12-19)**: Context was resetting to ~4 tokens on subsequent messages when using `--continue` flag. Root cause: Claude Code may report only new input tokens (not cumulative) for continued conversations. Fix: Context tokens now use monotonic growth - only update if new value is greater than previous. This ensures context displays consistently across a session.
+
 ---
 
 ## Session Reset
 
-### Frontend Trigger (`AgentDetail.vue:1097-1145`)
+### Frontend Trigger (`AgentDetail.vue:1707-1758`)
 ```javascript
-const startNewSession = async () => {
-  await agentsStore.clearSession(agent.value.name)
-  await agentsStore.clearSessionActivity(agent.value.name)
-  chatMessages.value = []
-  sessionInfo.value = { context_tokens: 0, ... }
+const startNewSession = () => {
+  confirmDialog.onConfirm = async () => {
+    await agentsStore.clearSession(agent.value.name)
+    await agentsStore.clearSessionActivity(agent.value.name)
+    chatMessages.value = []
+    sessionInfo.value = { context_tokens: 0, ... }
+  }
 }
 ```
 
-### Agent Reset (`agent_server/state.py:76-86`)
+### Agent Reset (`agent_server/state.py:76-87`)
 ```python
 def reset_session(self):
     self.conversation_history = []
     self.session_started = False
     self.session_total_cost = 0.0
+    self.session_total_output_tokens = 0
     self.session_context_tokens = 0
+    # Note: current_model is NOT reset - it persists until explicitly changed
     self.session_activity = self._create_empty_activity()
+    self.tool_outputs = {}
 ```
 
 ---
@@ -437,7 +456,7 @@ await log_audit_event(
 1. **Internal Network Only**: Agent server not exposed externally
 2. **Authentication**: All endpoints require JWT
 3. **Audit Logging**: Every chat interaction logged
-4. **120s Timeout**: Long-running executions limited
+4. **300s Timeout**: Long-running executions limited (increased from 120s for queued execution)
 5. **--dangerously-skip-permissions**: Claude runs in trusted environment
 
 ---
@@ -489,7 +508,7 @@ await log_audit_event(
 - [ ] API: `GET /api/agents/{name}/chat/history` returns all messages
 
 ### 3. Clear Session
-**Action**: Click "New Session" button, confirm
+**Action**: Click "New" button, confirm
 
 **Expected**:
 - Chat cleared
@@ -520,7 +539,7 @@ await log_audit_event(
 
 **Edge Cases**:
 - [ ] Chat with stopped agent: Stop agent, try to chat (should show error)
-- [ ] Long-running task: Send complex request, verify 120s timeout handling
+- [ ] Long-running task: Send complex request, verify 300s timeout handling
 - [ ] Context overflow: Send many messages until approaching 200K limit
 - [ ] Concurrent chat: Open two browser windows, chat simultaneously
 
@@ -528,9 +547,9 @@ await log_audit_event(
 - [ ] Clear session if needed
 - [ ] Note final token/cost usage
 
-**Last Tested**: 2025-11-30
-**Tested By**: Not yet tested
-**Status**: Not Tested
+**Last Tested**: 2025-12-20
+**Tested By**: Feature flow verification
+**Status**: Verified
 **Issues**: None
 
 ---
@@ -556,6 +575,8 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2025-12-20 | Verified and updated all line numbers for frontend (AgentDetail.vue), backend (routers/chat.py), and agent server (chat.py, claude_code.py, state.py). Updated timeout from 120s to 300s. Verified execution queue integration. |
+| 2025-12-19 | **Bug Fix**: Fixed context resetting to ~4 tokens on subsequent messages with `--continue` flag. Implemented monotonic growth - context only increases within a session. |
 | 2025-12-11 | **Critical Bug Fix**: Fixed context percentage calculation showing >100% (e.g., 130%, 289%). Changed from incorrectly summing `input_tokens + cache_creation_tokens + cache_read_tokens` to using just `metadata.input_tokens`, which already contains the authoritative total from Claude's `modelUsage.inputTokens`. Cache tokens are billing breakdowns (subsets), not additional tokens. |
 | 2025-12-06 | Updated agent-server references to new modular structure (`agent_server/` package) |
 | 2025-12-06 | Updated line numbers for `routers/chat.py`, `services/claude_code.py`, `state.py` |

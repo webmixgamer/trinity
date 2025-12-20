@@ -27,7 +27,7 @@ from services.docker_service import docker_client, list_all_agents
 
 # Import routers
 from routers.auth import router as auth_router
-from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager
+from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, inject_trinity_meta_prompt
 from routers.credentials import router as credentials_router
 from routers.templates import router as templates_router
 from routers.sharing import router as sharing_router, set_websocket_manager as set_sharing_ws_manager
@@ -38,12 +38,18 @@ from routers.git import router as git_router
 from routers.activities import router as activities_router
 from routers.settings import router as settings_router
 from routers.systems import router as systems_router
+from routers.observability import router as observability_router
+from routers.system_agent import router as system_agent_router, set_inject_trinity_meta_prompt
+from routers.ops import router as ops_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
 
 # Import activity service
 from services.activity_service import activity_service
+
+# Import system agent service
+from services.system_agent_service import system_agent_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
@@ -77,6 +83,9 @@ manager = ConnectionManager()
 set_agents_ws_manager(manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
+
+# Inject trinity meta-prompt function into system agent router
+set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
 
 # Set up scheduler broadcast callback
 scheduler_service.set_broadcast_callback(manager.broadcast)
@@ -155,6 +164,16 @@ async def lifespan(app: FastAPI):
                 print(f"  - Agent: {agent.name} (status: {agent.status}, ssh_port: {agent.port})")
         except Exception as e:
             print(f"Error checking agents: {e}")
+
+        # Auto-deploy system agent (Phase 11.1)
+        try:
+            result = await system_agent_service.ensure_deployed()
+            print(f"System agent: {result['action']} - {result['message']}")
+            if result.get('status') == 'error':
+                print(f"  Warning: System agent deployment issue - {result.get('message')}")
+        except Exception as e:
+            print(f"Error deploying system agent: {e}")
+            # Don't fail startup - system agent is important but not critical for platform operation
     else:
         print("Docker not available - running in demo mode")
 
@@ -205,6 +224,9 @@ app.include_router(schedules_router)
 app.include_router(git_router)
 app.include_router(settings_router)
 app.include_router(systems_router)
+app.include_router(observability_router)
+app.include_router(system_agent_router)
+app.include_router(ops_router)
 
 
 # WebSocket endpoint

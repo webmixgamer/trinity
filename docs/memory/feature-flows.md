@@ -27,9 +27,9 @@
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
 | Authentication Mode System | High | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **Runtime** dual-mode auth: dev (local login) + prod (Auth0 OAuth), JWT mode claims (Updated 2025-12-05) |
-| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers |
+| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers (Updated 2025-12-19) |
 | Agent Chat | High | [agent-chat.md](feature-flows/agent-chat.md) | Chat with Claude Code agents, streaming responses |
-| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows |
+| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
@@ -41,22 +41,24 @@
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP (Implemented 2025-11-29) |
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files via web UI (Implemented 2025-12-01) |
-| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** (Merged 2025-12-07) |
-| Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Merged 2025-12-07) |
+| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** (Updated 2025-12-19) |
+| Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Updated 2025-12-19) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Implemented 2025-12-02, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
-| **Workplan System** | High | [workplan-system.md](feature-flows/workplan-system.md) | **Pillar I** - Platform injection, agent-server API, workplan visibility (Backend Implemented 2025-12-05, Renamed 2025-12-07, Req 9.1) |
-| **Workplan UI** | High | [workplan-ui.md](feature-flows/workplan-ui.md) | WorkplanPanel component in AgentDetail - view/manage workplans with summary stats, filtering, and detail modal (Implemented 2025-12-06, Renamed 2025-12-07, Req 9.8) |
+| **Workplan System** | High | [workplan-system.md](feature-flows/workplan-system.md) | **Pillar I** - Platform injection, agent-server API, workplan visibility (Updated 2025-12-20, Req 9.1) |
+| **Workplan UI** | High | [workplan-ui.md](feature-flows/workplan-ui.md) | WorkplanPanel component in AgentDetail - view/manage workplans with summary stats, filtering, and detail modal (Updated 2025-12-19, Req 9.8) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis-backed queue. Serializes User Chat, Scheduler, and MCP requests with 429 handling and defense-in-depth (Implemented 2025-12-06) |
-| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Activity indicators, context stats, task progress, sorting - reusing Collaboration Dashboard APIs (Implemented 2025-12-07) |
-| **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | 8 predictable test agents for systematic platform verification - all 8 configured in config.py, 4 tested and passing (Updated 2025-12-08) |
-| **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics in template.yaml displayed in UI - 6 metric types with auto-refresh (Implemented 2025-12-10, Req 9.9) |
-| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Fine-grained control over which agents can communicate with each other via MCP tools (Implemented 2025-12-10, Req 9.10) |
-| **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File-based collaboration via shared Docker volumes mounted at `/home/developer/shared-out` and `/home/developer/shared-in/{agent}` (Implemented 2025-12-13, Req 9.11) |
-| **Agent Vector Memory** | Medium | [vector-memory.md](feature-flows/vector-memory.md) | Per-agent Chroma vector database with MCP server integration for semantic memory (Implemented 2025-12-13, Req 10.4 + 10.5) |
-| **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Implemented 2025-12-13) |
+| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Activity indicators, context stats, task progress, sorting - reusing Collaboration Dashboard APIs (Implemented 2025-12-07, Updated 2025-12-19) |
+| **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (179/179 passing) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-19) |
+| **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics in template.yaml displayed in UI - 6 metric types with auto-refresh (Implemented 2025-12-10, Req 9.9) (Updated 2025-12-19) |
+| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Fine-grained control over which agents can communicate with each other via MCP tools (Implemented 2025-12-10, Updated 2025-12-19, Req 9.10) |
+| **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File-based collaboration via shared Docker volumes mounted at `/home/developer/shared-out` and `/home/developer/shared-in/{agent}` (Implemented 2025-12-13, Updated 2025-12-19, Req 9.11) |
+| **Agent Vector Memory** | Medium | [vector-memory.md](feature-flows/vector-memory.md) | Per-agent Chroma vector database with MCP server integration for semantic memory (Implemented 2025-12-13, Req 10.4 + 10.5, Updated 2025-12-19) |
+| **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
+| **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope (Req 11.1, 11.2 - Updated 2025-12-20) |
 
 ---
 
