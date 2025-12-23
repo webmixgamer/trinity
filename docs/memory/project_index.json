@@ -4,12 +4,12 @@
     "version": "1.0.0",
     "description": "Universal infrastructure for deploying Claude Code agent configurations",
     "repository": "project_trinity",
-    "last_updated": "2025-11-28T16:30:00Z"
+    "last_updated": "2025-12-23T12:16:00Z"
   },
   "tech_stack": {
-    "frontend": ["Vue.js 3", "Tailwind CSS", "Pinia", "Vite", "Auth0 Vue"],
-    "backend": ["FastAPI", "Python 3.11", "Docker SDK", "SQLite", "Redis"],
-    "agent_runtime": ["Python 3.11", "Node.js 20", "Go 1.21", "Claude Code"],
+    "frontend": ["Vue.js 3.5", "Tailwind CSS 3.4", "Pinia 2.3", "Vite 6", "Auth0 Vue"],
+    "backend": ["FastAPI 0.115", "Python 3.11", "Docker SDK 7.1", "SQLite", "Redis 5.2"],
+    "agent_runtime": ["Python 3.11", "Node.js 20", "Go 1.23", "Claude Code"],
     "infrastructure": ["Docker", "nginx", "GCP", "Let's Encrypt"]
   },
   "features": {
@@ -52,7 +52,9 @@
       "redis_secrets",
       "audit_logging",
       "container_security",
-      "gcp_production_deployment"
+      "gcp_production_deployment",
+      "mcp_key_auto_creation",
+      "first_time_setup_ux"
     ],
     "in_progress": [
       "github_native_agents"
