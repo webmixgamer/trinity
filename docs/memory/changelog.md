@@ -1,3 +1,35 @@
+### 2025-12-24 11:30:00
+🔧 **deploy_local_agent MCP Tool - Architecture Fix**
+
+Fixed fundamental architecture issue where MCP tool tried to access local filesystem (impossible since MCP server runs remotely).
+
+**Problem**: The `deploy_local_agent` MCP tool was using `fs.existsSync()` and `tar` commands to package a local directory. Since the MCP server runs on the remote Trinity server, it cannot access the calling agent's local filesystem.
+
+**Solution**: Changed the tool to accept a pre-packaged base64 archive from the calling agent.
+
+**New Parameters**:
+```typescript
+{
+  archive: string,                    // Base64-encoded tar.gz (REQUIRED)
+  credentials?: Record<string, string>, // Key-value pairs from .env
+  name?: string                       // Override agent name
+}
+```
+
+**Calling Agent Responsibility**:
+1. Create tar.gz archive locally: `tar -czf agent.tar.gz --exclude='.git' ...`
+2. Base64 encode: `base64 -i agent.tar.gz`
+3. Parse .env file for credentials
+4. Call `deploy_local_agent` with archive and credentials
+
+**Files Changed**:
+- `src/mcp-server/src/tools/agents.ts` - Replaced path-based logic with archive-based
+- `docs/memory/feature-flows/local-agent-deploy.md` - Updated architecture and usage docs
+
+**Backend API Unchanged**: `POST /api/agents/deploy-local` still accepts same parameters.
+
+---
+
 ### 2025-12-24 10:15:00
 🐛 **Test Suite Fixes - 11 Failures Resolved**
 
