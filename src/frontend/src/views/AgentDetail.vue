@@ -868,12 +868,20 @@ HEYGEN_API_KEY=your_heygen_key
 
             <!-- Executions Tab Content -->
             <div v-if="activeTab === 'executions'" class="p-6">
-              <ExecutionsPanel :agent-name="agent.name" />
+              <ExecutionsPanel v-if="agent" :agent-name="agent.name" />
+              <div v-else class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading agent...</p>
+              </div>
             </div>
 
             <!-- Git Tab Content -->
             <div v-if="activeTab === 'git'" class="p-6">
-              <GitPanel :agent-name="agent.name" :agent-status="agent.status" />
+              <GitPanel v-if="agent" :agent-name="agent.name" :agent-status="agent.status" />
+              <div v-else class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading agent...</p>
+              </div>
             </div>
 
             <!-- Files Tab Content -->
@@ -1218,9 +1226,10 @@ const sessionActivity = ref({
   totals: { calls: 0, duration_ms: 0, started_at: null }
 })
 
-// Git Sync - show tab for GitHub-native agents (Phase 7)
+// Git Sync - show tab for all agents (can initialize GitHub sync for any agent)
 const hasGitSync = computed(() => {
-  return agent.value?.template?.startsWith('github:')
+  // Always show Git tab - agents can initialize GitHub sync on demand
+  return true
 })
 
 // Git sync state (header controls)

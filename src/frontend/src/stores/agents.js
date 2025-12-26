@@ -359,6 +359,15 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    async initializeGitHub(name, config) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/git/initialize`, config, {
+        headers: authStore.authHeader,
+        timeout: 120000 // 120 seconds (2 minutes) for git operations
+      })
+      return response.data
+    },
+
     async listAgentFiles(name, path = '/home/developer') {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/files`, {

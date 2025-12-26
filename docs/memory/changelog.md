@@ -1,3 +1,262 @@
+### 2025-12-26 18:30:00
+🐛 **Fixed Email Whitelist 404 Error**
+
+Fixed email whitelist endpoints returning 404 due to FastAPI route matching order issue.
+
+**Root Cause**: The generic `GET /api/settings/{key}` catch-all route was defined BEFORE the specific `GET /api/settings/email-whitelist` route in settings.py. FastAPI matches routes in order, so it was hitting the generic route and treating "email-whitelist" as a setting key, returning "Setting 'email-whitelist' not found" instead of the actual whitelist data.
+
+**Solution**:
+- Reordered routes in `settings.py` - moved email-whitelist routes (lines 544-658) BEFORE the generic `/{key}` catch-all route (line 660+)
+- Now FastAPI correctly matches the specific route first
+- Email whitelist table now loads and displays whitelisted emails
+
+**Files Changed**:
+- Backend: `routers/settings.py` - Reordered routes (email-whitelist section moved from line 823 to line 544)
+
+**Testing**:
+1. Navigate to Settings page
+2. Scroll to Email Whitelist section
+3. Verify table loads and shows any whitelisted emails
+4. Add a new email - should show "already whitelisted" if duplicate or add successfully
+5. Remove button should work
+
+---
+
+### 2025-12-26 18:15:00
+🐛 **Fixed Agents Page Render Error**
+
+Fixed critical bug preventing Agents page from loading. Agents were not displaying due to missing function references from deleted Task DAG system.
+
+**Root Cause**: Task DAG system (Req 9.8) was removed on 2025-12-23, but Agents.vue template still referenced deleted functions `hasActivePlan()`, `getTaskProgress()`, and `getCurrentTask()` at lines 93-101. This caused Vue render error: "Property 'hasActivePlan' was accessed during render but is not defined on instance."
+
+**Solution**:
+- Removed obsolete task progress section from Agents.vue template (lines 92-101)
+- Removed unused `ClipboardDocumentCheckIcon` import
+- Agents page now renders correctly without task progress display
+
+**Files Changed**:
+- Frontend: `views/Agents.vue:92-101` - Removed task progress section
+- Frontend: `views/Agents.vue:160` - Removed unused icon import
+
+**Testing**:
+1. Navigate to /agents page
+2. Verify agents list displays correctly
+3. Verify no console errors
+4. Verify agent cards show name, status, activity state, and context progress (but not task progress)
+
+---
+
+### 2025-12-26 18:00:00
+🐛 **Fixed GitHub Initialization UI Timeout**
+
+Fixed UI stuck in "Initializing..." state even after successful repository creation.
+
+**Root Cause**: Git initialization can take 30-60 seconds for agents with large `.claude/` directories, but the frontend axios request had no explicit timeout (defaulted to browser's 60s limit). In some cases, the request would timeout before backend completed, leaving modal stuck.
+
+**Solution**:
+- Added explicit 120-second timeout to `initializeGitHub()` axios request
+- Added user feedback in modal: "This may take 10-60 seconds depending on the size of your agent's files"
+- Added console logging for debugging initialization flow
+- Logs now show: Starting → Success → Reloading status → Closing modal
+
+**Files Changed**:
+- Frontend: `stores/agents.js:366` - Added `timeout: 120000`
+- Frontend: `components/GitPanel.vue:132-134` - Added timing note
+- Frontend: `components/GitPanel.vue:356-383` - Added console logging
+
+**Testing**:
+1. Initialize git for agent with large `.claude/` directory (100+ MB)
+2. Modal should show "Initializing..." with spinner
+3. Wait up to 60 seconds
+4. Modal should close automatically after success
+5. Git tab should display repository info
+6. Check browser console for initialization logs
+
+---
+
+### 2025-12-26 17:45:00
+🐛 **Fixed GitHub Repository Initialization - Four Issues**
+
+Fixed four critical issues preventing GitHub repository initialization from working correctly:
+
+**Issue 1: ImportError causing 500 status**
+- **Root Cause**: The git router was importing `execute_command_in_container` from `services.docker_service`, but this function didn't exist
+- **Solution**: Added the missing function to `docker_service.py` (lines 122-155)
+- **Files**: `services/docker_service.py`
+
+**Issue 2: Workspace directory not found**
+- **Root Cause**: Git commands assumed `/home/developer/workspace` always exists, but some agents (test agents, agents created without templates) don't have this directory
+- **Solution**: Added workspace detection and automatic creation:
+  - Check if workspace directory exists before git operations
+  - Create directory if missing
+  - Use detected directory path for all git commands
+  - Log which directory is being used for debugging
+- **Files**: `routers/git.py:428-454` (workspace detection), `482, 505` (use detected path)
+
+**Issue 3: Orphaned database records**
+- **Root Cause**: If initialization partially failed (repo created but git init failed), database record was created but agent had no `.git` directory, causing "already configured" error but UI showing nothing
+- **Solution**: Added verification and cleanup:
+  - Before rejecting re-initialization, verify `.git` directory actually exists in container
+  - If database record exists but git not initialized, auto-cleanup orphaned record
+  - Verify git initialization succeeded before creating database record
+  - Added `git rev-parse --git-dir` check before database insert
+- **Files**: `routers/git.py:322-342` (orphaned record cleanup), `512-525` (verification before DB insert)
+
+**Issue 4: Empty repository - no agent files pushed** ⚠️ **CRITICAL**
+- **Root Cause**: Git was initialized in empty `/home/developer/workspace/` directory, but agent's actual files (CLAUDE.md, .claude/, .trinity/, .mcp.json, etc.) live in `/home/developer/`. Result: Empty GitHub repository with no agent content!
+- **Solution**: Intelligent directory detection:
+  - Check if `/home/developer/workspace/` exists AND has content → use workspace
+  - Otherwise → use `/home/developer/` (where agent files actually are)
+  - Create `.gitignore` to exclude system files (.bash_logout, .bashrc, .cache/, .ssh/, etc.)
+  - Keep important agent files (CLAUDE.md, .claude/, .trinity/, .mcp.json, .claude.json)
+  - Check both locations when verifying existing git configuration
+- **Files**: `routers/git.py:442-476` (smart directory detection + .gitignore), `326-330` (check both locations)
+- **Impact**: Agent files now correctly pushed to GitHub! Repository will contain the agent's configuration, prompts, and working files.
+
+**Result**:
+- Repository creation now works for both personal and organization accounts ✅
+- Supports both fine-grained and classic PATs ✅
+- Works with agents that have or don't have workspace directories ✅
+- Handles partial failures gracefully with automatic cleanup ✅
+- UI correctly displays git status after successful initialization ✅
+- **Agent files are pushed to GitHub repository** ✅ (CRITICAL FIX!)
+
+**Testing**:
+1. Navigate to agent detail → Git tab
+2. Click "Initialize GitHub Sync"
+3. Enter repository owner (personal or organization) and name
+4. Wait for initialization to complete (~10-30 seconds)
+5. **Verify repository on GitHub has agent files:**
+   - Visit `https://github.com/{owner}/{repo}`
+   - Check files exist: CLAUDE.md, .claude/, .trinity/, .mcp.json, etc.
+   - Verify `main` branch has initial commit
+   - Verify `trinity/{agent}/{id}` working branch exists
+6. Verify UI shows git sync status with remote URL and branch
+7. Check logs show: "Using home directory (agent's files are here): /home/developer" or "Using workspace directory with existing content"
+8. Check logs show: "Git initialization verified successfully"
+
+---
+
+### 2025-12-26 17:00:00
+🔧 **Fixed GitPanel Vue Render Error**
+
+Fixed "Cannot read properties of null (reading 'remote_url')" error when navigating to the Git tab on agent detail pages.
+
+**Root Cause**: GitPanel template at line 182 had `<div v-else>` which would show the Git Status Display section when git was enabled and agent was running, BUT it didn't check if `gitStatus` object had complete data. When the API call returned, `gitStatus` could be temporarily set to an incomplete object, causing Vue to try rendering `gitStatus.remote_url` on line 191 before the property existed.
+
+**Solution**: Changed line 182 from `<div v-else>` to `<div v-else-if="gitStatus?.remote_url && gitStatus?.branch">` to ensure the Git Status Display only renders when `gitStatus` has complete data.
+
+**Files Changed**:
+- Frontend: `components/GitPanel.vue:182` - Added guard for gitStatus properties
+
+**Testing**:
+1. Navigate to agent detail page
+2. Click Git tab
+3. Verify no console errors
+4. Verify git status displays correctly (or "not enabled" message)
+
+---
+
+### 2025-12-26 16:30:00
+🔧 **Fixed Fine-Grained PAT Support**
+
+Fixed GitHub Personal Access Token validation to properly support fine-grained PATs (starting with `github_pat_`).
+
+**Issue**: Fine-grained PATs were incorrectly showing "Missing repo scope" because they don't expose scopes via `X-OAuth-Scopes` header like classic PATs.
+
+**Solution**:
+- Backend now detects token type (fine-grained vs classic)
+- Fine-grained PATs: Tests actual permissions by calling `GET /user/repos`
+- Classic PATs: Checks `X-OAuth-Scopes` header for `repo` or `public_repo`
+- Returns `token_type` and `has_repo_access` fields
+- Frontend displays appropriate messages:
+  - Fine-grained: "✓ Fine-grained PAT with repository permissions" or "⚠️ Missing repository permissions (need Administration + Contents)"
+  - Classic: "✓ Has repo scope" or "⚠️ Missing repo scope"
+
+**Files Changed**:
+- Backend: `routers/settings.py` - Updated `test_github_pat` endpoint
+- Frontend: `views/Settings.vue` - Updated test result display logic
+
+---
+
+### 2025-12-26 16:00:00
+🔀 **GitHub Repository Initialization**
+
+Added ability to initialize GitHub synchronization for any agent, pushing it to a new or existing GitHub repository with one click.
+
+**Features**:
+- **Settings Configuration**: GitHub Personal Access Token (PAT) management
+  - Admin can configure GitHub PAT in Settings page
+  - Test button validates token and checks scopes
+  - Stored securely in system settings
+- **One-Click Initialization**: Initialize GitHub sync from Agent Git tab
+  - Modal form for repository owner and name
+  - Option to create repository automatically
+  - Private/public repository selection
+  - Repository description (optional)
+- **Automated Setup**: Backend handles complete initialization
+  - Creates GitHub repository via GitHub API (if requested)
+  - Initializes git in agent workspace
+  - Commits current agent state
+  - Pushes to main branch
+  - Creates working branch (trinity/{agent-name}/{instance-id})
+  - Stores configuration in database
+- **MCP Tool**: `initialize_github_sync` for programmatic access
+
+**Backend Changes**:
+- **API Endpoints**:
+  - `GET /api/settings/api-keys` - Returns both Anthropic and GitHub PAT status
+  - `PUT /api/settings/api-keys/github` - Save GitHub PAT
+  - `DELETE /api/settings/api-keys/github` - Delete GitHub PAT
+  - `POST /api/settings/api-keys/github/test` - Test GitHub PAT validity
+  - `POST /api/agents/{name}/git/initialize` - Initialize GitHub sync for agent
+- **Helper Functions**:
+  - `get_github_pat()` in `routers/settings.py` - Get GitHub PAT from settings or env
+- **GitHub Integration**:
+  - Repository creation via GitHub REST API
+  - Git commands executed in agent container via Docker exec
+  - PAT embedded in git remote URL for authentication
+
+**Frontend Changes**:
+- **Settings Page** (`src/frontend/src/views/Settings.vue`):
+  - GitHub PAT input field with show/hide toggle
+  - Test and Save buttons
+  - Status indicators (configured/not configured, source)
+  - Scope validation (checks for repo access)
+  - Link to GitHub token settings
+- **Git Tab** (`src/frontend/src/components/GitPanel.vue`):
+  - "Initialize GitHub Sync" button when git not enabled
+  - Modal form with repository configuration
+  - Real-time feedback and error handling
+  - Success triggers git status reload
+- **Agents Store** (`src/frontend/src/stores/agents.js`):
+  - `initializeGitHub(name, config)` method
+
+**MCP Server Changes**:
+- **New Tool**: `initialize_github_sync` (`src/mcp-server/src/tools/agents.ts`)
+  - Parameters: agent_name, repo_owner, repo_name, create_repo, private, description
+  - Enables agents to programmatically initialize GitHub sync
+
+**Required Permissions**:
+- GitHub PAT must have `repo` scope (full control of private repositories)
+- Or `public_repo` scope (for public repositories only)
+
+**User Workflow**:
+1. Admin configures GitHub PAT in Settings → API Keys
+2. User opens agent → Git tab
+3. Clicks "Initialize GitHub Sync"
+4. Enters repository owner and name
+5. Selects options (create repo, private/public)
+6. Click Initialize
+7. Agent workspace is pushed to GitHub and sync is enabled
+
+**Files Changed**:
+- Backend: `routers/settings.py`, `routers/git.py` (new initialize endpoint)
+- Frontend: `views/Settings.vue`, `components/GitPanel.vue`, `stores/agents.js`
+- MCP Server: `src/tools/agents.ts`, `server.ts`
+
+---
+
 ### 2025-12-26 14:00:00
 📧 **Email-Based Authentication** (Phase 12.4)
 

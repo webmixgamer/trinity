@@ -432,5 +432,84 @@ export function createAgentTools(
         return JSON.stringify(response, null, 2);
       },
     },
+
+    // ========================================================================
+    // initialize_github_sync - Initialize GitHub synchronization for an agent
+    // ========================================================================
+    initializeGithubSync: {
+      name: "initialize_github_sync",
+      description:
+        "Initialize GitHub synchronization for an agent. " +
+        "Creates a GitHub repository (if requested), initializes git in the agent workspace, " +
+        "commits the current state, pushes to GitHub, and enables bidirectional sync. " +
+        "Requires GitHub Personal Access Token (PAT) to be configured in system settings with 'repo' scope. " +
+        "Agent must be running.",
+      parameters: z.object({
+        agent_name: z
+          .string()
+          .describe("The name of the agent to initialize GitHub sync for"),
+        repo_owner: z
+          .string()
+          .describe("GitHub username or organization name (e.g., 'your-username')"),
+        repo_name: z
+          .string()
+          .describe("Repository name (e.g., 'my-agent')"),
+        create_repo: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Whether to create the repository if it doesn't exist (default: true)"),
+        private: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Whether the new repository should be private (default: true)"),
+        description: z
+          .string()
+          .optional()
+          .describe("Repository description (optional)"),
+      }),
+      execute: async (
+        args: {
+          agent_name: string;
+          repo_owner: string;
+          repo_name: string;
+          create_repo?: boolean;
+          private?: boolean;
+          description?: string;
+        },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(
+          `[initialize_github_sync] Initializing GitHub sync for agent '${args.agent_name}' -> ${args.repo_owner}/${args.repo_name}`
+        );
+
+        interface GitInitializeResponse {
+          success: boolean;
+          message: string;
+          github_repo: string;
+          working_branch: string;
+          instance_id: string;
+          repo_url: string;
+        }
+
+        const response = await apiClient.request<GitInitializeResponse>(
+          "POST",
+          `/api/agents/${args.agent_name}/git/initialize`,
+          {
+            repo_owner: args.repo_owner,
+            repo_name: args.repo_name,
+            create_repo: args.create_repo ?? true,
+            private: args.private ?? true,
+            description: args.description,
+          }
+        );
+
+        return JSON.stringify(response, null, 2);
+      },
+    },
   };
 }

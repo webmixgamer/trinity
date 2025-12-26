@@ -122,6 +122,100 @@
                     </a>
                   </p>
                 </div>
+
+                <!-- GitHub Personal Access Token -->
+                <div class="mt-6">
+                  <label for="github-pat" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    GitHub Personal Access Token (PAT)
+                  </label>
+                  <div class="mt-1 flex gap-2">
+                    <div class="relative flex-1">
+                      <input
+                        :type="showGithubPat ? 'text' : 'password'"
+                        id="github-pat"
+                        v-model="githubPat"
+                        :placeholder="githubPatStatus.configured ? githubPatStatus.masked : 'ghp_... or github_pat_...'"
+                        :disabled="savingGithubPat"
+                        class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                      />
+                      <button
+                        type="button"
+                        @click="showGithubPat = !showGithubPat"
+                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <svg v-if="showGithubPat" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                        <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <button
+                      @click="testGithubPat"
+                      :disabled="!githubPat || testingGithubPat"
+                      class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg v-if="testingGithubPat" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Test
+                    </button>
+                    <button
+                      @click="saveGithubPat"
+                      :disabled="!githubPat || savingGithubPat"
+                      class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg v-if="savingGithubPat" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Save
+                    </button>
+                  </div>
+                  <!-- Status/Result -->
+                  <div class="mt-2 flex items-center text-sm">
+                    <template v-if="githubPatTestResult !== null">
+                      <svg v-if="githubPatTestResult" class="h-4 w-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <svg v-else class="h-4 w-4 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span :class="githubPatTestResult ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                        {{ githubPatTestMessage }}
+                      </span>
+                    </template>
+                    <template v-else-if="githubPatStatus.configured">
+                      <svg class="h-4 w-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span class="text-green-600 dark:text-green-400">
+                        Configured
+                        <span class="text-gray-500 dark:text-gray-400">
+                          ({{ githubPatStatus.source === 'settings' ? 'from settings' : 'from environment' }})
+                        </span>
+                      </span>
+                    </template>
+                    <template v-else>
+                      <svg class="h-4 w-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span class="text-gray-600 dark:text-gray-400">
+                        Optional - required for GitHub repository initialization
+                      </span>
+                    </template>
+                  </div>
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Required for creating and pushing agents to GitHub repositories. Get your token at
+                    <a href="https://github.com/settings/tokens/new" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+                      github.com/settings/tokens
+                    </a>
+                    with <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">repo</code> scope.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -391,6 +485,19 @@ const anthropicKeyStatus = ref({
   source: null
 })
 
+// GitHub PAT state
+const githubPat = ref('')
+const showGithubPat = ref(false)
+const testingGithubPat = ref(false)
+const savingGithubPat = ref(false)
+const githubPatTestResult = ref(null)
+const githubPatTestMessage = ref('')
+const githubPatStatus = ref({
+  configured: false,
+  masked: null,
+  source: null
+})
+
 const hasChanges = computed(() => {
   return trinityPrompt.value !== originalPrompt.value
 })
@@ -422,6 +529,7 @@ async function loadApiKeyStatus() {
   try {
     const response = await axios.get('/api/settings/api-keys')
     anthropicKeyStatus.value = response.data.anthropic || { configured: false }
+    githubPatStatus.value = response.data.github || { configured: false }
   } catch (e) {
     console.error('Failed to load API key status:', e)
   }
@@ -478,6 +586,79 @@ async function saveApiKey() {
     error.value = e.response?.data?.detail || 'Failed to save API key'
   } finally {
     savingApiKey.value = false
+  }
+}
+
+async function testGithubPat() {
+  if (!githubPat.value) return
+
+  testingGithubPat.value = true
+  githubPatTestResult.value = null
+  githubPatTestMessage.value = ''
+
+  try {
+    const response = await axios.post('/api/settings/api-keys/github/test', {
+      api_key: githubPat.value
+    })
+
+    githubPatTestResult.value = response.data.valid
+    if (response.data.valid) {
+      const tokenType = response.data.token_type || 'unknown'
+      const hasRepoAccess = response.data.has_repo_access || false
+
+      let message = `Valid! GitHub user: ${response.data.username}`
+
+      if (tokenType === 'fine-grained') {
+        message += hasRepoAccess
+          ? '. ✓ Fine-grained PAT with repository permissions'
+          : '. ⚠️ Missing repository permissions (need Administration + Contents)'
+      } else {
+        message += hasRepoAccess
+          ? '. ✓ Has repo scope'
+          : '. ⚠️ Missing repo scope'
+      }
+
+      githubPatTestMessage.value = message
+    } else {
+      githubPatTestMessage.value = response.data.error || 'Invalid PAT'
+    }
+  } catch (e) {
+    githubPatTestResult.value = false
+    githubPatTestMessage.value = e.response?.data?.detail || 'Failed to test PAT'
+  } finally {
+    testingGithubPat.value = false
+  }
+}
+
+async function saveGithubPat() {
+  if (!githubPat.value) return
+
+  savingGithubPat.value = true
+  error.value = null
+
+  try {
+    const response = await axios.put('/api/settings/api-keys/github', {
+      api_key: githubPat.value
+    })
+
+    // Update status
+    githubPatStatus.value = {
+      configured: true,
+      masked: response.data.masked,
+      source: 'settings'
+    }
+
+    // Clear input and show success
+    githubPat.value = ''
+    githubPatTestResult.value = null
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to save GitHub PAT'
+  } finally {
+    savingGithubPat.value = false
   }
 }
 
