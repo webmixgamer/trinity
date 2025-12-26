@@ -1,3 +1,99 @@
+### 2025-12-25 19:30:00
+✨ **Agent Terminal: Replaced Chat with Terminal**
+
+Replaced the Chat tab on Agent Detail page with a full Web Terminal (xterm.js), matching System Agent functionality.
+
+**Changes**:
+- Created `AgentTerminal.vue` component (generalized from SystemAgentTerminal)
+- Added WebSocket terminal endpoint at `/api/agents/{name}/terminal`
+- Replaced Chat tab with Terminal tab on Agent Detail page
+- Terminal auto-connects when agent is running
+- Fullscreen support with ESC key to exit
+- Mode toggle: Claude Code (default) or Bash shell
+- Access control: User must have access to agent (owner, shared, or admin)
+- Session limit: 1 terminal per user per agent (prevents resource exhaustion)
+- Audit logging for terminal sessions with duration tracking
+
+**Files changed**:
+- `src/frontend/src/components/AgentTerminal.vue` - New terminal component
+- `src/frontend/src/views/AgentDetail.vue` - Terminal tab replaces Chat tab
+- `src/backend/routers/agents.py` - WebSocket terminal endpoint
+- `docs/memory/feature-flows/agent-terminal.md` - New feature flow
+- `docs/memory/feature-flows.md` - Updated index, deprecated agent-chat
+
+**Deprecation**: Agent Chat feature (`agent-chat.md`) is deprecated in favor of direct terminal access.
+
+---
+
+### 2025-12-25 18:00:00
+✨ **Web Terminal: Embedded with Fullscreen**
+
+Refactored Web Terminal from modal to embedded panel on System Agent page with fullscreen support.
+
+**Changes**:
+- Terminal now embedded directly on System Agent page (replaces Operations Console chat)
+- Auto-connects when page loads (if agent running and user is admin)
+- Added fullscreen toggle button in terminal header
+- ESC key exits fullscreen mode
+- Terminal refits automatically on fullscreen toggle
+- Removed Terminal button from header (no longer modal-based)
+- Cleaned up all unused chat-related code (marked library, sendMessage, etc.)
+
+**Files changed**:
+- `src/frontend/src/views/SystemAgent.vue` - Embedded terminal, fullscreen, removed chat code
+- `docs/memory/feature-flows/web-terminal.md` - Updated documentation
+
+---
+
+### 2025-12-25 17:30:00
+🐛 **Web Terminal Bug Fixes**
+
+Fixed several issues discovered during local testing of the Web Terminal feature.
+
+**Fixes**:
+- Fixed localStorage key mismatch: Changed `trinity_token` to `token` to match auth store
+- Fixed user_email extraction: Handle `None` database values with `or` fallback chain
+- Added session timeout (5 min) to auto-cleanup stale sessions from failed connections
+- Added WebSocket support (`ws: true`) to Vite proxy for `/api` endpoint
+- Made `connectionStatusText` reactive using Vue `computed()` instead of static object
+
+**Files changed**:
+- `src/frontend/src/components/SystemAgentTerminal.vue` - localStorage key, computed status
+- `src/frontend/vite.config.js` - Added `ws: true` to `/api` proxy
+- `src/backend/routers/system_agent.py` - Session timeout, user_email fallback
+
+---
+
+### 2025-12-25 10:30:00
+✨ **Web Terminal for System Agent (11.5)**
+
+Implemented browser-based interactive terminal for System Agent with full Claude Code TUI support.
+
+**Features**:
+- xterm.js terminal emulator in modal (v5.5.0)
+- WebSocket PTY forwarding via Docker exec
+- Mode toggle: Claude Code or Bash shell
+- Terminal resize follows browser window
+- Admin-only access (button hidden for non-admins)
+- Session limit: 1 terminal per user
+- Audit logging for session start/end with duration
+
+**Architecture**:
+- Frontend: `SystemAgentTerminal.vue` with xterm.js + addons (fit, web-links)
+- Backend: WebSocket endpoint at `WS /api/system-agent/terminal?mode=claude|bash`
+- PTY allocation via Docker SDK `exec_create(tty=True)` + `exec_start(socket=True)`
+- Bidirectional socket forwarding with `select()` for non-blocking I/O
+- `decode_token()` helper for WebSocket authentication
+
+**Files changed**:
+- `src/frontend/package.json` - Added @xterm/xterm, @xterm/addon-fit, @xterm/addon-web-links
+- `src/frontend/src/components/SystemAgentTerminal.vue` - New terminal component
+- `src/frontend/src/views/SystemAgent.vue` - Added Terminal button and modal
+- `src/backend/routers/system_agent.py` - Added WebSocket terminal endpoint
+- `src/backend/dependencies.py` - Added `decode_token()` helper function
+
+---
+
 ### 2025-12-24 12:30:00
 ❌ **Removed Platform Chroma Vector Store Injection**
 

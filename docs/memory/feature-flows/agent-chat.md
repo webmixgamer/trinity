@@ -1,5 +1,17 @@
 # Feature: Agent Chat
 
+> **DEPRECATED (2025-12-25)**: The Chat tab UI has been replaced by the Web Terminal.
+> See [agent-terminal.md](agent-terminal.md) for the new interactive terminal interface.
+>
+> **What still uses the Chat API**:
+> - Scheduled executions (cron jobs)
+> - MCP `chat_with_agent` tool (agent-to-agent communication)
+> - Backend-initiated task execution via `/task` endpoint
+>
+> **What changed**: Users now interact with agents via the Terminal tab (xterm.js + Claude Code TUI)
+> instead of the chat message input. The Terminal provides direct PTY access without going through
+> the execution queue, enabling full Claude Code interactive experience.
+
 ## Overview
 Real-time chat interface allowing users to communicate with Claude Code agents running in isolated Docker containers. Messages are proxied through the Trinity backend to agent containers, which execute Claude Code CLI commands and stream responses back.
 

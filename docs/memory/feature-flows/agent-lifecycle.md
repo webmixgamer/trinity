@@ -644,7 +644,7 @@ fi
 ## Related Flows
 
 - **Upstream**: Authentication Flow (JWT required via `get_current_user`)
-- **Downstream**: Agent Chat, Credential Injection, Activity Monitoring, Trinity Injection
+- **Downstream**: Agent Terminal, Credential Injection, Activity Monitoring, Trinity Injection
 - **Related**: Agent Sharing (ownership and access control)
 - **Related**: Git Sync (GitHub-native agents)
 - **Related**: Agent Scheduling (scheduled task management)

@@ -1219,6 +1219,54 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   6. Test key, verify validation works
   7. Save key, create agent, verify agent uses stored key
 
+#### 11.5 Web Terminal for System Agent
+- **Status**: ✅ Implemented (2025-12-25)
+- **Priority**: High
+- **Description**: Browser-based interactive terminal for System Agent with full Claude Code TUI support
+- **Design Doc**: `docs/requirements/WEB_TERMINAL_SYSTEM_AGENT.md`
+- **Architecture**:
+  - Frontend: xterm.js v5.5.0 terminal emulator in browser
+  - Backend: WebSocket endpoint with PTY forwarding via Docker exec
+  - Transport: Bidirectional binary WebSocket frames
+  - Security: Admin-only, JWT auth, no SSH port exposure
+- **Key Features**:
+  - Full Claude Code TUI preserved (colors, prompts, shortcuts, streaming)
+  - Terminal resize support (SIGWINCH forwarding)
+  - Mode toggle: Claude Code or Bash shell
+  - Session audit logging (start/end with duration)
+  - Session limit (1 terminal per user)
+- **Acceptance Criteria**:
+  - [x] "Open Terminal" button on System Agent page
+  - [x] Terminal opens in modal/panel with xterm.js
+  - [x] Full Claude Code functionality (test `/help`, Ctrl+C, colors)
+  - [x] Admin-only access (non-admins see disabled/hidden button)
+  - [x] Terminal resize follows browser window
+  - [x] Audit log entries for session start/end
+  - [x] Clean PTY termination on disconnect
+  - [x] Mode toggle (Claude Code / Bash)
+- **Frontend Components**:
+  - `SystemAgentTerminal.vue` - xterm.js terminal with WebSocket connection
+  - Modal integration in `SystemAgent.vue` with Teleport
+- **Backend Components**:
+  - WebSocket endpoint: `WS /api/system-agent/terminal?mode=claude|bash`
+  - PTY allocation via Docker SDK `exec_create(tty=True)`
+  - Bidirectional socket forwarding with `select()`
+  - `decode_token()` helper for WebSocket auth
+- **Frontend Dependencies**:
+  - `@xterm/xterm` ^5.5.0
+  - `@xterm/addon-fit` ^0.10.0
+  - `@xterm/addon-web-links` ^0.11.0
+- **Backend**: Uses existing `docker==7.1.0` with `exec_create(tty=True)` and `exec_start(socket=True)`
+- **Testing**:
+  1. Login as admin, navigate to System Agent page
+  2. Click "Terminal" button, verify terminal opens
+  3. Type commands, verify output displays correctly
+  4. Test Claude Code mode (`/help`, Ctrl+C, colors)
+  5. Test Bash mode (basic shell commands)
+  6. Resize browser window, verify terminal resizes
+  7. Close modal, verify session terminates cleanly
+  8. Non-admin users should not see Terminal button
+
 ---
 
 ## Non-Functional Requirements

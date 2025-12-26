@@ -1,0 +1,6 @@
+
+name: test-version-70013e
+display_name: Versioned Agent
+resources:
+  cpu: "1"
+  memory: "2g"

@@ -1,0 +1,6 @@
+
+name: test-creds-9bf5da
+display_name: Test Agent with Creds
+resources:
+  cpu: "1"
+  memory: "2g"

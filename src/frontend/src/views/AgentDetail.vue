@@ -208,15 +208,15 @@
                   Metrics
                 </button>
                 <button
-                  @click="activeTab = 'chat'"
+                  @click="activeTab = 'terminal'"
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
-                    activeTab === 'chat'
+                    activeTab === 'terminal'
                       ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                       : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
-                  Chat
+                  Terminal
                 </button>
                 <button
                   @click="activeTab = 'logs'"
@@ -351,158 +351,76 @@
               <MetricsPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
-            <!-- Chat Tab Content -->
-            <div v-if="activeTab === 'chat'" class="p-6">
-              <div v-if="agent.status === 'running'">
-                <!-- Context Usage Bar (always visible) -->
-                <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1.5">
-                    <div class="flex items-center space-x-3">
-                      <span class="font-medium">Context Window</span>
-                      <!-- Model Selector -->
-                      <select
-                        v-model="currentModel"
-                        @change="changeModel"
-                        :disabled="modelLoading"
-                        class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-                        title="Select Claude model"
-                      >
-                        <option value="">Default</option>
-                        <option value="sonnet">Sonnet 4.5</option>
-                        <option value="opus">Opus 4.5</option>
-                        <option value="haiku">Haiku</option>
-                        <option value="sonnet[1m]">Sonnet 4.5 (1M)</option>
-                        <option value="opus[1m]">Opus 4.5 (1M)</option>
-                      </select>
-                      <span v-if="modelLoading" class="animate-spin h-3 w-3 border border-indigo-500 border-t-transparent rounded-full"></span>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                      <span class="font-mono">
-                        {{ formatTokenCount(sessionInfo.context_tokens) }} / {{ formatTokenCount(sessionInfo.context_window) }}
-                        <span class="text-gray-400 dark:text-gray-500 ml-1">({{ sessionInfo.context_percent || 0 }}%)</span>
-                      </span>
+            <!-- Terminal Tab Content -->
+            <div
+              v-if="activeTab === 'terminal'"
+              :class="[
+                'transition-all duration-300',
+                isTerminalFullscreen
+                  ? 'fixed inset-0 z-50 bg-gray-900'
+                  : ''
+              ]"
+              @keydown="handleTerminalKeydown"
+            >
+              <!-- Terminal Panel -->
+              <div
+                :class="[
+                  'bg-gray-900 overflow-hidden flex flex-col',
+                  isTerminalFullscreen ? 'h-full' : 'rounded-b-lg'
+                ]"
+                :style="isTerminalFullscreen ? {} : { height: '600px' }"
+              >
+                <!-- Fullscreen Header (only in fullscreen mode) -->
+                <div
+                  v-if="isTerminalFullscreen"
+                  class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700"
+                >
+                  <span class="text-sm font-medium text-gray-300">{{ agent.name }} - Terminal</span>
+                  <button
+                    @click="toggleTerminalFullscreen"
+                    class="p-1.5 text-gray-400 hover:text-gray-200 rounded transition-colors"
+                    title="Exit Fullscreen (Esc)"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Terminal Content -->
+                <div class="flex-1 min-h-0">
+                  <AgentTerminal
+                    v-if="agent.status === 'running'"
+                    ref="terminalRef"
+                    :agent-name="agent.name"
+                    :auto-connect="true"
+                    :show-fullscreen-toggle="!isTerminalFullscreen"
+                    :is-fullscreen="isTerminalFullscreen"
+                    @connected="onTerminalConnected"
+                    @disconnected="onTerminalDisconnected"
+                    @error="onTerminalError"
+                    @toggle-fullscreen="toggleTerminalFullscreen"
+                  />
+                  <div
+                    v-else
+                    class="flex items-center justify-center h-full text-gray-400"
+                  >
+                    <div class="text-center">
+                      <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p class="text-lg font-medium mb-2">Agent is not running</p>
+                      <p class="text-sm text-gray-500 mb-4">Start the agent to access the terminal</p>
                       <button
-                        @click="startNewSession"
-                        :disabled="newSessionLoading || chatMessages.length === 0"
-                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        @click="startAgent"
+                        :disabled="actionLoading"
+                        class="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium py-2 px-4 rounded-lg"
                       >
-                        <svg v-if="newSessionLoading" class="animate-spin -ml-0.5 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <svg v-else class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        New
+                        {{ actionLoading ? 'Starting...' : 'Start Agent' }}
                       </button>
                     </div>
                   </div>
-                  <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
-                      :class="getContextBarColor(sessionInfo.context_percent || 0)"
-                      :style="{ width: `${Math.min(100, sessionInfo.context_percent || 0)}%` }"
-                    ></div>
-                  </div>
-                  <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                    <span>{{ chatMessages.length }} messages</span>
-                    <span v-if="sessionInfo.total_cost_usd > 0">Session cost: ${{ sessionInfo.total_cost_usd.toFixed(4) }}</span>
-                  </div>
                 </div>
-
-                <!-- Unified Activity Panel - Always visible -->
-                <UnifiedActivityPanel
-                  :agent-name="agent.name"
-                  :activity="sessionActivity"
-                  :session-cost="sessionInfo.total_cost_usd"
-                  class="mb-4"
-                />
-
-                <!-- Chat Messages -->
-                <div ref="chatContainer" class="border border-gray-300 dark:border-gray-600 rounded-lg h-96 overflow-y-auto p-4 mb-4 bg-gray-50 dark:bg-gray-900">
-                  <div v-if="chatMessages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
-                    Start a conversation with your agent
-                  </div>
-                  <div v-else class="space-y-3">
-                    <template v-for="(msg, idx) in chatMessages" :key="idx">
-                      <!-- Tool sequence preview (shown before assistant response) -->
-                      <div
-                        v-if="msg.role === 'assistant' && msg.execution_log?.length > 0"
-                        class="flex justify-center"
-                      >
-                        <div class="inline-flex items-center space-x-1 px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-500 dark:text-gray-400">
-                          <template v-for="(tool, tidx) in getToolSequence(msg.execution_log)" :key="tidx">
-                            <span v-if="tidx > 0" class="text-gray-300 dark:text-gray-600">→</span>
-                            <span class="font-mono">{{ tool }}</span>
-                          </template>
-                          <span class="ml-1 text-gray-400 dark:text-gray-500">{{ formatDuration(msg.metadata?.duration_ms) }}</span>
-                        </div>
-                      </div>
-
-                      <!-- Message bubble -->
-                      <div :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-                        <div
-                          :class="[
-                            'max-w-xl px-4 py-3 rounded-lg',
-                            msg.role === 'user'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
-                          ]"
-                        >
-                          <!-- User messages: plain text -->
-                          <pre v-if="msg.role === 'user'" class="whitespace-pre-wrap font-sans text-sm">{{ msg.content }}</pre>
-                          <!-- Assistant messages: rendered markdown -->
-                          <div
-                            v-else
-                            class="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-gray-800 dark:prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded"
-                            v-html="renderMarkdown(msg.content)"
-                          ></div>
-                          <!-- Tool stats for assistant messages -->
-                          <div
-                            v-if="msg.role === 'assistant' && msg.metadata?.tool_count > 0"
-                            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-1">
-                              <span>{{ msg.metadata.tool_count }} tool{{ msg.metadata.tool_count !== 1 ? 's' : '' }}</span>
-                              <span v-if="msg.metadata.cost_usd">&bull; ${{ msg.metadata.cost_usd.toFixed(4) }}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-
-                    <!-- Loading indicator with current tool -->
-                    <div v-if="chatLoading" class="flex justify-center">
-                      <div class="inline-flex items-center space-x-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-full text-xs text-blue-600 dark:text-blue-400 animate-pulse">
-                        <span class="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
-                        <span>{{ currentToolDisplay }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-
-                <!-- Chat Input -->
-                <div class="flex space-x-4">
-                  <input
-                    v-model="chatInput"
-                    @keypress.enter="sendChatMessage"
-                    :disabled="chatLoading"
-                    type="text"
-                    placeholder="Type your message..."
-                    class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900"
-                  />
-                  <button
-                    @click="sendChatMessage"
-                    :disabled="chatLoading || !chatInput.trim()"
-                    class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-semibold px-6 py-2 rounded-lg transition duration-200"
-                  >
-                    {{ chatLoading ? 'Sending...' : 'Send' }}
-                  </button>
-                </div>
-              </div>
-              <div v-else class="text-center text-gray-500 dark:text-gray-400 py-8">
-                Agent is not running. Start the agent to chat.
               </div>
             </div>
 
@@ -1030,6 +948,7 @@ import InfoPanel from '../components/InfoPanel.vue'
 import MetricsPanel from '../components/MetricsPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
+import AgentTerminal from '../components/AgentTerminal.vue'
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -1227,6 +1146,10 @@ let statsRefreshInterval = null
 
 // Chat container ref
 const chatContainer = ref(null)
+
+// Terminal state
+const isTerminalFullscreen = ref(false)
+const terminalRef = ref(null)
 
 // Sharing state
 const shareEmail = ref('')
@@ -1478,6 +1401,34 @@ const deleteAgent = () => {
     }
   }
   confirmDialog.visible = true
+}
+
+// Terminal handlers
+const toggleTerminalFullscreen = () => {
+  isTerminalFullscreen.value = !isTerminalFullscreen.value
+  nextTick(() => {
+    if (terminalRef.value?.fit) {
+      terminalRef.value.fit()
+    }
+  })
+}
+
+const handleTerminalKeydown = (event) => {
+  if (event.key === 'Escape' && isTerminalFullscreen.value) {
+    toggleTerminalFullscreen()
+  }
+}
+
+const onTerminalConnected = () => {
+  showNotification('Terminal connected', 'success')
+}
+
+const onTerminalDisconnected = () => {
+  showNotification('Terminal disconnected', 'info')
+}
+
+const onTerminalError = (errorMsg) => {
+  showNotification(`Terminal error: ${errorMsg}`, 'error')
 }
 
 const loadChatHistory = async () => {
@@ -2110,15 +2061,13 @@ const renderMarkdown = (text) => {
   return marked(text)
 }
 
-// Handle use case click from Info tab - switch to chat and populate input
+// Handle use case click from Info tab - switch to terminal tab
 const handleUseCaseClick = (text) => {
-  chatInput.value = text
-  activeTab.value = 'chat'
-  // Focus the input after switching tabs
+  activeTab.value = 'terminal'
+  // Focus the terminal after switching tabs
   nextTick(() => {
-    const input = document.querySelector('input[placeholder="Type your message..."]')
-    if (input) {
-      input.focus()
+    if (terminalRef.value?.focus) {
+      terminalRef.value.focus()
     }
   })
 }

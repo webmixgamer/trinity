@@ -23,7 +23,7 @@ As an agent operator, I want to see what tools Claude is using in real-time so t
 
 ## Entry Points
 - **UI**: `src/frontend/src/components/UnifiedActivityPanel.vue` - Activity panel component
-- **UI**: `src/frontend/src/views/AgentDetail.vue` - Embedded in chat tab
+- **UI**: `src/frontend/src/views/AgentDetail.vue` - ~~Embedded in chat tab~~ (Chat tab replaced by Terminal, see [agent-terminal.md](agent-terminal.md))
 - **API**: `GET /api/agents/{name}/activity` - Poll for activity summary
 - **API**: `GET /api/agents/{name}/activity/{tool_id}` - Get full tool call details
 
@@ -278,7 +278,7 @@ curl http://localhost:8000/api/agents/test-agent/activity/tool_123 \
 
 ## Related Flows
 
-- **Upstream**: Agent Chat (`agent-chat.md`) - Triggers Claude Code execution
+- **Upstream**: ~~Agent Chat~~ Agent Terminal (`agent-terminal.md`) or scheduled executions - Triggers Claude Code execution
 - **Parallel**: Unified Activity Stream (`activity-stream.md`) - Persistent database tracking (NEW: Req 9.7)
 - **Downstream**: None (terminal display feature)
 

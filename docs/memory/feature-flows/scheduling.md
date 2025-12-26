@@ -576,5 +576,5 @@ Updated 2025-12-06 - Added Execution Queue integration documentation
   - Execution Queue (`execution-queue.md`) - All scheduled executions go through queue (Added 2025-12-06)
   - Activity Stream (`activity-stream.md`) - Schedule activities tracked persistently
 - **Related**:
-  - Agent Chat (`agent-chat.md`) - Both use same queue system
+  - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal ([agent-terminal.md](agent-terminal.md))
   - MCP Orchestration (`mcp-orchestration.md`) - All three sources share the queue

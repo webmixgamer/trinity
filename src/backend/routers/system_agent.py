@@ -4,18 +4,23 @@ System Agent routes for the Trinity backend.
 Provides endpoints for managing the Trinity system agent:
 - Status check
 - Re-initialization (reset to clean state)
+- Interactive terminal via WebSocket (PTY forwarding)
 
 The system agent is auto-deployed on platform startup and cannot be deleted.
 """
 import os
+import json
+import asyncio
 import logging
+import select
+import threading
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
 import httpx
 
 from models import User
 from database import db
-from dependencies import get_current_user
+from dependencies import get_current_user, decode_token
 from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, docker_client
 from db.agents import SYSTEM_AGENT_NAME
@@ -296,3 +301,313 @@ async def restart_system_agent(
             status_code=500,
             detail=f"Failed to restart system agent: {str(e)}"
         )
+
+
+# ============================================================================
+# TERMINAL WEBSOCKET ENDPOINT
+# ============================================================================
+
+# Track active terminal sessions (limit 1 per user)
+_active_terminal_sessions: dict = {}  # user_id -> session_info
+_terminal_lock = threading.Lock()
+
+
+@router.websocket("/terminal")
+async def system_agent_terminal(
+    websocket: WebSocket,
+    mode: str = Query(default="claude")  # 'claude' or 'bash'
+):
+    """
+    Interactive terminal WebSocket for System Agent.
+
+    Provides full PTY-based terminal access to the System Agent container.
+    Supports both Claude Code and bash shell modes.
+
+    Authentication:
+    - First message must be JSON: {"type": "auth", "token": "<jwt_token>"}
+    - Only admin users can access this endpoint
+
+    Control Messages (JSON):
+    - {"type": "resize", "cols": 80, "rows": 24} - Resize terminal
+
+    All other messages are forwarded as terminal input.
+    """
+    await websocket.accept()
+
+    user_email = None
+    exec_id = None
+    docker_socket = None
+    session_start = None
+
+    try:
+        # Step 1: Authenticate via first message
+        try:
+            auth_msg = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+            auth_data = json.loads(auth_msg)
+
+            if auth_data.get("type") != "auth":
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Expected auth message first",
+                    "close": True
+                }))
+                await websocket.close(code=4001, reason="Expected auth message")
+                return
+
+            token = auth_data.get("token")
+            if not token:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Token required",
+                    "close": True
+                }))
+                await websocket.close(code=4001, reason="Token required")
+                return
+
+            # Decode and validate token
+            user = decode_token(token)
+            if not user:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Invalid token",
+                    "close": True
+                }))
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+
+            # Check admin access
+            if user.get("role") != "admin":
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Admin access required",
+                    "close": True
+                }))
+                await websocket.close(code=4003, reason="Admin access required")
+                return
+
+            user_email = user.get("email") or user.get("sub") or "unknown"
+
+        except asyncio.TimeoutError:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "Authentication timeout",
+                "close": True
+            }))
+            await websocket.close(code=4001, reason="Auth timeout")
+            return
+        except json.JSONDecodeError:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "Invalid JSON in auth message",
+                "close": True
+            }))
+            await websocket.close(code=4001, reason="Invalid auth format")
+            return
+
+        # Step 2: Check for existing session (limit 1 per user)
+        # Sessions older than 300 seconds (5 min) are considered stale (cleanup failed)
+        SESSION_TIMEOUT_SECONDS = 300
+        with _terminal_lock:
+            if user_email in _active_terminal_sessions:
+                session_info = _active_terminal_sessions[user_email]
+                session_age = (datetime.utcnow() - session_info["started_at"]).total_seconds()
+                if session_age < SESSION_TIMEOUT_SECONDS:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "You already have an active terminal session. Close it first.",
+                        "close": True
+                    }))
+                    await websocket.close(code=4002, reason="Session limit reached")
+                    return
+                else:
+                    # Stale session, clean it up
+                    logger.warning(f"Cleaning up stale terminal session for {user_email} (age: {session_age:.0f}s)")
+            _active_terminal_sessions[user_email] = {"started_at": datetime.utcnow()}
+
+        # Step 3: Get container
+        container = get_agent_container(SYSTEM_AGENT_NAME)
+        if not container:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "System agent container not found",
+                "close": True
+            }))
+            with _terminal_lock:
+                _active_terminal_sessions.pop(user_email, None)
+            await websocket.close(code=4004, reason="Container not found")
+            return
+
+        container.reload()
+        if container.status != "running":
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "System agent is not running. Please start it first.",
+                "close": True
+            }))
+            with _terminal_lock:
+                _active_terminal_sessions.pop(user_email, None)
+            await websocket.close(code=4004, reason="Container not running")
+            return
+
+        # Step 4: Audit log - session start
+        session_start = datetime.utcnow()
+        await log_audit_event(
+            event_type="terminal_session",
+            action="start",
+            user_id=user_email,
+            agent_name=SYSTEM_AGENT_NAME,
+            details={"mode": mode}
+        )
+
+        # Step 5: Create exec with TTY
+        cmd = ["claude"] if mode == "claude" else ["/bin/bash"]
+
+        # Use docker API to create exec instance
+        exec_instance = docker_client.api.exec_create(
+            container.id,
+            cmd,
+            stdin=True,
+            tty=True,
+            stdout=True,
+            stderr=True,
+            user="developer",
+            workdir="/home/developer",
+            environment={"TERM": "xterm-256color", "COLORTERM": "truecolor"}
+        )
+        exec_id = exec_instance["Id"]
+
+        # Start exec and get socket
+        exec_output = docker_client.api.exec_start(exec_id, socket=True, tty=True)
+
+        # Get the raw socket
+        # docker-py returns a SocketIO wrapper, we need the underlying socket
+        docker_socket = exec_output._sock
+        docker_socket.setblocking(False)
+
+        # Send success message
+        await websocket.send_text(json.dumps({"type": "auth_success"}))
+
+        logger.info(f"Terminal session started for {user_email} (mode: {mode})")
+
+        # Step 6: Bidirectional forwarding
+        loop = asyncio.get_event_loop()
+
+        async def read_from_docker():
+            """Read from Docker socket, send to WebSocket."""
+            while True:
+                try:
+                    # Use select for non-blocking read with timeout
+                    ready = await loop.run_in_executor(
+                        None,
+                        lambda: select.select([docker_socket], [], [], 0.1)
+                    )
+                    if ready[0]:
+                        data = await loop.run_in_executor(
+                            None,
+                            lambda: docker_socket.recv(4096)
+                        )
+                        if not data:
+                            break
+                        await websocket.send_bytes(data)
+                    else:
+                        # No data available, yield to other tasks
+                        await asyncio.sleep(0.01)
+                except Exception as e:
+                    logger.debug(f"Docker read error: {e}")
+                    break
+
+        async def read_from_websocket():
+            """Read from WebSocket, send to Docker socket."""
+            while True:
+                try:
+                    message = await websocket.receive()
+
+                    if message["type"] == "websocket.disconnect":
+                        break
+
+                    if "text" in message:
+                        # Check if it's a control message
+                        try:
+                            ctrl = json.loads(message["text"])
+                            if ctrl.get("type") == "resize":
+                                # Resize the PTY
+                                cols = ctrl.get("cols", 80)
+                                rows = ctrl.get("rows", 24)
+                                docker_client.api.exec_resize(
+                                    exec_id,
+                                    height=rows,
+                                    width=cols
+                                )
+                                continue
+                        except json.JSONDecodeError:
+                            pass
+
+                        # Plain text input - send to container
+                        await loop.run_in_executor(
+                            None,
+                            lambda: docker_socket.sendall(message["text"].encode())
+                        )
+
+                    elif "bytes" in message:
+                        await loop.run_in_executor(
+                            None,
+                            lambda: docker_socket.sendall(message["bytes"])
+                        )
+
+                except WebSocketDisconnect:
+                    break
+                except Exception as e:
+                    logger.debug(f"WebSocket read error: {e}")
+                    break
+
+        # Run both tasks concurrently
+        await asyncio.gather(
+            read_from_docker(),
+            read_from_websocket(),
+            return_exceptions=True
+        )
+
+    except WebSocketDisconnect:
+        logger.info(f"Terminal WebSocket disconnected for {user_email}")
+    except Exception as e:
+        logger.error(f"Terminal session error: {e}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": str(e)
+            }))
+        except:
+            pass
+    finally:
+        # Cleanup
+        if docker_socket:
+            try:
+                docker_socket.close()
+            except:
+                pass
+
+        # Remove from active sessions
+        if user_email:
+            with _terminal_lock:
+                _active_terminal_sessions.pop(user_email, None)
+
+            # Audit log - session end
+            session_duration = None
+            if session_start:
+                session_duration = (datetime.utcnow() - session_start).total_seconds()
+
+            try:
+                await log_audit_event(
+                    event_type="terminal_session",
+                    action="end",
+                    user_id=user_email,
+                    agent_name=SYSTEM_AGENT_NAME,
+                    details={
+                        "mode": mode,
+                        "duration_seconds": session_duration
+                    }
+                )
+            except:
+                pass
+
+            logger.info(f"Terminal session ended for {user_email} (duration: {session_duration:.1f}s)" if session_duration else f"Terminal session ended for {user_email}")

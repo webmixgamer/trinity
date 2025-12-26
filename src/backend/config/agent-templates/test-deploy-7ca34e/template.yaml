@@ -1,0 +1,6 @@
+
+name: test-deploy-7ca34e
+display_name: Test Deploy Agent
+resources:
+  cpu: "1"
+  memory: "2g"

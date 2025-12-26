@@ -34,7 +34,8 @@
 |------|----------|----------|-------------|
 | Authentication Mode System | High | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **Runtime** dual-mode auth: dev (local login) + prod (Auth0 OAuth), JWT mode claims (Updated 2025-12-05) |
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers (Updated 2025-12-19) |
-| Agent Chat | High | [agent-chat.md](feature-flows/agent-chat.md) | Chat with Claude Code agents, streaming responses |
+| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal for agents with Claude Code TUI, replaces Chat tab (Implemented 2025-12-25) |
+| ~~Agent Chat~~ | ~~High~~ | ~~[agent-chat.md](feature-flows/agent-chat.md)~~ | ❌ DEPRECATED (2025-12-25) - Replaced by Agent Terminal for direct Claude Code interaction |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
@@ -68,6 +69,7 @@
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns (Implemented 2025-12-22, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
+| **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 
 ---
 

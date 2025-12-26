@@ -69,6 +69,39 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, m
     return encoded_jwt
 
 
+def decode_token(token: str) -> Optional[dict]:
+    """
+    Decode a JWT token without FastAPI dependency.
+
+    Returns the token payload with user info if valid, None if invalid.
+    Useful for WebSocket authentication where Depends() doesn't work.
+
+    Returns:
+        dict with keys: sub, email, role, exp, mode (if valid)
+        None if token is invalid or expired
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            return None
+
+        # Get full user record from database
+        user = db.get_user_by_username(username)
+        if not user:
+            return None
+
+        return {
+            "sub": username,
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "exp": payload.get("exp"),
+            "mode": payload.get("mode")
+        }
+    except JWTError:
+        return None
+
+
 async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> User:
     """
     FastAPI dependency to get the current authenticated user.

@@ -28,6 +28,15 @@ Claude Code maintains conversation state in memory. When multiple execution requ
 
 For stateless, parallel workloads, the queue can be bypassed using `POST /api/agents/{name}/task`:
 - **No queue serialization** - Requests execute immediately
+
+### Queue Bypass: Web Terminal (Added 2025-12-25)
+
+The Web Terminal (`WS /api/agents/{name}/terminal`) also bypasses the queue:
+- **Direct PTY access** - User has interactive Claude Code session
+- **No queue serialization** - Terminal sessions are independent of chat queue
+- See [agent-terminal.md](agent-terminal.md) for details
+
+**Note on /task endpoint (Parallel Headless Execution)**:
 - **No --continue flag** - Each task runs in isolation (no conversation context)
 - **Multiple concurrent tasks** - N tasks can run simultaneously per agent
 
@@ -702,12 +711,13 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
   - Auth0 Authentication (`auth0-authentication.md`) - User authorization
 
 - **Integrates With**:
-  - Agent Chat (`agent-chat.md`) - Queue enforced on all chat requests
+  - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal
   - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue
   - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`)
   - Activity Stream (`activity-stream.md`) - Queue status tracked in activities
 
 - **Bypassed By**:
+  - Agent Terminal (`agent-terminal.md`) - WebSocket PTY bypasses queue entirely (Added 2025-12-25)
   - Parallel Headless Execution (`parallel-headless-execution.md`) - `POST /api/agents/{name}/task` bypasses queue entirely (Added 2025-12-22)
 
 - **Downstream**:
