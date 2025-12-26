@@ -8,6 +8,12 @@ import os
 # When false (default), only Auth0 OAuth is allowed
 DEV_MODE_ENABLED = os.getenv("DEV_MODE_ENABLED", "false").lower() == "true"
 
+# Email Authentication Mode (Phase 12.4)
+# Set EMAIL_AUTH_ENABLED=true to enable email-based login with verification codes
+# This is the default authentication method. Users enter email → receive code → login
+# Can also be set via system_settings table (key: "email_auth_enabled", value: "true"/"false")
+EMAIL_AUTH_ENABLED = os.getenv("EMAIL_AUTH_ENABLED", "true").lower() == "true"
+
 # JWT Settings
 # SECURITY: SECRET_KEY must be set via environment variable in production
 # Generate with: openssl rand -hex 32

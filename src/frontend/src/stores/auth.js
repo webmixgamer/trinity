@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', {
     // Runtime mode detection (from backend)
     devModeEnabled: null,  // null = not yet detected, true/false = detected
     auth0Configured: null,
+    emailAuthEnabled: null,  // Email-based authentication (Phase 12.4)
     allowedDomain: 'ability.ai',
     modeDetected: false
   }),
@@ -54,15 +55,21 @@ export const useAuthStore = defineStore('auth', {
         const response = await axios.get('/api/auth/mode')
         this.devModeEnabled = response.data.dev_mode_enabled
         this.auth0Configured = response.data.auth0_configured
+        this.emailAuthEnabled = response.data.email_auth_enabled || false
         this.allowedDomain = response.data.allowed_domain || 'ability.ai'
         this.modeDetected = true
-        console.log(`🔐 Auth mode: ${this.devModeEnabled ? 'DEV (local login)' : 'PROD (Auth0 only)'}`)
+
+        // Log auth mode for debugging
+        const mode = this.emailAuthEnabled ? 'EMAIL' :
+                     this.devModeEnabled ? 'DEV' : 'AUTH0'
+        console.log(`🔐 Auth mode: ${mode}`)
         return this.devModeEnabled
       } catch (error) {
         console.error('Failed to detect auth mode:', error)
-        // Default to production mode if detection fails
+        // Default to email auth if detection fails
         this.devModeEnabled = false
         this.auth0Configured = true
+        this.emailAuthEnabled = true
         this.modeDetected = true
         return false
       }
@@ -231,6 +238,60 @@ export const useAuthStore = defineStore('auth', {
       } catch (error) {
         console.error('Dev login failed:', error)
         const detail = error.response?.data?.detail || 'Invalid username or password'
+        this.authError = detail
+        return false
+      }
+    },
+
+    // =========================================================================
+    // Email-Based Authentication (Phase 12.4)
+    // =========================================================================
+
+    // Request a verification code via email
+    async requestEmailCode(email) {
+      if (!this.emailAuthEnabled) {
+        this.authError = 'Email authentication is disabled'
+        return { success: false, error: 'Email authentication is disabled' }
+      }
+
+      try {
+        const response = await axios.post('/api/auth/email/request', { email })
+        return {
+          success: true,
+          message: response.data.message,
+          expiresInSeconds: response.data.expires_in_seconds
+        }
+      } catch (error) {
+        console.error('Request email code failed:', error)
+        const detail = error.response?.data?.detail || 'Failed to send verification code'
+        this.authError = detail
+        return { success: false, error: detail }
+      }
+    },
+
+    // Verify email code and login
+    async verifyEmailCode(email, code) {
+      if (!this.emailAuthEnabled) {
+        this.authError = 'Email authentication is disabled'
+        return false
+      }
+
+      try {
+        const response = await axios.post('/api/auth/email/verify', { email, code })
+
+        this.token = response.data.access_token
+        this.user = response.data.user
+        this.isAuthenticated = true
+
+        localStorage.setItem('token', this.token)
+        localStorage.setItem('auth0_user', JSON.stringify(this.user))
+        this.setupAxiosAuth()
+
+        console.log('📧 Email auth: authenticated as', this.user.email)
+        return true
+      } catch (error) {
+        console.error('Verify email code failed:', error)
+        const detail = error.response?.data?.detail || 'Invalid or expired verification code'
         this.authError = detail
         return false
       }

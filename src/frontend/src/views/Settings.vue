@@ -194,6 +194,107 @@ Example:
             </div>
           </div>
 
+          <!-- Email Whitelist Section (Phase 12.4) -->
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Email Whitelist</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Manage whitelisted emails for email-based authentication.
+                Only whitelisted users can login with email verification codes.
+              </p>
+            </div>
+
+            <div class="px-6 py-4">
+              <div class="space-y-4">
+                <!-- Add Email Form -->
+                <div class="flex gap-2">
+                  <input
+                    v-model="newEmail"
+                    type="email"
+                    placeholder="user@example.com"
+                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                    :disabled="addingEmail"
+                    @keyup.enter="addEmailToWhitelist"
+                  />
+                  <button
+                    @click="addEmailToWhitelist"
+                    :disabled="!newEmail || addingEmail"
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg v-if="addingEmail" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Add Email
+                  </button>
+                </div>
+
+                <!-- Whitelist Table -->
+                <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Source
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Added
+                        </th>
+                        <th scope="col" class="relative px-6 py-3">
+                          <span class="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                      <tr v-if="loadingWhitelist">
+                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                        </td>
+                      </tr>
+                      <tr v-else-if="emailWhitelist.length === 0">
+                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          No whitelisted emails. Add one above to get started.
+                        </td>
+                      </tr>
+                      <tr v-else v-for="entry in emailWhitelist" :key="entry.id" class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {{ entry.email }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          <span v-if="entry.source === 'agent_sharing'" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            🤝 Auto (Agent Sharing)
+                          </span>
+                          <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                            ✋ Manual
+                          </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {{ formatDate(entry.added_at) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            @click="removeEmailFromWhitelist(entry.email)"
+                            :disabled="removingEmail === entry.email"
+                            class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+                          >
+                            {{ removingEmail === entry.email ? 'Removing...' : 'Remove' }}
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  💡 Tip: When you share an agent with someone by email, they're automatically added to this whitelist.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Info Box -->
           <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <div class="flex">
@@ -266,6 +367,13 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref(null)
 const showSuccess = ref(false)
+
+// Email whitelist state (Phase 12.4)
+const emailWhitelist = ref([])
+const newEmail = ref('')
+const addingEmail = ref(false)
+const removingEmail = ref(null)
+const loadingWhitelist = ref(false)
 
 const trinityPrompt = ref('')
 const originalPrompt = ref('')
@@ -402,10 +510,92 @@ async function clearPrompt() {
   await savePrompt()
 }
 
+// Email whitelist methods (Phase 12.4)
+async function loadEmailWhitelist() {
+  loadingWhitelist.value = true
+  try {
+    const response = await axios.get('/api/settings/email-whitelist', {
+      headers: authStore.authHeader
+    })
+    emailWhitelist.value = response.data.whitelist || []
+  } catch (e) {
+    console.error('Failed to load email whitelist:', e)
+    // Non-fatal error - just log it
+  } finally {
+    loadingWhitelist.value = false
+  }
+}
+
+async function addEmailToWhitelist() {
+  if (!newEmail.value) return
+
+  addingEmail.value = true
+  error.value = null
+
+  try {
+    await axios.post('/api/settings/email-whitelist', {
+      email: newEmail.value,
+      source: 'manual'
+    }, {
+      headers: authStore.authHeader
+    })
+
+    newEmail.value = ''
+    await loadEmailWhitelist()
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to add email to whitelist'
+  } finally {
+    addingEmail.value = false
+  }
+}
+
+async function removeEmailFromWhitelist(email) {
+  if (!confirm(`Remove ${email} from whitelist?`)) return
+
+  removingEmail.value = email
+  error.value = null
+
+  try {
+    await axios.delete(`/api/settings/email-whitelist/${encodeURIComponent(email)}`, {
+      headers: authStore.authHeader
+    })
+
+    await loadEmailWhitelist()
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to remove email from whitelist'
+  } finally {
+    removingEmail.value = null
+  }
+}
+
+function formatDate(dateString) {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInMs = now - date
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24))
+
+  if (diffInDays === 0) return 'Today'
+  if (diffInDays === 1) return 'Yesterday'
+  if (diffInDays < 7) return `${diffInDays} days ago`
+  if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`
+
+  return date.toLocaleDateString()
+}
+
 onMounted(() => {
   // Check if user is admin
   const userData = authStore.user
   // For now, allow access - backend will reject if not admin
   loadSettings()
+  loadEmailWhitelist()
 })
 </script>

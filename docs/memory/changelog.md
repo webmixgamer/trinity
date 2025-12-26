@@ -1,3 +1,76 @@
+### 2025-12-26 14:00:00
+📧 **Email-Based Authentication** (Phase 12.4)
+
+Implemented passwordless email authentication as the new default login method. Users enter email → receive 6-digit code → login. Includes admin-managed whitelist and automatic whitelist addition when agents are shared.
+
+**Features**:
+- **Passwordless Login**: 2-step email verification (request code → verify code)
+- **Email Whitelist**: Admin-managed whitelist controls who can login
+- **Auto-Whitelist**: Sharing an agent automatically adds recipient to whitelist
+- **Security**: Rate limiting (3 requests/10 min), email enumeration prevention, audit logging
+- **Email Providers**: Support for console, SMTP, SendGrid, Resend
+
+**Backend Changes**:
+- **Database**: New tables `email_whitelist` and `email_login_codes`
+- **API Endpoints**:
+  - `POST /api/auth/email/request` - Request verification code
+  - `POST /api/auth/email/verify` - Verify code and login
+  - `GET /api/settings/email-whitelist` - List whitelist (admin)
+  - `POST /api/settings/email-whitelist` - Add email (admin)
+  - `DELETE /api/settings/email-whitelist/{email}` - Remove email (admin)
+- **Operations**: `src/backend/db/email_auth.py` - EmailAuthOperations class
+- **Models**: `src/backend/db_models.py` - EmailWhitelistEntry, EmailLoginRequest, etc.
+- **Config**: `EMAIL_AUTH_ENABLED=true` by default, can override via system_settings
+- **Integration**: `src/backend/routers/sharing.py` - Auto-whitelist on agent sharing
+
+**Frontend Changes**:
+- **Login Page**: `src/frontend/src/views/Login.vue` - Email auth shown by default
+  - Step 1: Enter email, request code
+  - Step 2: Enter 6-digit code with countdown timer
+  - Fallback buttons for Dev mode and Auth0 if enabled
+- **Auth Store**: `src/frontend/src/stores/auth.js` - Added email auth methods
+  - `requestEmailCode(email)` - Request verification code
+  - `verifyEmailCode(email, code)` - Verify and login
+  - `emailAuthEnabled` state tracking
+- **Settings Page**: `src/frontend/src/views/Settings.vue` - Email Whitelist section
+  - Table view with email, source, added date
+  - Add/remove emails
+  - Source badges: "Manual" vs "Auto (Agent Sharing)"
+
+**Security Features**:
+- Rate limiting: 3 code requests per 10 minutes per email
+- Code expiration: 10-minute lifetime
+- Single-use codes: Marked as verified after use
+- Email enumeration prevention: Generic success messages
+- Audit logging: Complete event trail for all auth operations
+
+**Configuration**:
+- Environment variable: `EMAIL_AUTH_ENABLED=true` (default)
+- Runtime toggle: System settings key `email_auth_enabled`
+- Detection endpoint: `GET /api/auth/mode` includes `email_auth_enabled` flag
+
+**Documentation**:
+- Feature flow: `docs/memory/feature-flows/email-authentication.md` (1200+ lines)
+- Comprehensive documentation of architecture, security, testing
+
+**User Experience**:
+- Default login: Email with verification code
+- Seamless onboarding: Sharing agent auto-whitelists recipient
+- Alternative methods: Dev mode and Auth0 still available if configured
+
+**Use Cases**:
+- Share agents with external collaborators via email
+- No need to pre-configure Auth0 or manage OAuth
+- Simple onboarding for new users
+- Admin controls access via whitelist
+
+**Files Changed**:
+- Backend: 11 files (database, routers, config, models, operations)
+- Frontend: 3 files (Login.vue, Settings.vue, auth.js)
+- Documentation: 1 feature flow (1200+ lines)
+
+---
+
 ### 2025-12-26 12:15:00
 🔐 **Automatic Logout on Session Expiration**
 

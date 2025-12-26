@@ -1214,12 +1214,145 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   1. Fresh install: Delete `setup_completed` setting from database
   2. Navigate to any page, verify redirect to /setup
   3. Set password, verify redirect to /login
-  4. Login with new password
-  5. Navigate to Settings, add Anthropic API key
-  6. Test key, verify validation works
-  7. Save key, create agent, verify agent uses stored key
 
-#### 11.5 Web Terminal for System Agent
+---
+
+#### 11.5 Email-Based Authentication (Phase 12.4)
+- **Status**: ✅ Implemented (2025-12-26)
+- **Priority**: High
+- **Description**: Passwordless email authentication as the new default login method with admin-managed whitelist
+- **Features**:
+  - **Passwordless Login**: 2-step email verification process (request code → verify code)
+  - **Email Whitelist**: Admin-managed whitelist controls who can login
+  - **Auto-Whitelist**: Sharing an agent automatically adds recipient email to whitelist
+  - **Security**: Rate limiting, code expiration, email enumeration prevention, audit logging
+  - **Email Providers**: Support for console, SMTP, SendGrid, Resend
+  - **Configuration**: Enabled by default, can be disabled via environment or system settings
+- **Backend Changes**:
+  | Change | Description |
+  |--------|-------------|
+  | `database.py` | Added `email_whitelist` and `email_login_codes` tables with indexes |
+  | `db/email_auth.py` | New `EmailAuthOperations` class with whitelist and code management |
+  | `db_models.py` | Added models: `EmailWhitelistEntry`, `EmailLoginRequest`, `EmailLoginVerify`, `EmailLoginResponse` |
+  | `config.py` | Added `EMAIL_AUTH_ENABLED=true` (default), can override via system_settings |
+  | `routers/auth.py` | Added `/api/auth/email/request` and `/api/auth/email/verify` endpoints |
+  | `routers/settings.py` | Added whitelist endpoints: GET/POST/DELETE `/api/settings/email-whitelist` |
+  | `routers/sharing.py` | Auto-add shared email to whitelist when agent is shared |
+  | `services/email_service.py` | Used for sending 6-digit verification codes |
+- **Frontend Changes**:
+  | Component | Description |
+  |-----------|-------------|
+  | `stores/auth.js` | Added `emailAuthEnabled` state, `requestEmailCode()`, `verifyEmailCode()` methods |
+  | `views/Login.vue` | Email auth shown by default with 2-step flow and countdown timer |
+  | `views/Settings.vue` | New Email Whitelist section with table view and add/remove functionality |
+- **API Endpoints**:
+  | Endpoint | Method | Auth | Description |
+  |----------|--------|------|-------------|
+  | `/api/auth/mode` | GET | No | Returns `email_auth_enabled` flag |
+  | `/api/auth/email/request` | POST | No | Request 6-digit code via email |
+  | `/api/auth/email/verify` | POST | No | Verify code and get JWT token |
+  | `/api/settings/email-whitelist` | GET | Admin | List all whitelisted emails |
+  | `/api/settings/email-whitelist` | POST | Admin | Add email to whitelist |
+  | `/api/settings/email-whitelist/{email}` | DELETE | Admin | Remove email from whitelist |
+- **Security Features**:
+  - **Rate Limiting**: 3 code requests per 10 minutes per email
+  - **Code Expiration**: 10-minute lifetime for verification codes
+  - **Single-Use Codes**: Codes marked as verified after use
+  - **Email Enumeration Prevention**: Generic success messages don't reveal whitelist status
+  - **Audit Logging**: Complete event trail for all authentication operations
+  - **Automatic User Creation**: Users created on first successful login
+- **Database Schema**:
+  ```sql
+  email_whitelist:
+    - id (INTEGER PRIMARY KEY)
+    - email (TEXT UNIQUE NOT NULL)
+    - added_by (TEXT NOT NULL, FK to users.id)
+    - added_at (TEXT NOT NULL)
+    - source (TEXT NOT NULL: "manual" | "agent_sharing")
+
+  email_login_codes:
+    - id (TEXT PRIMARY KEY)
+    - email (TEXT NOT NULL)
+    - code (TEXT NOT NULL, 6 digits)
+    - created_at (TEXT NOT NULL)
+    - expires_at (TEXT NOT NULL)
+    - verified (INTEGER DEFAULT 0)
+    - used_at (TEXT)
+  ```
+- **Configuration**:
+  ```bash
+  # Environment variable (default: true)
+  EMAIL_AUTH_ENABLED=true
+
+  # Runtime override via system_settings table:
+  # key: "email_auth_enabled", value: "true"|"false"
+
+  # Email provider configuration (existing):
+  EMAIL_PROVIDER=console|smtp|sendgrid|resend
+  SMTP_HOST=smtp.example.com
+  SMTP_PORT=587
+  SMTP_USER=user@example.com
+  SMTP_PASSWORD=password
+  SMTP_FROM=noreply@trinity.example.com
+  SENDGRID_API_KEY=SG.xxx
+  RESEND_API_KEY=re_xxx
+  ```
+- **User Flow**:
+  1. User visits login page
+  2. Backend returns `email_auth_enabled: true` from `/api/auth/mode`
+  3. Frontend shows email input form
+  4. User enters email and clicks "Send Verification Code"
+  5. Backend checks whitelist, generates 6-digit code, sends email
+  6. Frontend shows code input form with countdown timer
+  7. User enters code from email
+  8. Backend verifies code, creates/gets user, returns JWT token
+  9. User is authenticated and redirected to dashboard
+- **Auto-Whitelist Flow**:
+  1. Admin shares agent with `user@example.com`
+  2. Backend calls `db.add_to_whitelist(email, source="agent_sharing")`
+  3. Email automatically added to whitelist
+  4. Recipient can now login via email authentication
+  5. Whitelist entry shows "Auto (Agent Sharing)" badge in Settings
+- **Acceptance Criteria**:
+  - [x] Email auth shown as default login method
+  - [x] 2-step verification flow (request → verify)
+  - [x] Countdown timer shows code expiration
+  - [x] Rate limiting enforced (3 requests/10 min)
+  - [x] Only whitelisted emails can login
+  - [x] Admin can manage whitelist via Settings page
+  - [x] Sharing agent auto-adds email to whitelist
+  - [x] Source tracking ("manual" vs "agent_sharing")
+  - [x] Generic error messages prevent email enumeration
+  - [x] Audit logging for all auth operations
+  - [x] Fallback to Dev mode and Auth0 if configured
+  - [x] Supports multiple email providers
+- **Testing Scenarios**:
+  1. **Email Login**: Request code → verify code → login successful
+  2. **Rate Limiting**: 4th request within 10 minutes rejected
+  3. **Code Expiration**: Code expires after 10 minutes
+  4. **Single-Use**: Code cannot be reused after verification
+  5. **Whitelist Check**: Non-whitelisted email receives generic message
+  6. **Auto-Whitelist**: Share agent → recipient auto-whitelisted
+  7. **Admin Whitelist**: Add/remove emails via Settings page
+  8. **Email Providers**: Test with console, SMTP, SendGrid, Resend
+  9. **Audit Logs**: All operations logged with details
+  10. **Fallback Methods**: Dev mode and Auth0 still accessible
+- **Documentation**:
+  - Feature flow: `docs/memory/feature-flows/email-authentication.md` (1200+ lines)
+  - Architecture, security, testing, troubleshooting
+- **Related Requirements**:
+  - Uses email service from Req 11.3 (Public Agent Links)
+  - Uses system_settings from Req 11.1 (System-Wide Trinity Prompt)
+  - Integrates with agent sharing from Req 9.3 (Agent Sharing)
+- **Notes**:
+  - Default authentication method (replaces Auth0 as primary)
+  - Auth0 and Dev mode still available as fallback options
+  - Email whitelist provides fine-grained access control
+  - Auto-whitelist enables seamless collaboration via agent sharing
+
+---
+
+#### 11.6 Web Terminal for System Agent
 - **Status**: ✅ Implemented (2025-12-25)
 - **Priority**: High
 - **Description**: Browser-based interactive terminal for System Agent with full Claude Code TUI support
@@ -1267,7 +1400,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   7. Close modal, verify session terminates cleanly
   8. Non-admin users should not see Terminal button
 
-#### 11.6 Per-Agent API Key Control
+#### 11.7 Per-Agent API Key Control
 
 - **Status**: Complete (2025-12-26)
 - **Priority**: High

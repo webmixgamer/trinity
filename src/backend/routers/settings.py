@@ -594,3 +594,119 @@ def get_ops_setting(key: str, as_type: type = str):
         return value.lower() in ("true", "1", "yes")
     return value
 
+
+# ============================================================================
+# Email Whitelist Management (Phase 12.4)
+# ============================================================================
+
+@router.get("/email-whitelist")
+async def list_email_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all whitelisted emails.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    whitelist = db.list_whitelist(limit=1000)
+
+    await log_audit_event(
+        event_type="email_whitelist",
+        action="list",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success",
+        details={"count": len(whitelist)}
+    )
+
+    return {"whitelist": whitelist}
+
+
+@router.post("/email-whitelist")
+async def add_email_to_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Add an email to the whitelist.
+
+    Admin-only endpoint.
+    """
+    from database import EmailWhitelistAdd
+
+    require_admin(current_user)
+
+    # Parse request
+    body = await request.json()
+    add_request = EmailWhitelistAdd(**body)
+    email = add_request.email.lower()
+
+    # Add to whitelist
+    try:
+        added = db.add_to_whitelist(email, current_user.username, source=add_request.source)
+
+        if not added:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Email {email} is already whitelisted"
+            )
+
+        await log_audit_event(
+            event_type="email_whitelist",
+            action="add",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"email": email, "source": add_request.source}
+        )
+
+        return {"success": True, "email": email}
+
+    except ValueError as e:
+        await log_audit_event(
+            event_type="email_whitelist",
+            action="add",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="failed",
+            details={"email": email, "error": str(e)}
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/email-whitelist/{email}")
+async def remove_email_from_whitelist(
+    email: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Remove an email from the whitelist.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    # Remove from whitelist
+    removed = db.remove_from_whitelist(email)
+
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Email {email} not found in whitelist"
+        )
+
+    await log_audit_event(
+        event_type="email_whitelist",
+        action="remove",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success",
+        details={"email": email}
+    )
+
+    return {"success": True, "email": email}
+
