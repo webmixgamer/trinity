@@ -3,7 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2025-12-23)**: Major updates across feature flows:
+> **Updated (2025-12-26)**: Feature flows audit completed:
+> - **Task DAG Removal**: ✅ All references cleaned up, Agents.vue bug fixed (2025-12-23 Req 9.8 deletion)
+> - **GitHub Initialization**: ✅ Four critical bugs fixed - smart directory detection, orphaned record cleanup, agent files pushed (2025-12-26)
+> - **Email Authentication**: ✅ Backend complete, route ordering fixed, frontend TODO (Phase 12.4, 2025-12-26)
+> - **Agent Terminal**: ✅ Added per-agent API key control documentation (Req 11.7, 2025-12-26)
+>
+> **Previous Updates (2025-12-23)**:
 > - **Workplan/Task DAG Removal**: Removed all references to workplans, plans, task DAGs (Req 9.8 - deleted system)
 > - **OWASP Security Hardening**: Added bcrypt password hashing and SECRET_KEY handling documentation to auth0-authentication.md
 > - **New Features**: First-Time Setup, Public Agent Links, Parallel Headless Execution flows added
@@ -34,7 +40,7 @@
 |------|----------|----------|-------------|
 | Authentication Mode System | High | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **Runtime** dual-mode auth: dev (local login) + prod (Auth0 OAuth), JWT mode claims (Updated 2025-12-05) |
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers (Updated 2025-12-19) |
-| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal for agents with Claude Code TUI, replaces Chat tab, includes per-agent API key toggle (Updated 2025-12-26) |
+| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal for agents with Claude Code TUI, replaces Chat tab, includes **per-agent API key control** (Req 11.7) - owner can choose platform key vs terminal auth (Updated 2025-12-26) |
 | ~~Agent Chat~~ | ~~High~~ | ~~[agent-chat.md](feature-flows/agent-chat.md)~~ | ❌ DEPRECATED (2025-12-25) - Replaced by Agent Terminal for direct Claude Code interaction |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking |
@@ -71,7 +77,7 @@
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
-| **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Backend implemented 2025-12-26, Frontend TODO, Phase 12.4) |
+| **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (✅ Fully Implemented 2025-12-26, Phase 12.4) |
 
 ---
 

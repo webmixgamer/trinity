@@ -1,7 +1,9 @@
 # Feature: Email-Based Authentication
 
 ## Overview
-Passwordless email-based authentication with verification codes. Users enter their email, receive a 6-digit code, and login without passwords. Includes admin-managed email whitelist and automatic whitelist addition when agents are shared. This is the default authentication method for Trinity (Phase 12.4).
+Passwordless email-based authentication with verification codes. Users enter their email, receive a 6-digit code, and login without passwords. Includes admin-managed email whitelist and automatic whitelist addition when agents are shared. This is the **default authentication method** for Trinity (Phase 12.4).
+
+**Implementation Status**: ✅ **Fully Implemented** (Backend + Frontend complete as of 2025-12-26)
 
 ## User Story
 As a user, I want to login with my email address and a verification code so that I don't need to manage passwords or OAuth providers.
@@ -9,8 +11,8 @@ As a user, I want to login with my email address and a verification code so that
 As an admin, I want to control who can access the platform via an email whitelist so that I can manage access control independently of OAuth providers.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/Login.vue` - Email login form (TODO - not implemented yet)
-- **UI**: `src/frontend/src/views/Settings.vue` - Email Whitelist management tab (TODO - not implemented yet)
+- **UI**: `src/frontend/src/views/Login.vue:37-140` - Email login form with 2-step verification
+- **UI**: `src/frontend/src/views/Settings.vue:291-390` - Email Whitelist management section
 - **API**: `POST /api/auth/email/request` - Request verification code
 - **API**: `POST /api/auth/email/verify` - Verify code and login
 - **API**: `GET /api/settings/email-whitelist` - List whitelisted emails (admin-only)
@@ -28,7 +30,7 @@ As an admin, I want to control who can access the platform via an email whitelis
 
   User enters email                    Backend checks whitelist
 ┌────────────────────┐              ┌──────────────────────────┐
-│  Login.vue (TODO)  │              │  email_whitelist table   │
+│  Login.vue         │              │  email_whitelist table   │
 │  Email input       │              │  - id                    │
 │  "Send Code" btn   │              │  - email                 │
 └─────────┬──────────┘              │  - added_by              │
@@ -68,7 +70,7 @@ As an admin, I want to control who can access the platform via an email whitelis
           │ User enters code
           v
 ┌────────────────────┐              ┌──────────────────────────┐
-│  Login.vue (TODO)  │              │  email_login_codes       │
+│  Login.vue         │              │  email_login_codes       │
 │  Code input        │              │  - id                    │
 │  "Verify" btn      │              │  - email                 │
 └─────────┬──────────┘              │  - code (6 digits)       │
@@ -177,25 +179,52 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 ---
 
-## Frontend Layer (TODO - Not Implemented Yet)
+## Frontend Layer
 
-### State Management (`src/frontend/src/stores/auth.js`)
+### State Management
 
-**Required additions:**
+**File**: `src/frontend/src/stores/auth.js`
+
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 17 | `emailAuthEnabled` state | Boolean flag for email auth mode |
+| 58 | Mode detection | Sets `emailAuthEnabled` from `/api/auth/mode` |
+| 63-65 | Auth mode logging | Logs EMAIL/DEV/AUTH0 mode to console |
+| 250-270 | `requestEmailCode()` | Request verification code via email |
+| 272-298 | `verifyEmailCode()` | Verify code and authenticate |
+
+**Email Authentication Methods**:
+
 ```javascript
-// Add to actions section (after line 237)
-
+// Lines 250-270: Request a verification code via email
 async requestEmailCode(email) {
+  if (!this.emailAuthEnabled) {
+    this.authError = 'Email authentication is disabled'
+    return { success: false, error: 'Email authentication is disabled' }
+  }
+
   try {
     const response = await axios.post('/api/auth/email/request', { email })
-    return { success: true, expiresIn: response.data.expires_in_seconds }
+    return {
+      success: true,
+      message: response.data.message,
+      expiresInSeconds: response.data.expires_in_seconds
+    }
   } catch (error) {
-    this.authError = error.response?.data?.detail || 'Failed to send code'
-    return { success: false, error: this.authError }
+    console.error('Request email code failed:', error)
+    const detail = error.response?.data?.detail || 'Failed to send verification code'
+    this.authError = detail
+    return { success: false, error: detail }
   }
-},
+}
 
+// Lines 272-298: Verify email code and login
 async verifyEmailCode(email, code) {
+  if (!this.emailAuthEnabled) {
+    this.authError = 'Email authentication is disabled'
+    return false
+  }
+
   try {
     const response = await axios.post('/api/auth/email/verify', { email, code })
 
@@ -207,164 +236,220 @@ async verifyEmailCode(email, code) {
     localStorage.setItem('auth0_user', JSON.stringify(this.user))
     this.setupAxiosAuth()
 
+    console.log('📧 Email auth: authenticated as', this.user.email)
     return true
   } catch (error) {
-    this.authError = error.response?.data?.detail || 'Invalid code'
+    console.error('Verify email code failed:', error)
+    const detail = error.response?.data?.detail || 'Invalid or expired verification code'
+    this.authError = detail
     return false
   }
 }
 ```
 
-### Login.vue Additions
+### Login Component
 
-Add email auth form to `src/frontend/src/views/Login.vue`:
+**File**: `src/frontend/src/views/Login.vue`
 
-```vue
-<!-- Insert after line 102 (after production mode section) -->
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 37-140 | Email auth section | Default login method when email auth enabled |
+| 40-65 | Step 1: Enter email | Email input with "Send Verification Code" button |
+| 67-112 | Step 2: Enter code | 6-digit code input with countdown timer |
+| 73-75 | Countdown timer | Displays "Code expires in MM:SS" |
+| 115-139 | Alternative logins | Switch to Dev Mode or Google OAuth |
+| 249-254 | Email state | `emailInput`, `codeInput`, `codeSent`, `countdown` refs |
+| 275-280 | Timer formatting | `formatTime()` converts seconds to MM:SS |
+| 283-295 | Countdown logic | `startCountdown()` with setInterval |
+| 304-317 | `handleRequestCode()` | Submit email, start countdown |
+| 319-329 | `handleVerifyCode()` | Submit code, redirect on success |
+| 331-339 | `handleBackToEmail()` | Reset to step 1, clear timer |
 
-<!-- Email Authentication Mode -->
-<div v-else-if="authStore.emailAuthEnabled">
-  <!-- Step 1: Request Code -->
-  <div v-if="!codeSent">
-    <form @submit.prevent="handleRequestCode" class="space-y-4">
-      <div>
-        <label for="email" class="block text-sm font-medium">Email Address</label>
-        <input
-          id="email"
-          v-model="email"
-          type="email"
-          required
-          class="mt-1 block w-full px-3 py-2 border rounded-lg"
-          placeholder="you@example.com"
-        />
-      </div>
-      <button
-        type="submit"
-        :disabled="loginLoading || !email"
-        class="w-full py-3 px-4 rounded-lg bg-blue-600 text-white"
-      >
-        {{ loginLoading ? 'Sending code...' : 'Send verification code' }}
-      </button>
-    </form>
-  </div>
-
-  <!-- Step 2: Verify Code -->
-  <div v-else>
-    <p class="text-sm text-gray-600 mb-4">
-      We sent a code to <strong>{{ email }}</strong>
-    </p>
-    <form @submit.prevent="handleVerifyCode" class="space-y-4">
-      <div>
-        <label for="code" class="block text-sm font-medium">Verification Code</label>
-        <input
-          id="code"
-          v-model="code"
-          type="text"
-          required
-          maxlength="6"
-          pattern="[0-9]{6}"
-          class="mt-1 block w-full px-3 py-2 border rounded-lg text-center text-2xl tracking-widest"
-          placeholder="000000"
-        />
-      </div>
-      <button
-        type="submit"
-        :disabled="loginLoading || code.length !== 6"
-        class="w-full py-3 px-4 rounded-lg bg-blue-600 text-white"
-      >
-        {{ loginLoading ? 'Verifying...' : 'Verify code' }}
-      </button>
-      <button
-        type="button"
-        @click="codeSent = false; code = ''"
-        class="w-full py-2 text-sm text-gray-600"
-      >
-        Use a different email
-      </button>
-    </form>
-  </div>
-</div>
-```
-
-**Required reactive state:**
-```javascript
-const email = ref('')
-const code = ref('')
-const codeSent = ref(false)
-```
-
-**Required methods:**
-```javascript
-const handleRequestCode = async () => {
-  loginLoading.value = true
-  const result = await authStore.requestEmailCode(email.value)
-  if (result.success) {
-    codeSent.value = true
-  }
-  loginLoading.value = false
-}
-
-const handleVerifyCode = async () => {
-  loginLoading.value = true
-  const success = await authStore.verifyEmailCode(email.value, code.value)
-  if (success) {
-    router.push('/')
-  }
-  loginLoading.value = false
-}
-```
-
-### Settings.vue - Email Whitelist Tab (TODO)
-
-Add new tab to Settings page:
+**2-Step UI Flow**:
 
 ```vue
-<!-- Add to tabs array -->
-<button @click="currentTab = 'email-whitelist'" v-if="isAdmin">
-  Email Whitelist
-</button>
-
-<!-- Tab content -->
-<div v-if="currentTab === 'email-whitelist'" class="space-y-4">
-  <div class="flex justify-between items-center">
-    <h3 class="text-lg font-semibold">Email Whitelist</h3>
-    <button @click="showAddEmailDialog = true" class="btn-primary">
-      Add Email
+<!-- Step 1: Email Input (Lines 40-65) -->
+<div v-if="!codeSent">
+  <form @submit.prevent="handleRequestCode" class="space-y-4">
+    <div>
+      <label for="email">Email Address</label>
+      <input
+        id="email"
+        v-model="emailInput"
+        type="email"
+        required
+        autocomplete="email"
+        placeholder="you@example.com"
+      />
+    </div>
+    <button type="submit" :disabled="loginLoading || !emailInput">
+      {{ loginLoading ? 'Sending code...' : 'Send Verification Code' }}
     </button>
-  </div>
-
-  <div class="bg-white rounded-lg shadow">
-    <table class="min-w-full">
-      <thead>
-        <tr>
-          <th>Email</th>
-          <th>Added By</th>
-          <th>Source</th>
-          <th>Added At</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="entry in emailWhitelist" :key="entry.id">
-          <td>{{ entry.email }}</td>
-          <td>{{ entry.added_by_username }}</td>
-          <td>
-            <span v-if="entry.source === 'manual'" class="badge-blue">Manual</span>
-            <span v-else-if="entry.source === 'agent_sharing'" class="badge-green">
-              Agent Sharing
-            </span>
-          </td>
-          <td>{{ formatDate(entry.added_at) }}</td>
-          <td>
-            <button @click="removeEmail(entry.email)" class="btn-danger-sm">
-              Remove
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  </form>
 </div>
+
+<!-- Step 2: Code Verification (Lines 67-112) -->
+<div v-else>
+  <p>📧 We sent a 6-digit code to <strong>{{ emailInput }}</strong></p>
+  <p v-if="countdown > 0">Code expires in {{ formatTime(countdown) }}</p>
+
+  <form @submit.prevent="handleVerifyCode" class="space-y-4">
+    <div>
+      <label for="code">Verification Code</label>
+      <input
+        id="code"
+        v-model="codeInput"
+        type="text"
+        required
+        maxlength="6"
+        pattern="[0-9]{6}"
+        autocomplete="one-time-code"
+        class="text-center text-2xl tracking-widest"
+        placeholder="000000"
+      />
+    </div>
+    <button type="submit" :disabled="loginLoading || codeInput.length !== 6">
+      {{ loginLoading ? 'Verifying...' : 'Verify & Sign In' }}
+    </button>
+    <button type="button" @click="handleBackToEmail">
+      ← Back to email
+    </button>
+  </form>
+</div>
+```
+
+**Key Features**:
+- ✅ Dark mode support via Tailwind classes
+- ✅ Email autocomplete (`autocomplete="email"`)
+- ✅ One-time-code autocomplete (`autocomplete="one-time-code"`)
+- ✅ Countdown timer with MM:SS format
+- ✅ 6-digit code input with validation (`maxlength="6"`, `pattern="[0-9]{6}"`)
+- ✅ Loading states on buttons
+- ✅ Switch to Dev Mode or Google OAuth (lines 115-139)
+
+### Settings Component - Email Whitelist
+
+**File**: `src/frontend/src/views/Settings.vue`
+
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 291-390 | Email Whitelist section | Complete whitelist management UI |
+| 304-324 | Add email form | Input field + Add button |
+| 327-383 | Whitelist table | Shows email, source, date, actions |
+| 356-380 | Table rows | Iterates over `emailWhitelist` array |
+| 361-366 | Source badges | 🤝 Auto (Agent Sharing) or ✋ Manual |
+| 372-378 | Remove button | DELETE action per email |
+| 385-387 | Help text | "When you share an agent..." tip |
+| 465-469 | Whitelist state | `emailWhitelist`, `newEmail`, loading flags |
+| 695-706 | `loadEmailWhitelist()` | Fetch whitelist from API |
+| 708-730 | `addEmailToWhitelist()` | POST new email |
+| 732-754 | `removeEmailFromWhitelist()` | DELETE email |
+
+**Whitelist Table UI**:
+
+```vue
+<!-- Lines 327-383 -->
+<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Source</th>
+      <th>Added</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-if="loadingWhitelist">
+      <td colspan="4">Loading...</td>
+    </tr>
+    <tr v-else-if="emailWhitelist.length === 0">
+      <td colspan="4">No whitelisted emails. Add one above to get started.</td>
+    </tr>
+    <tr v-else v-for="entry in emailWhitelist" :key="entry.id">
+      <td>{{ entry.email }}</td>
+      <td>
+        <span v-if="entry.source === 'agent_sharing'" class="badge-blue">
+          🤝 Auto (Agent Sharing)
+        </span>
+        <span v-else class="badge-gray">
+          ✋ Manual
+        </span>
+      </td>
+      <td>{{ formatDate(entry.added_at) }}</td>
+      <td>
+        <button @click="removeEmailFromWhitelist(entry.email)">
+          {{ removingEmail === entry.email ? 'Removing...' : 'Remove' }}
+        </button>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="text-xs text-gray-500 mt-2">
+  💡 Tip: When you share an agent with someone by email, they're automatically added to this whitelist.
+</p>
+```
+
+**Methods**:
+
+```javascript
+// Lines 695-706: Load whitelist
+async function loadEmailWhitelist() {
+  try {
+    const response = await axios.get('/api/settings/email-whitelist', {
+      headers: authStore.authHeader
+    })
+    emailWhitelist.value = response.data.whitelist || []
+  } catch (e) {
+    console.error('Failed to load email whitelist:', e)
+  }
+}
+
+// Lines 708-730: Add email
+async function addEmailToWhitelist() {
+  if (!newEmail.value) return
+
+  addingEmail.value = true
+  error.value = null
+
+  try {
+    await axios.post('/api/settings/email-whitelist', {
+      email: newEmail.value,
+      source: 'manual'
+    }, {
+      headers: authStore.authHeader
+    })
+
+    newEmail.value = ''
+    await loadEmailWhitelist()
+    showSuccessMessage()
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to add email'
+  } finally {
+    addingEmail.value = false
+  }
+}
+
+// Lines 732-754: Remove email
+async function removeEmailFromWhitelist(email) {
+  if (!confirm(`Remove ${email} from whitelist?`)) return
+
+  removingEmail.value = email
+  error.value = null
+
+  try {
+    await axios.delete(`/api/settings/email-whitelist/${encodeURIComponent(email)}`, {
+      headers: authStore.authHeader
+    })
+
+    await loadEmailWhitelist()
+    showSuccessMessage()
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to remove email'
+  } finally {
+    removingEmail.value = null
+  }
+}
 ```
 
 ---
@@ -918,7 +1003,138 @@ Email authentication coexists with other methods:
 
 ### Manual Testing Steps
 
-#### 1. Admin Adds Email to Whitelist
+#### 1. Frontend: Email Login Flow
+
+**Action**:
+1. Open browser to `http://localhost:3000/login`
+2. Verify email authentication form is displayed (default method)
+3. Enter email: `testuser@example.com`
+4. Click "Send Verification Code"
+
+**Expected**:
+- Button changes to "Sending code..."
+- After 1-2 seconds, UI switches to Step 2 (code input)
+- Email sent message appears: "📧 We sent a 6-digit code to testuser@example.com"
+- Countdown timer starts: "Code expires in 10:00"
+- Backend logs show code (if EMAIL_PROVIDER=console)
+
+**Verify**:
+- Check browser console for `[GitPanel]` style logs
+- Check backend logs for email service output
+- Countdown should decrease every second
+
+**Action (continued)**:
+5. Enter 6-digit code from email/logs
+6. Click "Verify & Sign In"
+
+**Expected**:
+- Button changes to "Verifying..."
+- After 1-2 seconds, redirect to dashboard (`/`)
+- Console logs: `📧 Email auth: authenticated as testuser@example.com`
+- User menu shows email address
+
+**Verify**:
+```bash
+# Check localStorage
+localStorage.getItem('token')  # Should have JWT
+localStorage.getItem('auth0_user')  # Should have user object with email
+```
+
+#### 2. Frontend: Countdown Timer Test
+
+**Action**:
+1. Login page, enter email, send code
+2. Wait and watch countdown timer
+
+**Expected**:
+- Timer starts at "10:00" (600 seconds)
+- Decrements every second: "9:59", "9:58", etc.
+- Format is always MM:SS (zero-padded seconds)
+- When timer reaches 0:00, stops (code expired)
+
+**Verify**: Code should actually be expired after 10 minutes (backend validation)
+
+#### 3. Frontend: Back to Email Button
+
+**Action**:
+1. Request code (Step 2 displayed)
+2. Click "← Back to email" button
+
+**Expected**:
+- UI returns to Step 1 (email input)
+- Code input cleared
+- Countdown timer stopped and reset
+- Email field retains previous value
+
+#### 4. Frontend: Validation Tests
+
+**Action**:
+1. Try to submit email with empty field
+2. Try to submit code with < 6 digits
+3. Try to enter letters in code field
+
+**Expected**:
+- "Send Verification Code" button disabled when email empty
+- "Verify & Sign In" button disabled when code length !== 6
+- Code input accepts only numbers (pattern="[0-9]{6}")
+- Browser validation enforces email format
+
+#### 5. Frontend: Alternative Login Methods
+
+**Action**:
+1. On email login page, scroll down
+2. Verify "Or sign in with" section visible
+3. Click "🔧 Developer Mode" (if DEV_MODE_ENABLED=true)
+4. Click "Google" (if Auth0 configured)
+
+**Expected**:
+- Alternative login buttons appear below email form
+- Dev Mode button switches to username/password form
+- Google button switches to OAuth button
+- Each form has "← Back to email login" link
+
+#### 6. Frontend: Settings - Email Whitelist Management
+
+**Action**:
+1. Login as admin
+2. Navigate to Settings page (`/settings`)
+3. Scroll to "Email Whitelist" section
+
+**Expected**:
+- Section title: "Email Whitelist"
+- Description: "Manage whitelisted emails for email-based authentication..."
+- Input field + "Add Email" button
+- Table with columns: Email, Source, Added, Actions
+- Empty state message if no emails
+
+**Action (continued)**:
+4. Enter email: `newuser@example.com`
+5. Click "Add Email"
+
+**Expected**:
+- Button shows "Adding..." with spinner
+- After 1-2 seconds, success message appears
+- Email appears in table
+- Source badge shows "✋ Manual"
+- Date shows current time
+- Input field cleared
+
+**Action (continued)**:
+6. Click "Remove" button on an email
+
+**Expected**:
+- Browser confirm dialog: "Remove {email} from whitelist?"
+- If confirmed, button shows "Removing..."
+- After 1-2 seconds, email disappears from table
+- Success message appears
+
+**Verify**:
+```bash
+# Check database
+sqlite3 ~/trinity-data/trinity.db "SELECT * FROM email_whitelist"
+```
+
+#### 7. Backend: Admin Adds Email to Whitelist (API)
 
 **Action:**
 ```bash
@@ -949,7 +1165,7 @@ curl -X GET http://localhost:8000/api/settings/email-whitelist \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-#### 2. User Requests Login Code
+#### 8. Backend: User Requests Login Code (API)
 
 **Action:**
 ```bash
@@ -972,7 +1188,7 @@ curl -X POST http://localhost:8000/api/auth/email/request \
 - Check email inbox (if using real email provider)
 - Code should be 6 digits: `123456`
 
-#### 3. User Verifies Code
+#### 9. Backend: User Verifies Code (API)
 
 **Action:**
 ```bash
@@ -1003,7 +1219,7 @@ curl -X GET http://localhost:8000/api/agents \
   -H "Authorization: Bearer <access-token>"
 ```
 
-#### 4. Rate Limiting Test
+#### 10. Backend: Rate Limiting Test
 
 **Action:**
 ```bash
@@ -1027,7 +1243,7 @@ done
 }
 ```
 
-#### 5. Email Enumeration Prevention Test
+#### 11. Backend: Email Enumeration Prevention Test
 
 **Action:**
 ```bash
@@ -1049,7 +1265,7 @@ curl -X POST http://localhost:8000/api/auth/email/request \
 - Response looks the same as whitelisted email (no enumeration)
 - Check audit logs for `result="denied"`, `reason="not_whitelisted"`
 
-#### 6. Auto-Whitelist on Agent Share
+#### 12. Frontend: Auto-Whitelist on Agent Share
 
 **Action:**
 ```bash
@@ -1091,7 +1307,7 @@ curl -X GET http://localhost:8000/api/settings/email-whitelist \
 }
 ```
 
-#### 7. Code Expiration Test
+#### 13. Backend: Code Expiration Test
 
 **Action:**
 ```bash
@@ -1115,7 +1331,7 @@ curl -X POST http://localhost:8000/api/auth/email/verify \
 }
 ```
 
-#### 8. Single-Use Code Test
+#### 14. Backend: Single-Use Code Test
 
 **Action:**
 ```bash
@@ -1164,32 +1380,37 @@ curl -X GET "http://localhost:8001/api/audit/events?event_type=authentication&ac
 
 ### Edge Cases
 
-| Scenario | Expected Behavior |
-|----------|------------------|
-| Email auth disabled | 403 "Email authentication is disabled" |
-| Setup not completed | 403 "setup_required" |
-| Invalid email format | 422 Validation error from Pydantic |
-| Code with wrong email | 401 "Invalid or expired verification code" |
-| Database error during user creation | 500 "Failed to create user account" |
-| Email service down | Code created but email fails (audit log shows `email_sent=false`) |
+| Scenario | Expected Behavior | UI/API |
+|----------|------------------|--------|
+| Email auth disabled | 403 "Email authentication is disabled" | Error message in Login.vue |
+| Setup not completed | 403 "setup_required" | Blocked by first-time setup check |
+| Invalid email format | Browser validation error | HTML5 `type="email"` validation |
+| Code with wrong email | 401 "Invalid or expired verification code" | Red error message below code input |
+| Database error during user creation | 500 "Failed to create user account" | Error message in Login.vue |
+| Email service down | Code created but email fails (audit log shows `email_sent=false`) | User sees success but doesn't receive email |
+| Countdown reaches zero | Code still works until backend expiry (10 min) | Timer shows "0:00", no UI enforcement |
+| Network interruption during verify | Axios error | Red error message, user can retry |
+| Duplicate email in whitelist | 409 "Email already whitelisted" | Error message in Settings page |
+| Non-admin tries to manage whitelist | 403 or redirect | Settings page requires admin role |
 
 ### Status
 
-- **Backend Implementation**: ✅ Complete (Phase 12.4)
-- **Frontend Implementation**: 🚧 TODO
-  - `src/frontend/src/stores/auth.js` - Add email auth methods
-  - `src/frontend/src/views/Login.vue` - Add email login UI
-  - `src/frontend/src/views/Settings.vue` - Add Email Whitelist tab
+- **Backend Implementation**: ✅ Complete (Phase 12.4, 2025-12-26)
+- **Frontend Implementation**: ✅ Complete (2025-12-26)
+  - ✅ `src/frontend/src/stores/auth.js` - Email auth methods (lines 250-298)
+  - ✅ `src/frontend/src/views/Login.vue` - 2-step email login UI (lines 37-140)
+  - ✅ `src/frontend/src/views/Settings.vue` - Email Whitelist management (lines 291-390)
 - **Email Service**: ✅ Complete (console, SMTP, SendGrid, Resend)
 - **Auto-Whitelist**: ✅ Complete (agent sharing integration)
 - **Audit Logging**: ✅ Complete
 - **Security**: ✅ Complete (rate limiting, enumeration prevention, code expiration)
+- **UI/UX Features**: ✅ Complete (countdown timer, dark mode, autocomplete, loading states)
 
 ---
 
 ## Implementation Checklist
 
-### Backend (Completed)
+### Backend (✅ Completed 2025-12-26)
 - [x] Database schema (email_whitelist, email_login_codes)
 - [x] EmailAuthOperations class
 - [x] POST /api/auth/email/request endpoint
@@ -1205,32 +1426,54 @@ curl -X GET "http://localhost:8001/api/audit/events?event_type=authentication&ac
 - [x] Audit logging
 - [x] Auto-whitelist on agent sharing
 - [x] Runtime enable/disable via settings
+- [x] Route ordering fix (whitelist routes before catch-all)
 
-### Frontend (TODO)
-- [ ] Add `emailAuthEnabled` to auth store state
-- [ ] Add `requestEmailCode()` method to auth store
-- [ ] Add `verifyEmailCode()` method to auth store
-- [ ] Update Login.vue with email auth form
-  - [ ] Step 1: Email input + "Send code" button
-  - [ ] Step 2: Code input (6 digits) + "Verify" button
-  - [ ] Error handling and loading states
-- [ ] Add Email Whitelist tab to Settings.vue
-  - [ ] List whitelist with source badges
-  - [ ] Add email dialog
-  - [ ] Remove email confirmation
-  - [ ] Admin-only access
-- [ ] Update GET /api/auth/mode to check `email_auth_enabled`
-- [ ] Test complete flow end-to-end
+### Frontend (✅ Completed 2025-12-26)
+- [x] Add `emailAuthEnabled` to auth store state (line 17)
+- [x] Add `requestEmailCode()` method to auth store (lines 250-270)
+- [x] Add `verifyEmailCode()` method to auth store (lines 272-298)
+- [x] Update Login.vue with email auth form (lines 37-140)
+  - [x] Step 1: Email input + "Send code" button
+  - [x] Step 2: Code input (6 digits) + "Verify" button
+  - [x] Countdown timer with MM:SS display
+  - [x] Error handling and loading states
+  - [x] Dark mode support
+  - [x] Autocomplete attributes (email, one-time-code)
+- [x] Add Email Whitelist section to Settings.vue (lines 291-390)
+  - [x] List whitelist with source badges (Auto/Manual)
+  - [x] Add email form with inline input
+  - [x] Remove email confirmation
+  - [x] Admin-only access (Settings page requires admin)
+  - [x] Loading states and error handling
+- [x] GET /api/auth/mode returns `email_auth_enabled` (line 58 in auth.js)
+- [x] Complete flow tested end-to-end
 
-### Documentation (Completed)
-- [x] Feature flow document
+### Documentation (✅ Completed 2025-12-26)
+- [x] Feature flow document (complete with frontend implementation)
 - [x] Security considerations
-- [x] Testing instructions
+- [x] Testing instructions (backend + frontend)
 - [x] Configuration examples
 
 ---
 
 ## Notes
+
+### Frontend Architecture
+
+**Login Flow State Machine**:
+1. **Mode Detection**: `detectAuthMode()` calls `/api/auth/mode` to determine available auth methods
+2. **Default Display**: Email auth shown by default if `emailAuthEnabled === true`
+3. **Alternative Methods**: Dev Mode and Google OAuth accessible via "Or sign in with" section
+4. **State Persistence**: JWT and user stored in localStorage, restored on page load
+
+**Countdown Timer Implementation**:
+- Uses `setInterval()` with 1-second tick (lines 283-295 in Login.vue)
+- Cleanup on component unmount to prevent memory leaks (lines 298-302)
+- Timer is UI-only - backend expiry is authoritative (10 minutes)
+
+**Dark Mode Support**:
+- All components use Tailwind dark mode classes (`dark:bg-gray-800`, etc.)
+- Consistent with existing Trinity UI design system
 
 ### Why Email = Username?
 
@@ -1268,13 +1511,13 @@ access_token = create_access_token(
 This allows distinguishing between:
 - `mode="dev"` - Dev mode (username/password)
 - `mode="prod"` - Auth0 OAuth
-- `mode="email"` - Email verification code
+- `mode="email"` - Email verification code (default)
 
 ### Source Tracking
 
-The whitelist tracks how emails were added:
-- `source="manual"` - Added by admin via Settings page
-- `source="agent_sharing"` - Auto-added when agent was shared
+The whitelist tracks how emails were added (visible in Settings UI):
+- `source="manual"` - ✋ Manual badge - Added by admin via Settings page
+- `source="agent_sharing"` - 🤝 Auto badge - Auto-added when agent was shared
 
 This provides an audit trail and helps admins understand whitelist growth.
 
@@ -1288,3 +1531,26 @@ db.cleanup_old_codes(days=1)  # Delete codes older than 1 day
 ```
 
 This is not currently scheduled but can be added to the System Agent or a separate cleanup task.
+
+### UI/UX Decisions
+
+**Autocomplete Attributes**:
+- `autocomplete="email"` on email input - helps password managers recognize field
+- `autocomplete="one-time-code"` on code input - iOS/Android can auto-fill from SMS
+
+**Code Input Styling**:
+- Large text (text-2xl) for easy reading
+- Monospace with letter-spacing (tracking-widest) for 6-digit appearance
+- Centered text for visual appeal
+- Pattern validation prevents non-numeric input
+
+**Loading States**:
+- All async actions show loading spinners
+- Buttons disable during loading to prevent double-submit
+- Loading text changes button label ("Sending code...", "Verifying...")
+
+**Error Handling**:
+- Errors displayed inline below form elements
+- Red color scheme for errors
+- authStore.clearError() called before new operations
+- Retry button clears all state and returns to Step 1
