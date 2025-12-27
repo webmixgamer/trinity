@@ -67,6 +67,28 @@
 | ⏳ | Automated sync modes (scheduled, on-stop) | GitOps enhancement | LOW |
 | ⏳ | Automated secret rotation | Security enhancement | LOW |
 
+### Phase 11.5: Content Management & File Operations
+🚧 **In Progress** — *Essential for agents generating large assets (video, audio, exports)*
+
+| Status | Item | Description | Priority |
+|--------|------|-------------|----------|
+| ✅ | **Content Folder Convention (12.1)** | `content/` directory gitignored by default, persists across restarts. Implemented 2025-12-27. | **HIGH** |
+| ✅ | **File Manager Page (12.2)** | Dedicated `/files` page with agent selector, two-panel layout (tree + preview), delete operations. Implemented 2025-12-27. | **HIGH** |
+| ✅ | File Preview Support | Preview images, video, audio, text/code, PDF in right panel. Implemented 2025-12-27. | HIGH |
+| ✅ | Delete Operations | Delete file/folder with confirmation, protected file warnings. Implemented 2025-12-27. | HIGH |
+| ⏳ | Create Folder | Create new directories in agent workspace | MEDIUM |
+
+**Content Convention**:
+```
+/home/developer/
+├── [workspace files]     # Synced to Git
+├── content/              # NOT synced - videos, audio, exports
+│   ├── videos/
+│   ├── audio/
+│   └── exports/
+└── .gitignore            # Includes: content/
+```
+
 ### Phase 12: Agent Perception & Attention (Cognitive Patterns)
 ⏳ **Pending** — *Emergent coordination via event-driven cognition*
 

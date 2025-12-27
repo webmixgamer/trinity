@@ -45,6 +45,8 @@ from .folders import (
 from .files import (
     list_agent_files_logic,
     download_agent_file_logic,
+    delete_agent_file_logic,
+    preview_agent_file_logic,
 )
 from .queue import (
     get_agent_queue_status_logic,
@@ -98,6 +100,8 @@ __all__ = [
     # Files
     "list_agent_files_logic",
     "download_agent_file_logic",
+    "delete_agent_file_logic",
+    "preview_agent_file_logic",
     # Queue
     "get_agent_queue_status_logic",
     "clear_agent_queue_logic",

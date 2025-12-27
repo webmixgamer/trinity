@@ -39,6 +39,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/files',
+    name: 'FileManager',
+    component: () => import('../views/FileManager.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/credentials',
     name: 'Credentials',
     component: () => import('../views/Credentials.vue'),

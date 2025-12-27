@@ -387,6 +387,30 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    async deleteAgentFile(name, filePath) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(`/api/agents/${name}/files`, {
+        params: { path: filePath },
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async getFilePreviewBlob(name, filePath) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/files/preview`, {
+        params: { path: filePath },
+        headers: authStore.authHeader,
+        responseType: 'blob'
+      })
+      // Return blob URL for media elements
+      return {
+        url: URL.createObjectURL(response.data),
+        type: response.data.type,
+        size: response.data.size
+      }
+    },
+
     // Custom Metrics Actions (Phase 9.9)
     async getAgentMetrics(name) {
       const authStore = useAuthStore()

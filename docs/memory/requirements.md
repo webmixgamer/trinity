@@ -1432,6 +1432,130 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 
 ---
 
+### 12. Content Management & File Operations
+
+#### 12.1 Content Folder Convention
+- **Status**: ✅ Implemented (2025-12-27)
+- **Priority**: High
+- **Description**: Establish convention for separating generated content (videos, audio, exports) from code/config to prevent large files in Git repositories while preserving them across container rebuilds
+- **Convention**:
+  ```
+  /home/developer/
+  ├── [workspace files]     # Code, config, memory (synced to Git)
+  ├── content/              # Generated assets (NOT synced to Git)
+  │   ├── videos/
+  │   ├── audio/
+  │   ├── images/
+  │   └── exports/
+  └── .gitignore            # Includes: content/
+  ```
+- **Key Properties**:
+  - `content/` lives on same persistent volume → survives container restarts ✅
+  - `content/` in `.gitignore` → NOT pushed to GitHub ✅
+  - Git sync respects `.gitignore` → automatic exclusion ✅
+  - Templates can define their own content subdirectory structure
+- **Acceptance Criteria**:
+  - [x] Startup.sh adds `content/` to `.gitignore` if not present
+  - [x] Startup.sh creates `content/` directory structure
+  - [x] Documentation updated: TRINITY_COMPATIBLE_AGENT_GUIDE.md
+  - [ ] Git sync shows "excluded" indicator for `content/` in UI (future)
+  - [ ] Example templates demonstrate content folder usage (future)
+- **Implementation**:
+  - `docker/base-image/startup.sh` creates directories and updates `.gitignore`
+  - Runs on every agent startup (idempotent)
+  - Existing agents get the structure on next restart
+- **Testing**:
+  1. Rebuild base image: `./scripts/deploy/build-base-image.sh`
+  2. Restart any agent
+  3. Verify `content/` directory exists with subdirectories
+  4. Verify `.gitignore` contains `content/`
+  5. Run git sync, verify `content/` files NOT pushed to GitHub
+
+#### 12.2 File Manager Page
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Dedicated full-page file manager at `/files` for browsing, previewing, and managing files across all agents with two-panel layout (tree + preview)
+- **UI Design**:
+  ```
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  File Manager                              [Agent: ruby-agent ▼]     │
+  ├────────────────────────┬─────────────────────────────────────────────┤
+  │                        │                                              │
+  │  📁 workspace          │                                              │
+  │    📁 scripts          │        ┌─────────────────────────┐           │
+  │    📄 CLAUDE.md        │        │                         │           │
+  │                        │        │   [Video Preview]       │           │
+  │  📁 content            │        │   product-demo.mp4      │           │
+  │    📁 videos           │        │                         │           │
+  │      🎬 product-demo ▶ │        │   ▶ 00:00 / 02:34       │           │
+  │      🎬 tutorial.mp4   │        │                         │           │
+  │    📁 audio            │        └─────────────────────────┘           │
+  │                        │                                              │
+  │                        │        Size: 45.2 MB | Modified: 2h ago     │
+  │                        │        [Download] [Delete]                   │
+  │                        │                                              │
+  ├────────────────────────┴─────────────────────────────────────────────┤
+  │  [New Folder] [Delete Selected] [Refresh]           12 files, 892 MB │
+  └──────────────────────────────────────────────────────────────────────┘
+  ```
+- **Preview Support**:
+  | Type | Extensions | Preview Method |
+  |------|------------|----------------|
+  | Images | jpg, png, gif, webp, svg | `<img>` tag |
+  | Video | mp4, webm, mov | `<video>` tag with controls |
+  | Audio | mp3, wav, ogg, m4a | `<audio>` tag with controls |
+  | Text/Code | txt, md, py, js, json, yaml | Syntax highlighted code block |
+  | PDF | pdf | Browser embed or PDF.js |
+  | Other | * | File info card + download button |
+- **Backend Endpoints**:
+  | Endpoint | Method | Description |
+  |----------|--------|-------------|
+  | `/api/agents/{name}/files` | GET | List files (existing) |
+  | `/api/agents/{name}/files/download` | GET | Download file (existing) |
+  | `/api/agents/{name}/files/preview` | GET | Get file with correct MIME type for preview |
+  | `/api/agents/{name}/files` | DELETE | Delete file or directory |
+  | `/api/agents/{name}/files/mkdir` | POST | Create new directory |
+- **Acceptance Criteria**:
+  - [ ] New route `/files` accessible from NavBar
+  - [ ] Agent selector dropdown (shows running agents)
+  - [ ] Two-panel layout: resizable tree (left) + preview (right)
+  - [ ] Tree view with expand/collapse, file icons by type
+  - [ ] Single-click selects file, shows preview in right panel
+  - [ ] Preview renders correctly for: images, video, audio, text, PDF
+  - [ ] Download button for any file
+  - [ ] Delete file with confirmation dialog
+  - [ ] Delete folder (recursive) with confirmation dialog
+  - [ ] Create new folder with name input
+  - [ ] File count and total size in footer
+  - [ ] Error states: agent not running, empty folder, preview failed
+  - [ ] Audit logging for delete operations
+- **Security**:
+  - Protected files warning: CLAUDE.md, .trinity/, .mcp.json, .env
+  - Confirmation required for folder deletion
+  - Only workspace paths allowed (existing security)
+  - Owner/shared access control (existing)
+- **Future Enhancements** (not in v1):
+  - File upload
+  - Rename file/folder
+  - Multi-select with bulk operations
+  - Drag-and-drop move
+  - File search across all agents
+- **Testing**:
+  1. Navigate to `/files`, verify page loads
+  2. Select agent from dropdown, verify tree loads
+  3. Click image file, verify preview displays
+  4. Click video file, verify player works
+  5. Click text file, verify syntax highlighting
+  6. Click Download, verify file downloads
+  7. Click Delete on file, confirm, verify removed
+  8. Click Delete on folder, confirm, verify recursive delete
+  9. Create new folder, verify it appears in tree
+  10. Try to delete CLAUDE.md, verify warning shown
+  11. Switch agents, verify tree updates
+  12. Test with agent not running, verify error message
+
+---
+
 ## Non-Functional Requirements
 
 ### Performance

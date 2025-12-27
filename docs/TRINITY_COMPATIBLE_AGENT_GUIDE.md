@@ -21,11 +21,12 @@
 11. [Shared Folders](#shared-folders)
 12. [Custom Metrics](#custom-metrics)
 13. [Memory Management](#memory-management)
-14. [Testing Locally](#testing-locally)
-15. [Compatibility Checklist](#compatibility-checklist)
-16. [Migration Guide](#migration-guide)
-17. [Troubleshooting](#troubleshooting)
-18. [Best Practices](#best-practices)
+14. [Content Folder Convention](#content-folder-convention)
+15. [Testing Locally](#testing-locally)
+16. [Compatibility Checklist](#compatibility-checklist)
+17. [Migration Guide](#migration-guide)
+18. [Troubleshooting](#troubleshooting)
+19. [Best Practices](#best-practices)
 
 ---
 
@@ -139,7 +140,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets and platform-managed directories:
+Must exclude secrets, platform-managed directories, and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -152,6 +153,9 @@ credentials.json
 # Platform-managed directories - DO NOT COMMIT
 .trinity/
 .claude/commands/trinity/
+
+# Large generated content - DO NOT COMMIT
+content/
 
 # Claude Code session data
 .claude/projects/
@@ -215,8 +219,13 @@ my-agent/
 │
 ├── outputs/                       # Generated content (COMMITTED)
 │   ├── reports/
-│   ├── content/
-│   └── exports/
+│   └── data/
+│
+├── content/                       # Large generated assets (NOT COMMITTED)
+│   ├── videos/                    # Generated video files
+│   ├── audio/                     # Generated audio files
+│   ├── images/                    # Generated images
+│   └── exports/                   # Data exports, large files
 │
 ├── scripts/                       # Helper scripts
 └── resources/                     # Static resources
@@ -707,6 +716,58 @@ Agents should periodically compress old context:
 
 ---
 
+## Content Folder Convention
+
+For agents that generate large files (videos, audio, images, exports), Trinity provides a standard convention to prevent Git repository bloat.
+
+### The Problem
+
+Large generated files:
+- Bloat Git repositories (video files can be 100s of MB)
+- Slow down GitHub sync operations
+- Risk accidental commits
+
+### The Solution
+
+Trinity automatically creates a `content/` directory structure:
+
+```
+/home/developer/content/
+├── videos/      # Generated video files
+├── audio/       # Generated audio files
+├── images/      # Generated images
+└── exports/     # Data exports, large files
+```
+
+**Key Properties:**
+- ✅ **Persists** - Files survive container restarts (same Docker volume as workspace)
+- ✅ **Excluded from Git** - Automatically added to `.gitignore`
+- ✅ **Not synced** - Git sync ignores `content/` directory
+
+### Usage in Your Agent
+
+When generating large assets, save them to `content/`:
+
+```python
+# In your agent's scripts
+output_path = "/home/developer/content/videos/my-video.mp4"
+```
+
+```markdown
+# In your CLAUDE.md
+When generating videos, save them to `content/videos/`.
+When exporting data, save to `content/exports/`.
+```
+
+### outputs/ vs content/
+
+| Directory | Synced to Git? | Use For |
+|-----------|---------------|---------|
+| `outputs/` | ✅ Yes | Small files you want versioned (reports, summaries) |
+| `content/` | ❌ No | Large files that shouldn't be in Git (videos, audio) |
+
+---
+
 ## Testing Locally
 
 You can test your template locally before deploying to Trinity:
@@ -950,6 +1011,7 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 | Date | Changes |
 |------|---------|
+| 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
 | 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |
 | 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |
 | 2025-12-14 | Consolidated from AGENT_TEMPLATE_SPEC.md and trinity-compatible-agent.md |

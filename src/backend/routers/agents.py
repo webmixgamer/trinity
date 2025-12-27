@@ -56,6 +56,8 @@ from services.agent_service import (
     # Files
     list_agent_files_logic,
     download_agent_file_logic,
+    delete_agent_file_logic,
+    preview_agent_file_logic,
     # Queue
     get_agent_queue_status_logic,
     clear_agent_queue_logic,
@@ -564,6 +566,28 @@ async def download_agent_file_endpoint(
 ):
     """Download a file from the agent's workspace."""
     return await download_agent_file_logic(agent_name, path, current_user, request)
+
+
+@router.get("/{agent_name}/files/preview")
+async def preview_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get file with proper MIME type for preview (images, video, audio, etc.)."""
+    return await preview_agent_file_logic(agent_name, path, current_user, request)
+
+
+@router.delete("/{agent_name}/files")
+async def delete_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a file or directory from the agent's workspace."""
+    return await delete_agent_file_logic(agent_name, path, current_user, request)
 
 
 # ============================================================================
