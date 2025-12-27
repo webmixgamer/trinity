@@ -1,3 +1,36 @@
+### 2025-12-27 15:45:00
+🔧 **Refactored AgentDetail.vue (2,193 → 1,386 lines)**
+
+Major refactoring of `views/AgentDetail.vue` using Vue 3 Composition API composables. Extracted 12 domain-specific composables to improve maintainability and reusability.
+
+**Before**: Single 2,193-line component with all business logic inline
+**After**: 1,386-line component + 12 composables (~1,000 lines total)
+
+**New Composables Structure** (`composables/`):
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| useNotification.js | 20 | Toast notification management |
+| useFormatters.js | 110 | Shared formatting utilities |
+| useAgentLifecycle.js | 65 | Start/stop/delete operations |
+| useAgentStats.js | 55 | Container stats polling |
+| useAgentLogs.js | 65 | Log fetching with auto-refresh |
+| useAgentTerminal.js | 45 | Terminal fullscreen/keyboard |
+| useAgentCredentials.js | 70 | Credential loading & hot reload |
+| useAgentSharing.js | 60 | Agent sharing with users |
+| useAgentPermissions.js | 80 | Agent-to-agent permissions |
+| useGitSync.js | 90 | Git status and sync operations |
+| useFileBrowser.js | 95 | File tree loading/download |
+| useAgentSettings.js | 70 | API key and model settings |
+| useSessionActivity.js | 100 | Session info and activity polling |
+
+**Benefits**:
+- Each composable handles single concern with proper cleanup
+- Composables can be reused in other components
+- Better testability with isolated logic
+- ~37% reduction in main component size
+
+---
+
 ### 2025-12-27 12:15:00
 📝 **Updated Feature Flow Documentation for Service Layer Refactoring**
 

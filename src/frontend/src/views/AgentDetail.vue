@@ -808,7 +808,7 @@ HEYGEN_API_KEY=your_heygen_key
                           :id="'perm-' + targetAgent.name"
                           type="checkbox"
                           v-model="targetAgent.permitted"
-                          @change="permissionsDirty = true"
+                          @change="markDirty"
                           :disabled="permissionsSaving"
                           class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
                         />
@@ -979,13 +979,11 @@ HEYGEN_API_KEY=your_heygen_key
   </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, defineComponent, h } from 'vue'
+import { ref, onMounted, watch, nextTick, defineComponent, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
-import { marked } from 'marked'
 import NavBar from '../components/NavBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import UnifiedActivityPanel from '../components/UnifiedActivityPanel.vue'
 import SchedulesPanel from '../components/SchedulesPanel.vue'
 import ExecutionsPanel from '../components/ExecutionsPanel.vue'
 import GitPanel from '../components/GitPanel.vue'
@@ -995,13 +993,21 @@ import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 import AgentTerminal from '../components/AgentTerminal.vue'
 
-// Configure marked for safe rendering
-marked.setOptions({
-  breaks: true,
-  gfm: true
-})
+// Import composables
+import { useNotification, useFormatters } from '../composables'
+import { useAgentLifecycle } from '../composables/useAgentLifecycle'
+import { useAgentStats } from '../composables/useAgentStats'
+import { useAgentLogs } from '../composables/useAgentLogs'
+import { useAgentTerminal } from '../composables/useAgentTerminal'
+import { useAgentCredentials } from '../composables/useAgentCredentials'
+import { useAgentSharing } from '../composables/useAgentSharing'
+import { useAgentPermissions } from '../composables/useAgentPermissions'
+import { useGitSync } from '../composables/useGitSync'
+import { useFileBrowser } from '../composables/useFileBrowser'
+import { useAgentSettings } from '../composables/useAgentSettings'
+import { useSessionActivity } from '../composables/useSessionActivity'
 
-// Helper function for file sizes
+// Helper function for file sizes (used by FileTreeNode)
 const formatFileSizeHelper = (bytes) => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -1139,181 +1145,155 @@ const FileTreeNode = defineComponent({
   }
 })
 
+// Setup
 const route = useRoute()
 const router = useRouter()
 const agentsStore = useAgentsStore()
 
+// Minimal local state
 const agent = ref(null)
-const logs = ref('')
-const logLines = ref(100)
 const loading = ref(true)
 const error = ref('')
-const chatMessages = ref([])
-const chatInput = ref('')
-const chatLoading = ref(false)
 const activeTab = ref('info')
-const notification = ref(null)
-const actionLoading = ref(false)
-const autoRefreshLogs = ref(false)
-const logsContainer = ref(null)
-const userScrolledUp = ref(false)
-const credentialsData = ref(null)
-const credentialsLoading = ref(false)
-const hotReloadText = ref('')
-const hotReloadLoading = ref(false)
-const hotReloadResult = ref(null)
-const newSessionLoading = ref(false)
-const sessionInfo = ref({
-  context_tokens: 0,
-  context_window: 200000,
-  context_percent: 0,
-  total_cost_usd: 0,
-  message_count: 0
-})
 
-// Confirm dialog state
-const confirmDialog = reactive({
-  visible: false,
-  title: '',
-  message: '',
-  confirmText: 'Confirm',
-  variant: 'danger',
-  onConfirm: () => {}
-})
+// Initialize composables
+const { notification, showNotification } = useNotification()
+const { formatBytes, formatUptime, formatRelativeTime, formatSource } = useFormatters()
 
-// API Key settings
-const apiKeySetting = ref({
-  use_platform_api_key: true,
-  restart_required: false
-})
-const apiKeySettingLoading = ref(false)
-const currentModel = ref('')  // Model selection: '', 'sonnet', 'opus', 'haiku', etc.
-const modelLoading = ref(false)
-let logsRefreshInterval = null
+// Agent lifecycle composable
+const {
+  actionLoading,
+  confirmDialog,
+  startAgent,
+  stopAgent,
+  deleteAgent
+} = useAgentLifecycle(agent, agentsStore, router, showNotification)
 
-// Live stats
-const agentStats = ref(null)
-const statsLoading = ref(false)
-let statsRefreshInterval = null
+// Stats composable
+const {
+  agentStats,
+  statsLoading,
+  startStatsPolling,
+  stopStatsPolling
+} = useAgentStats(agent, agentsStore)
 
-// Chat container ref
-const chatContainer = ref(null)
+// Logs composable
+const {
+  logs,
+  logLines,
+  autoRefreshLogs,
+  logsContainer,
+  refreshLogs,
+  handleLogsScroll
+} = useAgentLogs(agent, agentsStore)
 
-// Terminal state
-const isTerminalFullscreen = ref(false)
-const terminalRef = ref(null)
+// Terminal composable
+const {
+  isTerminalFullscreen,
+  terminalRef,
+  toggleTerminalFullscreen,
+  handleTerminalKeydown,
+  onTerminalConnected,
+  onTerminalDisconnected,
+  onTerminalError
+} = useAgentTerminal(showNotification)
 
-// Sharing state
-const shareEmail = ref('')
-const shareLoading = ref(false)
-const shareMessage = ref(null)
-const unshareLoading = ref(null)
+// Credentials composable
+const {
+  credentialsData,
+  credentialsLoading,
+  hotReloadText,
+  hotReloadLoading,
+  hotReloadResult,
+  loadCredentials,
+  countCredentials,
+  performHotReload
+} = useAgentCredentials(agent, agentsStore, showNotification)
 
-// Permissions state (Phase 9.10)
-const availableAgents = ref([])
-const permissionsLoading = ref(false)
-const permissionsSaving = ref(false)
-const permissionsDirty = ref(false)
-const permissionsMessage = ref(null)
-const permittedAgentsCount = computed(() => availableAgents.value.filter(a => a.permitted).length)
+// Sharing composable
+const {
+  shareEmail,
+  shareLoading,
+  shareMessage,
+  unshareLoading,
+  shareWithUser,
+  removeShare
+} = useAgentSharing(agent, agentsStore, loadAgent, showNotification)
 
-// Session Activity state
-const sessionActivity = ref({
-  status: 'idle',
-  active_tool: null,
-  tool_counts: {},
-  timeline: [],
-  totals: { calls: 0, duration_ms: 0, started_at: null }
-})
+// Permissions composable
+const {
+  availableAgents,
+  permissionsLoading,
+  permissionsSaving,
+  permissionsDirty,
+  permissionsMessage,
+  loadPermissions,
+  savePermissions,
+  allowAllAgents,
+  allowNoAgents,
+  markDirty
+} = useAgentPermissions(agent, agentsStore)
 
-// Git Sync - show tab for all agents (can initialize GitHub sync for any agent)
-const hasGitSync = computed(() => {
-  // Always show Git tab - agents can initialize GitHub sync on demand
-  return true
-})
+// Git sync composable
+const {
+  hasGitSync,
+  gitStatus,
+  gitLoading,
+  gitSyncing,
+  gitHasChanges,
+  gitChangesCount,
+  refreshGitStatus,
+  syncToGithub,
+  startGitStatusPolling,
+  stopGitStatusPolling
+} = useGitSync(agent, agentsStore, showNotification)
 
-// Git sync state (header controls)
-const gitStatus = ref(null)
-const gitLoading = ref(false)
-const gitSyncing = ref(false)
-const gitSyncResult = ref(null)
+// File browser composable
+const {
+  fileTree,
+  filesLoading,
+  filesError,
+  fileSearchQuery,
+  expandedFolders,
+  totalFileCount,
+  filteredFileTree,
+  loadFiles,
+  toggleFolder,
+  downloadFile
+} = useFileBrowser(agent, agentsStore, showNotification)
 
-const gitHasChanges = computed(() => {
-  return (gitStatus.value?.changes_count > 0) || (gitStatus.value?.ahead > 0)
-})
+// Agent settings composable
+const {
+  apiKeySetting,
+  apiKeySettingLoading,
+  loadApiKeySetting,
+  updateApiKeySetting
+} = useAgentSettings(agent, agentsStore, showNotification)
 
-const gitChangesCount = computed(() => {
-  return gitStatus.value?.changes_count || 0
-})
+// Session activity composable
+const {
+  sessionActivity,
+  loadSessionInfo,
+  startActivityPolling,
+  stopActivityPolling,
+  resetSessionActivity
+} = useSessionActivity(agent, agentsStore)
 
-let activityRefreshInterval = null
-let gitStatusInterval = null
-
-// File browser state
-const fileTree = ref([])
-const filesLoading = ref(false)
-const filesError = ref(null)
-const fileSearchQuery = ref('')
-const expandedFolders = ref(new Set())
-const totalFileCount = ref(0)
-
-const filteredFileTree = computed(() => {
-  if (!fileSearchQuery.value) return fileTree.value
-
-  const query = fileSearchQuery.value.toLowerCase()
-
-  const filterTree = (items) => {
-    return items.filter(item => {
-      if (item.type === 'file') {
-        return item.name.toLowerCase().includes(query)
-      } else {
-        // For directories, include if name matches or has matching children
-        const nameMatches = item.name.toLowerCase().includes(query)
-        const filteredChildren = filterTree(item.children || [])
-        if (nameMatches || filteredChildren.length > 0) {
-          // Auto-expand folders when searching
-          if (fileSearchQuery.value) {
-            expandedFolders.value.add(item.path)
-          }
-          return true
-        }
-        return false
-      }
-    }).map(item => {
-      if (item.type === 'directory') {
-        return {
-          ...item,
-          children: filterTree(item.children || [])
-        }
-      }
-      return item
-    })
+// Load agent
+async function loadAgent() {
+  loading.value = true
+  error.value = ''
+  try {
+    agent.value = await agentsStore.fetchAgent(route.params.name)
+  } catch (err) {
+    error.value = 'Failed to load agent details'
+  } finally {
+    loading.value = false
   }
-
-  return filterTree(fileTree.value)
-})
-
-const showNotification = (message, type = 'success') => {
-  notification.value = { message, type }
-  setTimeout(() => {
-    notification.value = null
-  }, 3000)
 }
 
-// Watch for auto-refresh toggle
-watch(autoRefreshLogs, (enabled) => {
-  if (enabled) {
-    logsRefreshInterval = setInterval(refreshLogs, 10000)
-  } else {
-    if (logsRefreshInterval) {
-      clearInterval(logsRefreshInterval)
-      logsRefreshInterval = null
-    }
-  }
-})
-
 // Watch agent status for stats, activity, and git polling
-watch(() => agent.value?.status, (newStatus, oldStatus) => {
+watch(() => agent.value?.status, (newStatus) => {
   if (newStatus === 'running') {
     startStatsPolling()
     startActivityPolling()
@@ -1324,15 +1304,7 @@ watch(() => agent.value?.status, (newStatus, oldStatus) => {
     stopStatsPolling()
     stopActivityPolling()
     stopGitStatusPolling()
-    agentStats.value = null
-    gitStatus.value = null
-    sessionActivity.value = {
-      status: 'idle',
-      active_tool: null,
-      tool_counts: {},
-      timeline: [],
-      totals: { calls: 0, duration_ms: 0, started_at: null }
-    }
+    resetSessionActivity()
   }
 })
 
@@ -1347,20 +1319,10 @@ watch(activeTab, (newTab) => {
   }
 })
 
-// Clean up intervals on unmount
-onUnmounted(() => {
-  if (logsRefreshInterval) {
-    clearInterval(logsRefreshInterval)
-  }
-  stopStatsPolling()
-  stopActivityPolling()
-  stopGitStatusPolling()
-})
-
+// Initialize on mount
 onMounted(async () => {
   await loadAgent()
   await refreshLogs()
-  await loadChatHistory()
   await loadCredentials()
   await loadSessionInfo()
   await loadApiKeySetting()
@@ -1373,774 +1335,6 @@ onMounted(async () => {
     }
   }
 })
-
-const loadAgent = async () => {
-  loading.value = true
-  error.value = ''
-  try {
-    agent.value = await agentsStore.fetchAgent(route.params.name)
-  } catch (err) {
-    error.value = 'Failed to load agent details'
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshLogs = async () => {
-  if (!agent.value) return
-  try {
-    logs.value = await agentsStore.getAgentLogs(agent.value.name, logLines.value)
-    // Auto-scroll to bottom if user hasn't scrolled up
-    if (!userScrolledUp.value) {
-      await nextTick()
-      scrollLogsToBottom()
-    }
-  } catch (err) {
-    console.error('Failed to fetch logs:', err)
-  }
-}
-
-const scrollLogsToBottom = () => {
-  if (logsContainer.value) {
-    logsContainer.value.scrollTop = logsContainer.value.scrollHeight
-  }
-}
-
-const handleLogsScroll = () => {
-  if (!logsContainer.value) return
-  const { scrollTop, scrollHeight, clientHeight } = logsContainer.value
-  // User is considered "scrolled up" if not near the bottom (within 50px)
-  userScrolledUp.value = scrollTop + clientHeight < scrollHeight - 50
-}
-
-const startAgent = async () => {
-  if (actionLoading.value) return
-  actionLoading.value = true
-  try {
-    const result = await agentsStore.startAgent(agent.value.name)
-    agent.value.status = 'running'
-    showNotification(result.message, 'success')
-  } catch (err) {
-    showNotification(err.message || 'Failed to start agent', 'error')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const stopAgent = async () => {
-  if (actionLoading.value) return
-  actionLoading.value = true
-  try {
-    const result = await agentsStore.stopAgent(agent.value.name)
-    agent.value.status = 'stopped'
-    showNotification(result.message, 'success')
-  } catch (err) {
-    showNotification(err.message || 'Failed to stop agent', 'error')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-// API Key Setting Methods
-const loadApiKeySetting = async () => {
-  if (!agent.value) return
-  try {
-    apiKeySetting.value = await agentsStore.getAgentApiKeySetting(agent.value.name)
-  } catch (err) {
-    console.error('Failed to load API key setting:', err)
-  }
-}
-
-const updateApiKeySetting = async (usePlatformKey) => {
-  if (apiKeySettingLoading.value) return
-  apiKeySettingLoading.value = true
-  try {
-    const result = await agentsStore.updateAgentApiKeySetting(agent.value.name, usePlatformKey)
-    apiKeySetting.value = {
-      use_platform_api_key: result.use_platform_api_key,
-      restart_required: result.restart_required
-    }
-    showNotification(result.message, 'success')
-  } catch (err) {
-    showNotification(err.message || 'Failed to update API key setting', 'error')
-  } finally {
-    apiKeySettingLoading.value = false
-  }
-}
-
-const deleteAgent = () => {
-  confirmDialog.title = 'Delete Agent'
-  confirmDialog.message = 'Are you sure you want to delete this agent?'
-  confirmDialog.confirmText = 'Delete'
-  confirmDialog.variant = 'danger'
-  confirmDialog.onConfirm = async () => {
-    try {
-      await agentsStore.deleteAgent(agent.value.name)
-      router.push('/agents')
-    } catch (err) {
-      error.value = 'Failed to delete agent'
-    }
-  }
-  confirmDialog.visible = true
-}
-
-// Terminal handlers
-const toggleTerminalFullscreen = () => {
-  isTerminalFullscreen.value = !isTerminalFullscreen.value
-  nextTick(() => {
-    if (terminalRef.value?.fit) {
-      terminalRef.value.fit()
-    }
-  })
-}
-
-const handleTerminalKeydown = (event) => {
-  if (event.key === 'Escape' && isTerminalFullscreen.value) {
-    toggleTerminalFullscreen()
-  }
-}
-
-const onTerminalConnected = () => {
-  showNotification('Terminal connected', 'success')
-}
-
-const onTerminalDisconnected = () => {
-  showNotification('Terminal disconnected', 'info')
-}
-
-const onTerminalError = (errorMsg) => {
-  showNotification(`Terminal error: ${errorMsg}`, 'error')
-}
-
-const loadChatHistory = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const history = await agentsStore.getChatHistory(agent.value.name)
-    chatMessages.value = history
-  } catch (err) {
-    console.error('Failed to load chat history:', err)
-  }
-}
-
-const sendChatMessage = async () => {
-  if (!chatInput.value.trim() || chatLoading.value) return
-
-  const userMessage = chatInput.value.trim()
-  chatInput.value = ''
-  chatLoading.value = true
-
-  // Add user message to UI
-  chatMessages.value.push({
-    role: 'user',
-    content: userMessage
-  })
-  scrollChatToBottom()
-
-  try {
-    const response = await agentsStore.sendChatMessage(agent.value.name, userMessage)
-
-    // Update session info from response
-    if (response.session) {
-      sessionInfo.value = {
-        context_tokens: response.session.context_tokens || 0,
-        context_window: response.session.context_window || 200000,
-        context_percent: response.session.context_window > 0
-          ? Math.round((response.session.context_tokens / response.session.context_window) * 1000) / 10
-          : 0,
-        total_cost_usd: response.session.total_cost_usd || 0,
-        message_count: response.session.message_count || 0
-      }
-    }
-
-    // Add assistant response with execution info
-    chatMessages.value.push({
-      role: 'assistant',
-      content: response.response,
-      execution_log: response.execution_log || [],
-      metadata: response.metadata || {}
-    })
-    scrollChatToBottom()
-  } catch (err) {
-    error.value = 'Failed to send message'
-    console.error('Chat error:', err)
-
-    // Add error message
-    chatMessages.value.push({
-      role: 'assistant',
-      content: '❌ Error: Failed to get response from agent'
-    })
-    scrollChatToBottom()
-  } finally {
-    chatLoading.value = false
-  }
-}
-
-const loadCredentials = async () => {
-  if (!agent.value) return
-  credentialsLoading.value = true
-  try {
-    credentialsData.value = await agentsStore.getAgentCredentials(agent.value.name)
-  } catch (err) {
-    console.error('Failed to load credentials:', err)
-    credentialsData.value = null
-  } finally {
-    credentialsLoading.value = false
-  }
-}
-
-// Stats polling
-const loadStats = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  statsLoading.value = true
-  try {
-    agentStats.value = await agentsStore.getAgentStats(agent.value.name)
-  } catch (err) {
-    // Don't log 400 errors (agent not running)
-    if (err.response?.status !== 400) {
-      console.error('Failed to load stats:', err)
-    }
-    agentStats.value = null
-  } finally {
-    statsLoading.value = false
-  }
-}
-
-const startStatsPolling = () => {
-  loadStats() // Load immediately
-  statsRefreshInterval = setInterval(loadStats, 5000) // Then every 5 seconds
-}
-
-const stopStatsPolling = () => {
-  if (statsRefreshInterval) {
-    clearInterval(statsRefreshInterval)
-    statsRefreshInterval = null
-  }
-}
-
-// Session Activity polling
-const loadSessionActivity = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    sessionActivity.value = await agentsStore.getSessionActivity(agent.value.name)
-  } catch (err) {
-    // Don't log errors - activity endpoint may fail during startup
-    console.debug('Failed to load session activity:', err)
-  }
-}
-
-const startActivityPolling = () => {
-  loadSessionActivity() // Load immediately
-  activityRefreshInterval = setInterval(loadSessionActivity, 2000) // Then every 2 seconds
-}
-
-const stopActivityPolling = () => {
-  if (activityRefreshInterval) {
-    clearInterval(activityRefreshInterval)
-    activityRefreshInterval = null
-  }
-}
-
-// Format bytes to human readable
-const formatBytes = (bytes) => {
-  if (!bytes && bytes !== 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex++
-  }
-  return `${value.toFixed(unitIndex > 0 ? 1 : 0)} ${units[unitIndex]}`
-}
-
-// Format uptime to human readable
-const formatUptime = (seconds) => {
-  if (!seconds && seconds !== 0) return '0s'
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) {
-    const hours = Math.floor(seconds / 3600)
-    const mins = Math.floor((seconds % 3600) / 60)
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
-  }
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`
-}
-
-// Format relative time (e.g., "2 hours ago")
-const formatRelativeTime = (dateString) => {
-  if (!dateString) return 'Unknown'
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffSeconds = Math.floor((now - date) / 1000)
-
-  if (diffSeconds < 60) return 'just now'
-  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)} minutes ago`
-  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)} hours ago`
-  if (diffSeconds < 604800) return `${Math.floor(diffSeconds / 86400)} days ago`
-  return date.toLocaleDateString()
-}
-
-const formatSource = (source) => {
-  if (!source) return 'Unknown source'
-
-  if (source.startsWith('mcp:')) {
-    const mcpServer = source.replace('mcp:', '')
-    return `MCP Server: ${mcpServer}`
-  }
-
-  if (source === 'env_file' || source === 'template:env_file') {
-    return 'Environment variable'
-  }
-
-  if (source.startsWith('template:mcp:')) {
-    const mcpServer = source.replace('template:mcp:', '')
-    return `MCP Server: ${mcpServer}`
-  }
-
-  return source
-}
-
-const countCredentials = (text) => {
-  if (!text) return 0
-  let count = 0
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-      count++
-    }
-  }
-  return count
-}
-
-const performHotReload = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  if (!hotReloadText.value.trim()) return
-
-  hotReloadLoading.value = true
-  hotReloadResult.value = null
-
-  try {
-    const result = await agentsStore.hotReloadCredentials(agent.value.name, hotReloadText.value)
-    hotReloadResult.value = {
-      success: true,
-      message: result.message,
-      credentials: result.credential_names,
-      note: result.note
-    }
-    // Clear the textarea on success
-    hotReloadText.value = ''
-    // Refresh credentials list
-    await loadCredentials()
-  } catch (err) {
-    console.error('Hot reload failed:', err)
-    hotReloadResult.value = {
-      success: false,
-      message: err.response?.data?.detail || err.message || 'Failed to hot-reload credentials'
-    }
-  } finally {
-    hotReloadLoading.value = false
-  }
-}
-
-// Start a new session (clear context)
-const startNewSession = () => {
-  if (!agent.value || newSessionLoading.value) return
-
-  confirmDialog.title = 'New Session'
-  confirmDialog.message = 'Start a new session? This will clear the conversation history and reset the context window.'
-  confirmDialog.confirmText = 'Start New Session'
-  confirmDialog.variant = 'warning'
-  confirmDialog.onConfirm = async () => {
-    newSessionLoading.value = true
-    try {
-      const result = await agentsStore.clearSession(agent.value.name)
-      chatMessages.value = []
-
-      // Clear session activity
-      await agentsStore.clearSessionActivity(agent.value.name)
-      sessionActivity.value = {
-        status: 'idle',
-        active_tool: null,
-        tool_counts: {},
-        timeline: [],
-        totals: { calls: 0, duration_ms: 0, started_at: null }
-      }
-
-      // Reset session info
-      if (result.session) {
-        sessionInfo.value = {
-          context_tokens: result.session.context_tokens || 0,
-          context_window: result.session.context_window || 200000,
-          context_percent: 0,
-          total_cost_usd: result.session.total_cost_usd || 0,
-          message_count: 0
-        }
-      } else {
-        sessionInfo.value = {
-          context_tokens: 0,
-          context_window: 200000,
-          context_percent: 0,
-          total_cost_usd: 0,
-          message_count: 0
-        }
-      }
-
-      showNotification('New session started', 'success')
-    } catch (err) {
-      console.error('Failed to start new session:', err)
-      showNotification('Failed to start new session', 'error')
-    } finally {
-      newSessionLoading.value = false
-    }
-  }
-  confirmDialog.visible = true
-}
-
-// Sharing methods
-const shareWithUser = async () => {
-  if (!agent.value || !shareEmail.value.trim()) return
-
-  shareLoading.value = true
-  shareMessage.value = null
-
-  try {
-    const result = await agentsStore.shareAgent(agent.value.name, shareEmail.value.trim())
-    shareMessage.value = {
-      type: 'success',
-      text: `Agent shared with ${shareEmail.value.trim()}`
-    }
-    shareEmail.value = ''
-    // Refresh agent data to update shares list
-    await loadAgent()
-  } catch (err) {
-    console.error('Failed to share agent:', err)
-    shareMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || err.message || 'Failed to share agent'
-    }
-  } finally {
-    shareLoading.value = false
-    // Clear message after 5 seconds
-    setTimeout(() => {
-      shareMessage.value = null
-    }, 5000)
-  }
-}
-
-const removeShare = async (email) => {
-  if (!agent.value) return
-
-  unshareLoading.value = email
-
-  try {
-    await agentsStore.unshareAgent(agent.value.name, email)
-    showNotification(`Sharing removed for ${email}`, 'success')
-    // Refresh agent data to update shares list
-    await loadAgent()
-  } catch (err) {
-    console.error('Failed to remove share:', err)
-    showNotification(err.response?.data?.detail || 'Failed to remove sharing', 'error')
-  } finally {
-    unshareLoading.value = null
-  }
-}
-
-// Permissions methods (Phase 9.10)
-const loadPermissions = async () => {
-  if (!agent.value) return
-
-  permissionsLoading.value = true
-  permissionsMessage.value = null
-
-  try {
-    const response = await agentsStore.getAgentPermissions(agent.value.name)
-    availableAgents.value = response.available_agents || []
-    permissionsDirty.value = false
-  } catch (err) {
-    console.error('Failed to load permissions:', err)
-    permissionsMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || 'Failed to load permissions'
-    }
-  } finally {
-    permissionsLoading.value = false
-  }
-}
-
-const savePermissions = async () => {
-  if (!agent.value || !permissionsDirty.value) return
-
-  permissionsSaving.value = true
-  permissionsMessage.value = null
-
-  const permittedAgentNames = availableAgents.value
-    .filter(a => a.permitted)
-    .map(a => a.name)
-
-  try {
-    await agentsStore.setAgentPermissions(agent.value.name, permittedAgentNames)
-    permissionsDirty.value = false
-    permissionsMessage.value = {
-      type: 'success',
-      text: `Permissions saved (${permittedAgentNames.length} agents allowed)`
-    }
-    setTimeout(() => { permissionsMessage.value = null }, 3000)
-  } catch (err) {
-    console.error('Failed to save permissions:', err)
-    permissionsMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || 'Failed to save permissions'
-    }
-  } finally {
-    permissionsSaving.value = false
-  }
-}
-
-const allowAllAgents = () => {
-  availableAgents.value.forEach(a => { a.permitted = true })
-  permissionsDirty.value = true
-}
-
-const allowNoAgents = () => {
-  availableAgents.value.forEach(a => { a.permitted = false })
-  permissionsDirty.value = true
-}
-
-// Git sync methods (header controls)
-const loadGitStatus = async () => {
-  if (!agent.value || agent.value.status !== 'running' || !hasGitSync.value) return
-  gitLoading.value = true
-  try {
-    gitStatus.value = await agentsStore.getGitStatus(agent.value.name)
-  } catch (err) {
-    console.debug('Failed to load git status:', err)
-    gitStatus.value = null
-  } finally {
-    gitLoading.value = false
-  }
-}
-
-const refreshGitStatus = () => {
-  gitSyncResult.value = null
-  loadGitStatus()
-}
-
-const syncToGithub = async () => {
-  if (!agent.value || gitSyncing.value) return
-  gitSyncing.value = true
-  gitSyncResult.value = null
-  try {
-    const result = await agentsStore.syncToGithub(agent.value.name)
-    gitSyncResult.value = result
-    if (result.success) {
-      if (result.files_changed > 0) {
-        showNotification(`Synced ${result.files_changed} file(s) to GitHub`, 'success')
-      } else {
-        showNotification(result.message || 'Already up to date', 'success')
-      }
-    } else {
-      showNotification(result.message || 'Sync failed', 'error')
-    }
-    // Refresh status after sync
-    await loadGitStatus()
-  } catch (err) {
-    console.error('Git sync failed:', err)
-    showNotification(err.response?.data?.detail || 'Failed to sync to GitHub', 'error')
-  } finally {
-    gitSyncing.value = false
-  }
-}
-
-const startGitStatusPolling = () => {
-  if (!hasGitSync.value) return
-  loadGitStatus() // Load immediately
-  gitStatusInterval = setInterval(loadGitStatus, 30000) // Then every 30 seconds
-}
-
-const stopGitStatusPolling = () => {
-  if (gitStatusInterval) {
-    clearInterval(gitStatusInterval)
-    gitStatusInterval = null
-  }
-}
-
-// File browser functions
-const loadFiles = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  filesLoading.value = true
-  filesError.value = null
-  try {
-    const response = await agentsStore.listAgentFiles(agent.value.name)
-    fileTree.value = response.tree || []
-    totalFileCount.value = response.total_files || 0
-  } catch (err) {
-    console.error('Failed to load files:', err)
-    filesError.value = err.response?.data?.detail || 'Failed to load files'
-  } finally {
-    filesLoading.value = false
-  }
-}
-
-const toggleFolder = (path) => {
-  if (expandedFolders.value.has(path)) {
-    expandedFolders.value.delete(path)
-  } else {
-    expandedFolders.value.add(path)
-  }
-  // Trigger reactivity
-  expandedFolders.value = new Set(expandedFolders.value)
-}
-
-const downloadFile = async (filePath, fileName) => {
-  if (!agent.value) return
-  try {
-    const content = await agentsStore.downloadAgentFile(agent.value.name, filePath)
-    // Create blob and download
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
-    showNotification(`Downloaded ${fileName}`, 'success')
-  } catch (err) {
-    console.error('Failed to download file:', err)
-    showNotification(err.response?.data?.detail || 'Failed to download file', 'error')
-  }
-}
-
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
-}
-
-// Format token count for display (e.g., 45000 → "45K")
-const formatTokenCount = (count) => {
-  if (!count && count !== 0) return '0'
-  if (count < 1000) return count.toString()
-  if (count < 1000000) return `${(count / 1000).toFixed(1)}K`
-  return `${(count / 1000000).toFixed(2)}M`
-}
-
-// Get context bar color based on percentage
-const getContextBarColor = (percent) => {
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 70) return 'bg-yellow-500'
-  return 'bg-green-500'
-}
-
-// Load session info
-const loadSessionInfo = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const info = await agentsStore.getSessionInfo(agent.value.name)
-    sessionInfo.value = {
-      context_tokens: info.context_tokens || 0,
-      context_window: info.context_window || 200000,
-      context_percent: info.context_percent || 0,
-      total_cost_usd: info.total_cost_usd || 0,
-      message_count: info.message_count || 0
-    }
-    // Also update model from session info
-    if (info.model) {
-      currentModel.value = info.model
-    }
-  } catch (err) {
-    console.error('Failed to load session info:', err)
-  }
-}
-
-// Load model info
-const loadModelInfo = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const info = await agentsStore.getAgentModel(agent.value.name)
-    currentModel.value = info.model || ''
-  } catch (err) {
-    console.error('Failed to load model info:', err)
-  }
-}
-
-// Change model
-const changeModel = async () => {
-  if (!agent.value || modelLoading.value) return
-  modelLoading.value = true
-  try {
-    await agentsStore.setAgentModel(agent.value.name, currentModel.value || null)
-    showNotification(`Model changed to ${currentModel.value || 'default'}`, 'success')
-  } catch (err) {
-    console.error('Failed to change model:', err)
-    showNotification('Failed to change model', 'error')
-    // Reload to get actual state
-    await loadModelInfo()
-  } finally {
-    modelLoading.value = false
-  }
-}
-
-
-// Format duration for display
-const formatDuration = (ms) => {
-  if (!ms && ms !== 0) return ''
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
-}
-
-// Get tool sequence from execution log (just tool names)
-const getToolSequence = (executionLog) => {
-  if (!executionLog) return []
-  return executionLog
-    .filter(e => e.type === 'tool_use')
-    .slice(0, 5)  // Max 5 tools in preview
-    .map(e => e.tool)
-}
-
-// Current tool display for loading indicator
-const currentToolDisplay = computed(() => {
-  if (sessionActivity.value?.active_tool) {
-    return `${sessionActivity.value.active_tool.name}...`
-  }
-  return 'Processing...'
-})
-
-// Scroll chat to bottom
-const scrollChatToBottom = () => {
-  if (chatContainer.value) {
-    nextTick(() => {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
-    })
-  }
-}
-
-// Render markdown to HTML
-const renderMarkdown = (text) => {
-  if (!text) return ''
-  return marked(text)
-}
 
 // Handle use case click from Info tab - switch to terminal tab
 const handleUseCaseClick = (text) => {
