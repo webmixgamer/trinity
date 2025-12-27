@@ -352,8 +352,9 @@
             </div>
 
             <!-- Terminal Tab Content -->
+            <!-- Using v-show instead of v-if to keep terminal mounted and WebSocket connected when switching tabs -->
             <div
-              v-if="activeTab === 'terminal'"
+              v-show="activeTab === 'terminal'"
               :class="[
                 'transition-all duration-300',
                 isTerminalFullscreen

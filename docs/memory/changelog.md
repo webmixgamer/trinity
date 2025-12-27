@@ -1,3 +1,106 @@
+### 2025-12-27 22:45:00
+🐛 **Fixed Two Critical Bugs**
+
+**Bug #1: Terminal Session Loss on Tab Switch**
+- **Problem**: When switching from Terminal tab to another tab, the WebSocket connection was destroyed (using `v-if`), causing session loss and "session limit reached" errors when returning
+- **Fix**: Changed `v-if="activeTab === 'terminal'"` to `v-show` in `AgentDetail.vue` (line 357) to keep the terminal component mounted
+- **Result**: Terminal session persists when switching between tabs
+
+**Bug #2: MCP Agent Import Only Copied CLAUDE.md**
+- **Problem**: When deploying a local agent via MCP `deploy_local_agent` tool, only hardcoded files (CLAUDE.md, .claude/, README.md, resources/, scripts/, memory/) were copied
+- **Root cause**: `startup.sh` had an explicit list of files instead of copying all template files
+- **Fix**: Updated `startup.sh` to copy ALL files from `/template` (including `template.yaml` - required Trinity file)
+- **Also added**: `.trinity-initialized` marker to prevent re-copying on container restart
+
+**Files Changed**:
+- `src/frontend/src/views/AgentDetail.vue` - Line 357: `v-if` → `v-show` for terminal tab
+- `docker/base-image/startup.sh` - Lines 113-142: Replaced hardcoded file list with generic copy
+
+**Note**: Base image rebuilt. New agents will get all files from templates. Existing agents unaffected.
+
+---
+
+### 2025-12-27 21:30:00
+✅ **Implemented File Manager Page (Req 12.2)**
+
+Added a dedicated File Manager page with two-panel layout for browsing and managing agent workspace files.
+
+**New Files**:
+- `src/frontend/src/views/FileManager.vue` - Main page with agent selector, file tree, preview panel
+- `src/frontend/src/components/file-manager/FileTreeNode.vue` - Recursive tree component with icons
+- `src/frontend/src/components/file-manager/FilePreview.vue` - Multi-format preview (image, video, audio, text, PDF)
+
+**Backend Changes**:
+- `docker/base-image/agent_server/routers/files.py` - DELETE endpoint, preview endpoint with MIME detection
+- `src/backend/services/agent_service/files.py` - Proxy functions for delete and preview
+- `src/backend/routers/agents.py` - New routes: DELETE `/{name}/files`, GET `/{name}/files/preview`
+
+**Frontend Changes**:
+- `src/frontend/src/stores/agents.js` - `deleteAgentFile()`, `getFilePreviewBlob()` methods
+- `src/frontend/src/router/index.js` - `/files` route
+- `src/frontend/src/components/NavBar.vue` - "Files" navigation link
+
+**Features**:
+- Agent selector dropdown with localStorage persistence
+- Collapsible file tree with search/filter
+- File preview: images, video, audio, text/code, PDF
+- Delete with confirmation modal
+- Protected file warnings (CLAUDE.md, .trinity/, .git/, .env, etc.)
+- Inline notification system
+
+**Note**: Existing agents need recreation (not restart) to get new preview/delete endpoints.
+
+---
+
+### 2025-12-27 18:00:00
+✅ **Implemented Content Folder Convention (Req 12.1)**
+
+Implemented the content folder convention for managing large generated assets (videos, audio, images, exports) that should NOT be synced to GitHub.
+
+**Changes**:
+- `docker/base-image/startup.sh` - Creates `content/{videos,audio,images,exports}` directories on startup
+- `docker/base-image/startup.sh` - Adds `content/` to `.gitignore` automatically
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Added Content Folder Convention section with usage examples
+
+**How it works**:
+- All agents now get a `content/` directory at `/home/developer/content/`
+- Files in `content/` persist across container restarts (same Docker volume)
+- Files in `content/` are NOT synced to GitHub (added to `.gitignore`)
+- Standard subdirectories: `videos/`, `audio/`, `images/`, `exports/`
+
+**Testing**:
+1. Rebuild base image: `./scripts/deploy/build-base-image.sh`
+2. Restart any agent
+3. Verify `content/` directory exists
+4. Verify `.gitignore` contains `content/`
+
+---
+
+### 2025-12-27 17:30:00
+📋 **Added Content Management & File Operations Requirements (Phase 11.5)**
+
+Added comprehensive requirements for managing large generated assets (videos, audio, exports) in agent workspaces.
+
+**Requirement 12.1: Content Folder Convention**
+- `content/` directory auto-created and gitignored by default
+- Prevents large files from bloating Git repositories
+- Same persistent volume - survives container restarts
+- Convention documented for template authors
+
+**Requirement 12.2: File Manager Page**
+- Dedicated `/files` route with agent selector dropdown
+- Two-panel layout: tree (left) + preview (right)
+- Preview support: images, video, audio, text/code, PDF
+- Delete file/folder with confirmation
+- Create new folders
+- Protected file warnings (CLAUDE.md, .trinity/, etc.)
+
+**Files Changed**:
+- `docs/memory/requirements.md` - Added Section 12 (Content Management)
+- `docs/memory/roadmap.md` - Added Phase 11.5
+
+---
+
 ### 2025-12-27 15:45:00
 🔧 **Refactored AgentDetail.vue (2,193 → 1,386 lines)**
 
