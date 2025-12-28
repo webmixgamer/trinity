@@ -22,6 +22,45 @@ from .runtime_adapter import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
+# Gemini pricing per 1K tokens (as of Dec 2024)
+# Free tier has limits, but we calculate what it *would* cost
+GEMINI_PRICING = {
+    "gemini-2.5-pro": {
+        "input": 0.00125,   # $0.00125 per 1K input tokens
+        "output": 0.01,     # $0.01 per 1K output tokens
+    },
+    "gemini-2.5-flash": {
+        "input": 0.000075,  # $0.000075 per 1K input tokens
+        "output": 0.0003,   # $0.0003 per 1K output tokens
+    },
+    "gemini-2.0-flash": {
+        "input": 0.0001,    # $0.0001 per 1K input tokens
+        "output": 0.0004,   # $0.0004 per 1K output tokens
+    },
+    # Default pricing for unknown models
+    "default": {
+        "input": 0.00125,
+        "output": 0.01,
+    }
+}
+
+
+def calculate_gemini_cost(input_tokens: int, output_tokens: int, model: Optional[str] = None) -> float:
+    """
+    Calculate estimated cost for Gemini API usage.
+    
+    Note: Free tier doesn't actually charge, but we calculate 
+    what it would cost for tracking/comparison purposes.
+    """
+    # Get pricing for model or use default
+    model_key = model.lower() if model else "default"
+    pricing = GEMINI_PRICING.get(model_key, GEMINI_PRICING["default"])
+    
+    input_cost = (input_tokens / 1000) * pricing["input"]
+    output_cost = (output_tokens / 1000) * pricing["output"]
+    
+    return round(input_cost + output_cost, 6)
+
 
 class GeminiRuntime(AgentRuntime):
     """Gemini CLI implementation of AgentRuntime interface."""
@@ -243,7 +282,6 @@ class GeminiRuntime(AgentRuntime):
 
         elif msg_type == "result":
             # Final result message with stats
-            metadata.cost_usd = msg.get("total_cost_usd", 0)  # Gemini might report 0 for free tier
             metadata.duration_ms = msg.get("duration_ms")
             metadata.num_turns = msg.get("num_turns")
             result_text = msg.get("result", "")
@@ -266,7 +304,9 @@ class GeminiRuntime(AgentRuntime):
 
             # Gemini might use different field names - adapt if needed
             model_usage = msg.get("modelUsage", {})
+            detected_model = None
             for model_name, model_data in model_usage.items():
+                detected_model = model_name
                 if "contextWindow" in model_data:
                     metadata.context_window = model_data["contextWindow"]
                 if "inputTokens" in model_data:
@@ -274,6 +314,19 @@ class GeminiRuntime(AgentRuntime):
                 if "outputTokens" in model_data:
                     metadata.output_tokens = model_data["outputTokens"]
                 break
+
+            # Calculate cost from tokens (Gemini CLI doesn't report cost directly)
+            # Use reported cost if available, otherwise calculate
+            reported_cost = msg.get("total_cost_usd", 0)
+            if reported_cost and reported_cost > 0:
+                metadata.cost_usd = reported_cost
+            else:
+                # Calculate estimated cost based on token usage
+                metadata.cost_usd = calculate_gemini_cost(
+                    metadata.input_tokens,
+                    metadata.output_tokens,
+                    detected_model or os.getenv("AGENT_RUNTIME_MODEL", "gemini-2.5-pro")
+                )
 
         elif msg_type == "tool_use":
             # Gemini CLI outputs tool_use at top level: {"type":"tool_use","tool_name":"...","tool_id":"...","parameters":{}}
