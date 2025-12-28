@@ -11,12 +11,14 @@ services:
       - SECRET_KEY=${SECRET_KEY:-}  # Required - generate with: openssl rand -hex 32
       - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-false}  # Set to true for local development
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}  # Required for dev mode - set a strong password
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - AUDIT_URL=http://audit-logger:8001
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - REDIS_URL=redis://redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}  # Optional - set for production
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}  # For Gemini-powered agents
       - GITHUB_PAT=${GITHUB_PAT:-}
       - HOST_TEMPLATES_PATH=${PWD}/config/agent-templates
       - HOST_META_PROMPT_PATH=${PWD}/config/trinity-meta-prompt

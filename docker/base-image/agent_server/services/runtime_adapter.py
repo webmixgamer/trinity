@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 class AgentRuntime(ABC):
     """
     Abstract base class for agent execution runtimes.
-    
+
     Implementations must provide:
     - execute(): Run the agent with a prompt
     - configure_mcp(): Set up MCP tool servers
     - is_available(): Check if runtime is installed
     """
-    
+
     @abstractmethod
     async def execute(
         self,
@@ -35,51 +35,51 @@ class AgentRuntime(ABC):
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
         """
         Execute agent with the given prompt.
-        
+
         Args:
             prompt: User message or task to execute
             model: Model identifier (e.g., "sonnet-4.5", "gemini-2.5-pro")
             continue_session: Whether to continue previous conversation context
             stream: Whether to stream responses (for future use)
-        
+
         Returns:
             Tuple of (response_text, execution_log, metadata)
         """
         pass
-    
+
     @abstractmethod
     def configure_mcp(self, mcp_servers: Dict) -> bool:
         """
         Configure MCP servers for tool access.
-        
+
         Args:
             mcp_servers: Dict of server configurations from .mcp.json
-        
+
         Returns:
             True if configuration succeeded, False otherwise
         """
         pass
-    
+
     @abstractmethod
     def is_available(self) -> bool:
         """
         Check if this runtime is installed and available.
-        
+
         Returns:
             True if runtime CLI is installed, False otherwise
         """
         pass
-    
+
     @abstractmethod
     def get_default_model(self) -> str:
         """
         Get the default model for this runtime.
-        
+
         Returns:
             Model identifier string
         """
         pass
-    
+
     @abstractmethod
     def get_context_window(self, model: Optional[str] = None) -> int:
         """
@@ -92,20 +92,49 @@ class AgentRuntime(ABC):
             Context window size in tokens
         """
         pass
+    
+    @abstractmethod
+    async def execute_headless(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        timeout_seconds: int = 300
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
+        """
+        Execute a stateless task in headless mode (no conversation context).
+        
+        Used for:
+        - Agent delegation from orchestrators
+        - Batch processing without context pollution
+        - Parallel task execution
+        
+        Args:
+            prompt: Task description
+            model: Model to use
+            allowed_tools: List of allowed tool names (None = all tools)
+            system_prompt: Custom system prompt
+            timeout_seconds: Execution timeout
+        
+        Returns:
+            Tuple of (response_text, execution_log, metadata, session_id)
+        """
+        pass
 
 
 def get_runtime() -> AgentRuntime:
     """
     Factory function to get the appropriate runtime based on configuration.
-    
+
     Reads AGENT_RUNTIME environment variable to determine which runtime to use.
     Defaults to Claude Code for backward compatibility.
-    
+
     Returns:
         AgentRuntime instance (ClaudeCodeRuntime or GeminiRuntime)
     """
     runtime_type = os.getenv("AGENT_RUNTIME", "claude-code").lower()
-    
+
     if runtime_type == "gemini-cli" or runtime_type == "gemini":
         from .gemini_runtime import get_gemini_runtime
         runtime = get_gemini_runtime()

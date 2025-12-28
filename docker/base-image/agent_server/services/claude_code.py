@@ -35,7 +35,7 @@ _execution_lock = asyncio.Lock()
 
 class ClaudeCodeRuntime(AgentRuntime):
     """Claude Code implementation of AgentRuntime interface."""
-    
+
     def is_available(self) -> bool:
         """Check if Claude Code CLI is installed."""
         try:
@@ -48,18 +48,18 @@ class ClaudeCodeRuntime(AgentRuntime):
             return result.returncode == 0
         except Exception:
             return False
-    
+
     def get_default_model(self) -> str:
         """Get default Claude model."""
         return "sonnet"  # Claude Sonnet 4.5
-    
+
     def get_context_window(self, model: Optional[str] = None) -> int:
         """Get context window for Claude models."""
         # Check for 1M context models
         if model and "[1m]" in model.lower():
             return 1000000
         return 200000  # Standard 200K context
-    
+
     def configure_mcp(self, mcp_servers: Dict) -> bool:
         """
         Configure MCP servers via .mcp.json file.
@@ -74,7 +74,7 @@ class ClaudeCodeRuntime(AgentRuntime):
         except Exception as e:
             logger.error(f"Failed to configure MCP: {e}")
             return False
-    
+
     async def execute(
         self,
         prompt: str,
@@ -86,6 +86,17 @@ class ClaudeCodeRuntime(AgentRuntime):
         # Note: continue_session is handled internally by agent_state.session_started
         # The execute_claude_code function checks agent_state and uses --continue automatically
         return await execute_claude_code(prompt, stream, model)
+    
+    async def execute_headless(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        timeout_seconds: int = 300
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
+        """Execute Claude Code in headless mode for parallel tasks."""
+        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds)
 
 
 def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:

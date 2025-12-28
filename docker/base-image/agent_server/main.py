@@ -63,7 +63,8 @@ def run_server():
 
     logger.info(f"Starting Agent API Server on port {port}")
     logger.info(f"Agent Name: {agent_state.agent_name}")
-    logger.info(f"Claude Code Available: {agent_state.claude_code_available}")
+    logger.info(f"Runtime: {agent_state.agent_runtime} (available: {agent_state.runtime_available})")
+    logger.info(f"Context Window: {agent_state.session_context_window:,} tokens")
     logger.info("SECURITY: This server is internal-only, accessed via Trinity backend proxy")
 
     # Phase: Agent-to-Agent Collaboration - Inject Trinity MCP if configured

@@ -420,6 +420,13 @@ async def create_agent_internal(
                         mcp_servers = list(creds.get("mcp_servers", {}).keys())
                         if mcp_servers:
                             config.mcp_servers = mcp_servers
+                        # Multi-runtime support - extract runtime config from template
+                        runtime_config = template_data.get("runtime", {})
+                        if isinstance(runtime_config, dict):
+                            config.runtime = runtime_config.get("type", config.runtime)
+                            config.runtime_model = runtime_config.get("model", config.runtime_model)
+                        elif isinstance(runtime_config, str):
+                            config.runtime = runtime_config
                 except Exception as e:
                     print(f"Error loading template config: {e}")
 
@@ -518,7 +525,7 @@ async def create_agent_internal(
         'AGENT_RUNTIME': config.runtime or 'claude-code',
         'AGENT_RUNTIME_MODEL': config.runtime_model or ''
     }
-    
+
     # Add Google API key if using Gemini runtime
     if config.runtime == 'gemini-cli' or config.runtime == 'gemini':
         google_api_key = os.getenv('GOOGLE_API_KEY', '')
@@ -1047,11 +1054,23 @@ async def deploy_local_agent(
         print(f"Copied agent template to: {dest_path}")
 
         # 10. Create agent
+        # Extract runtime config from template
+        runtime_config = template_data.get("runtime", {})
+        runtime_type = None
+        runtime_model = None
+        if isinstance(runtime_config, dict):
+            runtime_type = runtime_config.get("type")
+            runtime_model = runtime_config.get("model")
+        elif isinstance(runtime_config, str):
+            runtime_type = runtime_config
+        
         agent_config = AgentConfig(
             name=version_name,
             template=f"local:{version_name}",
             type=template_data.get("type", "business-assistant"),
-            resources=template_data.get("resources", {"cpu": "2", "memory": "4g"})
+            resources=template_data.get("resources", {"cpu": "2", "memory": "4g"}),
+            runtime=runtime_type,
+            runtime_model=runtime_model
         )
 
         agent_status = await create_agent_internal(

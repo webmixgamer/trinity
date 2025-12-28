@@ -143,12 +143,12 @@ agents:
     runtime: claude-code  # Complex reasoning
     model: sonnet-4.5
     resources: {memory: "4g"}
-  
+
   worker-1:
     runtime: gemini-cli  # Data processing
     model: gemini-2.5-pro
     resources: {memory: "2g"}
-  
+
   worker-2:
     runtime: gemini-cli  # Monitoring
     model: gemini-2.5-pro
