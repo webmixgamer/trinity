@@ -196,6 +196,17 @@
                   Info
                 </button>
                 <button
+                  @click="activeTab = 'tasks'"
+                  :class="[
+                    'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
+                    activeTab === 'tasks'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                  ]"
+                >
+                  Tasks
+                </button>
+                <button
                   @click="activeTab = 'metrics'"
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
@@ -277,17 +288,6 @@
                   ]"
                 >
                   Schedules
-                </button>
-                <button
-                  @click="activeTab = 'executions'"
-                  :class="[
-                    'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
-                    activeTab === 'executions'
-                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                  ]"
-                >
-                  Executions
                 </button>
                 <button
                   v-if="hasGitSync"
@@ -867,9 +867,9 @@ HEYGEN_API_KEY=your_heygen_key
               <SchedulesPanel :agent-name="agent.name" />
             </div>
 
-            <!-- Executions Tab Content -->
-            <div v-if="activeTab === 'executions'" class="p-6">
-              <ExecutionsPanel v-if="agent" :agent-name="agent.name" />
+            <!-- Tasks Tab Content -->
+            <div v-if="activeTab === 'tasks'" class="p-6">
+              <TasksPanel v-if="agent" :agent-name="agent.name" :agent-status="agent.status" />
               <div v-else class="text-center py-8">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
                 <p class="text-gray-500 dark:text-gray-400 mt-2">Loading agent...</p>
@@ -991,7 +991,7 @@ defineOptions({
 })
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import SchedulesPanel from '../components/SchedulesPanel.vue'
-import ExecutionsPanel from '../components/ExecutionsPanel.vue'
+import TasksPanel from '../components/TasksPanel.vue'
 import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
 import MetricsPanel from '../components/MetricsPanel.vue'
