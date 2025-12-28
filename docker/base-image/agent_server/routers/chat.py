@@ -37,9 +37,11 @@ async def chat(request: ChatRequest):
 
         # Execute via runtime adapter (supports Claude Code or Gemini CLI)
         runtime = get_runtime()
+        # Use request.model if provided, otherwise use the model set via /api/model endpoint
+        effective_model = request.model or agent_state.current_model
         response_text, execution_log, metadata = await runtime.execute(
             prompt=request.message,
-            model=request.model,
+            model=effective_model,
             continue_session=True,
             stream=request.stream
         )
@@ -239,8 +241,11 @@ async def websocket_chat(websocket: WebSocket):
 
             # Send response via runtime adapter
             runtime = get_runtime()
+            # Use model from message if provided, otherwise use current_model from state
+            effective_model = message.get("model") or agent_state.current_model
             response_text, execution_log, metadata = await runtime.execute(
                 prompt=message["content"],
+                model=effective_model,
                 continue_session=True,
                 stream=True
             )
