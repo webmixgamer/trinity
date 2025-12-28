@@ -1,3 +1,69 @@
+### 2025-12-28 21:50:00
+🧪 **Tested Scheduling and Execution Queue Functionality**
+
+**Tested Features**:
+- Schedule CRUD operations (create, list, get, update, delete)
+- Schedule enable/disable with APScheduler sync
+- Manual schedule trigger with execution tracking
+- Execution queue status, clear, and force release
+- WebSocket broadcast implementation verification
+
+**Results**: All tests PASS
+
+**Key Findings**:
+1. **Session State Issue**: Scheduled executions fail with exit code 1 if agent's Claude Code session state is corrupted (e.g., from direct testing in container). Fix: restart agent.
+2. **MCP Integration Works**: Scheduled tasks can use Trinity MCP tools (agent-to-agent communication)
+3. **Observability Captured**: Executions record cost, context tokens, tool calls
+
+**Execution Test Data**:
+- Duration: ~25s
+- Cost: ~$0.055
+- Context: 3,702 / 200,000 tokens
+- Tools used: Bash, Read, mcp__trinity__list_agents
+
+**Note**: Feature flow docs (`scheduling.md`, `execution-queue.md`) have outdated line numbers but architecture is accurate.
+
+---
+
+### 2025-12-28 18:15:00
+🐛 **Fixed Credential Hot-Reload Not Saving to Redis**
+
+**Problem**: When using the "Hot Reload Credentials" feature in AgentDetail, credentials were pushed to the running agent's `.env` file but were NOT persisted to Redis. This meant:
+- Credentials were lost when the agent restarted
+- "Reload from Redis" wouldn't include hot-reloaded credentials
+- No permanent storage of credentials added via hot-reload
+
+**Root Cause**: The `/api/agents/{name}/credentials/hot-reload` endpoint only pushed credentials to the agent container, skipping Redis storage entirely.
+
+**Solution**: Modified the hot-reload endpoint to:
+1. Parse credentials from the text input (unchanged)
+2. **NEW**: Save each credential to Redis using `import_credential_with_conflict_resolution()`
+3. Push credentials to the running agent (unchanged)
+
+The conflict resolution handles duplicates intelligently:
+- Same name + same value → reuse existing credential
+- Same name + different value → create with suffix (e.g., `API_KEY_2`)
+- New name → create new credential
+
+**API Response Enhancement**: Now includes `saved_to_redis` array showing each credential's status:
+```json
+{
+  "saved_to_redis": [
+    {"name": "MY_API_KEY", "status": "created", "original": null},
+    {"name": "EXISTING_KEY", "status": "reused", "original": null},
+    {"name": "CONFLICT_KEY_2", "status": "renamed", "original": "CONFLICT_KEY"}
+  ]
+}
+```
+
+**Files Changed**:
+- `src/backend/routers/credentials.py:617-727` - Added Redis persistence to hot-reload endpoint
+- `docs/memory/feature-flows/credential-injection.md` - Updated Flow 3 documentation
+
+**Testing**: Verified hot-reload → Redis → agent restart → reload from Redis works end-to-end.
+
+---
+
 ### 2025-12-28 15:30:00
 🐛 **Fixed File Manager Page Issues**
 

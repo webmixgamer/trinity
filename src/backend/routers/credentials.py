@@ -621,7 +621,15 @@ async def hot_reload_credentials(
     request: Request,
     current_user: User = Depends(get_current_user)
 ):
-    """Hot-reload credentials on a running agent by parsing .env-style text."""
+    """Hot-reload credentials on a running agent by parsing .env-style text.
+
+    This endpoint:
+    1. Parses .env-style KEY=VALUE text
+    2. Saves each credential to Redis (with conflict resolution)
+    3. Pushes credentials to the running agent's .env file
+
+    Credentials are persisted in Redis so they survive agent restarts.
+    """
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -633,6 +641,7 @@ async def hot_reload_credentials(
             detail=f"Agent is not running (status: {agent_status.status}). Start the agent first."
         )
 
+    # Parse credentials from text
     credentials = {}
     for line in request_body.credentials_text.splitlines():
         line = line.strip()
@@ -654,6 +663,20 @@ async def hot_reload_credentials(
             detail="No valid credentials found in the provided text"
         )
 
+    # Save credentials to Redis with conflict resolution
+    # This ensures hot-reloaded credentials persist across agent restarts
+    saved_credentials = []
+    for key, value in credentials.items():
+        result = credential_manager.import_credential_with_conflict_resolution(
+            key, value, current_user.username
+        )
+        saved_credentials.append({
+            "name": result["name"],
+            "status": result["status"],
+            "original": result.get("original")
+        })
+
+    # Push credentials to the running agent
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -689,7 +712,8 @@ async def hot_reload_credentials(
         result="success",
         details={
             "credential_count": len(credentials),
-            "credential_names": list(credentials.keys())
+            "credential_names": list(credentials.keys()),
+            "saved_to_redis": saved_credentials
         }
     )
 
@@ -698,6 +722,7 @@ async def hot_reload_credentials(
         "credential_count": len(credentials),
         "credential_names": list(credentials.keys()),
         "updated_files": agent_response.get("updated_files", []),
+        "saved_to_redis": saved_credentials,
         "note": agent_response.get("note", "")
     }
 
