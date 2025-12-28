@@ -1,5 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <NavBar />
+
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 shadow">
       <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -241,6 +243,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
+import NavBar from '@/components/NavBar.vue'
 import FileTreeNode from '@/components/file-manager/FileTreeNode.vue'
 import FilePreview from '@/components/file-manager/FilePreview.vue'
 

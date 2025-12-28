@@ -173,11 +173,15 @@ resizeObserver.observe(terminalContainer.value)
 
 ### WebSocket Endpoint
 
-- **File**: `src/backend/routers/system_agent.py:315-614`
+- **File**: `src/backend/routers/system_agent.py:314-649`
 - **Endpoint**: `@router.websocket("/terminal")`
 - **Query Params**: `mode: str` (default: "claude") - Either "claude" or "bash"
 
-### Authentication Flow (lines 343-405)
+**Note**: There are two implementations:
+- **System Agent**: `src/backend/routers/system_agent.py:314-649` - Admin-only access
+- **Regular Agents**: `src/backend/services/agent_service/terminal.py:58-381` - Access-controlled per agent
+
+### Authentication Flow (lines 341-404)
 
 ```python
 # Step 1: Wait for auth message (10 second timeout)
@@ -225,7 +229,7 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 ```
 
-### Session Limiting (lines 407-425)
+### Session Limiting (lines 406-424)
 
 ```python
 # Track active sessions (1 per user, 5-minute stale cleanup)
@@ -246,7 +250,7 @@ with _terminal_lock:
     _active_terminal_sessions[user_email] = {"started_at": datetime.utcnow()}
 ```
 
-### Docker Exec Creation (lines 462-488)
+### Docker Exec Creation (lines 461-484)
 
 ```python
 # Build command based on mode
@@ -272,50 +276,78 @@ docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
 
-### Bidirectional Forwarding (lines 493-568)
+### Bidirectional Forwarding (lines 491-550)
+
+The terminal uses **asyncio socket coroutines** (`loop.sock_recv()` and `loop.sock_sendall()`) for proper async I/O without thread pool overhead. These are true coroutines that await until data is available, unlike the broken `add_reader` callback approach.
+
+**Key Components:**
+- `loop.sock_recv(socket, bufsize)` - Proper coroutine that awaits until data available
+- `loop.sock_sendall(socket, data)` - Proper coroutine that awaits until all data sent
+- Socket must be non-blocking (`setblocking(False)`)
 
 ```python
+# Step 6: Bidirectional forwarding using asyncio socket coroutines
+# Uses loop.sock_recv() and loop.sock_sendall() - proper async I/O
+# without thread pool overhead. Socket must be non-blocking.
+loop = asyncio.get_event_loop()
+
 async def read_from_docker():
-    """Read from Docker socket, send to WebSocket."""
-    while True:
-        ready = await loop.run_in_executor(
-            None,
-            lambda: select.select([docker_socket], [], [], 0.1)
-        )
-        if ready[0]:
-            data = await loop.run_in_executor(
-                None,
-                lambda: docker_socket.recv(4096)
-            )
+    """Read from Docker socket using asyncio sock_recv (no thread pool)."""
+    try:
+        while True:
+            # sock_recv is a proper coroutine - awaits until data available
+            data = await loop.sock_recv(docker_socket, 16384)
             if not data:
                 break
             await websocket.send_bytes(data)
+    except Exception as e:
+        logger.debug(f"Docker read error: {e}")
 
 async def read_from_websocket():
     """Read from WebSocket, send to Docker socket."""
-    while True:
-        message = await websocket.receive()
-        if "text" in message:
-            # Check for resize control message
-            try:
-                ctrl = json.loads(message["text"])
-                if ctrl.get("type") == "resize":
-                    docker_client.api.exec_resize(
-                        exec_id,
-                        height=ctrl.get("rows", 24),
-                        width=ctrl.get("cols", 80)
-                    )
-                    continue
-            except json.JSONDecodeError:
-                pass
-            # Plain text input
-            docker_socket.sendall(message["text"].encode())
-        elif "bytes" in message:
-            docker_socket.sendall(message["bytes"])
+    try:
+        while True:
+            message = await websocket.receive()
 
-# Run both concurrently
-await asyncio.gather(read_from_docker(), read_from_websocket())
+            if message["type"] == "websocket.disconnect":
+                break
+
+            if "text" in message:
+                # Check if it's a control message
+                try:
+                    ctrl = json.loads(message["text"])
+                    if ctrl.get("type") == "resize":
+                        cols = ctrl.get("cols", 80)
+                        rows = ctrl.get("rows", 24)
+                        docker_client.api.exec_resize(
+                            exec_id,
+                            height=rows,
+                            width=cols
+                        )
+                        continue
+                except json.JSONDecodeError:
+                    pass
+
+                # sock_sendall is a proper coroutine - no thread pool
+                await loop.sock_sendall(docker_socket, message["text"].encode())
+
+            elif "bytes" in message:
+                await loop.sock_sendall(docker_socket, message["bytes"])
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug(f"WebSocket read error: {e}")
+
+# Run both tasks concurrently
+await asyncio.gather(
+    read_from_docker(),
+    read_from_websocket(),
+    return_exceptions=True
+)
 ```
+
+**Performance Note**: This implementation uses zero thread pool calls. The `sock_recv()` and `sock_sendall()` methods are proper asyncio coroutines that use the event loop's native I/O multiplexing (epoll/kqueue) internally. The previous `add_reader` approach was broken because callbacks cannot be awaited.
 
 ---
 
@@ -323,7 +355,7 @@ await asyncio.gather(read_from_docker(), read_from_websocket())
 
 ### Audit Logging
 
-Session start (line 454-460):
+Session start (lines 451-459):
 ```python
 await log_audit_event(
     event_type="terminal_session",
@@ -334,9 +366,11 @@ await log_audit_event(
 )
 ```
 
-Session end (lines 596-611):
+Session end (lines 630-646):
 ```python
-session_duration = (datetime.utcnow() - session_start).total_seconds()
+session_duration = None
+if session_start:
+    session_duration = (datetime.utcnow() - session_start).total_seconds()
 
 await log_audit_event(
     event_type="terminal_session",
@@ -352,12 +386,17 @@ await log_audit_event(
 
 ### Session Cleanup
 
-On disconnect (lines 581-593):
+On disconnect (lines 617-628):
 ```python
 finally:
+    # Cleanup
     if docker_socket:
-        docker_socket.close()
+        try:
+            docker_socket.close()
+        except:
+            pass
 
+    # Remove from active sessions
     if user_email:
         with _terminal_lock:
             _active_terminal_sessions.pop(user_email, None)
@@ -397,6 +436,7 @@ Frontend error display (line 69-73):
 5. **Audit Trail**: Full session logging with duration tracking
 6. **Binary Transport**: Raw PTY data sent as binary WebSocket frames
 7. **TERM Environment**: Sets `TERM=xterm-256color` for proper TUI rendering
+8. **Resource Efficiency**: Asyncio socket coroutines (`sock_recv`/`sock_sendall`) provide proper async I/O with zero thread pool calls
 
 ---
 
@@ -524,7 +564,7 @@ User Click          WebSocket          Backend           Docker
 No cleanup required - sessions terminate automatically on disconnect.
 
 ### Status
-**Testing Status**: Not Tested
+**Testing Status**: Needs Re-Testing (sock_recv/sock_sendall refactor 2025-12-28)
 
 ---
 
@@ -532,6 +572,8 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
+| 2025-12-28 | Second fix: Replaced broken `add_reader` callback approach with proper asyncio socket coroutines (`sock_recv`/`sock_sendall`) |
+| 2025-12-28 | First fix: Refactored bidirectional forwarding from thread pool polling to native asyncio I/O (add_reader) - had issues |
 | 2025-12-25 | Embedded terminal directly on page, removed modal - Terminal now auto-connects when agent running |
 | 2025-12-25 | Added fullscreen toggle with ESC key to exit |
 | 2025-12-25 | Initial implementation (Req 11.5) |

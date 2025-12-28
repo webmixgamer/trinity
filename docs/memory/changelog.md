@@ -1,3 +1,56 @@
+### 2025-12-28 15:30:00
+🐛 **Fixed File Manager Page Issues**
+
+**Bug #1: Missing Navigation Menu**
+- **Problem**: File Manager page (`/files`) didn't show the top navigation bar
+- **Fix**: Added `<NavBar />` component to `FileManager.vue`
+
+**Bug #2: Vue Runtime Compiler Warning**
+- **Problem**: Console warning "Component provided template option but runtime compilation is not supported"
+- **Cause**: `FileTreeNode.vue` used template strings for icon components which require Vue's runtime compiler
+- **Fix**: Converted all icon components to use `h()` render functions instead of template strings
+
+**Files Changed**:
+- `src/frontend/src/views/FileManager.vue` - Added NavBar import and usage
+- `src/frontend/src/components/file-manager/FileTreeNode.vue` - Render functions for icons
+
+**Note on 404 Preview Errors**: Agents created before 2025-12-27 don't have the `/api/files/preview` endpoint. To fix, **recreate** the agent (not just restart). This applies to all agents created before the File Manager feature was implemented.
+
+---
+
+### 2025-12-28 12:28:00
+⚡ **Fixed Terminal Thread Pool Exhaustion (v2)**
+
+**Problem**: App became unresponsive after opening multiple web terminals. Navigation would hang, API calls would timeout, and audit logging would fail.
+
+**Root Cause**: Terminal implementation used a tight polling loop with `run_in_executor`:
+- 5ms `select()` timeout → 200 thread pool calls/second per terminal
+- Default thread pool has only 18 workers
+- Multiple terminals saturated the pool, blocking all async operations
+
+**Solution (Final)**: Use proper asyncio socket coroutines:
+```python
+# Correct approach - proper async coroutines
+data = await loop.sock_recv(docker_socket, 16384)
+await loop.sock_sendall(docker_socket, message.encode())
+```
+
+**Why not `add_reader`?** First attempt used `loop.add_reader()` with callback + Event signaling. This was overly complex and caused slow terminal response. The `sock_recv()`/`sock_sendall()` approach is simpler and faster - they are true coroutines that integrate naturally with async/await.
+
+**Files Changed**:
+- `src/backend/services/agent_service/terminal.py:221-280` - asyncio socket coroutines
+- `src/backend/routers/system_agent.py:491-550` - Same for System Agent
+
+**Investigation**: `docs/investigations/terminal-hanging-investigation.md`
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Thread pool calls/sec | 200+ per terminal | 0 |
+| Max concurrent terminals | ~2-3 | Unlimited |
+| Latency | 5ms polling | Near-instant |
+
+---
+
 ### 2025-12-27 22:45:00
 🐛 **Fixed Two Critical Bugs**
 

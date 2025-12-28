@@ -4,7 +4,6 @@ Agent Service Terminal - WebSocket terminal session management.
 Handles interactive PTY-based terminal connections to agent containers.
 """
 import json
-import select
 import asyncio
 import threading
 import logging
@@ -219,37 +218,27 @@ class TerminalSessionManager:
 
             logger.info(f"Terminal session started for {user_email}@{agent_name} (mode: {mode})")
 
-            # Step 6: Bidirectional forwarding
+            # Step 6: Bidirectional forwarding using asyncio socket coroutines
+            # Uses loop.sock_recv() and loop.sock_sendall() - proper async I/O
+            # without thread pool overhead. Socket must be non-blocking.
             loop = asyncio.get_event_loop()
 
             async def read_from_docker():
-                """Read from Docker socket, send to WebSocket."""
-                while True:
-                    try:
-                        # Use select for non-blocking read with short timeout for responsiveness
-                        # 5ms timeout provides good balance between CPU usage and latency
-                        ready = await loop.run_in_executor(
-                            None,
-                            lambda: select.select([docker_socket], [], [], 0.005)
-                        )
-                        if ready[0]:
-                            # Larger buffer (16KB) to reduce read syscalls for large outputs
-                            data = await loop.run_in_executor(
-                                None,
-                                lambda: docker_socket.recv(16384)
-                            )
-                            if not data:
-                                break
-                            await websocket.send_bytes(data)
-                        # No extra sleep needed - select timeout handles pacing
-                    except Exception as e:
-                        logger.debug(f"Docker read error for {agent_name}: {e}")
-                        break
+                """Read from Docker socket using asyncio sock_recv (no thread pool)."""
+                try:
+                    while True:
+                        # sock_recv is a proper coroutine - awaits until data available
+                        data = await loop.sock_recv(docker_socket, 16384)
+                        if not data:
+                            break
+                        await websocket.send_bytes(data)
+                except Exception as e:
+                    logger.debug(f"Docker read error for {agent_name}: {e}")
 
             async def read_from_websocket():
                 """Read from WebSocket, send to Docker socket."""
-                while True:
-                    try:
+                try:
+                    while True:
                         message = await websocket.receive()
 
                         if message["type"] == "websocket.disconnect":
@@ -272,23 +261,16 @@ class TerminalSessionManager:
                             except json.JSONDecodeError:
                                 pass
 
-                            # Plain text input - send to container
-                            await loop.run_in_executor(
-                                None,
-                                lambda: docker_socket.sendall(message["text"].encode())
-                            )
+                            # sock_sendall is a proper coroutine - no thread pool
+                            await loop.sock_sendall(docker_socket, message["text"].encode())
 
                         elif "bytes" in message:
-                            await loop.run_in_executor(
-                                None,
-                                lambda: docker_socket.sendall(message["bytes"])
-                            )
+                            await loop.sock_sendall(docker_socket, message["bytes"])
 
-                    except WebSocketDisconnect:
-                        break
-                    except Exception as e:
-                        logger.debug(f"WebSocket read error for {agent_name}: {e}")
-                        break
+                except WebSocketDisconnect:
+                    pass
+                except Exception as e:
+                    logger.debug(f"WebSocket read error for {agent_name}: {e}")
 
             # Run both tasks concurrently
             await asyncio.gather(
