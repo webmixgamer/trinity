@@ -55,6 +55,20 @@ async def share_agent_endpoint(
     if not share:
         raise HTTPException(status_code=409, detail=f"Agent is already shared with {share_request.email}")
 
+    # Auto-add email to whitelist if email auth is enabled (Phase 12.4)
+    from config import EMAIL_AUTH_ENABLED
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    if email_auth_setting.lower() == "true":
+        try:
+            db.add_to_whitelist(
+                share_request.email,
+                current_user.username,
+                source="agent_sharing"
+            )
+        except Exception:
+            # Already whitelisted or error - continue anyway
+            pass
+
     await log_audit_event(
         event_type="agent_sharing",
         action="share",

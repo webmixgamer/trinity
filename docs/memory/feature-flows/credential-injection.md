@@ -144,20 +144,23 @@ def infer_type_from_key(key: str) -> str:
 
 ## Flow 3: Hot-Reload Credentials
 
-### Frontend (`src/frontend/src/views/AgentDetail.vue:1676-1704`)
+> **Updated 2025-12-28**: Hot-reload now persists credentials to Redis with conflict resolution. Credentials survive agent restarts.
+
+### Frontend (`src/frontend/src/composables/useAgentCredentials.js:45-73`)
 ```javascript
 const performHotReload = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
+  if (!agentRef.value || agentRef.value.status !== 'running') return
   if (!hotReloadText.value.trim()) return
 
   const result = await agentsStore.hotReloadCredentials(
-    agent.value.name,
+    agentRef.value.name,
     hotReloadText.value  // KEY=VALUE format
   )
+  // Result includes saved_to_redis with status: created/reused/renamed
 }
 ```
 
-### Store Action (`src/frontend/src/stores/agents.js:202-209`)
+### Store Action (`src/frontend/src/stores/agents.js:206-212`)
 ```javascript
 async hotReloadCredentials(name, credentialsText) {
   const response = await axios.post(`/api/agents/${name}/credentials/hot-reload`,
@@ -168,40 +171,41 @@ async hotReloadCredentials(name, credentialsText) {
 }
 ```
 
-### Backend (`src/backend/routers/credentials.py:617-702`)
+### Backend (`src/backend/routers/credentials.py:617-727`)
 ```python
 @router.post("/agents/{agent_name}/credentials/hot-reload")
 async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredentialsRequest,
                                   request: Request, current_user: User = Depends(get_current_user)):
+    """Hot-reload credentials on a running agent by parsing .env-style text.
+
+    This endpoint:
+    1. Parses .env-style KEY=VALUE text
+    2. Saves each credential to Redis (with conflict resolution)
+    3. Pushes credentials to the running agent's .env file
+
+    Credentials are persisted in Redis so they survive agent restarts.
+    """
     container = get_agent_container(agent_name)
-    if not container:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    # ... validation ...
 
-    agent_status = get_agent_status_from_container(container)
-    if agent_status.status != "running":
-        raise HTTPException(status_code=400, detail=f"Agent is not running (status: {agent_status.status})")
-
-    # Parse credentials (line 636-649)
+    # Parse credentials from text
     credentials = {}
     for line in request_body.credentials_text.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        if '=' in line:
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip()
-            # Remove quotes if present
-            if (value.startswith('"') and value.endswith('"')) or \
-               (value.startswith("'") and value.endswith("'")):
-                value = value[1:-1]
-            if key:
-                credentials[key] = value
+        # ... parse KEY=VALUE pairs ...
 
-    if not credentials:
-        raise HTTPException(status_code=400, detail="No valid credentials found in the provided text")
+    # Save credentials to Redis with conflict resolution
+    saved_credentials = []
+    for key, value in credentials.items():
+        result = credential_manager.import_credential_with_conflict_resolution(
+            key, value, current_user.username
+        )
+        saved_credentials.append({
+            "name": result["name"],
+            "status": result["status"],  # created/reused/renamed
+            "original": result.get("original")
+        })
 
-    # Push to agent container (line 657-681)
+    # Push credentials to the running agent
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"http://agent-{agent_name}:8000/api/credentials/update",
@@ -209,14 +213,12 @@ async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredent
             timeout=30.0
         )
 
-    # Audit log (line 683-694)
-    await log_audit_event(
-        event_type="credential_management",
-        action="hot_reload_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        details={"credential_count": len(credentials), "credential_names": list(credentials.keys())}
-    )
+    return {
+        "credential_names": list(credentials.keys()),
+        "saved_to_redis": saved_credentials,  # NEW: shows Redis persistence status
+        "updated_files": agent_response.get("updated_files", []),
+        "note": "MCP servers may need to be restarted..."
+    }
 ```
 
 ### Agent Container (`docker/base-image/agent_server/routers/credentials.py:18-86`)
@@ -693,9 +695,9 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 ---
 
-**Last Updated**: 2025-12-19
+**Last Updated**: 2025-12-28
 **Status**: ✅ Working (all flows operational)
-**Issues**: None - credential system fully functional with modular router architecture
+**Issues**: None - credential system fully functional with Redis persistence
 
 ---
 
@@ -703,6 +705,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-28 | **Bug fix: Hot-reload now saves to Redis**. Previously, hot-reload only pushed credentials to the agent's .env file but did NOT persist them to Redis. Credentials were lost on agent restart. Now hot-reload uses `import_credential_with_conflict_resolution()` to save each credential to Redis before pushing to the agent. Response includes `saved_to_redis` array with status (created/reused/renamed). |
 | 2025-12-19 | **Path/line number updates**: Updated all file references for modular architecture. Agent-server now at `docker/base-image/agent_server/routers/credentials.py`. Backend routers at `src/backend/routers/credentials.py`. Updated helpers to `src/backend/utils/helpers.py`. Added store action documentation. Verified all line numbers. |
 | 2025-12-07 | **Credentials.vue cleanup**: Removed "Connect Services" OAuth provider section (Google, Slack, GitHub, Notion buttons). Removed unused code: `oauthProviders` ref, `fetchOAuthProviders()`, `startOAuth()`, `getProviderIcon()`. Updated empty state text. OAuth flows remain available via backend API. |
 

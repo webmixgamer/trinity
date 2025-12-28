@@ -88,17 +88,6 @@
                             ></div>
                           </div>
                         </div>
-
-                        <!-- Task progress (if has active plan) -->
-                        <div v-if="hasActivePlan(agent.name)" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          <span class="inline-flex items-center">
-                            <ClipboardDocumentCheckIcon class="h-3 w-3 mr-1 text-purple-500 dark:text-purple-400" />
-                            {{ getTaskProgress(agent.name) }}
-                            <span v-if="getCurrentTask(agent.name)" class="ml-2 truncate max-w-[150px] text-purple-600 dark:text-purple-400" :title="getCurrentTask(agent.name)">
-                              • {{ getCurrentTask(agent.name) }}
-                            </span>
-                          </span>
-                        </div>
                       </div>
                     </div>
                   </router-link>
@@ -168,7 +157,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
-import { ServerIcon, PlayIcon, StopIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline'
+import { ServerIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline'
 
 const agentsStore = useAgentsStore()
 const showCreateModal = ref(false)

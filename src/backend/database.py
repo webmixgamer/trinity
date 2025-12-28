@@ -65,6 +65,12 @@ from db_models import (
     VerificationResponse,
     PublicChatRequest,
     PublicChatResponse,
+    # Email Authentication (Phase 12.4)
+    EmailWhitelistEntry,
+    EmailWhitelistAdd,
+    EmailLoginRequest,
+    EmailLoginVerify,
+    EmailLoginResponse,
 )
 
 # Re-export connection utilities
@@ -81,6 +87,7 @@ from db.permissions import PermissionOperations
 from db.shared_folders import SharedFolderOperations
 from db.settings import SettingsOperations
 from db.public_links import PublicLinkOperations
+from db.email_auth import EmailAuthOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -179,6 +186,17 @@ def _migrate_agent_ownership_system_flag(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_ownership_platform_key(cursor, conn):
+    """Add use_platform_api_key column to agent_ownership table for per-agent API key control."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "use_platform_api_key" not in columns:
+        print("Adding use_platform_api_key column to agent_ownership for per-agent API key control...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN use_platform_api_key INTEGER DEFAULT 1")
+        conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -208,6 +226,11 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_ownership is_system): {e}")
 
+        try:
+            _migrate_agent_ownership_platform_key(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership use_platform_api_key): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -233,6 +256,7 @@ def init_database():
                 owner_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
                 is_system INTEGER DEFAULT 0,
+                use_platform_api_key INTEGER DEFAULT 1,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -471,6 +495,31 @@ def init_database():
             )
         """)
 
+        # Email whitelist table (Phase 12.4: Email-Based Authentication)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_whitelist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                added_by TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                FOREIGN KEY (added_by) REFERENCES users(id)
+            )
+        """)
+
+        # Email login codes table (Phase 12.4: Email-Based Authentication)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_login_codes (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                verified INTEGER DEFAULT 0,
+                used_at TEXT
+            )
+        """)
+
         # Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub)")
@@ -518,6 +567,10 @@ def init_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_verifications_code ON public_link_verifications(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_link ON public_link_usage(link_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_ip ON public_link_usage(ip_address)")
+        # Email auth indexes (Phase 12.4)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_whitelist_email ON email_whitelist(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_email ON email_login_codes(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_code ON email_login_codes(code)")
 
         conn.commit()
 
@@ -600,6 +653,7 @@ class DatabaseManager:
         self._shared_folder_ops = SharedFolderOperations(self._permission_ops)
         self._settings_ops = SettingsOperations()
         self._public_link_ops = PublicLinkOperations(self._user_ops, self._agent_ops)
+        self._email_auth_ops = EmailAuthOperations(self._user_ops)
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -684,6 +738,16 @@ class DatabaseManager:
 
     def delete_agent_shares(self, agent_name: str):
         return self._agent_ops.delete_agent_shares(agent_name)
+
+    # =========================================================================
+    # Agent API Key Settings (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_use_platform_api_key(self, agent_name: str):
+        return self._agent_ops.get_use_platform_api_key(agent_name)
+
+    def set_use_platform_api_key(self, agent_name: str, use_platform_key: bool):
+        return self._agent_ops.set_use_platform_api_key(agent_name, use_platform_key)
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
@@ -982,6 +1046,37 @@ class DatabaseManager:
 
     def count_recent_messages_by_ip(self, ip_address: str, minutes: int = 1):
         return self._public_link_ops.count_recent_messages_by_ip(ip_address, minutes)
+
+    # =========================================================================
+    # Email Authentication (delegated to db/email_auth.py) - Phase 12.4
+    # =========================================================================
+
+    def is_email_whitelisted(self, email: str):
+        return self._email_auth_ops.is_email_whitelisted(email)
+
+    def add_to_whitelist(self, email: str, added_by: str, source: str = "manual"):
+        return self._email_auth_ops.add_to_whitelist(email, added_by, source)
+
+    def remove_from_whitelist(self, email: str):
+        return self._email_auth_ops.remove_from_whitelist(email)
+
+    def list_whitelist(self, limit: int = 100):
+        return self._email_auth_ops.list_whitelist(limit)
+
+    def create_login_code(self, email: str, expiry_minutes: int = 10):
+        return self._email_auth_ops.create_login_code(email, expiry_minutes)
+
+    def verify_login_code(self, email: str, code: str):
+        return self._email_auth_ops.verify_login_code(email, code)
+
+    def count_recent_code_requests(self, email: str, minutes: int = 10):
+        return self._email_auth_ops.count_recent_code_requests(email, minutes)
+
+    def cleanup_old_codes(self, days: int = 1):
+        return self._email_auth_ops.cleanup_old_codes(days)
+
+    def get_or_create_email_user(self, email: str):
+        return self._email_auth_ops.get_or_create_email_user(email)
 
 
 # Global database manager instance

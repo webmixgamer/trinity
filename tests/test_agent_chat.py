@@ -240,3 +240,240 @@ class TestResetSession:
             pytest.skip("Agent server not ready")
 
         assert_status_in(response, [200, 204])
+
+
+# =============================================================================
+# IN-MEMORY ACTIVITY TESTS (REQ-ACTIVITY-002)
+# Tests for /api/agents/{name}/activity endpoints (in-memory during chat)
+# =============================================================================
+
+
+class TestInMemoryActivityAuthentication:
+    """Tests for in-memory activity endpoint authentication."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_activity_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """GET /api/agents/{name}/activity requires authentication."""
+        response = unauthenticated_client.get("/api/agents/test-agent/activity", auth=False)
+        assert_status(response, 401)
+
+    def test_clear_activity_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """DELETE /api/agents/{name}/activity requires authentication."""
+        response = unauthenticated_client.delete("/api/agents/test-agent/activity", auth=False)
+        assert_status(response, 401)
+
+
+class TestInMemoryActivity:
+    """Tests for GET /api/agents/{name}/activity endpoint (in-memory activity)."""
+
+    def test_get_activity_returns_structure(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/activity returns expected structure."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/activity"
+        )
+
+        # May return 503 if agent not ready
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(response, 200)
+        data = assert_json_response(response)
+
+        # Should have activity-related fields
+        assert isinstance(data, (dict, list))
+
+    def test_get_activity_empty_when_idle(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Activity is empty when agent is idle."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/activity"
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # When idle, activity should be empty or have empty tools
+        if isinstance(data, dict):
+            # Could be {"tools": [], "is_running": false} or similar
+            if "tools" in data:
+                assert isinstance(data["tools"], list)
+            if "is_running" in data:
+                assert isinstance(data["is_running"], bool)
+
+    def test_get_activity_nonexistent_agent_returns_404(self, api_client: TrinityApiClient):
+        """GET /api/agents/{name}/activity for nonexistent agent returns 404."""
+        response = api_client.get("/api/agents/nonexistent-agent-xyz123/activity")
+        assert_status(response, 404)
+
+
+class TestInMemoryActivityToolDetails:
+    """Tests for GET /api/agents/{name}/activity/{tool_id} endpoint."""
+
+    def test_get_tool_details_nonexistent(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/activity/{tool_id} returns 404 for unknown tool."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/activity/unknown-tool-123"
+        )
+
+        # Should return 404 for unknown tool ID
+        assert_status_in(response, [404, 503])
+
+
+class TestClearInMemoryActivity:
+    """Tests for DELETE /api/agents/{name}/activity endpoint."""
+
+    def test_clear_activity(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """DELETE /api/agents/{name}/activity clears in-memory activity."""
+        response = api_client.delete(
+            f"/api/agents/{created_agent['name']}/activity"
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status_in(response, [200, 204])
+
+    def test_clear_activity_idempotent(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """DELETE /api/agents/{name}/activity is idempotent."""
+        # Clear twice
+        response1 = api_client.delete(
+            f"/api/agents/{created_agent['name']}/activity"
+        )
+        response2 = api_client.delete(
+            f"/api/agents/{created_agent['name']}/activity"
+        )
+
+        if response1.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # Both should succeed
+        assert_status_in(response1, [200, 204])
+        assert_status_in(response2, [200, 204])
+
+
+# =============================================================================
+# ADDITIONAL MODEL MANAGEMENT TESTS
+# Extended tests for model selection functionality
+# =============================================================================
+
+
+class TestModelManagementExtended:
+    """Extended tests for model management."""
+
+    def test_set_invalid_model_rejected(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """PUT /api/agents/{name}/model rejects invalid model name."""
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/model",
+            json={"model": "invalid-model-xyz"}
+        )
+
+        if response.status_code == 404:
+            pytest.skip("Model endpoint not implemented")
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # Should reject invalid model
+        assert_status_in(response, [400, 422])
+
+    def test_set_model_persists(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Model selection persists after being set."""
+        # Set to sonnet
+        set_response = api_client.put(
+            f"/api/agents/{created_agent['name']}/model",
+            json={"model": "sonnet"}
+        )
+
+        if set_response.status_code == 404:
+            pytest.skip("Model endpoint not implemented")
+        if set_response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # Verify it was set
+        get_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/model"
+        )
+        assert_status(get_response, 200)
+        data = get_response.json()
+
+        # Model should be sonnet
+        model = data.get("model") if isinstance(data, dict) else data
+        assert "sonnet" in str(model).lower()
+
+    def test_model_options(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Valid model options are accepted."""
+        valid_models = ["sonnet", "opus", "haiku"]
+
+        for model in valid_models:
+            response = api_client.put(
+                f"/api/agents/{created_agent['name']}/model",
+                json={"model": model}
+            )
+
+            if response.status_code == 404:
+                pytest.skip("Model endpoint not implemented")
+            if response.status_code == 503:
+                pytest.skip("Agent server not ready")
+
+            # Should accept valid models
+            assert_status_in(response, [200, 204]), \
+                f"Model '{model}' should be accepted"
+
+    def test_get_model_structure(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/model returns expected structure."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/model"
+        )
+
+        if response.status_code == 404:
+            pytest.skip("Model endpoint not implemented")
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should have model field or be a string
+        if isinstance(data, dict):
+            assert "model" in data
+            assert isinstance(data["model"], str)
+        else:
+            assert isinstance(data, str)

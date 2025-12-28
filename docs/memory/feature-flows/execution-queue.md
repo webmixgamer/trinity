@@ -1,5 +1,7 @@
 # Feature: Execution Queue System
 
+> **Updated**: 2025-12-27 - Refactored to service layer architecture. Queue endpoint handlers moved to `services/agent_service/queue.py`.
+
 ## Overview
 The Execution Queue System prevents parallel execution on agents by serializing all execution requests through a Redis-backed queue. This ensures only one execution runs per agent at a time, protecting Claude Code's conversation state from corruption.
 
@@ -28,6 +30,15 @@ Claude Code maintains conversation state in memory. When multiple execution requ
 
 For stateless, parallel workloads, the queue can be bypassed using `POST /api/agents/{name}/task`:
 - **No queue serialization** - Requests execute immediately
+
+### Queue Bypass: Web Terminal (Added 2025-12-25)
+
+The Web Terminal (`WS /api/agents/{name}/terminal`) also bypasses the queue:
+- **Direct PTY access** - User has interactive Claude Code session
+- **No queue serialization** - Terminal sessions are independent of chat queue
+- See [agent-terminal.md](agent-terminal.md) for details
+
+**Note on /task endpoint (Parallel Headless Execution)**:
 - **No --continue flag** - Each task runs in isolation (no conversation context)
 - **Multiple concurrent tasks** - N tasks can run simultaneously per agent
 
@@ -437,9 +448,22 @@ async def chat(request: ChatRequest):
 
 ---
 
-## API Endpoints (`src/backend/routers/agents.py:1152-1261`)
+## API Endpoints
 
-### GET /api/agents/{name}/queue (lines 1152-1178)
+### Architecture (Post-Refactoring)
+
+The queue management endpoints use a **thin router + service layer** architecture:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Router | `src/backend/routers/agents.py:443-467` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/queue.py` (124 lines) | Queue management logic |
+
+### GET /api/agents/{name}/queue
+
+**Router**: `src/backend/routers/agents.py:443-449`
+**Service**: `src/backend/services/agent_service/queue.py:18-43`
+
 Returns current queue status for an agent.
 
 **Response:**
@@ -469,7 +493,11 @@ Returns current queue status for an agent.
 }
 ```
 
-### POST /api/agents/{name}/queue/clear (lines 1181-1218)
+### POST /api/agents/{name}/queue/clear
+
+**Router**: `src/backend/routers/agents.py:452-458`
+**Service**: `src/backend/services/agent_service/queue.py:46-82`
+
 Clear all queued executions (does not stop running execution).
 
 **Response:**
@@ -483,7 +511,11 @@ Clear all queued executions (does not stop running execution).
 
 **Audit Log**: `event_type="agent_queue", action="clear_queue"`
 
-### POST /api/agents/{name}/queue/release (lines 1221-1261)
+### POST /api/agents/{name}/queue/release
+
+**Router**: `src/backend/routers/agents.py:461-467`
+**Service**: `src/backend/services/agent_service/queue.py:85-124`
+
 Emergency: force release agent from running state.
 
 **Response:**
@@ -664,7 +696,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 - [ ] TTL expiration: Stuck execution auto-clears after 10 min
 
 **Status**: Ready for testing
-**Last Updated**: 2025-12-19
+**Last Updated**: 2025-12-27
 
 ---
 
@@ -702,12 +734,13 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
   - Auth0 Authentication (`auth0-authentication.md`) - User authorization
 
 - **Integrates With**:
-  - Agent Chat (`agent-chat.md`) - Queue enforced on all chat requests
+  - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal
   - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue
   - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`)
   - Activity Stream (`activity-stream.md`) - Queue status tracked in activities
 
 - **Bypassed By**:
+  - Agent Terminal (`agent-terminal.md`) - WebSocket PTY bypasses queue entirely (Added 2025-12-25)
   - Parallel Headless Execution (`parallel-headless-execution.md`) - `POST /api/agents/{name}/task` bypasses queue entirely (Added 2025-12-22)
 
 - **Downstream**:
@@ -719,6 +752,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-27 | **Service layer refactoring**: Queue endpoint handlers moved to `services/agent_service/queue.py`. Router reduced to thin endpoint definitions. |
 | 2025-12-22 | Added Queue Bypass section for Parallel Task Execution (/api/task endpoint) |
 | 2025-12-19 | Updated line numbers for all source files based on current codebase |
 | 2025-12-19 | Updated models.py reference to lines 163-210 |

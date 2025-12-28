@@ -15,6 +15,7 @@ from config import (
     AUTH0_DOMAIN,
     AUTH0_ALLOWED_DOMAIN,
     DEV_MODE_ENABLED,
+    EMAIL_AUTH_ENABLED,
 )
 from database import db
 from dependencies import authenticate_user, create_access_token
@@ -39,12 +40,18 @@ async def get_auth_mode():
     Returns:
         - dev_mode_enabled: Whether local username/password login is allowed
         - auth0_configured: Whether Auth0 OAuth is available
+        - email_auth_enabled: Whether email-based login is enabled (Phase 12.4)
         - allowed_domain: The email domain restriction (for display)
         - setup_completed: Whether first-time setup is complete
     """
+    # Check if email auth is enabled (can be overridden via settings)
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    email_auth_enabled = email_auth_setting.lower() == "true"
+
     return {
         "dev_mode_enabled": DEV_MODE_ENABLED,
         "auth0_configured": bool(AUTH0_DOMAIN),
+        "email_auth_enabled": email_auth_enabled,
         "allowed_domain": AUTH0_ALLOWED_DOMAIN,
         "setup_completed": is_setup_completed()
     }
@@ -271,3 +278,188 @@ async def validate_token(request: Request):
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+
+# =========================================================================
+# Email-Based Authentication Endpoints (Phase 12.4)
+# =========================================================================
+
+@router.post("/api/auth/email/request")
+async def request_email_login_code(request: Request):
+    """
+    Request a login code via email.
+
+    Unauthenticated endpoint. Sends a 6-digit code to the provided email
+    if it's in the whitelist.
+
+    Rate limit: 3 requests per 10 minutes per email.
+    """
+    from database import EmailLoginRequest
+    from services.email_service import EmailService
+
+    # Block if setup is not completed
+    if not is_setup_completed():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="setup_required"
+        )
+
+    # Check if email auth is enabled
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    if email_auth_setting.lower() != "true":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email authentication is disabled"
+        )
+
+    # Parse request
+    body = await request.json()
+    login_request = EmailLoginRequest(**body)
+    email = login_request.email.lower()
+
+    # Check if email is whitelisted
+    if not db.is_email_whitelisted(email):
+        # For security, return generic message (don't reveal if email is whitelisted)
+        await log_audit_event(
+            event_type="authentication",
+            action="email_login_request",
+            user_id=email,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            result="denied",
+            details={"reason": "not_whitelisted"},
+            severity="warning"
+        )
+        # Return success to prevent email enumeration
+        return {"success": True, "message": "If your email is registered, you'll receive a code shortly"}
+
+    # Check rate limit
+    recent_requests = db.count_recent_code_requests(email, minutes=10)
+    if recent_requests >= 3:
+        await log_audit_event(
+            event_type="authentication",
+            action="email_login_request",
+            user_id=email,
+            ip_address=request.client.host if request.client else None,
+            result="denied",
+            details={"reason": "rate_limit"},
+            severity="warning"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again in 10 minutes"
+        )
+
+    # Generate code
+    code_data = db.create_login_code(email, expiry_minutes=10)
+
+    # Send email
+    email_service = EmailService()
+    success = await email_service.send_verification_code(email, code_data["code"])
+
+    # Log audit event
+    await log_audit_event(
+        event_type="authentication",
+        action="email_login_code_sent",
+        user_id=email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        result="success" if success else "failed",
+        details={"email_sent": success}
+    )
+
+    return {
+        "success": True,
+        "message": "Verification code sent to your email",
+        "expires_in_seconds": code_data["expires_in_seconds"]
+    }
+
+
+@router.post("/api/auth/email/verify")
+async def verify_email_login_code(request: Request):
+    """
+    Verify email login code and get JWT token.
+
+    Unauthenticated endpoint. Verifies the code and creates/returns user session.
+    """
+    from database import EmailLoginVerify, EmailLoginResponse
+
+    # Block if setup is not completed
+    if not is_setup_completed():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="setup_required"
+        )
+
+    # Check if email auth is enabled
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    if email_auth_setting.lower() != "true":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email authentication is disabled"
+        )
+
+    # Parse request
+    body = await request.json()
+    verify_request = EmailLoginVerify(**body)
+    email = verify_request.email.lower()
+    code = verify_request.code
+
+    # Verify code
+    verification = db.verify_login_code(email, code)
+    if not verification:
+        await log_audit_event(
+            event_type="authentication",
+            action="email_login_verify",
+            user_id=email,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            result="failed",
+            details={"reason": "invalid_code"},
+            severity="warning"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification code"
+        )
+
+    # Get or create user
+    user = db.get_or_create_email_user(email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user account"
+        )
+
+    # Update last login
+    db.update_last_login(user["username"])
+
+    # Create JWT token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user["username"]},
+        expires_delta=access_token_expires,
+        mode="email"  # Mark as email auth token
+    )
+
+    # Log successful login
+    await log_audit_event(
+        event_type="authentication",
+        action="email_login",
+        user_id=user["username"],
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        result="success"
+    )
+
+    return EmailLoginResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user={
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+            "name": user.get("name"),
+            "picture": user.get("picture")
+        }
+    )

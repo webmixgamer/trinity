@@ -7,12 +7,162 @@
     </div>
 
     <!-- Git Not Enabled -->
-    <div v-else-if="!gitStatus?.git_enabled" class="text-center py-8 text-gray-500 dark:text-gray-400">
+    <div v-else-if="!gitStatus?.git_enabled" class="text-center py-8">
       <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
       </svg>
-      <p class="mt-2">Git sync not enabled for this agent</p>
-      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Only GitHub-native agents support git sync</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">Git sync not enabled for this agent</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Push this agent to a GitHub repository to enable sync</p>
+
+      <!-- Initialize Button -->
+      <button
+        @click="showInitializeModal = true"
+        class="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        <svg class="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+        </svg>
+        Initialize GitHub Sync
+      </button>
+    </div>
+
+    <!-- Initialize GitHub Sync Modal -->
+    <div v-if="showInitializeModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="closeInitializeModal"></div>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+              </div>
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+                  Initialize GitHub Sync
+                </h3>
+                <div class="mt-4 space-y-4">
+                  <!-- Error Message -->
+                  <div v-if="initializeError" class="rounded-md bg-red-50 dark:bg-red-900/30 p-4">
+                    <p class="text-sm text-red-800 dark:text-red-300">{{ initializeError }}</p>
+                  </div>
+
+                  <!-- Repository Owner -->
+                  <div>
+                    <label for="repo-owner" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Repository Owner
+                    </label>
+                    <input
+                      type="text"
+                      id="repo-owner"
+                      v-model="repoOwner"
+                      placeholder="your-username"
+                      :disabled="initializing"
+                      class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Your GitHub username or organization name</p>
+                  </div>
+
+                  <!-- Repository Name -->
+                  <div>
+                    <label for="repo-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Repository Name
+                    </label>
+                    <input
+                      type="text"
+                      id="repo-name"
+                      v-model="repoName"
+                      placeholder="my-agent"
+                      :disabled="initializing"
+                      class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Name for the new repository</p>
+                  </div>
+
+                  <!-- Options -->
+                  <div class="flex items-center">
+                    <input
+                      id="create-repo"
+                      type="checkbox"
+                      v-model="createRepo"
+                      :disabled="initializing"
+                      class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label for="create-repo" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                      Create repository if it doesn't exist
+                    </label>
+                  </div>
+
+                  <div v-if="createRepo" class="flex items-center ml-6">
+                    <input
+                      id="private-repo"
+                      type="checkbox"
+                      v-model="privateRepo"
+                      :disabled="initializing"
+                      class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label for="private-repo" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                      Make repository private
+                    </label>
+                  </div>
+
+                  <!-- Info Box -->
+                  <div class="rounded-md bg-blue-50 dark:bg-blue-900/30 p-4">
+                    <div class="flex">
+                      <svg class="h-5 w-5 text-blue-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                      </svg>
+                      <div class="ml-3 flex-1">
+                        <p class="text-xs text-blue-700 dark:text-blue-300">
+                          This will:
+                        </p>
+                        <ul class="mt-1 text-xs text-blue-700 dark:text-blue-300 list-disc list-inside space-y-1">
+                          <li>Initialize git in the agent workspace</li>
+                          <li>Commit the current state</li>
+                          <li>Push to GitHub</li>
+                          <li>Enable bidirectional sync</li>
+                        </ul>
+                        <p class="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                          <strong>Note:</strong> GitHub PAT must be configured in Settings with <code class="bg-blue-100 dark:bg-blue-800 px-1 rounded">repo</code> scope.
+                        </p>
+                        <p class="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                          <strong>Timing:</strong> This may take 10-60 seconds depending on the size of your agent's files.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              type="button"
+              @click="initializeGitHub"
+              :disabled="!repoOwner || !repoName || initializing"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg v-if="initializing" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ initializing ? 'Initializing...' : 'Initialize' }}
+            </button>
+            <button
+              type="button"
+              @click="closeInitializeModal"
+              :disabled="initializing"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Agent Not Running -->
@@ -32,7 +182,7 @@
     </div>
 
     <!-- Git Status Display -->
-    <div v-else>
+    <div v-else-if="gitStatus?.remote_url && gitStatus?.branch">
       <!-- Repository Info Header -->
       <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between">
@@ -172,6 +322,15 @@ const loading = ref(false)
 const gitStatus = ref(null)
 const gitLog = ref(null)
 
+// Initialize GitHub modal state
+const showInitializeModal = ref(false)
+const initializing = ref(false)
+const initializeError = ref(null)
+const repoOwner = ref('')
+const repoName = ref('')
+const createRepo = ref(true)
+const privateRepo = ref(true)
+
 const loadGitStatus = async () => {
   loading.value = true
   try {
@@ -186,6 +345,51 @@ const loadGitStatus = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const initializeGitHub = async () => {
+  if (!repoOwner.value || !repoName.value) return
+
+  initializing.value = true
+  initializeError.value = null
+
+  console.log('[GitPanel] Starting GitHub initialization...')
+
+  try {
+    const response = await agentsStore.initializeGitHub(props.agentName, {
+      repo_owner: repoOwner.value,
+      repo_name: repoName.value,
+      create_repo: createRepo.value,
+      private: privateRepo.value
+    })
+
+    console.log('[GitPanel] GitHub initialization successful:', response)
+
+    // Success! Reload git status and close modal
+    console.log('[GitPanel] Reloading git status...')
+    await loadGitStatus()
+
+    console.log('[GitPanel] Closing modal...')
+    showInitializeModal.value = false
+
+    // Clear form
+    repoOwner.value = ''
+    repoName.value = ''
+  } catch (error) {
+    console.error('[GitPanel] GitHub initialization failed:', error)
+    initializeError.value = error.response?.data?.detail || error.message || 'Failed to initialize GitHub sync'
+  } finally {
+    console.log('[GitPanel] Initialization complete, setting initializing = false')
+    initializing.value = false
+  }
+}
+
+const closeInitializeModal = () => {
+  if (initializing.value) return
+  showInitializeModal.value = false
+  initializeError.value = null
+  repoOwner.value = ''
+  repoName.value = ''
 }
 
 const formatDate = (dateString) => {

@@ -1,17 +1,42 @@
 # Feature: Local Agent Deployment via MCP
 
+> **Updated**: 2025-12-27 - Refactored to service layer architecture. Deploy logic moved to `services/agent_service/deploy.py`.
+
 ## Overview
 
-Deploy Trinity-compatible local Claude Code agents to Trinity platform with a single MCP command. The tool packages the agent directory, auto-imports credentials from `.env`, and deploys with versioning support.
+Deploy Trinity-compatible local Claude Code agents to a remote Trinity platform with a single MCP command. The **local agent** (Claude Code on your machine) packages the directory into a tar.gz archive and sends it to the remote Trinity backend for deployment.
+
+**Key Architecture Point**: The MCP server runs remotely and cannot access your local filesystem. Therefore, the **calling agent** must package the archive locally before invoking the MCP tool.
 
 ## User Story
 
-As a developer working with a Trinity-compatible local agent, I want to deploy it to Trinity with one command so I can run it on the remote platform without any manual setup.
+As a developer working with a Trinity-compatible local agent, I want to deploy it to a remote Trinity instance with one command so I can run it on the platform without manual file transfer.
 
 ## Entry Points
 
 - **MCP Tool**: `deploy_local_agent` via Trinity MCP server
 - **API**: `POST /api/agents/deploy-local`
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────┐                     ┌─────────────────────────────┐
+│  Your Local Machine                 │                     │  Remote Trinity Server      │
+│                                     │                     │                             │
+│  Claude Code (local agent)          │     HTTP POST       │  MCP Server                 │
+│  1. tar -czf archive.tar.gz ...     │  ──────────────►    │  deploy_local_agent tool    │
+│  2. base64 archive.tar.gz           │   archive +         │         │                   │
+│  3. Read .env for credentials       │   credentials       │         ▼                   │
+│  4. Call deploy_local_agent         │                     │  Backend API                │
+│                                     │                     │  /api/agents/deploy-local   │
+│  /home/you/my-agent/                │                     │         │                   │
+│  ├── template.yaml                  │                     │         ▼                   │
+│  ├── CLAUDE.md                      │                     │  Extract, validate, deploy  │
+│  └── .env                           │                     │  Agent container created    │
+└─────────────────────────────────────┘                     └─────────────────────────────┘
+```
 
 ---
 
@@ -24,28 +49,91 @@ As a developer working with a Trinity-compatible local agent, I want to deploy i
 **Parameters**:
 ```typescript
 {
-  path: string,        // Absolute path to local agent directory
-  name?: string,       // Override agent name (defaults to template.yaml name)
-  include_env?: boolean // Include .env credentials (default: true)
+  archive: string,                    // Base64-encoded tar.gz archive (REQUIRED)
+  credentials?: Record<string, string>, // Key-value pairs from .env (optional)
+  name?: string                       // Override agent name (optional)
 }
 ```
 
-**Flow**:
-1. Validate directory exists
-2. Check template.yaml exists (fail fast if not Trinity-compatible)
-3. Read `.env` file if `include_env=true`
-4. Create tar.gz archive (excludes .git, node_modules, __pycache__, .venv, .env)
-5. Base64 encode archive
-6. POST to `/api/agents/deploy-local`
-7. Return deployment result
+**Description**: The tool receives a pre-packaged archive from the calling agent and forwards it to the backend. It does NOT access the local filesystem - that's the calling agent's responsibility.
+
+---
+
+## Calling Agent Workflow
+
+The local Claude Code agent must perform these steps before calling `deploy_local_agent`:
+
+### Step 1: Create tar.gz Archive
+
+```bash
+# Package the agent directory, excluding unnecessary files
+tar -czf /tmp/agent-deploy.tar.gz \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='__pycache__' \
+  --exclude='.venv' \
+  --exclude='venv' \
+  --exclude='.env' \
+  --exclude='*.pyc' \
+  --exclude='.DS_Store' \
+  -C /path/to/parent agent-directory-name
+```
+
+### Step 2: Base64 Encode
+
+```bash
+# macOS
+base64 -i /tmp/agent-deploy.tar.gz > /tmp/agent-deploy.b64
+
+# Linux
+base64 /tmp/agent-deploy.tar.gz > /tmp/agent-deploy.b64
+```
+
+### Step 3: Read Credentials (Optional)
+
+```bash
+# Read .env file and parse KEY=VALUE pairs
+cat /path/to/agent/.env
+```
+
+### Step 4: Call MCP Tool
+
+The agent then calls `deploy_local_agent` with:
+- `archive`: Contents of the base64 file
+- `credentials`: Parsed key-value pairs from .env
+- `name`: Optional name override
 
 ---
 
 ## Backend Layer
 
+### Architecture (Post-Refactoring)
+
+The local agent deployment uses a **thin router + service layer** architecture:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Router | `src/backend/routers/agents.py:191-204` | Endpoint definition |
+| Service | `src/backend/services/agent_service/deploy.py` (306 lines) | Deployment business logic |
+
 ### Endpoint: POST /api/agents/deploy-local
 
-**Location**: `src/backend/routers/agents.py:856`
+**Router**: `src/backend/routers/agents.py:191-204`
+**Service**: `src/backend/services/agent_service/deploy.py:40-307`
+
+```python
+# Router
+@router.post("/deploy-local")
+async def deploy_local_agent(body: DeployLocalRequest, request: Request, current_user: User = Depends(get_current_user)):
+    """Deploy a Trinity-compatible local agent."""
+    return await deploy_local_agent_logic(
+        body=body,
+        current_user=current_user,
+        request=request,
+        create_agent_fn=create_agent_internal,
+        credential_manager=credential_manager
+    )
+```
 
 **Request Model** (`src/backend/models.py`):
 ```python
@@ -67,97 +155,42 @@ class DeployLocalResponse(BaseModel):
     code: Optional[str]                       # Error code
 ```
 
-### Deployment Flow
+### Deployment Flow (`deploy.py:40-307`)
 
-1. **Decode & Validate**
+1. **Decode & Validate** (lines 70-99)
    - Decode base64 archive
    - Check size limit (50MB max)
    - Check credentials count (100 max)
 
-2. **Extract Archive**
+2. **Extract Archive** (lines 101-134)
    - Extract to temp directory
    - Security: Check for path traversal (`..` in paths)
    - Check file count (1000 max)
 
-3. **Trinity-Compatible Validation**
+3. **Trinity-Compatible Validation** (lines 143-152)
    - `is_trinity_compatible()` in `services/template_service.py`
    - Requires template.yaml with `name` and `resources` fields
 
-4. **Version Handling**
-   - `get_next_version_name()` finds next available version
-   - Pattern: `my-agent` → `my-agent-2` → `my-agent-3`
+4. **Version Handling** (lines 166-181)
+   - `get_next_version_name()` in `helpers.py` finds next available version
+   - Pattern: `my-agent` -> `my-agent-2` -> `my-agent-3`
    - Stops previous version if running
 
-5. **Credential Import**
+5. **Credential Import** (lines 183-194)
    - `import_credential_with_conflict_resolution()` in `credentials.py`
    - Same name + same value = reuse
    - Same name + different value = rename with suffix (`_2`, `_3`)
    - New name = create
 
-6. **Template Copy**
+6. **Template Copy** (lines 196-218)
    - Copy to `config/agent-templates/{version_name}/`
 
-7. **Agent Creation**
-   - Call `create_agent_internal()` with local template
+7. **Agent Creation** (lines 220-233)
+   - Call `create_agent_fn()` (injected `create_agent_internal`) with local template
 
-8. **Credential Hot-Reload**
+8. **Credential Hot-Reload** (lines 235-251)
    - POST credentials to agent's internal API
    - Agent writes `.env` and regenerates `.mcp.json`
-
----
-
-## Supporting Functions
-
-### Template Validation
-
-**Location**: `src/backend/services/template_service.py:309`
-
-```python
-def is_trinity_compatible(path: Path) -> Tuple[bool, Optional[str], Optional[dict]]:
-    """
-    Check if directory is Trinity-compatible.
-
-    Requirements:
-    - template.yaml exists
-    - Has 'name' field
-    - Has 'resources' field (dict)
-
-    Returns: (is_valid, error_msg, template_data)
-    """
-```
-
-### Credential Import
-
-**Location**: `src/backend/credentials.py:367`
-
-```python
-def import_credential_with_conflict_resolution(
-    self, key: str, value: str, user_id: str
-) -> Dict[str, str]:
-    """
-    Import credential with conflict resolution.
-
-    Returns:
-    - {"status": "created", "name": "API_KEY"}
-    - {"status": "reused", "name": "API_KEY"}
-    - {"status": "renamed", "name": "API_KEY_2", "original": "API_KEY"}
-    """
-```
-
-### Versioning Logic
-
-**Location**: `src/backend/routers/agents.py:766`
-
-```python
-def get_agents_by_prefix(prefix: str) -> List[AgentStatus]:
-    """Get all agents matching base name (my-agent, my-agent-2, etc.)."""
-
-def get_next_version_name(base_name: str) -> str:
-    """Get next available version: my-agent -> my-agent-2 -> my-agent-3."""
-
-def get_latest_version(base_name: str) -> Optional[AgentStatus]:
-    """Get most recent version of an agent."""
-```
 
 ---
 
@@ -188,7 +221,7 @@ def get_latest_version(base_name: str) -> Optional[AgentStatus]:
 
 1. **Path Traversal**: Archive paths checked for `..` and absolute paths
 2. **Temp Cleanup**: Temp directory always cleaned up in finally block
-3. **Credential Handling**: Credentials not included in archive, sent separately
+3. **Credential Handling**: Credentials sent separately from archive, not stored in archive
 4. **Auth Required**: Uses standard MCP API key authentication
 5. **Audit Logging**: Deploy events logged with user, agent name, archive size
 
@@ -197,60 +230,140 @@ def get_latest_version(base_name: str) -> Optional[AgentStatus]:
 ## Testing
 
 ### Prerequisites
-- Trinity backend running
-- MCP server running
-- Valid MCP API key configured
+- Trinity backend running (local or remote)
+- MCP server running and accessible
+- Valid MCP API key configured in Claude Code
+- Local agent directory with valid template.yaml
 
 ### Test Steps
 
-#### 1. Create Test Agent
+#### 1. Create Test Agent Directory
 ```bash
-mkdir /tmp/test-agent
-cat > /tmp/test-agent/template.yaml << EOF
-name: test-agent
-display_name: Test Agent
+mkdir -p /tmp/test-deploy-agent
+cat > /tmp/test-deploy-agent/template.yaml << 'EOF'
+name: test-deploy
+display_name: Test Deploy Agent
+description: Testing local agent deployment
 resources:
   cpu: "2"
   memory: "4g"
 EOF
-echo "# Test Agent" > /tmp/test-agent/CLAUDE.md
-echo "TEST_API_KEY=test123" > /tmp/test-agent/.env
+
+echo "# Test Deploy Agent" > /tmp/test-deploy-agent/CLAUDE.md
+echo "TEST_API_KEY=test-value-123" > /tmp/test-deploy-agent/.env
 ```
 
-#### 2. Deploy via MCP
-From Claude Code with Trinity MCP configured:
+#### 2. Package and Deploy via Claude Code
+
+In Claude Code with Trinity MCP configured, ask:
+
 ```
-Deploy my local agent at /tmp/test-agent to Trinity
+Package and deploy my local agent at /tmp/test-deploy-agent to Trinity.
+
+Steps:
+1. Create a tar.gz archive of the directory (exclude .git, node_modules, .env)
+2. Base64 encode the archive
+3. Read the .env file for credentials
+4. Call deploy_local_agent with the archive and credentials
 ```
 
-**Expected**:
-- Agent "test-agent" created and running
+**Expected**: Claude Code will:
+1. Run `tar` command to create archive
+2. Run `base64` to encode it
+3. Parse .env file
+4. Call the MCP tool with the data
+
+**Verify**:
+- Agent "test-deploy" created and running in Trinity
 - Credential TEST_API_KEY imported
 
-#### 3. Deploy Again (Versioning)
+#### 3. Deploy Again (Versioning Test)
 ```
-Deploy my local agent at /tmp/test-agent to Trinity
+Deploy my local agent at /tmp/test-deploy-agent to Trinity again
 ```
 
 **Expected**:
-- New agent "test-agent-2" created
-- Previous "test-agent" stopped
+- New agent "test-deploy-2" created
+- Previous "test-deploy" stopped
 
-#### 4. Test Not Compatible
+#### 4. Test Invalid Archive
+```
+Call deploy_local_agent with archive="not-valid-base64!"
+```
+
+**Expected**: Error "Invalid archive format"
+
+#### 5. Test Missing Template
 ```bash
-rm /tmp/test-agent/template.yaml
-```
-```
-Deploy my local agent at /tmp/test-agent to Trinity
+rm /tmp/test-deploy-agent/template.yaml
+# Then try to deploy
 ```
 
-**Expected**: Error "Not Trinity-compatible: missing template.yaml"
+**Expected**: Error "NOT_TRINITY_COMPATIBLE"
 
 ### Edge Cases
 - [ ] Archive larger than 50MB → ARCHIVE_TOO_LARGE
 - [ ] More than 1000 files → TOO_MANY_FILES
 - [ ] Path traversal in archive → INVALID_ARCHIVE
 - [ ] Same credential with different value → renamed with suffix
+
+### Cleanup
+```bash
+rm -rf /tmp/test-deploy-agent
+rm -f /tmp/agent-deploy.tar.gz /tmp/agent-deploy.b64
+```
+
+---
+
+## Example: Full Deployment Script
+
+For reference, here's a complete bash script a local agent might execute:
+
+```bash
+#!/bin/bash
+# deploy-to-trinity.sh - Package and prepare for MCP deployment
+
+AGENT_DIR="$1"
+if [ -z "$AGENT_DIR" ]; then
+  echo "Usage: deploy-to-trinity.sh /path/to/agent"
+  exit 1
+fi
+
+# Validate template.yaml exists
+if [ ! -f "$AGENT_DIR/template.yaml" ]; then
+  echo "Error: Not Trinity-compatible - missing template.yaml"
+  exit 1
+fi
+
+# Create archive
+ARCHIVE="/tmp/trinity-deploy-$$.tar.gz"
+tar -czf "$ARCHIVE" \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='__pycache__' \
+  --exclude='.venv' \
+  --exclude='.env' \
+  -C "$(dirname "$AGENT_DIR")" "$(basename "$AGENT_DIR")"
+
+# Base64 encode
+ARCHIVE_B64=$(base64 -i "$ARCHIVE" 2>/dev/null || base64 "$ARCHIVE")
+
+# Read credentials from .env
+CREDENTIALS="{}"
+if [ -f "$AGENT_DIR/.env" ]; then
+  CREDENTIALS=$(grep -v '^#' "$AGENT_DIR/.env" | grep '=' | \
+    awk -F'=' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); gsub(/^[ \t]+|[ \t]+$/, "", $2);
+                printf "\"%s\": \"%s\", ", $1, $2}' | \
+    sed 's/, $//' | sed 's/^/{/' | sed 's/$/}/')
+fi
+
+echo "Archive size: $(wc -c < "$ARCHIVE") bytes"
+echo "Credentials: $CREDENTIALS"
+echo "Ready for deploy_local_agent MCP call"
+
+# Cleanup
+rm -f "$ARCHIVE"
+```
 
 ---
 
@@ -263,4 +376,6 @@ Deploy my local agent at /tmp/test-agent to Trinity
 ---
 
 **Implemented**: 2025-12-21
-**Status**: ✅ Working
+**Updated**: 2025-12-27 - Service layer refactoring: Deploy logic moved to `services/agent_service/deploy.py`
+**Updated**: 2025-12-24 - Changed from local path to archive-based deployment
+**Status**: Working

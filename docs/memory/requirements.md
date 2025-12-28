@@ -823,51 +823,19 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - [ ] Horizontal scaling
 
 #### 10.4 Agent Vector Memory (Chroma)
-- **Status**: ✅ Implemented (2025-12-13)
-- **Priority**: Medium
-- **Description**: Per-agent Chroma vector database with pre-configured embeddings for semantic memory storage
-- **Architecture**:
-  - Chroma DB with persistent storage at `/home/developer/vector-store/`
-  - all-MiniLM-L6-v2 embedding model (384 dimensions, ~80MB)
-  - Model pre-loaded in base image (no download on first use)
-  - Documentation injected at `.trinity/vector-memory.md`
-- **Acceptance Criteria**:
-  - [x] Chroma and sentence-transformers installed in base image
-  - [x] Embedding model pre-cached at image build time
-  - [x] Vector store directory created during Trinity injection
-  - [x] Usage documentation copied to `.trinity/vector-memory.md`
-  - [x] CLAUDE.md updated with vector memory section
-  - [x] Status check includes vector memory state
-  - [x] Data persists across agent restarts
-  - [x] Isolated per agent (not shared by default)
-- **Usage**:
-  ```python
-  import chromadb
-  from chromadb.utils import embedding_functions
-
-  client = chromadb.PersistentClient(path="/home/developer/vector-store")
-  ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-  collection = client.get_or_create_collection("memory", embedding_function=ef)
-  ```
+- **Status**: ❌ REMOVED (2025-12-24)
+- **Reason**: Development workflow parity - agents should be self-contained. Templates that need vector memory should include it themselves.
+- **What was removed**:
+  - chromadb, sentence-transformers, chroma-mcp from base image (~800MB savings)
+  - Vector store directory creation during Trinity injection
+  - Chroma MCP config injection into .mcp.json
+  - vector-memory.md documentation file
+  - Vector memory section in injected CLAUDE.md
+- **Alternative**: Templates can include vector memory dependencies and configuration. See reference templates for examples.
 
 #### 10.5 Chroma MCP Server Integration
-- **Status**: ✅ Implemented (2025-12-13)
-- **Priority**: High
-- **Depends On**: 10.4 (Agent Vector Memory)
-- **Description**: Auto-configure official chroma-mcp server in agent containers for MCP-based vector operations
-- **Architecture**:
-  - chroma-mcp package installed in base image
-  - MCP server auto-injected into `.mcp.json` during Trinity injection
-  - Uses persistent client pointing to `/home/developer/vector-store/`
-  - 12 MCP tools available for collection and document operations
-- **Acceptance Criteria**:
-  - [x] `chroma-mcp` package installed in base image
-  - [x] MCP server config injected during Trinity injection
-  - [x] Agents can use `mcp__chroma__*` tools without setup
-  - [x] Data persists at `/home/developer/vector-store/`
-  - [x] Documentation updated with MCP tool examples
-  - [x] Backward compatible (Python API still works)
-  - [x] Status check includes chroma_mcp_configured field
+- **Status**: ❌ REMOVED (2025-12-24)
+- **Reason**: Removed along with 10.4 - platform should not inject agent capabilities
 
 #### 10.6 System-Wide Trinity Prompt
 - **Status**: ✅ Implemented (2025-12-14)
@@ -1246,10 +1214,345 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   1. Fresh install: Delete `setup_completed` setting from database
   2. Navigate to any page, verify redirect to /setup
   3. Set password, verify redirect to /login
-  4. Login with new password
-  5. Navigate to Settings, add Anthropic API key
-  6. Test key, verify validation works
-  7. Save key, create agent, verify agent uses stored key
+
+---
+
+#### 11.5 Email-Based Authentication (Phase 12.4)
+- **Status**: ✅ Implemented (2025-12-26)
+- **Priority**: High
+- **Description**: Passwordless email authentication as the new default login method with admin-managed whitelist
+- **Features**:
+  - **Passwordless Login**: 2-step email verification process (request code → verify code)
+  - **Email Whitelist**: Admin-managed whitelist controls who can login
+  - **Auto-Whitelist**: Sharing an agent automatically adds recipient email to whitelist
+  - **Security**: Rate limiting, code expiration, email enumeration prevention, audit logging
+  - **Email Providers**: Support for console, SMTP, SendGrid, Resend
+  - **Configuration**: Enabled by default, can be disabled via environment or system settings
+- **Backend Changes**:
+  | Change | Description |
+  |--------|-------------|
+  | `database.py` | Added `email_whitelist` and `email_login_codes` tables with indexes |
+  | `db/email_auth.py` | New `EmailAuthOperations` class with whitelist and code management |
+  | `db_models.py` | Added models: `EmailWhitelistEntry`, `EmailLoginRequest`, `EmailLoginVerify`, `EmailLoginResponse` |
+  | `config.py` | Added `EMAIL_AUTH_ENABLED=true` (default), can override via system_settings |
+  | `routers/auth.py` | Added `/api/auth/email/request` and `/api/auth/email/verify` endpoints |
+  | `routers/settings.py` | Added whitelist endpoints: GET/POST/DELETE `/api/settings/email-whitelist` |
+  | `routers/sharing.py` | Auto-add shared email to whitelist when agent is shared |
+  | `services/email_service.py` | Used for sending 6-digit verification codes |
+- **Frontend Changes**:
+  | Component | Description |
+  |-----------|-------------|
+  | `stores/auth.js` | Added `emailAuthEnabled` state, `requestEmailCode()`, `verifyEmailCode()` methods |
+  | `views/Login.vue` | Email auth shown by default with 2-step flow and countdown timer |
+  | `views/Settings.vue` | New Email Whitelist section with table view and add/remove functionality |
+- **API Endpoints**:
+  | Endpoint | Method | Auth | Description |
+  |----------|--------|------|-------------|
+  | `/api/auth/mode` | GET | No | Returns `email_auth_enabled` flag |
+  | `/api/auth/email/request` | POST | No | Request 6-digit code via email |
+  | `/api/auth/email/verify` | POST | No | Verify code and get JWT token |
+  | `/api/settings/email-whitelist` | GET | Admin | List all whitelisted emails |
+  | `/api/settings/email-whitelist` | POST | Admin | Add email to whitelist |
+  | `/api/settings/email-whitelist/{email}` | DELETE | Admin | Remove email from whitelist |
+- **Security Features**:
+  - **Rate Limiting**: 3 code requests per 10 minutes per email
+  - **Code Expiration**: 10-minute lifetime for verification codes
+  - **Single-Use Codes**: Codes marked as verified after use
+  - **Email Enumeration Prevention**: Generic success messages don't reveal whitelist status
+  - **Audit Logging**: Complete event trail for all authentication operations
+  - **Automatic User Creation**: Users created on first successful login
+- **Database Schema**:
+  ```sql
+  email_whitelist:
+    - id (INTEGER PRIMARY KEY)
+    - email (TEXT UNIQUE NOT NULL)
+    - added_by (TEXT NOT NULL, FK to users.id)
+    - added_at (TEXT NOT NULL)
+    - source (TEXT NOT NULL: "manual" | "agent_sharing")
+
+  email_login_codes:
+    - id (TEXT PRIMARY KEY)
+    - email (TEXT NOT NULL)
+    - code (TEXT NOT NULL, 6 digits)
+    - created_at (TEXT NOT NULL)
+    - expires_at (TEXT NOT NULL)
+    - verified (INTEGER DEFAULT 0)
+    - used_at (TEXT)
+  ```
+- **Configuration**:
+  ```bash
+  # Environment variable (default: true)
+  EMAIL_AUTH_ENABLED=true
+
+  # Runtime override via system_settings table:
+  # key: "email_auth_enabled", value: "true"|"false"
+
+  # Email provider configuration (existing):
+  EMAIL_PROVIDER=console|smtp|sendgrid|resend
+  SMTP_HOST=smtp.example.com
+  SMTP_PORT=587
+  SMTP_USER=user@example.com
+  SMTP_PASSWORD=password
+  SMTP_FROM=noreply@trinity.example.com
+  SENDGRID_API_KEY=SG.xxx
+  RESEND_API_KEY=re_xxx
+  ```
+- **User Flow**:
+  1. User visits login page
+  2. Backend returns `email_auth_enabled: true` from `/api/auth/mode`
+  3. Frontend shows email input form
+  4. User enters email and clicks "Send Verification Code"
+  5. Backend checks whitelist, generates 6-digit code, sends email
+  6. Frontend shows code input form with countdown timer
+  7. User enters code from email
+  8. Backend verifies code, creates/gets user, returns JWT token
+  9. User is authenticated and redirected to dashboard
+- **Auto-Whitelist Flow**:
+  1. Admin shares agent with `user@example.com`
+  2. Backend calls `db.add_to_whitelist(email, source="agent_sharing")`
+  3. Email automatically added to whitelist
+  4. Recipient can now login via email authentication
+  5. Whitelist entry shows "Auto (Agent Sharing)" badge in Settings
+- **Acceptance Criteria**:
+  - [x] Email auth shown as default login method
+  - [x] 2-step verification flow (request → verify)
+  - [x] Countdown timer shows code expiration
+  - [x] Rate limiting enforced (3 requests/10 min)
+  - [x] Only whitelisted emails can login
+  - [x] Admin can manage whitelist via Settings page
+  - [x] Sharing agent auto-adds email to whitelist
+  - [x] Source tracking ("manual" vs "agent_sharing")
+  - [x] Generic error messages prevent email enumeration
+  - [x] Audit logging for all auth operations
+  - [x] Fallback to Dev mode and Auth0 if configured
+  - [x] Supports multiple email providers
+- **Testing Scenarios**:
+  1. **Email Login**: Request code → verify code → login successful
+  2. **Rate Limiting**: 4th request within 10 minutes rejected
+  3. **Code Expiration**: Code expires after 10 minutes
+  4. **Single-Use**: Code cannot be reused after verification
+  5. **Whitelist Check**: Non-whitelisted email receives generic message
+  6. **Auto-Whitelist**: Share agent → recipient auto-whitelisted
+  7. **Admin Whitelist**: Add/remove emails via Settings page
+  8. **Email Providers**: Test with console, SMTP, SendGrid, Resend
+  9. **Audit Logs**: All operations logged with details
+  10. **Fallback Methods**: Dev mode and Auth0 still accessible
+- **Documentation**:
+  - Feature flow: `docs/memory/feature-flows/email-authentication.md` (1200+ lines)
+  - Architecture, security, testing, troubleshooting
+- **Related Requirements**:
+  - Uses email service from Req 11.3 (Public Agent Links)
+  - Uses system_settings from Req 11.1 (System-Wide Trinity Prompt)
+  - Integrates with agent sharing from Req 9.3 (Agent Sharing)
+- **Notes**:
+  - Default authentication method (replaces Auth0 as primary)
+  - Auth0 and Dev mode still available as fallback options
+  - Email whitelist provides fine-grained access control
+  - Auto-whitelist enables seamless collaboration via agent sharing
+
+---
+
+#### 11.6 Web Terminal for System Agent
+- **Status**: ✅ Implemented (2025-12-25)
+- **Priority**: High
+- **Description**: Browser-based interactive terminal for System Agent with full Claude Code TUI support
+- **Design Doc**: `docs/requirements/WEB_TERMINAL_SYSTEM_AGENT.md`
+- **Architecture**:
+  - Frontend: xterm.js v5.5.0 terminal emulator in browser
+  - Backend: WebSocket endpoint with PTY forwarding via Docker exec
+  - Transport: Bidirectional binary WebSocket frames
+  - Security: Admin-only, JWT auth, no SSH port exposure
+- **Key Features**:
+  - Full Claude Code TUI preserved (colors, prompts, shortcuts, streaming)
+  - Terminal resize support (SIGWINCH forwarding)
+  - Mode toggle: Claude Code or Bash shell
+  - Session audit logging (start/end with duration)
+  - Session limit (1 terminal per user)
+- **Acceptance Criteria**:
+  - [x] "Open Terminal" button on System Agent page
+  - [x] Terminal opens in modal/panel with xterm.js
+  - [x] Full Claude Code functionality (test `/help`, Ctrl+C, colors)
+  - [x] Admin-only access (non-admins see disabled/hidden button)
+  - [x] Terminal resize follows browser window
+  - [x] Audit log entries for session start/end
+  - [x] Clean PTY termination on disconnect
+  - [x] Mode toggle (Claude Code / Bash)
+- **Frontend Components**:
+  - `SystemAgentTerminal.vue` - xterm.js terminal with WebSocket connection
+  - Modal integration in `SystemAgent.vue` with Teleport
+- **Backend Components**:
+  - WebSocket endpoint: `WS /api/system-agent/terminal?mode=claude|bash`
+  - PTY allocation via Docker SDK `exec_create(tty=True)`
+  - Bidirectional socket forwarding with `select()`
+  - `decode_token()` helper for WebSocket auth
+- **Frontend Dependencies**:
+  - `@xterm/xterm` ^5.5.0
+  - `@xterm/addon-fit` ^0.10.0
+  - `@xterm/addon-web-links` ^0.11.0
+- **Backend**: Uses existing `docker==7.1.0` with `exec_create(tty=True)` and `exec_start(socket=True)`
+- **Testing**:
+  1. Login as admin, navigate to System Agent page
+  2. Click "Terminal" button, verify terminal opens
+  3. Type commands, verify output displays correctly
+  4. Test Claude Code mode (`/help`, Ctrl+C, colors)
+  5. Test Bash mode (basic shell commands)
+  6. Resize browser window, verify terminal resizes
+  7. Close modal, verify session terminates cleanly
+  8. Non-admin users should not see Terminal button
+
+#### 11.7 Per-Agent API Key Control
+
+- **Status**: Complete (2025-12-26)
+- **Priority**: High
+- **Description**: Allow agents to use either platform API key or user's own Claude subscription via terminal authentication
+- **Acceptance Criteria**:
+  - [x] Database: `use_platform_api_key` column in agent_ownership (default: true)
+  - [x] API endpoints: GET/PUT `/api/agents/{name}/api-key-setting`
+  - [x] Container recreation on start if setting changed (env var add/remove)
+  - [x] UI toggle in Terminal tab when agent is stopped
+  - [x] User can select "Authenticate in Terminal" to use own subscription
+  - [x] Agent starts without ANTHROPIC_API_KEY when using terminal auth
+  - [x] User runs `claude login` in terminal to authenticate
+- **Files**:
+  | File | Purpose |
+  |------|---------|
+  | `database.py` | Migration for use_platform_api_key column |
+  | `db/agents.py` | get_use_platform_api_key, set_use_platform_api_key methods |
+  | `routers/agents.py` | API endpoints, container recreation logic |
+  | `agents.js` | Store methods for API key setting |
+  | `AgentDetail.vue` | Radio toggle UI in Terminal tab |
+- **Testing**:
+  1. Create new agent, verify uses platform key by default
+  2. Go to Terminal tab when stopped
+  3. Select "Authenticate in Terminal", verify toast shows restart required
+  4. Start agent, open terminal
+  5. Run `claude login` or verify Claude prompts for auth
+  6. Restart agent, verify auth persists (stored in persistent volume)
+  7. Switch back to "Use Platform API Key", restart, verify platform key used
+
+---
+
+### 12. Content Management & File Operations
+
+#### 12.1 Content Folder Convention
+- **Status**: ✅ Implemented (2025-12-27)
+- **Priority**: High
+- **Description**: Establish convention for separating generated content (videos, audio, exports) from code/config to prevent large files in Git repositories while preserving them across container rebuilds
+- **Convention**:
+  ```
+  /home/developer/
+  ├── [workspace files]     # Code, config, memory (synced to Git)
+  ├── content/              # Generated assets (NOT synced to Git)
+  │   ├── videos/
+  │   ├── audio/
+  │   ├── images/
+  │   └── exports/
+  └── .gitignore            # Includes: content/
+  ```
+- **Key Properties**:
+  - `content/` lives on same persistent volume → survives container restarts ✅
+  - `content/` in `.gitignore` → NOT pushed to GitHub ✅
+  - Git sync respects `.gitignore` → automatic exclusion ✅
+  - Templates can define their own content subdirectory structure
+- **Acceptance Criteria**:
+  - [x] Startup.sh adds `content/` to `.gitignore` if not present
+  - [x] Startup.sh creates `content/` directory structure
+  - [x] Documentation updated: TRINITY_COMPATIBLE_AGENT_GUIDE.md
+  - [ ] Git sync shows "excluded" indicator for `content/` in UI (future)
+  - [ ] Example templates demonstrate content folder usage (future)
+- **Implementation**:
+  - `docker/base-image/startup.sh` creates directories and updates `.gitignore`
+  - Runs on every agent startup (idempotent)
+  - Existing agents get the structure on next restart
+- **Testing**:
+  1. Rebuild base image: `./scripts/deploy/build-base-image.sh`
+  2. Restart any agent
+  3. Verify `content/` directory exists with subdirectories
+  4. Verify `.gitignore` contains `content/`
+  5. Run git sync, verify `content/` files NOT pushed to GitHub
+
+#### 12.2 File Manager Page
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Dedicated full-page file manager at `/files` for browsing, previewing, and managing files across all agents with two-panel layout (tree + preview)
+- **UI Design**:
+  ```
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  File Manager                              [Agent: ruby-agent ▼]     │
+  ├────────────────────────┬─────────────────────────────────────────────┤
+  │                        │                                              │
+  │  📁 workspace          │                                              │
+  │    📁 scripts          │        ┌─────────────────────────┐           │
+  │    📄 CLAUDE.md        │        │                         │           │
+  │                        │        │   [Video Preview]       │           │
+  │  📁 content            │        │   product-demo.mp4      │           │
+  │    📁 videos           │        │                         │           │
+  │      🎬 product-demo ▶ │        │   ▶ 00:00 / 02:34       │           │
+  │      🎬 tutorial.mp4   │        │                         │           │
+  │    📁 audio            │        └─────────────────────────┘           │
+  │                        │                                              │
+  │                        │        Size: 45.2 MB | Modified: 2h ago     │
+  │                        │        [Download] [Delete]                   │
+  │                        │                                              │
+  ├────────────────────────┴─────────────────────────────────────────────┤
+  │  [New Folder] [Delete Selected] [Refresh]           12 files, 892 MB │
+  └──────────────────────────────────────────────────────────────────────┘
+  ```
+- **Preview Support**:
+  | Type | Extensions | Preview Method |
+  |------|------------|----------------|
+  | Images | jpg, png, gif, webp, svg | `<img>` tag |
+  | Video | mp4, webm, mov | `<video>` tag with controls |
+  | Audio | mp3, wav, ogg, m4a | `<audio>` tag with controls |
+  | Text/Code | txt, md, py, js, json, yaml | Syntax highlighted code block |
+  | PDF | pdf | Browser embed or PDF.js |
+  | Other | * | File info card + download button |
+- **Backend Endpoints**:
+  | Endpoint | Method | Description |
+  |----------|--------|-------------|
+  | `/api/agents/{name}/files` | GET | List files (existing) |
+  | `/api/agents/{name}/files/download` | GET | Download file (existing) |
+  | `/api/agents/{name}/files/preview` | GET | Get file with correct MIME type for preview |
+  | `/api/agents/{name}/files` | DELETE | Delete file or directory |
+  | `/api/agents/{name}/files/mkdir` | POST | Create new directory |
+- **Acceptance Criteria**:
+  - [ ] New route `/files` accessible from NavBar
+  - [ ] Agent selector dropdown (shows running agents)
+  - [ ] Two-panel layout: resizable tree (left) + preview (right)
+  - [ ] Tree view with expand/collapse, file icons by type
+  - [ ] Single-click selects file, shows preview in right panel
+  - [ ] Preview renders correctly for: images, video, audio, text, PDF
+  - [ ] Download button for any file
+  - [ ] Delete file with confirmation dialog
+  - [ ] Delete folder (recursive) with confirmation dialog
+  - [ ] Create new folder with name input
+  - [ ] File count and total size in footer
+  - [ ] Error states: agent not running, empty folder, preview failed
+  - [ ] Audit logging for delete operations
+- **Security**:
+  - Protected files warning: CLAUDE.md, .trinity/, .mcp.json, .env
+  - Confirmation required for folder deletion
+  - Only workspace paths allowed (existing security)
+  - Owner/shared access control (existing)
+- **Future Enhancements** (not in v1):
+  - File upload
+  - Rename file/folder
+  - Multi-select with bulk operations
+  - Drag-and-drop move
+  - File search across all agents
+- **Testing**:
+  1. Navigate to `/files`, verify page loads
+  2. Select agent from dropdown, verify tree loads
+  3. Click image file, verify preview displays
+  4. Click video file, verify player works
+  5. Click text file, verify syntax highlighting
+  6. Click Download, verify file downloads
+  7. Click Delete on file, confirm, verify removed
+  8. Click Delete on folder, confirm, verify recursive delete
+  9. Create new folder, verify it appears in tree
+  10. Try to delete CLAUDE.md, verify warning shown
+  11. Switch agents, verify tree updates
+  12. Test with agent not running, verify error message
 
 ---
 

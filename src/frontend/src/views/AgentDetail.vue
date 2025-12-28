@@ -196,6 +196,17 @@
                   Info
                 </button>
                 <button
+                  @click="activeTab = 'tasks'"
+                  :class="[
+                    'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
+                    activeTab === 'tasks'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                  ]"
+                >
+                  Tasks
+                </button>
+                <button
                   @click="activeTab = 'metrics'"
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
@@ -208,15 +219,15 @@
                   Metrics
                 </button>
                 <button
-                  @click="activeTab = 'chat'"
+                  @click="activeTab = 'terminal'"
                   :class="[
                     'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
-                    activeTab === 'chat'
+                    activeTab === 'terminal'
                       ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                       : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                   ]"
                 >
-                  Chat
+                  Terminal
                 </button>
                 <button
                   @click="activeTab = 'logs'"
@@ -277,17 +288,6 @@
                   ]"
                 >
                   Schedules
-                </button>
-                <button
-                  @click="activeTab = 'executions'"
-                  :class="[
-                    'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
-                    activeTab === 'executions'
-                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                  ]"
-                >
-                  Executions
                 </button>
                 <button
                   v-if="hasGitSync"
@@ -351,155 +351,114 @@
               <MetricsPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
-            <!-- Chat Tab Content -->
-            <div v-if="activeTab === 'chat'" class="p-6">
-              <div v-if="agent.status === 'running'">
-                <!-- Context Usage Bar (always visible) -->
-                <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1.5">
-                    <div class="flex items-center space-x-3">
-                      <span class="font-medium">Context Window</span>
-                      <!-- Model Selector -->
-                      <select
-                        v-model="currentModel"
-                        @change="changeModel"
-                        :disabled="modelLoading"
-                        class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-                        :title="modelSelectorTitle"
-                      >
-                        <option v-for="model in availableModels" :key="model.value" :value="model.value">
-                          {{ model.label }}
-                        </option>
-                      </select>
-                      <span v-if="modelLoading" class="animate-spin h-3 w-3 border border-indigo-500 border-t-transparent rounded-full"></span>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                      <span class="font-mono">
-                        {{ formatTokenCount(sessionInfo.context_tokens) }} / {{ formatTokenCount(sessionInfo.context_window) }}
-                        <span class="text-gray-400 dark:text-gray-500 ml-1">({{ sessionInfo.context_percent || 0 }}%)</span>
-                      </span>
+            <!-- Terminal Tab Content -->
+            <!-- Using v-show instead of v-if to keep terminal mounted and WebSocket connected when switching tabs -->
+            <div
+              v-show="activeTab === 'terminal'"
+              :class="[
+                'transition-all duration-300',
+                isTerminalFullscreen
+                  ? 'fixed inset-0 z-50 bg-gray-900'
+                  : ''
+              ]"
+              @keydown="handleTerminalKeydown"
+            >
+              <!-- Terminal Panel -->
+              <div
+                :class="[
+                  'bg-gray-900 overflow-hidden flex flex-col',
+                  isTerminalFullscreen ? 'h-full' : 'rounded-b-lg'
+                ]"
+                :style="isTerminalFullscreen ? {} : { height: '600px' }"
+              >
+                <!-- Fullscreen Header (only in fullscreen mode) -->
+                <div
+                  v-if="isTerminalFullscreen"
+                  class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700"
+                >
+                  <span class="text-sm font-medium text-gray-300">{{ agent.name }} - Terminal</span>
+                  <button
+                    @click="toggleTerminalFullscreen"
+                    class="p-1.5 text-gray-400 hover:text-gray-200 rounded transition-colors"
+                    title="Exit Fullscreen (Esc)"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Terminal Content -->
+                <div class="flex-1 min-h-0">
+                  <AgentTerminal
+                    v-if="agent.status === 'running'"
+                    ref="terminalRef"
+                    :agent-name="agent.name"
+                    :auto-connect="true"
+                    :show-fullscreen-toggle="!isTerminalFullscreen"
+                    :is-fullscreen="isTerminalFullscreen"
+                    @connected="onTerminalConnected"
+                    @disconnected="onTerminalDisconnected"
+                    @error="onTerminalError"
+                    @toggle-fullscreen="toggleTerminalFullscreen"
+                  />
+                  <div
+                    v-else
+                    class="flex items-center justify-center h-full text-gray-400"
+                  >
+                    <div class="text-center max-w-md">
+                      <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p class="text-lg font-medium mb-2">Agent is not running</p>
+                      <p class="text-sm text-gray-500 mb-4">Start the agent to access the terminal</p>
+
+                      <!-- API Key Setting -->
+                      <div v-if="agent.can_share" class="mb-4 p-4 bg-gray-800 rounded-lg text-left">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-sm font-medium text-gray-300">Authentication</span>
+                          <span v-if="apiKeySetting.restart_required" class="text-xs text-yellow-400">Restart required</span>
+                        </div>
+                        <div class="space-y-2">
+                          <label class="flex items-center space-x-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              :checked="apiKeySetting.use_platform_api_key"
+                              @change="updateApiKeySetting(true)"
+                              :disabled="apiKeySettingLoading"
+                              class="text-indigo-500 focus:ring-indigo-500"
+                            />
+                            <div>
+                              <span class="text-sm text-gray-200">Use Platform API Key</span>
+                              <p class="text-xs text-gray-500">Claude uses Trinity's configured Anthropic API key</p>
+                            </div>
+                          </label>
+                          <label class="flex items-center space-x-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              :checked="!apiKeySetting.use_platform_api_key"
+                              @change="updateApiKeySetting(false)"
+                              :disabled="apiKeySettingLoading"
+                              class="text-indigo-500 focus:ring-indigo-500"
+                            />
+                            <div>
+                              <span class="text-sm text-gray-200">Authenticate in Terminal</span>
+                              <p class="text-xs text-gray-500">Run "claude login" after starting to use your own subscription</p>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
                       <button
-                        @click="startNewSession"
-                        :disabled="newSessionLoading || chatMessages.length === 0"
-                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        @click="startAgent"
+                        :disabled="actionLoading"
+                        class="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium py-2 px-4 rounded-lg"
                       >
-                        <svg v-if="newSessionLoading" class="animate-spin -ml-0.5 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <svg v-else class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        New
+                        {{ actionLoading ? 'Starting...' : 'Start Agent' }}
                       </button>
                     </div>
                   </div>
-                  <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
-                      :class="getContextBarColor(sessionInfo.context_percent || 0)"
-                      :style="{ width: `${Math.min(100, sessionInfo.context_percent || 0)}%` }"
-                    ></div>
-                  </div>
-                  <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                    <span>{{ chatMessages.length }} messages</span>
-                    <span v-if="sessionInfo.total_cost_usd > 0">Session cost: ${{ sessionInfo.total_cost_usd.toFixed(4) }}</span>
-                  </div>
                 </div>
-
-                <!-- Unified Activity Panel - Always visible -->
-                <UnifiedActivityPanel
-                  :agent-name="agent.name"
-                  :activity="sessionActivity"
-                  :session-cost="sessionInfo.total_cost_usd"
-                  class="mb-4"
-                />
-
-                <!-- Chat Messages -->
-                <div ref="chatContainer" class="border border-gray-300 dark:border-gray-600 rounded-lg h-96 overflow-y-auto p-4 mb-4 bg-gray-50 dark:bg-gray-900">
-                  <div v-if="chatMessages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
-                    Start a conversation with your agent
-                  </div>
-                  <div v-else class="space-y-3">
-                    <template v-for="(msg, idx) in chatMessages" :key="idx">
-                      <!-- Tool sequence preview (shown before assistant response) -->
-                      <div
-                        v-if="msg.role === 'assistant' && msg.execution_log?.length > 0"
-                        class="flex justify-center"
-                      >
-                        <div class="inline-flex items-center space-x-1 px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-500 dark:text-gray-400">
-                          <template v-for="(tool, tidx) in getToolSequence(msg.execution_log)" :key="tidx">
-                            <span v-if="tidx > 0" class="text-gray-300 dark:text-gray-600">→</span>
-                            <span class="font-mono">{{ tool }}</span>
-                          </template>
-                          <span class="ml-1 text-gray-400 dark:text-gray-500">{{ formatDuration(msg.metadata?.duration_ms) }}</span>
-                        </div>
-                      </div>
-
-                      <!-- Message bubble -->
-                      <div :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-                        <div
-                          :class="[
-                            'max-w-xl px-4 py-3 rounded-lg',
-                            msg.role === 'user'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
-                          ]"
-                        >
-                          <!-- User messages: plain text -->
-                          <pre v-if="msg.role === 'user'" class="whitespace-pre-wrap font-sans text-sm">{{ msg.content }}</pre>
-                          <!-- Assistant messages: rendered markdown -->
-                          <div
-                            v-else
-                            class="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-gray-800 dark:prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded"
-                            v-html="renderMarkdown(msg.content)"
-                          ></div>
-                          <!-- Tool stats for assistant messages -->
-                          <div
-                            v-if="msg.role === 'assistant' && msg.metadata?.tool_count > 0"
-                            class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-1">
-                              <span>{{ msg.metadata.tool_count }} tool{{ msg.metadata.tool_count !== 1 ? 's' : '' }}</span>
-                              <span v-if="msg.metadata.cost_usd">&bull; ${{ msg.metadata.cost_usd.toFixed(4) }}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-
-                    <!-- Loading indicator with current tool -->
-                    <div v-if="chatLoading" class="flex justify-center">
-                      <div class="inline-flex items-center space-x-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-full text-xs text-blue-600 dark:text-blue-400 animate-pulse">
-                        <span class="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
-                        <span>{{ currentToolDisplay }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-
-                <!-- Chat Input -->
-                <div class="flex space-x-4">
-                  <input
-                    v-model="chatInput"
-                    @keypress.enter="sendChatMessage"
-                    :disabled="chatLoading"
-                    type="text"
-                    placeholder="Type your message..."
-                    class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900"
-                  />
-                  <button
-                    @click="sendChatMessage"
-                    :disabled="chatLoading || !chatInput.trim()"
-                    class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-semibold px-6 py-2 rounded-lg transition duration-200"
-                  >
-                    {{ chatLoading ? 'Sending...' : 'Send' }}
-                  </button>
-                </div>
-              </div>
-              <div v-else class="text-center text-gray-500 dark:text-gray-400 py-8">
-                Agent is not running. Start the agent to chat.
               </div>
             </div>
 
@@ -850,7 +809,7 @@ HEYGEN_API_KEY=your_heygen_key
                           :id="'perm-' + targetAgent.name"
                           type="checkbox"
                           v-model="targetAgent.permitted"
-                          @change="permissionsDirty = true"
+                          @change="markDirty"
                           :disabled="permissionsSaving"
                           class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
                         />
@@ -908,14 +867,22 @@ HEYGEN_API_KEY=your_heygen_key
               <SchedulesPanel :agent-name="agent.name" />
             </div>
 
-            <!-- Executions Tab Content -->
-            <div v-if="activeTab === 'executions'" class="p-6">
-              <ExecutionsPanel :agent-name="agent.name" />
+            <!-- Tasks Tab Content -->
+            <div v-if="activeTab === 'tasks'" class="p-6">
+              <TasksPanel v-if="agent" :agent-name="agent.name" :agent-status="agent.status" />
+              <div v-else class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading agent...</p>
+              </div>
             </div>
 
             <!-- Git Tab Content -->
             <div v-if="activeTab === 'git'" class="p-6">
-              <GitPanel :agent-name="agent.name" :agent-status="agent.status" />
+              <GitPanel v-if="agent" :agent-name="agent.name" :agent-status="agent.status" />
+              <div v-else class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading agent...</p>
+              </div>
             </div>
 
             <!-- Files Tab Content -->
@@ -1013,28 +980,40 @@ HEYGEN_API_KEY=your_heygen_key
   </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick, defineComponent, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
-import { marked } from 'marked'
 import NavBar from '../components/NavBar.vue'
+
+// Component name for KeepAlive matching
+defineOptions({
+  name: 'AgentDetail'
+})
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import UnifiedActivityPanel from '../components/UnifiedActivityPanel.vue'
 import SchedulesPanel from '../components/SchedulesPanel.vue'
-import ExecutionsPanel from '../components/ExecutionsPanel.vue'
+import TasksPanel from '../components/TasksPanel.vue'
 import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
 import MetricsPanel from '../components/MetricsPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
+import AgentTerminal from '../components/AgentTerminal.vue'
 
-// Configure marked for safe rendering
-marked.setOptions({
-  breaks: true,
-  gfm: true
-})
+// Import composables
+import { useNotification, useFormatters } from '../composables'
+import { useAgentLifecycle } from '../composables/useAgentLifecycle'
+import { useAgentStats } from '../composables/useAgentStats'
+import { useAgentLogs } from '../composables/useAgentLogs'
+import { useAgentTerminal } from '../composables/useAgentTerminal'
+import { useAgentCredentials } from '../composables/useAgentCredentials'
+import { useAgentSharing } from '../composables/useAgentSharing'
+import { useAgentPermissions } from '../composables/useAgentPermissions'
+import { useGitSync } from '../composables/useGitSync'
+import { useFileBrowser } from '../composables/useFileBrowser'
+import { useAgentSettings } from '../composables/useAgentSettings'
+import { useSessionActivity } from '../composables/useSessionActivity'
 
-// Helper function for file sizes
+// Helper function for file sizes (used by FileTreeNode)
 const formatFileSizeHelper = (bytes) => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -1172,106 +1151,128 @@ const FileTreeNode = defineComponent({
   }
 })
 
+// Setup
 const route = useRoute()
 const router = useRouter()
 const agentsStore = useAgentsStore()
 
+// Minimal local state
 const agent = ref(null)
-const logs = ref('')
-const logLines = ref(100)
 const loading = ref(true)
 const error = ref('')
-const chatMessages = ref([])
-const chatInput = ref('')
-const chatLoading = ref(false)
 const activeTab = ref('info')
-const notification = ref(null)
-const actionLoading = ref(false)
-const autoRefreshLogs = ref(false)
-const logsContainer = ref(null)
-const userScrolledUp = ref(false)
-const credentialsData = ref(null)
-const credentialsLoading = ref(false)
-const hotReloadText = ref('')
-const hotReloadLoading = ref(false)
-const hotReloadResult = ref(null)
-const newSessionLoading = ref(false)
-const sessionInfo = ref({
-  context_tokens: 0,
-  context_window: 200000,
-  context_percent: 0,
-  total_cost_usd: 0,
-  message_count: 0
-})
 
-// Confirm dialog state
-const confirmDialog = reactive({
-  visible: false,
-  title: '',
-  message: '',
-  confirmText: 'Confirm',
-  variant: 'danger',
-  onConfirm: () => {}
-})
-const currentModel = ref('')  // Model selection: '', 'sonnet', 'opus', 'haiku', etc.
-const modelLoading = ref(false)
-let logsRefreshInterval = null
+// Initialize composables
+const { notification, showNotification } = useNotification()
+const { formatBytes, formatUptime, formatRelativeTime, formatSource } = useFormatters()
 
-// Live stats
-const agentStats = ref(null)
-const statsLoading = ref(false)
-let statsRefreshInterval = null
+// Agent lifecycle composable
+const {
+  actionLoading,
+  confirmDialog,
+  startAgent,
+  stopAgent,
+  deleteAgent
+} = useAgentLifecycle(agent, agentsStore, router, showNotification)
 
-// Chat container ref
-const chatContainer = ref(null)
+// Stats composable
+const {
+  agentStats,
+  statsLoading,
+  startStatsPolling,
+  stopStatsPolling
+} = useAgentStats(agent, agentsStore)
 
-// Sharing state
-const shareEmail = ref('')
-const shareLoading = ref(false)
-const shareMessage = ref(null)
-const unshareLoading = ref(null)
+// Logs composable
+const {
+  logs,
+  logLines,
+  autoRefreshLogs,
+  logsContainer,
+  refreshLogs,
+  handleLogsScroll
+} = useAgentLogs(agent, agentsStore)
 
-// Permissions state (Phase 9.10)
-const availableAgents = ref([])
-const permissionsLoading = ref(false)
-const permissionsSaving = ref(false)
-const permissionsDirty = ref(false)
-const permissionsMessage = ref(null)
-const permittedAgentsCount = computed(() => availableAgents.value.filter(a => a.permitted).length)
+// Terminal composable
+const {
+  isTerminalFullscreen,
+  terminalRef,
+  toggleTerminalFullscreen,
+  handleTerminalKeydown,
+  onTerminalConnected,
+  onTerminalDisconnected,
+  onTerminalError
+} = useAgentTerminal(showNotification)
 
-// Session Activity state
-const sessionActivity = ref({
-  status: 'idle',
-  active_tool: null,
-  tool_counts: {},
-  timeline: [],
-  totals: { calls: 0, duration_ms: 0, started_at: null }
-})
+// Credentials composable
+const {
+  credentialsData,
+  credentialsLoading,
+  hotReloadText,
+  hotReloadLoading,
+  hotReloadResult,
+  loadCredentials,
+  countCredentials,
+  performHotReload
+} = useAgentCredentials(agent, agentsStore, showNotification)
 
-// Git Sync - show tab for GitHub-native agents (Phase 7)
-const hasGitSync = computed(() => {
-  return agent.value?.template?.startsWith('github:')
-})
+// Sharing composable
+const {
+  shareEmail,
+  shareLoading,
+  shareMessage,
+  unshareLoading,
+  shareWithUser,
+  removeShare
+} = useAgentSharing(agent, agentsStore, loadAgent, showNotification)
 
-// Git sync state (header controls)
-const gitStatus = ref(null)
-const gitLoading = ref(false)
-const gitSyncing = ref(false)
-const gitSyncResult = ref(null)
+// Permissions composable
+const {
+  availableAgents,
+  permissionsLoading,
+  permissionsSaving,
+  permissionsDirty,
+  permissionsMessage,
+  loadPermissions,
+  savePermissions,
+  allowAllAgents,
+  allowNoAgents,
+  markDirty
+} = useAgentPermissions(agent, agentsStore)
 
-const gitHasChanges = computed(() => {
-  return (gitStatus.value?.changes_count > 0) || (gitStatus.value?.ahead > 0)
-})
+// Git sync composable
+const {
+  hasGitSync,
+  gitStatus,
+  gitLoading,
+  gitSyncing,
+  gitHasChanges,
+  gitChangesCount,
+  refreshGitStatus,
+  syncToGithub,
+  startGitStatusPolling,
+  stopGitStatusPolling
+} = useGitSync(agent, agentsStore, showNotification)
 
-const gitChangesCount = computed(() => {
-  return gitStatus.value?.changes_count || 0
-})
+// File browser composable
+const {
+  fileTree,
+  filesLoading,
+  filesError,
+  fileSearchQuery,
+  expandedFolders,
+  totalFileCount,
+  filteredFileTree,
+  loadFiles,
+  toggleFolder,
+  downloadFile
+} = useFileBrowser(agent, agentsStore, showNotification)
 
-// Model options based on agent runtime
+// Model options based on agent runtime (Multi-runtime support)
 const availableModels = computed(() => {
   const runtime = agent.value?.runtime || 'claude-code'
 
-  if (runtime === 'gemini-cli') {
+  if (runtime === 'gemini-cli' || runtime === 'gemini') {
     return [
       { value: '', label: 'Default' },
       { value: 'gemini-3-pro', label: 'Gemini 3 Pro' },
@@ -1296,77 +1297,68 @@ const availableModels = computed(() => {
 
 const modelSelectorTitle = computed(() => {
   const runtime = agent.value?.runtime || 'claude-code'
-  return runtime === 'gemini-cli' ? 'Select Gemini model' : 'Select Claude model'
+  return runtime === 'gemini-cli' || runtime === 'gemini' ? 'Select Gemini model' : 'Select Claude model'
 })
 
-let activityRefreshInterval = null
-let gitStatusInterval = null
+// Agent settings composable
+const {
+  apiKeySetting,
+  apiKeySettingLoading,
+  loadApiKeySetting,
+  updateApiKeySetting
+} = useAgentSettings(agent, agentsStore, showNotification)
 
-// File browser state
-const fileTree = ref([])
-const filesLoading = ref(false)
-const filesError = ref(null)
-const fileSearchQuery = ref('')
-const expandedFolders = ref(new Set())
-const totalFileCount = ref(0)
+// Session activity composable
+const {
+  sessionActivity,
+  loadSessionInfo,
+  startActivityPolling,
+  stopActivityPolling,
+  resetSessionActivity
+} = useSessionActivity(agent, agentsStore)
 
-const filteredFileTree = computed(() => {
-  if (!fileSearchQuery.value) return fileTree.value
-
-  const query = fileSearchQuery.value.toLowerCase()
-
-  const filterTree = (items) => {
-    return items.filter(item => {
-      if (item.type === 'file') {
-        return item.name.toLowerCase().includes(query)
-      } else {
-        // For directories, include if name matches or has matching children
-        const nameMatches = item.name.toLowerCase().includes(query)
-        const filteredChildren = filterTree(item.children || [])
-        if (nameMatches || filteredChildren.length > 0) {
-          // Auto-expand folders when searching
-          if (fileSearchQuery.value) {
-            expandedFolders.value.add(item.path)
-          }
-          return true
-        }
-        return false
-      }
-    }).map(item => {
-      if (item.type === 'directory') {
-        return {
-          ...item,
-          children: filterTree(item.children || [])
-        }
-      }
-      return item
-    })
+// Load agent
+async function loadAgent() {
+  loading.value = true
+  error.value = ''
+  try {
+    agent.value = await agentsStore.fetchAgent(route.params.name)
+  } catch (err) {
+    error.value = 'Failed to load agent details'
+  } finally {
+    loading.value = false
   }
-
-  return filterTree(fileTree.value)
-})
-
-const showNotification = (message, type = 'success') => {
-  notification.value = { message, type }
-  setTimeout(() => {
-    notification.value = null
-  }, 3000)
 }
 
-// Watch for auto-refresh toggle
-watch(autoRefreshLogs, (enabled) => {
-  if (enabled) {
-    logsRefreshInterval = setInterval(refreshLogs, 10000)
-  } else {
-    if (logsRefreshInterval) {
-      clearInterval(logsRefreshInterval)
-      logsRefreshInterval = null
+// Watch for route changes (when navigating to a different agent)
+watch(() => route.params.name, async (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    // Stop polling for old agent
+    stopAllPolling()
+    // Disconnect terminal from old agent
+    if (terminalRef.value?.disconnect) {
+      terminalRef.value.disconnect()
+    }
+    // Load new agent data
+    await loadAgent()
+    await refreshLogs()
+    await loadCredentials()
+    await loadSessionInfo()
+    await loadApiKeySetting()
+    startAllPolling()
+    // Connect terminal to new agent if on terminal tab and agent is running
+    if (activeTab.value === 'terminal' && agent.value?.status === 'running') {
+      nextTick(() => {
+        if (terminalRef.value?.connect) {
+          terminalRef.value.connect()
+        }
+      })
     }
   }
 })
 
 // Watch agent status for stats, activity, and git polling
-watch(() => agent.value?.status, (newStatus, oldStatus) => {
+watch(() => agent.value?.status, (newStatus) => {
   if (newStatus === 'running') {
     startStatsPolling()
     startActivityPolling()
@@ -1377,15 +1369,7 @@ watch(() => agent.value?.status, (newStatus, oldStatus) => {
     stopStatsPolling()
     stopActivityPolling()
     stopGitStatusPolling()
-    agentStats.value = null
-    gitStatus.value = null
-    sessionActivity.value = {
-      status: 'idle',
-      active_tool: null,
-      tool_counts: {},
-      timeline: [],
-      totals: { calls: 0, duration_ms: 0, started_at: null }
-    }
+    resetSessionActivity()
   }
 })
 
@@ -1400,23 +1384,8 @@ watch(activeTab, (newTab) => {
   }
 })
 
-// Clean up intervals on unmount
-onUnmounted(() => {
-  if (logsRefreshInterval) {
-    clearInterval(logsRefreshInterval)
-  }
-  stopStatsPolling()
-  stopActivityPolling()
-  stopGitStatusPolling()
-})
-
-onMounted(async () => {
-  await loadAgent()
-  await refreshLogs()
-  await loadChatHistory()
-  await loadCredentials()
-  await loadSessionInfo()
-  // Start stats, activity, and git polling if agent is running
+// Start all polling (used on mount and activation)
+function startAllPolling() {
   if (agent.value?.status === 'running') {
     startStatsPolling()
     startActivityPolling()
@@ -1424,730 +1393,59 @@ onMounted(async () => {
       startGitStatusPolling()
     }
   }
+}
+
+// Stop all polling (used on deactivation and unmount)
+function stopAllPolling() {
+  stopStatsPolling()
+  stopActivityPolling()
+  stopGitStatusPolling()
+}
+
+// Initialize on mount
+onMounted(async () => {
+  await loadAgent()
+  await refreshLogs()
+  await loadCredentials()
+  await loadSessionInfo()
+  await loadApiKeySetting()
+  startAllPolling()
 })
 
-const loadAgent = async () => {
-  loading.value = true
-  error.value = ''
-  try {
-    agent.value = await agentsStore.fetchAgent(route.params.name)
-  } catch (err) {
-    error.value = 'Failed to load agent details'
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshLogs = async () => {
-  if (!agent.value) return
-  try {
-    logs.value = await agentsStore.getAgentLogs(agent.value.name, logLines.value)
-    // Auto-scroll to bottom if user hasn't scrolled up
-    if (!userScrolledUp.value) {
-      await nextTick()
-      scrollLogsToBottom()
-    }
-  } catch (err) {
-    console.error('Failed to fetch logs:', err)
-  }
-}
-
-const scrollLogsToBottom = () => {
-  if (logsContainer.value) {
-    logsContainer.value.scrollTop = logsContainer.value.scrollHeight
-  }
-}
-
-const handleLogsScroll = () => {
-  if (!logsContainer.value) return
-  const { scrollTop, scrollHeight, clientHeight } = logsContainer.value
-  // User is considered "scrolled up" if not near the bottom (within 50px)
-  userScrolledUp.value = scrollTop + clientHeight < scrollHeight - 50
-}
-
-const startAgent = async () => {
-  if (actionLoading.value) return
-  actionLoading.value = true
-  try {
-    const result = await agentsStore.startAgent(agent.value.name)
-    agent.value.status = 'running'
-    showNotification(result.message, 'success')
-  } catch (err) {
-    showNotification(err.message || 'Failed to start agent', 'error')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const stopAgent = async () => {
-  if (actionLoading.value) return
-  actionLoading.value = true
-  try {
-    const result = await agentsStore.stopAgent(agent.value.name)
-    agent.value.status = 'stopped'
-    showNotification(result.message, 'success')
-  } catch (err) {
-    showNotification(err.message || 'Failed to stop agent', 'error')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const deleteAgent = () => {
-  confirmDialog.title = 'Delete Agent'
-  confirmDialog.message = 'Are you sure you want to delete this agent?'
-  confirmDialog.confirmText = 'Delete'
-  confirmDialog.variant = 'danger'
-  confirmDialog.onConfirm = async () => {
-    try {
-      await agentsStore.deleteAgent(agent.value.name)
-      router.push('/agents')
-    } catch (err) {
-      error.value = 'Failed to delete agent'
-    }
-  }
-  confirmDialog.visible = true
-}
-
-const loadChatHistory = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const history = await agentsStore.getChatHistory(agent.value.name)
-    chatMessages.value = history
-  } catch (err) {
-    console.error('Failed to load chat history:', err)
-  }
-}
-
-const sendChatMessage = async () => {
-  if (!chatInput.value.trim() || chatLoading.value) return
-
-  const userMessage = chatInput.value.trim()
-  chatInput.value = ''
-  chatLoading.value = true
-
-  // Add user message to UI
-  chatMessages.value.push({
-    role: 'user',
-    content: userMessage
-  })
-  scrollChatToBottom()
-
-  try {
-    const response = await agentsStore.sendChatMessage(agent.value.name, userMessage)
-
-    // Update session info from response
-    if (response.session) {
-      sessionInfo.value = {
-        context_tokens: response.session.context_tokens || 0,
-        context_window: response.session.context_window || 200000,
-        context_percent: response.session.context_window > 0
-          ? Math.round((response.session.context_tokens / response.session.context_window) * 1000) / 10
-          : 0,
-        total_cost_usd: response.session.total_cost_usd || 0,
-        message_count: response.session.message_count || 0
-      }
-    }
-
-    // Add assistant response with execution info
-    chatMessages.value.push({
-      role: 'assistant',
-      content: response.response,
-      execution_log: response.execution_log || [],
-      metadata: response.metadata || {}
-    })
-    scrollChatToBottom()
-  } catch (err) {
-    error.value = 'Failed to send message'
-    console.error('Chat error:', err)
-
-    // Add error message
-    chatMessages.value.push({
-      role: 'assistant',
-      content: '❌ Error: Failed to get response from agent'
-    })
-    scrollChatToBottom()
-  } finally {
-    chatLoading.value = false
-  }
-}
-
-const loadCredentials = async () => {
-  if (!agent.value) return
-  credentialsLoading.value = true
-  try {
-    credentialsData.value = await agentsStore.getAgentCredentials(agent.value.name)
-  } catch (err) {
-    console.error('Failed to load credentials:', err)
-    credentialsData.value = null
-  } finally {
-    credentialsLoading.value = false
-  }
-}
-
-// Stats polling
-const loadStats = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  statsLoading.value = true
-  try {
-    agentStats.value = await agentsStore.getAgentStats(agent.value.name)
-  } catch (err) {
-    // Don't log 400 errors (agent not running)
-    if (err.response?.status !== 400) {
-      console.error('Failed to load stats:', err)
-    }
-    agentStats.value = null
-  } finally {
-    statsLoading.value = false
-  }
-}
-
-const startStatsPolling = () => {
-  loadStats() // Load immediately
-  statsRefreshInterval = setInterval(loadStats, 5000) // Then every 5 seconds
-}
-
-const stopStatsPolling = () => {
-  if (statsRefreshInterval) {
-    clearInterval(statsRefreshInterval)
-    statsRefreshInterval = null
-  }
-}
-
-// Session Activity polling
-const loadSessionActivity = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    sessionActivity.value = await agentsStore.getSessionActivity(agent.value.name)
-  } catch (err) {
-    // Don't log errors - activity endpoint may fail during startup
-    console.debug('Failed to load session activity:', err)
-  }
-}
-
-const startActivityPolling = () => {
-  loadSessionActivity() // Load immediately
-  activityRefreshInterval = setInterval(loadSessionActivity, 2000) // Then every 2 seconds
-}
-
-const stopActivityPolling = () => {
-  if (activityRefreshInterval) {
-    clearInterval(activityRefreshInterval)
-    activityRefreshInterval = null
-  }
-}
-
-// Format bytes to human readable
-const formatBytes = (bytes) => {
-  if (!bytes && bytes !== 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex++
-  }
-  return `${value.toFixed(unitIndex > 0 ? 1 : 0)} ${units[unitIndex]}`
-}
-
-// Format uptime to human readable
-const formatUptime = (seconds) => {
-  if (!seconds && seconds !== 0) return '0s'
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) {
-    const hours = Math.floor(seconds / 3600)
-    const mins = Math.floor((seconds % 3600) / 60)
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
-  }
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`
-}
-
-// Format relative time (e.g., "2 hours ago")
-const formatRelativeTime = (dateString) => {
-  if (!dateString) return 'Unknown'
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffSeconds = Math.floor((now - date) / 1000)
-
-  if (diffSeconds < 60) return 'just now'
-  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)} minutes ago`
-  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)} hours ago`
-  if (diffSeconds < 604800) return `${Math.floor(diffSeconds / 86400)} days ago`
-  return date.toLocaleDateString()
-}
-
-const formatSource = (source) => {
-  if (!source) return 'Unknown source'
-
-  if (source.startsWith('mcp:')) {
-    const mcpServer = source.replace('mcp:', '')
-    return `MCP Server: ${mcpServer}`
-  }
-
-  if (source === 'env_file' || source === 'template:env_file') {
-    return 'Environment variable'
-  }
-
-  if (source.startsWith('template:mcp:')) {
-    const mcpServer = source.replace('template:mcp:', '')
-    return `MCP Server: ${mcpServer}`
-  }
-
-  return source
-}
-
-const countCredentials = (text) => {
-  if (!text) return 0
-  let count = 0
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-      count++
-    }
-  }
-  return count
-}
-
-const performHotReload = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  if (!hotReloadText.value.trim()) return
-
-  hotReloadLoading.value = true
-  hotReloadResult.value = null
-
-  try {
-    const result = await agentsStore.hotReloadCredentials(agent.value.name, hotReloadText.value)
-    hotReloadResult.value = {
-      success: true,
-      message: result.message,
-      credentials: result.credential_names,
-      note: result.note
-    }
-    // Clear the textarea on success
-    hotReloadText.value = ''
-    // Refresh credentials list
-    await loadCredentials()
-  } catch (err) {
-    console.error('Hot reload failed:', err)
-    hotReloadResult.value = {
-      success: false,
-      message: err.response?.data?.detail || err.message || 'Failed to hot-reload credentials'
-    }
-  } finally {
-    hotReloadLoading.value = false
-  }
-}
-
-// Start a new session (clear context)
-const startNewSession = () => {
-  if (!agent.value || newSessionLoading.value) return
-
-  confirmDialog.title = 'New Session'
-  confirmDialog.message = 'Start a new session? This will clear the conversation history and reset the context window.'
-  confirmDialog.confirmText = 'Start New Session'
-  confirmDialog.variant = 'warning'
-  confirmDialog.onConfirm = async () => {
-    newSessionLoading.value = true
-    try {
-      const result = await agentsStore.clearSession(agent.value.name)
-      chatMessages.value = []
-
-      // Clear session activity
-      await agentsStore.clearSessionActivity(agent.value.name)
-      sessionActivity.value = {
-        status: 'idle',
-        active_tool: null,
-        tool_counts: {},
-        timeline: [],
-        totals: { calls: 0, duration_ms: 0, started_at: null }
-      }
-
-      // Reset session info
-      if (result.session) {
-        sessionInfo.value = {
-          context_tokens: result.session.context_tokens || 0,
-          context_window: result.session.context_window || 200000,
-          context_percent: 0,
-          total_cost_usd: result.session.total_cost_usd || 0,
-          message_count: 0
-        }
-      } else {
-        sessionInfo.value = {
-          context_tokens: 0,
-          context_window: 200000,
-          context_percent: 0,
-          total_cost_usd: 0,
-          message_count: 0
-        }
-      }
-
-      showNotification('New session started', 'success')
-    } catch (err) {
-      console.error('Failed to start new session:', err)
-      showNotification('Failed to start new session', 'error')
-    } finally {
-      newSessionLoading.value = false
-    }
-  }
-  confirmDialog.visible = true
-}
-
-// Sharing methods
-const shareWithUser = async () => {
-  if (!agent.value || !shareEmail.value.trim()) return
-
-  shareLoading.value = true
-  shareMessage.value = null
-
-  try {
-    const result = await agentsStore.shareAgent(agent.value.name, shareEmail.value.trim())
-    shareMessage.value = {
-      type: 'success',
-      text: `Agent shared with ${shareEmail.value.trim()}`
-    }
-    shareEmail.value = ''
-    // Refresh agent data to update shares list
-    await loadAgent()
-  } catch (err) {
-    console.error('Failed to share agent:', err)
-    shareMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || err.message || 'Failed to share agent'
-    }
-  } finally {
-    shareLoading.value = false
-    // Clear message after 5 seconds
-    setTimeout(() => {
-      shareMessage.value = null
-    }, 5000)
-  }
-}
-
-const removeShare = async (email) => {
-  if (!agent.value) return
-
-  unshareLoading.value = email
-
-  try {
-    await agentsStore.unshareAgent(agent.value.name, email)
-    showNotification(`Sharing removed for ${email}`, 'success')
-    // Refresh agent data to update shares list
-    await loadAgent()
-  } catch (err) {
-    console.error('Failed to remove share:', err)
-    showNotification(err.response?.data?.detail || 'Failed to remove sharing', 'error')
-  } finally {
-    unshareLoading.value = null
-  }
-}
-
-// Permissions methods (Phase 9.10)
-const loadPermissions = async () => {
-  if (!agent.value) return
-
-  permissionsLoading.value = true
-  permissionsMessage.value = null
-
-  try {
-    const response = await agentsStore.getAgentPermissions(agent.value.name)
-    availableAgents.value = response.available_agents || []
-    permissionsDirty.value = false
-  } catch (err) {
-    console.error('Failed to load permissions:', err)
-    permissionsMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || 'Failed to load permissions'
-    }
-  } finally {
-    permissionsLoading.value = false
-  }
-}
-
-const savePermissions = async () => {
-  if (!agent.value || !permissionsDirty.value) return
-
-  permissionsSaving.value = true
-  permissionsMessage.value = null
-
-  const permittedAgentNames = availableAgents.value
-    .filter(a => a.permitted)
-    .map(a => a.name)
-
-  try {
-    await agentsStore.setAgentPermissions(agent.value.name, permittedAgentNames)
-    permissionsDirty.value = false
-    permissionsMessage.value = {
-      type: 'success',
-      text: `Permissions saved (${permittedAgentNames.length} agents allowed)`
-    }
-    setTimeout(() => { permissionsMessage.value = null }, 3000)
-  } catch (err) {
-    console.error('Failed to save permissions:', err)
-    permissionsMessage.value = {
-      type: 'error',
-      text: err.response?.data?.detail || 'Failed to save permissions'
-    }
-  } finally {
-    permissionsSaving.value = false
-  }
-}
-
-const allowAllAgents = () => {
-  availableAgents.value.forEach(a => { a.permitted = true })
-  permissionsDirty.value = true
-}
-
-const allowNoAgents = () => {
-  availableAgents.value.forEach(a => { a.permitted = false })
-  permissionsDirty.value = true
-}
-
-// Git sync methods (header controls)
-const loadGitStatus = async () => {
-  if (!agent.value || agent.value.status !== 'running' || !hasGitSync.value) return
-  gitLoading.value = true
-  try {
-    gitStatus.value = await agentsStore.getGitStatus(agent.value.name)
-  } catch (err) {
-    console.debug('Failed to load git status:', err)
-    gitStatus.value = null
-  } finally {
-    gitLoading.value = false
-  }
-}
-
-const refreshGitStatus = () => {
-  gitSyncResult.value = null
-  loadGitStatus()
-}
-
-const syncToGithub = async () => {
-  if (!agent.value || gitSyncing.value) return
-  gitSyncing.value = true
-  gitSyncResult.value = null
-  try {
-    const result = await agentsStore.syncToGithub(agent.value.name)
-    gitSyncResult.value = result
-    if (result.success) {
-      if (result.files_changed > 0) {
-        showNotification(`Synced ${result.files_changed} file(s) to GitHub`, 'success')
-      } else {
-        showNotification(result.message || 'Already up to date', 'success')
-      }
-    } else {
-      showNotification(result.message || 'Sync failed', 'error')
-    }
-    // Refresh status after sync
-    await loadGitStatus()
-  } catch (err) {
-    console.error('Git sync failed:', err)
-    showNotification(err.response?.data?.detail || 'Failed to sync to GitHub', 'error')
-  } finally {
-    gitSyncing.value = false
-  }
-}
-
-const startGitStatusPolling = () => {
-  if (!hasGitSync.value) return
-  loadGitStatus() // Load immediately
-  gitStatusInterval = setInterval(loadGitStatus, 30000) // Then every 30 seconds
-}
-
-const stopGitStatusPolling = () => {
-  if (gitStatusInterval) {
-    clearInterval(gitStatusInterval)
-    gitStatusInterval = null
-  }
-}
-
-// File browser functions
-const loadFiles = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  filesLoading.value = true
-  filesError.value = null
-  try {
-    const response = await agentsStore.listAgentFiles(agent.value.name)
-    fileTree.value = response.tree || []
-    totalFileCount.value = response.total_files || 0
-  } catch (err) {
-    console.error('Failed to load files:', err)
-    filesError.value = err.response?.data?.detail || 'Failed to load files'
-  } finally {
-    filesLoading.value = false
-  }
-}
-
-const toggleFolder = (path) => {
-  if (expandedFolders.value.has(path)) {
-    expandedFolders.value.delete(path)
-  } else {
-    expandedFolders.value.add(path)
-  }
-  // Trigger reactivity
-  expandedFolders.value = new Set(expandedFolders.value)
-}
-
-const downloadFile = async (filePath, fileName) => {
-  if (!agent.value) return
-  try {
-    const content = await agentsStore.downloadAgentFile(agent.value.name, filePath)
-    // Create blob and download
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
-    showNotification(`Downloaded ${fileName}`, 'success')
-  } catch (err) {
-    console.error('Failed to download file:', err)
-    showNotification(err.response?.data?.detail || 'Failed to download file', 'error')
-  }
-}
-
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
-}
-
-// Format token count for display (e.g., 45000 → "45K")
-const formatTokenCount = (count) => {
-  if (!count && count !== 0) return '0'
-  if (count < 1000) return count.toString()
-  if (count < 1000000) return `${(count / 1000).toFixed(1)}K`
-  return `${(count / 1000000).toFixed(2)}M`
-}
-
-// Get context bar color based on percentage
-const getContextBarColor = (percent) => {
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 70) return 'bg-yellow-500'
-  return 'bg-green-500'
-}
-
-// Load session info
-const loadSessionInfo = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const info = await agentsStore.getSessionInfo(agent.value.name)
-    sessionInfo.value = {
-      context_tokens: info.context_tokens || 0,
-      context_window: info.context_window || 200000,
-      context_percent: info.context_percent || 0,
-      total_cost_usd: info.total_cost_usd || 0,
-      message_count: info.message_count || 0
-    }
-    // Also update model from session info
-    if (info.model) {
-      currentModel.value = info.model
-    }
-  } catch (err) {
-    console.error('Failed to load session info:', err)
-  }
-}
-
-// Load model info
-const loadModelInfo = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  try {
-    const info = await agentsStore.getAgentModel(agent.value.name)
-    currentModel.value = info.model || ''
-  } catch (err) {
-    console.error('Failed to load model info:', err)
-  }
-}
-
-// Change model
-const changeModel = async () => {
-  if (!agent.value || modelLoading.value) return
-  modelLoading.value = true
-  try {
-    await agentsStore.setAgentModel(agent.value.name, currentModel.value || null)
-    showNotification(`Model changed to ${currentModel.value || 'default'}`, 'success')
-  } catch (err) {
-    console.error('Failed to change model:', err)
-    showNotification('Failed to change model', 'error')
-    // Reload to get actual state
-    await loadModelInfo()
-  } finally {
-    modelLoading.value = false
-  }
-}
-
-
-// Format duration for display
-const formatDuration = (ms) => {
-  if (!ms && ms !== 0) return ''
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
-}
-
-// Get tool sequence from execution log (just tool names)
-const getToolSequence = (executionLog) => {
-  if (!executionLog) return []
-  return executionLog
-    .filter(e => e.type === 'tool_use')
-    .slice(0, 5)  // Max 5 tools in preview
-    .map(e => e.tool)
-}
-
-// Current tool display for loading indicator
-const currentToolDisplay = computed(() => {
-  if (sessionActivity.value?.active_tool) {
-    return `${sessionActivity.value.active_tool.name}...`
-  }
-  return 'Processing...'
-})
-
-// Scroll chat to bottom
-const scrollChatToBottom = () => {
-  if (chatContainer.value) {
+// onActivated fires when component is shown (after being cached by KeepAlive)
+onActivated(() => {
+  // Restart polling when returning to this view
+  startAllPolling()
+  // Refresh agent data
+  loadAgent()
+  // Refit terminal if on terminal tab
+  if (activeTab.value === 'terminal') {
     nextTick(() => {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+      if (terminalRef.value?.fit) {
+        terminalRef.value.fit()
+      }
     })
   }
-}
+})
 
-// Render markdown to HTML
-const renderMarkdown = (text) => {
-  if (!text) return ''
-  return marked(text)
-}
+// onDeactivated fires when navigating away (component is cached, not destroyed)
+onDeactivated(() => {
+  // Stop polling when navigating away (but keep WebSocket connection alive)
+  stopAllPolling()
+})
 
-// Handle use case click from Info tab - switch to chat and populate input
+// onUnmounted fires when component is actually destroyed
+onUnmounted(() => {
+  stopAllPolling()
+})
+
+// Handle use case click from Info tab - switch to terminal tab
 const handleUseCaseClick = (text) => {
-  chatInput.value = text
-  activeTab.value = 'chat'
-  // Focus the input after switching tabs
+  activeTab.value = 'terminal'
+  // Focus the terminal after switching tabs
   nextTick(() => {
-    const input = document.querySelector('input[placeholder="Type your message..."]')
-    if (input) {
-      input.focus()
+    if (terminalRef.value?.focus) {
+      terminalRef.value.focus()
     }
   })
 }

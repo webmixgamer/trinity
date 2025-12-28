@@ -1,5 +1,13 @@
 # Feature: Persistent Chat Session Tracking
 
+> **Note (2025-12-25)**: The Chat tab UI has been replaced by Web Terminal ([agent-terminal.md](agent-terminal.md)).
+> This persistence system still applies to:
+> - Scheduled executions (cron jobs)
+> - MCP `chat_with_agent` tool (agent-to-agent communication)
+> - Backend `/task` endpoint executions
+>
+> Terminal sessions are NOT persisted to this system (they use direct PTY access).
+
 ## Overview
 Database-backed chat session persistence that survives agent restarts, container deletions, and provides long-term observability. Every user message and assistant response is logged to SQLite with full metadata including costs, context usage, tool calls, and execution time. Sessions are automatically created per user+agent combination and track cumulative statistics.
 
@@ -7,8 +15,8 @@ Database-backed chat session persistence that survives agent restarts, container
 As a Trinity platform user, I want all my chat conversations with agents to be permanently stored in the database so that I can review conversation history, audit costs, analyze agent performance, and resume conversations even after restarting or recreating agents.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:345-498` - Chat tab (same interface, transparent persistence)
-- **API**: `POST /api/agents/{name}/chat` (modified to persist messages)
+- **UI**: ~~Chat tab~~ (DEPRECATED - replaced by Terminal tab, see [agent-terminal.md](agent-terminal.md))
+- **API**: `POST /api/agents/{name}/chat` (still active for scheduled/MCP executions)
 - **New APIs**:
   - `GET /api/agents/{name}/chat/history/persistent` - Retrieve persisted history
   - `GET /api/agents/{name}/chat/sessions` - List all sessions
@@ -22,13 +30,16 @@ As a Trinity platform user, I want all my chat conversations with agents to be p
 ### Components
 
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
+
+> **DEPRECATED (2025-12-25)**: Chat tab has been replaced by Terminal tab. The table below is historical reference.
+
 | Line | Element | Purpose |
 |------|---------|---------|
-| 345-498 | Chat tab content | Existing chat UI (no changes) |
-| 1484-1535 | `sendChatMessage()` | Sends message (backend persists) |
-| 1474-1482 | `loadChatHistory()` | Loads in-memory history from container |
+| ~~345-498~~ | ~~Chat tab content~~ | Replaced by Terminal tab |
+| ~~1484-1535~~ | ~~`sendChatMessage()`~~ | Removed from UI, API still works |
+| ~~1474-1482~~ | ~~`loadChatHistory()`~~ | No longer called from UI |
 
-**Note**: UI currently uses in-memory chat history from agent container (`/chat/history`). The persistent history endpoints are backend-only for now but can be integrated for cross-session history viewing.
+**Note**: Persistent chat tracking still works for backend-initiated requests (schedules, MCP, `/task` endpoint). Terminal sessions use direct PTY and are not persisted through this system.
 
 ### State Management (`src/frontend/src/stores/agents.js`)
 

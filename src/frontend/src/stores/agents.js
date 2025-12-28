@@ -360,6 +360,15 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    async initializeGitHub(name, config) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/git/initialize`, config, {
+        headers: authStore.authHeader,
+        timeout: 120000 // 120 seconds (2 minutes) for git operations
+      })
+      return response.data
+    },
+
     async listAgentFiles(name, path = '/home/developer') {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/files`, {
@@ -377,6 +386,30 @@ export const useAgentsStore = defineStore('agents', {
         responseType: 'text'
       })
       return response.data
+    },
+
+    async deleteAgentFile(name, filePath) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(`/api/agents/${name}/files`, {
+        params: { path: filePath },
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async getFilePreviewBlob(name, filePath) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/files/preview`, {
+        params: { path: filePath },
+        headers: authStore.authHeader,
+        responseType: 'blob'
+      })
+      // Return blob URL for media elements
+      return {
+        url: URL.createObjectURL(response.data),
+        type: response.data.type,
+        size: response.data.size
+      }
     },
 
     // Custom Metrics Actions (Phase 9.9)
@@ -477,6 +510,25 @@ export const useAgentsStore = defineStore('agents', {
         headers: authStore.authHeader
       })
       return response.data.consumers || []
+    },
+
+    // API Key Settings (Per-agent authentication control)
+    async getAgentApiKeySetting(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/api-key-setting`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async updateAgentApiKeySetting(name, usePlatformKey) {
+      const authStore = useAuthStore()
+      const response = await axios.put(`/api/agents/${name}/api-key-setting`, {
+        use_platform_api_key: usePlatformKey
+      }, {
+        headers: authStore.authHeader
+      })
+      return response.data
     }
   }
 })

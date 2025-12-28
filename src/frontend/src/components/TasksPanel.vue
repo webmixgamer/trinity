@@ -1,0 +1,551 @@
+<template>
+  <div class="space-y-6">
+    <!-- Header with Queue Status -->
+    <div class="flex justify-between items-center">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Tasks</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">Headless executions from schedules, agents, or manual triggers</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <!-- Queue Status Indicator -->
+        <div v-if="queueStatus" class="flex items-center space-x-2">
+          <span
+            :class="[
+              'flex items-center px-2.5 py-1 rounded-full text-xs font-medium',
+              queueStatus.is_busy
+                ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
+                : 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+            ]"
+          >
+            <span
+              :class="[
+                'w-1.5 h-1.5 rounded-full mr-1.5',
+                queueStatus.is_busy ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'
+              ]"
+            ></span>
+            {{ queueStatus.is_busy ? 'Busy' : 'Idle' }}
+          </span>
+          <span v-if="queueStatus.queue_length > 0" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ queueStatus.queue_length }} queued
+          </span>
+        </div>
+        <button
+          @click="loadAllData"
+          :disabled="loading"
+          class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
+        >
+          <svg v-if="loading" class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          <svg v-else class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- New Task Input -->
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="flex items-start space-x-3">
+        <div class="flex-1">
+          <textarea
+            v-model="newTaskMessage"
+            :disabled="taskLoading || agentStatus !== 'running'"
+            rows="2"
+            placeholder="Enter task message..."
+            @keydown.meta.enter="runNewTask"
+            @keydown.ctrl.enter="runNewTask"
+            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed resize-none"
+          ></textarea>
+        </div>
+        <button
+          @click="runNewTask"
+          :disabled="taskLoading || !newTaskMessage.trim() || agentStatus !== 'running'"
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed h-10"
+        >
+          <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Run
+        </button>
+      </div>
+      <p v-if="agentStatus !== 'running'" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+        Agent must be running to execute tasks
+      </p>
+    </div>
+
+    <!-- Summary Stats (only if we have history) -->
+    <div v-if="executions.length > 0" class="grid grid-cols-4 gap-4">
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total</p>
+        <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ executions.length }}</p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Success Rate</p>
+        <p class="text-xl font-semibold" :class="successRate >= 90 ? 'text-green-600' : successRate >= 70 ? 'text-yellow-600' : 'text-red-600'">
+          {{ successRate }}%
+        </p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Cost</p>
+        <p class="text-xl font-semibold text-gray-900 dark:text-white font-mono">${{ totalCost.toFixed(4) }}</p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg Duration</p>
+        <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ formatDuration(avgDuration) || '-' }}</p>
+      </div>
+    </div>
+
+    <!-- Task History -->
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <!-- Loading State -->
+      <div v-if="loading && allTasks.length === 0" class="text-center py-8">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Loading tasks...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="allTasks.length === 0" class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <p class="mt-2 text-gray-500 dark:text-gray-400">No tasks yet</p>
+        <p class="text-sm text-gray-400 dark:text-gray-500">Run a task above or configure schedules</p>
+      </div>
+
+      <!-- Task List with vertical scroll -->
+      <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-96 overflow-y-auto">
+        <div
+          v-for="task in allTasks"
+          :key="task.id"
+          class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          :class="{
+            'bg-yellow-50/50 dark:bg-yellow-900/10': task.status === 'running',
+            'bg-red-50/30 dark:bg-red-900/10': task.status === 'failed'
+          }"
+        >
+          <div class="flex items-start justify-between">
+            <!-- Left side: Status, Message, Meta -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center space-x-2 mb-1">
+                <!-- Status badge -->
+                <span
+                  :class="[
+                    'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                    task.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                    task.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                    task.status === 'running' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' :
+                    'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'w-1.5 h-1.5 mr-1.5 rounded-full',
+                      task.status === 'success' ? 'bg-green-500' :
+                      task.status === 'failed' ? 'bg-red-500' :
+                      task.status === 'running' ? 'bg-yellow-500 animate-pulse' :
+                      'bg-gray-500'
+                    ]"
+                  ></span>
+                  {{ task.status }}
+                </span>
+                <!-- Trigger badge -->
+                <span
+                  :class="[
+                    'px-1.5 py-0.5 rounded text-xs',
+                    task.triggered_by === 'manual' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                    task.triggered_by === 'schedule' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                    'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  ]"
+                >
+                  {{ task.triggered_by }}
+                </span>
+                <!-- Time -->
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatRelativeTime(task.started_at) }}
+                </span>
+              </div>
+
+              <!-- Message -->
+              <p
+                class="text-sm text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+                @click="toggleTaskExpand(task.id)"
+              >
+                {{ task.message.substring(0, 120) }}{{ task.message.length > 120 ? '...' : '' }}
+              </p>
+
+              <!-- Stats row -->
+              <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <span v-if="task.duration_ms" class="font-mono">{{ formatDuration(task.duration_ms) }}</span>
+                <span v-if="task.cost" class="font-mono">${{ task.cost.toFixed(4) }}</span>
+                <div v-if="task.context_used && task.context_max" class="flex items-center space-x-1">
+                  <div class="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      class="h-full rounded-full"
+                      :class="getContextBarColor(task.context_used, task.context_max)"
+                      :style="{ width: Math.min(100, (task.context_used / task.context_max) * 100) + '%' }"
+                    ></div>
+                  </div>
+                  <span>{{ Math.round((task.context_used / task.context_max) * 100) }}%</span>
+                </div>
+              </div>
+
+              <!-- Expanded content: Response or Error -->
+              <div v-if="expandedTaskId === task.id && (task.response || task.error)" class="mt-3">
+                <div v-if="task.error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">{{ task.error }}</div>
+                <div v-else-if="task.response" class="bg-gray-100 dark:bg-gray-700 rounded p-3 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">{{ task.response }}</div>
+              </div>
+            </div>
+
+            <!-- Right side: Actions -->
+            <div class="flex items-center space-x-2 ml-4">
+              <button
+                v-if="task.status !== 'running'"
+                @click="rerunTask(task)"
+                :disabled="taskLoading || agentStatus !== 'running'"
+                class="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Re-run this task"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+              <button
+                @click="toggleTaskExpand(task.id)"
+                class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
+                :title="expandedTaskId === task.id ? 'Collapse' : 'Expand'"
+              >
+                <svg
+                  class="w-4 h-4 transition-transform"
+                  :class="expandedTaskId === task.id ? 'rotate-180' : ''"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue Management (collapsible) -->
+    <div v-if="queueStatus?.queue_length > 0 || queueStatus?.current_execution" class="text-right">
+      <button
+        v-if="queueStatus?.current_execution"
+        @click="forceReleaseQueue"
+        :disabled="releaseLoading"
+        class="text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 mr-4"
+      >
+        {{ releaseLoading ? 'Releasing...' : 'Force Release Queue' }}
+      </button>
+      <button
+        v-if="queueStatus?.queue_length > 0"
+        @click="clearQueue"
+        :disabled="clearLoading"
+        class="text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+      >
+        {{ clearLoading ? 'Clearing...' : 'Clear Queued' }}
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import axios from 'axios'
+import { useAuthStore } from '../stores/auth'
+
+const props = defineProps({
+  agentName: {
+    type: String,
+    required: true
+  },
+  agentStatus: {
+    type: String,
+    default: 'stopped'
+  }
+})
+
+const authStore = useAuthStore()
+
+// State
+const executions = ref([])
+const pendingTasks = ref([]) // Local tasks we've submitted
+const queueStatus = ref(null)
+const loading = ref(true)
+const newTaskMessage = ref('')
+const taskLoading = ref(false)
+const releaseLoading = ref(false)
+const clearLoading = ref(false)
+const expandedTaskId = ref(null)
+
+// Polling interval
+let pollInterval = null
+
+// Combine pending tasks with server executions
+const allTasks = computed(() => {
+  // Pending tasks first (they're running/just completed), then server executions
+  const pending = pendingTasks.value.filter(p => {
+    // Only show if not already in executions (to avoid duplicates after refresh)
+    return !executions.value.some(e => e.message === p.message && e.started_at === p.started_at)
+  })
+  return [...pending, ...executions.value]
+})
+
+// Computed stats (from server executions only)
+const successRate = computed(() => {
+  if (executions.value.length === 0) return 0
+  const successful = executions.value.filter(e => e.status === 'success').length
+  return Math.round((successful / executions.value.length) * 100)
+})
+
+const totalCost = computed(() => {
+  return executions.value.reduce((sum, e) => sum + (e.cost || 0), 0)
+})
+
+const avgDuration = computed(() => {
+  const withDuration = executions.value.filter(e => e.duration_ms)
+  if (withDuration.length === 0) return 0
+  return Math.round(withDuration.reduce((sum, e) => sum + e.duration_ms, 0) / withDuration.length)
+})
+
+// Load all data
+async function loadAllData() {
+  loading.value = true
+  await Promise.all([
+    loadExecutions(),
+    loadQueueStatus()
+  ])
+  loading.value = false
+}
+
+// Load executions from server
+async function loadExecutions() {
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/executions?limit=100`, {
+      headers: authStore.authHeader
+    })
+    executions.value = response.data
+  } catch (error) {
+    console.error('Failed to load executions:', error)
+  }
+}
+
+// Load queue status
+async function loadQueueStatus() {
+  if (props.agentStatus !== 'running') {
+    queueStatus.value = null
+    return
+  }
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/queue`, {
+      headers: authStore.authHeader
+    })
+    queueStatus.value = response.data
+  } catch (error) {
+    console.error('Failed to load queue status:', error)
+  }
+}
+
+// Run new task
+async function runNewTask() {
+  if (!newTaskMessage.value.trim()) return
+
+  const taskId = 'local-' + Date.now()
+  const taskMessage = newTaskMessage.value
+  const startTime = new Date().toISOString()
+
+  // Create a local pending task that shows immediately
+  const localTask = {
+    id: taskId,
+    message: taskMessage,
+    status: 'running',
+    triggered_by: 'manual',
+    started_at: startTime,
+    duration_ms: null,
+    cost: null,
+    context_used: null,
+    context_max: null,
+    response: null,
+    error: null
+  }
+
+  // Add to pending tasks (shows at top of list)
+  pendingTasks.value.unshift(localTask)
+  newTaskMessage.value = ''
+  taskLoading.value = true
+
+  const startMs = Date.now()
+
+  try {
+    // Use /task endpoint for parallel execution (doesn't block queue)
+    const response = await axios.post(`/api/agents/${props.agentName}/task`, {
+      message: taskMessage
+    }, {
+      headers: authStore.authHeader
+    })
+
+    const durationMs = Date.now() - startMs
+
+    // Update the local task with success
+    const idx = pendingTasks.value.findIndex(t => t.id === taskId)
+    if (idx !== -1) {
+      pendingTasks.value[idx] = {
+        ...pendingTasks.value[idx],
+        status: 'success',
+        duration_ms: durationMs,
+        cost: response.data.cost || null,
+        context_used: response.data.context_used || null,
+        context_max: response.data.context_max || null,
+        response: response.data.response || JSON.stringify(response.data, null, 2)
+      }
+    }
+  } catch (error) {
+    const durationMs = Date.now() - startMs
+
+    // Update the local task with failure
+    const idx = pendingTasks.value.findIndex(t => t.id === taskId)
+    if (idx !== -1) {
+      pendingTasks.value[idx] = {
+        ...pendingTasks.value[idx],
+        status: 'failed',
+        duration_ms: durationMs,
+        error: error.response?.data?.detail || error.message || 'Task failed'
+      }
+    }
+  } finally {
+    taskLoading.value = false
+    // Refresh server data - this will load the persisted execution
+    await loadExecutions()
+    loadQueueStatus()
+    // Remove the local pending task since it's now in server data
+    const idx = pendingTasks.value.findIndex(t => t.id === taskId)
+    if (idx !== -1) {
+      pendingTasks.value.splice(idx, 1)
+    }
+  }
+}
+
+// Re-run a previous task
+function rerunTask(task) {
+  newTaskMessage.value = task.message
+  // Scroll to top and focus (optional UX improvement)
+  runNewTask()
+}
+
+// Toggle task expansion
+function toggleTaskExpand(taskId) {
+  expandedTaskId.value = expandedTaskId.value === taskId ? null : taskId
+}
+
+// Force release queue
+async function forceReleaseQueue() {
+  releaseLoading.value = true
+  try {
+    await axios.post(`/api/agents/${props.agentName}/queue/release`, {}, {
+      headers: authStore.authHeader
+    })
+    await loadQueueStatus()
+  } catch (error) {
+    console.error('Failed to release queue:', error)
+  } finally {
+    releaseLoading.value = false
+  }
+}
+
+// Clear queue
+async function clearQueue() {
+  clearLoading.value = true
+  try {
+    await axios.post(`/api/agents/${props.agentName}/queue/clear`, {}, {
+      headers: authStore.authHeader
+    })
+    await loadQueueStatus()
+  } catch (error) {
+    console.error('Failed to clear queue:', error)
+  } finally {
+    clearLoading.value = false
+  }
+}
+
+// Format helpers
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = (now - date) / 1000
+
+  if (diff < 5) return 'just now'
+  if (diff < 60) return `${Math.round(diff)}s ago`
+  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.round(diff / 3600)}h ago`
+  return `${Math.round(diff / 86400)}d ago`
+}
+
+function formatDuration(ms) {
+  if (!ms) return ''
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  return `${(ms / 60000).toFixed(1)}m`
+}
+
+function getContextBarColor(used, max) {
+  if (!used || !max) return 'bg-gray-400'
+  const percent = (used / max) * 100
+  if (percent < 50) return 'bg-green-500'
+  if (percent < 75) return 'bg-yellow-500'
+  if (percent < 90) return 'bg-orange-500'
+  return 'bg-red-500'
+}
+
+// Start polling
+function startPolling() {
+  stopPolling()
+  if (props.agentStatus === 'running') {
+    pollInterval = setInterval(() => {
+      loadQueueStatus()
+    }, 5000)
+  }
+}
+
+// Stop polling
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
+
+// Watch for agent status changes
+watch(() => props.agentStatus, (newStatus) => {
+  if (newStatus === 'running') {
+    loadQueueStatus()
+    startPolling()
+  } else {
+    queueStatus.value = null
+    stopPolling()
+  }
+})
+
+// Watch for agent name changes
+watch(() => props.agentName, () => {
+  pendingTasks.value = [] // Clear local tasks when switching agents
+  loadAllData()
+  startPolling()
+})
+
+onMounted(() => {
+  loadAllData()
+  startPolling()
+})
+
+onUnmounted(() => {
+  stopPolling()
+})
+</script>

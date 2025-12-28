@@ -115,40 +115,31 @@ elif [ -n "${TEMPLATE_NAME}" ] && [ -d "/template" ]; then
     echo "Initializing agent from local template: ${TEMPLATE_NAME}"
     cd /home/developer
 
-    # Copy template files to workspace, excluding template.yaml
-    if [ -d "/template/.claude" ]; then
-        echo "Copying .claude directory..."
-        cp -r /template/.claude . 2>/dev/null || true
-    fi
+    # Check if workspace is already initialized (persistent volume has files from previous start)
+    if [ -f "/home/developer/.trinity-initialized" ]; then
+        echo "Agent workspace already initialized on persistent volume - preserving user files"
+    else
+        # Copy ALL template files to workspace (including template.yaml - it's a required Trinity file)
+        # This ensures custom directories (src/, lib/, docs/, etc.) are included
+        echo "Copying template files..."
+        cd /template
+        for item in $(ls -A); do
+            echo "  Copying ${item}..."
+            cp -r "${item}" /home/developer/ 2>/dev/null || true
+        done
+        cd /home/developer
 
-    if [ -f "/template/CLAUDE.md" ]; then
-        echo "Copying CLAUDE.md..."
-        cp /template/CLAUDE.md . 2>/dev/null || true
-    fi
+        # Make scripts executable if present
+        if [ -d "/home/developer/scripts" ]; then
+            chmod +x scripts/*.sh 2>/dev/null || true
+            chmod +x scripts/*.py 2>/dev/null || true
+        fi
 
-    if [ -f "/template/README.md" ]; then
-        echo "Copying README.md..."
-        cp /template/README.md . 2>/dev/null || true
-    fi
+        # Create initialization marker to prevent re-copying on restart
+        touch /home/developer/.trinity-initialized
 
-    if [ -d "/template/resources" ]; then
-        echo "Copying resources directory..."
-        cp -r /template/resources . 2>/dev/null || true
+        echo "Template initialization complete"
     fi
-
-    if [ -d "/template/scripts" ]; then
-        echo "Copying scripts directory..."
-        cp -r /template/scripts . 2>/dev/null || true
-        chmod +x scripts/*.sh 2>/dev/null || true
-        chmod +x scripts/*.py 2>/dev/null || true
-    fi
-
-    if [ -d "/template/memory" ]; then
-        echo "Copying memory directory..."
-        cp -r /template/memory . 2>/dev/null || true
-    fi
-
-    echo "Template initialization complete"
 fi
 
 # NOTE: Trinity Meta-Prompt Injection is now handled by agent-server.py
@@ -227,6 +218,19 @@ if [ "${ENABLE_AGENT_UI}" = "true" ]; then
     echo "Starting Agent Web UI on port ${AGENT_SERVER_PORT:-8000}..."
     python3 /app/agent-server.py &
 fi
+
+# === Content Folder Convention ===
+# Create content/ directory for large generated assets (videos, audio, images, exports)
+# These files persist across restarts but are NOT synced to GitHub
+echo "Setting up content folder convention..."
+mkdir -p /home/developer/content/{videos,audio,images,exports}
+
+# Ensure content/ is in .gitignore (prevents large files from bloating Git repos)
+if [ ! -f /home/developer/.gitignore ]; then
+    echo "# Trinity agent infrastructure files" > /home/developer/.gitignore
+fi
+grep -q "^content/$" /home/developer/.gitignore || echo "content/" >> /home/developer/.gitignore
+grep -q "^\.local/$" /home/developer/.gitignore || echo ".local/" >> /home/developer/.gitignore
 
 echo "Agent ready. Keeping container alive..."
 tail -f /dev/null

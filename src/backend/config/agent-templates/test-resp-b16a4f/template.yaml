@@ -1,0 +1,6 @@
+
+name: test-resp-b16a4f
+display_name: Response Test Agent
+resources:
+  cpu: "1"
+  memory: "2g"

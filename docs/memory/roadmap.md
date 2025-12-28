@@ -42,8 +42,8 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
-| ✅ | **Agent Vector Memory (Chroma)** | Chroma DB + all-MiniLM-L6-v2 per agent (2025-12-13) | MEDIUM |
-| ✅ | **Chroma MCP Server** | Auto-inject chroma-mcp into agents for MCP-based vector ops (2025-12-13) | HIGH |
+| ❌ | ~~Agent Vector Memory (Chroma)~~ | REMOVED (2025-12-24) - Templates should define their own memory | ~~MEDIUM~~ |
+| ❌ | ~~Chroma MCP Server~~ | REMOVED (2025-12-24) - Platform should not inject agent capabilities | ~~HIGH~~ |
 | ⏳ | Memory Folding | Periodic context compression to summary files | HIGH |
 | ⏳ | Reasoning Chain Logs | Capture "why" decisions, not just tool calls | MEDIUM |
 | ⏳ | Cognitive Rollback | Git-based agent state restoration | MEDIUM |
@@ -60,11 +60,34 @@
 | ✅ | **Internal System Agent (11.1)** | Auto-deployed platform orchestrator (`trinity-system`) with deletion protection, system-scoped MCP key, permission bypass. Completed 2025-12-20. | HIGH |
 | ✅ | **Parallel Headless Execution (12.1)** | Stateless parallel task execution - enables orchestrator to spawn N worker tasks simultaneously. `POST /api/agents/{name}/task` bypasses queue. MCP `chat_with_agent(parallel=true)`. Completed 2025-12-22. | **HIGH** |
 | ✅ | **OWASP Security Hardening** | Fixed 7/14 OWASP Top 10:2025 issues - SECRET_KEY, password hashing, Redis auth, WebSocket auth, CORS, error sanitization. Completed 2025-12-23. | **HIGH** |
+| ✅ | **Web Terminal for System Agent (11.5)** | Browser-based xterm.js terminal with PTY forwarding via Docker exec. Full Claude Code TUI. Admin-only, no SSH exposure. Completed 2025-12-25. | **HIGH** |
 | ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |
 | ⏳ | Automated sync modes (scheduled, on-stop) | GitOps enhancement | LOW |
 | ⏳ | Automated secret rotation | Security enhancement | LOW |
+
+### Phase 11.5: Content Management & File Operations
+🚧 **In Progress** — *Essential for agents generating large assets (video, audio, exports)*
+
+| Status | Item | Description | Priority |
+|--------|------|-------------|----------|
+| ✅ | **Content Folder Convention (12.1)** | `content/` directory gitignored by default, persists across restarts. Implemented 2025-12-27. | **HIGH** |
+| ✅ | **File Manager Page (12.2)** | Dedicated `/files` page with agent selector, two-panel layout (tree + preview), delete operations. Implemented 2025-12-27. | **HIGH** |
+| ✅ | File Preview Support | Preview images, video, audio, text/code, PDF in right panel. Implemented 2025-12-27. | HIGH |
+| ✅ | Delete Operations | Delete file/folder with confirmation, protected file warnings. Implemented 2025-12-27. | HIGH |
+| ⏳ | Create Folder | Create new directories in agent workspace | MEDIUM |
+
+**Content Convention**:
+```
+/home/developer/
+├── [workspace files]     # Synced to Git
+├── content/              # NOT synced - videos, audio, exports
+│   ├── videos/
+│   ├── audio/
+│   └── exports/
+└── .gitignore            # Includes: content/
+```
 
 ### Phase 12: Agent Perception & Attention (Cognitive Patterns)
 ⏳ **Pending** — *Emergent coordination via event-driven cognition*

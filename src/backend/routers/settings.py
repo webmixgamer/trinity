@@ -40,6 +40,14 @@ def get_anthropic_api_key() -> str:
     return os.getenv('ANTHROPIC_API_KEY', '')
 
 
+def get_github_pat() -> str:
+    """Get GitHub PAT from settings, fallback to env var."""
+    key = db.get_setting_value('github_pat', None)
+    if key:
+        return key
+    return os.getenv('GITHUB_PAT', '')
+
+
 def mask_api_key(key: str) -> str:
     """Mask an API key for display, showing only last 4 characters."""
     if not key or len(key) < 8:
@@ -148,11 +156,21 @@ async def get_api_keys_status(
             result="success"
         )
 
+        # Get GitHub PAT
+        github_pat = get_github_pat()
+        github_configured = bool(github_pat)
+        github_from_settings = bool(db.get_setting_value('github_pat', None))
+
         return {
             "anthropic": {
                 "configured": anthropic_configured,
                 "masked": mask_api_key(anthropic_key) if anthropic_configured else None,
                 "source": "settings" if key_from_settings else ("env" if anthropic_configured else None)
+            },
+            "github": {
+                "configured": github_configured,
+                "masked": mask_api_key(github_pat) if github_configured else None,
+                "source": "settings" if github_from_settings else ("env" if github_configured else None)
             }
         }
     except Exception as e:
@@ -315,6 +333,324 @@ async def test_anthropic_key(
             "error": f"Error testing key: {str(e)}"
         }
 
+
+@router.put("/api-keys/github")
+async def update_github_pat(
+    body: ApiKeyUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set or update the GitHub Personal Access Token.
+
+    Admin-only. Token is stored in system settings.
+    """
+    require_admin(current_user)
+
+    try:
+        # Validate format
+        key = body.api_key.strip()
+        if not (key.startswith('ghp_') or key.startswith('github_pat_')):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid token format. GitHub PATs start with 'ghp_' or 'github_pat_'"
+            )
+
+        # Store in settings
+        db.set_setting('github_pat', key)
+
+        await log_audit_event(
+            event_type="system_settings",
+            action="update_github_pat",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"key_masked": mask_api_key(key)}
+        )
+
+        return {
+            "success": True,
+            "masked": mask_api_key(key)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_audit_event(
+            event_type="system_settings",
+            action="update_github_pat",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="failed",
+            severity="error",
+            details={"error": str(e)}
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to update GitHub PAT: {str(e)}")
+
+
+@router.delete("/api-keys/github")
+async def delete_github_pat(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete the GitHub PAT from settings.
+
+    Admin-only. Will fall back to env var if configured.
+    """
+    require_admin(current_user)
+
+    try:
+        deleted = db.delete_setting('github_pat')
+
+        await log_audit_event(
+            event_type="system_settings",
+            action="delete_github_pat",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"deleted": deleted}
+        )
+
+        # Check if env var fallback exists
+        env_key = os.getenv('GITHUB_PAT', '')
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "fallback_configured": bool(env_key)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete GitHub PAT: {str(e)}")
+
+
+@router.post("/api-keys/github/test")
+async def test_github_pat(
+    body: ApiKeyTest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Test if a GitHub PAT is valid.
+
+    Admin-only. Makes a lightweight API call to validate the token.
+    """
+    require_admin(current_user)
+
+    try:
+        key = body.api_key.strip()
+
+        # Validate format first
+        if not (key.startswith('ghp_') or key.startswith('github_pat_')):
+            return {
+                "valid": False,
+                "error": "Invalid format. GitHub PATs start with 'ghp_' or 'github_pat_'"
+            }
+
+        # Make a lightweight API call to test the token
+        # Using the user endpoint which is simple and doesn't create any resources
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Determine token type and check permissions
+                is_fine_grained = key.startswith('github_pat_')
+                scopes = []
+                has_repo_access = False
+
+                if is_fine_grained:
+                    # Fine-grained PATs: Test actual permissions by trying to list repos
+                    # This will succeed if the token has proper permissions
+                    try:
+                        repos_response = await client.get(
+                            "https://api.github.com/user/repos",
+                            headers={
+                                "Authorization": f"Bearer {key}",
+                                "Accept": "application/vnd.github+json",
+                                "X-GitHub-Api-Version": "2022-11-28"
+                            },
+                            params={"per_page": 1},  # Just test access, don't fetch all repos
+                            timeout=10.0
+                        )
+                        # If we can list repos, the token has sufficient permissions
+                        has_repo_access = repos_response.status_code == 200
+                        scopes = ["fine-grained-pat"]
+                    except Exception:
+                        has_repo_access = False
+                        scopes = ["fine-grained-pat"]
+                else:
+                    # Classic PAT: Check X-OAuth-Scopes header
+                    scope_header = response.headers.get("X-OAuth-Scopes", "")
+                    scopes = [s.strip() for s in scope_header.split(",") if s.strip()]
+                    has_repo_access = "repo" in scopes or "public_repo" in scopes
+
+                await log_audit_event(
+                    event_type="system_settings",
+                    action="test_github_pat",
+                    user_id=current_user.username,
+                    ip_address=request.client.host if request.client else None,
+                    result="success",
+                    details={
+                        "valid": True,
+                        "github_user": data.get("login"),
+                        "token_type": "fine-grained" if is_fine_grained else "classic",
+                        "has_repo_access": has_repo_access
+                    }
+                )
+
+                return {
+                    "valid": True,
+                    "username": data.get("login"),
+                    "scopes": scopes,
+                    "token_type": "fine-grained" if is_fine_grained else "classic",
+                    "has_repo_access": has_repo_access
+                }
+            elif response.status_code == 401:
+                return {
+                    "valid": False,
+                    "error": "Invalid Personal Access Token"
+                }
+            else:
+                return {
+                    "valid": False,
+                    "error": f"GitHub API returned status {response.status_code}"
+                }
+
+    except httpx.TimeoutException:
+        return {
+            "valid": False,
+            "error": "Request timed out. Please try again."
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": f"Error testing token: {str(e)}"
+        }
+
+
+# ============================================================================
+# Email Whitelist Management (Phase 12.4)
+# ============================================================================
+
+@router.get("/email-whitelist")
+async def list_email_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all whitelisted emails.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    whitelist = db.list_whitelist(limit=1000)
+
+    await log_audit_event(
+        event_type="email_whitelist",
+        action="list",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success",
+        details={"count": len(whitelist)}
+    )
+
+    return {"whitelist": whitelist}
+
+
+@router.post("/email-whitelist")
+async def add_email_to_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Add an email to the whitelist.
+
+    Admin-only endpoint.
+    """
+    from database import EmailWhitelistAdd
+
+    require_admin(current_user)
+
+    # Parse request
+    body = await request.json()
+    add_request = EmailWhitelistAdd(**body)
+    email = add_request.email.lower()
+
+    # Add to whitelist
+    try:
+        added = db.add_to_whitelist(email, current_user.username, source=add_request.source)
+
+        if not added:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Email {email} is already whitelisted"
+            )
+
+        await log_audit_event(
+            event_type="email_whitelist",
+            action="add",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="success",
+            details={"email": email, "source": add_request.source}
+        )
+
+        return {"success": True, "email": email}
+
+    except ValueError as e:
+        await log_audit_event(
+            event_type="email_whitelist",
+            action="add",
+            user_id=current_user.username,
+            ip_address=request.client.host if request.client else None,
+            result="failed",
+            details={"email": email, "error": str(e)}
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/email-whitelist/{email}")
+async def remove_email_from_whitelist(
+    email: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Remove an email from the whitelist.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    # Remove from whitelist
+    removed = db.remove_from_whitelist(email)
+
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Email {email} not found in whitelist"
+        )
+
+    await log_audit_event(
+        event_type="email_whitelist",
+        action="remove",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success",
+        details={"email": email}
+    )
+
+    return {"success": True, "email": email}
 
 # ============================================================================
 # Generic Settings CRUD - /{key} catch-all routes
@@ -593,4 +929,5 @@ def get_ops_setting(key: str, as_type: type = str):
     elif as_type == bool:
         return value.lower() in ("true", "1", "yes")
     return value
+
 

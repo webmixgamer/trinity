@@ -184,8 +184,8 @@ class SystemAgentService:
             'TEMPLATE_NAME': SYSTEM_AGENT_TEMPLATE
         }
 
-        # OpenTelemetry Configuration (opt-in)
-        if os.getenv('OTEL_ENABLED', '0') == '1':
+        # OpenTelemetry Configuration (enabled by default)
+        if os.getenv('OTEL_ENABLED', '1') == '1':
             env_vars['CLAUDE_CODE_ENABLE_TELEMETRY'] = '1'
             env_vars['OTEL_METRICS_EXPORTER'] = os.getenv('OTEL_METRICS_EXPORTER', 'otlp')
             env_vars['OTEL_LOGS_EXPORTER'] = os.getenv('OTEL_LOGS_EXPORTER', 'otlp')
@@ -225,9 +225,12 @@ class SystemAgentService:
             'trinity.platform': 'agent',
             'trinity.agent-name': SYSTEM_AGENT_NAME,
             'trinity.agent-type': agent_type,
+            'trinity.ssh-port': str(ssh_port),  # Required for port tracking
+            'trinity.cpu': str(resources.get('cpu', '4')),
+            'trinity.memory': resources.get('memory', '8g'),
+            'trinity.created': datetime.utcnow().isoformat(),
             'trinity.template': SYSTEM_AGENT_TEMPLATE,
             'trinity.is-system': 'true',  # Mark as system agent
-            'trinity.created-at': datetime.utcnow().isoformat()
         }
 
         # Create the container

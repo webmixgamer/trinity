@@ -18,6 +18,7 @@ export default defineConfig({
       '/api': {
         target: `http://${backendHost}:8000`,
         changeOrigin: true,
+        ws: true,
       },
       '/token': {
         target: `http://${backendHost}:8000`,

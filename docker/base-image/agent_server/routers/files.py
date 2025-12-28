@@ -2,11 +2,13 @@
 File browser endpoints.
 """
 import logging
+import mimetypes
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -138,3 +140,139 @@ async def download_file(path: str):
     except Exception as e:
         logger.error(f"File download error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+
+
+# Protected paths that cannot be deleted
+PROTECTED_PATHS = [
+    "CLAUDE.md",
+    ".trinity",
+    ".git",
+    ".gitignore",
+    ".env",
+    ".mcp.json",
+    ".mcp.json.template",
+]
+
+
+def _is_protected_path(path: Path) -> bool:
+    """Check if path is a protected file/directory."""
+    for protected in PROTECTED_PATHS:
+        if path.name == protected:
+            return True
+        # Check parent directories too
+        for parent in path.parents:
+            if parent.name == protected:
+                return True
+    return False
+
+
+@router.delete("/api/files")
+async def delete_file(path: str):
+    """
+    Delete a file or directory from the workspace.
+    Only allows access to /home/developer for security.
+    Cannot delete protected paths (CLAUDE.md, .trinity, .git, etc.)
+    """
+    # Security: Only allow workspace access
+    allowed_base = Path("/home/developer")
+
+    # Handle both absolute and relative paths
+    if path.startswith('/'):
+        requested_path = Path(path).resolve()
+    else:
+        requested_path = (allowed_base / path).resolve()
+
+    # Ensure requested path is within workspace
+    if not str(requested_path).startswith(str(allowed_base)):
+        raise HTTPException(status_code=403, detail="Access denied: only /home/developer accessible")
+
+    # Prevent deleting the base directory itself
+    if requested_path == allowed_base:
+        raise HTTPException(status_code=403, detail="Cannot delete home directory")
+
+    # Check if it's a protected path
+    if _is_protected_path(requested_path):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Cannot delete protected path: {requested_path.name}"
+        )
+
+    if not requested_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    try:
+        file_type = "directory" if requested_path.is_dir() else "file"
+        file_count = 0
+
+        if requested_path.is_dir():
+            # Count files before deletion
+            for _ in requested_path.rglob("*"):
+                file_count += 1
+            shutil.rmtree(requested_path)
+        else:
+            file_count = 1
+            requested_path.unlink()
+
+        logger.info(f"Deleted {file_type}: {requested_path}")
+        return {
+            "success": True,
+            "deleted": path,
+            "type": file_type,
+            "file_count": file_count
+        }
+
+    except Exception as e:
+        logger.error(f"File delete error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {str(e)}")
+
+
+@router.get("/api/files/preview")
+async def preview_file(path: str):
+    """
+    Get file with proper MIME type for preview.
+    Supports images, videos, audio, PDFs, and text files.
+    Only allows access to /home/developer for security.
+    Max file size: 100MB
+    """
+    # Security: Only allow workspace access
+    allowed_base = Path("/home/developer")
+
+    # Handle both absolute and relative paths
+    if path.startswith('/'):
+        requested_path = Path(path).resolve()
+    else:
+        requested_path = (allowed_base / path).resolve()
+
+    # Ensure requested path is within workspace
+    if not str(requested_path).startswith(str(allowed_base)):
+        raise HTTPException(status_code=403, detail="Access denied: only /home/developer accessible")
+
+    if not requested_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    if not requested_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+
+    # Check file size (100MB limit)
+    max_size = 100 * 1024 * 1024  # 100MB
+    file_size = requested_path.stat().st_size
+    if file_size > max_size:
+        raise HTTPException(status_code=413, detail=f"File too large: {file_size} bytes (max {max_size})")
+
+    try:
+        # Detect MIME type
+        mime_type, _ = mimetypes.guess_type(str(requested_path))
+        if mime_type is None:
+            # Default to binary for unknown types
+            mime_type = "application/octet-stream"
+
+        # Return file with correct Content-Type for browser preview
+        return FileResponse(
+            path=requested_path,
+            media_type=mime_type,
+            filename=requested_path.name
+        )
+
+    except Exception as e:
+        logger.error(f"File preview error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to preview file: {str(e)}")

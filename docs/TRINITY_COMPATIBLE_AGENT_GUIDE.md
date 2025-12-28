@@ -21,11 +21,12 @@
 11. [Shared Folders](#shared-folders)
 12. [Custom Metrics](#custom-metrics)
 13. [Memory Management](#memory-management)
-14. [Testing Locally](#testing-locally)
-15. [Compatibility Checklist](#compatibility-checklist)
-16. [Migration Guide](#migration-guide)
-17. [Troubleshooting](#troubleshooting)
-18. [Best Practices](#best-practices)
+14. [Content Folder Convention](#content-folder-convention)
+15. [Testing Locally](#testing-locally)
+16. [Compatibility Checklist](#compatibility-checklist)
+17. [Migration Guide](#migration-guide)
+18. [Troubleshooting](#troubleshooting)
+19. [Best Practices](#best-practices)
 
 ---
 
@@ -139,7 +140,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets and platform-managed directories:
+Must exclude secrets, platform-managed directories, and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -152,6 +153,9 @@ credentials.json
 # Platform-managed directories - DO NOT COMMIT
 .trinity/
 .claude/commands/trinity/
+
+# Large generated content - DO NOT COMMIT
+content/
 
 # Claude Code session data
 .claude/projects/
@@ -186,7 +190,6 @@ my-agent/
 │
 ├── .trinity/                      # PLATFORM-MANAGED (injected at startup)
 │   ├── prompt.md                  # Trinity Meta-Prompt (injected)
-│   ├── vector-memory.md           # Chroma usage documentation
 │   └── version.json               # Injection version tracking
 │
 ├── .claude/
@@ -216,8 +219,13 @@ my-agent/
 │
 ├── outputs/                       # Generated content (COMMITTED)
 │   ├── reports/
-│   ├── content/
-│   └── exports/
+│   └── data/
+│
+├── content/                       # Large generated assets (NOT COMMITTED)
+│   ├── videos/                    # Generated video files
+│   ├── audio/                     # Generated audio files
+│   ├── images/                    # Generated images
+│   └── exports/                   # Data exports, large files
 │
 ├── scripts/                       # Helper scripts
 └── resources/                     # Static resources
@@ -491,21 +499,16 @@ Trinity controls agent behavior through **runtime injection**. This ensures:
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **Trinity Meta-Prompt** | `.trinity/prompt.md` + CLAUDE.md section | Planning instructions, collaboration protocols |
-| **Platform Commands** | `.claude/commands/trinity/` | `/trinity-plan-*` commands |
+| **Trinity Meta-Prompt** | `.trinity/prompt.md` + CLAUDE.md section | Collaboration protocols |
 | **Trinity MCP Config** | `.mcp.json` (merged) | Agent-to-agent collaboration tools |
-| **Chroma MCP Config** | `.mcp.json` (merged) | Vector memory tools |
 | **Credentials** | `.env`, `.mcp.json` | API keys, tokens |
-| **Vector Memory Docs** | `.trinity/vector-memory.md` | Chroma usage documentation |
 
 ### Injection Timing
 
 **On Agent Start:**
 1. Trinity Meta-Prompt injected/updated in `.trinity/` and CLAUDE.md
-2. Platform commands created in `.claude/commands/trinity/`
-3. MCP servers (Trinity, Chroma) injected into `.mcp.json`
-4. Credentials injected into `.env` and `.mcp.json`
-5. `plans/active/` and `plans/archive/` directories created
+2. Trinity MCP server injected into `.mcp.json`
+3. Credentials injected into `.env` and `.mcp.json`
 
 ### CLAUDE.md After Injection
 
@@ -759,15 +762,59 @@ Agents should periodically compress old context:
 1. At session end, review `session_notes/`
 2. Extract key learnings → append to `context.md`
 3. Archive verbose notes to `summaries/`
-4. Commit via `/trinity-commit` or Git sync
+4. Commit via Git sync
 
-### Vector Memory (Chroma)
+---
 
-Each agent has access to a Chroma vector database for semantic memory:
+## Content Folder Convention
 
-- **Location**: `/home/developer/vector-store/`
-- **Access**: Via `mcp__chroma__*` tools (auto-injected)
-- **Persistence**: Survives agent restarts
+For agents that generate large files (videos, audio, images, exports), Trinity provides a standard convention to prevent Git repository bloat.
+
+### The Problem
+
+Large generated files:
+- Bloat Git repositories (video files can be 100s of MB)
+- Slow down GitHub sync operations
+- Risk accidental commits
+
+### The Solution
+
+Trinity automatically creates a `content/` directory structure:
+
+```
+/home/developer/content/
+├── videos/      # Generated video files
+├── audio/       # Generated audio files
+├── images/      # Generated images
+└── exports/     # Data exports, large files
+```
+
+**Key Properties:**
+- ✅ **Persists** - Files survive container restarts (same Docker volume as workspace)
+- ✅ **Excluded from Git** - Automatically added to `.gitignore`
+- ✅ **Not synced** - Git sync ignores `content/` directory
+
+### Usage in Your Agent
+
+When generating large assets, save them to `content/`:
+
+```python
+# In your agent's scripts
+output_path = "/home/developer/content/videos/my-video.mp4"
+```
+
+```markdown
+# In your CLAUDE.md
+When generating videos, save them to `content/videos/`.
+When exporting data, save to `content/exports/`.
+```
+
+### outputs/ vs content/
+
+| Directory | Synced to Git? | Use For |
+|-----------|---------------|---------|
+| `outputs/` | ✅ Yes | Small files you want versioned (reports, summaries) |
+| `content/` | ❌ No | Large files that shouldn't be in Git (videos, audio) |
 
 ---
 
@@ -1014,9 +1061,11 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 | Date | Changes |
 |------|---------|
+| 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
+| 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |
 | 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |
 | 2025-12-14 | Consolidated from AGENT_TEMPLATE_SPEC.md and trinity-compatible-agent.md |
-| 2025-12-13 | Added shared folders and Chroma MCP integration |
+| 2025-12-13 | Added shared folders |
 | 2025-12-10 | Added custom metrics specification |
 | 2025-12-05 | Added Task DAG system (Pillar I) |
 

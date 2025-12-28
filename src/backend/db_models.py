@@ -367,3 +367,41 @@ class PublicChatResponse(BaseModel):
     """Response from a public chat."""
     response: str
     usage: Optional[dict] = None  # {"input_tokens": N, "output_tokens": N}
+
+
+# =========================================================================
+# Email Authentication Models (Phase 12.4)
+# =========================================================================
+
+class EmailWhitelistEntry(BaseModel):
+    """An email address in the whitelist."""
+    id: int
+    email: str
+    added_by: str  # User ID
+    added_by_username: Optional[str] = None
+    added_at: datetime
+    source: str  # "manual", "agent_sharing"
+
+
+class EmailWhitelistAdd(BaseModel):
+    """Request to add an email to the whitelist."""
+    email: str
+    source: str = "manual"
+
+
+class EmailLoginRequest(BaseModel):
+    """Request a login code via email."""
+    email: str
+
+
+class EmailLoginVerify(BaseModel):
+    """Verify a login code."""
+    email: str
+    code: str  # 6-digit code
+
+
+class EmailLoginResponse(BaseModel):
+    """Response after successful login."""
+    access_token: str
+    token_type: str = "bearer"
+    user: dict  # User profile
