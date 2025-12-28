@@ -299,6 +299,32 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
 
+# Version endpoint
+@app.get("/api/version")
+async def get_version():
+    """Get Trinity platform version information."""
+    import os
+    from pathlib import Path
+    
+    # Read version from VERSION file
+    version_file = Path(__file__).parent.parent.parent / "VERSION"
+    version = "unknown"
+    if version_file.exists():
+        version = version_file.read_text().strip()
+    
+    return {
+        "version": version,
+        "platform": "trinity",
+        "components": {
+            "backend": version,
+            "agent_server": version,
+            "base_image": f"trinity-agent-base:{version}"
+        },
+        "runtimes": ["claude-code", "gemini-cli"],
+        "build_date": os.getenv("BUILD_DATE", "unknown")
+    }
+
+
 # Audit logs endpoint (admin only)
 @app.get("/api/audit/logs")
 async def get_audit_logs(
