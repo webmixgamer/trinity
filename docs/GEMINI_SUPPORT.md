@@ -111,6 +111,34 @@ Both runtimes implement the same interface:
 - `configure_mcp(servers)`
 - Return same format: `(response, execution_log, metadata)`
 
+## Instruction File (CLAUDE.md)
+
+Both Claude Code and Gemini CLI read agent instructions from `CLAUDE.md`.
+
+**Why keep the name `CLAUDE.md`?**
+- Backward compatibility with existing agents
+- Both runtimes understand markdown instruction files
+- Renaming would break existing templates
+
+```
+workspace/
+├── CLAUDE.md           # ← Both runtimes read this
+├── .mcp.json           # ← Claude Code only
+└── ...
+```
+
+**In your CLAUDE.md**, you can write instructions that work for both:
+```markdown
+# Agent Instructions
+
+You are a helpful agent. [Instructions work for both Claude and Gemini]
+
+## Tools Available
+- filesystem operations
+- web search
+- etc.
+```
+
 ## MCP Configuration
 
 **Claude Code:** Uses `.mcp.json` file
@@ -130,7 +158,7 @@ Both runtimes implement the same interface:
 gemini mcp add trinity http://mcp-server:8080/mcp
 ```
 
-Trinity translates `.mcp.json` to Gemini commands automatically.
+Trinity translates MCP configuration to each runtime's format automatically.
 
 ## Switching Runtimes
 

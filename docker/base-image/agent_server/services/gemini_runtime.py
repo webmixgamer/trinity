@@ -52,48 +52,11 @@ class GeminiRuntime(AgentRuntime):
         """
         Configure MCP servers via Gemini CLI commands.
 
-        Gemini uses "gemini mcp add <name> <command> [args...]" instead of .mcp.json
+        Gemini uses "gemini mcp add <name> <command> [args...]" instead of .mcp.json.
+        Uses the shared implementation from trinity_mcp.py for consistency.
         """
-        try:
-            # First, clear existing MCP servers
-            result = subprocess.run(
-                ["gemini", "mcp", "list"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            # Parse existing servers and remove them
-            # (Gemini CLI doesn't have a "clear all" command)
-            if result.returncode == 0 and result.stdout:
-                for line in result.stdout.split('\n'):
-                    if line.strip() and not line.startswith('No MCP'):
-                        # Extract server name (format: "name: command")
-                        if ':' in line:
-                            server_name = line.split(':')[0].strip()
-                            subprocess.run(["gemini", "mcp", "remove", server_name], timeout=5)
-
-            # Add new MCP servers
-            for server_name, config in mcp_servers.items():
-                command = config.get("command", "")
-                args = config.get("args", [])
-
-                if not command:
-                    logger.warning(f"Skipping MCP server '{server_name}': no command specified")
-                    continue
-
-                cmd = ["gemini", "mcp", "add", server_name, command] + args
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-                if result.returncode == 0:
-                    logger.info(f"Configured MCP server: {server_name}")
-                else:
-                    logger.error(f"Failed to add MCP server '{server_name}': {result.stderr}")
-
-            return True
-        except Exception as e:
-            logger.error(f"Failed to configure MCP for Gemini: {e}")
-            return False
+        from .trinity_mcp import _configure_gemini_mcp_servers
+        return _configure_gemini_mcp_servers(mcp_servers)
 
     async def execute(
         self,
@@ -143,6 +106,7 @@ class GeminiRuntime(AgentRuntime):
             metadata = ExecutionMetadata()
             metadata.context_window = self.get_context_window(model)
             tool_start_times: Dict[str, datetime] = {}
+            tool_names: Dict[str, str] = {}  # Map tool_id -> tool_name
             response_parts: List[str] = []
 
             logger.info(f"Starting Gemini CLI: {' '.join(cmd[:5])}...")
@@ -170,7 +134,7 @@ class GeminiRuntime(AgentRuntime):
                             break
                         # Process each line immediately
                         # Gemini CLI uses same stream-json format as Claude Code
-                        self._process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts)
                 except Exception as e:
                     logger.error(f"Error reading Gemini output: {e}")
 
@@ -244,6 +208,7 @@ class GeminiRuntime(AgentRuntime):
         execution_log: List[ExecutionLogEntry],
         metadata: ExecutionMetadata,
         tool_start_times: Dict[str, datetime],
+        tool_names: Dict[str, str],
         response_parts: List[str]
     ) -> None:
         """
@@ -313,11 +278,12 @@ class GeminiRuntime(AgentRuntime):
         elif msg_type == "tool_use":
             # Gemini CLI outputs tool_use at top level: {"type":"tool_use","tool_name":"...","tool_id":"...","parameters":{}}
             tool_id = msg.get("tool_id", str(uuid.uuid4()))
-            tool_name = msg.get("tool_name", "Unknown")
-            tool_input = msg.get("parameters", {})
+            tool_name = msg.get("tool_name") or msg.get("name", "Unknown")
+            tool_input = msg.get("parameters") or msg.get("input", {})
             timestamp = datetime.now()
 
             tool_start_times[tool_id] = timestamp
+            tool_names[tool_id] = tool_name  # Store for later lookup
 
             execution_log.append(ExecutionLogEntry(
                 id=tool_id,
@@ -338,6 +304,9 @@ class GeminiRuntime(AgentRuntime):
             tool_output = msg.get("output", "")
             timestamp = datetime.now()
 
+            # Look up tool name from previous tool_use
+            tool_name = tool_names.get(tool_id, "Unknown")
+
             # Calculate duration
             duration_ms = None
             if tool_id in tool_start_times:
@@ -345,18 +314,18 @@ class GeminiRuntime(AgentRuntime):
                 duration_ms = int(delta.total_seconds() * 1000)
 
             execution_log.append(ExecutionLogEntry(
-                id=str(uuid.uuid4()),
+                id=tool_id,  # Use same ID for correlation
                 type="tool_result",
-                tool_use_id=tool_id,
+                tool=tool_name,
                 output=tool_output,
-                is_error=is_error,
+                success=not is_error,
                 duration_ms=duration_ms,
                 timestamp=timestamp.isoformat()
             ))
 
             # Update session activity
             complete_tool_execution(tool_id, tool_output, is_error)
-            logger.debug(f"Tool completed: {tool_id} (error={is_error})")
+            logger.debug(f"Tool completed: {tool_name} ({tool_id}) success={not is_error}")
 
         elif msg_type in ("assistant", "user"):
             # Handle tool_use and tool_result blocks (Claude Code format - nested in message)
@@ -492,6 +461,7 @@ class GeminiRuntime(AgentRuntime):
             metadata = ExecutionMetadata()
             metadata.context_window = self.get_context_window(model)
             tool_start_times: Dict[str, datetime] = {}
+            tool_names: Dict[str, str] = {}  # Map tool_id -> tool_name
             response_parts: List[str] = []
 
             logger.info(f"[Headless Task {session_id}] Starting Gemini CLI...")
@@ -522,7 +492,7 @@ class GeminiRuntime(AgentRuntime):
                         if time.time() - start_time > timeout_seconds:
                             process.kill()
                             raise TimeoutError(f"Task exceeded {timeout_seconds}s timeout")
-                        self._process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts)
                 except Exception as e:
                     logger.error(f"[Headless Task {session_id}] Error: {e}")
                     raise

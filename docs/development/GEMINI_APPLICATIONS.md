@@ -2,118 +2,100 @@
 
 This document tracks necessary refactoring to fully support Gemini CLI as a runtime alongside Claude Code.
 
-## Status: Planned
+## Status: ✅ Implemented (2025-12-28)
 
-The core Gemini runtime is functional. These are polish items for full parity.
+The core Gemini runtime is functional. All priority items have been implemented.
 
 ---
 
 ## 1. Instruction File Name - Make Runtime-Aware
 
-### Current State
-- `CLAUDE.md` is hardcoded throughout the codebase
-- Gemini CLI uses the same file but the name is misleading
+### Status: ✅ Documented (Option C selected)
 
-### Files to Update
-- `docker/base-image/startup.sh` (lines 124-126)
-- `docker/base-image/agent_server/routers/trinity.py` (lines 56, 166, 287)
-- Template documentation
+**Decision**: Keep `CLAUDE.md` for backward compatibility - both runtimes read it.
 
-### Proposed Solution
-Option A: Support both `CLAUDE.md` and `GEMINI.md` (runtime-specific)
-Option B: Rename to generic `INSTRUCTIONS.md` or `AGENT.md`
-Option C: Keep `CLAUDE.md` for backward compatibility (both runtimes read it)
-
-**Recommendation**: Option C for now - both Claude Code and Gemini CLI can read `CLAUDE.md`. Document this in the guide.
+- Both Claude Code and Gemini CLI understand markdown instruction files
+- No code changes needed - documented in [GEMINI_SUPPORT.md](../GEMINI_SUPPORT.md)
+- Renaming would break existing templates without benefit
 
 ---
 
 ## 2. MCP Injection - Add Gemini Support
 
-### Current State
-- `trinity_mcp.py` only writes to `.mcp.json` (Claude Code format)
-- Gemini CLI uses `gemini mcp add <name> <command>` commands
-- Agent-to-agent communication broken for Gemini agents
+### Status: ✅ Implemented
 
-### Files to Update
+**Files Updated**:
 - `docker/base-image/agent_server/services/trinity_mcp.py`
-- `docker/base-image/agent_server/services/gemini_runtime.py`
 
-### Proposed Solution
+**Implementation**:
 ```python
 def inject_trinity_mcp_if_configured() -> bool:
     """Inject Trinity MCP server - runtime aware."""
     runtime = os.getenv("AGENT_RUNTIME", "claude-code")
 
     if runtime == "gemini-cli":
-        # Use: gemini mcp add trinity npx @anthropic/mcp-server-http ...
-        return _inject_gemini_mcp()
+        return _inject_gemini_mcp(url, key)  # gemini mcp add
     else:
-        # Existing .mcp.json logic
-        return _inject_claude_mcp()
+        return _inject_claude_mcp(url, key)  # .mcp.json
 ```
+
+New functions added:
+- `_inject_claude_mcp()` - writes to `.mcp.json`
+- `_inject_gemini_mcp()` - uses `gemini mcp add` command
+- `configure_mcp_servers()` - shared runtime-aware MCP config
+- `_configure_claude_mcp_servers()` - Claude-specific
+- `_configure_gemini_mcp_servers()` - Gemini-specific
 
 ---
 
 ## 3. Complete Gemini MCP Configuration
 
-### Current State
-- `GeminiRuntime.configure_mcp()` exists but is incomplete
-- MCP servers from templates are not being configured
+### Status: ✅ Implemented
 
-### Files to Update
+**Files Updated**:
 - `docker/base-image/agent_server/services/gemini_runtime.py`
 
-### Implementation
-```python
-def configure_mcp(self, mcp_servers: Dict) -> bool:
-    """Configure MCP servers via Gemini CLI commands."""
-    for server_name, config in mcp_servers.items():
-        command = config.get("command", "")
-        args = config.get("args", [])
-
-        # gemini mcp add <name> <command> [args...]
-        subprocess.run(["gemini", "mcp", "add", server_name, command] + args)
-
-    return True
-```
+**Implementation**:
+`GeminiRuntime.configure_mcp()` now delegates to shared `_configure_gemini_mcp_servers()` function for consistency.
 
 ---
 
 ## 4. Tool Name Mapping (Low Priority)
 
-### Current State
-- Template `tools` array uses generic names: `["filesystem", "web_search"]`
-- Both runtimes have similar built-in tools
+### Status: ⏸️ Deferred
 
-### Assessment
-- **Claude Code tools**: Read, Write, Edit, Bash, WebSearch, etc.
-- **Gemini CLI tools**: read_file, write_file, run_shell_command, google_web_search, etc.
+No action needed - both runtimes have equivalent built-in tools:
 
-### Recommendation
-No immediate action needed - both runtimes have equivalent built-in tools. The `tools` array in templates is informational, not used for actual tool restriction.
+| Generic Name | Claude Code | Gemini CLI |
+|--------------|-------------|------------|
+| filesystem | Read, Write, Edit | read_file, write_file, replace |
+| shell | Bash | run_shell_command |
+| web_search | WebSearch | google_web_search |
+| memory | Task | save_memory |
+
+The `tools` array in templates is informational only.
 
 ---
 
-## Implementation Priority
+## Implementation Summary
 
-| Priority | Item | Effort | Impact |
+| Priority | Item | Status | Commit |
 |----------|------|--------|--------|
-| 1 | MCP injection for Gemini | Medium | High - enables agent-to-agent |
-| 2 | Complete `configure_mcp` | Low | Medium - enables custom MCP |
-| 3 | Instruction file docs | Low | Low - clarity |
-| 4 | Tool name mapping | Low | Low - cosmetic |
+| 1 | MCP injection for Gemini | ✅ Done | 2025-12-28 |
+| 2 | Complete `configure_mcp` | ✅ Done | 2025-12-28 |
+| 3 | Instruction file docs | ✅ Done | 2025-12-28 |
+| 4 | Tool name mapping | ⏸️ Deferred | N/A |
 
 ---
 
 ## Testing Checklist
 
 After implementing:
-- [ ] Gemini agent can chat with Trinity MCP
-- [ ] Gemini agent can delegate to other agents
-- [ ] Custom MCP servers work with Gemini agents
-- [ ] Template MCP configurations apply correctly
-- [ ] Vector memory (Chroma MCP) works with Gemini
+- [x] Gemini agent can use Trinity MCP (via `gemini mcp add`)
+- [ ] Gemini agent can delegate to other agents (needs testing)
+- [x] Custom MCP servers work with Gemini agents
+- [x] Template MCP configurations apply correctly
+- [ ] Vector memory (Chroma MCP) works with Gemini (needs testing)
 
 ---
 
@@ -121,4 +103,5 @@ After implementing:
 - [Gemini Support Guide](../GEMINI_SUPPORT.md)
 - [Trinity Compatible Agent Guide](../TRINITY_COMPATIBLE_AGENT_GUIDE.md)
 - [Multi-Runtime Architecture](../memory/requirements.md#12-multi-runtime-support)
+- [Delegation Best Practices](../MULTI_AGENT_SYSTEM_GUIDE.md#delegation-best-practices)
 

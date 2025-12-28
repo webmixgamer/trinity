@@ -65,6 +65,7 @@ class ExecutionLogEntry(BaseModel):
     type: str  # "tool_use" or "tool_result"
     tool: str
     input: Optional[Dict[str, Any]] = None
+    output: Optional[str] = None  # Tool output for tool_result entries
     success: Optional[bool] = None
     duration_ms: Optional[int] = None
     timestamp: str

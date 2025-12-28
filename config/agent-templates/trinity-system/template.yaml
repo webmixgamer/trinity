@@ -3,12 +3,13 @@ display_name: Trinity System Agent
 description: Platform operations manager responsible for agent health, lifecycle, resource governance, and schedule control. Auto-deployed, deletion-protected, with full access to all Trinity MCP tools.
 version: "1.1.0"
 author: Trinity Platform
+priority: 1  # System template - always first
 
 type: system-orchestrator
 
 resources:
   cpu: "4"
-  memory: "8g"
+  memory: "4g"
 
 capabilities:
   - health-monitoring
