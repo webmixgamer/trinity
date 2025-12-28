@@ -532,7 +532,7 @@ async def create_agent_internal(
         if google_api_key:
             env_vars['GOOGLE_API_KEY'] = google_api_key
         else:
-            logger.warning(f"Gemini runtime selected but GOOGLE_API_KEY not configured")
+            print(f"Warning: Gemini runtime selected but GOOGLE_API_KEY not configured")
 
     # OpenTelemetry Configuration (opt-in via OTEL_ENABLED)
     # Claude Code has built-in OTel support - these vars enable metrics export
@@ -1063,7 +1063,7 @@ async def deploy_local_agent(
             runtime_model = runtime_config.get("model")
         elif isinstance(runtime_config, str):
             runtime_type = runtime_config
-        
+
         agent_config = AgentConfig(
             name=version_name,
             template=f"local:{version_name}",
