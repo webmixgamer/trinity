@@ -1903,6 +1903,83 @@ test_mode: true
 3. **Audit Inter-Agent Calls**: Trinity logs all MCP communications
 4. **Review Shared Data**: Don't put secrets in shared folders
 
+### Delegation Best Practices
+
+Trinity supports **two types of delegation** that serve different purposes:
+
+#### MCP-Based Delegation (Trinity Platform)
+Cross-agent communication via the Trinity MCP server (`chat_with_agent` tool).
+
+```
+Agent A ──[MCP]──► Trinity MCP Server ──► Agent B
+                         │
+                    Audit Log
+```
+
+**Use MCP delegation for:**
+- Cross-agent communication (Claude agent ↔ Gemini agent)
+- Persistent tasks that need tracking
+- Work requiring audit trails and cost tracking
+- Specialized agents with their own credentials/tooling
+- Long-running tasks that may outlive a conversation
+
+#### Runtime Sub-Agents (Built-in)
+Both Claude Code and Gemini CLI have built-in sub-agent capabilities:
+
+| Runtime | Built-in Sub-Agent | Use Case |
+|---------|-------------------|----------|
+| **Gemini CLI** | `codebase_investigator` | Deep codebase analysis, architecture mapping |
+| **Claude Code** | Custom agents via `--agents` | User-defined specialized tasks |
+
+**Use runtime sub-agents for:**
+- Quick parallel file operations (read 10 files simultaneously)
+- Ephemeral investigation tasks
+- Performance optimization (no network round-trips)
+- Fast codebase exploration within a single context
+
+#### Decision Matrix
+
+```
+Is the task...
+├─ Talking to ANOTHER Trinity agent? → MCP Delegation
+├─ Needs audit trail/cost tracking? → MCP Delegation
+├─ Cross-runtime (Claude ↔ Gemini)? → MCP Delegation
+├─ Quick parallel file ops? → Runtime Sub-agent OK
+├─ Deep codebase investigation? → Runtime Sub-agent OK
+└─ Uncertain? → Default to MCP Delegation
+```
+
+#### Anti-Patterns to Avoid
+
+| ❌ Don't | Why |
+|----------|-----|
+| Define custom agents inside containers that duplicate Trinity agents | Confusing, duplicate costs, no platform visibility |
+| Use runtime sub-agents for persistent/important work | No audit trail, lost on container restart |
+| Use runtime sub-agents for cross-runtime tasks | Gemini sub-agent can't call Claude agent |
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Trinity Platform                    │
+│  ┌─────────────┐    MCP     ┌─────────────┐        │
+│  │ Claude Agent│◄──────────►│ Gemini Agent│        │
+│  │  ┌───────┐  │            │  ┌────────┐ │        │
+│  │  │custom │  │            │  │codebase│ │        │
+│  │  │agents │  │            │  │invest. │ │        │
+│  │  └───────┘  │            │  └────────┘ │        │
+│  └─────────────┘            └─────────────┘        │
+│         ▲                          ▲               │
+│         └──────── Audit Log ───────┘               │
+└─────────────────────────────────────────────────────┘
+
+Legend:
+  ◄────────► = MCP Delegation (audited, cross-runtime)
+  ┌───────┐  = Runtime Sub-agents (ephemeral, fast)
+```
+
+**Bottom line**: Use MCP for orchestration and cross-agent work. Use runtime sub-agents for optimization and ephemeral parallelism. Don't reinvent Trinity's delegation inside containers.
+
 ---
 
 ## System Definition Template

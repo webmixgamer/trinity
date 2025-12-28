@@ -1,3 +1,21 @@
+### 2025-12-28 18:30:00
+📚 **Documentation - Delegation Best Practices**
+
+Added comprehensive delegation best practices to the Multi-Agent System Guide, covering the hybrid delegation strategy for Trinity.
+
+**New Documentation** (`docs/MULTI_AGENT_SYSTEM_GUIDE.md`):
+- **MCP vs Runtime Sub-Agents**: When to use each delegation type
+- **Decision Matrix**: Clear guidance for choosing delegation method
+- **Anti-Patterns**: Common mistakes to avoid
+- **Architecture Diagram**: Visual overview of delegation layers
+
+**Key Concepts Documented**:
+- MCP delegation for cross-agent, audited, persistent work
+- Runtime sub-agents (Gemini's `codebase_investigator`, Claude's `--agents`) for ephemeral parallelism
+- Don't reinvent Trinity's orchestration inside containers
+
+---
+
 ### 2025-12-28 15:00:00
 🚀 **Multi-Runtime Support - Gemini CLI Integration**
 
