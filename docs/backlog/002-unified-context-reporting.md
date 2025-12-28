@@ -1,10 +1,10 @@
 # IMPROVEMENT: Unified Context Reporting Across Runtimes
 
-**Priority:** Medium  
-**Type:** Enhancement  
-**Component:** Agent Server / Runtime Adapter  
-**Created:** 2025-12-28  
-**Status:** Open  
+**Priority:** Medium
+**Type:** Enhancement
+**Component:** Agent Server / Runtime Adapter
+**Created:** 2025-12-28
+**Status:** Open
 **Depends On:** #001 (Claude Context Window Display Bug)
 
 ---
@@ -40,12 +40,12 @@ Add to `docker/base-image/agent_server/services/runtime_adapter.py`:
 ```python
 class AgentRuntime(ABC):
     # ... existing methods ...
-    
+
     @abstractmethod
     def get_context_metrics(self, metadata: ExecutionMetadata) -> ContextMetrics:
         """
         Get standardized context metrics for this runtime.
-        
+
         Returns:
             ContextMetrics with:
             - total_context_tokens: Full context sent to API
@@ -69,7 +69,7 @@ class ContextMetrics:
     cached_tokens: int            # Tokens that were cached
     context_window: int           # Model's max context
     utilization_percent: float    # total / window * 100
-    
+
     # Optional breakdown
     tool_definition_tokens: int = 0
     instruction_file_tokens: int = 0
@@ -86,7 +86,7 @@ def get_context_metrics(self, metadata: ExecutionMetadata) -> ContextMetrics:
     else:
         # Fallback: assume base + incremental
         total = CLAUDE_BASE_CONTEXT + metadata.input_tokens
-    
+
     return ContextMetrics(
         total_context_tokens=total,
         conversation_tokens=metadata.input_tokens,

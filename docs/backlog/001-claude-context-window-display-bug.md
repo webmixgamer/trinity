@@ -1,10 +1,10 @@
 # BUG: Claude Agent Context Window Display Shows Incorrect Values
 
-**Priority:** High  
-**Type:** Bug Fix  
-**Component:** Agent Server / Claude Code Runtime  
-**Created:** 2025-12-28  
-**Status:** Open  
+**Priority:** High
+**Type:** Bug Fix
+**Component:** Agent Server / Claude Code Runtime
+**Created:** 2025-12-28
+**Status:** Open
 
 ---
 
@@ -33,7 +33,7 @@ From testing session on 2025-12-28:
 - If only 730 tokens were used, cost would be ~$0.002
 
 **Gemini agent (test):**
-- UI shows: 21K tokens for 2 messages  
+- UI shows: 21K tokens for 2 messages
 - Session cost: $0.0126
 - Cost aligns with reported token usage ✓
 
@@ -118,7 +118,7 @@ def estimate_input_tokens_from_cost(total_cost, output_tokens):
     return int(input_cost / INPUT_COST_PER_TOKEN)
 ```
 
-**Pros:** Accurate reflection of API usage  
+**Pros:** Accurate reflection of API usage
 **Cons:** Requires pricing lookup, may drift if pricing changes
 
 ### Option B: Track Cumulative Tokens
@@ -133,7 +133,7 @@ session_cumulative_input_tokens = 0
 session_cumulative_input_tokens += metadata.input_tokens
 ```
 
-**Pros:** Simple implementation  
+**Pros:** Simple implementation
 **Cons:** Still won't capture system prompt/tool definitions (~10K tokens)
 
 ### Option C: Add Base Context Constant
@@ -146,7 +146,7 @@ CLAUDE_BASE_CONTEXT = 12000  # System prompt + tool definitions
 actual_context = CLAUDE_BASE_CONTEXT + reported_input_tokens
 ```
 
-**Pros:** Simple  
+**Pros:** Simple
 **Cons:** Base context may vary by configuration
 
 ### Option D: Hybrid Approach (Best)
@@ -158,10 +158,10 @@ def get_actual_context_tokens(metadata, session_state):
     # If we have cost data, estimate from that (most accurate)
     if metadata.cost_usd and metadata.output_tokens:
         return estimate_input_tokens_from_cost(
-            metadata.cost_usd, 
+            metadata.cost_usd,
             metadata.output_tokens
         )
-    
+
     # Fallback to cumulative + base estimate
     return CLAUDE_BASE_CONTEXT + session_state.cumulative_input_tokens
 ```
