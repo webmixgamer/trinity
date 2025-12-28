@@ -51,7 +51,8 @@ export function useWebSocket() {
   const handleMessage = (data) => {
     switch (data.event) {
       case 'agent_created':
-        // Only add if not already in list (API response may have added it already)
+        // Add to list (createAgent() no longer pushes to avoid race conditions)
+        // Still check for duplicates in case of reconnection/replay
         if (!agentsStore.agents.find(a => a.name === data.data.name)) {
           agentsStore.agents.push(data.data)
         }
