@@ -1,3 +1,43 @@
+### 2025-12-28 15:00:00
+🚀 **Multi-Runtime Support - Gemini CLI Integration**
+
+Added support for Google's Gemini CLI as an alternative agent runtime, enabling cost optimization and 1M token context windows.
+
+**New Features**:
+- **Runtime Adapter Pattern**: Abstract interface for swapping execution engines
+- **Gemini CLI Support**: Full integration with Google's free-tier AI
+- **Per-Agent Runtime Selection**: Choose Claude Code or Gemini CLI per agent
+- **Template Configuration**: New `runtime:` field in template.yaml
+
+**Key Benefits**:
+- **Cost Savings**: Gemini free tier (60 req/min, 1K/day)
+- **5x Context Window**: 1M tokens vs 200K for Claude
+- **Provider Flexibility**: Mix runtimes based on task complexity
+
+**Files Added**:
+- `docker/base-image/agent_server/services/runtime_adapter.py` - Abstract interface
+- `docker/base-image/agent_server/services/gemini_runtime.py` - Gemini implementation
+- `config/agent-templates/test-gemini/` - Test template
+- `docs/GEMINI_SUPPORT.md` - User guide
+
+**Files Modified**:
+- `docker/base-image/Dockerfile` - Added Gemini CLI installation
+- `docker/base-image/agent_server/services/claude_code.py` - Wrapped in ClaudeCodeRuntime
+- `docker/base-image/agent_server/state.py` - Runtime-aware availability checks
+- `docker/base-image/agent_server/routers/chat.py` - Uses runtime adapter
+- `src/backend/models.py` - Added runtime fields to AgentConfig
+- `src/backend/routers/agents.py` - Runtime env var injection
+- `docker-compose.yml` - GOOGLE_API_KEY support
+
+**Documentation Updated**:
+- `README.md` - Multi-runtime feature mention
+- `docs/DEPLOYMENT.md` - GOOGLE_API_KEY instructions
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Runtime Options section
+
+**Backward Compatibility**: ✅ All existing agents continue using Claude Code by default.
+
+---
+
 ### 2025-12-24 10:15:00
 🐛 **Test Suite Fixes - 11 Failures Resolved**
 

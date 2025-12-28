@@ -1286,10 +1286,68 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 
 ---
 
+### 12. Multi-Runtime Support
+
+#### 12.1 Runtime Adapter Architecture
+- **Status**: ✅ Implemented (2025-12-28)
+- **Priority**: Medium
+- **Description**: Abstract interface for agent execution engines, enabling provider flexibility
+- **Implementation**:
+  - `AgentRuntime` abstract base class in `runtime_adapter.py`
+  - `ClaudeCodeRuntime` wrapping existing Claude Code integration
+  - `GeminiRuntime` implementing Google's Gemini CLI
+  - Factory function `get_runtime()` for runtime selection
+- **Acceptance Criteria**:
+  - [x] Runtime adapter interface defined
+  - [x] Claude Code wrapped in adapter
+  - [x] Gemini CLI implementation
+  - [x] Per-agent runtime selection
+  - [x] Template-based runtime configuration
+
+#### 12.2 Gemini CLI Integration
+- **Status**: ✅ Implemented (2025-12-28)
+- **Priority**: Medium
+- **Description**: Support Google's Gemini CLI as alternative runtime
+- **Benefits**:
+  - Free tier (60 req/min, 1,000/day)
+  - 1M token context window (5x Claude)
+  - Native Google Search integration
+- **Configuration**:
+  ```yaml
+  # template.yaml
+  runtime:
+    type: gemini-cli
+    model: gemini-2.5-pro
+  ```
+- **Environment**: `GOOGLE_API_KEY` in `.env`
+- **Acceptance Criteria**:
+  - [x] Gemini CLI installed in base image
+  - [x] MCP configuration translation
+  - [x] Cost/token tracking integration
+  - [x] Session continuity (--resume)
+  - [x] Headless task execution
+
+#### 12.3 Runtime Configuration in Templates
+- **Status**: ✅ Implemented (2025-12-28)
+- **Priority**: Medium
+- **Description**: Runtime selection via template.yaml `runtime:` field
+- **Schema**:
+  ```yaml
+  runtime:
+    type: claude-code | gemini-cli  # Default: claude-code
+    model: string                    # Optional model override
+  ```
+- **Acceptance Criteria**:
+  - [x] template.yaml parsing extracts runtime config
+  - [x] AgentConfig model supports runtime fields
+  - [x] Environment variables passed to containers
+  - [x] Backward compatible (defaults to claude-code)
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)
-- Custom model providers (Claude only)
 - Mobile application
 - Billing/payment integration
 - Agent marketplace
