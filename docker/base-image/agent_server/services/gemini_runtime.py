@@ -194,6 +194,7 @@ class GeminiRuntime(AgentRuntime):
                 )
 
             # Build final response text
+            logger.info(f"[Stream] Building response from {len(response_parts)} parts")
             response_text = "\n".join(response_parts) if response_parts else ""
 
             # Count unique tools used
@@ -201,12 +202,19 @@ class GeminiRuntime(AgentRuntime):
             metadata.tool_count = tool_use_count
 
             # Handle empty response gracefully
-            # Sometimes Gemini returns success with no assistant message
+            # Sometimes Gemini returns success with no assistant message (tool result IS the response)
             if not response_text:
+                logger.warning(f"[Stream] Empty response - parts were: {response_parts[:3] if response_parts else 'EMPTY'}")
                 if tool_use_count > 0:
-                    # Tools were used but no final message - provide a placeholder
-                    response_text = "(Task completed)"
-                    logger.warning("Gemini returned empty response after tool execution")
+                    # Tools were used but no final message - use tool result as response
+                    tool_results = [e for e in execution_log if e.type == "tool_result"]
+                    if tool_results and tool_results[-1].output:
+                        # Use the last tool result output as the response
+                        response_text = tool_results[-1].output
+                        logger.info(f"Using tool result as response: {response_text[:100]}...")
+                    else:
+                        response_text = "(Task completed)"
+                        logger.warning("Gemini returned empty response after tool execution")
                 else:
                     # No response and no tools - unusual but not necessarily an error
                     response_text = "(No response from model)"
@@ -262,10 +270,11 @@ class GeminiRuntime(AgentRuntime):
             # Gemini CLI sends response text as {"type":"message","role":"assistant","content":"..."}
             role = msg.get("role")
             content = msg.get("content", "")
+            logger.info(f"[Stream] message: role={role}, content_len={len(content) if content else 0}")
             if role == "assistant" and content:
                 # Append to response parts (Gemini sends streaming deltas)
                 response_parts.append(content)
-                logger.debug(f"Received assistant message: {content[:100]}...")
+                logger.info(f"[Stream] Appended assistant content, parts_count={len(response_parts)}")
 
         elif msg_type == "result":
             # Final result message with stats
@@ -546,8 +555,14 @@ class GeminiRuntime(AgentRuntime):
             # Handle empty response gracefully
             if not response_text:
                 if tool_use_count > 0:
-                    response_text = "(Task completed)"
-                    logger.warning(f"[Headless Task {session_id}] Gemini returned empty response after tool execution")
+                    # Use tool result as response if available
+                    tool_results = [e for e in execution_log if e.type == "tool_result"]
+                    if tool_results and tool_results[-1].output:
+                        response_text = tool_results[-1].output
+                        logger.info(f"[Headless Task {session_id}] Using tool result as response")
+                    else:
+                        response_text = "(Task completed)"
+                        logger.warning(f"[Headless Task {session_id}] Gemini returned empty response after tool execution")
                 else:
                     response_text = "(No response from model)"
                     logger.warning(f"[Headless Task {session_id}] Gemini returned empty response with no tool calls")
