@@ -680,6 +680,10 @@ async def create_agent_internal(
                 cpu_count=int(config.resources.get('cpu', '2'))
             )
 
+            # Wait briefly for container to fully start, then reload status
+            import time
+            time.sleep(1)
+            container.reload()
             agent_status = get_agent_status_from_container(container)
 
             if manager:
