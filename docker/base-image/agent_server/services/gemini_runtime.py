@@ -114,12 +114,12 @@ class GeminiRuntime(AgentRuntime):
             )
 
         try:
-            # Get GOOGLE_API_KEY from environment
-            api_key = os.getenv("GOOGLE_API_KEY")
+            # Get GEMINI_API_KEY from environment
+            api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise HTTPException(
                     status_code=500,
-                    detail="GOOGLE_API_KEY not configured in agent container"
+                    detail="GEMINI_API_KEY not configured in agent container"
                 )
 
             # Build command
@@ -252,6 +252,15 @@ class GeminiRuntime(AgentRuntime):
         if msg_type == "init":
             metadata.session_id = msg.get("session_id")
 
+        elif msg_type == "message":
+            # Gemini CLI sends response text as {"type":"message","role":"assistant","content":"..."}
+            role = msg.get("role")
+            content = msg.get("content", "")
+            if role == "assistant" and content:
+                # Append to response parts (Gemini sends streaming deltas)
+                response_parts.append(content)
+                logger.debug(f"Received assistant message: {content[:100]}...")
+
         elif msg_type == "result":
             # Final result message with stats
             metadata.cost_usd = msg.get("total_cost_usd", 0)  # Gemini might report 0 for free tier
@@ -262,10 +271,18 @@ class GeminiRuntime(AgentRuntime):
                 response_parts.clear()
                 response_parts.append(result_text)
 
-            # Extract token usage
+            # Extract token usage from stats field (Gemini CLI format)
+            stats = msg.get("stats", {})
+            if stats:
+                metadata.input_tokens = stats.get("input_tokens", 0)
+                metadata.output_tokens = stats.get("output_tokens", 0)
+                metadata.duration_ms = stats.get("duration_ms", metadata.duration_ms)
+
+            # Fallback to usage field if stats not present
             usage = msg.get("usage", {})
-            metadata.input_tokens = usage.get("input_tokens", 0)
-            metadata.output_tokens = usage.get("output_tokens", 0)
+            if not stats and usage:
+                metadata.input_tokens = usage.get("input_tokens", 0)
+                metadata.output_tokens = usage.get("output_tokens", 0)
 
             # Gemini might use different field names - adapt if needed
             model_usage = msg.get("modelUsage", {})
@@ -367,7 +384,7 @@ class GeminiRuntime(AgentRuntime):
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute Gemini CLI in headless mode for parallel tasks.
-        
+
         Unlike execute(), this function:
         - Does NOT use --resume (stateless)
         - Each call is independent
@@ -378,44 +395,44 @@ class GeminiRuntime(AgentRuntime):
                 status_code=503,
                 detail="Gemini CLI is not available in this container"
             )
-        
+
         try:
-            # Get GOOGLE_API_KEY from environment
-            api_key = os.getenv("GOOGLE_API_KEY")
+            # Get GEMINI_API_KEY from environment
+            api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise HTTPException(
                     status_code=500,
-                    detail="GOOGLE_API_KEY not configured in agent container"
+                    detail="GEMINI_API_KEY not configured in agent container"
                 )
-            
+
             # Generate unique session ID for this task
             session_id = str(uuid.uuid4())[:8]
-            
+
             # Build command - stateless (no --resume)
             cmd = ["gemini", "--output-format", "stream-json", "--yolo"]
-            
+
             # Add model selection if specified
             if model:
                 cmd.extend(["--model", model])
-            
+
             # Add tool restrictions if specified
             if allowed_tools:
                 for tool in allowed_tools:
                     cmd.extend(["--allowed-tools", tool])
-            
+
             # Add system prompt if specified
             if system_prompt:
                 cmd.extend(["--system-prompt", system_prompt])
-            
+
             # Initialize tracking structures
             execution_log: List[ExecutionLogEntry] = []
             metadata = ExecutionMetadata()
             metadata.context_window = self.get_context_window(model)
             tool_start_times: Dict[str, datetime] = {}
             response_parts: List[str] = []
-            
+
             logger.info(f"[Headless Task {session_id}] Starting Gemini CLI...")
-            
+
             # Use Popen for real-time streaming with timeout
             process = subprocess.Popen(
                 cmd,
@@ -425,11 +442,11 @@ class GeminiRuntime(AgentRuntime):
                 text=True,
                 bufsize=1
             )
-            
+
             # Write prompt to stdin and close it
             process.stdin.write(prompt)
             process.stdin.close()
-            
+
             # Helper function that reads subprocess output
             def read_subprocess_output():
                 """Blocking function to read subprocess output line by line with timeout"""
@@ -446,17 +463,17 @@ class GeminiRuntime(AgentRuntime):
                 except Exception as e:
                     logger.error(f"[Headless Task {session_id}] Error: {e}")
                     raise
-                
+
                 stderr = process.stderr.read()
                 return_code = process.wait()
                 return stderr, return_code
-            
+
             # Run the blocking subprocess reading in a thread pool
             from concurrent.futures import ThreadPoolExecutor
             executor = ThreadPoolExecutor(max_workers=1)
             loop = asyncio.get_event_loop()
             stderr_output, return_code = await loop.run_in_executor(executor, read_subprocess_output)
-            
+
             # Check for errors
             if return_code != 0:
                 logger.error(f"[Headless Task {session_id}] Gemini CLI failed (exit {return_code}): {stderr_output[:500]}")
@@ -464,27 +481,27 @@ class GeminiRuntime(AgentRuntime):
                     status_code=500,
                     detail=f"Gemini execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
                 )
-            
+
             # Build final response text
             response_text = "\n".join(response_parts) if response_parts else ""
-            
+
             if not response_text:
                 raise HTTPException(
                     status_code=500,
                     detail="Gemini returned empty response"
                 )
-            
+
             # Count unique tools used
             tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
             metadata.tool_count = tool_use_count
-            
+
             # Use session_id from metadata if available, otherwise use our generated one
             final_session_id = metadata.session_id or session_id
-            
+
             logger.info(f"[Headless Task {final_session_id}] Completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}")
-            
+
             return response_text, execution_log, metadata, final_session_id
-        
+
         except HTTPException:
             raise
         except TimeoutError as e:
