@@ -22,30 +22,35 @@ from .runtime_adapter import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
-# Gemini pricing per 1K tokens (as of Dec 2024)
+# Gemini pricing per 1K tokens (as of Dec 2024, from ai.google.dev/pricing)
 # Free tier has limits, but we calculate what it *would* cost
+# Note: Prices are for standard context (≤200K tokens)
 GEMINI_PRICING = {
     "gemini-3-pro": {
-        "input": 0.00125,   # $0.00125 per 1K input tokens (estimated)
-        "output": 0.01,     # $0.01 per 1K output tokens
+        "input": 0.002,     # $2.00 per 1M = $0.002 per 1K
+        "output": 0.012,    # $12.00 per 1M = $0.012 per 1K
     },
     "gemini-3-flash": {
-        "input": 0.000075,  # $0.000075 per 1K input tokens (estimated)
-        "output": 0.0003,   # $0.0003 per 1K output tokens
+        "input": 0.0005,    # $0.50 per 1M = $0.0005 per 1K
+        "output": 0.003,    # $3.00 per 1M = $0.003 per 1K
     },
     "gemini-2.5-pro": {
-        "input": 0.00125,   # $0.00125 per 1K input tokens
-        "output": 0.01,     # $0.01 per 1K output tokens
+        "input": 0.00125,   # $1.25 per 1M = $0.00125 per 1K
+        "output": 0.01,     # $10.00 per 1M = $0.01 per 1K
     },
     "gemini-2.5-flash": {
-        "input": 0.000075,  # $0.000075 per 1K input tokens
-        "output": 0.0003,   # $0.0003 per 1K output tokens
+        "input": 0.0003,    # $0.30 per 1M = $0.0003 per 1K
+        "output": 0.0025,   # $2.50 per 1M = $0.0025 per 1K
     },
     "gemini-2.0-flash": {
-        "input": 0.0001,    # $0.0001 per 1K input tokens
-        "output": 0.0004,   # $0.0004 per 1K output tokens
+        "input": 0.0001,    # $0.10 per 1M = $0.0001 per 1K
+        "output": 0.0004,   # $0.40 per 1M = $0.0004 per 1K
     },
-    # Default pricing for unknown models
+    "gemini-2.0-flash-lite": {
+        "input": 0.000075,  # $0.075 per 1M = $0.000075 per 1K
+        "output": 0.0003,   # $0.30 per 1M = $0.0003 per 1K
+    },
+    # Default to 2.5 Pro pricing for unknown models
     "default": {
         "input": 0.00125,
         "output": 0.01,
