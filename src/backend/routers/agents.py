@@ -513,8 +513,19 @@ async def create_agent_internal(
         'ENABLE_SSH': 'true',
         'ENABLE_AGENT_UI': 'true',
         'AGENT_SERVER_PORT': '8000',
-        'TEMPLATE_NAME': config.template if config.template else ''
+        'TEMPLATE_NAME': config.template if config.template else '',
+        # Multi-runtime support
+        'AGENT_RUNTIME': config.runtime or 'claude-code',
+        'AGENT_RUNTIME_MODEL': config.runtime_model or ''
     }
+    
+    # Add Google API key if using Gemini runtime
+    if config.runtime == 'gemini-cli' or config.runtime == 'gemini':
+        google_api_key = os.getenv('GOOGLE_API_KEY', '')
+        if google_api_key:
+            env_vars['GOOGLE_API_KEY'] = google_api_key
+        else:
+            logger.warning(f"Gemini runtime selected but GOOGLE_API_KEY not configured")
 
     # OpenTelemetry Configuration (opt-in via OTEL_ENABLED)
     # Claude Code has built-in OTel support - these vars enable metrics export

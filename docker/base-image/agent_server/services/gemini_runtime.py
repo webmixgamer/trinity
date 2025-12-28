@@ -1,0 +1,369 @@
+"""
+Gemini CLI execution service.
+
+Implements AgentRuntime interface for Google's Gemini models.
+"""
+import os
+import json
+import uuid
+import asyncio
+import subprocess
+import logging
+from typing import List, Dict, Optional, Tuple
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import HTTPException
+
+from ..models import ExecutionLogEntry, ExecutionMetadata
+from ..state import agent_state
+from .activity_tracking import start_tool_execution, complete_tool_execution
+from .runtime_adapter import AgentRuntime
+
+logger = logging.getLogger(__name__)
+
+
+class GeminiRuntime(AgentRuntime):
+    """Gemini CLI implementation of AgentRuntime interface."""
+    
+    def is_available(self) -> bool:
+        """Check if Gemini CLI is installed."""
+        try:
+            result = subprocess.run(
+                ["gemini", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+    
+    def get_default_model(self) -> str:
+        """Get default Gemini model."""
+        return "gemini-2.5-pro"
+    
+    def get_context_window(self, model: Optional[str] = None) -> int:
+        """Get context window for Gemini models."""
+        # Gemini 2.5 Pro has 1M token context
+        return 1000000
+    
+    def configure_mcp(self, mcp_servers: Dict) -> bool:
+        """
+        Configure MCP servers via Gemini CLI commands.
+        
+        Gemini uses "gemini mcp add <name> <command> [args...]" instead of .mcp.json
+        """
+        try:
+            # First, clear existing MCP servers
+            result = subprocess.run(
+                ["gemini", "mcp", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            # Parse existing servers and remove them
+            # (Gemini CLI doesn't have a "clear all" command)
+            if result.returncode == 0 and result.stdout:
+                for line in result.stdout.split('\n'):
+                    if line.strip() and not line.startswith('No MCP'):
+                        # Extract server name (format: "name: command")
+                        if ':' in line:
+                            server_name = line.split(':')[0].strip()
+                            subprocess.run(["gemini", "mcp", "remove", server_name], timeout=5)
+            
+            # Add new MCP servers
+            for server_name, config in mcp_servers.items():
+                command = config.get("command", "")
+                args = config.get("args", [])
+                
+                if not command:
+                    logger.warning(f"Skipping MCP server '{server_name}': no command specified")
+                    continue
+                
+                cmd = ["gemini", "mcp", "add", server_name, command] + args
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    logger.info(f"Configured MCP server: {server_name}")
+                else:
+                    logger.error(f"Failed to add MCP server '{server_name}': {result.stderr}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to configure MCP for Gemini: {e}")
+            return False
+    
+    async def execute(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        continue_session: bool = False,
+        stream: bool = False
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+        """
+        Execute Gemini CLI with the given prompt.
+        
+        Uses same output format as Claude Code for compatibility.
+        """
+        if not self.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini CLI is not available in this container"
+            )
+        
+        try:
+            # Get GOOGLE_API_KEY from environment
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise HTTPException(
+                    status_code=500,
+                    detail="GOOGLE_API_KEY not configured in agent container"
+                )
+            
+            # Build command
+            cmd = ["gemini", "--output-format", "stream-json", "--yolo"]
+            
+            # Add model selection if specified
+            if model:
+                cmd.extend(["--model", model])
+                logger.info(f"Using Gemini model: {model}")
+            
+            # Session continuity
+            if continue_session and agent_state.session_started:
+                cmd.append("--resume")
+                logger.info("Resuming existing Gemini session")
+            else:
+                agent_state.session_started = True
+                logger.info("Starting new Gemini session")
+            
+            # Initialize tracking structures
+            execution_log: List[ExecutionLogEntry] = []
+            metadata = ExecutionMetadata()
+            metadata.context_window = self.get_context_window(model)
+            tool_start_times: Dict[str, datetime] = {}
+            response_parts: List[str] = []
+            
+            logger.info(f"Starting Gemini CLI: {' '.join(cmd[:5])}...")
+            
+            # Use Popen for real-time streaming
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1  # Line buffered
+            )
+            
+            # Write prompt to stdin and close it
+            process.stdin.write(prompt)
+            process.stdin.close()
+            
+            # Helper function that reads subprocess output (runs in thread pool)
+            def read_subprocess_output():
+                """Blocking function to read subprocess output line by line"""
+                try:
+                    for line in iter(process.stdout.readline, ''):
+                        if not line:
+                            break
+                        # Process each line immediately
+                        # Gemini CLI uses same stream-json format as Claude Code
+                        self._process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+                except Exception as e:
+                    logger.error(f"Error reading Gemini output: {e}")
+                
+                # Wait for process to complete and get stderr
+                stderr = process.stderr.read()
+                return_code = process.wait()
+                return stderr, return_code
+            
+            # Run the blocking subprocess reading in a thread pool
+            from concurrent.futures import ThreadPoolExecutor
+            executor = ThreadPoolExecutor(max_workers=1)
+            loop = asyncio.get_event_loop()
+            stderr_output, return_code = await loop.run_in_executor(executor, read_subprocess_output)
+            
+            # Check for errors
+            if return_code != 0:
+                logger.error(f"Gemini CLI failed (exit {return_code}): {stderr_output[:500]}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Gemini execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                )
+            
+            # Build final response text
+            response_text = "\n".join(response_parts) if response_parts else ""
+            
+            if not response_text:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Gemini returned empty response"
+                )
+            
+            # Count unique tools used
+            tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
+            metadata.tool_count = tool_use_count
+            
+            # Update session stats
+            if metadata.cost_usd:
+                agent_state.session_total_cost += metadata.cost_usd
+            agent_state.session_total_output_tokens += metadata.output_tokens
+            if metadata.input_tokens > agent_state.session_context_tokens:
+                agent_state.session_context_tokens = metadata.input_tokens
+            agent_state.session_context_window = metadata.context_window
+            
+            logger.info(f"Gemini response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}")
+            
+            return response_text, execution_log, metadata
+        
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Gemini execution error: {e}")
+            raise HTTPException(status_code=500, detail=f"Execution error: {str(e)}")
+    
+    def _process_stream_line(
+        self,
+        line: str,
+        execution_log: List[ExecutionLogEntry],
+        metadata: ExecutionMetadata,
+        tool_start_times: Dict[str, datetime],
+        response_parts: List[str]
+    ) -> None:
+        """
+        Process a single line of stream-json output from Gemini CLI.
+        
+        Gemini CLI uses the same stream-json format as Claude Code, so we can
+        reuse the parsing logic with minor adjustments.
+        """
+        if not line.strip():
+            return
+        
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse line as JSON: {line[:100]}")
+            return
+        
+        msg_type = msg.get("type")
+        
+        if msg_type == "init":
+            metadata.session_id = msg.get("session_id")
+        
+        elif msg_type == "result":
+            # Final result message with stats
+            metadata.cost_usd = msg.get("total_cost_usd", 0)  # Gemini might report 0 for free tier
+            metadata.duration_ms = msg.get("duration_ms")
+            metadata.num_turns = msg.get("num_turns")
+            result_text = msg.get("result", "")
+            if result_text:
+                response_parts.clear()
+                response_parts.append(result_text)
+            
+            # Extract token usage
+            usage = msg.get("usage", {})
+            metadata.input_tokens = usage.get("input_tokens", 0)
+            metadata.output_tokens = usage.get("output_tokens", 0)
+            
+            # Gemini might use different field names - adapt if needed
+            model_usage = msg.get("modelUsage", {})
+            for model_name, model_data in model_usage.items():
+                if "contextWindow" in model_data:
+                    metadata.context_window = model_data["contextWindow"]
+                if "inputTokens" in model_data:
+                    metadata.input_tokens = model_data["inputTokens"]
+                if "outputTokens" in model_data:
+                    metadata.output_tokens = model_data["outputTokens"]
+                break
+        
+        elif msg_type in ("assistant", "user"):
+            # Handle tool_use and tool_result blocks
+            message = msg.get("message", {})
+            message_content = message.get("content", [])
+            
+            for content_block in message_content:
+                block_type = content_block.get("type")
+                
+                if block_type == "tool_use":
+                    # Tool is being called
+                    tool_id = content_block.get("id", str(uuid.uuid4()))
+                    tool_name = content_block.get("name", "Unknown")
+                    tool_input = content_block.get("input", {})
+                    timestamp = datetime.now()
+                    
+                    tool_start_times[tool_id] = timestamp
+                    
+                    execution_log.append(ExecutionLogEntry(
+                        id=tool_id,
+                        type="tool_use",
+                        tool=tool_name,
+                        input=tool_input,
+                        timestamp=timestamp.isoformat()
+                    ))
+                    
+                    # Update session activity
+                    start_tool_execution(tool_id, tool_name, tool_input)
+                    logger.debug(f"Tool started: {tool_name} ({tool_id})")
+                
+                elif block_type == "tool_result":
+                    # Tool result returned
+                    tool_id = content_block.get("tool_use_id", "")
+                    is_error = content_block.get("is_error", False)
+                    timestamp = datetime.now()
+                    
+                    # Extract output content
+                    tool_output = ""
+                    result_content = content_block.get("content", [])
+                    if isinstance(result_content, list):
+                        for item in result_content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                tool_output = item.get("text", "")
+                                break
+                    elif isinstance(result_content, str):
+                        tool_output = result_content
+                    
+                    # Calculate duration
+                    duration_ms = None
+                    if tool_id in tool_start_times:
+                        delta = timestamp - tool_start_times[tool_id]
+                        duration_ms = int(delta.total_seconds() * 1000)
+                    
+                    # Find tool name from tool_use entry
+                    tool_name = "Unknown"
+                    for entry in execution_log:
+                        if entry.id == tool_id and entry.type == "tool_use":
+                            tool_name = entry.tool
+                            break
+                    
+                    execution_log.append(ExecutionLogEntry(
+                        id=tool_id,
+                        type="tool_result",
+                        tool=tool_name,
+                        success=not is_error,
+                        duration_ms=duration_ms,
+                        timestamp=timestamp.isoformat()
+                    ))
+                    
+                    # Update session activity
+                    complete_tool_execution(tool_id, not is_error, tool_output)
+                    logger.debug(f"Tool completed: {tool_name} ({tool_id}) - success={not is_error}")
+                
+                elif block_type == "text":
+                    # Gemini's text response
+                    text = content_block.get("text", "")
+                    if text:
+                        response_parts.append(text)
+
+
+# Global Gemini runtime instance
+_gemini_runtime = None
+
+def get_gemini_runtime() -> GeminiRuntime:
+    """Get or create the global Gemini runtime instance."""
+    global _gemini_runtime
+    if _gemini_runtime is None:
+        _gemini_runtime = GeminiRuntime()
+    return _gemini_runtime
+

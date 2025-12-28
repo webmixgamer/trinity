@@ -27,8 +27,15 @@ VECTOR_STORE_DIR = WORKSPACE_DIR / "vector-store"
 # File size limits
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
 
+# Runtime configuration
+AGENT_RUNTIME = os.getenv("AGENT_RUNTIME", "claude-code")  # "claude-code" or "gemini-cli"
+AGENT_RUNTIME_MODEL = os.getenv("AGENT_RUNTIME_MODEL", None)  # Optional model override
+
 # Claude Code defaults
 DEFAULT_CONTEXT_WINDOW = 200000
+
+# Gemini CLI defaults
+GEMINI_CONTEXT_WINDOW = 1000000  # 1M tokens
 
 # Git configuration
 GIT_TIMEOUT_SECONDS = 60

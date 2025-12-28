@@ -22,6 +22,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
 
 ### Agent Capabilities
+- **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
 - **MCP Integration** — 16 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
 - **Vector Memory (Chroma)** — Per-agent semantic memory with MCP tools for retrieval
@@ -42,7 +43,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 ### Prerequisites
 
 - Docker and Docker Compose v2+
-- Anthropic API key (for Claude-powered agents)
+- Anthropic API key (for Claude-powered agents) OR Google API key (for Gemini-powered agents)
 
 ### One-Line Install
 
@@ -319,6 +320,7 @@ AUTH0_DOMAIN=your-tenant.us.auth0.com
 
 - [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — How to develop Trinity (context loading, testing, documentation)
 - [Deployment Guide](docs/DEPLOYMENT.md) — Production deployment instructions
+- [Gemini Support Guide](docs/GEMINI_SUPPORT.md) — Using Gemini CLI runtime for cost optimization
 - [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) — Building multi-agent systems with coordinated workflows
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards

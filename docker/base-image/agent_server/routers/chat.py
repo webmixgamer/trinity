@@ -1,5 +1,7 @@
 """
 Chat endpoints for the agent server.
+
+Now supports multiple runtimes (Claude Code, Gemini CLI) via runtime adapter.
 """
 import json
 import logging
@@ -10,6 +12,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..models import ChatRequest, ModelRequest, ParallelTaskRequest
 from ..state import agent_state
 from ..services.claude_code import execute_claude_code, execute_headless_task, get_execution_lock
+from ..services.runtime_adapter import get_runtime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,11 +35,13 @@ async def chat(request: ChatRequest):
         # Add user message to history
         agent_state.add_message("user", request.message)
 
-        # Execute Claude Code - now returns (response, execution_log, metadata)
-        response_text, execution_log, metadata = await execute_claude_code(
-            request.message,
-            stream=request.stream,
-            model=request.model
+        # Execute via runtime adapter (supports Claude Code or Gemini CLI)
+        runtime = get_runtime()
+        response_text, execution_log, metadata = await runtime.execute(
+            prompt=request.message,
+            model=request.model,
+            continue_session=True,
+            stream=request.stream
         )
 
         # Add assistant response to history
