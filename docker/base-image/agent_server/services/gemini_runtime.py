@@ -196,15 +196,21 @@ class GeminiRuntime(AgentRuntime):
             # Build final response text
             response_text = "\n".join(response_parts) if response_parts else ""
 
-            if not response_text:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Gemini returned empty response"
-                )
-
             # Count unique tools used
             tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
             metadata.tool_count = tool_use_count
+
+            # Handle empty response gracefully
+            # Sometimes Gemini returns success with no assistant message
+            if not response_text:
+                if tool_use_count > 0:
+                    # Tools were used but no final message - provide a placeholder
+                    response_text = "(Task completed)"
+                    logger.warning("Gemini returned empty response after tool execution")
+                else:
+                    # No response and no tools - unusual but not necessarily an error
+                    response_text = "(No response from model)"
+                    logger.warning("Gemini returned empty response with no tool calls")
 
             # Update session stats
             if metadata.cost_usd:
@@ -533,15 +539,18 @@ class GeminiRuntime(AgentRuntime):
             # Build final response text
             response_text = "\n".join(response_parts) if response_parts else ""
 
-            if not response_text:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Gemini returned empty response"
-                )
-
             # Count unique tools used
             tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
             metadata.tool_count = tool_use_count
+
+            # Handle empty response gracefully
+            if not response_text:
+                if tool_use_count > 0:
+                    response_text = "(Task completed)"
+                    logger.warning(f"[Headless Task {session_id}] Gemini returned empty response after tool execution")
+                else:
+                    response_text = "(No response from model)"
+                    logger.warning(f"[Headless Task {session_id}] Gemini returned empty response with no tool calls")
 
             # Use session_id from metadata if available, otherwise use our generated one
             final_session_id = metadata.session_id or session_id
