@@ -295,8 +295,56 @@ class GeminiRuntime(AgentRuntime):
                     metadata.output_tokens = model_data["outputTokens"]
                 break
 
+        elif msg_type == "tool_use":
+            # Gemini CLI outputs tool_use at top level: {"type":"tool_use","tool_name":"...","tool_id":"...","parameters":{}}
+            tool_id = msg.get("tool_id", str(uuid.uuid4()))
+            tool_name = msg.get("tool_name", "Unknown")
+            tool_input = msg.get("parameters", {})
+            timestamp = datetime.now()
+
+            tool_start_times[tool_id] = timestamp
+
+            execution_log.append(ExecutionLogEntry(
+                id=tool_id,
+                type="tool_use",
+                tool=tool_name,
+                input=tool_input,
+                timestamp=timestamp.isoformat()
+            ))
+
+            # Update session activity
+            start_tool_execution(tool_id, tool_name, tool_input)
+            logger.debug(f"Tool started: {tool_name} ({tool_id})")
+
+        elif msg_type == "tool_result":
+            # Gemini CLI outputs tool_result at top level: {"type":"tool_result","tool_id":"...","status":"success","output":"..."}
+            tool_id = msg.get("tool_id", "")
+            is_error = msg.get("status") == "error"
+            tool_output = msg.get("output", "")
+            timestamp = datetime.now()
+
+            # Calculate duration
+            duration_ms = None
+            if tool_id in tool_start_times:
+                delta = timestamp - tool_start_times[tool_id]
+                duration_ms = int(delta.total_seconds() * 1000)
+
+            execution_log.append(ExecutionLogEntry(
+                id=str(uuid.uuid4()),
+                type="tool_result",
+                tool_use_id=tool_id,
+                output=tool_output,
+                is_error=is_error,
+                duration_ms=duration_ms,
+                timestamp=timestamp.isoformat()
+            ))
+
+            # Update session activity
+            complete_tool_execution(tool_id, tool_output, is_error)
+            logger.debug(f"Tool completed: {tool_id} (error={is_error})")
+
         elif msg_type in ("assistant", "user"):
-            # Handle tool_use and tool_result blocks
+            # Handle tool_use and tool_result blocks (Claude Code format - nested in message)
             message = msg.get("message", {})
             message_content = message.get("content", [])
 
