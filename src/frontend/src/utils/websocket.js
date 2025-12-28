@@ -51,7 +51,10 @@ export function useWebSocket() {
   const handleMessage = (data) => {
     switch (data.event) {
       case 'agent_created':
-        agentsStore.agents.push(data.data)
+        // Only add if not already in list (API response may have added it already)
+        if (!agentsStore.agents.find(a => a.name === data.data.name)) {
+          agentsStore.agents.push(data.data)
+        }
         break
       case 'agent_deleted':
         agentsStore.agents = agentsStore.agents.filter(a => a.name !== data.data.name)
