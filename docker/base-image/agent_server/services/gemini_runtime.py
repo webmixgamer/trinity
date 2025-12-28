@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 # Gemini pricing per 1K tokens (as of Dec 2024)
 # Free tier has limits, but we calculate what it *would* cost
 GEMINI_PRICING = {
+    "gemini-3-pro": {
+        "input": 0.00125,   # $0.00125 per 1K input tokens (estimated)
+        "output": 0.01,     # $0.01 per 1K output tokens
+    },
+    "gemini-3-flash": {
+        "input": 0.000075,  # $0.000075 per 1K input tokens (estimated)
+        "output": 0.0003,   # $0.0003 per 1K output tokens
+    },
     "gemini-2.5-pro": {
         "input": 0.00125,   # $0.00125 per 1K input tokens
         "output": 0.01,     # $0.01 per 1K output tokens
@@ -48,17 +56,17 @@ GEMINI_PRICING = {
 def calculate_gemini_cost(input_tokens: int, output_tokens: int, model: Optional[str] = None) -> float:
     """
     Calculate estimated cost for Gemini API usage.
-    
-    Note: Free tier doesn't actually charge, but we calculate 
+
+    Note: Free tier doesn't actually charge, but we calculate
     what it would cost for tracking/comparison purposes.
     """
     # Get pricing for model or use default
     model_key = model.lower() if model else "default"
     pricing = GEMINI_PRICING.get(model_key, GEMINI_PRICING["default"])
-    
+
     input_cost = (input_tokens / 1000) * pricing["input"]
     output_cost = (output_tokens / 1000) * pricing["output"]
-    
+
     return round(input_cost + output_cost, 6)
 
 
