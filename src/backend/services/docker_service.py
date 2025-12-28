@@ -43,6 +43,18 @@ def get_agent_status_from_container(container) -> AgentStatus:
     else:
         normalized_status = docker_status  # paused, restarting, etc.
 
+    # Extract runtime from container environment variables
+    runtime = "claude-code"  # Default
+    try:
+        # Get environment variables from container attrs
+        env_list = container.attrs.get("Config", {}).get("Env", [])
+        for env in env_list:
+            if env.startswith("AGENT_RUNTIME="):
+                runtime = env.split("=", 1)[1]
+                break
+    except Exception:
+        pass  # Use default if we can't read env vars
+
     return AgentStatus(
         name=agent_name,
         type=labels.get("trinity.agent-type", "unknown"),
@@ -54,7 +66,8 @@ def get_agent_status_from_container(container) -> AgentStatus:
             "memory": labels.get("trinity.memory", "4g")
         },
         container_id=container.id,
-        template=labels.get("trinity.template", None) or None
+        template=labels.get("trinity.template", None) or None,
+        runtime=runtime
     )
 
 

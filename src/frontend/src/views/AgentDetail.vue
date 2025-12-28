@@ -365,14 +365,11 @@
                         @change="changeModel"
                         :disabled="modelLoading"
                         class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-                        title="Select Claude model"
+                        :title="modelSelectorTitle"
                       >
-                        <option value="">Default</option>
-                        <option value="sonnet">Sonnet 4.5</option>
-                        <option value="opus">Opus 4.5</option>
-                        <option value="haiku">Haiku</option>
-                        <option value="sonnet[1m]">Sonnet 4.5 (1M)</option>
-                        <option value="opus[1m]">Opus 4.5 (1M)</option>
+                        <option v-for="model in availableModels" :key="model.value" :value="model.value">
+                          {{ model.label }}
+                        </option>
                       </select>
                       <span v-if="modelLoading" class="animate-spin h-3 w-3 border border-indigo-500 border-t-transparent rounded-full"></span>
                     </div>
@@ -1268,6 +1265,36 @@ const gitHasChanges = computed(() => {
 
 const gitChangesCount = computed(() => {
   return gitStatus.value?.changes_count || 0
+})
+
+// Model options based on agent runtime
+const availableModels = computed(() => {
+  const runtime = agent.value?.runtime || 'claude-code'
+  
+  if (runtime === 'gemini-cli') {
+    return [
+      { value: '', label: 'Default' },
+      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' }
+    ]
+  }
+  
+  // Default: Claude Code models
+  return [
+    { value: '', label: 'Default' },
+    { value: 'sonnet', label: 'Sonnet 4.5' },
+    { value: 'opus', label: 'Opus 4.5' },
+    { value: 'haiku', label: 'Haiku' },
+    { value: 'sonnet[1m]', label: 'Sonnet 4.5 (1M)' },
+    { value: 'opus[1m]', label: 'Opus 4.5 (1M)' }
+  ]
+})
+
+const modelSelectorTitle = computed(() => {
+  const runtime = agent.value?.runtime || 'claude-code'
+  return runtime === 'gemini-cli' ? 'Select Gemini model' : 'Select Claude model'
 })
 
 let activityRefreshInterval = null

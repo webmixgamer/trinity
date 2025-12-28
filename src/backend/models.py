@@ -36,6 +36,7 @@ class AgentStatus(BaseModel):
     resources: dict
     container_id: Optional[str] = None
     template: Optional[str] = None
+    runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
 
     class Config:
         json_encoders = {
