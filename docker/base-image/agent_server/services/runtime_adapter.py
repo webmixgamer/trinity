@@ -84,15 +84,15 @@ class AgentRuntime(ABC):
     def get_context_window(self, model: Optional[str] = None) -> int:
         """
         Get the context window size for a model.
-        
+
         Args:
             model: Optional model identifier (uses default if None)
-        
+
         Returns:
             Context window size in tokens
         """
         pass
-    
+
     @abstractmethod
     async def execute_headless(
         self,
@@ -104,19 +104,19 @@ class AgentRuntime(ABC):
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute a stateless task in headless mode (no conversation context).
-        
+
         Used for:
         - Agent delegation from orchestrators
         - Batch processing without context pollution
         - Parallel task execution
-        
+
         Args:
             prompt: Task description
             model: Model to use
             allowed_tools: List of allowed tool names (None = all tools)
             system_prompt: Custom system prompt
             timeout_seconds: Execution timeout
-        
+
         Returns:
             Tuple of (response_text, execution_log, metadata, session_id)
         """

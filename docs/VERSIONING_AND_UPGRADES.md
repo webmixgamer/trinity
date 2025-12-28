@@ -112,7 +112,7 @@ curl http://localhost:8000/health
 
 **Downtime**: 2-5 minutes
 
-**Impact on Running Agents**: 
+**Impact on Running Agents**:
 - Existing agents continue running (no rebuild needed)
 - New features available only after agent recreation
 - For Gemini support: Agents must be recreated with `runtime: gemini-cli`

@@ -228,6 +228,19 @@ const getProgressBarColor = (agentName) => {
   return 'bg-green-500'
 }
 
+// Plan/Task helpers (stubbed for now - will be implemented when plan system is active)
+const hasActivePlan = (agentName) => {
+  return false  // TODO: Implement when plan tracking is added to agents store
+}
+
+const getTaskProgress = (agentName) => {
+  return ''  // TODO: Return task progress string
+}
+
+const getCurrentTask = (agentName) => {
+  return null  // TODO: Return current task description
+}
+
 const startAgent = async (name) => {
   if (actionInProgress.value === name) return
   actionInProgress.value = name

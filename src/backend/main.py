@@ -305,13 +305,13 @@ async def get_version():
     """Get Trinity platform version information."""
     import os
     from pathlib import Path
-    
+
     # Read version from VERSION file
     version_file = Path(__file__).parent.parent.parent / "VERSION"
     version = "unknown"
     if version_file.exists():
         version = version_file.read_text().strip()
-    
+
     return {
         "version": version,
         "platform": "trinity",

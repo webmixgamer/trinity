@@ -151,7 +151,7 @@ async def get_session_info():
 async def get_model():
     """Get the current model being used"""
     runtime = agent_state.agent_runtime
-    
+
     if runtime == "gemini-cli" or runtime == "gemini":
         return {
             "model": agent_state.current_model,
@@ -174,7 +174,7 @@ async def set_model(request: ModelRequest):
     from fastapi import HTTPException
 
     runtime = agent_state.agent_runtime
-    
+
     # Validate based on runtime
     if runtime == "gemini-cli" or runtime == "gemini":
         valid_models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]

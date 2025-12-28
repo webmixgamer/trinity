@@ -86,7 +86,7 @@ class ClaudeCodeRuntime(AgentRuntime):
         # Note: continue_session is handled internally by agent_state.session_started
         # The execute_claude_code function checks agent_state and uses --continue automatically
         return await execute_claude_code(prompt, stream, model)
-    
+
     async def execute_headless(
         self,
         prompt: str,

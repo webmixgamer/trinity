@@ -528,8 +528,9 @@ def init_database():
 def _ensure_admin_user(cursor, conn):
     """Ensure the admin user exists with properly hashed password."""
     admin_password = os.getenv("ADMIN_PASSWORD", "")
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
 
-    cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", ("admin",))
+    cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (admin_username,))
     existing = cursor.fetchone()
 
     if existing is None:
@@ -548,9 +549,9 @@ def _ensure_admin_user(cursor, conn):
         cursor.execute("""
             INSERT INTO users (username, password_hash, role, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
-        """, ("admin", hashed, "admin", now, now))
+        """, (admin_username, hashed, "admin", now, now))
         conn.commit()
-        print("Created admin user with hashed password")
+        print(f"Created admin user '{admin_username}' with hashed password")
     else:
         # Check if existing password needs migration from plaintext to bcrypt
         existing_hash = existing[1]
@@ -564,9 +565,9 @@ def _ensure_admin_user(cursor, conn):
                 cursor.execute("""
                     UPDATE users SET password_hash = ?, updated_at = ?
                     WHERE username = ?
-                """, (hashed, datetime.utcnow().isoformat(), "admin"))
+                """, (hashed, datetime.utcnow().isoformat(), admin_username))
                 conn.commit()
-                print("Migrated admin password from plaintext to bcrypt")
+                print(f"Migrated admin user '{admin_username}' password from plaintext to bcrypt")
 
 
 class DatabaseManager:

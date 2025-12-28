@@ -54,7 +54,7 @@ async def get_agent_info():
     runtime_version = None
     if agent_state.runtime_available:
         runtime_version = "available"
-    
+
     return AgentInfo(
         name=agent_state.agent_name,
         status="running",

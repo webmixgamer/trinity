@@ -38,19 +38,19 @@ class AgentState:
         self.session_activity = self._create_empty_activity()
         # Store full tool outputs for drill-down (separate from timeline summaries)
         self.tool_outputs: Dict[str, str] = {}
-    
+
     def _get_default_context_window(self) -> int:
         """Get default context window based on runtime"""
         if self.agent_runtime == "gemini-cli" or self.agent_runtime == "gemini":
             return 1000000  # 1M tokens for Gemini
         return 200000  # 200K for Claude Code
-    
+
     def _check_runtime_available(self) -> bool:
         """Check if the configured runtime CLI is available"""
         if self.agent_runtime == "gemini-cli" or self.agent_runtime == "gemini":
             return self._check_gemini_cli()
         return self._check_claude_code()
-    
+
     def _check_gemini_cli(self) -> bool:
         """Check if Gemini CLI is available"""
         try:
