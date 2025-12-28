@@ -186,7 +186,7 @@ class GeminiRuntime(AgentRuntime):
                             break
                         # Process each line immediately
                         # Gemini CLI uses same stream-json format as Claude Code
-                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts)
+                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts, model)
                 except Exception as e:
                     logger.error(f"Error reading Gemini output: {e}")
 
@@ -261,7 +261,8 @@ class GeminiRuntime(AgentRuntime):
         metadata: ExecutionMetadata,
         tool_start_times: Dict[str, datetime],
         tool_names: Dict[str, str],
-        response_parts: List[str]
+        response_parts: List[str],
+        current_model: Optional[str] = None
     ) -> None:
         """
         Process a single line of stream-json output from Gemini CLI.
@@ -335,10 +336,12 @@ class GeminiRuntime(AgentRuntime):
                 metadata.cost_usd = reported_cost
             else:
                 # Calculate estimated cost based on token usage
+                # Priority: detected_model > current_model (UI selected) > env default
+                model_for_pricing = detected_model or current_model or os.getenv("AGENT_RUNTIME_MODEL", "gemini-2.5-pro")
                 metadata.cost_usd = calculate_gemini_cost(
                     metadata.input_tokens,
                     metadata.output_tokens,
-                    detected_model or os.getenv("AGENT_RUNTIME_MODEL", "gemini-2.5-pro")
+                    model_for_pricing
                 )
 
         elif msg_type == "tool_use":
@@ -558,7 +561,7 @@ class GeminiRuntime(AgentRuntime):
                         if time.time() - start_time > timeout_seconds:
                             process.kill()
                             raise TimeoutError(f"Task exceeded {timeout_seconds}s timeout")
-                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts)
+                        self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts, model)
                 except Exception as e:
                     logger.error(f"[Headless Task {session_id}] Error: {e}")
                     raise
