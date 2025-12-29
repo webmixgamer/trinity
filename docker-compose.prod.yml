@@ -17,7 +17,6 @@ services:
       - "8005:8005"
     environment:
       - SECRET_KEY=${SECRET_KEY}
-      - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-false}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
       - AUDIT_URL=http://audit-logger:8006
       - REDIS_URL=redis://redis:6379

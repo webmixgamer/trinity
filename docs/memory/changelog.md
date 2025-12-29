@@ -1,3 +1,80 @@
+### 2025-12-29 16:45:00
+🧹 **Removed DEV_MODE_ENABLED from Codebase**
+
+**Complete Removal**:
+- Removed `DEV_MODE_ENABLED` environment variable and all references
+- Removed `devModeEnabled` state from frontend auth store
+- Removed `dev_mode_enabled` from API response (`/api/auth/mode`)
+- Updated all documentation, tests, and config files
+
+**Simplified Auth API**:
+- `GET /api/auth/mode` now returns `{email_auth_enabled, setup_completed}`
+- `POST /api/token` always available for admin login (no mode gating)
+- Token mode: `admin` for password login, `email` for email login
+
+---
+
+### 2025-12-29 16:30:00
+🔐 **Login Page Simplification**
+
+**Changes**:
+- Removed Google OAuth and Developer Mode options from login page
+- Login now offers two methods only:
+  1. **Email with code** (primary) - For whitelisted users
+  2. **Admin Login** (secondary) - Fixed username 'admin', password only
+- Token mode changed from `dev` to `admin` for password-based login
+- Audit log action changed from `dev_login` to `admin_login`
+
+**Files Modified**:
+- `src/frontend/src/views/Login.vue` - Simplified to email + admin login only
+- `src/backend/routers/auth.py` - Updated token mode
+- `src/frontend/src/stores/auth.js` - Simplified auth methods
+
+---
+
+### 2025-12-29 15:30:00
+🗂️ **File Manager: Hidden Files Toggle + Inline Editing**
+
+**New Features**:
+1. **Show Hidden Files Toggle**: Checkbox in header to show/hide dotfiles (persisted to localStorage)
+2. **Inline Text File Editing**: Edit button for text files, textarea editor, Save/Cancel buttons
+3. **Unsaved Changes Warning**: Confirmation prompt when switching files or canceling with changes
+
+**Backend Changes**:
+- `docker/base-image/agent_server/routers/files.py`: Added `show_hidden` query param, `PUT /api/files` endpoint
+- `src/backend/services/agent_service/files.py`: Updated `list_agent_files_logic` with `show_hidden`, added `update_agent_file_logic`
+- `src/backend/routers/agents.py`: Added `show_hidden` param, `PUT /{agent_name}/files` endpoint
+
+**Frontend Changes**:
+- `FileManager.vue`: Hidden toggle, edit state, startEdit/cancelEdit/saveFile methods
+- `FilePreview.vue`: Edit mode with textarea, `isEditing` and `editContent` props
+- `stores/agents.js`: `listAgentFiles` accepts `showHidden`, new `updateAgentFile` action
+
+**Protection Policy**:
+- **Cannot delete**: CLAUDE.md, .trinity, .git, .gitignore, .env, .mcp.json, .mcp.json.template
+- **Cannot edit**: .trinity, .git, .gitignore, .env, .mcp.json.template
+- **CAN edit**: CLAUDE.md, .mcp.json (users need to modify agent instructions and MCP config)
+
+---
+
+### 2025-12-29 14:15:00
+📚 **Feature Flows Audit and Update**
+
+**Verified and Updated**:
+- `tasks-tab.md` - Updated line numbers for TasksPanel.vue (264-475, 329-433), AgentDetail.vue (201, 884-885), and added service layer references for queue.py
+- `scheduling.md` - Updated API endpoint line numbers to match current schedules.py after refactoring (GET/PUT/DELETE endpoints shifted)
+- `execution-queue.md` - Updated chat.py line numbers (106-356) to reflect retry helper addition
+
+**No Changes Needed** (already accurate):
+- `agent-lifecycle.md` - Service layer references correct (updated 2025-12-27)
+- `agent-terminal.md` - Service layer references correct (updated 2025-12-27)
+- `agent-network.md` - Workplan removal noted in revision history
+- `testing-agents.md` - Plans router removal noted in revision history
+
+**Index Updated**: `feature-flows.md` now reflects 2025-12-29 audit with summary of changes.
+
+---
+
 ### 2025-12-29 13:30:00
 🧪 **Add Missing Execution and Queue Tests**
 

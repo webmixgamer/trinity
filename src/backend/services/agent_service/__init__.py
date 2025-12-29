@@ -47,6 +47,7 @@ from .files import (
     download_agent_file_logic,
     delete_agent_file_logic,
     preview_agent_file_logic,
+    update_agent_file_logic,
 )
 from .queue import (
     get_agent_queue_status_logic,
@@ -102,6 +103,7 @@ __all__ = [
     "download_agent_file_logic",
     "delete_agent_file_logic",
     "preview_agent_file_logic",
+    "update_agent_file_logic",
     # Queue
     "get_agent_queue_status_logic",
     "clear_agent_queue_logic",

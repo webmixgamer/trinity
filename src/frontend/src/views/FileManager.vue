@@ -26,6 +26,16 @@
                 </option>
               </select>
             </div>
+            <!-- Show Hidden Toggle -->
+            <label class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                v-model="showHidden"
+                @change="loadFiles"
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Show hidden</span>
+            </label>
             <!-- Refresh Button -->
             <button
               @click="loadFiles"
@@ -140,6 +150,9 @@
                 :preview-data="previewData"
                 :preview-loading="previewLoading"
                 :preview-error="previewError"
+                :is-editing="isEditing"
+                :edit-content="editContent"
+                @update:edit-content="onEditContentChange"
               />
             </div>
 
@@ -157,31 +170,72 @@
                   </p>
                 </div>
                 <div class="flex items-center space-x-2">
-                  <button
-                    @click="downloadFile"
-                    :disabled="downloading"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                  >
-                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download
-                  </button>
-                  <button
-                    @click="showDeleteConfirm = true"
-                    :disabled="deleting || isProtectedPath"
-                    class="inline-flex items-center px-3 py-2 border border-red-300 dark:border-red-600 rounded-md shadow-sm text-sm font-medium text-red-700 dark:text-red-400 bg-white dark:bg-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-                    :title="isProtectedPath ? 'Protected file cannot be deleted' : ''"
-                  >
-                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete
-                  </button>
+                  <!-- Edit Mode Actions -->
+                  <template v-if="isEditing">
+                    <button
+                      @click="saveFile"
+                      :disabled="saving || !hasUnsavedChanges"
+                      class="inline-flex items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <svg v-if="saving" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <svg v-else class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save
+                    </button>
+                    <button
+                      @click="cancelEdit"
+                      :disabled="saving"
+                      class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </template>
+                  <!-- View Mode Actions -->
+                  <template v-else>
+                    <!-- Edit Button (only for text files, not edit-protected) -->
+                    <button
+                      v-if="isTextFile && !isEditProtected"
+                      @click="startEdit"
+                      class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      @click="downloadFile"
+                      :disabled="downloading"
+                      class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download
+                    </button>
+                    <button
+                      @click="showDeleteConfirm = true"
+                      :disabled="deleting || isDeleteProtected"
+                      class="inline-flex items-center px-3 py-2 border border-red-300 dark:border-red-600 rounded-md shadow-sm text-sm font-medium text-red-700 dark:text-red-400 bg-white dark:bg-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                      :title="isDeleteProtected ? 'Protected file cannot be deleted' : ''"
+                    >
+                      <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </button>
+                  </template>
                 </div>
               </div>
-              <p v-if="isProtectedPath" class="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
+              <p v-if="isDeleteProtected && !isEditing" class="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
                 This is a protected system file and cannot be deleted.
+              </p>
+              <p v-if="isEditing && hasUnsavedChanges" class="mt-2 text-xs text-orange-600 dark:text-orange-400">
+                You have unsaved changes.
               </p>
             </div>
           </template>
@@ -271,9 +325,18 @@ const previewError = ref(null)
 const downloading = ref(false)
 const deleting = ref(false)
 const showDeleteConfirm = ref(false)
+const showHidden = ref(localStorage.getItem('fileManager.showHidden') === 'true')
+// Edit mode state
+const isEditing = ref(false)
+const editContent = ref('')
+const saving = ref(false)
+const hasUnsavedChanges = ref(false)
 
-// Protected paths
-const PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', '.mcp.json', '.mcp.json.template']
+// Protected paths (cannot be deleted)
+const DELETE_PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', '.mcp.json', '.mcp.json.template']
+
+// Edit protected paths (cannot be edited) - CLAUDE.md and .mcp.json ARE editable
+const EDIT_PROTECTED_PATHS = ['.trinity', '.git', '.gitignore', '.env', '.mcp.json.template']
 
 // Computed
 const runningAgents = computed(() => agentsStore.runningAgents)
@@ -324,10 +387,32 @@ const filteredTree = computed(() => {
   return filterItems(fileTree.value)
 })
 
-const isProtectedPath = computed(() => {
+const isDeleteProtected = computed(() => {
   if (!selectedFile.value) return false
   const name = selectedFile.value.name
-  return PROTECTED_PATHS.includes(name)
+  return DELETE_PROTECTED_PATHS.includes(name)
+})
+
+const isEditProtected = computed(() => {
+  if (!selectedFile.value) return false
+  const name = selectedFile.value.name
+  return EDIT_PROTECTED_PATHS.includes(name)
+})
+
+// Text file extensions that can be edited
+const TEXT_EXTENSIONS = [
+  'txt', 'md', 'json', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log',
+  'js', 'ts', 'jsx', 'tsx', 'py', 'go', 'rs', 'rb', 'java', 'c', 'cpp', 'h',
+  'css', 'scss', 'sass', 'less', 'html', 'vue', 'svelte',
+  'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'prisma', 'dockerfile', 'makefile',
+  'env', 'ini', 'conf', 'cfg', 'gitignore', 'editorconfig'
+]
+
+const isTextFile = computed(() => {
+  if (!selectedFile.value || selectedFile.value.type !== 'file') return false
+  const ext = selectedFile.value.name.split('.').pop()?.toLowerCase() || ''
+  return TEXT_EXTENSIONS.includes(ext)
 })
 
 // Methods
@@ -336,8 +421,10 @@ const loadFiles = async () => {
 
   loading.value = true
   error.value = null
+  // Persist showHidden preference
+  localStorage.setItem('fileManager.showHidden', showHidden.value)
   try {
-    const data = await agentsStore.listAgentFiles(selectedAgentName.value)
+    const data = await agentsStore.listAgentFiles(selectedAgentName.value, '/home/developer', showHidden.value)
     fileTree.value = data.tree || []
   } catch (e) {
     error.value = e.response?.data?.detail || e.message
@@ -355,6 +442,18 @@ const onAgentChange = () => {
 }
 
 const onFileSelect = async (item) => {
+  // If in edit mode with unsaved changes, confirm before switching
+  if (isEditing.value && hasUnsavedChanges.value) {
+    if (!confirm('You have unsaved changes. Are you sure you want to switch files?')) {
+      return
+    }
+  }
+
+  // Reset edit state
+  isEditing.value = false
+  editContent.value = ''
+  hasUnsavedChanges.value = false
+
   selectedFile.value = item
   previewData.value = null
   previewError.value = null
@@ -433,6 +532,62 @@ const deleteFile = async () => {
     showNotification(`Failed to delete: ${errorMsg}`, 'error')
   } finally {
     deleting.value = false
+  }
+}
+
+// Edit mode methods
+const startEdit = async () => {
+  if (!previewData.value?.url) return
+
+  try {
+    // Fetch the text content from the preview blob
+    const response = await fetch(previewData.value.url)
+    const text = await response.text()
+    editContent.value = text
+    isEditing.value = true
+    hasUnsavedChanges.value = false
+  } catch (e) {
+    showNotification('Failed to load file for editing', 'error')
+  }
+}
+
+const cancelEdit = () => {
+  if (hasUnsavedChanges.value) {
+    if (!confirm('You have unsaved changes. Are you sure you want to cancel?')) {
+      return
+    }
+  }
+  isEditing.value = false
+  editContent.value = ''
+  hasUnsavedChanges.value = false
+}
+
+const onEditContentChange = (newContent) => {
+  editContent.value = newContent
+  hasUnsavedChanges.value = true
+}
+
+const saveFile = async () => {
+  if (!selectedFile.value) return
+
+  saving.value = true
+  try {
+    await agentsStore.updateAgentFile(
+      selectedAgentName.value,
+      selectedFile.value.path,
+      editContent.value
+    )
+    showNotification(`Saved ${selectedFile.value.name}`)
+    isEditing.value = false
+    hasUnsavedChanges.value = false
+
+    // Reload the preview to show updated content
+    await loadPreview(selectedFile.value)
+  } catch (e) {
+    const errorMsg = e.response?.data?.detail || e.message
+    showNotification(`Failed to save: ${errorMsg}`, 'error')
+  } finally {
+    saving.value = false
   }
 }
 

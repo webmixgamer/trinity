@@ -5,6 +5,10 @@ Passwordless email-based authentication with verification codes. Users enter the
 
 **Implementation Status**: ✅ **Fully Implemented** (Backend + Frontend complete as of 2025-12-26)
 
+**Login Page Simplified (2025-12-29)**: Removed Google/Auth0 and Developer Mode options. Login now offers:
+1. **Email with code** (primary) - For whitelisted users
+2. **Admin login** (secondary) - Fixed username 'admin', just enter password
+
 ## User Story
 As a user, I want to login with my email address and a verification code so that I don't need to manage passwords or OAuth providers.
 
@@ -251,19 +255,24 @@ async verifyEmailCode(email, code) {
 
 **File**: `src/frontend/src/views/Login.vue`
 
+**Simplified (2025-12-29)**: Removed Google OAuth and Developer Mode. Two login methods only:
+
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 37-140 | Email auth section | Default login method when email auth enabled |
+| 37-123 | Email auth section | Default login method when email auth enabled |
 | 40-65 | Step 1: Enter email | Email input with "Send Verification Code" button |
 | 67-112 | Step 2: Enter code | 6-digit code input with countdown timer |
 | 73-75 | Countdown timer | Displays "Code expires in MM:SS" |
-| 115-139 | Alternative logins | Switch to Dev Mode or Google OAuth |
-| 249-254 | Email state | `emailInput`, `codeInput`, `codeSent`, `countdown` refs |
-| 275-280 | Timer formatting | `formatTime()` converts seconds to MM:SS |
-| 283-295 | Countdown logic | `startCountdown()` with setInterval |
-| 304-317 | `handleRequestCode()` | Submit email, start countdown |
-| 319-329 | `handleVerifyCode()` | Submit code, redirect on success |
-| 331-339 | `handleBackToEmail()` | Reset to step 1, clear timer |
+| 114-122 | Admin Login button | Switch to admin password login |
+| 125-171 | Admin login section | Fixed username 'admin', password-only form |
+| 190-195 | Email state | `emailInput`, `codeInput`, `codeSent`, `countdown` refs |
+| 198 | UI state | `showAdminLogin` ref |
+| 214-218 | Timer formatting | `formatTime()` converts seconds to MM:SS |
+| 220-233 | Countdown logic | `startCountdown()` with setInterval |
+| 243-255 | `handleRequestCode()` | Submit email, start countdown |
+| 257-267 | `handleVerifyCode()` | Submit code, redirect on success |
+| 269-277 | `handleBackToEmail()` | Reset to step 1, clear timer |
+| 293-304 | `handleAdminLogin()` | Admin login with fixed username 'admin' |
 
 **2-Step UI Flow**:
 
@@ -325,7 +334,7 @@ async verifyEmailCode(email, code) {
 - ✅ Countdown timer with MM:SS format
 - ✅ 6-digit code input with validation (`maxlength="6"`, `pattern="[0-9]{6}"`)
 - ✅ Loading states on buttons
-- ✅ Switch to Dev Mode or Google OAuth (lines 115-139)
+- ✅ Admin Login option (lines 114-122) - fixed username 'admin', password only
 
 ### Settings Component - Email Whitelist
 
@@ -973,21 +982,19 @@ curl -X PUT /api/settings/email_auth_enabled \
 
 ### Interaction with Other Auth Methods
 
-Email authentication coexists with other methods:
+**Simplified Login (2025-12-29)**: The login page now offers only two options:
 
 | Mode | Priority | Use Case |
 |------|----------|----------|
-| Email Auth | Default | Passwordless login for whitelisted users |
-| Auth0 OAuth | Production | Google OAuth for @ability.ai domain |
-| Dev Mode | Development | Local username/password for testing |
+| Email Auth | Default (Primary) | Passwordless login for whitelisted users |
+| Admin Login | Secondary | Admin password login (username fixed as 'admin') |
 
-**Detection endpoint** (`GET /api/auth/mode`) returns all available modes:
+**Note**: Google OAuth and Developer Mode options were removed from the UI. The backend still supports these modes for API access, but they are no longer exposed in the login page.
+
+**Detection endpoint** (`GET /api/auth/mode`) returns:
 ```json
 {
-  "dev_mode_enabled": false,
-  "auth0_configured": true,
   "email_auth_enabled": true,
-  "allowed_domain": "ability.ai",
   "setup_completed": true
 }
 ```
@@ -1079,19 +1086,19 @@ localStorage.getItem('auth0_user')  # Should have user object with email
 - Code input accepts only numbers (pattern="[0-9]{6}")
 - Browser validation enforces email format
 
-#### 5. Frontend: Alternative Login Methods
+#### 5. Frontend: Admin Login
 
 **Action**:
-1. On email login page, scroll down
-2. Verify "Or sign in with" section visible
-3. Click "🔧 Developer Mode" (if DEV_MODE_ENABLED=true)
-4. Click "Google" (if Auth0 configured)
+1. On email login page, click "🔐 Admin Login" button
+2. Verify username field shows "admin" (fixed, non-editable)
+3. Enter admin password
+4. Click "Sign In as Admin"
 
 **Expected**:
-- Alternative login buttons appear below email form
-- Dev Mode button switches to username/password form
-- Google button switches to OAuth button
-- Each form has "← Back to email login" link
+- Admin login form shows fixed username "admin"
+- Password field accepts input
+- "← Back to email login" link returns to email form
+- Successful login redirects to dashboard
 
 #### 6. Frontend: Settings - Email Whitelist Management
 

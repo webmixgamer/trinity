@@ -222,14 +222,16 @@ executions?limit=100              authorization check                SELECT FROM
 |--------|------|-------------|-----------|
 | GET | `/api/agents/{name}/schedules` | List schedules | schedules.py:77 |
 | POST | `/api/agents/{name}/schedules` | Create schedule | schedules.py:94 |
-| GET | `/api/agents/{name}/schedules/{id}` | Get schedule | schedules.py:137 |
-| PUT | `/api/agents/{name}/schedules/{id}` | Update schedule | schedules.py:155 |
-| DELETE | `/api/agents/{name}/schedules/{id}` | Delete schedule | schedules.py:192 |
-| POST | `/api/agents/{name}/schedules/{id}/enable` | Enable | schedules.py:220 |
-| POST | `/api/agents/{name}/schedules/{id}/disable` | Disable | schedules.py:252 |
-| POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger | schedules.py:285 |
-| GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history | schedules.py:321 |
-| GET | `/api/agents/{name}/executions` | All agent executions | schedules.py:334 |
+| GET | `/api/agents/{name}/schedules/{id}` | Get schedule | schedules.py:135 |
+| PUT | `/api/agents/{name}/schedules/{id}` | Update schedule | schedules.py:158 |
+| DELETE | `/api/agents/{name}/schedules/{id}` | Delete schedule | schedules.py:210 |
+| POST | `/api/agents/{name}/schedules/{id}/enable` | Enable | schedules.py:245 |
+| POST | `/api/agents/{name}/schedules/{id}/disable` | Disable | schedules.py:279 |
+| POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger | schedules.py:313 |
+| GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history | schedules.py:359 |
+| GET | `/api/agents/{name}/executions` | All agent executions | schedules.py:384 |
+| GET | `/api/agents/{name}/executions/{id}` | Get specific execution | schedules.py:401 |
+| GET | `/api/agents/scheduler/status` | Scheduler status (admin) | schedules.py:426 |
 
 ---
 
@@ -566,7 +568,8 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
-Updated 2025-12-06 - Added Execution Queue integration documentation
+**Updated 2025-12-29** - Fixed API endpoint line numbers to match current schedules.py (post-refactoring)
+**Updated 2025-12-06** - Added Execution Queue integration documentation
 
 ---
 

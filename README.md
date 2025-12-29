@@ -293,27 +293,28 @@ See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for archite
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SECRET_KEY` | Yes | JWT signing key (generate with `openssl rand -hex 32`) |
+| `ADMIN_PASSWORD` | Yes | Admin password for admin login |
 | `ANTHROPIC_API_KEY` | No | For Claude-powered agents (can also be set via Settings UI) |
-| `DEV_MODE_ENABLED` | No | Enable local login (default: true) |
-| `AUTH0_DOMAIN` | No | Auth0 tenant for production OAuth |
 | `GITHUB_PAT` | No | GitHub PAT for cloning private template repos |
 | `OTEL_ENABLED` | No | Enable OpenTelemetry metrics export (default: false) |
-| `EMAIL_PROVIDER` | No | Email provider for public links: console, smtp, sendgrid |
+| `EMAIL_PROVIDER` | No | Email provider: console (dev), smtp, sendgrid, resend |
 | `EXTRA_CORS_ORIGINS` | No | Additional CORS origins |
 
 See [.env.example](.env.example) for the complete list.
 
 ### Authentication
 
-**Development Mode** (default): Username/password login
-```bash
-DEV_MODE_ENABLED=true
-```
+Trinity supports two login methods:
 
-**Production Mode**: Auth0 OAuth
+1. **Email Login** (primary): Users enter email → receive 6-digit code → login
+2. **Admin Login**: Password-based login for admin user
+
 ```bash
-DEV_MODE_ENABLED=false
-AUTH0_DOMAIN=your-tenant.us.auth0.com
+# Admin password (required)
+ADMIN_PASSWORD=your-secure-password
+
+# Email provider for verification codes
+EMAIL_PROVIDER=console  # Use 'resend' or 'smtp' for production
 ```
 
 ## Documentation

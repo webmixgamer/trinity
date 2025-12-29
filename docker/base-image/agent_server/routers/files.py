@@ -9,16 +9,26 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse, FileResponse
+from pydantic import BaseModel
+
+
+class FileUpdateRequest(BaseModel):
+    """Request body for file updates."""
+    content: str
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.get("/api/files")
-async def list_files(path: str = "/home/developer"):
+async def list_files(path: str = "/home/developer", show_hidden: bool = False):
     """
     List files in the workspace directory recursively.
     Only allows access to /home/developer for security.
+
+    Args:
+        path: Directory path to list
+        show_hidden: If True, include hidden files (starting with .)
 
     Returns a hierarchical tree structure with folders and files.
     """
@@ -33,7 +43,7 @@ async def list_files(path: str = "/home/developer"):
     if not requested_path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {path}")
 
-    def build_tree(directory: Path, base_path: Path) -> dict:
+    def build_tree(directory: Path, base_path: Path, include_hidden: bool) -> dict:
         """Build a hierarchical tree structure from a directory."""
         items = []
         total_files = 0
@@ -43,8 +53,8 @@ async def list_files(path: str = "/home/developer"):
             dir_items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
 
             for item in dir_items:
-                # Skip hidden items
-                if item.name.startswith('.'):
+                # Skip hidden items unless show_hidden is True
+                if item.name.startswith('.') and not include_hidden:
                     continue
 
                 try:
@@ -53,7 +63,7 @@ async def list_files(path: str = "/home/developer"):
 
                     if item.is_dir():
                         # Recursively build tree for subdirectory
-                        subtree = build_tree(item, base_path)
+                        subtree = build_tree(item, base_path, include_hidden)
                         items.append({
                             "name": item.name,
                             "path": str(relative_path),
@@ -84,13 +94,14 @@ async def list_files(path: str = "/home/developer"):
         return {"children": items, "file_count": total_files}
 
     try:
-        tree_data = build_tree(requested_path, allowed_base)
+        tree_data = build_tree(requested_path, allowed_base, show_hidden)
 
         return {
             "base_path": str(allowed_base),
             "requested_path": str(requested_path.relative_to(allowed_base)) if requested_path != allowed_base else ".",
             "tree": tree_data["children"],
-            "total_files": tree_data["file_count"]
+            "total_files": tree_data["file_count"],
+            "show_hidden": show_hidden
         }
 
     except Exception as e:
@@ -153,10 +164,32 @@ PROTECTED_PATHS = [
     ".mcp.json.template",
 ]
 
+# Paths that cannot be edited (subset of PROTECTED_PATHS)
+# CLAUDE.md and .mcp.json ARE editable since users need to modify them
+EDIT_PROTECTED_PATHS = [
+    ".trinity",
+    ".git",
+    ".gitignore",
+    ".env",
+    ".mcp.json.template",
+]
+
 
 def _is_protected_path(path: Path) -> bool:
-    """Check if path is a protected file/directory."""
+    """Check if path is a protected file/directory (for deletion)."""
     for protected in PROTECTED_PATHS:
+        if path.name == protected:
+            return True
+        # Check parent directories too
+        for parent in path.parents:
+            if parent.name == protected:
+                return True
+    return False
+
+
+def _is_edit_protected_path(path: Path) -> bool:
+    """Check if path is protected from editing."""
+    for protected in EDIT_PROTECTED_PATHS:
         if path.name == protected:
             return True
         # Check parent directories too
@@ -276,3 +309,61 @@ async def preview_file(path: str):
     except Exception as e:
         logger.error(f"File preview error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to preview file: {str(e)}")
+
+
+@router.put("/api/files")
+async def update_file(path: str, request: FileUpdateRequest):
+    """
+    Update a file's content in the workspace.
+    Only allows access to /home/developer for security.
+    Cannot modify protected paths (CLAUDE.md, .trinity, .git, etc.)
+
+    Args:
+        path: File path to update (query parameter)
+        request: Request body with content
+
+    Returns:
+        Success status and updated file info
+    """
+    # Security: Only allow workspace access
+    allowed_base = Path("/home/developer")
+
+    # Handle both absolute and relative paths
+    if path.startswith('/'):
+        requested_path = Path(path).resolve()
+    else:
+        requested_path = (allowed_base / path).resolve()
+
+    # Ensure requested path is within workspace
+    if not str(requested_path).startswith(str(allowed_base)):
+        raise HTTPException(status_code=403, detail="Access denied: only /home/developer accessible")
+
+    # Check if it's a protected path (for editing)
+    if _is_edit_protected_path(requested_path):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Cannot edit protected path: {requested_path.name}"
+        )
+
+    if not requested_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    if not requested_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+
+    try:
+        # Write the new content
+        requested_path.write_text(request.content, encoding='utf-8')
+        stat = requested_path.stat()
+
+        logger.info(f"Updated file: {requested_path}")
+        return {
+            "success": True,
+            "path": path,
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"File update error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update file: {str(e)}")

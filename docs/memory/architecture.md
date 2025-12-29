@@ -394,9 +394,10 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 ### Auth & MCP (12 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/auth/mode` | Get auth mode config (dev/prod) - unauthenticated |
-| POST | `/api/token` | Dev mode login (gated by DEV_MODE_ENABLED) |
-| POST | `/api/auth/exchange` | Exchange Auth0 token for JWT |
+| GET | `/api/auth/mode` | Get auth mode config - unauthenticated |
+| POST | `/api/token` | Admin login (username/password) |
+| POST | `/api/auth/email/request` | Request email verification code |
+| POST | `/api/auth/email/verify` | Verify email code and login |
 | GET | `/api/auth/validate` | Validate JWT (for nginx auth_request) |
 | GET | `/api/users/me` | Current user |
 | GET | `/api/mcp/info` | MCP server info |
@@ -707,12 +708,11 @@ Users authenticate to the Trinity web UI and API.
 
 | Mode | Flow | Token |
 |------|------|-------|
-| **Dev** (`DEV_MODE_ENABLED=true`) | Username/password → `POST /api/token` | JWT with `mode: "dev"` |
-| **Prod** (`DEV_MODE_ENABLED=false`) | Google OAuth via Auth0 → `POST /api/auth/exchange` | JWT with `mode: "prod"` |
+| **Email** (primary) | Email → 6-digit code → `POST /api/auth/email/verify` | JWT with `mode: "email"` |
+| **Admin** (secondary) | Password → `POST /api/token` | JWT with `mode: "admin"` |
 
-- Runtime mode detection via `GET /api/auth/mode` (no rebuild to switch)
-- Domain restriction (e.g., `@ability.ai`) enforced server-side
-- Token mode claim prevents dev tokens in prod mode
+- Email whitelist controls who can login via email
+- Admin login always available for 'admin' user
 
 ### 2. MCP API Keys (User → MCP Server)
 

@@ -369,10 +369,10 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async listAgentFiles(name, path = '/home/developer') {
+    async listAgentFiles(name, path = '/home/developer', showHidden = false) {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/files`, {
-        params: { path },
+        params: { path, show_hidden: showHidden },
         headers: authStore.authHeader
       })
       return response.data
@@ -391,6 +391,17 @@ export const useAgentsStore = defineStore('agents', {
     async deleteAgentFile(name, filePath) {
       const authStore = useAuthStore()
       const response = await axios.delete(`/api/agents/${name}/files`, {
+        params: { path: filePath },
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async updateAgentFile(name, filePath, content) {
+      const authStore = useAuthStore()
+      const response = await axios.put(`/api/agents/${name}/files`, {
+        content
+      }, {
         params: { path: filePath },
         headers: authStore.authHeader
       })

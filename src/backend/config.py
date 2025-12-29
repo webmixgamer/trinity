@@ -3,11 +3,6 @@ Configuration constants for the Trinity backend.
 """
 import os
 
-# Development Mode
-# Set DEV_MODE_ENABLED=true to enable local username/password login
-# When false (default), only Auth0 OAuth is allowed
-DEV_MODE_ENABLED = os.getenv("DEV_MODE_ENABLED", "false").lower() == "true"
-
 # Email Authentication Mode (Phase 12.4)
 # Set EMAIL_AUTH_ENABLED=true to enable email-based login with verification codes
 # This is the default authentication method. Users enter email → receive code → login

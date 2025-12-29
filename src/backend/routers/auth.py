@@ -14,7 +14,6 @@ from config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     AUTH0_DOMAIN,
     AUTH0_ALLOWED_DOMAIN,
-    DEV_MODE_ENABLED,
     EMAIL_AUTH_ENABLED,
 )
 from database import db
@@ -38,10 +37,7 @@ async def get_auth_mode():
     to determine which login options to show.
 
     Returns:
-        - dev_mode_enabled: Whether local username/password login is allowed
-        - auth0_configured: Whether Auth0 OAuth is available
-        - email_auth_enabled: Whether email-based login is enabled (Phase 12.4)
-        - allowed_domain: The email domain restriction (for display)
+        - email_auth_enabled: Whether email-based login is enabled
         - setup_completed: Whether first-time setup is complete
     """
     # Check if email auth is enabled (can be overridden via settings)
@@ -49,10 +45,7 @@ async def get_auth_mode():
     email_auth_enabled = email_auth_setting.lower() == "true"
 
     return {
-        "dev_mode_enabled": DEV_MODE_ENABLED,
-        "auth0_configured": bool(AUTH0_DOMAIN),
         "email_auth_enabled": email_auth_enabled,
-        "allowed_domain": AUTH0_ALLOWED_DOMAIN,
         "setup_completed": is_setup_completed()
     }
 
@@ -61,21 +54,14 @@ async def get_auth_mode():
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Login with username/password and get JWT token.
 
-    This endpoint is only available when DEV_MODE_ENABLED=true.
-    In production, use Auth0 OAuth via /api/auth/exchange.
+    Used for admin login (username 'admin' with password).
+    Regular users should use email authentication.
     """
     # Block login if setup is not completed
     if not is_setup_completed():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="setup_required"
-        )
-
-    # Gate this endpoint in production
-    if not DEV_MODE_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Local login is disabled. Use 'Sign in with Google' instead."
         )
 
     user = authenticate_user(form_data.username, form_data.password)
@@ -99,12 +85,12 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     access_token = create_access_token(
         data={"sub": user["username"]},
         expires_delta=access_token_expires,
-        mode="dev"  # Mark as dev mode token
+        mode="admin"  # Mark as admin login token
     )
 
     await log_audit_event(
         event_type="authentication",
-        action="dev_login",  # Distinguish from Auth0 login in audit logs
+        action="admin_login",
         user_id=user["username"],
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

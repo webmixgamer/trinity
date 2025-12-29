@@ -77,29 +77,24 @@ GITHUB_PAT=github_pat_xxxxx
 
 **Note:** The PAT is stored in Redis with a fixed credential ID (`github-pat-templates`). If you update the PAT in `.env`, restart the backend to sync it to Redis.
 
-### Authentication Modes
+### Authentication
 
-Trinity supports two authentication modes:
+Trinity supports two login methods:
 
-#### Development Mode (Default)
-Username/password login for local development:
+#### Email Login (Primary)
+Users enter email → receive 6-digit code → login. Configure email provider:
 ```bash
-DEV_MODE_ENABLED=true
+EMAIL_PROVIDER=resend  # console (dev), smtp, sendgrid, resend
+RESEND_API_KEY=re_xxxxx  # If using Resend
+SMTP_FROM=noreply@your-domain.com
 ```
 
-#### Production Mode (Auth0)
-OAuth authentication via Auth0:
-```bash
-DEV_MODE_ENABLED=false
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_ALLOWED_DOMAIN=your-company.com  # Optional domain restriction
-```
+Manage allowed emails in Settings → Email Whitelist.
 
-Frontend Auth0 variables (in `src/frontend/.env.local`):
+#### Admin Login
+Password-based login for admin user:
 ```bash
-VITE_AUTH0_DOMAIN=your-tenant.us.auth0.com
-VITE_AUTH0_CLIENT_ID=your-client-id
-VITE_AUTH0_ALLOWED_DOMAIN=your-company.com
+ADMIN_PASSWORD=your-secure-password
 ```
 
 ## Production Deployment
@@ -256,10 +251,10 @@ docker logs agent-myagent
 - Ensure Redis is running: `docker compose ps redis`
 - Check Redis logs: `docker compose logs redis`
 
-**Auth0 not working**
-- Verify `DEV_MODE_ENABLED=false`
-- Check Auth0 domain and client ID in frontend `.env.local`
-- Verify callback URLs in Auth0 dashboard
+**Email login not working**
+- Check backend logs: `docker compose logs backend`
+- Verify EMAIL_PROVIDER is set correctly
+- For production, use `resend` or `smtp` (not `console`)
 
 ## Cloud Deployment Options
 

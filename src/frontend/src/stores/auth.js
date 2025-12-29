@@ -12,10 +12,7 @@ export const useAuthStore = defineStore('auth', {
     // Auth0 instance will be set from main.js
     auth0: null,
     // Runtime mode detection (from backend)
-    devModeEnabled: null,  // null = not yet detected, true/false = detected
-    auth0Configured: null,
-    emailAuthEnabled: null,  // Email-based authentication (Phase 12.4)
-    allowedDomain: 'ability.ai',
+    emailAuthEnabled: null,  // Email-based authentication
     modeDetected: false
   }),
 
@@ -53,25 +50,17 @@ export const useAuthStore = defineStore('auth', {
     async detectAuthMode() {
       try {
         const response = await axios.get('/api/auth/mode')
-        this.devModeEnabled = response.data.dev_mode_enabled
-        this.auth0Configured = response.data.auth0_configured
-        this.emailAuthEnabled = response.data.email_auth_enabled || false
-        this.allowedDomain = response.data.allowed_domain || 'ability.ai'
+        this.emailAuthEnabled = response.data.email_auth_enabled !== false
         this.modeDetected = true
 
-        // Log auth mode for debugging
-        const mode = this.emailAuthEnabled ? 'EMAIL' :
-                     this.devModeEnabled ? 'DEV' : 'AUTH0'
-        console.log(`🔐 Auth mode: ${mode}`)
-        return this.devModeEnabled
+        console.log(`🔐 Auth mode: EMAIL=${this.emailAuthEnabled}`)
+        return true
       } catch (error) {
         console.error('Failed to detect auth mode:', error)
         // Default to email auth if detection fails
-        this.devModeEnabled = false
-        this.auth0Configured = true
         this.emailAuthEnabled = true
         this.modeDetected = true
-        return false
+        return true
       }
     },
 
@@ -90,19 +79,14 @@ export const useAuthStore = defineStore('auth', {
         try {
           const user = JSON.parse(storedUser)
 
-          // Check token mode matches current backend mode
+          // Check token validity
           // Parse JWT to get mode claim (without verification - just for client-side check)
           const tokenPayload = this.parseJwtPayload(storedToken)
           const tokenMode = tokenPayload?.mode
 
-          // If token is dev mode but backend is prod mode, clear credentials
-          if (tokenMode === 'dev' && !this.devModeEnabled) {
-            console.log('🔐 Clearing dev mode token (backend is now in production mode)')
-            localStorage.removeItem('token')
-            localStorage.removeItem('auth0_user')
-          }
-          // If token is prod mode but backend is dev mode, still allow (less restrictive)
-          else {
+          // Valid token modes: admin, email, prod (Auth0)
+          // All modes are accepted - no cross-mode restrictions needed
+          if (tokenMode) {
             // Restore the session from localStorage
             this.token = storedToken
             this.user = user
@@ -201,14 +185,8 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    // Login with username/password (dev mode only)
-    // User must provide credentials - they are NOT hardcoded
+    // Login with username/password (for admin login)
     async loginWithCredentials(username, password) {
-      if (!this.devModeEnabled) {
-        this.authError = 'Local login is disabled. Use Sign in with Google.'
-        return false
-      }
-
       try {
         const formData = new FormData()
         formData.append('username', username)
@@ -233,10 +211,10 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem('auth0_user', JSON.stringify(devUser))
         this.setupAxiosAuth()
 
-        console.log('🔧 Dev mode: authenticated as', username)
+        console.log('🔐 Admin login: authenticated as', username)
         return true
       } catch (error) {
-        console.error('Dev login failed:', error)
+        console.error('Admin login failed:', error)
         const detail = error.response?.data?.detail || 'Invalid username or password'
         this.authError = detail
         return false
@@ -298,7 +276,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     // Logout
-    logout(auth0Logout = null) {
+    logout() {
       this.token = null
       this.user = null
       this.isAuthenticated = false
@@ -310,15 +288,6 @@ export const useAuthStore = defineStore('auth', {
 
       // Clear the token cookie
       document.cookie = 'token=; path=/; max-age=0'
-
-      // If Auth0 logout function provided and not in dev mode, call it for full logout
-      if (auth0Logout && !this.devModeEnabled) {
-        auth0Logout({
-          logoutParams: {
-            returnTo: window.location.origin
-          }
-        })
-      }
     },
 
     // Clear auth error

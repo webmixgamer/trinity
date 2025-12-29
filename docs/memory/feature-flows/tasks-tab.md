@@ -10,7 +10,7 @@ As an agent operator, I want to view and trigger headless task executions from a
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:282-291` - Tasks tab button
+- **UI**: `src/frontend/src/views/AgentDetail.vue:201-204` - Tasks tab button
 - **UI**: `src/frontend/src/components/TasksPanel.vue` - Main component
 - **API**: `POST /api/agents/{name}/task` - Execute a task
 - **API**: `GET /api/agents/{name}/executions` - Get execution history
@@ -24,7 +24,7 @@ As an agent operator, I want to view and trigger headless task executions from a
 
 ### Components
 
-**AgentDetail.vue:882-888** - Tab content rendering:
+**AgentDetail.vue:884-885** - Tab content rendering:
 ```vue
 <!-- Tasks Tab Content -->
 <div v-if="activeTab === 'tasks'" class="p-6">
@@ -35,13 +35,13 @@ As an agent operator, I want to view and trigger headless task executions from a
 **TasksPanel.vue** - Main tasks component with the following sections:
 - **Header (lines 4-47)**: Title, queue status indicator, refresh button
 - **New Task Input (lines 49-78)**: Textarea for task message, Run button
-- **Summary Stats (lines 80-100)**: Total tasks, success rate, total cost, avg duration
-- **Task History (lines 102-234)**: Scrollable list of all tasks with expand/collapse
-- **Queue Management (lines 237-255)**: Force release and clear queue buttons
+- **Summary Stats (lines 81-100)**: Total tasks, success rate, total cost, avg duration
+- **Task History (lines 102-235)**: Scrollable list of all tasks with expand/collapse
+- **Queue Management (lines 237-256)**: Force release and clear queue buttons
 
 ### State Management
 
-**TasksPanel.vue:259-290** - Local reactive state:
+**TasksPanel.vue:264-289** - Local reactive state:
 ```javascript
 const props = defineProps({
   agentName: { type: String, required: true },
@@ -75,7 +75,7 @@ const avgDuration = computed(() => { /* ... */ })
 
 ### API Calls
 
-**Load Executions (lines 328-338)**:
+**Load Executions (lines 329-338)**:
 ```javascript
 async function loadExecutions() {
   const response = await axios.get(`/api/agents/${props.agentName}/executions?limit=100`, {
@@ -85,7 +85,7 @@ async function loadExecutions() {
 }
 ```
 
-**Load Queue Status (lines 340-354)**:
+**Load Queue Status (lines 341-354)**:
 ```javascript
 async function loadQueueStatus() {
   if (props.agentStatus !== 'running') {
@@ -99,7 +99,7 @@ async function loadQueueStatus() {
 }
 ```
 
-**Run New Task (lines 356-432)**:
+**Run New Task (lines 357-433)**:
 ```javascript
 async function runNewTask() {
   // Create local pending task for immediate UI feedback
@@ -125,7 +125,7 @@ async function runNewTask() {
 }
 ```
 
-**Queue Management (lines 447-475)**:
+**Queue Management (lines 448-475)**:
 ```javascript
 async function forceReleaseQueue() {
   await axios.post(`/api/agents/${props.agentName}/queue/release`, {}, {
@@ -144,17 +144,7 @@ async function clearQueue() {
 
 ### Polling
 
-**Lines 507-523**: Queue status is polled every 5 seconds when agent is running:
-```javascript
-function startPolling() {
-  stopPolling()
-  if (props.agentStatus === 'running') {
-    pollInterval = setInterval(() => {
-      loadQueueStatus()
-    }, 5000)
-  }
-}
-```
+Queue status is polled every 5 seconds when agent is running (watch handler on agentStatus prop).
 
 ---
 
@@ -164,11 +154,11 @@ function startPolling() {
 
 #### POST /api/agents/{name}/task
 
-**File**: `src/backend/routers/chat.py:299-508`
+**File**: `src/backend/routers/chat.py:358-569`
 
 Execute a stateless task in parallel mode (no conversation context).
 
-**Request Model** (`src/backend/models.py:91-98`):
+**Request Model** (`src/backend/models.py`):
 ```python
 class ParallelTaskRequest(BaseModel):
     message: str  # The task to execute
@@ -178,7 +168,7 @@ class ParallelTaskRequest(BaseModel):
     timeout_seconds: Optional[int] = 300  # Execution timeout
 ```
 
-**Business Logic (lines 299-508)**:
+**Business Logic (lines 358-569)**:
 1. Validate agent container exists and is running
 2. Determine execution source (user or agent-to-agent via `X-Source-Agent` header)
 3. **Create task execution record in database** via `db.create_task_execution()`
@@ -212,6 +202,7 @@ async def get_agent_executions(
 #### GET /api/agents/{name}/queue
 
 **File**: `src/backend/routers/agents.py:445-451`
+**Service**: `src/backend/services/agent_service/queue.py:18-43`
 
 Get execution queue status for an agent.
 
@@ -230,12 +221,14 @@ Returns `QueueStatus` model with:
 #### POST /api/agents/{name}/queue/clear
 
 **File**: `src/backend/routers/agents.py:454-460`
+**Service**: `src/backend/services/agent_service/queue.py:46-82`
 
 Clear all queued executions for an agent (does not stop running execution).
 
 #### POST /api/agents/{name}/queue/release
 
 **File**: `src/backend/routers/agents.py:463-469`
+**Service**: `src/backend/services/agent_service/queue.py:85-124`
 
 Force release an agent from its running state (emergency use for stuck executions).
 
@@ -348,6 +341,8 @@ def get_agent_executions(self, agent_name: str, limit: int = 50) -> List[Schedul
         LIMIT ?
     """, (agent_name, limit))
 ```
+
+**Note**: The `create_task_execution` method was added 2025-12-28 specifically for manual task persistence.
 
 ### Database Schema
 
@@ -560,4 +555,4 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 - Multiple rapid task submissions (all should complete independently)
 
 ### Status
-✅ Working (2025-12-28)
+Verified 2025-12-29 - Line numbers updated to match current codebase

@@ -261,9 +261,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 @router.get("/api/auth/mode")
 async def get_auth_mode():
     return {
-        "dev_mode_enabled": DEV_MODE_ENABLED,
-        "auth0_configured": bool(AUTH0_DOMAIN),
-        "allowed_domain": AUTH0_ALLOWED_DOMAIN,
+        "email_auth_enabled": email_auth_enabled,
         "setup_completed": is_setup_completed()
     }
 ```

@@ -221,9 +221,9 @@ project_trinity/
 
 ## Authentication
 
-- **Production**: Auth0 + Google OAuth (configure allowed domains in Auth0)
-- **Development**: Set `DEV_MODE_ENABLED=true` in backend environment (docker-compose.yml)
-- **Mode Detection**: Runtime via `GET /api/auth/mode` - no frontend rebuild needed
+- **Email Login**: Primary method - users enter email, receive 6-digit code, login
+- **Admin Login**: Password-based login for admin user (username fixed as 'admin')
+- **Email Whitelist**: Manage allowed emails in Settings → Email Whitelist
 
 ---
 

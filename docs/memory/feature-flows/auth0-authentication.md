@@ -1,7 +1,12 @@
 # Feature: Authentication Mode System
 
-## Overview
-Dual-mode authentication system with **runtime** mode detection from backend. Supports local username/password login (dev mode) and Auth0 OAuth with Google (production mode). The backend controls which mode is active via `DEV_MODE_ENABLED` environment variable - no frontend rebuild required to switch modes.
+> **⚠️ DEPRECATED (2025-12-29)**: This document describes the legacy Auth0/Dev Mode authentication system.
+> The login page has been simplified to use **Email Authentication** (primary) and **Admin Login** (secondary).
+> See [email-authentication.md](email-authentication.md) for the current authentication flow.
+> Auth0 OAuth and Dev Mode are no longer exposed in the login UI.
+
+## Overview (Legacy)
+Dual-mode authentication system with **runtime** mode detection from backend. Previously supported local username/password login (dev mode) and Auth0 OAuth with Google (production mode). As of 2025-12-29, the login page now uses Email Authentication as the primary method with Admin Login as the secondary method.
 
 ## User Story
 As a platform operator, I want to control authentication mode via environment variable so that I can switch between dev (local login) and production (Auth0 OAuth) without rebuilding the frontend.

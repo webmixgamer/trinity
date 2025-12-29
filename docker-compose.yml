@@ -9,8 +9,7 @@ services:
     environment:
       # SECURITY: Set these in your .env file, not here
       - SECRET_KEY=${SECRET_KEY:-}  # Required - generate with: openssl rand -hex 32
-      - DEV_MODE_ENABLED=${DEV_MODE_ENABLED:-false}  # Set to true for local development
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}  # Required for dev mode - set a strong password
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}  # Required - set a strong password
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - AUDIT_URL=http://audit-logger:8001
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}

@@ -2,11 +2,13 @@
 
 > **Created**: 2025-12-27 - Phase 11.5, Requirement 12.2
 >
+> **Updated**: 2025-12-29 - Added hidden files toggle and inline text editing
+>
 > **Related**: [file-browser.md](file-browser.md) - Original in-agent file browser (Files tab in AgentDetail)
 
 ## Overview
 
-The File Manager is a **dedicated standalone page** (`/files` route) providing a two-panel interface for browsing, previewing, and managing files across all running agents. Unlike the Files tab in AgentDetail (which is agent-specific), the File Manager allows quick switching between agents and supports rich media previews (images, video, audio, PDF) plus file deletion with protected path warnings.
+The File Manager is a **dedicated standalone page** (`/files` route) providing a two-panel interface for browsing, previewing, and managing files across all running agents. Unlike the Files tab in AgentDetail (which is agent-specific), the File Manager allows quick switching between agents and supports rich media previews (images, video, audio, PDF), file deletion with protected path warnings, **hidden files visibility toggle**, and **inline text file editing**.
 
 ## User Story
 
@@ -17,8 +19,9 @@ As a Trinity user, I want to manage files across all my running agents from a si
 - **UI**: `src/frontend/src/views/FileManager.vue` - Standalone page at `/files` route
 - **Router**: `src/frontend/src/router/index.js:42-46` - Route definition
 - **API Endpoints**:
-  - `GET /api/agents/{agent_name}/files` - List files
+  - `GET /api/agents/{agent_name}/files?show_hidden=true|false` - List files (with hidden toggle)
   - `GET /api/agents/{agent_name}/files/preview` - Preview with MIME type
+  - `PUT /api/agents/{agent_name}/files?path=...` - Update file content (text files)
   - `DELETE /api/agents/{agent_name}/files` - Delete file/folder
 
 ---
@@ -62,7 +65,7 @@ FileManager.vue
   |-- Delete Confirmation Modal
 ```
 
-#### State Management (Lines 241-270)
+#### State Management (Lines 271-289)
 
 ```javascript
 // Component state
@@ -78,6 +81,12 @@ const previewError = ref(null)
 const downloading = ref(false)
 const deleting = ref(false)
 const showDeleteConfirm = ref(false)
+const showHidden = ref(localStorage.getItem('fileManager.showHidden') === 'true')
+// Edit mode state
+const isEditing = ref(false)
+const editContent = ref('')
+const saving = ref(false)
+const hasUnsavedChanges = ref(false)
 ```
 
 #### Protected Paths (Line 273)
@@ -122,12 +131,16 @@ const filteredTree = computed(() => {
 
 | Method | Lines | Purpose |
 |--------|-------|---------|
-| `loadFiles()` | 331-345 | Fetch file tree from agent |
-| `onAgentChange()` | 347-352 | Handle agent selection, clear state |
-| `onFileSelect()` | 354-362 | Select file and load preview |
-| `loadPreview()` | 364-375 | Fetch file preview as blob |
-| `downloadFile()` | 377-409 | Download file via blob URL |
-| `deleteFile()` | 411-434 | Delete file/folder after confirmation |
+| `loadFiles()` | 406-422 | Fetch file tree from agent (with showHidden) |
+| `onAgentChange()` | 424-430 | Handle agent selection, clear state |
+| `onFileSelect()` | 432-452 | Select file and load preview, reset edit state |
+| `loadPreview()` | 454-464 | Fetch file preview as blob |
+| `downloadFile()` | 466-488 | Download file via blob URL |
+| `deleteFile()` | 489-512 | Delete file/folder after confirmation |
+| `startEdit()` | 515-528 | Enter edit mode, load text content |
+| `cancelEdit()` | 530-539 | Exit edit mode with unsaved changes check |
+| `saveFile()` | 546-568 | Save edited content to agent |
+| `onEditContentChange()` | 541-544 | Track content changes |
 
 #### Protected Path Check (Lines 324-328)
 
@@ -238,25 +251,40 @@ watch(() => props.previewData, async (data) => {
 
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
 
-#### listAgentFiles (Lines 371-378)
+#### listAgentFiles (Lines 372-379)
 
 ```javascript
-async listAgentFiles(name, path = '/home/developer') {
+async listAgentFiles(name, path = '/home/developer', showHidden = false) {
   const authStore = useAuthStore()
   const response = await axios.get(`/api/agents/${name}/files`, {
-    params: { path },
+    params: { path, show_hidden: showHidden },
     headers: authStore.authHeader
   })
   return response.data
 }
 ```
 
-#### deleteAgentFile (Lines 390-397)
+#### deleteAgentFile (Lines 391-398)
 
 ```javascript
 async deleteAgentFile(name, filePath) {
   const authStore = useAuthStore()
   const response = await axios.delete(`/api/agents/${name}/files`, {
+    params: { path: filePath },
+    headers: authStore.authHeader
+  })
+  return response.data
+}
+```
+
+#### updateAgentFile (Lines 400-409)
+
+```javascript
+async updateAgentFile(name, filePath, content) {
+  const authStore = useAuthStore()
+  const response = await axios.put(`/api/agents/${name}/files`, {
+    content
+  }, {
     params: { path: filePath },
     headers: authStore.authHeader
   })
@@ -447,6 +475,34 @@ def _is_protected_path(path: Path) -> bool:
             if parent.name == protected:
                 return True
     return False
+```
+
+### PUT /api/files (Lines 292-347)
+
+```python
+@router.put("/api/files")
+async def update_file(path: str, request: FileUpdateRequest):
+    """Update a file's content in the workspace."""
+    # Security: Only allow /home/developer access
+    # Protected path check (cannot edit CLAUDE.md, .trinity, etc.)
+    # Write content with path.write_text()
+```
+
+**Request Body**:
+```json
+{
+  "content": "new file content here"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "path": "path/to/file",
+  "size": 1234,
+  "modified": "2025-12-29T15:30:00"
+}
 ```
 
 ---
@@ -735,7 +791,7 @@ docker exec agent-{name} rm -rf /home/developer/test-dir
 
 ### Status
 
-Working - Feature implemented and tested 2025-12-27
+Working - Feature implemented 2025-12-27, updated 2025-12-29 (hidden files + editing)
 
 ---
 
@@ -761,12 +817,24 @@ Working - Feature implemented and tested 2025-12-27
 | Agent selector | Dropdown | N/A (implicit) |
 | File preview | Rich media support | Download only |
 | Delete support | Yes, with confirmation | No |
+| **Edit support** | **Yes, for text files** | No |
+| **Show hidden files** | **Yes, toggle** | No |
 | Protected warnings | Yes | No |
-| Persistence | localStorage agent | N/A |
+| Persistence | localStorage agent, showHidden | N/A |
 
 ---
 
 ## Changelog
+
+- **2025-12-29**: Hidden files toggle and inline text editing
+  - Added "Show hidden" checkbox in header (persisted to localStorage)
+  - Agent server and backend accept `show_hidden` query parameter
+  - Edit button for text files (js, py, md, json, yaml, etc.)
+  - Textarea editor in FilePreview with Save/Cancel actions
+  - PUT /api/files endpoint for file updates
+  - Unsaved changes warning when switching files or canceling
+  - Separate protection lists: delete-protected vs edit-protected
+  - CLAUDE.md and .mcp.json are editable (but not deletable)
 
 - **2025-12-27**: Initial implementation (Phase 11.5, Requirement 12.2)
   - Standalone File Manager page at `/files`

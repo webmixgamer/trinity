@@ -3,6 +3,11 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2025-12-29)**: Feature flows audit completed:
+> - **Tasks Tab**: Verified tasks-tab.md with correct line numbers for TasksPanel.vue (264-475) and AgentDetail.vue (201, 884-885)
+> - **Scheduling**: Updated API endpoint line numbers in scheduling.md to match current schedules.py
+> - **Execution Queue**: Updated chat.py line numbers (106-356) to reflect retry helper addition
+>
 > **Updated (2025-12-27)**: **Service Layer Refactoring** - All agent-related feature flows updated:
 > - `routers/agents.py` reduced from 2928 to 786 lines (thin router layer)
 > - Business logic extracted into 12 service modules in `services/agent_service/`
@@ -84,7 +89,7 @@
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
-| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling (Created 2025-12-28) |
+| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling (Verified 2025-12-29) |
 
 ---
 

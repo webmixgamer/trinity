@@ -258,7 +258,7 @@ class AgentBusyError(Exception):
 
 ## Integration Points
 
-### 1. User Chat (`src/backend/routers/chat.py:50-293`)
+### 1. User Chat (`src/backend/routers/chat.py:106-356`)
 
 **Entry Point**: `POST /api/agents/{name}/chat`
 
@@ -696,7 +696,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 - [ ] TTL expiration: Stuck execution auto-clears after 10 min
 
 **Status**: Ready for testing
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-29
 
 ---
 
@@ -752,6 +752,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-29 | Updated chat.py line numbers (106-356) to reflect current codebase after retry helper addition |
 | 2025-12-27 | **Service layer refactoring**: Queue endpoint handlers moved to `services/agent_service/queue.py`. Router reduced to thin endpoint definitions. |
 | 2025-12-22 | Added Queue Bypass section for Parallel Task Execution (/api/task endpoint) |
 | 2025-12-19 | Updated line numbers for all source files based on current codebase |

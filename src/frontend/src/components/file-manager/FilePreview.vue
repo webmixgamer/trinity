@@ -89,9 +89,19 @@
         />
       </div>
 
-      <!-- Text/Code Preview -->
-      <div v-else-if="isText" class="flex-1 overflow-auto">
+      <!-- Text/Code Preview or Edit -->
+      <div v-else-if="isText" class="flex-1 overflow-auto flex flex-col">
+        <!-- Edit Mode: Textarea -->
+        <textarea
+          v-if="props.isEditing"
+          :value="props.editContent"
+          @input="emit('update:editContent', $event.target.value)"
+          class="flex-1 p-4 text-sm font-mono bg-gray-900 text-gray-100 m-2 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          spellcheck="false"
+        ></textarea>
+        <!-- View Mode: Pre/Code -->
         <pre
+          v-else
           class="p-4 text-sm font-mono bg-gray-900 text-gray-100 rounded-lg m-2 overflow-auto whitespace-pre-wrap"
         ><code>{{ textContent }}</code></pre>
       </div>
@@ -138,8 +148,13 @@ const props = defineProps({
   agentName: { type: String, required: true },
   previewData: { type: Object, default: null },
   previewLoading: { type: Boolean, default: false },
-  previewError: { type: String, default: null }
+  previewError: { type: String, default: null },
+  // Edit mode props
+  isEditing: { type: Boolean, default: false },
+  editContent: { type: String, default: '' }
 })
+
+const emit = defineEmits(['update:editContent'])
 
 // State
 const textContent = ref('')

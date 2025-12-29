@@ -10,6 +10,7 @@ import docker
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, WebSocket
+from pydantic import BaseModel
 
 from models import AgentConfig, AgentStatus, User, DeployLocalRequest
 from database import db
@@ -58,6 +59,7 @@ from services.agent_service import (
     download_agent_file_logic,
     delete_agent_file_logic,
     preview_agent_file_logic,
+    update_agent_file_logic,
     # Queue
     get_agent_queue_status_logic,
     clear_agent_queue_logic,
@@ -551,10 +553,16 @@ async def list_agent_files_endpoint(
     agent_name: str,
     request: Request,
     path: str = "/home/developer",
+    show_hidden: bool = False,
     current_user: User = Depends(get_current_user)
 ):
-    """List files in the agent's workspace directory."""
-    return await list_agent_files_logic(agent_name, path, current_user, request)
+    """List files in the agent's workspace directory.
+
+    Args:
+        path: Directory path to list (default: /home/developer)
+        show_hidden: If True, include hidden files (starting with .)
+    """
+    return await list_agent_files_logic(agent_name, path, current_user, request, show_hidden)
 
 
 @router.get("/{agent_name}/files/download")
@@ -588,6 +596,28 @@ async def delete_agent_file_endpoint(
 ):
     """Delete a file or directory from the agent's workspace."""
     return await delete_agent_file_logic(agent_name, path, current_user, request)
+
+
+class FileUpdateRequest(BaseModel):
+    """Request body for file updates."""
+    content: str
+
+
+@router.put("/{agent_name}/files")
+async def update_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    body: FileUpdateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a file's content in the agent's workspace.
+
+    Args:
+        path: File path to update
+        body: Request body with content
+    """
+    return await update_agent_file_logic(agent_name, path, body.content, current_user, request)
 
 
 # ============================================================================

@@ -207,18 +207,12 @@ app = FastAPI(
 )
 
 # Add CORS middleware
-# SECURITY: In production, restrict methods and headers to what's actually needed
-import os
-_is_production = os.getenv("DEV_MODE_ENABLED", "false").lower() != "true"
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    # Restrict methods in production, allow all in development
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"] if _is_production else ["*"],
-    # Restrict headers in production
-    allow_headers=["Authorization", "Content-Type", "X-Source-Agent", "Accept"] if _is_production else ["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Source-Agent", "Accept"],
 )
 
 # Include all routers

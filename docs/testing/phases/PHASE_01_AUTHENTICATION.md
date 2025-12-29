@@ -1,6 +1,6 @@
 # Phase 1: Authentication & UI Readiness
 
-> **Purpose**: Validate authentication flows (Dev Mode + Email Auth) and browser login
+> **Purpose**: Validate authentication flows (Email Auth + Admin Login) and browser login
 > **Duration**: ~5 minutes
 > **Assumes**: Phase 0 PASSED (services running, clean slate)
 > **Output**: Logged-in browser session, valid JWT token
@@ -18,15 +18,14 @@
 
 ---
 
-## Authentication Modes
+## Authentication Methods
 
-Trinity supports multiple authentication modes:
+Trinity supports two authentication methods:
 
-| Mode | Description | Login Method |
-|------|-------------|--------------|
-| **Dev Mode** | Local development | Username/password (admin/PASSWORD) |
-| **Email Auth** | Email-based OTP | Email + 6-digit verification code |
-| **Auth0** | Production OAuth | Google/social login via Auth0 |
+| Method | Description | Login Flow |
+|--------|-------------|------------|
+| **Email Auth** | Primary (whitelisted users) | Email + 6-digit verification code |
+| **Admin Login** | Secondary (admin only) | Fixed username 'admin' + password |
 
 **Check Current Mode**:
 ```bash
@@ -36,8 +35,8 @@ curl http://localhost:8000/api/auth/mode
 **Expected Response**:
 ```json
 {
-  "mode": "dev",          // or "email" or "auth0"
-  "dev_mode_enabled": true
+  "email_auth_enabled": true,
+  "setup_completed": true
 }
 ```
 
@@ -51,19 +50,11 @@ curl http://localhost:8000/api/auth/mode
 - Refresh page (Ctrl+F5) to clear any cached state
 - If already logged in, logout first
 
-**Expected** (Dev Mode):
-- [ ] Page loads
-- [ ] Login form visible
-- [ ] "Development Mode - Local authentication enabled" message shown
-- [ ] Username field visible
-- [ ] Password field visible
-- [ ] "Sign In" button visible
-
-**Expected** (Email Auth Mode):
+**Expected** (Email Auth - Default):
 - [ ] Page loads
 - [ ] Email input field visible
-- [ ] "Send Code" or "Continue with Email" button visible
-- [ ] No username/password fields (email-only)
+- [ ] "Send Verification Code" button visible
+- [ ] "Admin Login" button visible at bottom
 
 **Verify**:
 - [ ] No console errors
@@ -71,30 +62,12 @@ curl http://localhost:8000/api/auth/mode
 
 ---
 
-### Step 2: Attempt Invalid Login
+### Step 2: Test Admin Login
 **Action**:
-- Enter username: `invalid`
-- Enter password: `wrong`
-- Click "Sign In"
-
-**Expected**:
-- [ ] Login fails with error message
-- [ ] Stays on login page
-- [ ] Error message displays: "Invalid credentials" or similar
-- [ ] Form remains interactive
-
-**Verify**:
-- [ ] Error message shown
-- [ ] Can retry login
-
----
-
-### Step 3: Successful Login (Dev Mode)
-**Action** (Dev Mode):
-- Clear form
-- Enter username: `admin`
+- Click "Admin Login" button
+- Verify username field shows "admin" (fixed, non-editable)
 - Enter password: `YOUR_PASSWORD` (from `.env` ADMIN_PASSWORD)
-- Click "Sign In"
+- Click "Sign In as Admin"
 - Wait for page to load (10 seconds max)
 
 **Expected**:
@@ -111,29 +84,47 @@ curl http://localhost:8000/api/auth/mode
 
 ---
 
-### Step 3-ALT: Successful Login (Email Auth Mode)
-**Action** (Email Auth):
-- Enter email: `admin@your-domain.com` (whitelisted email)
-- Click "Send Code"
-- Wait for code email (check backend logs or inbox)
-- Enter 6-digit code received
-- Click "Verify"
-- Wait for page to load
+### Step 3: Test Invalid Admin Password
+**Action**:
+- Logout if logged in
+- Click "Admin Login"
+- Enter password: `wrongpassword`
+- Click "Sign In as Admin"
 
 **Expected**:
-- [ ] Code sent message appears
-- [ ] Code input field shown
-- [ ] After verify: Redirects to dashboard
-- [ ] Navigation bar visible
-- [ ] Profile shows email address
+- [ ] Login fails with error message
+- [ ] Stays on login page
+- [ ] Error message displays: "Incorrect username or password"
+- [ ] Form remains interactive
 
-**Note**: Email auth requires:
-1. Email in whitelist (Settings → Email Whitelist)
-2. SMTP configured (or check backend logs for code in dev mode)
+**Verify**:
+- [ ] Error message shown
+- [ ] Can retry login
 
 ---
 
-### Step 4: Verify Session Token
+### Step 4: Test Email Login Flow (Optional)
+**Action** (requires whitelisted email):
+- Return to email login (click "← Back to email login")
+- Enter email: `admin@your-domain.com` (whitelisted email)
+- Click "Send Verification Code"
+- Wait for code email (check backend logs for console output)
+- Enter 6-digit code received
+- Click "Verify & Sign In"
+
+**Expected**:
+- [ ] "We sent a 6-digit code to..." message appears
+- [ ] Code input field shown
+- [ ] Countdown timer starts
+- [ ] After verify: Redirects to dashboard
+
+**Note**: Email auth requires:
+1. Email in whitelist (Settings → Email Whitelist)
+2. Email provider configured (use EMAIL_PROVIDER=console for dev)
+
+---
+
+### Step 5: Verify Session Token
 **Action**: Open browser DevTools Console
 ```javascript
 localStorage.getItem('token')
@@ -149,13 +140,12 @@ localStorage.getItem('token')
 
 ---
 
-### Step 5: Verify User Profile
+### Step 6: Verify User Profile
 **Action**: Click "admin" button in top-right navbar
 
 **Expected**:
 - [ ] Dropdown menu appears
 - [ ] Shows username: "admin"
-- [ ] Shows email: "admin@localhost"
 - [ ] "Sign out" button visible
 
 **Verify**:
@@ -164,7 +154,7 @@ localStorage.getItem('token')
 
 ---
 
-### Step 6: Verify Dashboard Initial State
+### Step 7: Verify Dashboard Initial State
 **Action**: Look at main content area
 
 **Expected**:
@@ -181,7 +171,7 @@ localStorage.getItem('token')
 
 ---
 
-### Step 7: Logout Test
+### Step 8: Logout Test
 **Action**:
 - Click "admin" dropdown
 - Click "Sign out"
@@ -197,7 +187,7 @@ localStorage.getItem('token')
 
 ---
 
-### Step 8: Login Again (Session Persistence)
+### Step 9: Login Again (Session Persistence)
 **Action**:
 - Login again with admin/YOUR_PASSWORD
 - Navigate away (click Agents in navbar)
@@ -217,25 +207,20 @@ localStorage.getItem('token')
 
 ## Critical Validations
 
-### Dev Mode Detection
-**Validation**: Backend correctly reports dev mode
+### Auth Mode Detection
+**Validation**: Backend correctly reports auth mode
 
 ```bash
-curl http://localhost:8000/api/auth/mode \
-  -H "Authorization: Bearer $TOKEN"
+curl http://localhost:8000/api/auth/mode
 ```
 
 **Expected Response**:
 ```json
 {
-  "mode": "dev",
-  "dev_mode_enabled": true
+  "email_auth_enabled": true,
+  "setup_completed": true
 }
 ```
-
-**Verify**:
-- [ ] Mode = "dev" (not "prod")
-- [ ] dev_mode_enabled = true
 
 ---
 
@@ -244,7 +229,7 @@ curl http://localhost:8000/api/auth/mode \
 
 Decode token at https://jwt.io:
 - [ ] Header: `{"alg":"HS256","typ":"JWT"}`
-- [ ] Payload has: `"mode":"dev"` claim
+- [ ] Payload has: `"mode":"admin"` or `"mode":"email"` claim
 - [ ] Payload has: `"sub"` claim (user ID)
 - [ ] Payload has: `"exp"` claim (expiration)
 
@@ -253,7 +238,7 @@ Decode token at https://jwt.io:
 ## Success Criteria
 
 Phase 1 is **PASSED** when:
-- ✅ Dev mode login works (admin/YOUR_PASSWORD)
+- ✅ Admin login works (admin/YOUR_PASSWORD)
 - ✅ Invalid login fails with error
 - ✅ Session token obtained and stored
 - ✅ User profile displays correctly
@@ -267,7 +252,7 @@ Phase 1 is **PASSED** when:
 
 **Login fails**:
 - Check backend logs: `docker logs trinity-backend | grep -i auth`
-- Verify DEV_MODE_ENABLED=true in environment
+- Verify ADMIN_PASSWORD is set correctly
 - Try clearing browser cache
 
 **Token missing**:
@@ -290,4 +275,4 @@ Once Phase 1 is **PASSED**, proceed to:
 
 ---
 
-**Status**: 🟢 Ready for agent creation testing
+**Status**: Ready for agent creation testing

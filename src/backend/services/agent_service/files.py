@@ -22,11 +22,19 @@ async def list_agent_files_logic(
     agent_name: str,
     path: str,
     current_user: User,
-    request: Request
+    request: Request,
+    show_hidden: bool = False
 ) -> dict:
     """
     List files in the agent's workspace directory.
     Returns a flat list of files with metadata (name, size, modified date).
+
+    Args:
+        agent_name: Name of the agent
+        path: Directory path to list
+        current_user: Current authenticated user
+        request: HTTP request object
+        show_hidden: If True, include hidden files (starting with .)
     """
     if not db.can_user_access_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
@@ -45,7 +53,7 @@ async def list_agent_files_logic(
             agent_name,
             "GET",
             "/api/files",
-            params={"path": path},
+            params={"path": path, "show_hidden": str(show_hidden).lower()},
             max_retries=3,
             retry_delay=1.0,
             timeout=30.0
@@ -318,3 +326,87 @@ async def preview_agent_file_logic(
             result="error"
         )
         raise HTTPException(status_code=500, detail=f"Failed to preview file: {str(e)}")
+
+
+async def update_agent_file_logic(
+    agent_name: str,
+    path: str,
+    content: str,
+    current_user: User,
+    request: Request
+) -> dict:
+    """
+    Update a file's content in the agent's workspace.
+
+    Args:
+        agent_name: Name of the agent
+        path: File path to update
+        content: New file content
+        current_user: Current authenticated user
+        request: HTTP request object
+    """
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    container.reload()
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to update files")
+
+    try:
+        # Call agent's internal file update API with retry
+        response = await agent_http_request(
+            agent_name,
+            "PUT",
+            "/api/files",
+            params={"path": path},
+            json={"content": content},
+            max_retries=3,
+            retry_delay=1.0,
+            timeout=60.0
+        )
+        if response.status_code == 200:
+            result = response.json()
+            # Audit log the file update
+            await log_audit_event(
+                event_type="file_access",
+                action="file_update",
+                user_id=current_user.username,
+                agent_name=agent_name,
+                ip_address=request.client.host if request.client else None,
+                details={
+                    "path": path,
+                    "size": result.get("size", 0)
+                },
+                result="success"
+            )
+            return result
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=response.json().get("detail", f"Failed to update: {response.text}")
+            )
+    except httpx.ConnectError:
+        # Agent server not ready - return 503 so tests can skip
+        raise HTTPException(
+            status_code=503,
+            detail="Agent server not ready. The agent may still be starting up."
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="File update timed out")
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_audit_event(
+            event_type="file_access",
+            action="file_update",
+            user_id=current_user.username,
+            agent_name=agent_name,
+            ip_address=request.client.host if request.client else None,
+            details={"path": path, "error": str(e)},
+            result="error"
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to update file: {str(e)}")
