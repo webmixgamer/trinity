@@ -247,6 +247,7 @@ export const useNetworkStore = defineStore('network', () => {
           status: agent.status,
           type: agent.type || 'business-assistant',
           owner: agent.owner,
+          runtime: agent.runtime || 'claude-code',
           githubRepo: agent.github_repo || null,
           is_system: agent.is_system || false,
           // Set initial activityState based on running status to avoid "Offline" flash

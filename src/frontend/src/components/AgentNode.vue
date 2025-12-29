@@ -21,12 +21,14 @@
 
     <!-- Agent info -->
     <div class="flex flex-col flex-grow">
-      <!-- Header with name, system badge, and status dot -->
+      <!-- Header with name, runtime badge, system badge, and status dot -->
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center flex-1 mr-2 min-w-0">
           <div class="text-gray-900 dark:text-white font-bold text-base truncate" :title="data.label">
             {{ data.label }}
           </div>
+          <!-- Runtime badge (Claude/Gemini) -->
+          <RuntimeBadge :runtime="data.runtime" :show-label="false" class="ml-2 flex-shrink-0" />
           <!-- System agent badge -->
           <span
             v-if="isSystemAgent"
@@ -111,6 +113,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
+import RuntimeBadge from './RuntimeBadge.vue'
 
 const props = defineProps({
   id: String,
