@@ -295,8 +295,40 @@ class ScheduleOperations:
     # Schedule Execution Management
     # =========================================================================
 
+    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual") -> Optional[ScheduleExecution]:
+        """Create a new execution record for a manual/API-triggered task (no schedule)."""
+        execution_id = self._generate_id()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO schedule_executions (
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                execution_id,
+                "__manual__",  # Special marker for manual/API-triggered tasks
+                agent_name,
+                "running",
+                now,
+                message,
+                triggered_by
+            ))
+            conn.commit()
+
+            return ScheduleExecution(
+                id=execution_id,
+                schedule_id="__manual__",
+                agent_name=agent_name,
+                status="running",
+                started_at=datetime.fromisoformat(now),
+                message=message,
+                triggered_by=triggered_by
+            )
+
     def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule") -> Optional[ScheduleExecution]:
-        """Create a new execution record."""
+        """Create a new execution record for a scheduled task."""
         execution_id = self._generate_id()
         now = datetime.utcnow().isoformat()
 

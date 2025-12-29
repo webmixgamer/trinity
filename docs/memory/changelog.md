@@ -1,3 +1,115 @@
+### 2025-12-29 13:30:00
+🧪 **Add Missing Execution and Queue Tests**
+
+**New Tests Added**: Comprehensive test coverage for task executions and queue management.
+
+**test_executions.py** (new file - 15 tests):
+- `TestExecutionsEndpoint` - GET /api/agents/{name}/executions endpoint tests
+- `TestExecutionFields` - Verify execution records have required fields
+- `TestTaskPersistence` - Tasks saved to DB, manual trigger, duration, cost tracking
+- `TestAgentToAgentTask` - X-Source-Agent header and triggered_by='agent'
+- `TestExecutionOrdering` - Executions returned in descending time order
+- `TestExecutionFiltering` - Filter by status and triggered_by
+
+**test_execution_queue.py** (expanded from 6 to 24 tests):
+- `TestQueueStatus` - Queue status fields, agent name, busy state, queued executions
+- `TestQueueStatusDuringExecution` - Queue busy during chat execution
+- `TestClearQueue` - Clear queue, cleared count, auth, 404 handling
+- `TestForceRelease` - Release, was_running, warning message, auth
+- `TestQueueAfterOperations` - Queue state after clear/release
+- `TestQueueWithParallelTasks` - Verify /task bypasses queue
+
+**Coverage Gaps Addressed**:
+1. GET /api/agents/{name}/executions endpoint (was untested)
+2. Task persistence to database
+3. Agent-to-agent execution via X-Source-Agent header
+4. Queue endpoint authentication tests
+5. Queue state verification after operations
+
+---
+
+### 2025-12-29 13:00:00
+🔧 **Fix Agent Server Connectivity Race Condition**
+
+**Problem**: Test suite showed 7/441 failures due to agent file server connectivity issues. When an agent container starts, the internal HTTP server takes a moment to initialize. Requests made during this window would fail with "All connection attempts failed".
+
+**Root Cause**: No retry logic when communicating with agent containers - single connection failure caused immediate HTTP 500 error.
+
+**Solution**: Added retry logic with exponential backoff for all agent communication:
+- File operations (list, download, preview, delete)
+- Chat endpoint
+- Parallel task endpoint
+
+**Changes**:
+- `src/backend/services/agent_service/helpers.py` - Added `agent_http_request()` helper with retry logic
+- `src/backend/services/agent_service/files.py` - Uses retry helper, returns 503 for connection failures
+- `src/backend/routers/chat.py` - Added `agent_post_with_retry()` for chat/task endpoints
+
+**Retry Logic**:
+- 3 attempts with exponential backoff (1s, 2s, 4s)
+- Returns 503 "Agent server not ready" for connection failures
+- Tests can skip on 503 vs failing on 500
+
+**Impact**: Fixes test_agent_files.py failures (7 tests), improves stability for test_activities.py chat tests.
+
+---
+
+### 2025-12-28 23:15:00
+🔧 **Manual Tasks Now Persisted to Database**
+
+**Fix**: Manual tasks triggered via Tasks tab are now saved to database and persist across page reloads.
+
+**Backend Changes**:
+- Added `create_task_execution()` method to `db/schedules.py` for manual task creation
+- Uses `schedule_id = "__manual__"` as marker for non-scheduled tasks
+- Updated `/api/agents/{name}/task` endpoint to save execution records
+- Execution status (success/failed), response, cost, context, tool_calls all saved
+
+**Modified Files**:
+- `src/backend/db/schedules.py` - Added `create_task_execution()` method
+- `src/backend/database.py` - Exposed `create_task_execution()` on Database class
+- `src/backend/routers/chat.py` - Updated `/task` endpoint to persist executions
+
+**Flow**:
+1. Task submitted → execution record created with status "running"
+2. Task completes → execution updated with status "success"/"failed" + metadata
+3. Page reload → task appears in history from database
+
+---
+
+### 2025-12-28 22:45:00
+✨ **Added Tasks Tab to Agent Detail Page (v2)**
+
+**New Feature**: Tasks tab provides a unified view for all headless agent executions with inline task execution and monitoring.
+
+**Key Capabilities**:
+1. **Inline Task Execution**: Submit task → immediately appears as "running" in list → updates in place when done
+2. **Lightweight UI**: No modals or notifications - everything happens on the task row itself
+3. **Expandable Details**: Click task to expand and see response/error inline
+4. **Re-run Tasks**: One-click to re-run any previous task
+5. **Queue Status**: Shows busy/idle indicator and queue management options
+
+**UX Flow**:
+1. Enter task message in input field
+2. Click "Run" or Cmd+Enter
+3. Task immediately appears at top of list with yellow "running" status
+4. When complete, status changes to green "success" or red "failed"
+5. Click to expand and see response, click again to collapse
+
+**New Files**:
+- `src/frontend/src/components/TasksPanel.vue` - Lightweight task management panel
+
+**Modified Files**:
+- `src/frontend/src/views/AgentDetail.vue` - Added Tasks tab
+
+**Technical Details**:
+- Uses `/api/agents/{name}/task` endpoint (parallel mode, no queue blocking)
+- Local state for pending tasks merged with server executions
+- Real-time queue status polling every 5s
+- Cmd+Enter / Ctrl+Enter keyboard shortcut to submit
+
+---
+
 ### 2025-12-28 21:50:00
 🧪 **Tested Scheduling and Execution Queue Functionality**
 

@@ -820,6 +820,10 @@ class DatabaseManager:
     # Schedule Execution Management (delegated to db/schedules.py)
     # =========================================================================
 
+    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual"):
+        """Create an execution record for a manual/API-triggered task (no schedule)."""
+        return self._schedule_ops.create_task_execution(agent_name, message, triggered_by)
+
     def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule"):
         return self._schedule_ops.create_schedule_execution(schedule_id, agent_name, message, triggered_by)
 

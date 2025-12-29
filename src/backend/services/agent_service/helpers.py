@@ -4,7 +4,10 @@ Agent Service Helpers - Shared utility functions.
 Contains functions used across multiple agent operations.
 """
 import logging
-from typing import Optional, List
+import asyncio
+from typing import Optional, List, Callable, Any
+
+import httpx
 
 from models import User, AgentStatus
 from database import db
@@ -17,6 +20,63 @@ from routers.settings import get_anthropic_api_key
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)
+
+
+async def agent_http_request(
+    agent_name: str,
+    method: str,
+    path: str,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+    timeout: float = 30.0,
+    **kwargs
+) -> httpx.Response:
+    """
+    Make an HTTP request to an agent's internal server with retry logic.
+
+    This handles the common case where an agent container is running but
+    its internal HTTP server is not yet ready to accept connections.
+
+    Args:
+        agent_name: Name of the agent
+        method: HTTP method (GET, POST, etc.)
+        path: URL path (e.g., /api/files)
+        max_retries: Number of retry attempts
+        retry_delay: Seconds between retries (doubles each retry)
+        timeout: Request timeout in seconds
+        **kwargs: Additional arguments passed to httpx request
+
+    Returns:
+        httpx.Response object
+
+    Raises:
+        httpx.ConnectError: If all connection attempts fail
+        httpx.TimeoutException: If request times out
+    """
+    agent_url = f"http://agent-{agent_name}:8000{path}"
+
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.request(method, agent_url, **kwargs)
+                return response
+        except httpx.ConnectError as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                delay = retry_delay * (2 ** attempt)  # Exponential backoff
+                logger.debug(
+                    f"Agent {agent_name} connection failed (attempt {attempt + 1}/{max_retries}), "
+                    f"retrying in {delay}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(
+                    f"Agent {agent_name} connection failed after {max_retries} attempts: {e}"
+                )
+
+    # All retries exhausted
+    raise last_error or httpx.ConnectError(f"Failed to connect to agent {agent_name}")
 
 
 def get_accessible_agents(current_user: User) -> list:
