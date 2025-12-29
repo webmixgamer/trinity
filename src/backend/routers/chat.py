@@ -354,6 +354,16 @@ async def execute_parallel_task(
             action="parallel_task"
         )
 
+    # Create execution record for manual tasks (so they appear in Tasks panel)
+    # Use "manual" as schedule_id for manual/user-triggered tasks
+    triggered_by = "agent" if x_source_agent else "manual"
+    execution_record = db.create_schedule_execution(
+        schedule_id="manual",
+        agent_name=name,
+        message=request.message,
+        triggered_by=triggered_by
+    )
+
     try:
         # Build payload for agent's /api/task endpoint
         payload = {
@@ -379,6 +389,18 @@ async def execute_parallel_task(
 
             execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             metadata = response_data.get("metadata", {})
+
+            # Update execution record with success
+            if execution_record:
+                db.update_execution_status(
+                    execution_id=execution_record.id,
+                    status="success",
+                    response=response_data.get("response", ""),
+                    context_used=metadata.get("context_used"),
+                    context_max=metadata.get("context_max"),
+                    cost=metadata.get("cost_usd"),
+                    tool_calls=str(len(response_data.get("execution_log", [])))
+                )
 
             # Track task completion
             await activity_service.complete_activity(
@@ -410,6 +432,14 @@ async def execute_parallel_task(
             return response_data
 
     except httpx.TimeoutException:
+        # Update execution record with failure
+        if execution_record:
+            db.update_execution_status(
+                execution_id=execution_record.id,
+                status="failed",
+                error=f"Task execution timed out after {request.timeout_seconds} seconds"
+            )
+
         await activity_service.complete_activity(
             activity_id=task_activity_id,
             status="failed",
@@ -434,6 +464,14 @@ async def execute_parallel_task(
     except httpx.HTTPError as e:
         import logging
         logging.getLogger("trinity.errors").error(f"Failed to execute parallel task on {name}: {e}")
+
+        # Update execution record with failure
+        if execution_record:
+            db.update_execution_status(
+                execution_id=execution_record.id,
+                status="failed",
+                error=f"HTTP error: {type(e).__name__}"
+            )
 
         await activity_service.complete_activity(
             activity_id=task_activity_id,
