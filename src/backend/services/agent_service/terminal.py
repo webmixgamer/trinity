@@ -60,7 +60,8 @@ class TerminalSessionManager:
         websocket: WebSocket,
         agent_name: str,
         mode: str,
-        decode_token_fn
+        decode_token_fn,
+        model: str = None
     ):
         """
         Handle a WebSocket terminal session.
@@ -68,8 +69,9 @@ class TerminalSessionManager:
         Args:
             websocket: The WebSocket connection
             agent_name: Name of the agent to connect to
-            mode: Terminal mode ('claude' or 'bash')
+            mode: Terminal mode ('claude', 'gemini', or 'bash')
             decode_token_fn: Function to decode JWT tokens
+            model: Optional model to use (e.g., 'gemini-2.5-flash', 'sonnet')
         """
         await websocket.accept()
 
@@ -190,7 +192,19 @@ class TerminalSessionManager:
             )
 
             # Step 5: Create exec with TTY
-            cmd = ["claude"] if mode == "claude" else ["/bin/bash"]
+            # Support multiple terminal modes: claude (Claude Code), gemini (Gemini CLI), bash
+            if mode == "claude":
+                cmd = ["claude"]
+                if model:
+                    cmd.extend(["--model", model])
+            elif mode == "gemini":
+                cmd = ["gemini"]
+                if model:
+                    cmd.extend(["--model", model])
+            else:
+                cmd = ["/bin/bash"]
+
+            logger.info(f"Starting terminal with command: {cmd}")
 
             # Use docker API to create exec instance
             exec_instance = docker_client.api.exec_create(

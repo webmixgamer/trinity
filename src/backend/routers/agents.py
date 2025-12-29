@@ -798,12 +798,14 @@ async def update_agent_api_key_setting(
 async def agent_terminal(
     websocket: WebSocket,
     agent_name: str,
-    mode: str = Query(default="claude")
+    mode: str = Query(default="claude"),
+    model: str = Query(default=None)
 ):
     """Interactive terminal WebSocket for any agent."""
     await _terminal_manager.handle_terminal_session(
         websocket=websocket,
         agent_name=agent_name,
         mode=mode,
-        decode_token_fn=decode_token
+        decode_token_fn=decode_token,
+        model=model
     )

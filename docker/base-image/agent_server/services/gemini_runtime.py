@@ -93,7 +93,7 @@ class GeminiRuntime(AgentRuntime):
 
     def get_default_model(self) -> str:
         """Get default Gemini model."""
-        return "gemini-2.5-pro"
+        return "gemini-3-flash"
 
     def get_context_window(self, model: Optional[str] = None) -> int:
         """Get context window for Gemini models."""
@@ -337,7 +337,7 @@ class GeminiRuntime(AgentRuntime):
             else:
                 # Calculate estimated cost based on token usage
                 # Priority: detected_model > current_model (UI selected) > env default
-                model_for_pricing = detected_model or current_model or os.getenv("AGENT_RUNTIME_MODEL", "gemini-2.5-pro")
+                model_for_pricing = detected_model or current_model or os.getenv("AGENT_RUNTIME_MODEL", "gemini-3-flash")
                 metadata.cost_usd = calculate_gemini_cost(
                     metadata.input_tokens,
                     metadata.output_tokens,
