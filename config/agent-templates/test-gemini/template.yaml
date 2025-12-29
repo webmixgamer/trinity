@@ -10,7 +10,7 @@ type: business-assistant
 # Use Gemini runtime instead of Claude Code
 runtime:
   type: gemini-cli
-  model: gemini-2.5-pro
+  model: gemini-3-flash
 
 resources:
   cpu: "2"
