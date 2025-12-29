@@ -20,7 +20,7 @@ def inject_trinity_mcp_if_configured() -> bool:
     Called on agent startup.
 
     For Claude Code: Writes to ~/.mcp.json
-    For Gemini CLI: Uses `gemini mcp add` command
+    For Gemini CLI: Writes to ~/.gemini/settings.json
     """
     trinity_mcp_url = os.getenv("TRINITY_MCP_URL")
     trinity_mcp_api_key = os.getenv("TRINITY_MCP_API_KEY")
@@ -83,83 +83,48 @@ def _inject_claude_mcp(trinity_mcp_url: str, trinity_mcp_api_key: str) -> bool:
 
 def _inject_gemini_mcp(trinity_mcp_url: str, trinity_mcp_api_key: str) -> bool:
     """
-    Inject Trinity MCP into Gemini CLI using `gemini mcp add` command.
+    Inject Trinity MCP into Gemini CLI by writing to settings.json.
 
-    Gemini CLI uses commands instead of config files:
-    gemini mcp add <name> <command> [args...]
+    Note: `gemini mcp add --transport http` has a bug where it creates a 'type' field
+    that the config parser rejects as unrecognized. We work around this by writing
+    directly to ~/.gemini/settings.json with the correct format.
 
-    For HTTP MCP servers, we use npx with @anthropic/mcp-server-http
+    The correct format for HTTP/SSE MCP servers uses 'url' and 'headers' fields.
     """
     try:
-        # First, remove existing trinity MCP if present
-        subprocess.run(
-            ["gemini", "mcp", "remove", "trinity"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        home_dir = Path("/home/developer")
+        gemini_dir = home_dir / ".gemini"
+        settings_file = gemini_dir / "settings.json"
 
-        # Gemini CLI can use HTTP MCP servers via the mcp-server-http bridge
-        # The command format is: gemini mcp add <name> npx @anthropic/mcp-server-http <url>
-        # With auth header passed as environment variable
+        # Ensure .gemini directory exists
+        gemini_dir.mkdir(parents=True, exist_ok=True)
 
-        # For Gemini, we need to use a wrapper script or environment variable approach
-        # Create a wrapper script that sets the auth header
-        wrapper_script = Path("/home/developer/.trinity-mcp-wrapper.sh")
-        wrapper_content = f"""#!/bin/bash
-export MCP_HTTP_AUTH="Bearer {trinity_mcp_api_key}"
-exec npx -y @anthropic-ai/mcp-server-fetch "$@"
-"""
-        # Note: mcp-server-fetch can be used, or we can use a direct HTTP approach
-
-        # Alternative: Use environment variable in Gemini's settings
-        # For now, let's try adding with the URL directly
-        # Gemini CLI may support HTTP MCP natively in newer versions
-
-        result = subprocess.run(
-            [
-                "gemini", "mcp", "add", "trinity",
-                "npx", "-y", "@anthropic-ai/mcp-server-http",
-                "--url", trinity_mcp_url,
-                "--header", f"Authorization: Bearer {trinity_mcp_api_key}"
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-
-        if result.returncode == 0:
-            logger.info("Injected Trinity MCP server via gemini mcp add (Gemini CLI)")
-            return True
+        # Read existing settings or create new
+        if settings_file.exists():
+            content = settings_file.read_text()
+            settings = json.loads(content) if content.strip() else {}
         else:
-            # Try alternative approach - just add the HTTP URL
-            logger.warning(f"First injection attempt failed: {result.stderr}")
+            settings = {}
 
-            # Try simpler command format
-            result2 = subprocess.run(
-                [
-                    "gemini", "mcp", "add", "trinity",
-                    "npx", "@anthropic-ai/mcp-server-http", trinity_mcp_url
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env={
-                    **os.environ,
-                    "MCP_HTTP_HEADERS": json.dumps({"Authorization": f"Bearer {trinity_mcp_api_key}"})
-                }
-            )
+        # Ensure mcpServers key exists
+        if "mcpServers" not in settings:
+            settings["mcpServers"] = {}
 
-            if result2.returncode == 0:
-                logger.info("Injected Trinity MCP server (alternative method)")
-                return True
-            else:
-                logger.warning(f"Gemini MCP injection failed: {result2.stderr}")
-                return False
+        # Add/update Trinity MCP server with HTTP transport and auth header
+        # Using 'url' and 'headers' format (NOT 'type' which causes parser errors)
+        settings["mcpServers"]["trinity"] = {
+            "url": trinity_mcp_url,
+            "headers": {
+                "Authorization": f"Bearer {trinity_mcp_api_key}"
+            }
+        }
 
-    except subprocess.TimeoutExpired:
-        logger.warning("Gemini MCP injection timed out")
-        return False
+        # Write settings back
+        settings_file.write_text(json.dumps(settings, indent=2))
+
+        logger.info(f"Injected Trinity MCP server into {settings_file} (Gemini CLI)")
+        return True
+
     except Exception as e:
         logger.warning(f"Failed to inject Trinity MCP for Gemini CLI: {e}")
         return False
@@ -225,8 +190,8 @@ def _configure_gemini_mcp_servers(mcp_servers: dict) -> bool:
                 logger.warning(f"Skipping MCP server '{server_name}': no command specified")
                 continue
 
-            # Build the gemini mcp add command
-            cmd = ["gemini", "mcp", "add", server_name, command] + args
+            # Build the gemini mcp add command with --scope user for home directory
+            cmd = ["gemini", "mcp", "add", "--scope", "user", server_name, command] + args
 
             result = subprocess.run(
                 cmd,
