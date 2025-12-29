@@ -218,11 +218,23 @@ async def deploy_local_agent_logic(
         logger.info(f"Copied agent template to: {dest_path}")
 
         # 10. Create agent
+        # Extract runtime config from template
+        runtime_config = template_data.get("runtime", {})
+        runtime_type = None
+        runtime_model = None
+        if isinstance(runtime_config, dict):
+            runtime_type = runtime_config.get("type")
+            runtime_model = runtime_config.get("model")
+        elif isinstance(runtime_config, str):
+            runtime_type = runtime_config
+
         agent_config = AgentConfig(
             name=version_name,
             template=f"local:{version_name}",
             type=template_data.get("type", "business-assistant"),
-            resources=template_data.get("resources", {"cpu": "2", "memory": "4g"})
+            resources=template_data.get("resources", {"cpu": "2", "memory": "4g"}),
+            runtime=runtime_type,
+            runtime_model=runtime_model
         )
 
         agent_status = await create_agent_fn(

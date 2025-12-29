@@ -95,7 +95,8 @@ export const useAgentsStore = defineStore('agents', {
         const response = await axios.post('/api/agents', config, {
           headers: authStore.authHeader
         })
-        this.agents.push(response.data)
+        // Don't push here - WebSocket 'agent_created' event handles adding to list
+        // This prevents duplicate entries from race conditions
         return response.data
       } catch (error) {
         this.error = error.response?.data?.detail || error.message

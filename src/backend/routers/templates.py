@@ -48,10 +48,14 @@ async def list_templates(current_user: User = Depends(get_current_user)):
                             "mcp_servers": template_data.get("mcp_servers", []),
                             "resources": template_data.get("resources", {"cpu": "2", "memory": "4g"}),
                             "source": "local",
-                            "required_credentials": creds_info.get("required_credentials", [])
+                            "required_credentials": creds_info.get("required_credentials", []),
+                            "priority": template_data.get("priority", 100)  # Default priority
                         })
                     except Exception as e:
                         print(f"Error loading template {template_path}: {e}")
+
+    # Sort by priority (lower = higher in list), then by display_name
+    templates.sort(key=lambda t: (t.get("priority", 100), t.get("display_name", "")))
     return templates
 
 

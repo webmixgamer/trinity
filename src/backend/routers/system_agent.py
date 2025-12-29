@@ -459,7 +459,13 @@ async def system_agent_terminal(
         )
 
         # Step 5: Create exec with TTY
-        cmd = ["claude"] if mode == "claude" else ["/bin/bash"]
+        # Support multiple terminal modes: claude (Claude Code), gemini (Gemini CLI), bash
+        if mode == "claude":
+            cmd = ["claude"]
+        elif mode == "gemini":
+            cmd = ["gemini"]
+        else:
+            cmd = ["/bin/bash"]
 
         # Use docker API to create exec instance
         exec_instance = docker_client.api.exec_create(

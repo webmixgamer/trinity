@@ -50,10 +50,15 @@ async def get_agent_info():
         except Exception as e:
             logger.error(f"Failed to read agent config: {e}")
 
+    # Determine runtime version
+    runtime_version = None
+    if agent_state.runtime_available:
+        runtime_version = "available"
+
     return AgentInfo(
         name=agent_state.agent_name,
         status="running",
-        claude_version="2.0.49" if agent_state.claude_code_available else None,
+        claude_version=runtime_version if agent_state.agent_runtime == "claude-code" else None,
         mcp_servers=mcp_servers,
         uptime=None  # TODO: Calculate uptime
     )
@@ -65,6 +70,9 @@ async def health_check():
     return {
         "status": "healthy",
         "agent_name": agent_state.agent_name,
+        "runtime": agent_state.agent_runtime,
+        "runtime_available": agent_state.runtime_available,
+        # Backward compatibility
         "claude_available": agent_state.claude_code_available,
         "message_count": len(agent_state.conversation_history)
     }

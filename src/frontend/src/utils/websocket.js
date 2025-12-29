@@ -51,7 +51,11 @@ export function useWebSocket() {
   const handleMessage = (data) => {
     switch (data.event) {
       case 'agent_created':
-        agentsStore.agents.push(data.data)
+        // Add to list (createAgent() no longer pushes to avoid race conditions)
+        // Still check for duplicates in case of reconnection/replay
+        if (!agentsStore.agents.find(a => a.name === data.data.name)) {
+          agentsStore.agents.push(data.data)
+        }
         break
       case 'agent_deleted':
         agentsStore.agents = agentsStore.agents.filter(a => a.name !== data.data.name)

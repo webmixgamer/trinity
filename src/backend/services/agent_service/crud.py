@@ -128,6 +128,13 @@ async def create_agent_internal(
                         mcp_servers = list(creds.get("mcp_servers", {}).keys())
                         if mcp_servers:
                             config.mcp_servers = mcp_servers
+                        # Multi-runtime support - extract runtime config from template
+                        runtime_config = template_data.get("runtime", {})
+                        if isinstance(runtime_config, dict):
+                            config.runtime = runtime_config.get("type", config.runtime)
+                            config.runtime_model = runtime_config.get("model", config.runtime_model)
+                        elif isinstance(runtime_config, str):
+                            config.runtime = runtime_config
                 except Exception as e:
                     logger.warning(f"Error loading template config: {e}")
 
@@ -221,8 +228,20 @@ async def create_agent_internal(
         'ENABLE_SSH': 'true',
         'ENABLE_AGENT_UI': 'true',
         'AGENT_SERVER_PORT': '8000',
-        'TEMPLATE_NAME': config.template if config.template else ''
+        'TEMPLATE_NAME': config.template if config.template else '',
+        # Multi-runtime support
+        'AGENT_RUNTIME': config.runtime or 'claude-code',
+        'AGENT_RUNTIME_MODEL': config.runtime_model or ''
     }
+
+    # Add Google API key if using Gemini runtime
+    # Gemini CLI expects GEMINI_API_KEY environment variable
+    if config.runtime == 'gemini-cli' or config.runtime == 'gemini':
+        google_api_key = os.getenv('GOOGLE_API_KEY', '')
+        if google_api_key:
+            env_vars['GEMINI_API_KEY'] = google_api_key  # Gemini CLI expects this name
+        else:
+            logger.warning("Gemini runtime selected but GOOGLE_API_KEY not configured")
 
     # OpenTelemetry Configuration (enabled by default)
     # Claude Code has built-in OTel support - these vars enable metrics export
@@ -358,7 +377,8 @@ async def create_agent_internal(
                     'trinity.cpu': config.resources['cpu'],
                     'trinity.memory': config.resources['memory'],
                     'trinity.created': datetime.now().isoformat(),
-                    'trinity.template': config.template or ''
+                    'trinity.template': config.template or '',
+                    'trinity.agent-runtime': config.runtime or 'claude-code'
                 },
                 security_opt=['no-new-privileges:true', 'apparmor:docker-default'],
                 cap_drop=['ALL'],

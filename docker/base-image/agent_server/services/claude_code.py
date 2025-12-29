@@ -1,5 +1,7 @@
 """
 Claude Code execution service.
+
+Now implements AgentRuntime interface for multi-provider support.
 """
 import os
 import json
@@ -7,7 +9,7 @@ import uuid
 import asyncio
 import subprocess
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +19,7 @@ from fastapi import HTTPException
 from ..models import ExecutionLogEntry, ExecutionMetadata
 from ..state import agent_state
 from .activity_tracking import start_tool_execution, complete_tool_execution
+from .runtime_adapter import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,72 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # Asyncio lock for execution serialization (safety net for parallel request prevention)
 # The platform-level execution queue is the primary protection, but this is defense-in-depth
 _execution_lock = asyncio.Lock()
+
+
+class ClaudeCodeRuntime(AgentRuntime):
+    """Claude Code implementation of AgentRuntime interface."""
+
+    def is_available(self) -> bool:
+        """Check if Claude Code CLI is installed."""
+        try:
+            result = subprocess.run(
+                ["claude", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def get_default_model(self) -> str:
+        """Get default Claude model."""
+        return "sonnet"  # Claude Sonnet 4.5
+
+    def get_context_window(self, model: Optional[str] = None) -> int:
+        """Get context window for Claude models."""
+        # Check for 1M context models
+        if model and "[1m]" in model.lower():
+            return 1000000
+        return 200000  # Standard 200K context
+
+    def configure_mcp(self, mcp_servers: Dict) -> bool:
+        """
+        Configure MCP servers via .mcp.json file.
+        Claude Code reads from ~/.mcp.json automatically.
+        """
+        try:
+            mcp_config_path = Path.home() / ".mcp.json"
+            config = {"mcpServers": mcp_servers}
+            mcp_config_path.write_text(json.dumps(config, indent=2))
+            logger.info(f"Configured {len(mcp_servers)} MCP servers for Claude Code")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to configure MCP: {e}")
+            return False
+
+    async def execute(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        continue_session: bool = False,
+        stream: bool = False
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+        """Execute Claude Code with the given prompt."""
+        # Note: continue_session is handled internally by agent_state.session_started
+        # The execute_claude_code function checks agent_state and uses --continue automatically
+        return await execute_claude_code(prompt, stream, model)
+
+    async def execute_headless(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        timeout_seconds: int = 300
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
+        """Execute Claude Code in headless mode for parallel tasks."""
+        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds)
 
 
 def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
@@ -604,3 +673,14 @@ async def execute_headless_task(
     except Exception as e:
         logger.error(f"[Headless Task] Execution error: {e}")
         raise HTTPException(status_code=500, detail=f"Task execution error: {str(e)}")
+
+
+# Global Claude Code runtime instance
+_claude_runtime = None
+
+def get_claude_runtime() -> ClaudeCodeRuntime:
+    """Get or create the global Claude Code runtime instance."""
+    global _claude_runtime
+    if _claude_runtime is None:
+        _claude_runtime = ClaudeCodeRuntime()
+    return _claude_runtime

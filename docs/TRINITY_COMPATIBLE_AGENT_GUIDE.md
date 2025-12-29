@@ -253,6 +253,12 @@ resources:
   cpu: "2"                        # CPU cores (string)
   memory: "4g"                    # Memory limit (e.g., "2g", "4g", "8g")
 
+# === RUNTIME CONFIGURATION (Optional) ===
+# Defaults to Claude Code if not specified
+runtime:
+  type: claude-code               # "claude-code" or "gemini-cli"
+  model: sonnet                   # Optional model override (e.g., "gemini-2.5-pro")
+
 # === CREDENTIAL SCHEMA ===
 # Trinity uses this to inject secrets
 credentials:
@@ -407,6 +413,50 @@ These are injected by the platform - don't add them to your CLAUDE.md:
 - Git/commit instructions
 - Platform constraints
 - Trinity MCP documentation
+
+---
+
+## Runtime Options
+
+Trinity supports multiple AI runtimes, allowing you to choose the best provider for each agent's use case.
+
+### Available Runtimes
+
+| Runtime | Provider | Context Window | Pricing | Best For |
+|---------|----------|----------------|---------|----------|
+| `claude-code` | Anthropic | 200K tokens | Pay-per-use | Complex reasoning, code quality |
+| `gemini-cli` | Google | 1M tokens | Free tier | Large codebases, data processing |
+
+### Configuring Runtime in template.yaml
+
+```yaml
+# Option 1: Simple runtime selection
+runtime:
+  type: gemini-cli
+
+# Option 2: With model override
+runtime:
+  type: gemini-cli
+  model: gemini-2.5-pro
+
+# Option 3: Claude with specific model
+runtime:
+  type: claude-code
+  model: opus  # or sonnet, haiku
+```
+
+### Default Behavior
+
+If `runtime:` is not specified, agents default to `claude-code` for backward compatibility.
+
+### Environment Requirements
+
+| Runtime | Required Environment Variable |
+|---------|------------------------------|
+| `claude-code` | `ANTHROPIC_API_KEY` |
+| `gemini-cli` | `GOOGLE_API_KEY` |
+
+See [Gemini Support Guide](GEMINI_SUPPORT.md) for detailed setup instructions and cost comparisons.
 
 ---
 

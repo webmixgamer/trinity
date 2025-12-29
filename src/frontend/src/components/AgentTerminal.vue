@@ -15,16 +15,16 @@
         <!-- Mode Toggle -->
         <div class="flex bg-gray-700 rounded-lg p-0.5">
           <button
-            @click="selectedMode = 'claude'"
+            @click="selectedMode = 'cli'"
             :class="[
               'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-              selectedMode === 'claude'
+              selectedMode === 'cli'
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-400 hover:text-gray-200'
             ]"
             :disabled="connectionStatus === 'connected'"
           >
-            Claude Code
+            {{ cliModeLabel }}
           </button>
           <button
             @click="selectedMode = 'bash'"
@@ -115,6 +115,14 @@ const props = defineProps({
   isFullscreen: {
     type: Boolean,
     default: false
+  },
+  runtime: {
+    type: String,
+    default: 'claude-code' // 'claude-code' or 'gemini-cli'
+  },
+  model: {
+    type: String,
+    default: '' // Model to use (e.g., 'gemini-2.5-flash', 'sonnet')
   }
 })
 
@@ -122,9 +130,13 @@ const emit = defineEmits(['connected', 'disconnected', 'error', 'toggle-fullscre
 
 // Refs
 const terminalContainer = ref(null)
-const selectedMode = ref('claude')
+const selectedMode = ref('cli') // 'cli' (claude/gemini) or 'bash'
 const connectionStatus = ref('disconnected')
 const errorMessage = ref('')
+
+// Computed - Runtime-aware labels
+const isGemini = computed(() => props.runtime === 'gemini-cli' || props.runtime === 'gemini')
+const cliModeLabel = computed(() => isGemini.value ? 'Gemini CLI' : 'Claude Code')
 
 // Terminal and WebSocket instances
 let terminal = null
@@ -313,7 +325,11 @@ function connect() {
 
   // Build WebSocket URL - use agent-specific terminal endpoint
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${location.host}/api/agents/${encodeURIComponent(props.agentName)}/terminal?mode=${selectedMode.value}`
+  // Map 'cli' mode to the appropriate runtime command (claude or gemini)
+  const terminalMode = selectedMode.value === 'cli' ? (isGemini.value ? 'gemini' : 'claude') : 'bash'
+  // Include model parameter if specified (for gemini --model or claude --model flags)
+  const modelParam = props.model ? `&model=${encodeURIComponent(props.model)}` : ''
+  const wsUrl = `${protocol}//${location.host}/api/agents/${encodeURIComponent(props.agentName)}/terminal?mode=${terminalMode}${modelParam}`
 
   try {
     ws = new WebSocket(wsUrl)

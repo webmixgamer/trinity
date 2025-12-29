@@ -45,9 +45,20 @@ SECRET_KEY=your-secret-key-here
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your-secure-password
 
-# Anthropic API Key - Required for agents
+# Anthropic API Key - Required for Claude-powered agents
 ANTHROPIC_API_KEY=sk-ant-your-api-key
 ```
+
+### Google API Key (Optional - for Gemini-powered agents)
+
+To use Gemini CLI as an alternative runtime (free tier with 1M token context):
+
+```bash
+# Get from: https://makersuite.google.com/app/apikey
+GOOGLE_API_KEY=your-google-api-key
+```
+
+See [Gemini Support Guide](GEMINI_SUPPORT.md) for details on multi-runtime configuration.
 
 ### GitHub Templates (Optional)
 

@@ -35,6 +35,8 @@
                 ]">
                   {{ agent.status }}
                 </span>
+                <!-- Runtime badge (Claude/Gemini) -->
+                <RuntimeBadge :runtime="agent.runtime" />
                 <!-- System agent badge -->
                 <span
                   v-if="agent.is_system"
@@ -182,7 +184,7 @@
 
           <!-- Tabs -->
           <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
-            <div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto overflow-y-hidden">
               <nav class="-mb-px flex whitespace-nowrap">
                 <button
                   @click="activeTab = 'info'"
@@ -363,6 +365,15 @@
               ]"
               @keydown="handleTerminalKeydown"
             >
+              <!--
+                NOTE: Model Selector Bar was removed - model selection now happens in CLI.
+                To reintroduce, uncomment and restore the model selector UI:
+                - availableModels computed property provides model options
+                - currentModel ref tracks selected model
+                - changeModel() handles model switching
+                - See useAgentSettings.js composable for implementation
+              -->
+
               <!-- Terminal Panel -->
               <div
                 :class="[
@@ -394,6 +405,8 @@
                     v-if="agent.status === 'running'"
                     ref="terminalRef"
                     :agent-name="agent.name"
+                    :runtime="agent.runtime || 'claude-code'"
+                    :model="currentModel"
                     :auto-connect="true"
                     :show-fullscreen-toggle="!isTerminalFullscreen"
                     :is-fullscreen="isTerminalFullscreen"
@@ -980,7 +993,7 @@ HEYGEN_API_KEY=your_heygen_key
   </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick, defineComponent, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
@@ -998,6 +1011,7 @@ import MetricsPanel from '../components/MetricsPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 import AgentTerminal from '../components/AgentTerminal.vue'
+import RuntimeBadge from '../components/RuntimeBadge.vue'
 
 // Import composables
 import { useNotification, useFormatters } from '../composables'
@@ -1021,6 +1035,10 @@ const formatFileSizeHelper = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
+
+// NOTE: formatTokens helper function was removed from here.
+// For token formatting, use this pattern: tokens < 1000 ? tokens : (tokens/1000).toFixed(1) + 'K'
+// See useSessionActivity.js for full documentation on cost/context tracking data.
 
 // File Tree Node Component (Recursive)
 const FileTreeNode = defineComponent({
@@ -1268,16 +1286,62 @@ const {
   downloadFile
 } = useFileBrowser(agent, agentsStore, showNotification)
 
+// Model options based on agent runtime (Multi-runtime support)
+const availableModels = computed(() => {
+  const runtime = agent.value?.runtime || 'claude-code'
+
+  if (runtime === 'gemini-cli' || runtime === 'gemini') {
+    return [
+      { value: 'gemini-3-flash', label: 'Gemini 3 Flash' },
+      { value: 'gemini-3-pro', label: 'Gemini 3 Pro' },
+      { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' }
+    ]
+  }
+
+  // Default: Claude Code models (Sonnet is the default)
+  return [
+    { value: 'sonnet', label: 'Sonnet 4.5' },
+    { value: 'opus', label: 'Opus 4.5' },
+    { value: 'haiku', label: 'Haiku' },
+    { value: 'sonnet[1m]', label: 'Sonnet 4.5 (1M)' },
+    { value: 'opus[1m]', label: 'Opus 4.5 (1M)' }
+  ]
+})
+
+const modelSelectorTitle = computed(() => {
+  const runtime = agent.value?.runtime || 'claude-code'
+  return runtime === 'gemini-cli' || runtime === 'gemini' ? 'Select Gemini model' : 'Select Claude model'
+})
+
+// Default model based on runtime
+const defaultModel = computed(() => {
+  const runtime = agent.value?.runtime || 'claude-code'
+  if (runtime === 'gemini-cli' || runtime === 'gemini') {
+    return 'gemini-2.5-flash'
+  }
+  return 'sonnet' // Claude default
+})
+
 // Agent settings composable
 const {
   apiKeySetting,
   apiKeySettingLoading,
   loadApiKeySetting,
-  updateApiKeySetting
+  updateApiKeySetting,
+  currentModel,
+  modelLoading,
+  changeModel
 } = useAgentSettings(agent, agentsStore, showNotification)
 
 // Session activity composable
+// NOTE: sessionInfo contains cost/context tracking data (total_cost_usd, context_tokens, etc.)
+// This data is still fetched but not currently displayed in Terminal tab.
+// See useSessionActivity.js for documentation on reusing this data in other UI components.
 const {
+  sessionInfo,  // Available: context_tokens, context_window, context_percent, total_cost_usd, message_count
   sessionActivity,
   loadSessionInfo,
   startActivityPolling,
@@ -1340,6 +1404,13 @@ watch(() => agent.value?.status, (newStatus) => {
     resetSessionActivity()
   }
 })
+
+// Initialize model to default when agent is loaded and model is not set
+watch(() => agent.value?.runtime, (newRuntime) => {
+  if (newRuntime && !currentModel.value) {
+    currentModel.value = defaultModel.value
+  }
+}, { immediate: true })
 
 // Watch for Files tab activation to load files
 watch(activeTab, (newTab) => {
