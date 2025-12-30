@@ -2,56 +2,6 @@
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
 
-    <!-- Header -->
-    <div class="bg-white dark:bg-gray-800 shadow">
-      <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">File Manager</h1>
-          <div class="flex items-center space-x-4">
-            <!-- Agent Selector -->
-            <div class="flex items-center space-x-2">
-              <label class="text-sm text-gray-600 dark:text-gray-400">Agent:</label>
-              <select
-                v-model="selectedAgentName"
-                class="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                @change="onAgentChange"
-              >
-                <option value="">Select an agent...</option>
-                <option
-                  v-for="agent in runningAgents"
-                  :key="agent.name"
-                  :value="agent.name"
-                >
-                  {{ agent.name }}
-                </option>
-              </select>
-            </div>
-            <!-- Show Hidden Toggle -->
-            <label class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-              <input
-                type="checkbox"
-                v-model="showHidden"
-                @change="loadFiles"
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span>Show hidden</span>
-            </label>
-            <!-- Refresh Button -->
-            <button
-              @click="loadFiles"
-              :disabled="!selectedAgentName || loading"
-              class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              <svg class="h-4 w-4 mr-1" :class="{ 'animate-spin': loading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Notification Banner -->
     <div v-if="notification"
       class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-2"
@@ -65,33 +15,58 @@
     </div>
 
     <!-- Main Content -->
-    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <!-- No Agent Selected State -->
-      <div v-if="!selectedAgentName" class="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-        </svg>
-        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No Agent Selected</h3>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select an agent from the dropdown to browse files.</p>
-        <p v-if="runningAgents.length === 0" class="mt-2 text-sm text-yellow-600 dark:text-yellow-400">
-          No running agents found. Start an agent to browse its files.
-        </p>
-      </div>
-
+    <div class="px-2 py-1">
       <!-- Two Panel Layout -->
-      <div v-else class="flex h-[calc(100vh-200px)] bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+      <div class="flex h-[calc(100vh-70px)] bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <!-- Left Panel: File Tree -->
         <div class="w-80 min-w-[280px] max-w-[400px] border-r border-gray-200 dark:border-gray-700 flex flex-col">
+          <!-- Compact Controls Row: Agent dropdown + Refresh + Hidden toggle -->
+          <div class="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+            <select
+              v-model="selectedAgentName"
+              class="flex-1 min-w-0 text-sm rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white py-1.5 focus:border-indigo-500 focus:ring-indigo-500"
+              @change="onAgentChange"
+            >
+              <option value="">Select agent...</option>
+              <option
+                v-for="agent in runningAgents"
+                :key="agent.name"
+                :value="agent.name"
+              >
+                {{ agent.name }}
+              </option>
+            </select>
+            <button
+              @click="loadFiles"
+              :disabled="!selectedAgentName || loading"
+              class="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"
+              title="Refresh"
+            >
+              <svg class="h-4 w-4" :class="{ 'animate-spin': loading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer whitespace-nowrap" title="Show hidden files">
+              <input
+                type="checkbox"
+                v-model="showHidden"
+                @change="loadFiles"
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+              />
+              <span>Hidden</span>
+            </label>
+          </div>
+
           <!-- Search Box -->
-          <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+          <div class="p-2 border-b border-gray-200 dark:border-gray-700">
             <div class="relative">
               <input
                 v-model="searchQuery"
                 type="text"
                 placeholder="Search files..."
-                class="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:ring-indigo-500 focus:border-indigo-500"
+                class="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white focus:ring-indigo-500 focus:border-indigo-500"
               />
-              <svg class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="absolute left-2 top-2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -99,7 +74,17 @@
 
           <!-- Tree View -->
           <div class="flex-1 overflow-auto p-2">
-            <div v-if="loading" class="flex items-center justify-center h-32">
+            <!-- No Agent Selected -->
+            <div v-if="!selectedAgentName" class="text-center py-8">
+              <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Select an agent</p>
+              <p v-if="runningAgents.length === 0" class="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                No running agents
+              </p>
+            </div>
+            <div v-else-if="loading" class="flex items-center justify-center h-32">
               <svg class="animate-spin h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -121,9 +106,9 @@
           </div>
 
           <!-- Footer Stats -->
-          <div class="p-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-            {{ totalFiles }} files
-            <span v-if="totalSize > 0"> &bull; {{ formatFileSize(totalSize) }}</span>
+          <div class="px-2 py-1.5 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+            <span v-if="selectedAgentName">{{ totalFiles }} files<span v-if="totalSize > 0"> &bull; {{ formatFileSize(totalSize) }}</span></span>
+            <span v-else>&nbsp;</span>
           </div>
         </div>
 
