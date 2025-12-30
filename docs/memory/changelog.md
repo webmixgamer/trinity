@@ -1,3 +1,34 @@
+### 2025-12-30 13:30:00
+🔗 **Dynamic GitHub Templates via MCP**
+
+**Feature**: Create agents from ANY GitHub repository via MCP - not just pre-defined templates.
+
+**Problem Solved**: Previously, MCP `create_agent` only worked with templates pre-defined in `config.py`. Users wanted to create agents from arbitrary GitHub repos on the fly.
+
+**Implementation**:
+- `create_agent` tool now accepts `template: "github:owner/repo"` for any repository
+- If template is not in pre-defined list, uses system GITHUB_PAT for access
+- Repository must be accessible by the configured PAT (public or private with access)
+
+**Example**:
+```typescript
+create_agent({
+  name: "my-custom-agent",
+  template: "github:myorg/my-private-agent"
+})
+```
+
+**Requirements**:
+- System GitHub PAT configured in Settings or via GITHUB_PAT env var
+- PAT must have `repo` scope and access to target repository
+
+**Files Modified**:
+- `src/backend/services/agent_service/crud.py` - Support dynamic GitHub repos
+- `src/mcp-server/src/tools/agents.ts` - Updated tool description
+- `docs/memory/feature-flows/mcp-orchestration.md` - Added documentation
+
+---
+
 ### 2025-12-30 12:00:00
 🔄 **GitHub Source Mode - Unidirectional Pull Flow**
 

@@ -104,7 +104,8 @@ export function createAgentTools(
       name: "create_agent",
       description:
         "Create a new agent in the Trinity platform. " +
-        "You can specify a template to use pre-configured settings, or customize the agent type, resources, and tools. " +
+        "You can create agents from: (1) any GitHub repo using 'github:owner/repo' format (PAT must have access), " +
+        "(2) pre-defined templates from list_templates, or (3) local templates. " +
         "The agent will be started automatically after creation.",
       parameters: z.object({
         name: z
@@ -122,7 +123,10 @@ export function createAgentTools(
           .string()
           .optional()
           .describe(
-            "Template ID to use for agent configuration (e.g., 'ruby-social-media-agent'). " +
+            "Template to use for agent configuration. Supports: " +
+            "(1) Pre-defined templates from list_templates (e.g., 'github:abilityai/agent-ruby'), " +
+            "(2) Any GitHub repo with 'github:owner/repo' format - requires system GITHUB_PAT to have access, " +
+            "(3) Local templates with 'local:template-name'. " +
             "Templates include pre-configured .claude directories, MCP servers, and instructions."
           ),
         resources: z

@@ -81,28 +81,59 @@ async def create_agent_internal(
     if config.template:
         if config.template.startswith("github:"):
             gh_template = get_github_template(config.template)
-            if not gh_template:
-                raise HTTPException(status_code=400, detail=f"Unknown GitHub template: {config.template}")
 
-            github_repo = gh_template["github_repo"]
-            github_cred_id = gh_template["github_credential_id"]
+            if gh_template:
+                # Pre-defined GitHub template from config.py
+                github_repo = gh_template["github_repo"]
+                github_cred_id = gh_template["github_credential_id"]
 
-            github_cred = credential_manager.get_credential(github_cred_id, "admin")
-            if not github_cred:
-                raise HTTPException(status_code=500, detail="GitHub credential not found in credential store")
+                github_cred = credential_manager.get_credential(github_cred_id, "admin")
+                if not github_cred:
+                    raise HTTPException(status_code=500, detail="GitHub credential not found in credential store")
 
-            github_secret = credential_manager.get_credential_secret(github_cred_id, "admin")
-            if not github_secret:
-                raise HTTPException(status_code=500, detail="GitHub credential secret not found")
+                github_secret = credential_manager.get_credential_secret(github_cred_id, "admin")
+                if not github_secret:
+                    raise HTTPException(status_code=500, detail="GitHub credential secret not found")
 
-            github_pat = github_secret.get("token") or github_secret.get("api_key")
-            if not github_pat:
-                raise HTTPException(status_code=500, detail="GitHub PAT not found in credential")
+                github_pat = github_secret.get("token") or github_secret.get("api_key")
+                if not github_pat:
+                    raise HTTPException(status_code=500, detail="GitHub PAT not found in credential")
 
-            github_repo_for_agent = github_repo
-            github_pat_for_agent = github_pat
-            config.resources = gh_template.get("resources", config.resources)
-            config.mcp_servers = gh_template.get("mcp_servers", config.mcp_servers)
+                github_repo_for_agent = github_repo
+                github_pat_for_agent = github_pat
+                config.resources = gh_template.get("resources", config.resources)
+                config.mcp_servers = gh_template.get("mcp_servers", config.mcp_servers)
+            else:
+                # Dynamic GitHub template - use any github:owner/repo format
+                # Requires system GitHub PAT to be configured
+                from config import GITHUB_PAT_CREDENTIAL_ID
+
+                repo_path = config.template[7:]  # Remove "github:" prefix
+                if "/" not in repo_path:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid GitHub template format. Use: github:owner/repo"
+                    )
+
+                # Get system GitHub PAT from credential store
+                github_cred = credential_manager.get_credential(GITHUB_PAT_CREDENTIAL_ID, "admin")
+                if not github_cred:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="GitHub PAT not configured. Set GITHUB_PAT in .env or add via Settings."
+                    )
+
+                github_secret = credential_manager.get_credential_secret(GITHUB_PAT_CREDENTIAL_ID, "admin")
+                if not github_secret:
+                    raise HTTPException(status_code=500, detail="GitHub PAT secret not found")
+
+                github_pat = github_secret.get("token") or github_secret.get("api_key")
+                if not github_pat:
+                    raise HTTPException(status_code=500, detail="GitHub PAT value not found in credential")
+
+                github_repo_for_agent = repo_path
+                github_pat_for_agent = github_pat
+                logger.info(f"Using dynamic GitHub template: {repo_path}")
 
             # Generate git sync instance ID and branch for Phase 7
             git_instance_id = git_service.generate_instance_id()

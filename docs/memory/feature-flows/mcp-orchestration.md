@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 12 tools for agent lifecycle, chat, and credential management through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 16 tools for agent lifecycle, chat, system management, and credential management through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 
@@ -290,13 +290,16 @@ const authContext = context?.session;  // Each request has own context
 
 ## MCP Server Layer
 
-### Server Configuration (`src/mcp-server/src/server.ts:62-72`)
+### Server Configuration (`src/mcp-server/src/server.ts:64-74`)
 ```typescript
 export async function createServer(config: ServerConfig = {}) {
   const {
     name = "trinity-orchestrator",
     version = "1.0.0" as const,
     trinityApiUrl = process.env.TRINITY_API_URL || "http://localhost:8000",
+    trinityApiToken = process.env.TRINITY_API_TOKEN,
+    trinityUsername = process.env.TRINITY_USERNAME || "admin",
+    trinityPassword = process.env.TRINITY_PASSWORD || "changeme",
     port = parseInt(process.env.MCP_PORT || "8080", 10),
     requireApiKey = process.env.MCP_REQUIRE_API_KEY === "true",
   } = config;
@@ -305,7 +308,7 @@ export async function createServer(config: ServerConfig = {}) {
 
 **Note**: When `MCP_REQUIRE_API_KEY=true` (production), NO admin credentials are needed. All backend API calls use the user's MCP API key directly. This eliminates the complexity and recurring issues with admin password authentication.
 
-### API Key Validation (`src/mcp-server/src/server.ts:37-57`)
+### API Key Validation (`src/mcp-server/src/server.ts:39-59`)
 ```typescript
 async function validateMcpApiKey(
   trinityApiUrl: string,
@@ -328,31 +331,70 @@ async function validateMcpApiKey(
 }
 ```
 
+### Tool Registration (`src/mcp-server/src/server.ts:156-189`)
+```typescript
+// Register agent management tools (11 tools)
+const agentTools = createAgentTools(client, requireApiKey);
+server.addTool(agentTools.listAgents);
+server.addTool(agentTools.getAgent);
+// ... more tools
+
+// Register chat tools (3 tools)
+const chatTools = createChatTools(client, requireApiKey);
+server.addTool(chatTools.chatWithAgent);
+// ...
+
+// Register system management tools (4 tools)
+const systemTools = createSystemTools(client, requireApiKey);
+
+// Register documentation tools (1 tool)
+const docsTools = createDocsTools();
+
+console.log(`Registered ${totalTools} tools`);
+```
+
 ---
 
-## The 12 MCP Tools
+## MCP Tools (16 total)
 
 ### Agent Management (`src/mcp-server/src/tools/agents.ts`)
 
 | Tool | Line | Parameters | Backend Endpoint |
 |------|------|------------|------------------|
-| `list_agents` | 40-49 | `{}` | `GET /api/agents` |
-| `get_agent` | 55-66 | `{name}` | `GET /api/agents/{name}` |
-| `create_agent` | 72-167 | `{name, type?, template?, resources?}` | `POST /api/agents` |
-| `delete_agent` | 172-184 | `{name}` | `DELETE /api/agents/{name}` |
-| `start_agent` | 190-202 | `{name}` | `POST /api/agents/{name}/start` |
-| `stop_agent` | 208-220 | `{name}` | `POST /api/agents/{name}/stop` |
-| `list_templates` | 226-236 | `{}` | `GET /api/templates` |
-| `reload_credentials` | 242-255 | `{name}` | `POST /api/agents/{name}/credentials/reload` |
-| `get_credential_status` | 261-273 | `{name}` | `GET /api/agents/{name}/credentials/status` |
+| `list_agents` | 44-79 | `{}` | `GET /api/agents` |
+| `get_agent` | 84-98 | `{name}` | `GET /api/agents/{name}` |
+| `create_agent` | 103-198 | `{name, type?, template?, resources?}` | `POST /api/agents` |
+| `delete_agent` | 203-230 | `{name}` | `DELETE /api/agents/{name}` |
+| `start_agent` | 235-250 | `{name}` | `POST /api/agents/{name}/start` |
+| `stop_agent` | 255-270 | `{name}` | `POST /api/agents/{name}/stop` |
+| `list_templates` | 275-288 | `{}` | `GET /api/templates` |
+| `reload_credentials` | 293-309 | `{name}` | `POST /api/agents/{name}/credentials/reload` |
+| `get_credential_status` | 314-329 | `{name}` | `GET /api/agents/{name}/credentials/status` |
+| `deploy_local_agent` | 334-434 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
+| `initialize_github_sync` | 439-514 | `{agent_name, repo_owner, repo_name, ...}` | `POST /api/agents/{name}/git/initialize` |
 
 ### Chat Tools (`src/mcp-server/src/tools/chat.ts`)
 
 | Tool | Line | Parameters | Backend Endpoint |
 |------|------|------------|------------------|
-| `chat_with_agent` | 88-131 | `{agent_name, message, parallel?, ...}` | `POST /api/agents/{name}/chat` or `/task` |
-| `get_chat_history` | 137-151 | `{agent_name}` | `GET /api/agents/{name}/chat/history` |
-| `get_agent_logs` | 158-182 | `{agent_name, lines?}` | `GET /api/agents/{name}/logs` |
+| `chat_with_agent` | 132-270 | `{agent_name, message, parallel?, ...}` | `POST /api/agents/{name}/chat` or `/task` |
+| `get_chat_history` | 275-292 | `{agent_name}` | `GET /api/agents/{name}/chat/history` |
+| `get_agent_logs` | 297-325 | `{agent_name, lines?}` | `GET /api/agents/{name}/logs` |
+
+### System Tools (`src/mcp-server/src/tools/systems.ts`)
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `deploy_system` | `{manifest, credentials?}` | Deploy multi-agent system |
+| `list_systems` | `{}` | List deployed systems |
+| `restart_system` | `{name}` | Restart all agents in system |
+| `get_system_manifest` | `{name}` | Get system manifest |
+
+### Documentation Tools (`src/mcp-server/src/tools/docs.ts`)
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `get_agent_requirements` | `{}` | Get Trinity agent requirements |
 
 ### Parallel Mode (Added 2025-12-22)
 
@@ -377,6 +419,33 @@ chat_with_agent({
 - Allows N concurrent tasks per agent
 
 See [Parallel Headless Execution](parallel-headless-execution.md) for full details.
+
+### Dynamic GitHub Templates (Added 2025-12-30)
+
+The `create_agent` tool now supports creating agents from **any** GitHub repository - not just pre-defined templates:
+
+```typescript
+create_agent({
+  name: "my-custom-agent",
+  template: "github:myorg/my-agent-repo"  // Any repo the PAT can access
+})
+```
+
+**How it works**:
+1. If `template` matches a pre-defined template from `list_templates`, use that configuration
+2. Otherwise, parse `github:owner/repo` format and use the system GitHub PAT
+3. The PAT must be configured in Settings or via `GITHUB_PAT` environment variable
+4. Repository is cloned at agent startup, just like pre-defined templates
+
+**Requirements**:
+- System GitHub PAT must be configured (Settings → API Keys)
+- PAT must have `repo` scope and access to the target repository
+- Repository should be a valid Trinity-compatible agent (CLAUDE.md recommended)
+
+**Template formats**:
+- `github:owner/repo` - Any GitHub repository (dynamic)
+- `github:abilityai/agent-ruby` - Pre-defined template (from `list_templates`)
+- `local:template-name` - Local template from config directory
 
 ### Queue-Aware Chat (429 Handling) - Added 2025-12-06
 
@@ -407,18 +476,26 @@ if (response.status === 429) {
 }
 ```
 
-### Agent-to-Agent Access Control (`chat.ts:26-78`)
+### Agent-to-Agent Access Control (`chat.ts:29-100`)
 ```typescript
 async function checkAgentAccess(
   client: TrinityClient,
   authContext: McpAuthContext | undefined,
   targetAgentName: string
 ): Promise<AgentAccessCheckResult> {
-  // Access rules:
-  // 1. Same owner - allowed
-  // 2. Shared agent - allowed
-  // 3. Admin bypass - allowed
-  // Otherwise - denied
+  // Access rules for System-scoped keys (Phase 11.1):
+  // - ALWAYS allowed - system agent bypasses all permission checks
+
+  // Access rules for User-scoped keys:
+  // - Same owner: Always allowed
+  // - Shared agent: Allowed
+  // - Admin: Always allowed (bypass)
+  // - Otherwise: Denied
+
+  // Access rules for Agent-scoped keys (Phase 9.10):
+  // - Self: Always allowed
+  // - Target in permitted list: Allowed
+  // - Otherwise: Denied (even if same owner)
 }
 ```
 
@@ -448,9 +525,13 @@ async authenticate(username: string, password: string): Promise<void> {
 }
 ```
 
-### Request Pattern with Auto-Retry (lines 86-128)
+### Request Pattern with Auto-Retry (lines 89-137)
 ```typescript
-private async request<T>(method: string, path: string, body?: unknown, isRetry = false) {
+async request<T>(method: string, path: string, body?: unknown, isRetry = false): Promise<T> {
+  if (!this.token) {
+    throw new Error("Not authenticated. Call authenticate() first or setToken().");
+  }
+
   const response = await fetch(`${this.baseUrl}${path}`, {
     method,
     headers: { Authorization: `Bearer ${this.token}` },
@@ -465,7 +546,30 @@ private async request<T>(method: string, path: string, body?: unknown, isRetry =
 }
 ```
 
-### Client Factory Pattern (agents.ts:25-38, chat.ts:86-99)
+### Chat with Queue Handling (lines 288-329)
+```typescript
+async chat(name: string, message: string, sourceAgent?: string): Promise<ChatResponse | QueueStatus> {
+  // Handle 429 Too Many Requests (agent queue full)
+  if (response.status === 429) {
+    return {
+      error: "Agent is busy",
+      queue_status: "queue_full",
+      retry_after: details.retry_after || 30,
+      agent: name,
+    };
+  }
+}
+```
+
+### Parallel Task Execution (lines 344-396)
+```typescript
+async task(name: string, message: string, options?: TaskOptions, sourceAgent?: string): Promise<ChatResponse> {
+  // Stateless execution, no queue, can run N tasks concurrently
+  const response = await fetch(`${this.baseUrl}/api/agents/${name}/task`, ...);
+}
+```
+
+### Client Factory Pattern (agents.ts:25-38, chat.ts:113-126)
 ```typescript
 const getClient = (authContext?: McpAuthContext): TrinityClient => {
   if (requireApiKey) {
@@ -771,6 +875,8 @@ npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 # - start_agent, stop_agent, list_templates
 # - reload_credentials, get_credential_status
 # - chat_with_agent, get_chat_history, get_agent_logs
+# - deploy_system, list_systems, restart_system, get_system_manifest
+# - get_agent_requirements
 ```
 
 ### Race Condition Testing
@@ -793,8 +899,20 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 ---
 
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-12-30 | **Dynamic GitHub Templates**: `create_agent` now supports any `github:owner/repo` format - not just pre-defined templates. Uses system GITHUB_PAT for access. |
+| 2025-12-30 | **Flow verification**: Updated tool count to 16 (11 agent, 3 chat, 4 system, 1 docs). Updated line numbers for all TypeScript files. Added deploy_local_agent, initialize_github_sync tools. Added queue handling and parallel task client methods. Added System Agent (Phase 11.1) access control rules. |
+| 2025-12-22 | Added parallel mode to chat_with_agent tool |
+| 2025-12-03 | MCP API key authentication deployed to production |
+| 2025-12-02 | Fixed race condition bug in auth context handling |
+
+---
+
 ## Status
-✅ **Working** - All 12 MCP tools functional with API key authentication, agent-to-agent access control, and race condition fixed
+Working - All 16 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
 
 ---
 
@@ -804,4 +922,5 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 - **Integrates With**:
   - Execution Queue (`execution-queue.md`) - `chat_with_agent` calls go through queue with 429 handling (unless `parallel: true`)
   - Parallel Headless Execution (`parallel-headless-execution.md`) - When `parallel: true`, bypasses queue and uses `/task` endpoint (Added 2025-12-22)
+  - Agent Permissions (`agent-permissions.md`) - Agent-scoped keys use permission system (Phase 9.10)
 - **Downstream**: Agent Lifecycle, Agent Chat, Credential Injection, Agent Sharing (access control)
