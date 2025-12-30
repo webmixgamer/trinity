@@ -417,29 +417,29 @@ class CredentialManager:
             Dict of {file_path: file_content}
         """
         assigned = self.get_assigned_credentials(agent_name, user_id)
-        logger.debug(f"get_assigned_file_credentials: agent={agent_name}, user={user_id}, assigned_count={len(assigned)}")
+        logger.info(f"get_assigned_file_credentials: agent={agent_name}, user={user_id}, assigned_count={len(assigned)}")
 
         file_creds = {}
 
         for cred in assigned:
-            logger.debug(f"  Checking credential: id={cred.id}, name={cred.name}, type={cred.type}, file_path={cred.file_path}")
+            logger.info(f"  Checking credential: id={cred.id}, name={cred.name}, type={cred.type}, file_path={cred.file_path}")
             if cred.type != "file":
-                logger.debug(f"    Skipping: type is '{cred.type}', not 'file'")
+                logger.info(f"    Skipping: type is '{cred.type}', not 'file'")
                 continue
             if not cred.file_path:
-                logger.debug(f"    Skipping: file_path is empty or None")
+                logger.info(f"    Skipping: file_path is empty or None")
                 continue
 
             secret = self.get_credential_secret(cred.id, user_id)
             if not secret:
-                logger.debug(f"    Skipping: no secret found")
+                logger.info(f"    Skipping: no secret found")
                 continue
             if "content" not in secret:
-                logger.debug(f"    Skipping: secret has no 'content' key, keys={list(secret.keys())}")
+                logger.info(f"    Skipping: secret has no 'content' key, keys={list(secret.keys())}")
                 continue
 
             file_creds[cred.file_path] = secret["content"]
-            logger.debug(f"    Added file credential: {cred.file_path} ({len(secret['content'])} chars)")
+            logger.info(f"    Added file credential: {cred.file_path} ({len(secret['content'])} chars)")
 
         logger.info(f"get_assigned_file_credentials: returning {len(file_creds)} file credentials for agent {agent_name}")
         return file_creds
