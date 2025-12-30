@@ -1,3 +1,25 @@
+### 2025-12-31 00:25:00
+🔧 **Agent-to-Agent Chat Tracking in Tasks Tab**
+
+**Feature**: MCP `chat_with_agent` calls (non-parallel mode) now create execution records, appearing in the Tasks tab alongside scheduled and manual tasks.
+
+**Problem Solved**: Previously, only `/task` endpoint created `schedule_executions` records. Agent-to-agent chat via `/chat` endpoint (when `parallel=false`, the default) was not tracked in the Tasks tab. This meant MCP orchestration calls weren't visible in the unified execution history.
+
+**Implementation**:
+- When `/chat` endpoint receives `X-Source-Agent` header (agent-to-agent call):
+  - Creates `schedule_executions` record with `triggered_by="agent"`
+  - Updates record on success with response, cost, context, tool_calls
+  - Updates record on failure with error message
+- All headless executions now visible in Tasks tab: manual, scheduled, and agent-to-agent
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - Added execution record creation for agent-to-agent calls
+- `docs/memory/feature-flows/execution-queue.md` - Updated with agent-to-agent tracking
+- `docs/memory/feature-flows/tasks-tab.md` - Added `/chat` endpoint as entry point
+- `docs/memory/feature-flows/mcp-orchestration.md` - Updated parallel/non-parallel mode docs
+
+---
+
 ### 2025-12-30 23:50:00
 🐛 **Bug Fixes: File Credential Injection & Mixed Credential Types**
 

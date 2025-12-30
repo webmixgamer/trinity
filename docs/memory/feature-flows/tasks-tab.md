@@ -12,7 +12,8 @@ As an agent operator, I want to view and trigger headless task executions from a
 
 - **UI**: `src/frontend/src/views/AgentDetail.vue:201-204` - Tasks tab button
 - **UI**: `src/frontend/src/components/TasksPanel.vue` - Main component
-- **API**: `POST /api/agents/{name}/task` - Execute a task
+- **API**: `POST /api/agents/{name}/task` - Execute a parallel task (creates execution record)
+- **API**: `POST /api/agents/{name}/chat` - Agent-to-agent chat (creates execution record when `X-Source-Agent` header present) *(added 2025-12-30)*
 - **API**: `GET /api/agents/{name}/executions` - Get execution history
 - **API**: `GET /api/agents/{name}/queue` - Get queue status
 - **API**: `POST /api/agents/{name}/queue/clear` - Clear queued tasks
@@ -555,4 +556,4 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 - Multiple rapid task submissions (all should complete independently)
 
 ### Status
-Verified 2025-12-29 - Line numbers updated to match current codebase
+Verified 2025-12-30 - Agent-to-agent chat calls now create execution records and appear in Tasks tab

@@ -160,6 +160,18 @@ async def chat_with_agent(
     # Track queue position for observability
     is_queued = queue_result.startswith("queued:")
 
+    # Create execution record for agent-to-agent calls (headless MCP)
+    # This ensures they appear in the Tasks tab alongside scheduled and manual tasks
+    task_execution_id = None
+    if x_source_agent:
+        task_execution = db.create_task_execution(
+            agent_name=name,
+            message=request.message,
+            triggered_by="agent"
+        )
+        task_execution_id = task_execution.id if task_execution else None
+        logger.info(f"[Chat] Created task execution {task_execution_id} for agent-to-agent call from {x_source_agent}")
+
     # Broadcast collaboration event if this is agent-to-agent communication
     collaboration_activity_id = None
     if x_source_agent:
@@ -306,6 +318,19 @@ async def chat_with_agent(
                 }
             )
 
+        # Update task execution record for agent-to-agent calls
+        if task_execution_id:
+            context_used = session_data.get("context_tokens", 0)
+            db.update_execution_status(
+                execution_id=task_execution_id,
+                status="success",
+                response=response_data.get("response"),
+                context_used=context_used if context_used > 0 else None,
+                context_max=session_data.get("context_window") or 200000,
+                cost=metadata.get("cost_usd"),
+                tool_calls=tool_calls_json
+            )
+
         await log_audit_event(
             event_type="agent_interaction",
             action="chat",
@@ -335,6 +360,14 @@ async def chat_with_agent(
             status="failed",
             error=type(e).__name__  # Don't expose full error message
         )
+
+        # Update task execution record for agent-to-agent calls on failure
+        if task_execution_id:
+            db.update_execution_status(
+                execution_id=task_execution_id,
+                status="failed",
+                error=f"HTTP error: {type(e).__name__}"
+            )
 
         await log_audit_event(
             event_type="agent_interaction",

@@ -417,6 +417,13 @@ chat_with_agent({
 - Bypasses execution queue entirely
 - Runs without `--continue` flag (no conversation context)
 - Allows N concurrent tasks per agent
+- Creates `schedule_executions` record (visible in Tasks tab)
+
+**When `parallel: false` (default)** *(updated 2025-12-30)*:
+- Calls `POST /api/agents/{name}/chat`
+- Uses execution queue (one at a time per agent)
+- Maintains conversation context with `--continue` flag
+- Agent-to-agent calls (with `X-Source-Agent` header) now create `schedule_executions` record (visible in Tasks tab)
 
 See [Parallel Headless Execution](parallel-headless-execution.md) for full details.
 
@@ -903,6 +910,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | **Agent-to-agent chat tracking**: Non-parallel `chat_with_agent` calls now create `schedule_executions` records when agent-scoped, ensuring all MCP agent communications appear in Tasks tab. |
 | 2025-12-30 | **Dynamic GitHub Templates**: `create_agent` now supports any `github:owner/repo` format - not just pre-defined templates. Uses system GITHUB_PAT for access. |
 | 2025-12-30 | **Flow verification**: Updated tool count to 16 (11 agent, 3 chat, 4 system, 1 docs). Updated line numbers for all TypeScript files. Added deploy_local_agent, initialize_github_sync tools. Added queue handling and parallel task client methods. Added System Agent (Phase 11.1) access control rules. |
 | 2025-12-22 | Added parallel mode to chat_with_agent tool |
