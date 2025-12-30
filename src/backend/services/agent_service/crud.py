@@ -325,17 +325,24 @@ async def create_agent_internal(
 
     for server, creds in agent_credentials.items():
         server_upper = server.upper().replace('-', '_')
-        if 'api_key' in creds:
-            env_vars[f'{server_upper}_API_KEY'] = creds['api_key']
-        if 'token' in creds:
-            env_vars[f'{server_upper}_TOKEN'] = creds['token']
-        if 'access_token' in creds:
-            env_vars[f'{server_upper}_ACCESS_TOKEN'] = creds['access_token']
-        if 'refresh_token' in creds:
-            env_vars[f'{server_upper}_REFRESH_TOKEN'] = creds['refresh_token']
-        if 'username' in creds and 'password' in creds:
-            env_vars[f'{server_upper}_USERNAME'] = creds['username']
-            env_vars[f'{server_upper}_PASSWORD'] = creds['password']
+        # Handle both dict credentials (from explicit assignment) and
+        # string credentials (from bulk import where key=ENV_VAR, value=string)
+        if isinstance(creds, str):
+            # Bulk-imported credential: server is the env var name, creds is the value
+            env_vars[server_upper] = creds
+        elif isinstance(creds, dict):
+            # Explicitly assigned credential with structured data
+            if 'api_key' in creds:
+                env_vars[f'{server_upper}_API_KEY'] = creds['api_key']
+            if 'token' in creds:
+                env_vars[f'{server_upper}_TOKEN'] = creds['token']
+            if 'access_token' in creds:
+                env_vars[f'{server_upper}_ACCESS_TOKEN'] = creds['access_token']
+            if 'refresh_token' in creds:
+                env_vars[f'{server_upper}_REFRESH_TOKEN'] = creds['refresh_token']
+            if 'username' in creds and 'password' in creds:
+                env_vars[f'{server_upper}_USERNAME'] = creds['username']
+                env_vars[f'{server_upper}_PASSWORD'] = creds['password']
 
     if docker_client:
         try:
