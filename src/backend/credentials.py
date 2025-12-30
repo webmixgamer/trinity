@@ -299,6 +299,148 @@ class CredentialManager:
 
         return file_credentials
 
+    # ============================================================================
+    # Agent Credential Assignment
+    # ============================================================================
+
+    def assign_credential(self, agent_name: str, cred_id: str, user_id: str) -> bool:
+        """
+        Assign a credential to an agent.
+
+        Args:
+            agent_name: Name of the agent
+            cred_id: ID of the credential to assign
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            True if assigned successfully, False if credential not found
+        """
+        cred = self.get_credential(cred_id, user_id)
+        if not cred:
+            return False
+
+        agent_creds_key = f"agent:{agent_name}:credentials"
+        self.redis_client.sadd(agent_creds_key, cred_id)
+        return True
+
+    def unassign_credential(self, agent_name: str, cred_id: str) -> bool:
+        """
+        Unassign a credential from an agent.
+
+        Args:
+            agent_name: Name of the agent
+            cred_id: ID of the credential to unassign
+
+        Returns:
+            True if unassigned, False if was not assigned
+        """
+        agent_creds_key = f"agent:{agent_name}:credentials"
+        removed = self.redis_client.srem(agent_creds_key, cred_id)
+        return removed > 0
+
+    def get_assigned_credential_ids(self, agent_name: str) -> set:
+        """
+        Get IDs of credentials assigned to an agent.
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            Set of credential IDs
+        """
+        agent_creds_key = f"agent:{agent_name}:credentials"
+        return self.redis_client.smembers(agent_creds_key)
+
+    def get_assigned_credentials(self, agent_name: str, user_id: str) -> List[Credential]:
+        """
+        Get credentials assigned to an agent.
+
+        Args:
+            agent_name: Name of the agent
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            List of Credential objects assigned to the agent
+        """
+        cred_ids = self.get_assigned_credential_ids(agent_name)
+        credentials = []
+
+        for cred_id in cred_ids:
+            cred = self.get_credential(cred_id, user_id)
+            if cred:
+                credentials.append(cred)
+
+        return sorted(credentials, key=lambda x: x.name)
+
+    def get_assigned_credential_values(self, agent_name: str, user_id: str) -> Dict[str, str]:
+        """
+        Get credential key-value pairs for assigned credentials only.
+        Excludes file-type credentials (handled separately).
+
+        Args:
+            agent_name: Name of the agent
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            Dict of {KEY: value} for environment variable injection
+        """
+        assigned = self.get_assigned_credentials(agent_name, user_id)
+        values = {}
+
+        for cred in assigned:
+            # Skip file-type credentials - they're handled by get_assigned_file_credentials
+            if cred.type == "file":
+                continue
+
+            secret = self.get_credential_secret(cred.id, user_id)
+            if secret:
+                for key, value in secret.items():
+                    # Skip internal keys like 'content' for file creds
+                    if key != "content":
+                        values[key.upper()] = value
+
+        return values
+
+    def get_assigned_file_credentials(self, agent_name: str, user_id: str) -> Dict[str, str]:
+        """
+        Get file credentials assigned to an agent.
+
+        Args:
+            agent_name: Name of the agent
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            Dict of {file_path: file_content}
+        """
+        assigned = self.get_assigned_credentials(agent_name, user_id)
+        file_creds = {}
+
+        for cred in assigned:
+            if cred.type != "file" or not cred.file_path:
+                continue
+
+            secret = self.get_credential_secret(cred.id, user_id)
+            if secret and "content" in secret:
+                file_creds[cred.file_path] = secret["content"]
+
+        return file_creds
+
+    def cleanup_agent_credentials(self, agent_name: str) -> int:
+        """
+        Remove all credential assignments for an agent.
+        Called when an agent is deleted.
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            Number of credentials that were unassigned
+        """
+        agent_creds_key = f"agent:{agent_name}:credentials"
+        count = self.redis_client.scard(agent_creds_key)
+        self.redis_client.delete(agent_creds_key)
+        return count
+
     def create_oauth_state(self, user_id: str, provider: str, redirect_uri: str) -> str:
         state = secrets.token_urlsafe(32)
         state_key = f"{self.oauth_state_prefix}{state}"

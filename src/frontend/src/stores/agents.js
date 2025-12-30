@@ -213,6 +213,41 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    // Credential Assignment Actions
+    async getCredentialAssignments(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/credentials/assignments`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async assignCredential(name, credentialId) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/credentials/assign`,
+        { credential_id: credentialId },
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
+    async unassignCredential(name, credentialId) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(`/api/agents/${name}/credentials/assign/${credentialId}`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async applyCredentials(name) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/credentials/apply`,
+        {},
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
     async getAgentStats(name) {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/stats`, {

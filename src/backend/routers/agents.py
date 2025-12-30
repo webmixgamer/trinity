@@ -293,6 +293,12 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     except Exception as e:
         logger.warning(f"Failed to delete shared folder config for agent {agent_name}: {e}")
 
+    # Delete credential assignments for this agent
+    try:
+        credential_manager.cleanup_agent_credentials(agent_name)
+    except Exception as e:
+        logger.warning(f"Failed to delete credential assignments for agent {agent_name}: {e}")
+
     db.delete_agent_ownership(agent_name)
 
     if manager:

@@ -84,6 +84,16 @@ class HotReloadCredentialsRequest(BaseModel):
     credentials_text: str  # .env-style KEY=VALUE text
 
 
+class CredentialAssignRequest(BaseModel):
+    """Request model for assigning a credential to an agent."""
+    credential_id: str
+
+
+class CredentialBulkAssignRequest(BaseModel):
+    """Request model for bulk assigning credentials to an agent."""
+    credential_ids: List[str]
+
+
 class ChatMessageRequest(BaseModel):
     """Request model for chat messages."""
     message: str

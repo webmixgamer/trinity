@@ -269,8 +269,8 @@
                   ]"
                 >
                   Credentials
-                  <span v-if="credentialsData && credentialsData.missing_count > 0" class="ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-full leading-none">
-                    {{ credentialsData.missing_count }}
+                  <span v-if="assignedCredentials.length > 0" class="ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded-full leading-none">
+                    {{ assignedCredentials.length }}
                   </span>
                 </button>
                 <button
@@ -527,190 +527,225 @@
             </div>
 
             <!-- Credentials Tab Content -->
-            <div v-if="activeTab === 'credentials'" class="p-6">
-              <div v-if="credentialsLoading" class="text-center py-8">
+            <div v-if="activeTab === 'credentials'" class="p-6 space-y-6">
+
+              <!-- Loading State -->
+              <div v-if="assignmentsLoading" class="text-center py-8">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading credential requirements...</p>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">Loading credentials...</p>
               </div>
 
-              <div v-else-if="!credentialsData || !credentialsData.template">
-                <div class="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <p>No template associated with this agent.</p>
-                  <p class="text-sm mt-2">Credential requirements are based on agent templates.</p>
-                </div>
-              </div>
-
-              <div v-else>
-                <div class="mb-6">
-                  <div class="flex justify-between items-center">
-                    <div>
-                      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Required Credentials</h3>
-                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Template: <span class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{{ credentialsData.template }}</span>
-                      </p>
-                    </div>
-                    <div class="text-right">
-                      <div class="flex items-center space-x-4">
-                        <span class="text-sm">
-                          <span class="text-green-600 dark:text-green-400 font-semibold">{{ credentialsData.configured_count }}</span>
-                          <span class="text-gray-500 dark:text-gray-400"> configured</span>
-                        </span>
-                        <span class="text-sm">
-                          <span class="text-red-600 dark:text-red-400 font-semibold">{{ credentialsData.missing_count }}</span>
-                          <span class="text-gray-500 dark:text-gray-400"> missing</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+              <template v-else>
+                <!-- Filter Input -->
+                <div class="mb-4">
+                  <input
+                    v-model="credentialFilter"
+                    type="text"
+                    placeholder="Filter credentials..."
+                    class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
 
-                <!-- Progress bar -->
-                <div class="mb-6">
-                  <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    <span>Configuration Progress</span>
-                    <span>{{ Math.round((credentialsData.configured_count / credentialsData.total) * 100) }}%</span>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div
-                      class="bg-green-600 h-2 rounded-full transition-all duration-300"
-                      :style="{ width: `${(credentialsData.configured_count / credentialsData.total) * 100}%` }"
-                    ></div>
-                  </div>
-                </div>
-
-                <!-- Credentials list -->
-                <div class="space-y-3">
-                  <div
-                    v-for="cred in credentialsData.required_credentials"
-                    :key="cred.name"
-                    class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border"
-                    :class="cred.configured ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'"
-                  >
-                    <div class="flex items-center space-x-3">
-                      <!-- Status icon -->
-                      <div :class="cred.configured ? 'text-green-500' : 'text-red-500'">
-                        <svg v-if="cred.configured" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                        </svg>
-                        <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p class="font-mono text-sm text-gray-900 dark:text-gray-100">{{ cred.name }}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatSource(cred.source) }}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <span
-                        :class="[
-                          'px-2 py-1 text-xs font-medium rounded',
-                          cred.configured
-                            ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
-                            : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
-                        ]"
-                      >
-                        {{ cred.configured ? 'Configured' : 'Missing' }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Action button -->
-                <div v-if="credentialsData.missing_count > 0" class="mt-6 flex justify-center">
-                  <router-link
-                    to="/credentials"
-                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Configure Missing Credentials
-                  </router-link>
-                </div>
-              </div>
-
-              <!-- Hot Reload Section -->
-              <div class="mt-8 border-t dark:border-gray-700 pt-6">
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Hot Reload Credentials</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      Paste .env-style credentials to update the running agent instantly
-                    </p>
-                  </div>
-                  <span
-                    v-if="agent.status !== 'running'"
-                    class="px-3 py-1 text-sm bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded-full"
-                  >
-                    Agent must be running
-                  </span>
-                </div>
-
-                <div class="space-y-4">
-                  <textarea
-                    v-model="hotReloadText"
-                    :disabled="agent.status !== 'running' || hotReloadLoading"
-                    rows="8"
-                    placeholder="# Paste credentials in KEY=VALUE format
-TWITTER_API_KEY=your_api_key_here
-TWITTER_API_SECRET=your_secret_here
-HEYGEN_API_KEY=your_heygen_key
-
-# Lines starting with # are ignored"
-                    class="w-full font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
-                  ></textarea>
-
-                  <div class="flex items-center justify-between">
-                    <div class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ hotReloadText ? countCredentials(hotReloadText) : 0 }} credentials detected
-                    </div>
+                <!-- Assigned Credentials Section -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                      Assigned Credentials
+                      <span class="ml-2 text-sm font-normal text-gray-500">({{ filteredAssignedCredentials.length }})</span>
+                    </h3>
                     <button
-                      @click="performHotReload"
-                      :disabled="agent.status !== 'running' || hotReloadLoading || !hotReloadText.trim()"
-                      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      v-if="hasChanges && agent.status === 'running'"
+                      @click="applyToAgent"
+                      :disabled="applying"
+                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <svg v-if="hotReloadLoading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <svg v-if="applying" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <svg v-else class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      {{ hotReloadLoading ? 'Updating...' : 'Hot Reload' }}
+                      {{ applying ? 'Applying...' : 'Apply to Agent' }}
                     </button>
                   </div>
 
-                  <!-- Hot reload result -->
-                  <div
-                    v-if="hotReloadResult"
-                    :class="[
-                      'p-4 rounded-lg',
-                      hotReloadResult.success ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
-                    ]"
-                  >
-                    <div class="flex items-start">
-                      <svg v-if="hotReloadResult.success" class="w-5 h-5 text-green-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                      </svg>
-                      <svg v-else class="w-5 h-5 text-red-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                      </svg>
-                      <div>
-                        <p :class="hotReloadResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'" class="font-medium">
-                          {{ hotReloadResult.message }}
-                        </p>
-                        <p v-if="hotReloadResult.credentials" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          Updated: {{ hotReloadResult.credentials.join(', ') }}
-                        </p>
-                        <p v-if="hotReloadResult.note" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {{ hotReloadResult.note }}
-                        </p>
+                  <div v-if="filteredAssignedCredentials.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
+                    <svg class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    <p v-if="credentialFilter">No matching credentials.</p>
+                    <p v-else>No credentials assigned to this agent.</p>
+                    <p v-if="!credentialFilter" class="text-sm mt-1">Add credentials from the list below.</p>
+                  </div>
+
+                  <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
+                    <div
+                      v-for="cred in filteredAssignedCredentials"
+                      :key="cred.id"
+                      class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <div class="flex items-center space-x-3">
+                        <div class="flex-shrink-0">
+                          <span v-if="cred.type === 'file'" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </span>
+                          <span v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                          </span>
+                        </div>
+                        <div>
+                          <p class="font-medium text-gray-900 dark:text-white">{{ cred.name }}</p>
+                          <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ cred.service }} &middot; {{ cred.type }}
+                            <span v-if="cred.file_path" class="ml-1 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                              &rarr; {{ cred.file_path }}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        @click="unassignCredential(cred.id)"
+                        class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Available Credentials Section -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                      Available Credentials
+                      <span class="ml-2 text-sm font-normal text-gray-500">({{ filteredAvailableCredentials.length }})</span>
+                    </h3>
+                  </div>
+
+                  <div v-if="filteredAvailableCredentials.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
+                    <p v-if="credentialFilter">No matching credentials.</p>
+                    <p v-else>All your credentials are assigned.</p>
+                    <router-link v-if="!credentialFilter" to="/credentials" class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm mt-1 inline-block">
+                      Create more credentials &rarr;
+                    </router-link>
+                  </div>
+
+                  <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
+                    <div
+                      v-for="cred in filteredAvailableCredentials"
+                      :key="cred.id"
+                      class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <div class="flex items-center space-x-3">
+                        <div class="flex-shrink-0">
+                          <span v-if="cred.type === 'file'" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </span>
+                          <span v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                          </span>
+                        </div>
+                        <div>
+                          <p class="font-medium text-gray-900 dark:text-white">{{ cred.name }}</p>
+                          <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ cred.service }} &middot; {{ cred.type }}
+                            <span v-if="cred.file_path" class="ml-1 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                              &rarr; {{ cred.file_path }}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        @click="assignCredential(cred.id)"
+                        class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Quick Add Section -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Quick Add</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Paste KEY=VALUE pairs to create, assign, and apply credentials in one step
+                    </p>
+                  </div>
+
+                  <div class="p-4 space-y-4">
+                    <div class="relative">
+                      <textarea
+                        v-model="quickAddText"
+                        :disabled="agent.status !== 'running' || quickAddLoading"
+                        rows="5"
+                        placeholder="OPENAI_API_KEY=sk-...&#10;ANTHROPIC_API_KEY=sk-ant-...&#10;&#10;# Lines starting with # are ignored"
+                        class="w-full font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
+                      ></textarea>
+                      <span
+                        v-if="agent.status !== 'running'"
+                        class="absolute top-2 right-2 px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 rounded"
+                      >
+                        Agent must be running
+                      </span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ quickAddText ? countCredentials(quickAddText) : 0 }} credential(s) detected
+                      </span>
+                      <button
+                        @click="quickAddCredentials"
+                        :disabled="agent.status !== 'running' || quickAddLoading || !quickAddText.trim()"
+                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        <svg v-if="quickAddLoading" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {{ quickAddLoading ? 'Adding...' : 'Add & Apply' }}
+                      </button>
+                    </div>
+
+                    <!-- Quick add result -->
+                    <div
+                      v-if="quickAddResult"
+                      :class="[
+                        'p-4 rounded-lg',
+                        quickAddResult.success ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
+                      ]"
+                    >
+                      <div class="flex items-start">
+                        <svg v-if="quickAddResult.success" class="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        </svg>
+                        <svg v-else class="w-5 h-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                        <div>
+                          <p :class="quickAddResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'" class="font-medium">
+                            {{ quickAddResult.message }}
+                          </p>
+                          <p v-if="quickAddResult.credentials && quickAddResult.credentials.length" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            Added: {{ quickAddResult.credentials.join(', ') }}
+                          </p>
+                          <p v-if="quickAddResult.note" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            {{ quickAddResult.note }}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </template>
+
             </div>
 
             <!-- Sharing Tab Content -->
@@ -1205,6 +1240,7 @@ const agent = ref(null)
 const loading = ref(true)
 const error = ref('')
 const activeTab = ref('info')
+const credentialFilter = ref('')
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -1250,15 +1286,48 @@ const {
 
 // Credentials composable
 const {
+  // New assignment-based API
+  assignedCredentials,
+  availableCredentials,
+  loading: assignmentsLoading,
+  applying,
+  hasChanges,
+  quickAddText,
+  quickAddLoading,
+  quickAddResult,
+  loadCredentials,
+  assignCredential,
+  unassignCredential,
+  applyToAgent,
+  quickAddCredentials,
+  countCredentials,
+  // Legacy API (kept for backward compatibility)
   credentialsData,
   credentialsLoading,
   hotReloadText,
   hotReloadLoading,
   hotReloadResult,
-  loadCredentials,
-  countCredentials,
   performHotReload
 } = useAgentCredentials(agent, agentsStore, showNotification)
+
+// Filtered credentials for search
+const filteredAssignedCredentials = computed(() => {
+  if (!credentialFilter.value) return assignedCredentials.value
+  const filter = credentialFilter.value.toLowerCase()
+  return assignedCredentials.value.filter(cred =>
+    cred.name.toLowerCase().includes(filter) ||
+    cred.service.toLowerCase().includes(filter)
+  )
+})
+
+const filteredAvailableCredentials = computed(() => {
+  if (!credentialFilter.value) return availableCredentials.value
+  const filter = credentialFilter.value.toLowerCase()
+  return availableCredentials.value.filter(cred =>
+    cred.name.toLowerCase().includes(filter) ||
+    cred.service.toLowerCase().includes(filter)
+  )
+})
 
 // Sharing composable
 const {

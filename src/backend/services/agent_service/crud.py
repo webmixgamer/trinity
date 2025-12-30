@@ -172,14 +172,17 @@ async def create_agent_internal(
     if config.port is None:
         config.port = get_next_available_port()
 
-    agent_credentials = credential_manager.get_agent_credentials(config.name, config.mcp_servers, current_user.username)
+    # Get only explicitly assigned credentials (no longer auto-inject all user credentials)
+    flat_credentials = credential_manager.get_assigned_credential_values(config.name, current_user.username)
 
-    flat_credentials = {}
+    # For backward compatibility with MCP server assignments, also check those
+    agent_credentials = credential_manager.get_agent_credentials(config.name, config.mcp_servers, current_user.username)
     for server, creds in agent_credentials.items():
         if isinstance(creds, dict):
             for key, value in creds.items():
-                flat_credentials[key.upper()] = value
-        else:
+                if key.upper() not in flat_credentials:
+                    flat_credentials[key.upper()] = value
+        elif server.upper() not in flat_credentials:
             flat_credentials[server.upper()] = creds
 
     generated_files = {}
@@ -189,10 +192,10 @@ async def create_agent_internal(
             template_base_path=github_template_path
         )
 
-    # Get file-type credentials (e.g., service account JSON files)
-    file_credentials = credential_manager.get_file_credentials(current_user.username)
+    # Get only explicitly assigned file-type credentials (e.g., service account JSON files)
+    file_credentials = credential_manager.get_assigned_file_credentials(config.name, current_user.username)
     if file_credentials:
-        logger.info(f"Injecting {len(file_credentials)} credential file(s) for agent {config.name}")
+        logger.info(f"Injecting {len(file_credentials)} assigned credential file(s) for agent {config.name}")
 
     cred_files_dir = Path(f"/tmp/agent-{config.name}-creds")
     cred_files_dir.mkdir(exist_ok=True)

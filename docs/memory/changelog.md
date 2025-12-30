@@ -1,3 +1,37 @@
+### 2025-12-30 22:20:00
+🔐 **Agent-Specific Credential Assignment**
+
+**Feature**: Fine-grained control over which credentials are injected into each agent. Credentials must now be explicitly assigned before injection.
+
+**Problem Solved**: Previously all credentials were auto-injected into all agents. Users had no control over credential scope, leading to security concerns and unnecessary credential exposure.
+
+**Key Changes**:
+- No credentials assigned by default (explicit user action required)
+- Redis SET storage: `agent:{name}:credentials` for credential IDs
+- Filter input for searching credentials by name or service
+- Scrollable credential lists with max-height
+- "Apply to Agent" button to inject assigned credentials into running agent
+- Credential count badge on Credentials tab
+
+**Backend API**:
+- `GET /api/agents/{name}/credentials/assignments` - List assigned credential IDs
+- `POST /api/agents/{name}/credentials/assign` - Assign a credential
+- `DELETE /api/agents/{name}/credentials/assign/{cred_id}` - Unassign
+- `POST /api/agents/{name}/credentials/assign/bulk` - Bulk assign
+- `POST /api/agents/{name}/credentials/apply` - Inject into running agent
+
+**Files Modified**:
+- `src/backend/credentials.py` - 7 new methods for assignment management
+- `src/backend/models.py` - CredentialAssignRequest, CredentialBulkAssignRequest
+- `src/backend/routers/credentials.py` - 5 new endpoints, route ordering fix
+- `src/backend/services/agent_service/crud.py` - Use assigned credentials only
+- `src/backend/routers/agents.py` - Cleanup assignments on agent deletion
+- `src/frontend/src/stores/agents.js` - 4 new store actions
+- `src/frontend/src/composables/useAgentCredentials.js` - Complete rewrite
+- `src/frontend/src/views/AgentDetail.vue` - Filter input, scroll, filtered lists
+
+---
+
 ### 2025-12-30 18:30:00
 🔀 **Git Conflict Resolution**
 

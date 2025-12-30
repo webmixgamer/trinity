@@ -14,9 +14,15 @@ As a platform user, I want to configure API credentials for my agents so that MC
 |-------------|--------------|---------|
 | `src/frontend/src/views/Credentials.vue` | `POST /api/credentials` | Single credential entry |
 | `src/frontend/src/views/Credentials.vue:82-108` | `POST /api/credentials/bulk` | Bulk import (.env paste) |
-| `src/frontend/src/views/AgentDetail.vue` | `POST /api/agents/{name}/credentials/hot-reload` | Hot-reload on running agent |
+| `src/frontend/src/views/AgentDetail.vue` | `GET /api/agents/{name}/credentials/assignments` | List assigned/available credentials |
+| `src/frontend/src/views/AgentDetail.vue` | `POST /api/agents/{name}/credentials/assign` | Assign credential to agent |
+| `src/frontend/src/views/AgentDetail.vue` | `DELETE /api/agents/{name}/credentials/assign/{id}` | Unassign credential from agent |
+| `src/frontend/src/views/AgentDetail.vue` | `POST /api/agents/{name}/credentials/apply` | Apply assigned credentials to running agent |
+| `src/frontend/src/views/AgentDetail.vue` | `POST /api/agents/{name}/credentials/hot-reload` | Quick-add: create, assign, and apply |
 
 > **Note (2025-12-07)**: OAuth provider buttons ("Connect Services" section with Google, Slack, GitHub, Notion) were **removed** from Credentials.vue. OAuth flows remain available via backend API endpoints but are no longer exposed in the UI.
+
+> **Note (2025-12-30)**: Credential injection is now **assignment-based**. No credentials are injected by default - users must explicitly assign credentials to each agent via the Credentials tab in Agent Detail.
 
 ---
 
@@ -716,6 +722,115 @@ async def update_credentials(request: CredentialUpdateRequest):
 
 ---
 
+## Flow 8: Agent Credential Assignment
+
+> **Added 2025-12-30**: Credential injection is now assignment-based. No credentials are injected by default.
+
+### Overview
+
+Users must explicitly assign credentials to each agent. This provides fine-grained control over which credentials are available to which agents.
+
+### Redis Data Structure
+
+```
+agent:{agent_name}:credentials → SET of credential IDs
+```
+
+### Backend Methods (`src/backend/credentials.py:306-442`)
+
+```python
+def assign_credential(self, agent_name: str, cred_id: str, user_id: str) -> bool:
+    """Assign a credential to an agent."""
+    cred = self.get_credential(cred_id, user_id)
+    if not cred:
+        return False
+    agent_creds_key = f"agent:{agent_name}:credentials"
+    self.redis_client.sadd(agent_creds_key, cred_id)
+    return True
+
+def unassign_credential(self, agent_name: str, cred_id: str) -> bool:
+    """Unassign a credential from an agent."""
+    agent_creds_key = f"agent:{agent_name}:credentials"
+    return self.redis_client.srem(agent_creds_key, cred_id) > 0
+
+def get_assigned_credentials(self, agent_name: str, user_id: str) -> List[Credential]:
+    """Get credentials assigned to an agent."""
+    ...
+
+def get_assigned_credential_values(self, agent_name: str, user_id: str) -> Dict[str, str]:
+    """Get key-value pairs for assigned credentials (excludes file-type)."""
+    ...
+
+def get_assigned_file_credentials(self, agent_name: str, user_id: str) -> Dict[str, str]:
+    """Get file credentials assigned to an agent. Returns {path: content}."""
+    ...
+
+def cleanup_agent_credentials(self, agent_name: str) -> int:
+    """Remove all credential assignments when agent is deleted."""
+    ...
+```
+
+### API Endpoints (`src/backend/routers/credentials.py:782-1047`)
+
+```python
+@router.get("/agents/{agent_name}/credentials/assignments")
+# Returns: {"assigned": [...], "available": [...]}
+
+@router.post("/agents/{agent_name}/credentials/assign")
+# Body: {"credential_id": "abc123"}
+
+@router.delete("/agents/{agent_name}/credentials/assign/{cred_id}")
+
+@router.post("/agents/{agent_name}/credentials/assign/bulk")
+# Body: {"credential_ids": ["abc123", "def456"]}
+
+@router.post("/agents/{agent_name}/credentials/apply")
+# Pushes all assigned credentials to running agent
+```
+
+### Frontend UI (`src/frontend/src/views/AgentDetail.vue`)
+
+The Credentials tab shows:
+1. **Filter input** - search credentials by name or service
+2. **Assigned Credentials** - credentials currently assigned to this agent (scrollable list)
+3. **Available Credentials** - user's credentials not yet assigned (scrollable list)
+4. **Quick Add** - paste KEY=VALUE to create, assign, and apply in one step
+
+**UI Features**:
+- Filter input at top filters both assigned and available lists
+- Scrollable lists with `max-h-64 overflow-y-auto`
+- Credential count badge on Credentials tab
+- "+ Add" / "Remove" buttons for each credential
+- "Apply to Agent" button to push assigned credentials to running agent
+
+### Composable (`src/frontend/src/composables/useAgentCredentials.js`)
+
+```javascript
+// Returns
+{
+  assignedCredentials,      // Credentials assigned to this agent
+  availableCredentials,     // User's credentials not assigned to this agent
+  loading,
+  applying,
+  hasChanges,
+  loadCredentials,          // Fetch assigned/available from API
+  assignCredential,         // Assign a credential to agent
+  unassignCredential,       // Remove assignment
+  applyToAgent,             // Push all assigned to running agent
+  quickAddCredentials,      // Create, assign, and apply in one step
+}
+```
+
+### Workflow
+
+1. User creates credentials in the Credentials page
+2. User goes to Agent Detail → Credentials tab
+3. User clicks "+ Add" on desired credentials
+4. User clicks "Apply to Agent" to push to running agent
+5. On agent restart, only assigned credentials are injected
+
+---
+
 ## Side Effects
 
 | Action | Audit Event |
@@ -724,6 +839,9 @@ async def update_credentials(request: CredentialUpdateRequest):
 | Bulk import | `credential_management:bulk_import` |
 | Hot reload | `credential_management:hot_reload_credentials` |
 | Reload from Redis | `credential_management:reload_credentials` |
+| Assign credential | `credential_management:assign_credential` |
+| Unassign credential | `credential_management:unassign_credential` |
+| Apply credentials | `credential_management:apply_credentials` |
 | OAuth init | `oauth:init` |
 | OAuth callback | `oauth:callback` |
 
@@ -842,7 +960,29 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 - [ ] Has both `refresh_token` and `GOOGLE_REFRESH_TOKEN`
 - [ ] Audit log shows `oauth:init` and `oauth:callback`
 
-### 5. Credential Status
+### 5. Credential Assignment
+**Action**:
+- Navigate to agent detail page
+- Click "Credentials" tab
+- Type "google" in filter input
+- Click "+ Add" on a Google credential
+- Click "Apply to Agent"
+
+**Expected**:
+- Filter shows only google-related credentials
+- Credential moves from "Available" to "Assigned" section
+- Tab badge shows "1"
+- Success notification appears
+
+**Verify**:
+- [ ] Filter filters both assigned and available lists
+- [ ] Assigned count increases, available count decreases
+- [ ] Redis has `agent:{name}:credentials` SET with credential ID
+- [ ] GET `/api/agents/{name}/credentials/assignments` returns correct lists
+- [ ] Agent receives credentials via internal API
+- [ ] Audit log shows `credential_management:assign_credential`
+
+### 6. Credential Status
 **Action**: Navigate to agent detail, view credentials tab
 
 **Expected**: Shows credential status from agent
@@ -863,6 +1003,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | **Agent credential assignment with filter UI**: Major refactor - credentials now require explicit assignment to agents. No credentials injected by default. New Redis structure `agent:{name}:credentials` stores assignments. New API endpoints: `/assignments` (GET), `/assign` (POST/DELETE), `/apply` (POST). New UI in AgentDetail.vue Credentials tab with Assigned/Available lists, **filter input for search**, **scrollable lists** (max-h-64), credential count badge on tab, and Quick Add. Hot-reload now also assigns credentials. Cleanup on agent deletion. Fixed route ordering conflict (moved legacy MCP route to end of file). |
 | 2025-12-30 | **File-type credentials**: Added support for injecting entire files (JSON, YAML, PEM, etc.) into agents at specified paths. New credential type "file" with file_path field. Files injected at agent creation and via hot-reload. Use cases: GCP service accounts, AWS credentials, SSL certificates. |
 | 2025-12-28 | **Bug fix: Hot-reload now saves to Redis**. Previously, hot-reload only pushed credentials to the agent's .env file but did NOT persist them to Redis. Credentials were lost on agent restart. Now hot-reload uses `import_credential_with_conflict_resolution()` to save each credential to Redis before pushing to the agent. Response includes `saved_to_redis` array with status (created/reused/renamed). |
 | 2025-12-19 | **Path/line number updates**: Updated all file references for modular architecture. Agent-server now at `docker/base-image/agent_server/routers/credentials.py`. Backend routers at `src/backend/routers/credentials.py`. Updated helpers to `src/backend/utils/helpers.py`. Added store action documentation. Verified all line numbers. |
