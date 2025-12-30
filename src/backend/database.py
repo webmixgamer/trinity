@@ -197,6 +197,24 @@ def _migrate_agent_ownership_platform_key(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_git_config_source_branch(cursor, conn):
+    """Add source_branch and source_mode columns to agent_git_config for GitHub source tracking."""
+    cursor.execute("PRAGMA table_info(agent_git_config)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("source_branch", "TEXT DEFAULT 'main'"),  # Branch to pull from
+        ("source_mode", "INTEGER DEFAULT 0")  # 1 = track source branch directly, 0 = legacy working branch
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_git_config for GitHub source tracking...")
+            cursor.execute(f"ALTER TABLE agent_git_config ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -230,6 +248,11 @@ def init_database():
             _migrate_agent_ownership_platform_key(cursor, conn)
         except Exception as e:
             print(f"Migration check (agent_ownership use_platform_api_key): {e}")
+
+        try:
+            _migrate_agent_git_config_source_branch(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_git_config source_branch): {e}")
 
         # Users table
         cursor.execute("""
@@ -343,6 +366,8 @@ def init_database():
                 github_repo TEXT NOT NULL,
                 working_branch TEXT NOT NULL,
                 instance_id TEXT NOT NULL,
+                source_branch TEXT DEFAULT 'main',
+                source_mode INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 last_sync_at TEXT,
                 last_commit_sha TEXT,
@@ -846,8 +871,20 @@ class DatabaseManager:
     # Git Configuration Management (delegated to db/schedules.py)
     # =========================================================================
 
-    def create_git_config(self, agent_name: str, github_repo: str, working_branch: str, instance_id: str, sync_paths=None):
-        return self._schedule_ops.create_git_config(agent_name, github_repo, working_branch, instance_id, sync_paths)
+    def create_git_config(
+        self,
+        agent_name: str,
+        github_repo: str,
+        working_branch: str,
+        instance_id: str,
+        sync_paths=None,
+        source_branch: str = "main",
+        source_mode: bool = False
+    ):
+        return self._schedule_ops.create_git_config(
+            agent_name, github_repo, working_branch, instance_id, sync_paths,
+            source_branch=source_branch, source_mode=source_mode
+        )
 
     def get_git_config(self, agent_name: str):
         return self._schedule_ops.get_git_config(agent_name)

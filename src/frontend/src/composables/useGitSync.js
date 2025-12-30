@@ -11,6 +11,7 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
   const gitStatus = ref(null)
   const gitLoading = ref(false)
   const gitSyncing = ref(false)
+  const gitPulling = ref(false)
   const gitSyncResult = ref(null)
   let gitStatusInterval = null
 
@@ -66,6 +67,26 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
     }
   }
 
+  const pullFromGithub = async () => {
+    if (!agentRef.value || gitPulling.value) return
+    gitPulling.value = true
+    try {
+      const result = await agentsStore.pullFromGithub(agentRef.value.name)
+      if (result.success) {
+        showNotification(result.message || 'Pulled latest changes from GitHub', 'success')
+      } else {
+        showNotification(result.message || 'Pull failed', 'error')
+      }
+      // Refresh status after pull
+      await loadGitStatus()
+    } catch (err) {
+      console.error('Git pull failed:', err)
+      showNotification(err.response?.data?.detail || 'Failed to pull from GitHub', 'error')
+    } finally {
+      gitPulling.value = false
+    }
+  }
+
   const startGitStatusPolling = () => {
     if (!hasGitSync.value) return
     loadGitStatus() // Load immediately
@@ -89,12 +110,14 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
     gitStatus,
     gitLoading,
     gitSyncing,
+    gitPulling,
     gitSyncResult,
     gitHasChanges,
     gitChangesCount,
     loadGitStatus,
     refreshGitStatus,
     syncToGithub,
+    pullFromGithub,
     startGitStatusPolling,
     stopGitStatusPolling
   }

@@ -1,3 +1,70 @@
+### 2025-12-30 12:00:00
+🔄 **GitHub Source Mode - Unidirectional Pull Flow**
+
+**Feature**: Agents can now track a GitHub source branch directly and pull updates on demand.
+
+**Problem Solved**: Users developing agents locally wanted to push to GitHub and have Trinity pull updates, without dealing with bidirectional sync conflicts.
+
+**Implementation**:
+- **New Fields**: `source_branch` (default: "main") and `source_mode` (default: true) in agent git config
+- **Source Mode**: Agent stays on source branch, pulls only (no working branch created)
+- **Pull Button**: Added "Pull" button next to "Sync" in Agent Detail UI
+
+**Flow**:
+1. Develop locally → push to GitHub (main branch)
+2. Create agent in Trinity from GitHub template
+3. Click "Pull" button to fetch latest changes
+4. Agent's `content/` folder (gitignored) stores large files separately
+
+**Files Modified**:
+- `src/backend/db_models.py` - Added `source_branch`, `source_mode` to AgentGitConfig
+- `src/backend/database.py` - Migration and schema update
+- `src/backend/db/schedules.py` - Updated create_git_config with new params
+- `src/backend/models.py` - Added source_branch/source_mode to AgentConfig
+- `src/backend/services/agent_service/crud.py` - Pass env vars to container
+- `src/backend/routers/git.py` - Include new fields in /git/config response
+- `docker/base-image/startup.sh` - Support GIT_SOURCE_MODE and GIT_SOURCE_BRANCH
+- `src/frontend/src/composables/useGitSync.js` - Added pullFromGithub function
+- `src/frontend/src/views/AgentDetail.vue` - Added Pull button
+
+**API**:
+- `POST /api/agents/{name}/git/pull` - Pull latest from source branch
+
+---
+
+### 2025-12-30 10:30:00
+🔗 **Dashboard Permissions Integration**
+
+**Feature**: Visual permission management on Dashboard via edge connections.
+
+**Two Edge Types**:
+- **Permission edges** (dashed blue): Show which agents CAN communicate - created by dragging between nodes
+- **Collaboration edges** (solid animated): Show actual message flow - created automatically from agent activity
+
+**Edge Creation**:
+- Drag from source agent handle → target agent handle
+- Immediately calls `POST /api/agents/{source}/permissions/{target}`
+- Toast notification: "Permission granted: A → B"
+
+**Edge Deletion**:
+- Click to select edge → Press Delete/Backspace key
+- Immediately calls `DELETE /api/agents/{source}/permissions/{target}`
+- Toast notification: "Permission revoked: A → B"
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Added `permissionEdges`, `fetchPermissions()`, `createPermissionEdge()`, `deletePermissionEdge()`
+- `src/frontend/src/stores/agents.js` - Added `addAgentPermission()`, `removeAgentPermission()` API methods
+- `src/frontend/src/views/Dashboard.vue` - Added `@connect`, `@edges-change` handlers, toast notifications
+- `src/frontend/src/components/AgentNode.vue` - Styled handles (blue, hover effects, glow)
+
+**UX**:
+- No confirmation dialogs - direct manipulation for fast workflow
+- Permission edges show as dashed blue lines with arrow
+- Node handles highlight blue on hover with glow effect
+- Toast notifications for all permission operations
+
+---
+
 ### 2025-12-29 16:45:00
 🧹 **Removed DEV_MODE_ENABLED from Codebase**
 

@@ -439,10 +439,11 @@ export function createAgentTools(
     initializeGithubSync: {
       name: "initialize_github_sync",
       description:
-        "Initialize GitHub synchronization for an agent. " +
+        "Initialize GitHub synchronization for an existing agent (not created from GitHub template). " +
         "Creates a GitHub repository (if requested), initializes git in the agent workspace, " +
-        "commits the current state, pushes to GitHub, and enables bidirectional sync. " +
+        "commits the current state, pushes to GitHub, and creates a working branch for sync. " +
         "Requires GitHub Personal Access Token (PAT) to be configured in system settings with 'repo' scope. " +
+        "Note: Agents created from GitHub templates already have git sync enabled in source mode (pull-only). " +
         "Agent must be running.",
       parameters: z.object({
         agent_name: z

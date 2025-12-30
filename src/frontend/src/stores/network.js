@@ -1,12 +1,39 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import axios from 'axios'
+import { useAgentsStore } from './agents'
 
 export const useNetworkStore = defineStore('network', () => {
   // State
   const agents = ref([])
   const nodes = ref([])
-  const edges = ref([])
+  const collaborationEdges = ref([])  // Edges from collaboration history
+  const permissionEdges = ref([])     // Edges from permissions
+
+  // Combined edges computed property
+  const edges = computed(() => {
+    // Merge permission edges with collaboration edges
+    // Collaboration edges override permission edges for same source/target pair
+    const edgeMap = new Map()
+
+    // Add permission edges first (will be overridden by collaboration edges)
+    permissionEdges.value.forEach(edge => {
+      edgeMap.set(edge.id, edge)
+    })
+
+    // Add collaboration edges (may override permission edges)
+    collaborationEdges.value.forEach(edge => {
+      const permEdgeId = `perm-${edge.source}-${edge.target}`
+      // If there's an active collaboration edge, remove the permission edge
+      // and just show the collaboration edge
+      if (edge.animated && edgeMap.has(permEdgeId)) {
+        edgeMap.delete(permEdgeId)
+      }
+      edgeMap.set(edge.id, edge)
+    })
+
+    return Array.from(edgeMap.values())
+  })
   const collaborationHistory = ref([])
   const lastEventTime = ref(null)
   const activeCollaborations = ref(0)

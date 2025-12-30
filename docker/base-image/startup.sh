@@ -38,8 +38,22 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
             git config user.email "trinity-agent@ability.ai"
             git config user.name "Trinity Agent (${AGENT_NAME:-unknown})"
 
-            # Create and checkout working branch if specified
-            if [ -n "${GIT_WORKING_BRANCH}" ]; then
+            # SOURCE MODE: Track the source branch directly (unidirectional pull only)
+            # This is for agents that pull updates from GitHub but don't push back
+            if [ "${GIT_SOURCE_MODE}" = "true" ]; then
+                SOURCE_BRANCH="${GIT_SOURCE_BRANCH:-main}"
+                echo "Source mode enabled - tracking branch: ${SOURCE_BRANCH}"
+
+                # Checkout the source branch
+                git checkout "${SOURCE_BRANCH}" 2>&1 || git checkout -b "${SOURCE_BRANCH}" "origin/${SOURCE_BRANCH}" 2>&1 || echo "Warning: Could not checkout ${SOURCE_BRANCH}"
+
+                # Set up tracking for pull operations
+                git branch --set-upstream-to="origin/${SOURCE_BRANCH}" "${SOURCE_BRANCH}" 2>&1 || true
+
+                echo "Source mode ready - pull updates with 'git pull'"
+
+            # LEGACY WORKING BRANCH MODE: Create unique working branch for bidirectional sync
+            elif [ -n "${GIT_WORKING_BRANCH}" ]; then
                 echo "Creating working branch: ${GIT_WORKING_BRANCH}"
 
                 # Check if branch exists on remote

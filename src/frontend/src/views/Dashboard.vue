@@ -433,6 +433,7 @@ import { useObservabilityStore } from '@/stores/observability'
 import { storeToRefs } from 'pinia'
 import AgentNode from '@/components/AgentNode.vue'
 import ObservabilityPanel from '@/components/ObservabilityPanel.vue'
+import { useNotification } from '@/composables/useNotification'
 
 // Import Vue Flow styles
 import '@vue-flow/core/dist/style.css'

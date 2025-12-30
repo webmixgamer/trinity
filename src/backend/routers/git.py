@@ -271,6 +271,8 @@ async def get_git_config(
         "git_enabled": True,
         "github_repo": config.github_repo,
         "working_branch": config.working_branch,
+        "source_branch": config.source_branch,
+        "source_mode": config.source_mode,
         "instance_id": config.instance_id,
         "created_at": config.created_at.isoformat(),
         "last_sync_at": config.last_sync_at.isoformat() if config.last_sync_at else None,

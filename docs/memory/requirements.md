@@ -474,31 +474,40 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - [x] Schedule CRUD via REST API
   - [x] WebSocket broadcasts for execution events
 
-#### 9.2 GitHub-Native Agents (Bidirectional Sync)
+#### 9.2 GitHub-Native Agents (GitHub Sync)
 - **Status**: ✅ Implemented
 - **Priority**: High
-- **Description**: Agents created from GitHub repos can sync state back to GitHub
-- **Architecture**:
-  - Branch per instance: `trinity/{agent-name}/{instance-id}` (not main)
-  - Main branch = template source of truth (read-only)
-  - Working branch = agent instance state (platform-controlled)
-  - Platform controls all commits (agent has no say)
-  - Force push on conflicts (platform always wins)
+- **Description**: Agents created from GitHub repos can sync with GitHub in two modes
+- **Architecture** (Updated 2025-12-30):
+  - **Source Mode (Default)**: Pull-only sync from source branch (e.g., `main`)
+    - Agent tracks source branch directly
+    - "Pull" button fetches latest changes
+    - No push back to GitHub (unidirectional)
+    - Ideal for local development → GitHub → Trinity workflow
+  - **Working Branch Mode (Legacy)**: Bidirectional sync
+    - Branch per instance: `trinity/{agent-name}/{instance-id}`
+    - Platform controls all commits
+    - Force push on conflicts
+  - Large files: `content/` folder is auto-gitignored for videos/audio/images
 - **Acceptance Criteria**:
   - [x] Architecture planned (docs/GITHUB_NATIVE_AGENTS.md)
   - [x] GitHub PAT configured (reuse existing for clone/push)
   - [x] Clone on agent creation (existing template system)
-  - [x] Create working branch on agent creation from GitHub template
-  - [x] Store branch name and repo URL in database
-  - [x] Database schema: `agent_git_config` table
-  - [x] "Sync to GitHub" button in agent detail UI
+  - [x] Source mode: Stay on source branch, enable pull-only (2025-12-30)
+  - [x] Working branch mode: Create branch on agent creation (legacy)
+  - [x] Store branch name, repo URL, source_branch, source_mode in database
+  - [x] Database schema: `agent_git_config` table with source_branch, source_mode
+  - [x] "Pull" button in agent detail UI (blue, all modes)
+  - [x] "Sync to GitHub" button in agent detail UI (orange, working branch mode)
+  - [x] POST `/api/agents/{name}/git/pull` endpoint
   - [x] POST `/api/agents/{name}/git/sync` endpoint
-  - [x] Git operations: stage configured paths, commit, force push
+  - [x] Git operations: stage configured paths, commit, force push (working branch mode)
   - [x] Auto-generated commit messages with timestamp
   - [x] Track last commit SHA and push timestamp
   - [x] "Git" tab in agent detail page
   - [x] Show: repo, branch, last sync time, commit history
   - [x] Sync status indicator (synced/pending changes)
+  - [x] Content folder convention for large files (`content/` gitignored)
 
 #### 9.3 Agent Info Display
 - **Status**: ✅ Implemented

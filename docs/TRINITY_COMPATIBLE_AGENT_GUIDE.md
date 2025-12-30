@@ -322,9 +322,22 @@ platforms:
   - local
 
 # === GIT CONFIGURATION ===
+# Two sync modes are available:
+#
+# SOURCE MODE (default): Pull-only from GitHub
+#   - Agent tracks the source branch (main) directly
+#   - Changes are pulled from GitHub, never pushed back
+#   - Use when developing locally and pushing to GitHub
+#   - git.push_enabled is ignored in this mode
+#
+# WORKING BRANCH MODE (legacy): Bidirectional sync
+#   - Agent creates unique branch: trinity/{agent}/{instance-id}
+#   - Changes can be pushed back to GitHub
+#   - Set source_mode=false when creating agent to enable
+#
 git:
-  push_enabled: true
-  commit_paths:
+  push_enabled: true              # Only applies to Working Branch Mode
+  commit_paths:                   # Paths auto-committed on sync (Working Branch Mode only)
     - memory/
     - plans/
     - outputs/
@@ -1061,6 +1074,7 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration |
 | 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
 | 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |
 | 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |

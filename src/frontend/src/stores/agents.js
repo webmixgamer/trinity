@@ -289,6 +289,25 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    async addAgentPermission(sourceAgent, targetAgent) {
+      const authStore = useAuthStore()
+      const response = await axios.post(
+        `/api/agents/${sourceAgent}/permissions/${targetAgent}`,
+        {},
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
+    async removeAgentPermission(sourceAgent, targetAgent) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(
+        `/api/agents/${sourceAgent}/permissions/${targetAgent}`,
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
     // Session Activity Actions
     async getSessionActivity(name) {
       const authStore = useAuthStore()

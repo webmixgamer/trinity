@@ -390,10 +390,17 @@ Agent writes to `workspace/metrics.json`, Trinity displays in UI.
 
 #### 11. Git Sync
 
-Bidirectional GitHub synchronization for agents from GitHub templates:
-- Push workspace changes to working branch
-- Pull updates from template
-- Track sync status in UI
+GitHub synchronization for agents created from GitHub templates:
+
+**Source Mode (Default)**:
+- Agent tracks source branch (`main` by default)
+- Pull updates on demand via "Pull" button
+- Ideal for local development → GitHub → Trinity workflow
+- Large files go in `content/` folder (auto-gitignored)
+
+**Working Branch Mode (Legacy)**:
+- Push workspace changes to unique working branch (`trinity/{agent}/{id}`)
+- Bidirectional sync via "Sync" button
 
 ### Capability Summary Table
 

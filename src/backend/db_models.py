@@ -159,8 +159,10 @@ class AgentGitConfig(BaseModel):
     id: str
     agent_name: str
     github_repo: str  # e.g., "Abilityai/agent-ruby"
-    working_branch: str  # e.g., "trinity/my-agent/abc123"
+    working_branch: str  # e.g., "trinity/my-agent/abc123" (legacy) or "main" (source mode)
     instance_id: str  # Unique instance identifier
+    source_branch: str = "main"  # Branch to pull from (default: main)
+    source_mode: bool = False  # If True, track source_branch directly (no working branch)
     created_at: datetime
     last_sync_at: Optional[datetime] = None
     last_commit_sha: Optional[str] = None

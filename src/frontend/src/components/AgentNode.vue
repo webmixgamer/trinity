@@ -12,11 +12,11 @@
     ]"
     style="width: 280px; min-height: 160px;"
   >
-    <!-- Connection handles -->
+    <!-- Connection handles - styled for permission edge creation -->
     <Handle
       type="target"
       :position="Position.Top"
-      class="w-3 h-3 border-2 bg-gray-300 dark:bg-gray-600 border-gray-100 dark:border-gray-500"
+      class="!w-4 !h-4 !border-2 !bg-blue-400 !border-white dark:!border-gray-800 hover:!bg-blue-500 hover:!scale-125 !transition-all !duration-150"
     />
 
     <!-- Agent info -->

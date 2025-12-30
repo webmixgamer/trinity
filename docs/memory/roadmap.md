@@ -124,23 +124,28 @@
 
 ## Completed Phases
 
-### Phase 7: GitHub Bidirectional Sync
-✅ **Completed: 2025-11-29**
+### Phase 7: GitHub Sync (Source Mode + Working Branch Mode)
+✅ **Completed: 2025-11-29, Updated: 2025-12-30**
 
 **Architecture Document**: `docs/GITHUB_NATIVE_AGENTS.md`
 
 | Status | Item | Completed |
 |--------|------|-----------|
 | ✅ | Database schema: `agent_git_config` table | 2025-11-29 |
-| ✅ | Create working branch on GitHub-template agent creation | 2025-11-29 |
+| ✅ | Working branch mode: Create branch on GitHub-template creation | 2025-11-29 |
 | ✅ | Store repo URL, branch name, instance ID in database | 2025-11-29 |
-| ✅ | POST `/api/agents/{name}/git/sync` endpoint | 2025-11-29 |
+| ✅ | POST `/api/agents/{name}/git/sync` endpoint (push) | 2025-11-29 |
+| ✅ | POST `/api/agents/{name}/git/pull` endpoint | 2025-11-29 |
 | ✅ | Git operations: stage, commit, force push | 2025-11-29 |
 | ✅ | "Sync to GitHub" button in agent detail UI | 2025-11-29 |
 | ✅ | Track last commit SHA and push timestamp | 2025-11-29 |
 | ✅ | "Git" tab in agent detail page | 2025-11-29 |
 | ✅ | Show repo, branch, last sync, commit history | 2025-11-29 |
 | ✅ | Sync status indicator | 2025-11-29 |
+| ✅ | **Source mode (default)**: Track source branch, pull-only | 2025-12-30 |
+| ✅ | **Pull button**: Blue "Pull" button in agent header | 2025-12-30 |
+| ✅ | **source_branch/source_mode fields**: DB schema update | 2025-12-30 |
+| ✅ | **Content folder convention**: `content/` gitignored for large files | 2025-12-30 |
 
 ### Phase 6: Agent Scheduling & Autonomy
 ✅ **Completed: 2025-11-28**

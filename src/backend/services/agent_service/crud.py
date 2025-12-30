@@ -263,7 +263,14 @@ async def create_agent_internal(
         env_vars['GITHUB_PAT'] = github_pat_for_agent
         # Phase 7: Enable git sync for GitHub-native agents
         env_vars['GIT_SYNC_ENABLED'] = 'true'
-        env_vars['GIT_WORKING_BRANCH'] = git_working_branch
+
+        # Source mode (default): Track source branch directly for pull-only sync
+        # Legacy mode: Create a unique working branch for bidirectional sync
+        if config.source_mode:
+            env_vars['GIT_SOURCE_MODE'] = 'true'
+            env_vars['GIT_SOURCE_BRANCH'] = config.source_branch or 'main'
+        else:
+            env_vars['GIT_WORKING_BRANCH'] = git_working_branch
 
     for server, creds in agent_credentials.items():
         server_upper = server.upper().replace('-', '_')
@@ -419,11 +426,15 @@ async def create_agent_internal(
             # Phase 7: Create git config for GitHub-native agents
             if github_repo_for_agent:
                 try:
+                    # In source mode, working_branch = source_branch (no separate working branch)
+                    effective_working_branch = config.source_branch if config.source_mode else git_working_branch
                     db.create_git_config(
                         agent_name=config.name,
                         github_repo=github_repo_for_agent,
-                        working_branch=git_working_branch,
-                        instance_id=git_instance_id
+                        working_branch=effective_working_branch,
+                        instance_id=git_instance_id,
+                        source_branch=config.source_branch or "main",
+                        source_mode=config.source_mode
                     )
                 except Exception as e:
                     logger.warning(f"Failed to create git config for {config.name}: {e}")

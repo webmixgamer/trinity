@@ -71,12 +71,15 @@ class ScheduleOperations:
     @staticmethod
     def _row_to_git_config(row) -> AgentGitConfig:
         """Convert an agent_git_config row to an AgentGitConfig model."""
+        row_keys = row.keys() if hasattr(row, 'keys') else []
         return AgentGitConfig(
             id=row["id"],
             agent_name=row["agent_name"],
             github_repo=row["github_repo"],
             working_branch=row["working_branch"],
             instance_id=row["instance_id"],
+            source_branch=row["source_branch"] if "source_branch" in row_keys else "main",
+            source_mode=bool(row["source_mode"]) if "source_mode" in row_keys else False,
             created_at=datetime.fromisoformat(row["created_at"]),
             last_sync_at=datetime.fromisoformat(row["last_sync_at"]) if row["last_sync_at"] else None,
             last_commit_sha=row["last_commit_sha"],
@@ -440,8 +443,27 @@ class ScheduleOperations:
     # Git Configuration Management (Phase 7: GitHub Bidirectional Sync)
     # =========================================================================
 
-    def create_git_config(self, agent_name: str, github_repo: str, working_branch: str, instance_id: str, sync_paths: List[str] = None) -> Optional[AgentGitConfig]:
-        """Create git configuration for an agent."""
+    def create_git_config(
+        self,
+        agent_name: str,
+        github_repo: str,
+        working_branch: str,
+        instance_id: str,
+        sync_paths: List[str] = None,
+        source_branch: str = "main",
+        source_mode: bool = False
+    ) -> Optional[AgentGitConfig]:
+        """Create git configuration for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            github_repo: GitHub repository (e.g., "owner/repo")
+            working_branch: Branch for Trinity to work on (legacy mode) or same as source_branch
+            instance_id: Unique instance identifier
+            sync_paths: Paths to sync (default: memory/, outputs/, etc.)
+            source_branch: Branch to pull updates from (default: "main")
+            source_mode: If True, track source_branch directly without creating a working branch
+        """
         config_id = self._generate_id()
         now = datetime.utcnow().isoformat()
         sync_paths_json = json.dumps(sync_paths) if sync_paths else json.dumps(["memory/", "outputs/", "CLAUDE.md", ".claude/"])
@@ -452,9 +474,10 @@ class ScheduleOperations:
                 cursor.execute("""
                     INSERT INTO agent_git_config (
                         id, agent_name, github_repo, working_branch, instance_id,
-                        created_at, sync_enabled, sync_paths
-                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-                """, (config_id, agent_name, github_repo, working_branch, instance_id, now, sync_paths_json))
+                        source_branch, source_mode, created_at, sync_enabled, sync_paths
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (config_id, agent_name, github_repo, working_branch, instance_id,
+                      source_branch, 1 if source_mode else 0, now, sync_paths_json))
                 conn.commit()
 
                 return AgentGitConfig(
@@ -463,6 +486,8 @@ class ScheduleOperations:
                     github_repo=github_repo,
                     working_branch=working_branch,
                     instance_id=instance_id,
+                    source_branch=source_branch,
+                    source_mode=source_mode,
                     created_at=datetime.fromisoformat(now),
                     sync_enabled=True,
                     sync_paths=sync_paths_json

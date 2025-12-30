@@ -21,6 +21,9 @@ class AgentConfig(BaseModel):
     # GitHub-native agent support
     github_repo: Optional[str] = None  # GitHub repo (e.g., "Abilityai/agent-ruby")
     github_credential_id: Optional[str] = None  # Credential ID for GitHub PAT
+    # GitHub source mode (unidirectional pull from a branch)
+    source_branch: Optional[str] = "main"  # Branch to pull updates from
+    source_mode: Optional[bool] = True  # True = track source branch (pull only), False = create working branch
     # Multi-runtime support
     runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
     runtime_model: Optional[str] = None  # Model override (e.g., "sonnet-4.5", "gemini-2.5-pro")
