@@ -558,6 +558,164 @@ GOOGLE_ACCESS_TOKEN="ya29...."
 
 ---
 
+## Flow 7: File-Type Credentials
+
+> **Added 2025-12-30**: Support for injecting entire files (e.g., service account JSON) into agents at specified paths.
+
+### Overview
+
+File-type credentials allow injecting entire files (JSON, YAML, PEM, etc.) into agents at specific paths. This is useful for:
+- Google Cloud service account JSON files
+- AWS credentials files
+- SSL/TLS certificates and keys
+- Custom configuration files
+
+### Frontend (`src/frontend/src/views/Credentials.vue`)
+
+```javascript
+// Type selector includes "file" option
+<option value="file">File (JSON, etc.)</option>
+
+// File-specific fields
+newCredential = {
+  type: 'file',
+  file_path: '.config/gcloud/service-account.json',  // Target path in agent
+  file_content: '{"type": "service_account", ...}'   // File content
+}
+
+// createCredential sends file_path separately
+const requestBody = {
+  name: 'GCP Service Account',
+  service: 'google',
+  type: 'file',
+  credentials: { content: fileContent },
+  file_path: '.config/gcloud/service-account.json'
+}
+```
+
+### Backend Model (`src/backend/credentials.py`)
+
+```python
+class CredentialCreate(BaseModel):
+    name: str
+    service: str
+    type: str  # Now includes "file"
+    credentials: Dict  # For files: {"content": "...file content..."}
+    file_path: Optional[str] = None  # Target path relative to /home/developer/
+
+class CredentialType(str):
+    FILE = "file"  # New type for file-based credentials
+```
+
+### Redis Storage
+
+```
+credentials:{id}:metadata  -> HASH {
+    ...,
+    type: "file",
+    file_path: ".config/gcloud/service-account.json"
+}
+credentials:{id}:secret    -> STRING '{"content": "...entire file content..."}'
+```
+
+### Retrieval (`src/backend/credentials.py:264-298`)
+
+```python
+def get_file_credentials(self, user_id: str) -> Dict[str, str]:
+    """Get all file-type credentials for a user.
+    Returns: {"file_path": "file_content", ...}
+    """
+    file_credentials = {}
+    for cred_id in user_credentials:
+        if metadata.get("type") == "file" and metadata.get("file_path"):
+            secret = get_credential_secret(cred_id)
+            file_credentials[file_path] = secret.get("content", "")
+    return file_credentials
+```
+
+### Agent Creation Injection (`src/backend/services/agent_service/crud.py`)
+
+```python
+# Get file credentials during agent creation
+file_credentials = credential_manager.get_file_credentials(current_user.username)
+
+# Write to credential-files subdirectory
+for filepath, content in file_credentials.items():
+    file_path = cred_files_dir / "credential-files" / filepath
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(content)
+```
+
+### Startup Script (`docker/base-image/startup.sh`)
+
+```bash
+# Copy credential files from credential-files/ subdirectory
+if [ -d "/generated-creds/credential-files" ]; then
+    for file in $(find /generated-creds/credential-files -type f); do
+        rel_path="${file#/generated-creds/credential-files/}"
+        mkdir -p "/home/developer/$(dirname $rel_path)"
+        cp "$file" "/home/developer/$rel_path"
+        chmod 600 "/home/developer/$rel_path"  # Restrictive permissions
+    done
+fi
+```
+
+### Hot-Reload (`src/backend/routers/credentials.py`)
+
+```python
+# Get file credentials and send to agent
+file_credentials = credential_manager.get_file_credentials(current_user.username)
+
+response = await client.post(
+    f"http://agent-{agent_name}:8000/api/credentials/update",
+    json={
+        "credentials": credentials,
+        "mcp_config": mcp_config,
+        "files": file_credentials  # New field
+    }
+)
+```
+
+### Agent-Server Handler (`docker/base-image/agent_server/routers/credentials.py`)
+
+```python
+class CredentialUpdateRequest(BaseModel):
+    credentials: dict
+    mcp_config: Optional[str] = None
+    files: Optional[Dict[str, str]] = None  # New: {path: content}
+
+@router.post("/api/credentials/update")
+async def update_credentials(request: CredentialUpdateRequest):
+    # ... existing .env and .mcp.json handling ...
+
+    # Write file credentials
+    if request.files:
+        for file_path, content in request.files.items():
+            target_path = Path("/home/developer") / file_path.lstrip("/")
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(content)
+            target_path.chmod(0o600)  # Owner read/write only
+```
+
+### Example: Google Service Account
+
+1. **Create credential** via UI:
+   - Name: `GCP Service Account`
+   - Service: `google`
+   - Type: `File (JSON, etc.)`
+   - File Path: `.config/gcloud/application_default_credentials.json`
+   - File Content: `{"type": "service_account", "project_id": "...", ...}`
+
+2. **Result**: File injected at `/home/developer/.config/gcloud/application_default_credentials.json`
+
+3. **Agent can use**:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS="/home/developer/.config/gcloud/application_default_credentials.json"
+   gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+   ```
+
+---
+
 ## Side Effects
 
 | Action | Audit Event |
@@ -695,8 +853,8 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 ---
 
-**Last Updated**: 2025-12-28
-**Status**: ✅ Working (all flows operational)
+**Last Updated**: 2025-12-30
+**Status**: Verified - All file paths and line numbers confirmed accurate
 **Issues**: None - credential system fully functional with Redis persistence
 
 ---
@@ -705,6 +863,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | **File-type credentials**: Added support for injecting entire files (JSON, YAML, PEM, etc.) into agents at specified paths. New credential type "file" with file_path field. Files injected at agent creation and via hot-reload. Use cases: GCP service accounts, AWS credentials, SSL certificates. |
 | 2025-12-28 | **Bug fix: Hot-reload now saves to Redis**. Previously, hot-reload only pushed credentials to the agent's .env file but did NOT persist them to Redis. Credentials were lost on agent restart. Now hot-reload uses `import_credential_with_conflict_resolution()` to save each credential to Redis before pushing to the agent. Response includes `saved_to_redis` array with status (created/reused/renamed). |
 | 2025-12-19 | **Path/line number updates**: Updated all file references for modular architecture. Agent-server now at `docker/base-image/agent_server/routers/credentials.py`. Backend routers at `src/backend/routers/credentials.py`. Updated helpers to `src/backend/utils/helpers.py`. Added store action documentation. Verified all line numbers. |
 | 2025-12-07 | **Credentials.vue cleanup**: Removed "Connect Services" OAuth provider section (Google, Slack, GitHub, Notion buttons). Removed unused code: `oauthProviders` ref, `fetchOAuthProviders()`, `startOAuth()`, `getProviderIcon()`. Updated empty state text. OAuth flows remain available via backend API. |

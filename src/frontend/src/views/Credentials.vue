@@ -170,6 +170,9 @@ CLOUDINARY_API_KEY=your-cloudinary-key"
                       </span>
                     </div>
                     <p v-if="cred.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ cred.description }}</p>
+                    <p v-if="cred.type === 'file' && cred.file_path" class="mt-1 text-xs text-indigo-500 dark:text-indigo-400 font-mono">
+                      → {{ cred.file_path }}
+                    </p>
                     <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                       Created {{ formatDate(cred.created_at) }}
                     </p>
@@ -242,6 +245,7 @@ CLOUDINARY_API_KEY=your-cloudinary-key"
                   <option value="api_key">API Key</option>
                   <option value="token">Token</option>
                   <option value="basic_auth">Basic Auth</option>
+                  <option value="file">File (JSON, etc.)</option>
                 </select>
               </div>
 
@@ -278,6 +282,52 @@ CLOUDINARY_API_KEY=your-cloudinary-key"
                   type="password"
                   class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 />
+              </div>
+
+              <div v-if="newCredential.type === 'file'">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">File Path in Agent</label>
+                <input
+                  v-model="newCredential.file_path"
+                  type="text"
+                  class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                  placeholder=".config/gcloud/service-account.json"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Path relative to /home/developer/ where the file will be placed
+                </p>
+
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mt-3">File Content</label>
+                <div class="mt-1 flex items-center gap-2">
+                  <input
+                    type="file"
+                    ref="fileInput"
+                    @change="handleFileUpload"
+                    class="hidden"
+                    accept=".json,.yaml,.yml,.pem,.key,.txt"
+                  />
+                  <button
+                    type="button"
+                    @click="$refs.fileInput.click()"
+                    class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 shadow-sm text-xs font-medium rounded text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                  >
+                    <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload File
+                  </button>
+                  <span v-if="newCredential.file_content" class="text-xs text-green-600 dark:text-green-400">
+                    ✓ File loaded ({{ newCredential.file_content.length }} chars)
+                  </span>
+                </div>
+                <textarea
+                  v-model="newCredential.file_content"
+                  rows="6"
+                  class="mt-2 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                  placeholder='{"type": "service_account", "project_id": "...", ...}'
+                ></textarea>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Upload a file or paste the content directly. Supports JSON, YAML, PEM, and text files.
+                </p>
               </div>
 
               <div>
@@ -356,6 +406,8 @@ const newCredential = ref({
   token: '',
   username: '',
   password: '',
+  file_path: '',
+  file_content: '',
   description: ''
 })
 
@@ -435,12 +487,24 @@ const copyEnvTemplate = async () => {
   }
 }
 
+const handleFileUpload = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      newCredential.value.file_content = e.target.result
+    }
+    reader.readAsText(file)
+  }
+}
+
 const createCredential = async () => {
   creating.value = true
-  
+
   try {
     let credentials_data = {}
-    
+    let file_path = null
+
     if (newCredential.value.type === 'api_key') {
       credentials_data = { api_key: newCredential.value.api_key }
     } else if (newCredential.value.type === 'token') {
@@ -450,23 +514,34 @@ const createCredential = async () => {
         username: newCredential.value.username,
         password: newCredential.value.password
       }
+    } else if (newCredential.value.type === 'file') {
+      // File-type credential: content stored in credentials, path stored separately
+      credentials_data = { content: newCredential.value.file_content }
+      file_path = newCredential.value.file_path
     }
-    
+
+    const requestBody = {
+      name: newCredential.value.name,
+      service: newCredential.value.service,
+      type: newCredential.value.type,
+      credentials: credentials_data,
+      description: newCredential.value.description
+    }
+
+    // Add file_path for file-type credentials
+    if (file_path) {
+      requestBody.file_path = file_path
+    }
+
     const response = await fetch('/api/credentials', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authStore.token}`
       },
-      body: JSON.stringify({
-        name: newCredential.value.name,
-        service: newCredential.value.service,
-        type: newCredential.value.type,
-        credentials: credentials_data,
-        description: newCredential.value.description
-      })
+      body: JSON.stringify(requestBody)
     })
-    
+
     if (response.ok) {
       showCreateModal.value = false
       newCredential.value = {
@@ -477,6 +552,8 @@ const createCredential = async () => {
         token: '',
         username: '',
         password: '',
+        file_path: '',
+        file_content: '',
         description: ''
       }
       await fetchCredentials()

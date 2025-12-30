@@ -12,6 +12,7 @@ class CredentialType(str):
     OAUTH2 = "oauth2"
     BASIC_AUTH = "basic_auth"
     TOKEN = "token"
+    FILE = "file"  # File-based credential (e.g., service account JSON)
 
 
 # MCP API Key models have been moved to database.py for SQLite persistence
@@ -29,6 +30,7 @@ class CredentialCreate(BaseModel):
     type: str
     credentials: Dict
     description: Optional[str] = None
+    file_path: Optional[str] = None  # For type="file": target path in agent (e.g., ".config/gcloud/sa.json")
 
 class CredentialUpdate(BaseModel):
     name: Optional[str] = None
@@ -41,6 +43,7 @@ class Credential(BaseModel):
     service: str
     type: str
     description: Optional[str] = None
+    file_path: Optional[str] = None  # For file-type credentials
     created_at: datetime
     updated_at: datetime
     status: str = "active"
@@ -115,6 +118,7 @@ class CredentialManager:
             "service": cred_data.service,
             "type": cred_data.type,
             "description": cred_data.description or "",
+            "file_path": cred_data.file_path or "",  # For file-type credentials
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
             "status": "active",
@@ -140,6 +144,7 @@ class CredentialManager:
             service=metadata["service"],
             type=metadata["type"],
             description=metadata.get("description"),
+            file_path=metadata.get("file_path") or None,
             created_at=datetime.fromisoformat(metadata["created_at"]),
             updated_at=datetime.fromisoformat(metadata["updated_at"]),
             status=metadata["status"]
@@ -252,12 +257,48 @@ class CredentialManager:
         cred = self.get_credential(cred_id, user_id)
         if not cred:
             return False
-        
+
         cred_key = f"agent:{agent_name}:mcp:{mcp_server}:credential_id"
         self.redis_client.set(cred_key, cred_id)
-        
+
         return True
-    
+
+    def get_file_credentials(self, user_id: str) -> Dict[str, str]:
+        """
+        Get all file-type credentials for a user.
+
+        Returns a dict mapping file paths to file contents.
+        Used for injecting credential files into agent containers.
+
+        Example:
+            {
+                ".config/gcloud/service-account.json": '{"type": "service_account", ...}',
+                ".config/aws/credentials": '[default]\naws_access_key_id=...'
+            }
+        """
+        file_credentials = {}
+        user_creds_key = f"user:{user_id}:credentials"
+        cred_ids = self.redis_client.smembers(user_creds_key)
+
+        for cred_id in cred_ids:
+            metadata_key = f"{self.credentials_prefix}{cred_id}:metadata"
+            metadata = self.redis_client.hgetall(metadata_key)
+
+            # Only process file-type credentials with a valid file_path
+            if metadata.get("type") == "file" and metadata.get("file_path"):
+                file_path = metadata["file_path"]
+                secret_key = f"{self.credentials_prefix}{cred_id}:secret"
+                secret_data = self.redis_client.get(secret_key)
+
+                if secret_data:
+                    secret = json.loads(secret_data)
+                    # File content is stored in the "content" key
+                    content = secret.get("content", "")
+                    if content:
+                        file_credentials[file_path] = content
+
+        return file_credentials
+
     def create_oauth_state(self, user_id: str, provider: str, redirect_uri: str) -> str:
         state = secrets.token_urlsafe(32)
         state_key = f"{self.oauth_state_prefix}{state}"

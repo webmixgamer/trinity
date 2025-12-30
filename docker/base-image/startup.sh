@@ -181,6 +181,12 @@ if [ -d "/generated-creds" ]; then
     for file in $(find /generated-creds -type f ! -name ".mcp.json" ! -name ".env" 2>/dev/null); do
         # Get relative path from /generated-creds
         rel_path="${file#/generated-creds/}"
+
+        # Skip credential-files directory (handled separately below)
+        if [[ "$rel_path" == credential-files/* ]]; then
+            continue
+        fi
+
         target_dir=$(dirname "$rel_path")
 
         if [ "$target_dir" != "." ]; then
@@ -190,6 +196,27 @@ if [ -d "/generated-creds" ]; then
         echo "  Copying $rel_path..."
         cp "$file" "/home/developer/$rel_path" 2>/dev/null || true
     done
+
+    # Copy credential files from credential-files/ subdirectory
+    # These are file-type credentials (e.g., service account JSON files)
+    # The path structure inside credential-files/ maps to the target path in /home/developer/
+    if [ -d "/generated-creds/credential-files" ]; then
+        echo "Copying credential files..."
+        for file in $(find /generated-creds/credential-files -type f 2>/dev/null); do
+            # Get path relative to credential-files/
+            rel_path="${file#/generated-creds/credential-files/}"
+            target_dir=$(dirname "$rel_path")
+
+            if [ "$target_dir" != "." ]; then
+                mkdir -p "/home/developer/$target_dir"
+            fi
+
+            echo "  Copying credential file: $rel_path"
+            cp "$file" "/home/developer/$rel_path" 2>/dev/null || true
+            # Set restrictive permissions on credential files
+            chmod 600 "/home/developer/$rel_path" 2>/dev/null || true
+        done
+    fi
 
     echo "Credential files copied"
 fi

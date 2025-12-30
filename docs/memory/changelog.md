@@ -1,3 +1,43 @@
+### 2025-12-30 15:00:00
+📁 **File-Type Credentials**
+
+**Feature**: Inject entire credential files (JSON, YAML, PEM, etc.) into agents at specified paths.
+
+**Problem Solved**: Service account JSON files and other file-based credentials couldn't be injected directly. Users had to break them into individual environment variables.
+
+**Implementation**:
+- New credential type: `file` with `file_path` field
+- Files stored in Redis: `{content: "...file content..."}`
+- Injected at agent creation via `/generated-creds/credential-files/`
+- Hot-reload support via agent-server endpoint
+- Frontend UI with file upload or paste
+
+**Example - Google Service Account**:
+```
+Name: GCP Service Account
+Type: File (JSON, etc.)
+Service: google
+File Path: .config/gcloud/application_default_credentials.json
+Content: {"type": "service_account", "project_id": "...", ...}
+```
+
+**Agent Usage**:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/home/developer/.config/gcloud/application_default_credentials.json"
+```
+
+**Files Modified**:
+- `src/backend/credentials.py` - Added `file` type, `file_path` field, `get_file_credentials()`
+- `src/backend/services/agent_service/crud.py` - Write file credentials at agent creation
+- `src/backend/routers/credentials.py` - Include files in hot-reload
+- `docker/base-image/startup.sh` - Copy credential files to target paths
+- `docker/base-image/agent_server/models.py` - Added `files` field to request model
+- `docker/base-image/agent_server/routers/credentials.py` - Write files on hot-reload
+- `src/frontend/src/views/Credentials.vue` - UI for file-type credentials
+- `docs/memory/feature-flows/credential-injection.md` - Flow 7 documentation
+
+---
+
 ### 2025-12-30 13:30:00
 🔗 **Dynamic GitHub Templates via MCP**
 

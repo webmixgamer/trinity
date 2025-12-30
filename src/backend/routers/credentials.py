@@ -533,13 +533,17 @@ async def reload_agent_credentials(
         generated_files = generate_credential_files(template_data, agent_credentials, agent_name)
         mcp_config = generated_files.get(".mcp.json")
 
+    # Get file-type credentials for the user (e.g., service account JSON files)
+    file_credentials = credential_manager.get_file_credentials(current_user.username)
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"http://agent-{agent_name}:8000/api/credentials/update",
                 json={
                     "credentials": agent_credentials,
-                    "mcp_config": mcp_config
+                    "mcp_config": mcp_config,
+                    "files": file_credentials if file_credentials else None
                 },
                 timeout=30.0
             )
@@ -676,6 +680,9 @@ async def hot_reload_credentials(
             "original": result.get("original")
         })
 
+    # Get file-type credentials for the user (e.g., service account JSON files)
+    file_credentials = credential_manager.get_file_credentials(current_user.username)
+
     # Push credentials to the running agent
     try:
         async with httpx.AsyncClient() as client:
@@ -683,7 +690,8 @@ async def hot_reload_credentials(
                 f"http://agent-{agent_name}:8000/api/credentials/update",
                 json={
                     "credentials": credentials,
-                    "mcp_config": None
+                    "mcp_config": None,
+                    "files": file_credentials if file_credentials else None
                 },
                 timeout=30.0
             )

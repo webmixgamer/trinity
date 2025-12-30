@@ -41,6 +41,7 @@ class ModelRequest(BaseModel):
 class CredentialUpdateRequest(BaseModel):
     credentials: dict  # {"VAR_NAME": "value", ...}
     mcp_config: Optional[str] = None  # Pre-generated .mcp.json content (if provided)
+    files: Optional[Dict[str, str]] = None  # File-type credentials: {"path": "content", ...}
 
 
 # ============================================================================

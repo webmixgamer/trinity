@@ -189,13 +189,30 @@ async def create_agent_internal(
             template_base_path=github_template_path
         )
 
+    # Get file-type credentials (e.g., service account JSON files)
+    file_credentials = credential_manager.get_file_credentials(current_user.username)
+    if file_credentials:
+        logger.info(f"Injecting {len(file_credentials)} credential file(s) for agent {config.name}")
+
     cred_files_dir = Path(f"/tmp/agent-{config.name}-creds")
     cred_files_dir.mkdir(exist_ok=True)
+
+    # Write template-generated files (.env, .mcp.json, etc.)
     for filepath, content in generated_files.items():
         file_path = cred_files_dir / filepath
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w") as f:
             f.write(content)
+
+    # Write file-type credentials to their target paths
+    # These will be mounted at /generated-creds/ and copied by startup.sh
+    for filepath, content in file_credentials.items():
+        # Store in a special "credential-files" subdirectory to distinguish from other generated files
+        file_path = cred_files_dir / "credential-files" / filepath
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+        logger.debug(f"Wrote credential file: {filepath}")
 
     agent_config = {
         "agent": {
