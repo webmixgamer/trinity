@@ -350,9 +350,9 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async syncToGithub(name, message = null, paths = null) {
+    async syncToGithub(name, { message = null, paths = null, strategy = 'normal' } = {}) {
       const authStore = useAuthStore()
-      const payload = {}
+      const payload = { strategy }
       if (message) payload.message = message
       if (paths) payload.paths = paths
       const response = await axios.post(`/api/agents/${name}/git/sync`,
@@ -362,11 +362,12 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async pullFromGithub(name) {
+    async pullFromGithub(name, { strategy = 'clean' } = {}) {
       const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/git/pull`, {}, {
-        headers: authStore.authHeader
-      })
+      const response = await axios.post(`/api/agents/${name}/git/pull`,
+        { strategy },
+        { headers: authStore.authHeader }
+      )
       return response.data
     },
 

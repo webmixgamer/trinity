@@ -299,18 +299,106 @@ Or, if you want to preserve agent state:
 
 ---
 
+## Conflict Resolution
+
+Both pull and sync operations support automatic conflict detection and resolution strategies.
+
+### Pull Conflict Strategies
+
+When a pull operation fails due to local changes conflicting with remote:
+
+| Strategy | Description | When to Use |
+|----------|-------------|-------------|
+| `clean` (default) | Simple pull with rebase. Fails if conflicts. | When you have no local changes |
+| `stash_reapply` | Stash local changes, pull, reapply stash | When you want to keep local changes |
+| `force_reset` | Hard reset to remote, discard all local changes | When remote is source of truth |
+
+### Sync (Push) Conflict Strategies
+
+When a push operation fails because remote has newer changes:
+
+| Strategy | Description | When to Use |
+|----------|-------------|-------------|
+| `normal` (default) | Stage, commit, push. Fails if remote has changes. | When you expect clean push |
+| `pull_first` | Pull latest first, then stage, commit, push | Standard workflow with concurrent changes |
+| `force_push` | Force push, overwriting remote | When local is source of truth |
+
+### Conflict Resolution UI
+
+When a conflict is detected (HTTP 409 response), the UI shows a modal with options:
+
+```
+┌─────────────────────────────────────────────┐
+│ Pull Conflict                               │
+│                                             │
+│ Pull failed: merge conflict detected        │
+│                                             │
+│ ┌─────────────────────────────────────────┐ │
+│ │ Stash & Reapply (Recommended)           │ │
+│ │ Save local changes, pull, reapply       │ │
+│ └─────────────────────────────────────────┘ │
+│                                             │
+│ ┌─────────────────────────────────────────┐ │
+│ │ Force Replace Local                     │ │
+│ │ Discard all local changes (destructive) │ │
+│ └─────────────────────────────────────────┘ │
+│                                             │
+│                              [Cancel]       │
+└─────────────────────────────────────────────┘
+```
+
+### API Request Format
+
+```json
+// Pull with strategy
+POST /api/agents/{name}/git/pull
+{
+  "strategy": "stash_reapply"  // "clean", "stash_reapply", "force_reset"
+}
+
+// Sync with strategy
+POST /api/agents/{name}/git/sync
+{
+  "strategy": "pull_first",  // "normal", "pull_first", "force_push"
+  "message": "Optional commit message"
+}
+```
+
+### Error Response (Conflict)
+
+```json
+// HTTP 409 Conflict
+{
+  "detail": "Pull failed: merge conflict detected"
+}
+// Header: X-Conflict-Type: merge_conflict | local_uncommitted | push_rejected
+```
+
+### Component Files
+
+| Component | File | Description |
+|-----------|------|-------------|
+| Modal | `src/frontend/src/components/GitConflictModal.vue` | Conflict resolution UI |
+| Composable | `src/frontend/src/composables/useGitSync.js` | State management with conflict handling |
+| Agent-Server | `docker/base-image/agent_server/routers/git.py` | Git operations with strategies |
+| Backend Router | `src/backend/routers/git.py` | API endpoints with strategy params |
+| Service | `src/backend/services/git_service.py` | Proxy to agent with conflict detection |
+
+---
+
 ## Security Considerations
 
 1. **GitHub PAT**: Passed as environment variable, never exposed in logs or API responses
 2. **Remote URL Sanitization**: Credentials stripped before display
-3. **Force Push Protection**: Uses `--force-with-lease` in working branch mode
-4. **Infrastructure Files**: `content/`, `.local/` auto-added to `.gitignore`
+3. **Force Push Protection**: Uses `--force-with-lease` for normal pushes
+4. **Force Operations Warning**: UI shows red destructive warnings for force operations
+5. **Infrastructure Files**: `content/`, `.local/` auto-added to `.gitignore`
 
 ---
 
 ## Status
 
-Working - Updated for source mode (2025-12-30)
+Working - Conflict resolution added (2025-12-30)
 
 ---
 
@@ -328,6 +416,7 @@ Working - Updated for source mode (2025-12-30)
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | Added conflict resolution with pull/sync strategies and GitConflictModal UI. |
 | 2025-12-30 | Added source mode (pull-only) as default. Working branch mode now legacy. |
 | 2025-12-06 | Updated agent-server references to modular structure |
 | 2025-12-02 | Initial documentation (working branch mode) |

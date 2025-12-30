@@ -24,6 +24,12 @@ class GitSyncRequest(BaseModel):
     """Request body for git sync operation."""
     message: Optional[str] = None  # Custom commit message
     paths: Optional[List[str]] = None  # Specific paths to sync
+    strategy: Optional[str] = "normal"  # "normal", "pull_first", "force_push"
+
+
+class GitPullRequest(BaseModel):
+    """Request body for git pull operation."""
+    strategy: Optional[str] = "clean"  # "clean", "stash_reapply", "force_reset"
 
 
 class GitInitializeRequest(BaseModel):
@@ -129,7 +135,8 @@ async def sync_to_github(
     result = await git_service.sync_to_github(
         agent_name=agent_name,
         message=body.message,
-        paths=body.paths
+        paths=body.paths,
+        strategy=body.strategy
     )
 
     # Log the sync operation
@@ -149,8 +156,13 @@ async def sync_to_github(
     )
 
     if not result.success:
-        # Return 400 for configuration issues, not 500
-        raise HTTPException(status_code=400, detail=result.message)
+        # Return 409 for conflicts, 400 for other failures
+        status_code = 409 if result.conflict_type else 400
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.message,
+            headers={"X-Conflict-Type": result.conflict_type} if result.conflict_type else None
+        )
 
     return {
         "success": result.success,
@@ -198,13 +210,16 @@ async def get_git_log(
 async def pull_from_github(
     agent_name: str,
     request: Request,
+    body: GitPullRequest = GitPullRequest(),
     current_user: User = Depends(get_current_user)
 ):
     """
     Pull latest changes from GitHub to the agent.
 
-    Warning: This may cause merge conflicts if there are local changes.
-    Consider syncing first.
+    Strategies:
+    - clean: Try simple pull (fails if local changes conflict)
+    - stash_reapply: Stash local changes, pull, then reapply stash
+    - force_reset: Discard local changes and reset to remote
     """
     # Import here to avoid circular imports
     from services.docker_service import get_agent_container
@@ -218,7 +233,7 @@ async def pull_from_github(
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="Only agent owners can pull from GitHub")
 
-    result = await git_service.pull_from_github(agent_name)
+    result = await git_service.pull_from_github(agent_name, strategy=body.strategy)
 
     # Log the pull operation
     await log_audit_event(
@@ -229,12 +244,18 @@ async def pull_from_github(
         ip_address=request.client.host if request.client else None,
         result="success" if result.get("success") else "failed",
         severity="info" if result.get("success") else "warning",
-        details={"message": result.get("message")}
+        details={"message": result.get("message"), "strategy": body.strategy}
     )
 
     if not result.get("success"):
-        # Return 400 for configuration issues, not 500
-        raise HTTPException(status_code=400, detail=result.get("message"))
+        # Return 409 for conflicts, 400 for other failures
+        conflict_type = result.get("conflict_type")
+        status_code = 409 if conflict_type else 400
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("message"),
+            headers={"X-Conflict-Type": conflict_type} if conflict_type else None
+        )
 
     return result
 

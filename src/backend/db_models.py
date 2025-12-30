@@ -178,6 +178,7 @@ class GitSyncResult(BaseModel):
     files_changed: int = 0
     branch: Optional[str] = None
     sync_time: Optional[datetime] = None
+    conflict_type: Optional[str] = None  # "push_rejected", "merge_conflict", etc.
 
 
 # =========================================================================

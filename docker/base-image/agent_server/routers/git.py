@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ..models import GitSyncRequest
+from ..models import GitSyncRequest, GitPullRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -144,20 +144,111 @@ async def sync_to_github(request: GitSyncRequest):
     """
     Sync local changes to GitHub by staging, committing, and pushing.
 
+    Strategies:
+    - normal: Stage, commit, push (fails if remote has changes)
+    - pull_first: Pull latest, then stage, commit, push
+    - force_push: Stage, commit, force push (overwrites remote)
+
     Steps:
     1. Stage all changes (or specific paths if provided)
     2. Create a commit with the provided message (or auto-generated)
-    3. Force push to the working branch
+    3. Push to the working branch (based on strategy)
 
     Returns the commit SHA on success.
     """
     home_dir = Path("/home/developer")
     git_dir = home_dir / ".git"
+    strategy = request.strategy or "normal"
 
     if not git_dir.exists():
         raise HTTPException(status_code=400, detail="Git sync not enabled for this agent")
 
     try:
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(home_dir),
+            timeout=10
+        )
+        current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "main"
+
+        # For pull_first strategy, pull before staging
+        if strategy == "pull_first":
+            # Fetch first
+            fetch_result = subprocess.run(
+                ["git", "fetch", "origin"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=60
+            )
+
+            # Check if we're behind
+            behind_result = subprocess.run(
+                ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=10
+            )
+            commits_behind = int(behind_result.stdout.strip()) if behind_result.returncode == 0 else 0
+
+            if commits_behind > 0:
+                # Stash local changes before pull
+                status_check = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(home_dir),
+                    timeout=10
+                )
+                has_changes = bool(status_check.stdout.strip())
+
+                if has_changes:
+                    stash_result = subprocess.run(
+                        ["git", "stash", "push", "-m", "Trinity auto-stash before sync"],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(home_dir),
+                        timeout=30
+                    )
+                    stash_created = stash_result.returncode == 0 and "No local changes" not in stash_result.stdout
+                else:
+                    stash_created = False
+
+                # Pull with rebase
+                pull_result = subprocess.run(
+                    ["git", "pull", "--rebase", "origin", current_branch],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(home_dir),
+                    timeout=60
+                )
+
+                if pull_result.returncode != 0:
+                    subprocess.run(["git", "rebase", "--abort"], cwd=str(home_dir), timeout=10, capture_output=True)
+                    if stash_created:
+                        subprocess.run(["git", "stash", "pop"], cwd=str(home_dir), timeout=30, capture_output=True)
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Pull failed during sync: {pull_result.stderr}",
+                        headers={"X-Conflict-Type": "merge_conflict"}
+                    )
+
+                # Reapply stash
+                if stash_created:
+                    pop_result = subprocess.run(
+                        ["git", "stash", "pop"],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(home_dir),
+                        timeout=30
+                    )
+                    if pop_result.returncode != 0:
+                        logger.warning(f"Failed to reapply stash: {pop_result.stderr}")
+
         # 1. Stage changes
         if request.paths:
             # Stage specific paths
@@ -198,7 +289,8 @@ async def sync_to_github(request: GitSyncRequest):
                 "success": True,
                 "message": "No changes to sync",
                 "commit_sha": None,
-                "files_changed": 0
+                "files_changed": 0,
+                "strategy": strategy
             }
 
         # 2. Create commit
@@ -223,16 +315,20 @@ async def sync_to_github(request: GitSyncRequest):
         )
         commit_sha = sha_result.stdout.strip() if sha_result.returncode == 0 else None
 
-        # 3. Push to remote (force push to allow rebasing)
-        push_result = subprocess.run(
-            ["git", "push", "--force-with-lease"],
-            capture_output=True,
-            text=True,
-            cwd=str(home_dir),
-            timeout=60
-        )
-        if push_result.returncode != 0:
-            # If force-with-lease fails, try regular push
+        # 3. Push to remote based on strategy
+        if strategy == "force_push":
+            # Force push (overwrites remote)
+            push_result = subprocess.run(
+                ["git", "push", "--force"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=60
+            )
+            if push_result.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"Force push failed: {push_result.stderr}")
+        else:
+            # Normal push or pull_first (after pull, should be safe to push)
             push_result = subprocess.run(
                 ["git", "push"],
                 capture_output=True,
@@ -240,18 +336,18 @@ async def sync_to_github(request: GitSyncRequest):
                 cwd=str(home_dir),
                 timeout=60
             )
-            if push_result.returncode != 0:
-                raise HTTPException(status_code=500, detail=f"Git push failed: {push_result.stderr}")
 
-        # Get current branch for response
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(home_dir),
-            timeout=10
-        )
-        current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
+            if push_result.returncode != 0:
+                # Check if it's a rejection due to remote changes
+                stderr = push_result.stderr.lower()
+                if "rejected" in stderr or "fetch first" in stderr or "non-fast-forward" in stderr:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Push rejected: Remote has changes. Use 'Pull First' or 'Force Push' strategy.",
+                        headers={"X-Conflict-Type": "push_rejected"}
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=f"Git push failed: {push_result.stderr}")
 
         return {
             "success": True,
@@ -259,6 +355,7 @@ async def sync_to_github(request: GitSyncRequest):
             "commit_sha": commit_sha,
             "files_changed": len(staged_changes),
             "branch": current_branch,
+            "strategy": strategy,
             "sync_time": datetime.now().isoformat()
         }
 
@@ -322,19 +419,24 @@ async def get_git_log(limit: int = 10):
 
 
 @router.post("/api/git/pull")
-async def pull_from_github():
+async def pull_from_github(request: GitPullRequest = GitPullRequest()):
     """
-    Pull latest changes from the remote branch.
-    Use with caution - may cause merge conflicts.
+    Pull latest changes from the remote branch with conflict resolution strategies.
+
+    Strategies:
+    - clean: Try simple pull --rebase (fails if local changes conflict)
+    - stash_reapply: Stash local changes, pull, then reapply stash
+    - force_reset: Discard local changes and reset to remote (destructive!)
     """
     home_dir = Path("/home/developer")
     git_dir = home_dir / ".git"
+    strategy = request.strategy or "clean"
 
     if not git_dir.exists():
         raise HTTPException(status_code=400, detail="Git sync not enabled for this agent")
 
     try:
-        # Fetch first
+        # Always fetch first to update remote refs
         fetch_result = subprocess.run(
             ["git", "fetch", "origin"],
             capture_output=True,
@@ -342,26 +444,172 @@ async def pull_from_github():
             cwd=str(home_dir),
             timeout=60
         )
+        if fetch_result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Git fetch failed: {fetch_result.stderr}")
 
-        # Then pull with rebase to keep history clean
-        pull_result = subprocess.run(
-            ["git", "pull", "--rebase"],
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
             cwd=str(home_dir),
-            timeout=60
+            timeout=10
         )
+        current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "main"
 
-        if pull_result.returncode != 0:
-            # If rebase fails, abort it
-            subprocess.run(["git", "rebase", "--abort"], cwd=str(home_dir), timeout=10)
-            raise HTTPException(status_code=409, detail=f"Pull failed (possible conflict): {pull_result.stderr}")
+        # Check for local uncommitted changes
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=str(home_dir),
+            timeout=10
+        )
+        has_local_changes = bool(status_result.stdout.strip())
 
-        return {
-            "success": True,
-            "message": "Pulled latest changes",
-            "output": pull_result.stdout
-        }
+        # Execute strategy
+        if strategy == "force_reset":
+            # Discard all local changes and reset to remote
+            reset_result = subprocess.run(
+                ["git", "reset", "--hard", f"origin/{current_branch}"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=60
+            )
+            if reset_result.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"Git reset failed: {reset_result.stderr}")
+
+            # Clean untracked files too
+            subprocess.run(
+                ["git", "clean", "-fd"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=30
+            )
+
+            return {
+                "success": True,
+                "message": f"Force reset to origin/{current_branch}",
+                "strategy": "force_reset",
+                "local_changes_discarded": has_local_changes
+            }
+
+        elif strategy == "stash_reapply":
+            stash_created = False
+            stash_message = ""
+
+            # Stash local changes if any
+            if has_local_changes:
+                stash_result = subprocess.run(
+                    ["git", "stash", "push", "-m", "Trinity auto-stash before pull"],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(home_dir),
+                    timeout=30
+                )
+                if stash_result.returncode != 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Failed to stash local changes: {stash_result.stderr}",
+                        headers={"X-Conflict-Type": "stash_failed"}
+                    )
+                stash_created = "No local changes" not in stash_result.stdout
+
+            # Pull with rebase
+            pull_result = subprocess.run(
+                ["git", "pull", "--rebase", "origin", current_branch],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=60
+            )
+
+            if pull_result.returncode != 0:
+                # Abort rebase if it failed
+                subprocess.run(["git", "rebase", "--abort"], cwd=str(home_dir), timeout=10, capture_output=True)
+
+                # Try to restore stash if we created one
+                if stash_created:
+                    subprocess.run(["git", "stash", "pop"], cwd=str(home_dir), timeout=30, capture_output=True)
+
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Pull failed with conflicts: {pull_result.stderr}",
+                    headers={"X-Conflict-Type": "merge_conflict"}
+                )
+
+            # Reapply stash if we created one
+            if stash_created:
+                pop_result = subprocess.run(
+                    ["git", "stash", "pop"],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(home_dir),
+                    timeout=30
+                )
+                if pop_result.returncode != 0:
+                    # Stash pop failed - likely conflicts with newly pulled changes
+                    stash_message = f" (Warning: Could not reapply local changes: {pop_result.stderr.strip()})"
+
+            return {
+                "success": True,
+                "message": f"Pulled latest changes from origin/{current_branch}{stash_message}",
+                "strategy": "stash_reapply",
+                "stash_created": stash_created,
+                "output": pull_result.stdout
+            }
+
+        else:  # "clean" strategy (default)
+            # Check if we're behind remote
+            behind_result = subprocess.run(
+                ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=10
+            )
+            commits_behind = int(behind_result.stdout.strip()) if behind_result.returncode == 0 else 0
+
+            if commits_behind == 0:
+                return {
+                    "success": True,
+                    "message": "Already up to date",
+                    "strategy": "clean",
+                    "commits_behind": 0
+                }
+
+            # Try simple pull with rebase
+            pull_result = subprocess.run(
+                ["git", "pull", "--rebase", "origin", current_branch],
+                capture_output=True,
+                text=True,
+                cwd=str(home_dir),
+                timeout=60
+            )
+
+            if pull_result.returncode != 0:
+                # Abort rebase
+                subprocess.run(["git", "rebase", "--abort"], cwd=str(home_dir), timeout=10, capture_output=True)
+
+                # Determine conflict type
+                conflict_type = "local_uncommitted" if has_local_changes else "merge_conflict"
+                error_detail = pull_result.stderr.strip()
+
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Pull failed: {error_detail}",
+                    headers={"X-Conflict-Type": conflict_type}
+                )
+
+            return {
+                "success": True,
+                "message": f"Pulled {commits_behind} commit(s) from origin/{current_branch}",
+                "strategy": "clean",
+                "commits_behind": commits_behind,
+                "output": pull_result.stdout
+            }
 
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Git operation timed out")

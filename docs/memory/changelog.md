@@ -1,3 +1,40 @@
+### 2025-12-30 18:30:00
+🔀 **Git Conflict Resolution**
+
+**Feature**: Basic GitHub workflow with conflict detection and resolution strategies for pull and sync operations.
+
+**Problem Solved**: Pull/sync operations would fail silently on conflicts. Users had no way to choose how to resolve conflicts (stash changes, force replace, etc.).
+
+**Pull Strategies**:
+- `clean` (default): Simple pull with rebase, fails on conflicts
+- `stash_reapply`: Stash local changes, pull, reapply stash
+- `force_reset`: Hard reset to remote, discard local changes
+
+**Sync Strategies**:
+- `normal` (default): Stage, commit, push - fails if remote has changes
+- `pull_first`: Pull latest, then stage, commit, push
+- `force_push`: Force push, overwriting remote
+
+**UI**: GitConflictModal shows resolution options when 409 conflict detected. Destructive options shown in red with warnings.
+
+**API Changes**:
+- `POST /api/agents/{name}/git/pull` accepts `{strategy: "clean"|"stash_reapply"|"force_reset"}`
+- `POST /api/agents/{name}/git/sync` accepts `{strategy: "normal"|"pull_first"|"force_push"}`
+- Conflict responses return HTTP 409 with `X-Conflict-Type` header
+
+**Files Modified**:
+- `docker/base-image/agent_server/routers/git.py` - Pull/sync strategies
+- `docker/base-image/agent_server/models.py` - Added GitPullRequest model
+- `src/backend/routers/git.py` - Strategy parameters, conflict handling
+- `src/backend/services/git_service.py` - Proxy with conflict detection
+- `src/backend/db_models.py` - Added conflict_type to GitSyncResult
+- `src/frontend/src/stores/agents.js` - Strategy parameters
+- `src/frontend/src/composables/useGitSync.js` - Conflict state management
+- `src/frontend/src/components/GitConflictModal.vue` - New conflict resolution UI
+- `src/frontend/src/views/AgentDetail.vue` - Modal integration
+
+---
+
 ### 2025-12-30 15:00:00
 📁 **File-Type Credentials**
 

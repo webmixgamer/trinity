@@ -148,6 +148,12 @@ class GitSyncRequest(BaseModel):
     """Request for git sync operation"""
     message: Optional[str] = None  # Custom commit message
     paths: Optional[List[str]] = None  # Specific paths to sync (default: all)
+    strategy: Optional[str] = "normal"  # "normal", "pull_first", "force_push"
+
+
+class GitPullRequest(BaseModel):
+    """Request for git pull operation"""
+    strategy: Optional[str] = "clean"  # "clean", "stash_reapply", "force_reset"
 
 
 class GitCommitInfo(BaseModel):

@@ -83,7 +83,8 @@ async def get_git_status(agent_name: str) -> Optional[Dict[str, Any]]:
 async def sync_to_github(
     agent_name: str,
     message: Optional[str] = None,
-    paths: Optional[list] = None
+    paths: Optional[list] = None,
+    strategy: Optional[str] = "normal"
 ) -> GitSyncResult:
     """
     Sync agent changes to GitHub.
@@ -94,6 +95,7 @@ async def sync_to_github(
         agent_name: Name of the agent
         message: Optional custom commit message
         paths: Optional specific paths to sync (default: all)
+        strategy: Sync strategy - "normal", "pull_first", "force_push"
 
     Returns:
         GitSyncResult with sync outcome
@@ -114,7 +116,7 @@ async def sync_to_github(
     try:
         # Call the agent's internal sync endpoint
         async with httpx.AsyncClient(timeout=120.0) as client:
-            payload = {}
+            payload = {"strategy": strategy}
             if message:
                 payload["message"] = message
             if paths:
@@ -139,6 +141,15 @@ async def sync_to_github(
                     files_changed=data.get("files_changed", 0),
                     branch=data.get("branch"),
                     sync_time=datetime.fromisoformat(data["sync_time"]) if data.get("sync_time") else datetime.utcnow()
+                )
+            elif response.status_code == 409:
+                # Conflict - return with conflict info
+                data = response.json()
+                conflict_type = response.headers.get("X-Conflict-Type", "unknown")
+                return GitSyncResult(
+                    success=False,
+                    message=data.get("detail", "Sync conflict"),
+                    conflict_type=conflict_type
                 )
             else:
                 error_detail = response.json().get("detail", "Sync failed")
@@ -177,11 +188,16 @@ async def get_git_log(agent_name: str, limit: int = 10) -> Optional[Dict[str, An
         return None
 
 
-async def pull_from_github(agent_name: str) -> Dict[str, Any]:
+async def pull_from_github(agent_name: str, strategy: Optional[str] = "clean") -> Dict[str, Any]:
     """
     Pull latest changes from GitHub to the agent.
 
-    Use with caution - may cause merge conflicts.
+    Args:
+        agent_name: Name of the agent
+        strategy: Pull strategy - "clean", "stash_reapply", "force_reset"
+
+    Returns:
+        Dict with pull result and conflict info if applicable
     """
     container = get_agent_container(agent_name)
     if not container:
@@ -193,11 +209,21 @@ async def pull_from_github(agent_name: str) -> Dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"http://agent-{agent_name}:8000/api/git/pull"
+                f"http://agent-{agent_name}:8000/api/git/pull",
+                json={"strategy": strategy}
             )
 
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 409:
+                # Conflict detected
+                data = response.json()
+                conflict_type = response.headers.get("X-Conflict-Type", "unknown")
+                return {
+                    "success": False,
+                    "message": data.get("detail", "Pull conflict"),
+                    "conflict_type": conflict_type
+                }
             else:
                 error_detail = response.json().get("detail", "Pull failed")
                 return {"success": False, "message": f"Pull failed: {error_detail}"}

@@ -1005,6 +1005,14 @@ HEYGEN_API_KEY=your_heygen_key
       :variant="confirmDialog.variant"
       @confirm="confirmDialog.onConfirm"
     />
+
+    <!-- Git Conflict Resolution Modal -->
+    <GitConflictModal
+      :show="showConflictModal"
+      :conflict="gitConflict"
+      @resolve="resolveConflict"
+      @dismiss="dismissConflict"
+    />
   </div>
 
   </template>
@@ -1029,6 +1037,7 @@ import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 import AgentTerminal from '../components/AgentTerminal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
+import GitConflictModal from '../components/GitConflictModal.vue'
 
 // Import composables
 import { useNotification, useFormatters } from '../composables'
@@ -1284,9 +1293,13 @@ const {
   gitPulling,
   gitHasChanges,
   gitChangesCount,
+  gitConflict,
+  showConflictModal,
   refreshGitStatus,
   syncToGithub,
   pullFromGithub,
+  resolveConflict,
+  dismissConflict,
   startGitStatusPolling,
   stopGitStatusPolling
 } = useGitSync(agent, agentsStore, showNotification)
