@@ -1003,11 +1003,47 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-30 | **Bug fixes**: (1) File credential injection not working - agent containers needed base image rebuild. Added INFO logging to `get_assigned_file_credentials()`. (2) TypeError on mixed credential types - `get_agent_credentials()` returns mixed dict (string for bulk imports, dict for explicit assignments). Added `isinstance()` check in `crud.py`. Added Troubleshooting section. |
 | 2025-12-30 | **Agent credential assignment with filter UI**: Major refactor - credentials now require explicit assignment to agents. No credentials injected by default. New Redis structure `agent:{name}:credentials` stores assignments. New API endpoints: `/assignments` (GET), `/assign` (POST/DELETE), `/apply` (POST). New UI in AgentDetail.vue Credentials tab with Assigned/Available lists, **filter input for search**, **scrollable lists** (max-h-64), credential count badge on tab, and Quick Add. Hot-reload now also assigns credentials. Cleanup on agent deletion. Fixed route ordering conflict (moved legacy MCP route to end of file). |
 | 2025-12-30 | **File-type credentials**: Added support for injecting entire files (JSON, YAML, PEM, etc.) into agents at specified paths. New credential type "file" with file_path field. Files injected at agent creation and via hot-reload. Use cases: GCP service accounts, AWS credentials, SSL certificates. |
 | 2025-12-28 | **Bug fix: Hot-reload now saves to Redis**. Previously, hot-reload only pushed credentials to the agent's .env file but did NOT persist them to Redis. Credentials were lost on agent restart. Now hot-reload uses `import_credential_with_conflict_resolution()` to save each credential to Redis before pushing to the agent. Response includes `saved_to_redis` array with status (created/reused/renamed). |
 | 2025-12-19 | **Path/line number updates**: Updated all file references for modular architecture. Agent-server now at `docker/base-image/agent_server/routers/credentials.py`. Backend routers at `src/backend/routers/credentials.py`. Updated helpers to `src/backend/utils/helpers.py`. Added store action documentation. Verified all line numbers. |
 | 2025-12-07 | **Credentials.vue cleanup**: Removed "Connect Services" OAuth provider section (Google, Slack, GitHub, Notion buttons). Removed unused code: `oauthProviders` ref, `fetchOAuthProviders()`, `startOAuth()`, `getProviderIcon()`. Updated empty state text. OAuth flows remain available via backend API. |
+
+---
+
+## Troubleshooting
+
+### File Credentials Not Being Written
+
+**Symptom**: `POST /api/agents/{name}/credentials/apply` returns success with `file_count: 1` but file doesn't exist in agent.
+
+**Root Cause**: Agent container is running an outdated base image that doesn't have the file-handling code.
+
+**Solution**:
+```bash
+# 1. Rebuild base image
+./scripts/deploy/build-base-image.sh
+
+# 2. Restart the agent (stop + start via UI or API)
+# The new container will use the updated base image
+```
+
+**Verification**:
+```bash
+# Check if agent has file handling code
+docker exec agent-{name} grep -A 5 "Write file-type" /app/agent_server/routers/credentials.py
+```
+
+### TypeError: string indices must be integers
+
+**Symptom**: Error at `crud.py:331` when starting agent with credentials.
+
+**Root Cause**: `get_agent_credentials()` returns a mixed dict:
+- Explicitly assigned credentials → dict values like `{'api_key': 'xxx'}`
+- Bulk-imported credentials → string values like `'sk-xxx'`
+
+**Fix**: Applied in commit `6d0d559`. Update backend code and restart.
 
 ---
 

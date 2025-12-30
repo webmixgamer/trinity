@@ -1,3 +1,24 @@
+### 2025-12-30 23:50:00
+🐛 **Bug Fixes: File Credential Injection & Mixed Credential Types**
+
+**Fix 1: File Credential Injection Not Working**
+
+- **Root Cause**: Running agent containers had outdated base image without file-handling code
+- **Solution**: Rebuild base image with `./scripts/deploy/build-base-image.sh` and restart agents
+- **Change**: Added INFO-level logging to `get_assigned_file_credentials()` for production debugging
+
+**Fix 2: TypeError on Mixed Credential Types**
+
+- **Error**: `TypeError: string indices must be integers, not 'str'` at `crud.py:331`
+- **Root Cause**: `get_agent_credentials()` returns mixed dict where explicit assignments have dict values but bulk-imported credentials have string values
+- **Solution**: Added `isinstance()` check in `crud.py` to handle both types
+
+**Files Modified**:
+- `src/backend/credentials.py` - Changed debug logs to info level
+- `src/backend/services/agent_service/crud.py` - Handle string vs dict credentials
+
+---
+
 ### 2025-12-30 22:20:00
 🔐 **Agent-Specific Credential Assignment**
 
