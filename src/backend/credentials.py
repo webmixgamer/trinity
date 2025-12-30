@@ -2,10 +2,13 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import json
+import logging
 import redis
 import secrets
 import httpx
 from urllib.parse import urlencode
+
+logger = logging.getLogger(__name__)
 
 class CredentialType(str):
     API_KEY = "api_key"
@@ -102,6 +105,7 @@ class CredentialManager:
             service=cred_data.service,
             type=cred_data.type,
             description=cred_data.description,
+            file_path=cred_data.file_path,  # Include file_path for file-type credentials
             created_at=now,
             updated_at=now,
             status="active"
@@ -413,16 +417,31 @@ class CredentialManager:
             Dict of {file_path: file_content}
         """
         assigned = self.get_assigned_credentials(agent_name, user_id)
+        logger.debug(f"get_assigned_file_credentials: agent={agent_name}, user={user_id}, assigned_count={len(assigned)}")
+
         file_creds = {}
 
         for cred in assigned:
-            if cred.type != "file" or not cred.file_path:
+            logger.debug(f"  Checking credential: id={cred.id}, name={cred.name}, type={cred.type}, file_path={cred.file_path}")
+            if cred.type != "file":
+                logger.debug(f"    Skipping: type is '{cred.type}', not 'file'")
+                continue
+            if not cred.file_path:
+                logger.debug(f"    Skipping: file_path is empty or None")
                 continue
 
             secret = self.get_credential_secret(cred.id, user_id)
-            if secret and "content" in secret:
-                file_creds[cred.file_path] = secret["content"]
+            if not secret:
+                logger.debug(f"    Skipping: no secret found")
+                continue
+            if "content" not in secret:
+                logger.debug(f"    Skipping: secret has no 'content' key, keys={list(secret.keys())}")
+                continue
 
+            file_creds[cred.file_path] = secret["content"]
+            logger.debug(f"    Added file credential: {cred.file_path} ({len(secret['content'])} chars)")
+
+        logger.info(f"get_assigned_file_credentials: returning {len(file_creds)} file credentials for agent {agent_name}")
         return file_creds
 
     def cleanup_agent_credentials(self, agent_name: str) -> int:

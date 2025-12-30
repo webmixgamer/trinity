@@ -1004,7 +1004,9 @@ async def apply_credentials(
         "message": f"Applied {len(credentials)} credentials to agent {agent_name}",
         "credential_count": len(credentials),
         "file_count": len(file_credentials),
+        "file_paths": list(file_credentials.keys()) if file_credentials else [],
         "updated_files": agent_response.get("updated_files", []),
+        "files_written": agent_response.get("files_written", []),
         "note": agent_response.get("note", "")
     }
 
