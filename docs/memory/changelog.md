@@ -1,3 +1,22 @@
+### 2025-12-31 01:05:00
+🔧 **All MCP Chat Calls Now Tracked in Tasks Tab**
+
+**Feature**: ALL MCP `chat_with_agent` calls now create execution records, appearing in the Tasks tab.
+
+**Problem Solved**: Initial fix only tracked agent-to-agent calls (when `X-Source-Agent` header present). User MCP calls (user-scoped keys via Claude Code) were still not tracked.
+
+**Implementation**:
+- MCP client now sends `X-Via-MCP: true` header on all chat calls
+- Backend checks for either `X-Via-MCP` or `X-Source-Agent` header
+- `triggered_by` values: "agent" (agent-to-agent), "mcp" (user MCP calls)
+- All MCP executions now visible in Tasks tab
+
+**Files Modified**:
+- `src/mcp-server/src/client.ts` - Added `X-Via-MCP: true` header to chat method
+- `src/backend/routers/chat.py` - Check for `X-Via-MCP` header in addition to `X-Source-Agent`
+
+---
+
 ### 2025-12-31 00:25:00
 🔧 **Agent-to-Agent Chat Tracking in Tasks Tab**
 

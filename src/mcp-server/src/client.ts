@@ -290,6 +290,7 @@ export class TrinityClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      "X-Via-MCP": "true",  // Always mark as MCP call for task tracking
     };
 
     // Add X-Source-Agent header for collaboration tracking

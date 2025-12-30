@@ -108,7 +108,8 @@ async def chat_with_agent(
     name: str,
     request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
-    x_source_agent: Optional[str] = Header(None)
+    x_source_agent: Optional[str] = Header(None),
+    x_via_mcp: Optional[str] = Header(None)
 ):
     """
     Proxy chat messages to agent's internal web server and persist to database.
@@ -116,6 +117,10 @@ async def chat_with_agent(
     This endpoint enforces single-execution-at-a-time via the execution queue.
     If the agent is busy, the request is queued (up to 3 waiting).
     If the queue is full, returns 429 Too Many Requests.
+
+    Headers:
+    - X-Source-Agent: Set when one agent calls another (agent-to-agent)
+    - X-Via-MCP: Set for all MCP calls (both user and agent-scoped)
     """
     container = get_agent_container(name)
     if not container:
@@ -160,17 +165,23 @@ async def chat_with_agent(
     # Track queue position for observability
     is_queued = queue_result.startswith("queued:")
 
-    # Create execution record for agent-to-agent calls (headless MCP)
+    # Create execution record for all MCP calls (both agent-to-agent and user MCP)
     # This ensures they appear in the Tasks tab alongside scheduled and manual tasks
     task_execution_id = None
-    if x_source_agent:
+    is_mcp_call = x_source_agent or x_via_mcp
+    if is_mcp_call:
+        # Determine triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls
+        triggered_by = "agent" if x_source_agent else "mcp"
         task_execution = db.create_task_execution(
             agent_name=name,
             message=request.message,
-            triggered_by="agent"
+            triggered_by=triggered_by
         )
         task_execution_id = task_execution.id if task_execution else None
-        logger.info(f"[Chat] Created task execution {task_execution_id} for agent-to-agent call from {x_source_agent}")
+        if x_source_agent:
+            logger.info(f"[Chat] Created task execution {task_execution_id} for agent-to-agent call from {x_source_agent}")
+        else:
+            logger.info(f"[Chat] Created task execution {task_execution_id} for MCP call from user {current_user.username}")
 
     # Broadcast collaboration event if this is agent-to-agent communication
     collaboration_activity_id = None
