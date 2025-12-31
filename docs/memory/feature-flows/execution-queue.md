@@ -1,6 +1,6 @@
 # Feature: Execution Queue System
 
-> **Updated**: 2025-12-27 - Refactored to service layer architecture. Queue endpoint handlers moved to `services/agent_service/queue.py`.
+> **Updated**: 2025-12-31 - Added AgentClient service for centralized agent HTTP communication. Scheduler now uses `AgentClient.chat()` instead of raw `httpx` calls.
 
 ## Overview
 The Execution Queue System prevents parallel execution on agents by serializing all execution requests through a Redis-backed queue. This ensures only one execution runs per agent at a time, protecting Claude Code's conversation state from corruption.
@@ -94,7 +94,7 @@ See [Parallel Headless Execution](parallel-headless-execution.md) for details.
 
 ---
 
-## Data Models (`src/backend/models.py:175-225`)
+## Data Models (`src/backend/models.py:189-236`)
 
 ### ExecutionSource (Enum)
 ```python
@@ -258,7 +258,7 @@ class AgentBusyError(Exception):
 
 ## Integration Points
 
-### 1. User Chat (`src/backend/routers/chat.py:106-356`)
+### 1. User Chat (`src/backend/routers/chat.py:105-382`)
 
 **Entry Point**: `POST /api/agents/{name}/chat`
 
@@ -313,7 +313,7 @@ async def chat_with_agent(
 - Adds execution metadata to response
 - **Agent-to-agent calls**: Creates `schedule_executions` record (added 2025-12-30) so they appear in Tasks tab
 
-### 2. Scheduler (`src/backend/services/scheduler_service.py:169-400`)
+### 2. Scheduler (`src/backend/services/scheduler_service.py:169-373`)
 
 **Entry Point**: APScheduler cron trigger -> `_execute_schedule()`
 
@@ -336,7 +336,21 @@ async def _execute_schedule(self, schedule_id: str):
         db.update_execution_status(execution_id=execution.id, status="failed", error=error_msg)
         return
 
-    # ... execute via httpx to agent, track in database ...
+    # Execute using AgentClient (centralized HTTP client)
+    client = get_agent_client(schedule.agent_name)
+    chat_response = await client.chat(schedule.message, stream=False)
+
+    # Update execution with parsed response metrics
+    db.update_execution_status(
+        execution_id=execution.id,
+        status="success",
+        response=chat_response.response_text,
+        context_used=chat_response.metrics.context_used,
+        context_max=chat_response.metrics.context_max,
+        cost=chat_response.metrics.cost_usd,
+        tool_calls=chat_response.metrics.tool_calls_json,
+        execution_log=chat_response.metrics.execution_log_json
+    )
 
     finally:
         # Always release the queue slot when done
@@ -345,8 +359,93 @@ async def _execute_schedule(self, schedule_id: str):
 
 **Key Points:**
 - Uses `ExecutionSource.SCHEDULE`
+- Uses `AgentClient.chat()` for HTTP communication (not raw httpx)
+- Response parsing centralized in `AgentClient._parse_chat_response()`
 - Logs queue full as failure (doesn't retry)
 - Always releases queue in `finally`
+
+#### AgentClient Service (`src/backend/services/agent_client.py`)
+
+The scheduler uses the centralized `AgentClient` service for agent communication:
+
+```python
+from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
+
+# Create client for agent
+client = get_agent_client(schedule.agent_name)
+
+# Send chat message - returns AgentChatResponse
+chat_response = await client.chat(schedule.message, stream=False)
+
+# Access parsed metrics
+chat_response.response_text          # The agent's response (truncated if > 10000 chars)
+chat_response.metrics.context_used   # Tokens used
+chat_response.metrics.context_max    # Context window size
+chat_response.metrics.context_percent # Usage percentage
+chat_response.metrics.cost_usd       # Cost in USD
+chat_response.metrics.tool_calls_json     # JSON string of tool calls
+chat_response.metrics.execution_log_json  # JSON string of execution log
+chat_response.raw_response           # Original response dict
+```
+
+#### Response Data Classes (`src/backend/services/agent_client.py:22-48`)
+
+```python
+@dataclass
+class AgentChatMetrics:
+    """Observability data extracted from agent chat response."""
+    context_used: int
+    context_max: int
+    context_percent: float
+    cost_usd: Optional[float]
+    tool_calls_json: Optional[str]
+    execution_log_json: Optional[str]
+
+
+@dataclass
+class AgentChatResponse:
+    """Parsed response from agent chat endpoint."""
+    response_text: str
+    metrics: AgentChatMetrics
+    raw_response: Dict[str, Any]
+```
+
+#### Response Parsing Logic (`src/backend/services/agent_client.py:190-241`)
+
+The `_parse_chat_response()` method centralizes response parsing:
+
+```python
+def _parse_chat_response(self, result: Dict[str, Any]) -> AgentChatResponse:
+    # Extract response text (truncated if > 10000 chars)
+    response_text = result.get("response", str(result))
+    if len(response_text) > 10000:
+        response_text = response_text[:10000] + "... (truncated)"
+
+    # Extract observability data
+    session_data = result.get("session", {})
+    metadata = result.get("metadata", {})
+    execution_log = result.get("execution_log")
+
+    # Context usage - NOTE: cache tokens are SUBSETS, not additional
+    context_used = session_data.get("context_tokens") or metadata.get("input_tokens", 0)
+    context_max = session_data.get("context_window") or metadata.get("context_window", 200000)
+    context_percent = round(context_used / max(context_max, 1) * 100, 1)
+
+    # Cost
+    cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
+
+    # Tool calls / execution log
+    # Note: Check is not None, not truthiness - empty list [] is valid log
+    tool_calls_json = None
+    execution_log_json = None
+    if execution_log is not None:
+        execution_log_json = json.dumps(execution_log)
+        tool_calls_json = execution_log_json  # Backwards compatibility
+```
+
+**Context Token Bug Fix**: The parsing logic correctly handles cache tokens:
+- `cache_creation_tokens` and `cache_read_tokens` are **billing breakdowns** (subsets) of `input_tokens`, not additional tokens
+- Do NOT sum them - use `input_tokens` directly or `session_data.context_tokens`
 
 ### 3. MCP Server (`src/mcp-server/src/tools/chat.ts:186-270`)
 
@@ -459,6 +558,17 @@ The queue management endpoints use a **thin router + service layer** architectur
 |-------|------|---------|
 | Router | `src/backend/routers/agents.py:447-470` | Endpoint definitions |
 | Service | `src/backend/services/agent_service/queue.py` (125 lines) | Queue management logic |
+
+### Key Files Summary
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/backend/services/execution_queue.py` | 244 | Redis-backed queue implementation |
+| `src/backend/services/agent_client.py` | 379 | **NEW** Centralized agent HTTP client |
+| `src/backend/services/scheduler_service.py` | 560 | APScheduler integration (uses AgentClient) |
+| `src/backend/routers/chat.py` | 1004 | Chat endpoint (uses raw httpx with retry) |
+| `src/backend/models.py:189-236` | 47 | ExecutionSource, ExecutionStatus, Execution, QueueStatus |
+| `docker/base-image/agent_server/services/claude_code.py` | - | Defense-in-depth lock |
 
 ### GET /api/agents/{name}/queue
 
@@ -864,6 +974,7 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 | Date | Changes |
 |------|---------|
+| 2025-12-31 | **AgentClient service**: Scheduler now uses centralized `AgentClient` from `services/agent_client.py` instead of raw `httpx` calls. Response parsing logic moved to `AgentClient._parse_chat_response()`. Added `AgentChatResponse` and `AgentChatMetrics` dataclasses. Context token bug fix documented (cache tokens are subsets, not additional). |
 | 2025-12-31 | **Execution log storage**: All execution records now store full Claude Code execution transcript in `execution_log` column. New endpoint `GET /api/agents/{name}/executions/{execution_id}/log` retrieves full execution log for debugging and audit purposes. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: `/chat` endpoint now creates `schedule_executions` record when `X-Source-Agent` header is present, ensuring agent-to-agent MCP calls appear in Tasks tab alongside scheduled and manual tasks. |
 | 2025-12-30 | **Merged agent-chat.md content**: Added "Chat API Implementation Details" section covering Claude Code CLI execution, stream-JSON parsing, session state management, context window tracking (with bug fixes from 2025-12-11 and 2025-12-19), and chat endpoint session flow. |

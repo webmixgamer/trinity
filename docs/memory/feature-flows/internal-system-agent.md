@@ -2,7 +2,7 @@
 
 > **Phase 11.1 & 11.2** - Platform operations manager with privileged access
 >
-> **Updated 2025-12-30**: Line numbers verified against codebase
+> **Updated 2025-12-31**: Added AgentClient service pattern for HTTP communication
 
 ## Overview
 
@@ -88,6 +88,7 @@ The Internal System Agent (`trinity-system`) is an auto-deployed, deletion-prote
 | `src/backend/services/system_agent_service.py` | Auto-deployment logic |
 | `src/backend/routers/system_agent.py` | Admin management endpoints |
 | `src/backend/routers/ops.py` | Fleet operations endpoints |
+| `src/backend/services/agent_client.py` | Centralized agent HTTP client |
 | `src/backend/routers/settings.py` | Ops settings (OPS_SETTINGS_DEFAULTS) |
 | `src/backend/db/agents.py` | SYSTEM_AGENT_NAME constant, is_system checks |
 | `src/frontend/src/views/SystemAgent.vue` | **System Agent UI** - dedicated ops interface |
@@ -350,6 +351,71 @@ User: /ops/health
 │ with recommendations             │
 └──────────────────────────────────┘
 ```
+
+### 2a. Fleet Status/Health Context Polling (AgentClient Pattern)
+
+Both fleet status and health endpoints use `AgentClient` to poll context stats from running agents:
+
+```
+GET /api/ops/fleet/status
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ routers/ops.py:40-116                │
+│ get_fleet_status()                   │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ list_all_agents()                    │
+│ Get all agent containers             │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────┐
+│ For each running agent (lines 60-73):                        │
+│                                                              │
+│   client = get_agent_client(agent_name)                      │
+│   session_info = await client.get_session()                  │
+│                                                              │
+│   context_stats[agent_name] = {                              │
+│       "context_tokens": session_info.context_tokens,         │
+│       "context_window": session_info.context_window,         │
+│       "context_percent": session_info.context_percent        │
+│   }                                                          │
+└────────┬─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Build fleet_status response          │
+│ with agent context stats             │
+└──────────────────────────────────────┘
+```
+
+**AgentClient.get_session()** (lines 247-272 in `services/agent_client.py`):
+- Calls `GET http://agent-{name}:8000/api/chat/session`
+- Timeout: 5 seconds (SESSION_TIMEOUT)
+- Returns `AgentSessionInfo` dataclass:
+
+```python
+@dataclass
+class AgentSessionInfo:
+    context_tokens: int       # Current token count in context
+    context_window: int       # Max context window size
+    context_percent: float    # Usage percentage (0-100)
+    total_cost_usd: Optional[float] = None  # Session cost
+```
+
+**Key Implementation Details**:
+- Uses centralized `AgentClient` instead of raw `httpx` calls
+- Silent error handling - if agent not responding, context stats are omitted
+- Factory function: `get_agent_client(agent_name)` returns client instance
+- URL pattern: `http://agent-{agent_name}:8000` (Docker network naming)
+
+**Fleet Health Endpoint** (`GET /api/ops/fleet/health`, lines 119-218):
+- Same pattern as fleet status but with health classification
+- Uses `client.get_session()` at lines 167-169
+- Classifies context usage: critical (>90%), warning (>75%), healthy
 
 ### 3. Emergency Stop Flow
 

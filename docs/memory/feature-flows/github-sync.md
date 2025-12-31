@@ -85,10 +85,10 @@ sequenceDiagram
 ### Workflow
 
 ```
-┌─────────────┐      push       ┌──────────────┐      pull       ┌─────────────┐
-│   Local     │  ──────────►   │    GitHub    │   ◄──────────   │   Trinity   │
-│   Dev       │                │    (main)    │                 │   Agent     │
-└─────────────┘                └──────────────┘                 └─────────────┘
++-----------+      push       +--------------+      pull       +-------------+
+|   Local   |  ----------->   |    GitHub    |   <-----------  |   Trinity   |
+|   Dev     |                 |    (main)    |                 |   Agent     |
++-----------+                 +--------------+                 +-------------+
 ```
 
 1. Develop agent locally
@@ -203,6 +203,112 @@ CREATE TABLE IF NOT EXISTS agent_git_config (
     FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name)
 );
 ```
+
+---
+
+## Backend Layer
+
+### Access Control Dependencies
+
+Git endpoints use FastAPI dependencies for access control (defined in `src/backend/dependencies.py:212-263`):
+
+| Dependency | Path Parameter | Access Level | Used By |
+|------------|----------------|--------------|---------|
+| `AuthorizedAgentByName` | `{agent_name}` | Read access | `get_git_status`, `get_git_log`, `get_git_config` |
+| `OwnedAgentByName` | `{agent_name}` | Owner access | `sync_to_github`, `pull_from_github`, `initialize_github_sync` |
+
+**Pattern:**
+```python
+# src/backend/routers/git.py:43-47
+@router.get("/{agent_name}/git/status")
+async def get_git_status(
+    agent_name: AuthorizedAgentByName,  # Validates user can access agent
+    request: Request
+):
+```
+
+The dependency automatically:
+1. Extracts `agent_name` from the path
+2. Gets current user from JWT/MCP key
+3. Checks access via `db.can_user_access_agent()` or `db.can_user_share_agent()`
+4. Returns agent name or raises 403
+
+### Endpoint Signatures
+
+| Endpoint | Line | Dependency | Access Level |
+|----------|------|------------|--------------|
+| `GET /{agent_name}/git/status` | 43 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/sync` | 95 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/log` | 150 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/pull` | 177 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/config` | 214 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/initialize` | 251 | `OwnedAgentByName` | Owner |
+
+### Settings Service Integration
+
+GitHub PAT is retrieved via the centralized settings service:
+
+```python
+# src/backend/routers/git.py:274
+from services.settings_service import get_github_pat
+
+# Used in initialize_github_sync endpoint (line 301)
+github_pat = get_github_pat()
+```
+
+**Settings Service** (`src/backend/services/settings_service.py:69-74`):
+```python
+def get_github_pat(self) -> str:
+    """Get GitHub PAT from settings, fallback to env var."""
+    key = self.get_setting('github_pat')
+    if key:
+        return key
+    return os.getenv('GITHUB_PAT', '')
+```
+
+### GitHub Service Integration
+
+Repository operations use the centralized GitHub service:
+
+```python
+# src/backend/routers/git.py:275
+from services.github_service import GitHubService, GitHubError
+
+# Used in initialize_github_sync endpoint (lines 312-327)
+gh = GitHubService(github_pat)
+repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+if not repo_info.exists:
+    create_result = await gh.create_repository(
+        owner=body.repo_owner,
+        name=body.repo_name,
+        private=body.private,
+        description=body.description
+    )
+```
+
+**GitHub Service** (`src/backend/services/github_service.py:60-265`):
+- `check_repo_exists(owner, name)` - Returns `GitHubRepoInfo`
+- `create_repository(owner, name, private, description)` - Returns `GitHubCreateResult`
+- `validate_token()` - Returns `(is_valid, username)`
+- `get_owner_type(owner)` - Returns `OwnerType.USER` or `OwnerType.ORGANIZATION`
+
+### Git Service Layer
+
+**Location**: `src/backend/services/git_service.py`
+
+| Function | Line | Description |
+|----------|------|-------------|
+| `generate_instance_id()` | 22 | Create 8-char UUID for agent |
+| `generate_working_branch()` | 27 | Create `trinity/{agent}/{id}` branch name |
+| `create_git_config_for_agent()` | 32 | Store config in database |
+| `get_git_status()` | 64 | Proxy to agent `/api/git/status` |
+| `sync_to_github()` | 88 | Proxy to agent `/api/git/sync` with conflict handling |
+| `get_git_log()` | 172 | Proxy to agent `/api/git/log` |
+| `pull_from_github()` | 196 | Proxy to agent `/api/git/pull` with conflict handling |
+| `get_agent_git_config()` | 239 | Get config from database |
+| `initialize_git_in_container()` | 262 | Initialize git in agent container |
+| `check_git_initialized()` | 400 | Check if git exists in container |
 
 ---
 
@@ -328,23 +434,23 @@ When a push operation fails because remote has newer changes:
 When a conflict is detected (HTTP 409 response), the UI shows a modal with options:
 
 ```
-┌─────────────────────────────────────────────┐
-│ Pull Conflict                               │
-│                                             │
-│ Pull failed: merge conflict detected        │
-│                                             │
-│ ┌─────────────────────────────────────────┐ │
-│ │ Stash & Reapply (Recommended)           │ │
-│ │ Save local changes, pull, reapply       │ │
-│ └─────────────────────────────────────────┘ │
-│                                             │
-│ ┌─────────────────────────────────────────┐ │
-│ │ Force Replace Local                     │ │
-│ │ Discard all local changes (destructive) │ │
-│ └─────────────────────────────────────────┘ │
-│                                             │
-│                              [Cancel]       │
-└─────────────────────────────────────────────┘
++---------------------------------------------+
+| Pull Conflict                               |
+|                                             |
+| Pull failed: merge conflict detected        |
+|                                             |
+| +-------------------------------------------+
+| | Stash & Reapply (Recommended)             |
+| | Save local changes, pull, reapply         |
+| +-------------------------------------------+
+|                                             |
+| +-------------------------------------------+
+| | Force Replace Local                       |
+| | Discard all local changes (destructive)   |
+| +-------------------------------------------+
+|                                             |
+|                              [Cancel]       |
++---------------------------------------------+
 ```
 
 ### API Request Format
@@ -382,7 +488,10 @@ POST /api/agents/{name}/git/sync
 | Composable | `src/frontend/src/composables/useGitSync.js` | State management with conflict handling |
 | Agent-Server | `docker/base-image/agent_server/routers/git.py` | Git operations with strategies |
 | Backend Router | `src/backend/routers/git.py` | API endpoints with strategy params |
-| Service | `src/backend/services/git_service.py` | Proxy to agent with conflict detection |
+| Git Service | `src/backend/services/git_service.py` | Proxy to agent with conflict detection |
+| Settings Service | `src/backend/services/settings_service.py` | GitHub PAT retrieval |
+| GitHub Service | `src/backend/services/github_service.py` | GitHub API operations |
+| Dependencies | `src/backend/dependencies.py` | Access control (lines 212-263) |
 
 ---
 
@@ -393,12 +502,13 @@ POST /api/agents/{name}/git/sync
 3. **Force Push Protection**: Uses `--force-with-lease` for normal pushes
 4. **Force Operations Warning**: UI shows red destructive warnings for force operations
 5. **Infrastructure Files**: `content/`, `.local/` auto-added to `.gitignore`
+6. **Access Control**: Read endpoints use `AuthorizedAgentByName`, write endpoints use `OwnedAgentByName`
 
 ---
 
 ## Status
 
-Working - Conflict resolution added (2025-12-30)
+Working - Architecture cleanup (2025-12-31)
 
 ---
 
@@ -416,6 +526,7 @@ Working - Conflict resolution added (2025-12-30)
 
 | Date | Changes |
 |------|---------|
+| 2025-12-31 | Updated with access control dependencies (`AuthorizedAgentByName`, `OwnedAgentByName`), settings service (`get_github_pat()`), and GitHub service integration. Added line number references. |
 | 2025-12-30 | Added conflict resolution with pull/sync strategies and GitConflictModal UI. |
 | 2025-12-30 | Added source mode (pull-only) as default. Working branch mode now legacy. |
 | 2025-12-06 | Updated agent-server references to modular structure |

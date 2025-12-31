@@ -1,3 +1,75 @@
+### 2025-12-31 18:45:00
+📝 **Updated Agent Scheduling Feature Flow Documentation**
+
+- Updated `docs/memory/feature-flows/scheduling.md` to reflect Plan 02/03 refactoring
+- **Access Control Dependencies**: Documented `AuthorizedAgent`, `OwnedAgent`, `CurrentUser` usage in schedules router
+  - Added "Access" column to API endpoints table
+  - Added "Access Control Pattern" section showing dependency usage
+  - Updated flow diagrams to show which endpoints use which dependencies
+- **AgentClient Service**: Documented new centralized HTTP client for agent communication
+  - Added "Agent HTTP Client Service" section with full API reference
+  - Documented `AgentChatResponse` and `AgentChatMetrics` dataclasses
+  - Added exception handling patterns: `AgentNotReachableError`, `AgentRequestError`
+  - Updated execution flow diagrams to show `client.chat()` instead of raw `httpx.post()`
+- Updated all line number references for: schedules.py, scheduler_service.py, agent_client.py, dependencies.py
+- Added new files to Related Files table: `agent_client.py`, `dependencies.py`
+
+---
+
+### 2025-12-31 18:15:00
+📝 **Updated Agent Permissions Feature Flow Documentation**
+
+- Updated `docs/memory/feature-flows/agent-permissions.md` to document access control dependencies
+- Added new section on `dependencies.py` type aliases: `AuthorizedAgent`, `OwnedAgent`, `CurrentUser`, etc.
+- Documented dependency pattern benefits: consistent 403 messages, OpenAPI visibility, automatic enforcement
+- Noted that permissions endpoints currently use inline checks but can migrate to dependency pattern
+- Verified and updated all line number references for router (598-638) and service (18-168) files
+- Updated lifecycle integration line numbers: crud.py:474-480, agents.py:239-243
+- Updated database delegation line numbers: database.py:964-986
+
+---
+
+### 2025-12-31 17:30:00
+🐙 **GitHub API Service Extraction - Architecture Refactoring**
+
+**Problem Solved**: `routers/git.py` `initialize_github_sync` endpoint contained ~280 lines of GitHub API business logic that should be in service layer:
+- GitHub PAT validation
+- Repository existence check (GitHub API call)
+- Organization vs user detection (GitHub API call)
+- Repository creation (GitHub API call)
+- Git initialization commands (container exec calls)
+- Working branch creation
+
+This violated separation of concerns, made the logic unreusable, and hard to unit test.
+
+**Solution**: Created `services/github_service.py` with `GitHubService` class:
+- `validate_token()` → Tuple[bool, Optional[str]]
+- `get_owner_type(owner)` → OwnerType (USER or ORGANIZATION)
+- `check_repo_exists(owner, name)` → GitHubRepoInfo
+- `create_repository(owner, name, private, description)` → GitHubCreateResult
+- Structured exceptions: `GitHubError`, `GitHubAuthError`, `GitHubPermissionError`
+- Response models: `GitHubRepoInfo`, `GitHubCreateResult`, `OwnerType`
+
+**Also added to `services/git_service.py`**:
+- `GitInitResult` dataclass for initialization results
+- `initialize_git_in_container(agent_name, repo, pat)` - handles all git init steps
+- `check_git_initialized(agent_name)` - verify git is set up in container
+
+**Files Changed**:
+- **Added**: `services/github_service.py` (~280 lines)
+- **Updated**: `services/git_service.py` - added init helpers (~180 lines)
+- **Updated**: `routers/git.py` - endpoint reduced from ~280 lines to ~115 lines
+
+**Benefits**:
+- Separation of concerns: Router handles HTTP, services handle logic
+- Reusability: `GitHubService` can be used elsewhere
+- Testability: Can unit test GitHub logic without FastAPI
+- Maintainability: ~165 lines removed from router
+- Error handling: Structured exceptions instead of inline checks
+- Type safety: Dataclasses for responses
+
+---
+
 ### 2025-12-31 16:20:00
 🔌 **Agent HTTP Client Service - DRY Refactoring**
 

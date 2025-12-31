@@ -8,6 +8,25 @@ As a **Trinity platform user**, I want to **enable GitHub synchronization for an
 
 ---
 
+## Architecture Overview (Updated 2025-12-31)
+
+The feature was refactored to follow clean architecture patterns:
+
+| Layer | Old Location | New Location | Purpose |
+|-------|--------------|--------------|---------|
+| GitHub API | `routers/git.py` (inline) | `services/github_service.py` | All GitHub REST API calls |
+| Git Init | `routers/git.py` (inline) | `services/git_service.py` | Container git operations |
+| Access Control | `routers/git.py` (inline) | `dependencies.py` | `OwnedAgentByName` dependency |
+| Settings | `routers/settings.py` | `services/settings_service.py` | `get_github_pat()` function |
+
+**Key Benefits**:
+- Router reduced from ~280 lines to ~115 lines
+- Testable service classes
+- Reusable GitHub client
+- Type-safe dataclasses for API responses
+
+---
+
 ## Entry Points
 
 | Type | Location | Description |
@@ -30,6 +49,7 @@ sequenceDiagram
     participant Store
     participant Backend
     participant GitService
+    participant GitHubService
     participant GitHub
     participant Container
 
@@ -60,45 +80,41 @@ sequenceDiagram
     GitPanel->>Store: initializeGitHub(agentName, config)
     Store->>Backend: POST /api/agents/{name}/git/initialize (120s timeout)
 
-    Note over Backend,Container: Phase 3: Backend Processing
+    Note over Backend,Container: Phase 3: Backend Processing (Refactored)
+    Backend->>Backend: OwnedAgentByName dependency validates ownership
     Backend->>Backend: Verify agent is running
-    Backend->>Backend: Check user is owner (can_user_share_agent)
-    Backend->>Backend: Check for orphaned git config
+    Backend->>GitService: check_git_initialized() - detect orphaned config
     Backend->>Backend: Clean up orphaned records if necessary
-    Backend->>Backend: Get GitHub PAT from settings
-    Backend->>GitHub: GET /repos/{owner}/{name} (check exists)
+    Backend->>SettingsService: get_github_pat()
+    Backend->>GitHubService: check_repo_exists(owner, name)
+    GitHubService->>GitHub: GET /repos/{owner}/{name}
     alt Repository doesn't exist
-        Backend->>GitHub: POST /user/repos (create repository)
-        GitHub->>Backend: 201 Created
+        Backend->>GitHubService: create_repository(owner, name, private)
+        GitHubService->>GitHub: POST /orgs/{owner}/repos or /user/repos
+        GitHub->>GitHubService: 201 Created
+        GitHubService->>Backend: GitHubCreateResult(success=True)
     else Repository exists
-        GitHub->>Backend: 200 OK
+        GitHub->>GitHubService: 200 OK
+        GitHubService->>Backend: GitHubRepoInfo(exists=True)
     end
 
-    Note over Backend,Container: Phase 4: Smart Directory Detection
-    Backend->>Container: Check workspace exists and has content
+    Note over Backend,Container: Phase 4: Git Initialization (via git_service)
+    Backend->>GitService: initialize_git_in_container()
+    GitService->>Container: Check workspace exists and has content
     alt Workspace has content
-        Backend->>Backend: Use /home/developer/workspace
+        GitService->>GitService: Use /home/developer/workspace
     else Workspace empty or doesn't exist
-        Backend->>Backend: Use /home/developer (agent files location)
-        Backend->>Container: Create .gitignore (exclude .bashrc, .ssh/, etc.)
+        GitService->>GitService: Use /home/developer
+        GitService->>Container: Create .gitignore
     end
+    GitService->>Container: Execute git init, add, commit, push
+    GitService->>Container: Create working branch
+    GitService->>Container: Verify git directory
+    GitService->>Backend: GitInitResult(success=True, git_dir, working_branch)
 
-    Note over Backend,Container: Phase 5: Git Initialization in Container
-    Backend->>Container: Execute git config commands
-    Backend->>Container: git init
-    Backend->>Container: git remote add origin https://oauth2:{PAT}@github.com/{owner}/{name}.git
-    Backend->>Container: git add .
-    Backend->>Container: git commit -m "Initial commit from Trinity Agent"
-    Backend->>Container: git push -u origin main --force
-    Backend->>GitService: generate_instance_id()
-    Backend->>Container: git checkout -b trinity/{name}/{instance_id}
-    Backend->>Container: git push -u origin trinity/{name}/{instance_id}
-
-    Note over Backend,Container: Phase 6: Verification & Persistence
-    Backend->>Container: Verify git directory exists (git rev-parse --git-dir)
+    Note over Backend,Container: Phase 5: Persistence
     Backend->>GitService: create_git_config_for_agent()
     GitService->>GitService: Store in agent_git_config table
-    Backend->>Backend: Log audit event
     Backend->>Store: Return success + repo details
     Store->>GitPanel: Close modal
     GitPanel->>GitPanel: Reload git status
@@ -236,153 +252,304 @@ async initializeGitHub(name, config) {
 
 ## Backend Layer
 
-### Settings Routes - GitHub PAT Management
+### Settings Service (NEW - Plan 01)
 
-**Location**: `src/backend/routers/settings.py`
+**Location**: `src/backend/services/settings_service.py`
 
-| Lines | Endpoint | Description |
-|-------|----------|-------------|
-| 43-48 | `get_github_pat()` | Helper to get PAT from settings or env |
-| 337-388 | `PUT /api/settings/api-keys/github` | Save GitHub PAT to database |
-| 426-538 | `POST /api/settings/api-keys/github/test` | Test PAT validity and permissions |
-
-**GitHub PAT Test Flow**:
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 47-99 | `SettingsService` class | Centralized settings retrieval |
+| 69-74 | `get_github_pat()` method | Get PAT from DB or env var |
+| 111-113 | `get_github_pat()` function | Convenience function export |
 
 ```python
-# Line 426-537: Test GitHub PAT
-async def test_github_pat(body: ApiKeyTest, ...):
-    key = body.api_key.strip()
-
-    # Validate format
-    if not (key.startswith('ghp_') or key.startswith('github_pat_')):
-        return {"valid": False, "error": "Invalid format"}
-
-    # Test with GitHub API
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Accept": "application/vnd.github+json"
-            }
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            is_fine_grained = key.startswith('github_pat_')
-
-            # Check repo access
-            if is_fine_grained:
-                # Test by trying to list repos
-                repos_response = await client.get("https://api.github.com/user/repos", ...)
-                has_repo_access = repos_response.status_code == 200
-            else:
-                # Check X-OAuth-Scopes header for classic PAT
-                scopes = response.headers.get("X-OAuth-Scopes", "").split(",")
-                has_repo_access = "repo" in scopes or "public_repo" in scopes
-
-            return {
-                "valid": True,
-                "username": data.get("login"),
-                "token_type": "fine-grained" if is_fine_grained else "classic",
-                "has_repo_access": has_repo_access
-            }
+# Line 69-74: Get GitHub PAT
+def get_github_pat(self) -> str:
+    """Get GitHub PAT from settings, fallback to env var."""
+    key = self.get_setting('github_pat')
+    if key:
+        return key
+    return os.getenv('GITHUB_PAT', '')
 ```
 
-### Git Routes - Initialize Endpoint
+### GitHub Service (NEW - Plan 04)
+
+**Location**: `src/backend/services/github_service.py`
+
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 19-23 | `OwnerType` enum | USER or ORGANIZATION |
+| 25-35 | `GitHubRepoInfo` dataclass | Repository existence info |
+| 37-43 | `GitHubCreateResult` dataclass | Repo creation result |
+| 45-57 | Exception classes | `GitHubError`, `GitHubAuthError`, `GitHubPermissionError` |
+| 60-265 | `GitHubService` class | GitHub API client |
+| 101-118 | `validate_token()` | Validate PAT and get username |
+| 120-139 | `get_owner_type()` | Detect user vs organization |
+| 141-176 | `check_repo_exists()` | Check if repo exists |
+| 177-264 | `create_repository()` | Create new repo (user or org) |
+| 271-281 | `get_github_service()` | Factory function |
+
+**Key Class**:
+
+```python
+# Line 60-265: GitHub API Service
+class GitHubService:
+    """Service for GitHub API interactions."""
+
+    API_BASE = "https://api.github.com"
+    API_VERSION = "2022-11-28"
+
+    def __init__(self, pat: str):
+        self.pat = pat
+        self._headers = {
+            "Authorization": f"Bearer {pat}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": self.API_VERSION
+        }
+
+    async def validate_token(self) -> Tuple[bool, Optional[str]]:
+        """Validate PAT and return (is_valid, username)."""
+        response = await self._request("GET", "/user")
+        if response.status_code == 200:
+            return True, response.json().get("login")
+        return False, None
+
+    async def check_repo_exists(self, owner: str, name: str) -> GitHubRepoInfo:
+        """Check if repository exists, return info."""
+        response = await self._request("GET", f"/repos/{owner}/{name}")
+        if response.status_code == 200:
+            return GitHubRepoInfo(exists=True, ...)
+        return GitHubRepoInfo(exists=False, ...)
+
+    async def create_repository(self, owner: str, name: str, ...) -> GitHubCreateResult:
+        """Create repository for user or org."""
+        owner_type = await self.get_owner_type(owner)
+        if owner_type == OwnerType.ORGANIZATION:
+            path = f"/orgs/{owner}/repos"
+        else:
+            path = "/user/repos"
+        response = await self._request("POST", path, json=payload)
+        ...
+```
+
+### Git Service - Initialization (NEW - Plan 04)
+
+**Location**: `src/backend/services/git_service.py`
+
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 253-259 | `GitInitResult` dataclass | Result of git init in container |
+| 262-397 | `initialize_git_in_container()` | Full git init workflow |
+| 400-425 | `check_git_initialized()` | Check if git exists in container |
+
+**Key Function**:
+
+```python
+# Line 253-259: GitInitResult dataclass
+@dataclass
+class GitInitResult:
+    """Result of git initialization in container."""
+    success: bool
+    git_dir: str
+    working_branch: Optional[str] = None
+    error: Optional[str] = None
+
+
+# Line 262-397: Initialize git in container
+async def initialize_git_in_container(
+    agent_name: str,
+    github_repo: str,
+    github_pat: str,
+    create_working_branch: bool = True
+) -> GitInitResult:
+    """
+    Initialize git in an agent container.
+
+    Performs:
+    1. Detect git directory (workspace or home)
+    2. Create .gitignore
+    3. Initialize git repo
+    4. Configure remote
+    5. Create initial commit
+    6. Push to GitHub
+    7. Create working branch (optional)
+    """
+    container_name = f"agent-{agent_name}"
+
+    # Step 1: Smart directory detection
+    check_workspace = execute_command_in_container(
+        container_name=container_name,
+        command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
+        timeout=5
+    )
+
+    workspace_has_content = ...
+    git_dir = "/home/developer/workspace" if workspace_has_content else "/home/developer"
+
+    # Step 2: Create .gitignore (if using home directory)
+    if git_dir == "/home/developer":
+        gitignore_content = """# Exclude sensitive and temporary files
+.bash_logout
+.bashrc
+.profile
+...
+"""
+        execute_command_in_container(...)
+
+    # Step 3-6: Git commands
+    commands = [
+        'git config --global user.email "trinity@agent.local"',
+        'git init',
+        f'git remote add origin https://oauth2:{github_pat}@github.com/{github_repo}.git',
+        'git add .',
+        'git commit -m "Initial commit from Trinity Agent"',
+        'git push -u origin main --force'
+    ]
+    ...
+
+    # Step 7: Create working branch
+    if create_working_branch:
+        instance_id = generate_instance_id()
+        working_branch = generate_working_branch(agent_name, instance_id)
+        ...
+
+    # Step 8: Verify
+    verify_result = execute_command_in_container(
+        command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
+        timeout=5
+    )
+
+    return GitInitResult(success=True, git_dir=git_dir, working_branch=working_branch)
+```
+
+### Access Control Dependencies (Plan 02)
+
+**Location**: `src/backend/dependencies.py`
+
+| Lines | Component | Description |
+|-------|-----------|-------------|
+| 234-253 | `get_owned_agent_by_name()` | Validates owner access to agent |
+| 262-263 | `OwnedAgentByName` | Type alias for Annotated dependency |
+
+```python
+# Line 234-253: Owner access validation
+def get_owned_agent_by_name(
+    agent_name: str = Path(..., description="Agent name from path"),
+    current_user: User = Depends(get_current_user)
+) -> str:
+    """
+    Dependency that validates user owns or can share an agent.
+    For routes using {agent_name} path parameter.
+    """
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner access required"
+        )
+    return agent_name
+
+
+# Line 262-263: Type alias
+OwnedAgentByName = Annotated[str, Depends(get_owned_agent_by_name)]
+```
+
+### Git Routes - Initialize Endpoint (Refactored)
 
 **Location**: `src/backend/routers/git.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 29-36 | `GitInitializeRequest` model | Request body schema |
-| 284-596 | `POST /{agent_name}/git/initialize` | Main initialization endpoint |
-| 324-344 | Orphaned record cleanup | Detects and removes orphaned DB records |
-| 444-478 | Smart directory detection | Chooses workspace vs home directory |
-| 536-549 | Git verification | Verifies git initialization before DB insert |
+| 34-41 | `GitInitializeRequest` model | Request body schema |
+| 251-364 | `POST /{agent_name}/git/initialize` | Main initialization endpoint (now 115 lines) |
 
-**Critical Bug Fixes**:
+**Refactored Endpoint**:
 
-1. **Orphaned Record Cleanup** (Lines 324-344):
 ```python
-# Check if already configured
-existing_config = git_service.get_agent_git_config(agent_name)
-if existing_config:
-    # Verify git is actually initialized in the container (check both possible locations)
-    check_git = execute_command_in_container(
-        container_name=f"agent-{agent_name}",
-        command='bash -c "[ -d /home/developer/workspace/.git ] && echo workspace || ([ -d /home/developer/.git ] && echo home || echo notexists)"',
-        timeout=5
-    )
+# Line 251-364: Initialize GitHub sync (refactored)
+@router.post("/{agent_name}/git/initialize")
+async def initialize_github_sync(
+    agent_name: OwnedAgentByName,  # Dependency validates ownership
+    body: GitInitializeRequest,
+    request: Request
+):
+    """Initialize GitHub synchronization for an agent."""
+    from services.docker_service import get_agent_container
+    from services.settings_service import get_github_pat      # Plan 01
+    from services.github_service import GitHubService, GitHubError  # Plan 04
 
-    if "workspace" in check_git.get("output", "") or "home" in check_git.get("output", ""):
-        # Git is properly initialized, prevent re-initialization
-        raise HTTPException(
-            status_code=409,
-            detail=f"Git sync already configured for this agent. Repository: {existing_config.github_repo}"
+    # Check if agent exists and is running
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if container.status != "running":
+        raise HTTPException(status_code=400, detail="Agent must be running to initialize Git sync")
+
+    # Check if already configured (with orphan cleanup)
+    existing_config = git_service.get_agent_git_config(agent_name)
+    if existing_config:
+        git_dir = git_service.check_git_initialized(agent_name)  # NEW: service function
+        if git_dir:
+            raise HTTPException(status_code=409, ...)
+        else:
+            # Clean up orphaned record
+            db.execute_query("DELETE FROM agent_git_config WHERE agent_name = ?", (agent_name,))
+
+    # Get GitHub PAT (from settings_service)
+    github_pat = get_github_pat()
+    if not github_pat:
+        raise HTTPException(status_code=400, detail="GitHub Personal Access Token not configured...")
+
+    repo_full_name = f"{body.repo_owner}/{body.repo_name}"
+
+    try:
+        # Step 1: Create repository if requested (using GitHubService)
+        if body.create_repo:
+            gh = GitHubService(github_pat)
+            repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+            if not repo_info.exists:
+                create_result = await gh.create_repository(
+                    owner=body.repo_owner,
+                    name=body.repo_name,
+                    private=body.private,
+                    description=body.description
+                )
+                if not create_result.success:
+                    raise HTTPException(status_code=400, detail=f"Failed to create repository: {create_result.error}")
+
+        # Step 2: Initialize git in container (using git_service)
+        init_result = await git_service.initialize_git_in_container(
+            agent_name=agent_name,
+            github_repo=repo_full_name,
+            github_pat=github_pat
         )
-    else:
-        # Database record exists but git not initialized - clean up orphaned record
-        print(f"Warning: Found orphaned git config for {agent_name}. Cleaning up and allowing re-initialization.")
-        db.execute_query("DELETE FROM agent_git_config WHERE agent_name = ?", (agent_name,))
-        # Continue with initialization
-```
 
-2. **Smart Directory Detection** (Lines 444-478):
-```python
-# Step 2: Determine git directory
-# Check if workspace exists and has content
-check_workspace = execute_command_in_container(
-    container_name=f"agent-{agent_name}",
-    command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
-    timeout=5
-)
+        if not init_result.success:
+            raise HTTPException(status_code=500, detail=f"Git initialization failed: {init_result.error}")
 
-workspace_has_content = check_workspace.get("exit_code") == 0 and "1" in check_workspace.get("output", "")
+        # Step 3: Store configuration
+        instance_id = git_service.generate_instance_id()
+        config = await git_service.create_git_config_for_agent(
+            agent_name=agent_name,
+            github_repo=repo_full_name,
+            instance_id=instance_id
+        )
 
-if workspace_has_content:
-    # Use workspace if it exists and has content
-    git_dir = "/home/developer/workspace"
-    print(f"Using workspace directory with existing content: {git_dir}")
-else:
-    # Use home directory where agent's files actually live
-    git_dir = "/home/developer"
-    print(f"Using home directory (agent's files are here): {git_dir}")
+        return {
+            "success": True,
+            "message": "GitHub sync initialized successfully",
+            "github_repo": repo_full_name,
+            "working_branch": init_result.working_branch,
+            "instance_id": instance_id,
+            "repo_url": f"https://github.com/{repo_full_name}"
+        }
 
-    # Create .gitignore to exclude certain files from git
-    gitignore_content = """# Exclude sensitive and temporary files
-.bash_logout
-.bashrc
-.profile
-.bash_history
-.cache/
-.local/
-.npm/
-.ssh/
-"""
-    execute_command_in_container(
-        container_name=f"agent-{agent_name}",
-        command=f'bash -c "cat > {git_dir}/.gitignore << \'GITIGNORE_EOF\'\n{gitignore_content}\nGITIGNORE_EOF\n"',
-        timeout=5
-    )
-```
-
-3. **Git Verification Before DB Insert** (Lines 536-549):
-```python
-# Step 5: Verify git was initialized successfully
-verify_result = execute_command_in_container(
-    container_name=f"agent-{agent_name}",
-    command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
-    timeout=5
-)
-
-if verify_result.get("exit_code", 0) != 0:
-    raise HTTPException(
-        status_code=500,
-        detail=f"Git initialization verification failed. Git directory not found: {verify_result.get('output', '')}"
-    )
-
-print(f"Git initialization verified successfully in {git_dir}")
+    except HTTPException:
+        raise
+    except GitHubError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize GitHub sync: {str(e)}")
 ```
 
 ### Docker Service - Command Execution
@@ -398,11 +565,6 @@ print(f"Git initialization verified successfully in {git_dir}")
 def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
     """Execute a command in a Docker container.
 
-    Args:
-        container_name: Name of the container (e.g., "agent-myagent")
-        command: Command to execute
-        timeout: Timeout in seconds
-
     Returns:
         Dictionary with 'exit_code' and 'output' keys
     """
@@ -411,53 +573,13 @@ def execute_command_in_container(container_name: str, command: str, timeout: int
 
     try:
         container = docker_client.containers.get(container_name)
-        result = container.exec_run(
-            command,
-            user="developer",
-            demux=False
-        )
-
-        # result.exit_code is the exit code
-        # result.output is bytes, decode to string
+        result = container.exec_run(command, user="developer", demux=False)
         output = result.output.decode('utf-8') if isinstance(result.output, bytes) else str(result.output)
-
-        return {
-            "exit_code": result.exit_code,
-            "output": output
-        }
+        return {"exit_code": result.exit_code, "output": output}
     except docker.errors.NotFound:
         return {"exit_code": 1, "output": f"Container {container_name} not found"}
     except Exception as e:
         return {"exit_code": 1, "output": f"Error executing command: {str(e)}"}
-```
-
-### Git Service - Database Operations
-
-**Location**: `src/backend/services/git_service.py`
-
-Key functions:
-
-```python
-def generate_instance_id() -> str:
-    """Generate unique 8-character instance ID"""
-    return secrets.token_hex(4)  # 8 hex chars
-
-def generate_working_branch(agent_name: str, instance_id: str) -> str:
-    """Generate working branch name: trinity/{name}/{instance_id}"""
-    return f"trinity/{agent_name}/{instance_id}"
-
-async def create_git_config_for_agent(agent_name: str, github_repo: str, instance_id: str):
-    """Create agent_git_config record in database"""
-    db.create_agent_git_config(
-        agent_name=agent_name,
-        github_repo=github_repo,
-        working_branch=generate_working_branch(agent_name, instance_id),
-        instance_id=instance_id
-    )
-
-def get_agent_git_config(agent_name: str):
-    """Retrieve git config from database"""
-    return db.get_agent_git_config(agent_name)
 ```
 
 ---
@@ -559,6 +681,67 @@ GitHub PAT stored as key: `github_pat`
 
 ---
 
+## Service Layer Summary (NEW)
+
+### GitHubService Dataclasses
+
+```python
+# src/backend/services/github_service.py
+
+class OwnerType(Enum):
+    USER = "user"
+    ORGANIZATION = "org"
+
+@dataclass
+class GitHubRepoInfo:
+    exists: bool
+    full_name: str
+    owner: str
+    name: str
+    owner_type: Optional[OwnerType] = None
+    private: Optional[bool] = None
+    default_branch: Optional[str] = None
+
+@dataclass
+class GitHubCreateResult:
+    success: bool
+    repo_url: Optional[str] = None
+    error: Optional[str] = None
+```
+
+### GitService Dataclasses
+
+```python
+# src/backend/services/git_service.py
+
+@dataclass
+class GitInitResult:
+    success: bool
+    git_dir: str
+    working_branch: Optional[str] = None
+    error: Optional[str] = None
+```
+
+### Exception Hierarchy
+
+```python
+# src/backend/services/github_service.py
+
+class GitHubError(Exception):
+    """Base exception for GitHub API errors."""
+    pass
+
+class GitHubAuthError(GitHubError):
+    """GitHub authentication failed."""
+    pass
+
+class GitHubPermissionError(GitHubError):
+    """Insufficient permissions for operation."""
+    pass
+```
+
+---
+
 ## Side Effects
 
 ### Audit Logging
@@ -611,9 +794,11 @@ None - this is a one-time configuration operation
 ### GitHub API Calls
 
 1. **Test PAT**: `GET https://api.github.com/user`
-2. **Check repo exists**: `GET https://api.github.com/repos/{owner}/{name}`
-3. **Create repo**: `POST https://api.github.com/user/repos`
-4. **Push commits**: Git protocol via authenticated URL
+2. **Check owner type**: `GET https://api.github.com/users/{owner}`
+3. **Check repo exists**: `GET https://api.github.com/repos/{owner}/{name}`
+4. **Create repo (user)**: `POST https://api.github.com/user/repos`
+5. **Create repo (org)**: `POST https://api.github.com/orgs/{owner}/repos`
+6. **Push commits**: Git protocol via authenticated URL
 
 ---
 
@@ -623,15 +808,16 @@ None - this is a one-time configuration operation
 |------------|-------------|---------|----------|
 | Agent not found | 404 | "Agent not found" | Create agent first |
 | Agent not running | 400 | "Agent must be running to initialize Git sync" | Start agent |
-| Not agent owner | 403 | "Only agent owners can initialize GitHub sync" | Share agent or login as owner |
+| Not agent owner | 403 | "Owner access required" | Share agent or login as owner |
 | Already configured | 409 | "Git sync already configured for this agent. Repository: {repo}" | Cannot re-initialize |
 | Orphaned DB record | - | Auto-cleanup + allow re-init | System detects and fixes automatically |
 | No GitHub PAT | 400 | "GitHub Personal Access Token not configured. Please add it in Settings." | Configure PAT in Settings |
 | Invalid PAT format | 400 | "Invalid token format" | Use PAT starting with ghp_ or github_pat_ |
-| GitHub API error | 400 | "Failed to create GitHub repository: {error}" | Check PAT permissions |
-| Git command failed | 500 | "Git command failed: {cmd}" | Check container logs |
-| Repo creation failed | 400 | "Failed to create repository: {message}" | Check PAT has repo scope |
-| Git verification failed | 500 | "Git initialization verification failed. Git directory not found" | Check container state |
+| Owner not found | 400 | "Owner '{owner}' not found on GitHub" | Check owner name |
+| Repo creation failed | 400 | "Failed to create repository: {message}" | Check PAT permissions |
+| Git command failed | 500 | "Git initialization failed: {error}" | Check container logs |
+| Git verification failed | 500 | "Git initialization verification failed" | Check container state |
+| GitHubError | 400 | Exception message | Check PAT and permissions |
 
 ---
 
@@ -643,7 +829,8 @@ None - this is a one-time configuration operation
    - Checked via `require_admin(current_user)` in settings routes
 
 2. **Owner-only initialization**: Only agent owners can initialize Git sync
-   - Checked via `db.can_user_share_agent(current_user.username, agent_name)`
+   - Checked via `OwnedAgentByName` dependency (Plan 02)
+   - Uses `db.can_user_share_agent(current_user.username, agent_name)`
 
 3. **PAT storage**: Stored in system_settings table (not encrypted at rest)
    - Consider encryption for production deployments
@@ -704,7 +891,7 @@ This allows push/pull without interactive authentication.
 **Expected**:
 - Button shows loading spinner
 - After 1-2 seconds, shows green checkmark
-- Message displays: "Valid! GitHub user: {username}. ✓ Has repo scope" (classic) or "✓ Fine-grained PAT with repository permissions" (fine-grained)
+- Message displays: "Valid! GitHub user: {username}. Has repo scope" (classic) or "Fine-grained PAT with repository permissions" (fine-grained)
 
 **Verify**:
 ```bash
@@ -823,21 +1010,21 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 
 **Verify**: Cannot re-initialize, must delete and recreate agent
 
-#### 3. Orphaned Database Record (NEW)
+#### 3. Orphaned Database Record
 
 **Action**:
 1. Create orphaned DB record: Insert into `agent_git_config` without actually initializing git in container
 2. Try to initialize git sync
 
 **Expected**:
-- System detects orphaned record
+- System detects orphaned record via `git_service.check_git_initialized()`
 - Backend logs: `Warning: Found orphaned git config for {agent_name}. Cleaning up and allowing re-initialization.`
 - Record deleted from database
 - Initialization proceeds successfully
 
 **Verify**: Check backend logs for cleanup message
 
-#### 4. Empty Workspace / Home Directory Detection (NEW)
+#### 4. Empty Workspace / Home Directory Detection
 
 **Action**: Initialize git sync for an agent with:
 - **Case A**: Empty `/home/developer/workspace/` directory
@@ -873,7 +1060,7 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 **Action**: Use a PAT without `repo` scope (classic) or without Contents/Administration (fine-grained)
 
 **Expected**:
-- Test shows: "⚠️ Missing repo scope" (classic) or "⚠️ Missing repository permissions" (fine-grained)
+- Test shows: "Missing repo scope" (classic) or "Missing repository permissions" (fine-grained)
 - Initialize fails: "Failed to create GitHub repository: Bad credentials or insufficient permissions"
 
 #### 8. Repository Already Exists
@@ -886,7 +1073,18 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 
 **Verify**: Check GitHub - should see Trinity's initial commit pushed
 
-#### 9. Large Agent Workspace (NEW)
+#### 9. Organization Repository (NEW)
+
+**Action**: Initialize git sync with an organization owner
+
+**Expected**:
+- `GitHubService.get_owner_type()` detects organization
+- Uses `POST /orgs/{owner}/repos` endpoint instead of `/user/repos`
+- Helpful error message if missing org permissions
+
+**Verify**: Check that org repo is created correctly
+
+#### 10. Large Agent Workspace
 
 **Action**: Initialize git sync for an agent with large `.claude/` directory (many sessions, large memory files)
 
@@ -899,17 +1097,6 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 **Verify**:
 - Check browser console for timing logs
 - Verify all files pushed to GitHub
-
-#### 10. Timeout Edge Case (NEW)
-
-**Action**: Initialize git sync for an agent with extremely large workspace (>500MB)
-
-**Expected**:
-- If operation takes >120 seconds, frontend shows timeout error
-- Backend may still complete successfully (operations continue)
-- User can reload page and see git sync enabled
-
-**Recovery**: Increase timeout in `stores/agents.js:366` if needed
 
 ---
 
@@ -956,7 +1143,7 @@ docker exec agent-{name} bash -c "cd /home/developer && git log --stat"
 ```
 
 **Solution**:
-- FIXED in latest version with smart directory detection
+- FIXED in latest version with smart directory detection in `git_service.initialize_git_in_container()`
 - System now checks if workspace has content and falls back to home directory
 - System creates .gitignore to exclude system files
 
@@ -979,7 +1166,7 @@ docker exec agent-{name} bash -c "[ -d /home/developer/.git ] && echo exists || 
 ```
 
 **Solution**:
-- FIXED in latest version with auto-cleanup
+- FIXED in latest version with auto-cleanup via `git_service.check_git_initialized()`
 - System detects orphaned records and removes them automatically
 - Allows re-initialization after failed attempts
 
@@ -987,37 +1174,37 @@ docker exec agent-{name} bash -c "[ -d /home/developer/.git ] && echo exists || 
 
 ## Testing Status
 
-**Status**: ✅ Working (as of 2025-12-26)
+**Status**: Verified Working (as of 2025-12-31)
+
+**Architecture Refactoring** (2025-12-31):
+- NEW: `services/github_service.py` - GitHub API client with dataclasses
+- NEW: `services/settings_service.py` - Settings retrieval service
+- UPDATED: `services/git_service.py` - Added `initialize_git_in_container()`, `check_git_initialized()`
+- UPDATED: `routers/git.py` - Reduced from ~280 lines to ~115 lines
+- UPDATED: `dependencies.py` - Added `OwnedAgentByName` type alias
 
 **Recent Bug Fixes** (2025-12-26):
-- Fixed empty repositories: Smart directory detection chooses correct location (git.py Lines 444-478)
-- Fixed orphaned records: Auto-cleanup of DB records when git doesn't exist (git.py Lines 324-344)
-- Fixed timeout issue: Increased frontend timeout to 120 seconds + console logging (GitPanel.vue Lines 350-385, agents.js Lines 382-389)
-- Fixed verification: Git initialization verified before DB insert (git.py Lines 536-549)
-- Fixed system files: Created .gitignore to exclude .bashrc, .ssh/, etc. (git.py Lines 463-478)
+- Fixed empty repositories: Smart directory detection chooses correct location
+- Fixed orphaned records: Auto-cleanup of DB records when git doesn't exist
+- Fixed timeout issue: Increased frontend timeout to 120 seconds + console logging
+- Fixed verification: Git initialization verified before DB insert
+- Fixed system files: Created .gitignore to exclude .bashrc, .ssh/, etc.
 
 **Test Coverage**:
-- ✅ Settings UI: PAT configuration and testing
-- ✅ GitPanel UI: Modal form and initialization flow
-- ✅ Backend: Repository creation and git commands
-- ✅ Smart directory detection: Workspace vs home directory
-- ✅ Orphaned record cleanup: Auto-detection and removal
-- ✅ Git verification: Pre-DB insert validation
-- ✅ Timeout handling: 120-second frontend timeout
-- ✅ MCP Tool: Programmatic initialization
-- ✅ Error handling: All edge cases covered
-- ✅ Database persistence: Config stored correctly
-- ✅ Audit logging: All operations logged
+- Settings UI: PAT configuration and testing
+- GitPanel UI: Modal form and initialization flow
+- Backend: Repository creation and git commands
+- Smart directory detection: Workspace vs home directory
+- Orphaned record cleanup: Auto-detection and removal
+- Git verification: Pre-DB insert validation
+- Timeout handling: 120-second frontend timeout
+- MCP Tool: Programmatic initialization
+- Error handling: All edge cases covered
+- Database persistence: Config stored correctly
+- Audit logging: All operations logged
+- Organization repos: Correct endpoint selection
 
 **Known Issues**: None
-
-**Verified Successfully**:
-- Repository: `abilityai/booboob`
-- Directory used: `/home/developer`
-- Files pushed: CLAUDE.md, .claude/, .trinity/, .mcp.json, .gitignore (17+ files)
-- System files excluded: .bashrc, .cache/, .ssh/ (via .gitignore)
-- Branches: main, trinity/{agent}/{id}
-- Clean git status with 2 commits
 
 ---
 
@@ -1049,13 +1236,13 @@ trinity/{agent-name}/{instance-id}
 After initialization:
 ```
 your-repo/
-├── .git/
-├── .gitignore (if using home directory)
-├── CLAUDE.md
-├── .claude/
-├── .trinity/
-├── .mcp.json
-└── (any template-provided files)
+  .git/
+  .gitignore (if using home directory)
+  CLAUDE.md
+  .claude/
+  .trinity/
+  .mcp.json
+  (any template-provided files)
 ```
 
 **Branches**:
@@ -1074,11 +1261,11 @@ your-repo/
 
 ### Directory Detection Logic
 
-The system uses smart detection to find the correct directory:
+The system uses smart detection to find the correct directory (in `git_service.initialize_git_in_container()`):
 
 1. **Check workspace**: Does `/home/developer/workspace` exist and have content?
-   - Yes → Use workspace
-   - No → Use home directory
+   - Yes -> Use workspace
+   - No -> Use home directory
 
 2. **If using home**: Create `.gitignore` to exclude system files
 
@@ -1103,7 +1290,7 @@ This works with both classic and fine-grained PATs.
 
 Testing and initialization count as:
 - Test: 1-2 API calls
-- Initialize: 2-3 API calls (check + create)
+- Initialize: 3-4 API calls (check owner + check repo + create)
 
 ---
 

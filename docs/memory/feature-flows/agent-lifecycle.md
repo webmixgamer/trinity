@@ -1,6 +1,6 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2025-12-30 - Updated line numbers after composable refactoring. Frontend lifecycle methods moved to `composables/useAgentLifecycle.js`.
+> **Updated**: 2025-12-31 - Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
 
 ## Overview
 Complete lifecycle management for Trinity agents: create, start, stop, and delete Docker containers with credential injection, network isolation, Trinity meta-prompt injection, and WebSocket broadcasts.
@@ -120,9 +120,16 @@ The agent router uses a **thin router + service layer** architecture:
 | Module | Lines | Key Functions |
 |--------|-------|---------------|
 | `helpers.py` | ~200 | `get_accessible_agents()`, `get_next_version_name()`, `check_shared_folder_mounts_match()` |
-| `lifecycle.py` | 252 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` |
-| `crud.py` | 479 | `create_agent_internal()` |
+| `lifecycle.py` | 221 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` |
+| `crud.py` | 507 | `create_agent_internal()` |
 | `terminal.py` | 342 | `TerminalSessionManager` class |
+
+**Shared Services:**
+
+| Module | Lines | Key Functions |
+|--------|-------|---------------|
+| `services/settings_service.py` | 124 | `get_anthropic_api_key()`, `get_github_pat()`, `get_ops_setting()` |
+| `services/agent_client.py` | 379 | `AgentClient.inject_trinity_prompt()`, `AgentClient.chat()`, `AgentClient.get_session()` |
 
 ### Pydantic Models (`src/backend/models.py:10-40`)
 
@@ -161,25 +168,30 @@ async def create_agent_endpoint(config: AgentConfig, request: Request, current_u
     return await create_agent_internal(config, current_user, request, skip_name_sanitization=False)
 ```
 
-**Service Function** (`src/backend/services/agent_service/crud.py:36-479`):
+**Service Function** (`src/backend/services/agent_service/crud.py:35-507`):
+
+**Imports** (lines 1-32):
+```python
+from services.settings_service import get_anthropic_api_key  # Line 29 - centralized settings
+```
 
 **Business Logic:**
-1. **Sanitize name** (line 64-68): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
-2. **Check existence** (line 70-71): Query Docker for existing container via `get_agent_by_name()`
-3. **Load template** (line 81-140): GitHub or local template processing
-4. **Auto-assign port** (line 141-142): Find next available SSH port (2289+) via `get_next_available_port()`
-5. **Get credentials** (line 144): `credential_manager.get_agent_credentials()`
-6. **Generate credential files** (line 154-168): Process template placeholders via `generate_credential_files()`
-7. **Create MCP API key** (line 209-222): Generate agent-scoped Trinity MCP access key
-8. **Build env vars** (line 223-288): ANTHROPIC_API_KEY, MCP server credentials, GitHub repo/PAT
-9. **Create persistent volume** (line 291-303): Per-agent workspace volume for Pillar III compliance
-10. **Mount Trinity meta-prompt** (line 318-323): Mount `/trinity-meta-prompt` volume for planning commands
-11. **Create container** (line 372-398): Docker SDK `containers.run()` with security options
-12. **Register ownership** (line 416): `db.register_agent_owner(current_user.username)`
-13. **Grant default permissions** (line 418-424): Same-owner agent permissions (Phase 9.10)
-14. **Create git config** (line 426-440): For GitHub-native agents (Phase 7)
-15. **Broadcast WebSocket** (line 402-414): `agent_created` event
-16. **Audit log** (line 442-457): `event_type="agent_management", action="create"`
+1. **Sanitize name** (line 63-67): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
+2. **Check existence** (line 69-70): Query Docker for existing container via `get_agent_by_name()`
+3. **Load template** (line 80-169): GitHub or local template processing
+4. **Auto-assign port** (line 171-172): Find next available SSH port (2289+) via `get_next_available_port()`
+5. **Get credentials** (line 175-185): `credential_manager.get_assigned_credential_values()` and `get_agent_credentials()`
+6. **Generate credential files** (line 187-217): Process template placeholders via `generate_credential_files()`
+7. **Create MCP API key** (line 260-271): Generate agent-scoped Trinity MCP access key
+8. **Build env vars** (line 273-344): `ANTHROPIC_API_KEY` via `get_anthropic_api_key()` (line 277), MCP server credentials, GitHub repo/PAT
+9. **Create persistent volume** (line 348-360): Per-agent workspace volume for Pillar III compliance
+10. **Mount Trinity meta-prompt** (line 374-379): Mount `/trinity-meta-prompt` volume for planning commands
+11. **Create container** (line 428-454): Docker SDK `containers.run()` with security options
+12. **Register ownership** (line 472): `db.register_agent_owner(current_user.username)`
+13. **Grant default permissions** (line 475-480): Same-owner agent permissions (Phase 9.10)
+14. **Create git config** (line 483-496): For GitHub-native agents (Phase 7)
+15. **Broadcast WebSocket** (line 458-470): `agent_created` event
+16. **Audit log**: Handled by router after service call
 
 #### Delete Agent (`src/backend/routers/agents.py:211-313`)
 ```python
@@ -222,7 +234,14 @@ async def start_agent_endpoint(agent_name: str, request: Request, current_user: 
     # Audit log with injection status (line 333-341)
 ```
 
-**Service Function** (`src/backend/services/agent_service/lifecycle.py:84-127`):
+**Service Function** (`src/backend/services/agent_service/lifecycle.py:53-97`):
+
+**Imports** (lines 1-20):
+```python
+from services.settings_service import get_anthropic_api_key  # Line 16 - centralized settings
+from services.agent_client import get_agent_client           # Line 17 - centralized HTTP client
+```
+
 ```python
 async def start_agent_internal(agent_name: str) -> dict:
     container = get_agent_container(agent_name)
@@ -243,36 +262,71 @@ async def start_agent_internal(agent_name: str) -> dict:
 
     container.start()
 
-    # Inject Trinity meta-prompt
+    # Inject Trinity meta-prompt via AgentClient
     trinity_result = await inject_trinity_meta_prompt(agent_name)
     return {
         "message": f"Agent {agent_name} started",
-        "trinity_injection": trinity_result.get("status", "unknown")
+        "trinity_injection": trinity_result.get("status", "unknown"),
+        "trinity_result": trinity_result
     }
 ```
 
 **Container Recreation Triggers:**
 - **Shared folder changes**: Mounts added/removed based on `shared_folder_config`
 - **API key setting changes**: `ANTHROPIC_API_KEY` added/removed based on `use_platform_api_key`
+- API key retrieval uses `get_anthropic_api_key()` from `services/settings_service.py` (line 118)
 
-**Trinity Meta-Prompt Injection** (`src/backend/services/agent_service/lifecycle.py:23-81`)
+**Trinity Meta-Prompt Injection** (`src/backend/services/agent_service/lifecycle.py:23-51`)
+
+Now uses centralized `AgentClient` service instead of raw httpx calls:
+
 ```python
 async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
     """
     Inject Trinity meta-prompt into an agent via its internal API.
-    Called after agent startup to inject planning commands.
-
-    - Retries up to 5 times with 2s delay (agent server startup)
-    - Calls agent's POST /api/trinity/inject endpoint
-    - Returns {"status": "success|error", ...}
+    Uses AgentClient for centralized HTTP communication with retry logic.
     """
-    agent_url = f"http://agent-{agent_name}:8000"
-    # ... retry logic with httpx.AsyncClient
-    response = await client.post(f"{agent_url}/api/trinity/inject")
+    # Fetch system-wide custom prompt setting
+    custom_prompt = db.get_setting_value("trinity_prompt", default=None)
+
+    # Use AgentClient for injection (handles retries internally)
+    client = get_agent_client(agent_name)  # Line 44
+    return await client.inject_trinity_prompt(
+        custom_prompt=custom_prompt,
+        force=False,
+        max_retries=max_retries,
+        retry_delay=retry_delay
+    )  # Lines 45-50
 ```
 
-**Container Recreation** (`src/backend/services/agent_service/lifecycle.py:130-252`):
-Handles recreating containers with updated volume mounts and environment variables.
+**AgentClient.inject_trinity_prompt()** (`src/backend/services/agent_client.py:278-344`):
+- **Built-in retry logic**: Configurable `max_retries` (default 3) and `retry_delay` (default 2.0s)
+- **Agent URL construction**: Automatically builds `http://agent-{name}:8000`
+- **Error handling**: Returns `{"status": "error", "error": "..."}` on failure
+- **Timeout**: Default 10 seconds (`INJECT_TIMEOUT`)
+
+```python
+async def inject_trinity_prompt(
+    self,
+    custom_prompt: Optional[str] = None,
+    force: bool = False,
+    timeout: float = None,
+    max_retries: int = 3,
+    retry_delay: float = 2.0
+) -> Dict[str, Any]:
+    """Inject Trinity meta-prompt with retry logic."""
+    for attempt in range(max_retries):
+        try:
+            response = await self.post("/api/trinity/inject", json=payload, timeout=timeout)
+            if response.status_code == 200:
+                return response.json()
+        except AgentNotReachableError:
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+```
+
+**Container Recreation** (`src/backend/services/agent_service/lifecycle.py:99-221`):
+Handles recreating containers with updated volume mounts and environment variables. Uses `get_anthropic_api_key()` from settings service (line 118).
 
 #### Stop Agent (`src/backend/routers/agents.py:360-397`)
 ```python
@@ -582,7 +636,7 @@ await log_audit_event(
 
 ---
 
-**Last Updated**: 2025-12-30
+**Last Updated**: 2025-12-31
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with service layer architecture and Trinity meta-prompt injection
 
@@ -592,6 +646,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2025-12-31 | **Settings service and AgentClient refactoring**: (1) API key retrieval now uses `services/settings_service.py` instead of importing from `routers/settings.py`. Updated `lifecycle.py:16` and `crud.py:29`. (2) Trinity injection now uses centralized `AgentClient.inject_trinity_prompt()` from `services/agent_client.py:278-344` with built-in retry logic (max_retries=3, retry_delay=2.0s). Updated `lifecycle.py:17,44-50`. (3) Updated line numbers in crud.py (now 507 lines) and lifecycle.py (now 221 lines). |
 | 2025-12-30 | **Line number verification**: Updated all line numbers after composable refactoring. Frontend lifecycle methods now in `composables/useAgentLifecycle.js`. Updated router line numbers to match current 842-line agents.py. |
 | 2025-12-27 | **Service layer refactoring**: Updated all references to new modular architecture. Business logic moved from `routers/agents.py` to `services/agent_service/` modules (lifecycle.py, crud.py, helpers.py). Router reduced from 2928 to 786 lines. |
 | 2025-12-19 | **Line number updates**: Updated all line number references to match current codebase. Added Phase 9.10 (agent permissions) and Phase 9.11 (shared folders) cleanup in delete flow. Updated frontend component references. |

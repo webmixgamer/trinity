@@ -1,6 +1,6 @@
 # Feature: Agent-to-Agent Permissions System
 
-> **Updated**: 2025-12-30 - Verified file paths and line numbers. Permission logic in `services/agent_service/permissions.py` and composable `useAgentPermissions.js`.
+> **Updated**: 2025-12-31 - Documented new access control dependencies from `dependencies.py`. Permission endpoints currently use inline checks but can migrate to dependency pattern for consistency.
 
 ## Overview
 
@@ -9,7 +9,7 @@ Fine-grained permission control for agent-to-agent communication. Allows owners 
 **Requirement**: 9.10 - Agent-to-Agent Collaboration Permissions
 **Phase**: 9.10
 **Implemented**: 2025-12-10
-**Last Updated**: 2025-12-30
+**Last Updated**: 2025-12-31
 
 ## User Story
 
@@ -139,16 +139,62 @@ The permissions feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:696-736` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/permissions.py` (198 lines) | Permission business logic |
+| Router | `src/backend/routers/agents.py:598-638` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/permissions.py` (169 lines) | Permission business logic |
+| Dependencies | `src/backend/dependencies.py:158-267` | Access control dependencies |
+
+### Access Control Dependencies
+
+**File**: `src/backend/dependencies.py:158-267`
+
+The backend provides reusable FastAPI dependencies for access control. These are used by several routers (schedules, public_links, git, sharing) and can be adopted by permission endpoints for consistency.
+
+#### Type Aliases
+
+| Type Alias | Dependency | Use Case |
+|------------|------------|----------|
+| `AuthorizedAgent` | `get_authorized_agent()` | Read access via `{name}` path param |
+| `OwnedAgent` | `get_owned_agent()` | Owner access via `{name}` path param |
+| `AuthorizedAgentByName` | `get_authorized_agent_by_name()` | Read access via `{agent_name}` path param |
+| `OwnedAgentByName` | `get_owned_agent_by_name()` | Owner access via `{agent_name}` path param |
+| `CurrentUser` | `get_current_user()` | Authenticated user info |
+
+#### Dependency Pattern Benefits
+
+Using these dependencies instead of inline `db.can_user_access_agent()` calls provides:
+- **Consistent 403 messages**: "Access denied to agent" or "Owner access required"
+- **OpenAPI schema visibility**: Authorization requirements shown in API docs
+- **Automatic enforcement**: New endpoints automatically get proper authorization
+
+#### Example: Dependency-based Pattern (recommended)
+
+```python
+# schedules.py uses this pattern
+@router.get("/{name}/schedules")
+async def list_agent_schedules(name: AuthorizedAgent):  # Access check in dependency
+    return await list_schedules_logic(name)
+```
+
+#### Current: Inline Pattern (permissions endpoints)
+
+```python
+# Current permissions endpoints still use inline checks in service layer
+@router.get("/{agent_name}/permissions")
+async def get_agent_permissions(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    return await get_agent_permissions_logic(agent_name, current_user)
+    # Access check happens inside get_agent_permissions_logic()
+```
 
 ### Endpoint: GET /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:696-703`
-**Service**: `src/backend/services/agent_service/permissions.py:19-67`
+**Router**: `src/backend/routers/agents.py:598-605`
+**Service**: `src/backend/services/agent_service/permissions.py:18-66`
 
 ```python
-# Router (agents.py:696-703)
+# Router (agents.py:598-605)
 @router.get("/{agent_name}/permissions")
 async def get_agent_permissions(
     agent_name: str,
@@ -160,11 +206,11 @@ async def get_agent_permissions(
 ```
 
 ```python
-# Service (permissions.py:19-67)
+# Service (permissions.py:18-66) - Inline access check
 async def get_agent_permissions_logic(agent_name: str, current_user: User) -> dict:
     """Get permissions for an agent."""
     if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="...")
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
 
     # Get permitted agents
     permitted_list = db.get_permitted_agents(agent_name)
@@ -192,11 +238,11 @@ async def get_agent_permissions_logic(agent_name: str, current_user: User) -> di
 
 ### Endpoint: PUT /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:706-714`
-**Service**: `src/backend/services/agent_service/permissions.py:70-117`
+**Router**: `src/backend/routers/agents.py:608-616`
+**Service**: `src/backend/services/agent_service/permissions.py:69-106`
 
 ```python
-# Service (permissions.py:70-117)
+# Service (permissions.py:69-106) - Inline access check
 async def set_agent_permissions_logic(
     agent_name: str,
     body: dict,
@@ -204,36 +250,34 @@ async def set_agent_permissions_logic(
     request: Request
 ) -> dict:
     """Set permissions for an agent (full replacement)."""
-    # Only owner or admin
+    # Only owner or admin (inline check - could use OwnedAgentByName dependency)
     if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="Only the owner can modify agent permissions")
 
     permitted_agents = body.get("permitted_agents", [])
 
     # Validate all targets exist and are accessible
     for target in permitted_agents:
         if not db.can_user_access_agent(current_user.username, target):
-            raise HTTPException(status_code=400, detail=f"Agent '{target}' not accessible")
+            raise HTTPException(status_code=400, detail=f"Agent '{target}' does not exist or is not accessible")
 
     # Set permissions (replaces all existing)
     db.set_agent_permissions(agent_name, permitted_agents, current_user.username)
-
-    await log_audit_event(...)
 
     return {"status": "updated", "permitted_count": len(permitted_agents)}
 ```
 
 ### Endpoint: POST /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:717-725`
-**Service**: `src/backend/services/agent_service/permissions.py:120-161`
+**Router**: `src/backend/routers/agents.py:619-627`
+**Service**: `src/backend/services/agent_service/permissions.py:109-141`
 
 Adds a single permission. Returns `{status: "added"}` or `{status: "already_exists"}`.
 
 ### Endpoint: DELETE /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:728-736`
-**Service**: `src/backend/services/agent_service/permissions.py:164-198`
+**Router**: `src/backend/routers/agents.py:630-638`
+**Service**: `src/backend/services/agent_service/permissions.py:144-168`
 
 Removes a single permission. Returns `{status: "removed"}` or `{status: "not_found"}`.
 
@@ -281,7 +325,7 @@ CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_ag
 
 ### Database Manager Delegation
 
-**File**: `src/backend/database.py:962-984`
+**File**: `src/backend/database.py:964-986`
 
 ```python
 def get_permitted_agents(self, source_agent: str):
@@ -420,7 +464,7 @@ Use `list_agents` to discover your available collaborators.
 
 ### Agent Creation
 
-**File**: `src/backend/services/agent_service/crud.py:418-424`
+**File**: `src/backend/services/agent_service/crud.py:474-480`
 
 ```python
 # Phase 9.10: Grant default permissions (Option B - same-owner agents)
@@ -434,7 +478,7 @@ except Exception as e:
 
 ### Agent Deletion
 
-**File**: `src/backend/routers/agents.py:277-281`
+**File**: `src/backend/routers/agents.py:239-243`
 
 ```python
 # Delete agent permissions

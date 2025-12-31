@@ -993,9 +993,9 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 ---
 
-**Last Updated**: 2025-12-30
+**Last Updated**: 2025-12-31
 **Status**: Verified - All file paths and line numbers confirmed accurate
-**Issues**: None - credential system fully functional with Redis persistence
+**Issues**: None - credential system fully functional with Redis persistence and centralized settings service
 
 ---
 
@@ -1003,6 +1003,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2025-12-31 | **Settings Service refactor**: API key retrieval functions (`get_anthropic_api_key()`, `get_github_pat()`, `get_google_api_key()`) moved from `routers/settings.py` to `services/settings_service.py`. Router re-exports for backward compatibility. Agent creation now imports from `services.settings_service`. Documented settings retrieval hierarchy. |
 | 2025-12-30 | **Bug fixes**: (1) File credential injection not working - agent containers needed base image rebuild. Added INFO logging to `get_assigned_file_credentials()`. (2) TypeError on mixed credential types - `get_agent_credentials()` returns mixed dict (string for bulk imports, dict for explicit assignments). Added `isinstance()` check in `crud.py`. Added Troubleshooting section. |
 | 2025-12-30 | **Agent credential assignment with filter UI**: Major refactor - credentials now require explicit assignment to agents. No credentials injected by default. New Redis structure `agent:{name}:credentials` stores assignments. New API endpoints: `/assignments` (GET), `/assign` (POST/DELETE), `/apply` (POST). New UI in AgentDetail.vue Credentials tab with Assigned/Available lists, **filter input for search**, **scrollable lists** (max-h-64), credential count badge on tab, and Quick Add. Hot-reload now also assigns credentials. Cleanup on agent deletion. Fixed route ordering conflict (moved legacy MCP route to end of file). |
 | 2025-12-30 | **File-type credentials**: Added support for injecting entire files (JSON, YAML, PEM, etc.) into agents at specified paths. New credential type "file" with file_path field. Files injected at agent creation and via hot-reload. Use cases: GCP service accounts, AWS credentials, SSL certificates. |
@@ -1047,9 +1048,131 @@ docker exec agent-{name} grep -A 5 "Write file-type" /app/agent_server/routers/c
 
 ---
 
+## Settings Service Architecture
+
+> **Added 2025-12-31**: Centralized settings retrieval with database-first hierarchy.
+
+### Overview
+
+API key retrieval functions are now centralized in `src/backend/services/settings_service.py`. This breaks the circular dependency where services were importing from routers.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/backend/services/settings_service.py:1-124` | **Primary** - SettingsService class and convenience functions |
+| `src/backend/routers/settings.py:17-26` | Re-exports functions for backward compatibility |
+| `src/backend/services/agent_service/crud.py:29` | Uses `get_anthropic_api_key()` from settings_service |
+| `src/backend/db/settings.py:1-124` | Database operations for `system_settings` table |
+
+### Settings Retrieval Hierarchy
+
+The `SettingsService` class implements a three-tier fallback hierarchy:
+
+```
+1. Database setting (if exists) - system_settings table
+       ↓ (fallback if not found)
+2. Environment variable
+       ↓ (fallback if not set)
+3. Default value (if provided)
+```
+
+### API Key Functions (`src/backend/services/settings_service.py:62-81`)
+
+```python
+def get_anthropic_api_key(self) -> str:
+    """Get Anthropic API key from settings, fallback to env var."""
+    key = self.get_setting('anthropic_api_key')
+    if key:
+        return key
+    return os.getenv('ANTHROPIC_API_KEY', '')
+
+def get_github_pat(self) -> str:
+    """Get GitHub PAT from settings, fallback to env var."""
+    key = self.get_setting('github_pat')
+    if key:
+        return key
+    return os.getenv('GITHUB_PAT', '')
+
+def get_google_api_key(self) -> str:
+    """Get Google API key from settings, fallback to env var."""
+    key = self.get_setting('google_api_key')
+    if key:
+        return key
+    return os.getenv('GOOGLE_API_KEY', '')
+```
+
+### Convenience Functions (`src/backend/services/settings_service.py:106-118`)
+
+Module-level functions for backward compatibility:
+
+```python
+# Singleton instance
+settings_service = SettingsService()
+
+# Convenience functions
+def get_anthropic_api_key() -> str:
+    return settings_service.get_anthropic_api_key()
+
+def get_github_pat() -> str:
+    return settings_service.get_github_pat()
+
+def get_google_api_key() -> str:
+    return settings_service.get_google_api_key()
+```
+
+### Router Re-exports (`src/backend/routers/settings.py:17-26`)
+
+For backward compatibility, routers that previously defined these functions now import and re-export them:
+
+```python
+from services.settings_service import (
+    get_anthropic_api_key,
+    get_github_pat,
+    get_google_api_key,
+    get_ops_setting,
+    settings_service,
+    OPS_SETTINGS_DEFAULTS,
+    OPS_SETTINGS_DESCRIPTIONS,
+)
+```
+
+### Usage in Agent Creation (`src/backend/services/agent_service/crud.py:29, 277`)
+
+```python
+from services.settings_service import get_anthropic_api_key
+
+# ... in create_agent_internal():
+env_vars = {
+    'ANTHROPIC_API_KEY': get_anthropic_api_key(),
+    # ... other env vars
+}
+```
+
+### Database Table (`system_settings`)
+
+```sql
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+```
+
+### Admin Configuration
+
+API keys can be configured via:
+1. **Settings UI**: Settings page -> API Keys section (stored in database)
+2. **Environment variables**: `ANTHROPIC_API_KEY`, `GITHUB_PAT`, `GOOGLE_API_KEY` in `.env`
+
+Database settings take precedence over environment variables, allowing runtime configuration without container restarts.
+
+---
+
 ## Related Flows
 
 - **Upstream**: Agent Creation (injects initial credentials from Redis)
 - **Downstream**: Agent Chat (MCP servers use credentials for API calls)
 - **Related**: OAuth Authentication (similar OAuth flow for user login)
 - **Related**: Template Processing (generates .mcp.json with credential placeholders)
+- **Related**: Settings Management (API keys stored in system_settings table)

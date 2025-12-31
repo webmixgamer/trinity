@@ -19,6 +19,10 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 - WebSocket real-time updates
 - Queue-aware execution (429 on queue full)
 
+**Refactored (2025-12-31):**
+- Access control via `AuthorizedAgent` dependency (not inline checks)
+- Agent HTTP communication via `AgentClient` service (not raw httpx)
+
 ---
 
 ## Architecture
@@ -82,20 +86,22 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 
 ```
 Frontend                          Backend                           Database
-────────                          ───────                           ────────
-SchedulesPanel.vue               schedules.py:94                →  database.py:1067
+--------                          -------                           --------
+SchedulesPanel.vue               schedules.py:85                 → database.py:1067
 POST /api/agents/{name}/          create_schedule()                 create_schedule()
 schedules                         validate cron expression          INSERT agent_schedules
                                   ↓
-                                  scheduler_service.py:add_schedule()
+                                  scheduler_service.py:510
+                                  add_schedule() → _add_job()
                                   APScheduler.add_job()
 ```
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - Schedule creation form
-- `src/backend/routers/schedules.py:94-135` - create_schedule endpoint
+- `src/backend/routers/schedules.py:85-113` - create_schedule endpoint
 - `src/backend/database.py:1067-1117` - db.create_schedule()
-- `src/backend/services/scheduler_service.py:add_schedule()` - APScheduler job creation
+- `src/backend/services/scheduler_service.py:510-513` - add_schedule()
+- `src/backend/services/scheduler_service.py:111-143` - _add_job() APScheduler integration
 
 ### 2. Schedule Execution Flow (Automatic)
 
@@ -110,10 +116,17 @@ _execute_schedule()
                                   queue.create_execution(source=SCHEDULE)
                                   queue.submit() -> "running" or QueueFullError
 
-                                  create_execution(running)    ->   agent-{name}:8000
-                                  broadcast(started)                POST /api/chat
+                                  create_execution(running)
+                                  broadcast(started)
                                   |
-                                  httpx.post() to agent
+                                  # AGENT CLIENT (Refactored 2025-12-31)
+                                  client = get_agent_client(agent_name)
+                                  chat_response = await client.chat(message)
+                                  |                                 POST /api/chat
+                                  # Response parsing via AgentChatResponse
+                                  chat_response.metrics.context_used
+                                  chat_response.metrics.cost_usd
+                                  chat_response.metrics.tool_calls_json
                                   |
                                   update_execution(success/failed)
                                   broadcast(completed)
@@ -125,8 +138,9 @@ _execute_schedule()
 **Queue Full Handling**: If the agent's queue is full (3 pending requests), the scheduled execution fails with error "Agent queue full (N waiting), skipping scheduled execution".
 
 **Files:**
-- `src/backend/services/scheduler_service.py:169-401` - _execute_schedule() with queue integration
-- `src/backend/services/execution_queue.py` - Execution queue service (NEW)
+- `src/backend/services/scheduler_service.py:169-373` - _execute_schedule() with queue and AgentClient
+- `src/backend/services/agent_client.py:75-242` - AgentClient HTTP communication
+- `src/backend/services/execution_queue.py` - Execution queue service
 - `src/backend/database.py:1318-1348` - create_schedule_execution()
 - `src/backend/database.py:1350-1378` - update_execution_status()
 
@@ -136,20 +150,26 @@ _execute_schedule()
 
 ```
 Frontend                          Backend                           Agent
-────────                          ───────                           ─────
-SchedulesPanel.vue               schedules.py:285              →    agent-{name}:8000
+--------                          -------                           -----
+SchedulesPanel.vue               schedules.py:236              →    agent-{name}:8000
 POST .../trigger                  trigger_schedule()                POST /api/chat
                                   ↓
-                                  scheduler_service.py:283
+                                  scheduler_service.py:374
                                   trigger_schedule()
                                   create_execution(manual)
-                                  asyncio.create_task()
+                                  asyncio.create_task(_execute_manual_trigger)
+                                  ↓
+                                  scheduler_service.py:412
+                                  _execute_manual_trigger()
+                                  client = get_agent_client(...)
+                                  client.chat(message)
 ```
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - triggerSchedule() method
-- `src/backend/routers/schedules.py:285-318` - trigger_schedule endpoint
-- `src/backend/services/scheduler_service.py:283-319` - trigger_schedule()
+- `src/backend/routers/schedules.py:236-260` - trigger_schedule endpoint
+- `src/backend/services/scheduler_service.py:374-410` - trigger_schedule()
+- `src/backend/services/scheduler_service.py:412-508` - _execute_manual_trigger() with AgentClient
 
 ### 4. Enable/Disable Flow
 
@@ -157,18 +177,20 @@ POST .../trigger                  trigger_schedule()                POST /api/ch
 
 ```
 Frontend                          Backend                           Scheduler
-────────                          ───────                           ─────────
-SchedulesPanel.vue               schedules.py:220/252         →    scheduler_service.py
-POST .../enable or disable        enable_schedule()                 enable_schedule()
-                                  disable_schedule()                disable_schedule()
+--------                          -------                           ---------
+SchedulesPanel.vue               schedules.py:200/218         →    scheduler_service.py
+POST .../enable or disable        enable_schedule()                 enable_schedule():525
+                                  disable_schedule()                disable_schedule():533
                                   ↓                                 APScheduler add/remove
                                   db.set_schedule_enabled()
 ```
 
+**Access Control:** Uses `AuthorizedAgent` dependency - only users with agent access can toggle.
+
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - toggleSchedule() method
-- `src/backend/routers/schedules.py:220-285` - enable/disable endpoints
-- `src/backend/services/scheduler_service.py` - enable/disable_schedule()
+- `src/backend/routers/schedules.py:200-233` - enable/disable endpoints with AuthorizedAgent
+- `src/backend/services/scheduler_service.py:525-536` - enable/disable_schedule()
 
 ### 5. Delete Schedule Flow
 
@@ -176,18 +198,20 @@ POST .../enable or disable        enable_schedule()                 enable_sched
 
 ```
 Frontend                          Backend                           Database
-────────                          ───────                           ────────
-SchedulesPanel.vue               schedules.py:192             →    database.py:1243
+--------                          -------                           --------
+SchedulesPanel.vue               schedules.py:174             →    database.py:1243
 DELETE .../schedules/{id}         delete_schedule()                 delete_schedule()
-                                  scheduler_service.remove()        DELETE executions
+                                  scheduler_service.remove():515    DELETE executions
                                   ↓                                 DELETE schedule
                                   db.delete_schedule()
 ```
 
+**Access Control:** Uses `CurrentUser` dependency with manual ownership check via `db.delete_schedule()`.
+
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - deleteSchedule() method
-- `src/backend/routers/schedules.py:192-217` - delete_schedule endpoint
-- `src/backend/services/scheduler_service.py` - remove_schedule()
+- `src/backend/routers/schedules.py:174-196` - delete_schedule endpoint
+- `src/backend/services/scheduler_service.py:515-517` - remove_schedule()
 - `src/backend/database.py:1243-1264` - db.delete_schedule()
 
 ### 6. View All Executions (Executions Tab)
@@ -196,17 +220,19 @@ DELETE .../schedules/{id}         delete_schedule()                 delete_sched
 
 ```
 Frontend                          Backend                           Database
-────────                          ───────                           ────────
-ExecutionsPanel.vue              schedules.py:334              →    database.py:1462
+--------                          -------                           --------
+ExecutionsPanel.vue              schedules.py:283              →    database.py:1462
 GET /api/agents/{name}/           get_agent_executions()            get_agent_executions()
-executions?limit=100              authorization check                SELECT FROM schedule_executions
+executions?limit=100              AuthorizedAgent dependency         SELECT FROM schedule_executions
                                   ↓                                  WHERE agent_name = ?
                                   return ExecutionResponse[]         ORDER BY started_at DESC
 ```
 
+**Access Control:** Uses `AuthorizedAgent` dependency - `name: AuthorizedAgent` validates access automatically.
+
 **Files:**
 - `src/frontend/src/components/ExecutionsPanel.vue` - loadExecutions() method
-- `src/backend/routers/schedules.py:334-349` - get_agent_executions endpoint
+- `src/backend/routers/schedules.py:283-290` - get_agent_executions endpoint with AuthorizedAgent
 - `src/backend/database.py:1462-1492` - db.get_agent_executions()
 
 **Frontend Computed Stats (calculated client-side):**
@@ -218,20 +244,55 @@ executions?limit=100              authorization check                SELECT FROM
 
 ## API Endpoints
 
-| Method | Path | Description | File:Line |
-|--------|------|-------------|-----------|
-| GET | `/api/agents/{name}/schedules` | List schedules | schedules.py:77 |
-| POST | `/api/agents/{name}/schedules` | Create schedule | schedules.py:94 |
-| GET | `/api/agents/{name}/schedules/{id}` | Get schedule | schedules.py:135 |
-| PUT | `/api/agents/{name}/schedules/{id}` | Update schedule | schedules.py:158 |
-| DELETE | `/api/agents/{name}/schedules/{id}` | Delete schedule | schedules.py:210 |
-| POST | `/api/agents/{name}/schedules/{id}/enable` | Enable | schedules.py:245 |
-| POST | `/api/agents/{name}/schedules/{id}/disable` | Disable | schedules.py:279 |
-| POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger | schedules.py:313 |
-| GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history | schedules.py:359 |
-| GET | `/api/agents/{name}/executions` | All agent executions | schedules.py:384 |
-| GET | `/api/agents/{name}/executions/{id}` | Get specific execution | schedules.py:401 |
-| GET | `/api/agents/scheduler/status` | Scheduler status (admin) | schedules.py:426 |
+| Method | Path | Description | File:Line | Access |
+|--------|------|-------------|-----------|--------|
+| GET | `/api/agents/{name}/schedules` | List schedules | schedules.py:78 | AuthorizedAgent |
+| POST | `/api/agents/{name}/schedules` | Create schedule | schedules.py:85 | CurrentUser |
+| GET | `/api/agents/{name}/schedules/{id}` | Get schedule | schedules.py:116 | AuthorizedAgent |
+| PUT | `/api/agents/{name}/schedules/{id}` | Update schedule | schedules.py:132 | CurrentUser |
+| DELETE | `/api/agents/{name}/schedules/{id}` | Delete schedule | schedules.py:174 | CurrentUser |
+| POST | `/api/agents/{name}/schedules/{id}/enable` | Enable | schedules.py:200 | AuthorizedAgent |
+| POST | `/api/agents/{name}/schedules/{id}/disable` | Disable | schedules.py:218 | AuthorizedAgent |
+| POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger | schedules.py:236 | AuthorizedAgent |
+| GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history | schedules.py:265 | AuthorizedAgent |
+| GET | `/api/agents/{name}/executions` | All agent executions | schedules.py:283 | AuthorizedAgent |
+| GET | `/api/agents/{name}/executions/{id}` | Get specific execution | schedules.py:293 | AuthorizedAgent |
+| GET | `/api/agents/{name}/executions/{id}/log` | Get execution log | schedules.py:309 | AuthorizedAgent |
+| GET | `/api/agents/scheduler/status` | Scheduler status (admin) | schedules.py:354 | Admin only |
+
+### Access Control Pattern
+
+Endpoints use FastAPI dependencies from `src/backend/dependencies.py`:
+
+```python
+# Type aliases used in schedules router
+from dependencies import AuthorizedAgent, CurrentUser
+
+# AuthorizedAgent dependency (schedules.py:78)
+@router.get("/{name}/schedules")
+async def list_agent_schedules(name: AuthorizedAgent):
+    # name is validated and returned by get_authorized_agent()
+    # Raises 403 if user cannot access agent
+    ...
+
+# CurrentUser dependency (schedules.py:85)
+@router.post("/{name}/schedules")
+async def create_schedule(
+    name: str,
+    schedule_data: ScheduleCreate,
+    current_user: User = Depends(get_current_user)
+):
+    # Manual check via db.create_schedule() which validates access
+    ...
+```
+
+**Dependency definitions** (`src/backend/dependencies.py:168-259`):
+
+| Dependency | Purpose | Check |
+|------------|---------|-------|
+| `AuthorizedAgent` | Read access to agent | `db.can_user_access_agent()` |
+| `OwnedAgent` | Owner access (delete, share) | `db.can_user_share_agent()` |
+| `CurrentUser` | Authenticated user | JWT/MCP key validation |
 
 ---
 
@@ -288,10 +349,10 @@ CREATE TABLE schedule_executions (
 
 ## WebSocket Events
 
-Broadcast via `manager.broadcast()` for real-time UI updates:
+Broadcast via `scheduler_service._broadcast()` for real-time UI updates:
 
 ### schedule_execution_started
-**Location**: `src/backend/services/scheduler_service.py:204-210`
+**Location**: `src/backend/services/scheduler_service.py:226-233`
 
 ```json
 {
@@ -304,7 +365,7 @@ Broadcast via `manager.broadcast()` for real-time UI updates:
 ```
 
 ### schedule_execution_completed
-**Location**: `src/backend/services/scheduler_service.py:265-274`
+**Location**: `src/backend/services/scheduler_service.py:305-312` (success) or `333-340` (failure)
 
 ```json
 {
@@ -345,6 +406,97 @@ Broadcast via `manager.broadcast()` for real-time UI updates:
 - `apscheduler==3.10.4` - Async job scheduler
 - `croniter==2.0.1` - Cron expression parsing
 - `pytz==2024.1` - Timezone support
+- `httpx` - Async HTTP client (used by AgentClient)
+
+---
+
+## Agent HTTP Client Service
+
+**Added**: 2025-12-31 (Plan 03 refactoring)
+
+The scheduler uses `AgentClient` from `src/backend/services/agent_client.py` for all HTTP communication with agent containers. This centralizes URL construction, timeout handling, and response parsing.
+
+### Usage in Scheduler
+
+**Location**: `src/backend/services/scheduler_service.py:263-278`
+
+```python
+from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
+
+# Send message to agent using AgentClient
+client = get_agent_client(schedule.agent_name)
+chat_response = await client.chat(schedule.message, stream=False)
+
+# Update execution status with parsed response
+db.update_execution_status(
+    execution_id=execution.id,
+    status="success",
+    response=chat_response.response_text,
+    context_used=chat_response.metrics.context_used,
+    context_max=chat_response.metrics.context_max,
+    cost=chat_response.metrics.cost_usd,
+    tool_calls=chat_response.metrics.tool_calls_json,
+    execution_log=chat_response.metrics.execution_log_json
+)
+```
+
+### AgentClient API
+
+**Location**: `src/backend/services/agent_client.py`
+
+| Method | Purpose | Timeout |
+|--------|---------|---------|
+| `chat(message, stream)` | Send chat message | 300s (5 min) |
+| `get_session()` | Get context info | 5s |
+| `health_check()` | Check agent health | 5s |
+| `inject_trinity_prompt()` | Inject meta-prompt | 10s |
+
+### Response Models
+
+**AgentChatResponse** (`agent_client.py:34-39`):
+```python
+@dataclass
+class AgentChatResponse:
+    response_text: str           # Agent's text response (truncated to 10KB)
+    metrics: AgentChatMetrics    # Parsed observability data
+    raw_response: Dict[str, Any] # Original JSON from agent
+```
+
+**AgentChatMetrics** (`agent_client.py:23-31`):
+```python
+@dataclass
+class AgentChatMetrics:
+    context_used: int            # Tokens in context window
+    context_max: int             # Max context window size
+    context_percent: float       # Usage percentage
+    cost_usd: Optional[float]    # Execution cost
+    tool_calls_json: Optional[str]      # JSON array of tool calls
+    execution_log_json: Optional[str]   # Full execution transcript
+```
+
+### Error Handling
+
+**Exceptions** (`agent_client.py:54-69`):
+
+| Exception | Meaning | HTTP Equivalent |
+|-----------|---------|-----------------|
+| `AgentNotReachableError` | Connection failed or timeout | 503 Service Unavailable |
+| `AgentRequestError` | Agent returned error status | 4xx/5xx from agent |
+| `AgentClientError` | Base exception | General failure |
+
+**Scheduler error handling** (`scheduler_service.py:314-340`):
+```python
+try:
+    client = get_agent_client(schedule.agent_name)
+    chat_response = await client.chat(schedule.message, stream=False)
+    # ... success handling
+except AgentNotReachableError as e:
+    error_msg = f"Agent not reachable: {str(e)}"
+    # ... failure handling with specific message
+except Exception as e:
+    error_msg = str(e)
+    # ... generic failure handling
+```
 
 ---
 
@@ -352,8 +504,11 @@ Broadcast via `manager.broadcast()` for real-time UI updates:
 
 | Category | File | Purpose |
 |----------|------|---------|
-| Backend | `src/backend/routers/schedules.py` | REST API endpoints (77-349) |
-| Backend | `src/backend/services/scheduler_service.py` | APScheduler service (1-400+) |
+| Backend | `src/backend/routers/schedules.py` | REST API endpoints (78-366) |
+| Backend | `src/backend/services/scheduler_service.py` | APScheduler service (1-560) |
+| Backend | `src/backend/services/agent_client.py` | Agent HTTP client (NEW) |
+| Backend | `src/backend/services/execution_queue.py` | Execution queue service |
+| Backend | `src/backend/dependencies.py` | Access control dependencies (NEW) |
 | Backend | `src/backend/database.py` | Models & DB operations (1067-1492) |
 | Backend | `src/backend/main.py` | Scheduler lifecycle initialization |
 | Frontend | `src/frontend/src/components/SchedulesPanel.vue` | Schedule management UI |
@@ -395,7 +550,7 @@ Each execution now tracks detailed observability data extracted from the agent's
 ## Scheduler Service Implementation
 
 ### Initialization
-**Location**: `src/backend/services/scheduler_service.py:49-72`
+**Location**: `src/backend/services/scheduler_service.py:53-76`
 
 ```python
 def initialize(self):
@@ -425,7 +580,7 @@ def initialize(self):
 ```
 
 ### Cron Parsing
-**Location**: `src/backend/services/scheduler_service.py:85-106`
+**Location**: `src/backend/services/scheduler_service.py:89-109`
 
 ```python
 def _parse_cron(self, cron_expression: str) -> Dict:
@@ -461,7 +616,7 @@ Schedule executions now create persistent activity records in the unified activi
 
 ### Activity Tracking Flow
 
-**Schedule Start** (`scheduler_service.py:187-198`):
+**Schedule Start** (`scheduler_service.py:200-212`):
 ```python
 # Track schedule start activity
 schedule_activity_id = await activity_service.track_activity(
@@ -472,12 +627,13 @@ schedule_activity_id = await activity_service.track_activity(
     details={
         "schedule_id": schedule.id,
         "schedule_name": schedule.name,
-        "cron_expression": schedule.cron_expression
+        "cron_expression": schedule.cron_expression,
+        "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Completion** (`scheduler_service.py:277-288`):
+**Schedule Completion** (`scheduler_service.py:291-303`):
 ```python
 # Track schedule completion
 await activity_service.complete_activity(
@@ -485,15 +641,16 @@ await activity_service.complete_activity(
     status="completed",
     details={
         "related_execution_id": execution.id,
-        "context_used": context_used,
-        "context_max": context_max,
-        "cost_usd": cost,
-        "tool_count": len(execution_log) if execution_log else 0
+        "context_used": chat_response.metrics.context_used,
+        "context_max": chat_response.metrics.context_max,
+        "cost_usd": chat_response.metrics.cost_usd,
+        "tool_count": len(execution_log) if execution_log else 0,
+        "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Failure** (`scheduler_service.py:303-309`):
+**Schedule Failure** (`scheduler_service.py:318-324`):
 ```python
 # Track schedule failure
 await activity_service.complete_activity(
@@ -568,6 +725,7 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
+**Updated 2025-12-31** - Documented access control dependencies and AgentClient service (Plan 02/03 refactoring)
 **Updated 2025-12-29** - Fixed API endpoint line numbers to match current schedules.py (post-refactoring)
 **Updated 2025-12-06** - Added Execution Queue integration documentation
 

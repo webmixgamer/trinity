@@ -5,13 +5,18 @@ Handles:
 - Creating working branches for new agents
 - Syncing agent changes to GitHub
 - Managing git configuration in the database
+- Initializing git in agent containers
 """
 import httpx
 import uuid
+import logging
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from database import db, AgentGitConfig, GitSyncResult
-from services.docker_service import get_agent_container
+from services.docker_service import get_agent_container, execute_command_in_container
+
+logger = logging.getLogger(__name__)
 
 
 def generate_instance_id() -> str:
@@ -239,3 +244,182 @@ def get_agent_git_config(agent_name: str) -> Optional[AgentGitConfig]:
 def delete_agent_git_config(agent_name: str) -> bool:
     """Delete git configuration when an agent is deleted."""
     return db.delete_git_config(agent_name)
+
+
+# ============================================================================
+# Git Initialization in Container
+# ============================================================================
+
+@dataclass
+class GitInitResult:
+    """Result of git initialization in container."""
+    success: bool
+    git_dir: str
+    working_branch: Optional[str] = None
+    error: Optional[str] = None
+
+
+async def initialize_git_in_container(
+    agent_name: str,
+    github_repo: str,
+    github_pat: str,
+    create_working_branch: bool = True
+) -> GitInitResult:
+    """
+    Initialize git in an agent container.
+
+    Performs:
+    1. Detect git directory (workspace or home)
+    2. Create .gitignore
+    3. Initialize git repo
+    4. Configure remote
+    5. Create initial commit
+    6. Push to GitHub
+    7. Create working branch (optional)
+
+    Args:
+        agent_name: Name of the agent container
+        github_repo: Full repo name (e.g., "owner/repo")
+        github_pat: GitHub PAT for authentication
+        create_working_branch: Whether to create a working branch
+
+    Returns:
+        GitInitResult with status and branch info
+    """
+    container_name = f"agent-{agent_name}"
+
+    # Step 1: Determine git directory
+    # Check if workspace exists and has content
+    check_workspace = execute_command_in_container(
+        container_name=container_name,
+        command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
+        timeout=5
+    )
+
+    workspace_has_content = (
+        check_workspace.get("exit_code") == 0 and
+        "1" in check_workspace.get("output", "")
+    )
+
+    if workspace_has_content:
+        git_dir = "/home/developer/workspace"
+        logger.info(f"Using workspace directory with existing content: {git_dir}")
+    else:
+        git_dir = "/home/developer"
+        logger.info(f"Using home directory (agent's files are here): {git_dir}")
+
+    # Step 2: Create .gitignore (if using home directory)
+    if git_dir == "/home/developer":
+        gitignore_content = """# Exclude sensitive and temporary files
+.bash_logout
+.bashrc
+.profile
+.bash_history
+.cache/
+.local/
+.npm/
+.ssh/
+"""
+        execute_command_in_container(
+            container_name=container_name,
+            command=f'bash -c "cat > {git_dir}/.gitignore << \'GITIGNORE_EOF\'\n{gitignore_content}\nGITIGNORE_EOF\n"',
+            timeout=5
+        )
+
+    # Step 3: Initialize git
+    commands = [
+        'git config --global user.email "trinity@agent.local"',
+        'git config --global user.name "Trinity Agent"',
+        'git config --global init.defaultBranch main',
+        'git init',
+        f'git remote add origin https://oauth2:{github_pat}@github.com/{github_repo}.git',
+        'git add .',
+        'git commit -m "Initial commit from Trinity Agent" || echo "Nothing to commit"',
+        'git push -u origin main --force'
+    ]
+
+    for cmd in commands:
+        result = execute_command_in_container(
+            container_name=container_name,
+            command=f'bash -c "cd {git_dir} && {cmd}"',
+            timeout=60
+        )
+        if result.get("exit_code", 0) != 0:
+            output = result.get("output", "")
+            if "Nothing to commit" not in output:
+                return GitInitResult(
+                    success=False,
+                    git_dir=git_dir,
+                    error=f"Git command failed: {cmd}\nOutput: {output}"
+                )
+
+    # Step 4: Create working branch (optional)
+    working_branch = None
+    if create_working_branch:
+        instance_id = generate_instance_id()
+        working_branch = generate_working_branch(agent_name, instance_id)
+
+        branch_commands = [
+            f'git checkout -b {working_branch}',
+            f'git push -u origin {working_branch}'
+        ]
+
+        for cmd in branch_commands:
+            result = execute_command_in_container(
+                container_name=container_name,
+                command=f'bash -c "cd {git_dir} && {cmd}"',
+                timeout=60
+            )
+            if result.get("exit_code", 0) != 0:
+                # Working branch creation is optional - log but don't fail
+                logger.warning(f"Failed to create working branch: {result.get('output', '')}")
+
+    # Step 5: Verify
+    verify_result = execute_command_in_container(
+        container_name=container_name,
+        command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
+        timeout=5
+    )
+
+    if verify_result.get("exit_code", 0) != 0:
+        return GitInitResult(
+            success=False,
+            git_dir=git_dir,
+            error="Git initialization verification failed"
+        )
+
+    logger.info(f"Git initialization verified successfully in {git_dir}")
+
+    return GitInitResult(
+        success=True,
+        git_dir=git_dir,
+        working_branch=working_branch
+    )
+
+
+def check_git_initialized(agent_name: str) -> Optional[str]:
+    """
+    Check if git is initialized in an agent container.
+
+    Args:
+        agent_name: Name of the agent
+
+    Returns:
+        The git directory path if initialized, None otherwise
+    """
+    container_name = f"agent-{agent_name}"
+
+    result = execute_command_in_container(
+        container_name=container_name,
+        command='bash -c "[ -d /home/developer/workspace/.git ] && echo workspace || ([ -d /home/developer/.git ] && echo home || echo notexists)"',
+        timeout=5
+    )
+
+    output = result.get("output", "").strip()
+
+    if "workspace" in output:
+        return "/home/developer/workspace"
+    elif "home" in output:
+        return "/home/developer"
+
+    return None

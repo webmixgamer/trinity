@@ -115,6 +115,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `template_service.py` - GitHub template cloning and processing
 - `scheduler_service.py` - APScheduler-based scheduling service
 - `git_service.py` - Git sync operations for GitHub-native agents
+- `github_service.py` - GitHub API client (repo creation, validation, org detection)
 - `settings_service.py` - Centralized settings retrieval (API keys, ops config)
 - `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
 

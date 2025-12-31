@@ -270,30 +270,23 @@ async def initialize_github_sync(
     - Agent must be running
     - User must be agent owner
     """
-    import httpx
-    from services.docker_service import get_agent_container, execute_command_in_container
+    from services.docker_service import get_agent_container
     from services.settings_service import get_github_pat
+    from services.github_service import GitHubService, GitHubError
 
-    # Check if agent exists
+    # Check if agent exists and is running
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Check if agent is running
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to initialize Git sync")
 
     # Check if already configured
     existing_config = git_service.get_agent_git_config(agent_name)
     if existing_config:
-        # Verify git is actually initialized in the container (check both possible locations)
-        check_git = execute_command_in_container(
-            container_name=f"agent-{agent_name}",
-            command='bash -c "[ -d /home/developer/workspace/.git ] && echo workspace || ([ -d /home/developer/.git ] && echo home || echo notexists)"',
-            timeout=5
-        )
-
-        if "workspace" in check_git.get("output", "") or "home" in check_git.get("output", ""):
+        # Verify git is actually initialized in the container
+        git_dir = git_service.check_git_initialized(agent_name)
+        if git_dir:
             # Git is properly initialized, prevent re-initialization
             raise HTTPException(
                 status_code=409,
@@ -303,7 +296,6 @@ async def initialize_github_sync(
             # Database record exists but git not initialized - clean up orphaned record
             print(f"Warning: Found orphaned git config for {agent_name}. Cleaning up and allowing re-initialization.")
             db.execute_query("DELETE FROM agent_git_config WHERE agent_name = ?", (agent_name,))
-            # Continue with initialization
 
     # Get GitHub PAT from settings
     github_pat = get_github_pat()
@@ -313,204 +305,42 @@ async def initialize_github_sync(
             detail="GitHub Personal Access Token not configured. Please add it in Settings."
         )
 
+    repo_full_name = f"{body.repo_owner}/{body.repo_name}"
+
     try:
-        repo_full_name = f"{body.repo_owner}/{body.repo_name}"
-
-        # Step 1: Create repository if requested
+        # Step 1: Create repository if requested (using GitHubService)
         if body.create_repo:
-            async with httpx.AsyncClient() as client:
-                # Check if repository already exists
-                check_response = await client.get(
-                    f"https://api.github.com/repos/{repo_full_name}",
-                    headers={
-                        "Authorization": f"Bearer {github_pat}",
-                        "Accept": "application/vnd.github+json",
-                        "X-GitHub-Api-Version": "2022-11-28"
-                    },
-                    timeout=10.0
+            gh = GitHubService(github_pat)
+            repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+            if not repo_info.exists:
+                create_result = await gh.create_repository(
+                    owner=body.repo_owner,
+                    name=body.repo_name,
+                    private=body.private,
+                    description=body.description
                 )
-
-                if check_response.status_code == 404:
-                    # Repository doesn't exist, check if owner is an org or user
-                    owner_response = await client.get(
-                        f"https://api.github.com/users/{body.repo_owner}",
-                        headers={
-                            "Authorization": f"Bearer {github_pat}",
-                            "Accept": "application/vnd.github+json",
-                            "X-GitHub-Api-Version": "2022-11-28"
-                        },
-                        timeout=10.0
-                    )
-
-                    is_org = False
-                    if owner_response.status_code == 200:
-                        owner_data = owner_response.json()
-                        is_org = owner_data.get("type") == "Organization"
-
-                    # Create repository
-                    create_payload = {
-                        "name": body.repo_name,
-                        "private": body.private,
-                        "auto_init": False  # We'll initialize ourselves
-                    }
-                    if body.description:
-                        create_payload["description"] = body.description
-
-                    # Use different endpoint for orgs vs personal repos
-                    if is_org:
-                        create_url = f"https://api.github.com/orgs/{body.repo_owner}/repos"
-                    else:
-                        create_url = "https://api.github.com/user/repos"
-
-                    create_response = await client.post(
-                        create_url,
-                        headers={
-                            "Authorization": f"Bearer {github_pat}",
-                            "Accept": "application/vnd.github+json",
-                            "X-GitHub-Api-Version": "2022-11-28"
-                        },
-                        json=create_payload,
-                        timeout=30.0
-                    )
-
-                    if create_response.status_code != 201:
-                        error_data = create_response.json()
-                        error_msg = error_data.get('message', 'Unknown error')
-
-                        # Log full error for debugging
-                        print(f"GitHub API Error: Status={create_response.status_code}")
-                        print(f"Response: {error_data}")
-                        print(f"Is Organization: {is_org}")
-                        print(f"Endpoint used: {create_url}")
-
-                        # Add helpful context
-                        if is_org:
-                            error_msg += f" (Organization: {body.repo_owner}. Ensure PAT has 'repo' scope and admin access to this organization)"
-                        else:
-                            error_msg += " (For personal repos, PAT needs 'repo' or 'public_repo' scope)"
-
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Failed to create GitHub repository: {error_msg}"
-                        )
-                elif check_response.status_code == 200:
-                    # Repository already exists, that's fine
-                    pass
-                else:
-                    # Other error
+                if not create_result.success:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Failed to check repository: {check_response.status_code}"
+                        detail=f"Failed to create repository: {create_result.error}"
                     )
 
-        # Step 2: Determine git directory
-        # Check if workspace exists and has content
-        check_workspace = execute_command_in_container(
-            container_name=f"agent-{agent_name}",
-            command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
-            timeout=5
+        # Step 2: Initialize git in container (using git_service)
+        init_result = await git_service.initialize_git_in_container(
+            agent_name=agent_name,
+            github_repo=repo_full_name,
+            github_pat=github_pat
         )
 
-        workspace_has_content = check_workspace.get("exit_code") == 0 and "1" in check_workspace.get("output", "")
-
-        if workspace_has_content:
-            # Use workspace if it exists and has content
-            git_dir = "/home/developer/workspace"
-            print(f"Using workspace directory with existing content: {git_dir}")
-        else:
-            # Use home directory where agent's files actually live
-            git_dir = "/home/developer"
-            print(f"Using home directory (agent's files are here): {git_dir}")
-
-            # Create .gitignore to exclude certain files from git
-            gitignore_content = """# Exclude sensitive and temporary files
-.bash_logout
-.bashrc
-.profile
-.bash_history
-.cache/
-.local/
-.npm/
-.ssh/
-"""
-            execute_command_in_container(
-                container_name=f"agent-{agent_name}",
-                command=f'bash -c "cat > {git_dir}/.gitignore << \'GITIGNORE_EOF\'\n{gitignore_content}\nGITIGNORE_EOF\n"',
-                timeout=5
-            )
-
-        # Step 3: Initialize git in agent workspace
-        commands = [
-            # Configure git
-            'git config --global user.email "trinity@agent.local"',
-            'git config --global user.name "Trinity Agent"',
-            'git config --global init.defaultBranch main',
-
-            # Initialize repository
-            'git init',
-
-            # Add remote (use PAT in URL for authentication)
-            f'git remote add origin https://oauth2:{github_pat}@github.com/{repo_full_name}.git',
-
-            # Stage all files
-            'git add .',
-
-            # Create initial commit
-            'git commit -m "Initial commit from Trinity Agent" || echo "Nothing to commit"',
-
-            # Push to main branch
-            'git push -u origin main --force'
-        ]
-
-        for cmd in commands:
-            result = execute_command_in_container(
-                container_name=f"agent-{agent_name}",
-                command=f'bash -c "cd {git_dir} && {cmd}"',
-                timeout=60
-            )
-            if "error" in result.get("output", "").lower() and "Nothing to commit" not in result.get("output", ""):
-                # Don't fail on "Nothing to commit" message
-                if result.get("exit_code", 0) != 0:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Git command failed: {cmd}\nOutput: {result.get('output', '')}"
-                    )
-
-        # Step 4: Create working branch
-        instance_id = git_service.generate_instance_id()
-        working_branch = git_service.generate_working_branch(agent_name, instance_id)
-
-        branch_commands = [
-            f'git checkout -b {working_branch}',
-            f'git push -u origin {working_branch}'
-        ]
-
-        for cmd in branch_commands:
-            result = execute_command_in_container(
-                container_name=f"agent-{agent_name}",
-                command=f'bash -c "cd {git_dir} && {cmd}"',
-                timeout=60
-            )
-            if result.get("exit_code", 0) != 0:
-                # Working branch creation is optional - log but don't fail
-                print(f"Warning: Failed to create working branch: {result.get('output', '')}")
-
-        # Step 5: Verify git was initialized successfully
-        verify_result = execute_command_in_container(
-            container_name=f"agent-{agent_name}",
-            command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
-            timeout=5
-        )
-
-        if verify_result.get("exit_code", 0) != 0:
+        if not init_result.success:
             raise HTTPException(
                 status_code=500,
-                detail=f"Git initialization verification failed. Git directory not found: {verify_result.get('output', '')}"
+                detail=f"Git initialization failed: {init_result.error}"
             )
 
-        print(f"Git initialization verified successfully in {git_dir}")
-
-        # Step 6: Store configuration in database
+        # Step 3: Store configuration in database
+        instance_id = git_service.generate_instance_id()
         config = await git_service.create_git_config_for_agent(
             agent_name=agent_name,
             github_repo=repo_full_name,
@@ -521,12 +351,14 @@ async def initialize_github_sync(
             "success": True,
             "message": "GitHub sync initialized successfully",
             "github_repo": repo_full_name,
-            "working_branch": working_branch,
+            "working_branch": init_result.working_branch,
             "instance_id": instance_id,
             "repo_url": f"https://github.com/{repo_full_name}"
         }
 
     except HTTPException:
         raise
+    except GitHubError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize GitHub sync: {str(e)}")
