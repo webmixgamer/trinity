@@ -20,6 +20,7 @@ from models import User
 from database import db
 from dependencies import get_current_user
 from services.docker_service import get_agent_container, docker_client, list_all_agents
+from services.agent_client import get_agent_client
 from db.agents import SYSTEM_AGENT_NAME
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
@@ -55,30 +56,21 @@ async def get_fleet_status(
     fleet_status = []
     context_stats = {}
 
-    # Try to get context stats for running agents
-    try:
-        # Get context stats from backend endpoint
-        running_agents = [a for a in agents if a.status == "running"]
-        for agent in running_agents:
-            agent_name = agent.name
-            try:
-                agent_url = f"http://agent-{agent_name}:8000/api/chat/session"
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(agent_url)
-                    if response.status_code == 200:
-                        session = response.json()
-                        context_stats[agent_name] = {
-                            "context_tokens": session.get("context_tokens", 0),
-                            "context_window": session.get("context_window", 200000),
-                            "context_percent": round(
-                                session.get("context_tokens", 0) /
-                                max(session.get("context_window", 200000), 1) * 100, 1
-                            )
-                        }
-            except Exception:
-                pass  # Agent not responding, skip context
-    except Exception as e:
-        logger.warning(f"Failed to get context stats: {e}")
+    # Try to get context stats for running agents using AgentClient
+    running_agents = [a for a in agents if a.status == "running"]
+    for agent in running_agents:
+        agent_name = agent.name
+        try:
+            client = get_agent_client(agent_name)
+            session_info = await client.get_session()
+            if session_info:
+                context_stats[agent_name] = {
+                    "context_tokens": session_info.context_tokens,
+                    "context_window": session_info.context_window,
+                    "context_percent": session_info.context_percent
+                }
+        except Exception:
+            pass  # Agent not responding, skip context
 
     # Get last activity for each agent
     for agent in agents:
@@ -171,37 +163,33 @@ async def get_fleet_health(
             continue
 
         if status == "running":
-            # Check context usage
+            # Check context usage using AgentClient
             try:
-                agent_url = f"http://agent-{agent_name}:8000/api/chat/session"
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(agent_url)
-                    if response.status_code == 200:
-                        session = response.json()
-                        context_tokens = session.get("context_tokens", 0)
-                        context_window = session.get("context_window", 200000)
-                        context_percent = round(context_tokens / max(context_window, 1) * 100, 1)
+                client = get_agent_client(agent_name)
+                session_info = await client.get_session()
+                if session_info:
+                    context_percent = session_info.context_percent
 
-                        if context_percent > context_critical:
-                            critical_issues.append({
-                                "agent": agent_name,
-                                "issue": f"Critical context usage: {context_percent}%",
-                                "recommendation": "Reset session to clear context"
-                            })
-                        elif context_percent > context_warning:
-                            warnings.append({
-                                "agent": agent_name,
-                                "issue": f"High context usage: {context_percent}%",
-                                "recommendation": "Consider resetting session soon"
-                            })
-                        else:
-                            healthy_agents.append(agent_name)
-                    else:
+                    if context_percent > context_critical:
+                        critical_issues.append({
+                            "agent": agent_name,
+                            "issue": f"Critical context usage: {context_percent}%",
+                            "recommendation": "Reset session to clear context"
+                        })
+                    elif context_percent > context_warning:
                         warnings.append({
                             "agent": agent_name,
-                            "issue": "Unable to get context info",
-                            "recommendation": "Check agent server"
+                            "issue": f"High context usage: {context_percent}%",
+                            "recommendation": "Consider resetting session soon"
                         })
+                    else:
+                        healthy_agents.append(agent_name)
+                else:
+                    warnings.append({
+                        "agent": agent_name,
+                        "issue": "Unable to get context info",
+                        "recommendation": "Check agent server"
+                    })
             except Exception as e:
                 warnings.append({
                     "agent": agent_name,

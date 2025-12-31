@@ -1,3 +1,36 @@
+### 2025-12-31 16:20:00
+🔌 **Agent HTTP Client Service - DRY Refactoring**
+
+**Problem Solved**: HTTP client code for agent container communication duplicated across multiple files:
+- `scheduler_service.py` - 2 places with chat execution + response parsing (~70 lines each)
+- `ops.py` - 2 places with context stats fetching
+- `lifecycle.py` - Trinity injection with retry logic
+
+This violated DRY, had inconsistent timeout handling, and duplicated response parsing logic.
+
+**Solution**: Created `services/agent_client.py` with `AgentClient` class:
+- `chat(message, stream)` → `AgentChatResponse` with parsed metrics
+- `get_session()` → `AgentSessionInfo` with context stats
+- `inject_trinity_prompt()` → handles retries internally
+- `health_check()` → simple boolean health check
+- Structured exceptions: `AgentClientError`, `AgentNotReachableError`, `AgentRequestError`
+- Response models: `AgentChatMetrics`, `AgentChatResponse`, `AgentSessionInfo`
+
+**Files Changed**:
+- **Added**: `services/agent_client.py` (~320 lines)
+- **Updated**: `services/scheduler_service.py` - replaced 2 HTTP blocks + parsing (~90 lines removed)
+- **Updated**: `routers/ops.py` - replaced 2 context fetch blocks (~30 lines removed)
+- **Updated**: `services/agent_service/lifecycle.py` - replaced injection (~40 lines removed)
+
+**Benefits**:
+- ~180 lines of duplicated code removed
+- Standardized timeouts (CHAT: 300s, SESSION: 5s, INJECT: 10s)
+- Type-safe response parsing with dataclasses
+- Centralized error handling prevents context% calculation bugs
+- Easy to mock for testing
+
+---
+
 ### 2025-12-31 16:05:00
 🔒 **Access Control Dependencies - DRY Refactoring**
 

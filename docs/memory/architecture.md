@@ -116,6 +116,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `scheduler_service.py` - APScheduler-based scheduling service
 - `git_service.py` - Git sync operations for GitHub-native agents
 - `settings_service.py` - Centralized settings retrieval (API keys, ops config)
+- `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
 
 **Logging (`logging_config.py`):**
 - Structured JSON logging for production

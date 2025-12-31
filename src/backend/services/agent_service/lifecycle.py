@@ -4,7 +4,6 @@ Agent Service Lifecycle - Agent start/stop and configuration management.
 Contains functions for starting, stopping, and reconfiguring agents.
 """
 import logging
-import asyncio
 import docker
 
 from fastapi import HTTPException
@@ -15,6 +14,7 @@ from services.docker_service import (
     get_agent_container,
 )
 from services.settings_service import get_anthropic_api_key
+from services.agent_client import get_agent_client
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches
 
 logger = logging.getLogger(__name__)
@@ -35,50 +35,19 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
     Returns:
         dict with injection status or error info
     """
-    import httpx
-
-    agent_url = f"http://agent-{agent_name}:8000"
-
     # Fetch system-wide custom prompt setting
     custom_prompt = db.get_setting_value("trinity_prompt", default=None)
     if custom_prompt:
         logger.info(f"Found trinity_prompt setting ({len(custom_prompt)} chars), will inject into {agent_name}")
 
-    # Build request payload
-    payload = {"force": False}
-    if custom_prompt:
-        payload["custom_prompt"] = custom_prompt
-
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{agent_url}/api/trinity/inject",
-                    json=payload
-                )
-
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.info(f"Trinity injection successful for {agent_name}: {result.get('status')}")
-                    return result
-                else:
-                    logger.warning(f"Trinity injection returned {response.status_code}: {response.text}")
-                    return {"status": "error", "error": f"HTTP {response.status_code}: {response.text}"}
-
-        except httpx.ConnectError:
-            # Agent server not ready yet - retry
-            if attempt < max_retries - 1:
-                logger.info(f"Agent {agent_name} not ready yet (attempt {attempt + 1}/{max_retries}), retrying...")
-                await asyncio.sleep(retry_delay)
-            else:
-                logger.warning(f"Could not connect to agent {agent_name} after {max_retries} attempts")
-                return {"status": "error", "error": "Agent server not reachable after retries"}
-
-        except Exception as e:
-            logger.error(f"Trinity injection error for {agent_name}: {e}")
-            return {"status": "error", "error": str(e)}
-
-    return {"status": "error", "error": "Max retries exceeded"}
+    # Use AgentClient for injection (handles retries internally)
+    client = get_agent_client(agent_name)
+    return await client.inject_trinity_prompt(
+        custom_prompt=custom_prompt,
+        force=False,
+        max_retries=max_retries,
+        retry_delay=retry_delay
+    )
 
 
 async def start_agent_internal(agent_name: str) -> dict:

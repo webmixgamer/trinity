@@ -13,6 +13,9 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
+| ⏳ | Executions 404 for Non-Existent Agent | `GET /api/agents/{name}/executions` returns `200 + []` instead of `404` for non-existent agents. Should add agent existence check before returning empty list. | LOW |
+| ⏳ | Test Client Headers Bug | `TrinityApiClient.post()` in `tests/utils/api_client.py` passes `headers` param twice to httpx when caller also provides headers. Fix: merge headers instead of passing separately. | LOW |
+| ⏳ | Emergency Stop Test Timeout | `test_emergency_stop_returns_structure` times out (>2 min) with multiple agents. Increase test timeout to 180s or mock the operation. | LOW |
 | ✅ | Context % Calculation Bug | **Fixed 2025-12-12**: Main bug was in agent_server/routers/chat.py incorrectly summing input_tokens + cache_creation_tokens + cache_read_tokens, causing >100% display (130%, 289%). cache_creation and cache_read are billing SUBSETS, not additional tokens. Now uses metadata.input_tokens directly (authoritative total from modelUsage). Also fixed in scheduler_service.py (2 locations, 2025-12-06) and claude_code.py logging. | HIGH |
 | ✅ | Template Detail Endpoint 404 | **Fixed 2025-12-22**: `GET /api/templates/{id}` returned 404 for GitHub templates like `github:org/repo`. Root cause: The `/` in the template ID was interpreted as path separator. Fix: Changed route from `{template_id}` to `{template_id:path}` to capture full path including slashes. | MEDIUM |
 | ✅ | .env Template Endpoint Bug | **Verified 2025-12-22**: Endpoint works correctly. Code at lines 110-130 already handles both string credentials (GitHub templates) and dict credentials (local templates). Tested all GitHub templates + local templates - all pass. | MEDIUM |
