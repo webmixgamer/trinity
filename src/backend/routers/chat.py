@@ -355,13 +355,24 @@ async def chat_with_agent(
         return response_data
     except httpx.HTTPError as e:
         import logging
-        logging.getLogger("trinity.errors").error(f"Failed to communicate with agent {name}: {e}")
+        # Extract detailed error message from agent response if available
+        error_msg = f"HTTP error: {type(e).__name__}"
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                if "detail" in error_data:
+                    error_msg = error_data["detail"]
+            except Exception:
+                # Try raw text if JSON parsing fails
+                if e.response.text:
+                    error_msg = e.response.text[:500]
+        logging.getLogger("trinity.errors").error(f"Failed to communicate with agent {name}: {error_msg}")
 
         # Track chat failure
         await activity_service.complete_activity(
             activity_id=chat_activity_id,
             status="failed",
-            error=type(e).__name__  # Don't expose full error message
+            error=error_msg
         )
 
         # Update task execution record for agent-to-agent calls on failure
@@ -369,12 +380,12 @@ async def chat_with_agent(
             db.update_execution_status(
                 execution_id=task_execution_id,
                 status="failed",
-                error=f"HTTP error: {type(e).__name__}"
+                error=error_msg
             )
 
         raise HTTPException(
             status_code=503,
-            detail="Failed to communicate with agent. The agent may be starting up or busy."
+            detail=f"Failed to communicate with agent: {error_msg}"
         )
     finally:
         # Always release the queue slot when done
@@ -541,8 +552,18 @@ async def execute_parallel_task(
         )
 
     except httpx.HTTPError as e:
+        # Extract detailed error message from agent response if available
         error_msg = f"HTTP error: {type(e).__name__}"
-        logger.error(f"Failed to execute parallel task on {name}: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                if "detail" in error_data:
+                    error_msg = error_data["detail"]
+            except Exception:
+                # Try raw text if JSON parsing fails
+                if e.response.text:
+                    error_msg = e.response.text[:500]
+        logger.error(f"Failed to execute parallel task on {name}: {error_msg}")
 
         # Update execution record with failure
         if execution_id:

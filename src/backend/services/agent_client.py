@@ -182,10 +182,27 @@ class AgentClient:
             json={"message": message, "stream": stream},
             timeout=timeout
         )
-        response.raise_for_status()
+
+        # Check for error response and extract detailed error message
+        if response.status_code >= 400:
+            error_msg = self._extract_error_detail(response)
+            raise AgentRequestError(error_msg, status_code=response.status_code)
 
         result = response.json()
         return self._parse_chat_response(result)
+
+    def _extract_error_detail(self, response: httpx.Response) -> str:
+        """Extract detailed error message from agent HTTP response."""
+        try:
+            error_data = response.json()
+            if "detail" in error_data:
+                return error_data["detail"]
+        except Exception:
+            pass
+        # Fall back to response text if JSON parsing fails
+        if response.text:
+            return response.text[:500]
+        return f"HTTP {response.status_code} error"
 
     def _parse_chat_response(self, result: Dict[str, Any]) -> AgentChatResponse:
         """
