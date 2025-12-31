@@ -1,6 +1,0 @@
-
-name: test-version-f19655
-display_name: Versioned Agent
-resources:
-  cpu: "1"
-  memory: "2g"

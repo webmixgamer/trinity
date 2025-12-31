@@ -1,6 +1,0 @@
-
-name: test-creds-b139a9
-display_name: Test Agent with Creds
-resources:
-  cpu: "1"
-  memory: "2g"

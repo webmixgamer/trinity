@@ -1,6 +1,0 @@
-
-name: test-version-30c4d7
-display_name: Versioned Agent
-resources:
-  cpu: "1"
-  memory: "2g"

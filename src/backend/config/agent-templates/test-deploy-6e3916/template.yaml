@@ -1,6 +1,0 @@
-
-name: test-deploy-6e3916
-display_name: Test Deploy Agent
-resources:
-  cpu: "1"
-  memory: "2g"
