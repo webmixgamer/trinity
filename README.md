@@ -25,7 +25,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
 - **MCP Integration** — 16 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
-- **Vector Memory (Chroma)** — Per-agent semantic memory with MCP tools for retrieval
+- **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
 
@@ -105,8 +105,8 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server         │
 │     Port 3000       │     Port 8000       │    Port 8080        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Audit Logger       │
-│   Internal only     │   /data volume      │    Port 8001        │
+│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)      │
+│   Internal only     │   /data volume      │    Port 8686        │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Agent Containers                              │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────────────┐    │
@@ -124,14 +124,14 @@ trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   ├── mcp-server/       # Trinity MCP server (16 tools)
-│   └── audit-logger/     # Security audit service
+│   └── mcp-server/       # Trinity MCP server (16 tools)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
 │   ├── backend/          # Backend Dockerfile
 │   └── frontend/         # Frontend Dockerfile
 ├── config/
 │   ├── agent-templates/  # Pre-configured agent templates
+│   ├── vector.yaml       # Vector log aggregation config
 │   ├── otel-collector.yaml # OpenTelemetry collector config
 │   └── trinity-meta-prompt/ # Platform injection templates
 ├── scripts/
@@ -165,10 +165,10 @@ my-template/
 | [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) | **Multi-agent systems** — Architecture patterns, shared folders, coordination, deployment |
 
 The Multi-Agent System Guide covers Trinity's platform capabilities that enable autonomous operation:
-- **Vector Database (Chroma)** — Per-agent semantic memory with MCP tools
 - **Scheduling System** — Cron-based autonomous execution
 - **Shared Folders** — File-based state sharing between agents
 - **Agent-to-Agent MCP** — Real-time delegation and collaboration
+- **Centralized Logging** — Vector-based log aggregation from all containers
 
 ### Public Agent Templates
 

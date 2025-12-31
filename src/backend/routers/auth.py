@@ -18,7 +18,6 @@ from config import (
 )
 from database import db
 from dependencies import authenticate_user, create_access_token
-from services.audit_service import log_audit_event
 
 
 def is_setup_completed() -> bool:
@@ -66,15 +65,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
-        await log_audit_event(
-            event_type="authentication",
-            action="login",
-            user_id=form_data.username,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="failed",
-            severity="warning"
-        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -86,15 +76,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         data={"sub": user["username"]},
         expires_delta=access_token_expires,
         mode="admin"  # Mark as admin login token
-    )
-
-    await log_audit_event(
-        event_type="authentication",
-        action="admin_login",
-        user_id=user["username"],
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        result="success"
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
@@ -123,15 +104,6 @@ async def exchange_auth0_token(request: Request, token_data: Auth0TokenExchange)
             )
 
             if response.status_code != 200:
-                await log_audit_event(
-                    event_type="authentication",
-                    action="auth0_exchange",
-                    ip_address=request.client.host if request.client else None,
-                    user_agent=request.headers.get("user-agent"),
-                    result="failed",
-                    severity="warning",
-                    details={"error": "Invalid Auth0 token", "status": response.status_code}
-                )
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid Auth0 token",
@@ -149,16 +121,6 @@ async def exchange_auth0_token(request: Request, token_data: Auth0TokenExchange)
 
         email_domain = email.split("@")[1] if "@" in email else ""
         if email_domain != AUTH0_ALLOWED_DOMAIN:
-            await log_audit_event(
-                event_type="authentication",
-                action="auth0_exchange",
-                user_id=email,
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-                result="denied",
-                severity="warning",
-                details={"error": f"Domain {email_domain} not allowed"}
-            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access restricted to @{AUTH0_ALLOWED_DOMAIN} domain users only"
@@ -186,16 +148,6 @@ async def exchange_auth0_token(request: Request, token_data: Auth0TokenExchange)
             mode="prod"  # Mark as production (Auth0) token
         )
 
-        await log_audit_event(
-            event_type="authentication",
-            action="auth0_exchange",
-            user_id=username,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="success",
-            details={"name": user_info.get("name")}
-        )
-
         return {"access_token": access_token, "token_type": "bearer"}
 
     except HTTPException:
@@ -203,14 +155,6 @@ async def exchange_auth0_token(request: Request, token_data: Auth0TokenExchange)
     except Exception as e:
         import logging
         logging.getLogger("trinity.errors").error(f"Auth0 token exchange failed: {e}")
-        await log_audit_event(
-            event_type="authentication",
-            action="auth0_exchange",
-            ip_address=request.client.host if request.client else None,
-            result="error",
-            severity="error",
-            details={"error_type": type(e).__name__}  # Log type only, not message
-        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication failed. Please try again."
@@ -306,31 +250,12 @@ async def request_email_login_code(request: Request):
     # Check if email is whitelisted
     if not db.is_email_whitelisted(email):
         # For security, return generic message (don't reveal if email is whitelisted)
-        await log_audit_event(
-            event_type="authentication",
-            action="email_login_request",
-            user_id=email,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="denied",
-            details={"reason": "not_whitelisted"},
-            severity="warning"
-        )
         # Return success to prevent email enumeration
         return {"success": True, "message": "If your email is registered, you'll receive a code shortly"}
 
     # Check rate limit
     recent_requests = db.count_recent_code_requests(email, minutes=10)
     if recent_requests >= 3:
-        await log_audit_event(
-            event_type="authentication",
-            action="email_login_request",
-            user_id=email,
-            ip_address=request.client.host if request.client else None,
-            result="denied",
-            details={"reason": "rate_limit"},
-            severity="warning"
-        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please try again in 10 minutes"
@@ -342,17 +267,6 @@ async def request_email_login_code(request: Request):
     # Send email
     email_service = EmailService()
     success = await email_service.send_verification_code(email, code_data["code"])
-
-    # Log audit event
-    await log_audit_event(
-        event_type="authentication",
-        action="email_login_code_sent",
-        user_id=email,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        result="success" if success else "failed",
-        details={"email_sent": success}
-    )
 
     return {
         "success": True,
@@ -394,16 +308,6 @@ async def verify_email_login_code(request: Request):
     # Verify code
     verification = db.verify_login_code(email, code)
     if not verification:
-        await log_audit_event(
-            event_type="authentication",
-            action="email_login_verify",
-            user_id=email,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="failed",
-            details={"reason": "invalid_code"},
-            severity="warning"
-        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired verification code"
@@ -426,16 +330,6 @@ async def verify_email_login_code(request: Request):
         data={"sub": user["username"]},
         expires_delta=access_token_expires,
         mode="email"  # Mark as email auth token
-    )
-
-    # Log successful login
-    await log_audit_event(
-        event_type="authentication",
-        action="email_login",
-        user_id=user["username"],
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        result="success"
     )
 
     return EmailLoginResponse(

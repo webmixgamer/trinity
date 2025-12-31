@@ -24,7 +24,6 @@ from models import (
     CredentialImportResult,
 )
 from services.template_service import is_trinity_compatible
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container
 from utils.helpers import sanitize_agent_name
 from .helpers import get_agents_by_prefix, get_next_version_name, get_latest_version
@@ -262,24 +261,7 @@ async def deploy_local_agent_logic(
             except Exception as e:
                 logger.warning(f"Failed to hot-reload credentials: {e}")
 
-        # 12. Audit log
-        await log_audit_event(
-            event_type="agent_management",
-            action="deploy_local",
-            user_id=current_user.username,
-            agent_name=version_name,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={
-                "base_name": base_name,
-                "previous_version": previous_version.name if previous_version else None,
-                "previous_stopped": previous_stopped,
-                "credentials_count": len(cred_results),
-                "archive_size": len(archive_bytes)
-            }
-        )
-
-        # 13. Return response
+        # 12. Return response
         return DeployLocalResponse(
             status="success",
             agent=agent_status,
@@ -296,15 +278,6 @@ async def deploy_local_agent_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="agent_management",
-            action="deploy_local",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to deploy local agent: {str(e)}"

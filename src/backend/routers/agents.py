@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from models import AgentConfig, AgentStatus, User, DeployLocalRequest
 from database import db
 from dependencies import get_current_user, decode_token
-from services.audit_service import log_audit_event
 from services.docker_service import (
     docker_client,
     get_agent_container,
@@ -129,13 +128,6 @@ async def create_agent_internal(
 @router.get("")
 async def list_agents_endpoint(request: Request, current_user: User = Depends(get_current_user)):
     """List all agents accessible to the current user."""
-    await log_audit_event(
-        event_type="agent_access",
-        action="list",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
     return get_accessible_agents(current_user)
 
 
@@ -154,15 +146,6 @@ async def get_agent_endpoint(agent_name: str, request: Request, current_user: Us
 
     if not db.can_user_access_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
-
-    await log_audit_event(
-        event_type="agent_access",
-        action="get",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     agent_dict = agent.dict() if hasattr(agent, 'dict') else dict(agent)
     user_data = db.get_user_by_username(current_user.username)
@@ -213,31 +196,12 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     """Delete an agent."""
     # Check for system agent first - no one can delete these
     if db.is_system_agent(agent_name):
-        await log_audit_event(
-            event_type="agent_management",
-            action="delete",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="forbidden",
-            severity="warning",
-            details={"reason": "system_agent_protected"}
-        )
         raise HTTPException(
             status_code=403,
             detail="System agents cannot be deleted. Use re-initialization to reset to clean state."
         )
 
     if not db.can_user_delete_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="agent_management",
-            action="delete",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning"
-        )
         raise HTTPException(status_code=403, detail="You don't have permission to delete this agent")
 
     container = get_agent_container(agent_name)
@@ -307,15 +271,6 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
             "data": {"name": agent_name}
         }))
 
-    await log_audit_event(
-        event_type="agent_management",
-        action="delete",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return {"message": f"Agent {agent_name} deleted"}
 
 
@@ -336,30 +291,10 @@ async def start_agent_endpoint(agent_name: str, request: Request, current_user: 
                 "data": {"name": agent_name, "trinity_injection": trinity_status}
             }))
 
-        await log_audit_event(
-            event_type="agent_management",
-            action="start",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"trinity_injection": trinity_status}
-        )
-
         return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="agent_management",
-            action="start",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to start agent: {str(e)}")
 
 
@@ -379,27 +314,8 @@ async def stop_agent_endpoint(agent_name: str, request: Request, current_user: U
                 "data": {"name": agent_name}
             }))
 
-        await log_audit_event(
-            event_type="agent_management",
-            action="stop",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return {"message": f"Agent {agent_name} stopped"}
     except Exception as e:
-        await log_audit_event(
-            event_type="agent_management",
-            action="stop",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to stop agent: {str(e)}")
 
 
@@ -421,15 +337,6 @@ async def get_agent_logs_endpoint(
 
     try:
         logs = container.logs(tail=tail).decode('utf-8')
-
-        await log_audit_event(
-            event_type="agent_access",
-            action="view_logs",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
 
         return {"logs": logs}
     except Exception as e:

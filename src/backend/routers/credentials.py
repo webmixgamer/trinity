@@ -19,7 +19,6 @@ from models import (
 )
 from config import OAUTH_CONFIGS, BACKEND_URL
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, get_agent_status_from_container
 from services.template_service import (
     get_github_template,
@@ -52,27 +51,8 @@ async def create_credential(
     try:
         credential = credential_manager.create_credential(current_user.username, cred_data)
 
-        await log_audit_event(
-            event_type="credential_management",
-            action="create",
-            user_id=current_user.username,
-            resource=f"credential-{credential.id}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"service": cred_data.service, "type": cred_data.type}
-        )
-
         return credential
     except Exception as e:
-        await log_audit_event(
-            event_type="credential_management",
-            action="create",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to create credential: {str(e)}")
 
 
@@ -84,14 +64,6 @@ async def list_credentials(
     """List all credentials for the current user."""
     try:
         credentials = credential_manager.list_credentials(current_user.username)
-
-        await log_audit_event(
-            event_type="credential_access",
-            action="list",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
 
         return credentials
     except Exception as e:
@@ -110,15 +82,6 @@ async def get_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    await log_audit_event(
-        event_type="credential_access",
-        action="get",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return credential
 
 
@@ -135,15 +98,6 @@ async def update_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="update",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return credential
 
 
@@ -158,15 +112,6 @@ async def delete_credential(
 
     if not success:
         raise HTTPException(status_code=404, detail="Credential not found")
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="delete",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     return {"message": f"Credential {cred_id} deleted"}
 
@@ -224,19 +169,6 @@ async def bulk_import_credentials(
             errors.append(f"{key}: {str(e)}")
             skipped_count += 1
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="bulk_import",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if created_count > 0 else "partial",
-        details={
-            "created": created_count,
-            "skipped": skipped_count,
-            "errors": errors[:10]
-        }
-    )
-
     return BulkCredentialResult(
         created=created_count,
         skipped=skipped_count,
@@ -271,15 +203,6 @@ async def init_oauth(
         config["client_id"],
         redirect_uri,
         state
-    )
-
-    await log_audit_event(
-        event_type="oauth",
-        action="init",
-        user_id=current_user.username,
-        resource=provider,
-        ip_address=request.client.host if request.client else None,
-        result="success"
     )
 
     return {"auth_url": auth_url, "state": state}
@@ -366,16 +289,6 @@ async def oauth_callback(
 
     credential = credential_manager.create_credential(state_data["user_id"], cred_data)
 
-    await log_audit_event(
-        event_type="oauth",
-        action="callback",
-        user_id=state_data["user_id"],
-        resource=provider,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"credential_id": credential.id}
-    )
-
     return {
         "message": "OAuth authentication successful",
         "credential_id": credential.id,
@@ -459,15 +372,6 @@ async def get_agent_credentials_requirements(
             "source": cred.get("source", "unknown"),
             "configured": is_configured
         })
-
-    await log_audit_event(
-        event_type="agent_access",
-        action="get_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     return {
         "agent_name": agent_name,
@@ -558,19 +462,6 @@ async def reload_agent_credentials(
             status_code=503,
             detail=f"Failed to connect to agent: {str(e)}"
         )
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="reload_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "credential_count": len(agent_credentials),
-            "updated_files": agent_response.get("updated_files", [])
-        }
-    )
 
     return {
         "message": f"Credentials reloaded on agent {agent_name}",
@@ -713,20 +604,6 @@ async def hot_reload_credentials(
             detail=f"Failed to connect to agent: {str(e)}"
         )
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="hot_reload_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "credential_count": len(credentials),
-            "credential_names": list(credentials.keys()),
-            "saved_to_redis": saved_credentials
-        }
-    )
-
     return {
         "message": f"Hot-reloaded {len(credentials)} credentials on agent {agent_name}",
         "credential_count": len(credentials),
@@ -780,16 +657,6 @@ async def get_credential_assignments(
         else:
             available.append(cred_info)
 
-    await log_audit_event(
-        event_type="credential_access",
-        action="get_assignments",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"assigned_count": len(assigned), "available_count": len(available)}
-    )
-
     return {
         "agent_name": agent_name,
         "assigned": assigned,
@@ -818,16 +685,6 @@ async def assign_credential(
     if not success:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="assign_credential",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        resource=f"credential-{request_body.credential_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return {
         "message": "Credential assigned to agent",
         "credential_id": request_body.credential_id,
@@ -851,16 +708,6 @@ async def unassign_credential(
 
     if not success:
         raise HTTPException(status_code=404, detail="Credential assignment not found")
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="unassign_credential",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     return {
         "message": "Credential unassigned from agent",
@@ -894,16 +741,6 @@ async def bulk_assign_credentials(
             assigned.append(cred_id)
         else:
             failed.append(cred_id)
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="bulk_assign_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success" if not failed else "partial",
-        details={"assigned_count": len(assigned), "failed_count": len(failed)}
-    )
 
     return {
         "message": f"Assigned {len(assigned)} credentials to agent",
@@ -986,20 +823,6 @@ async def apply_credentials(
             detail=f"Failed to connect to agent: {str(e)}"
         )
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="apply_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "credential_count": len(credentials),
-            "file_count": len(file_credentials),
-            "updated_files": agent_response.get("updated_files", [])
-        }
-    )
-
     return {
         "message": f"Applied {len(credentials)} credentials to agent {agent_name}",
         "credential_count": len(credentials),
@@ -1038,16 +861,5 @@ async def assign_credential_to_mcp_server(
 
     if not success:
         raise HTTPException(status_code=404, detail="Credential not found")
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="assign_to_agent",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"mcp_server": mcp_server}
-    )
 
     return {"message": f"Credential assigned to {agent_name} for {mcp_server}"}

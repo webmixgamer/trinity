@@ -10,7 +10,6 @@ from passlib.context import CryptContext
 from models import User
 from config import SECRET_KEY, ALGORITHM
 from database import db
-from services.audit_service import log_audit_event
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -125,15 +124,6 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         if user is None:
             raise credentials_exception
 
-        await log_audit_event(
-            event_type="authentication",
-            action="token_validation",
-            user_id=username,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="success"
-        )
-
         return User(
             id=user["id"],
             username=user["username"],
@@ -154,16 +144,6 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         # Note: user_id from MCP key is the username string, not the database id
         user = db.get_user_by_email(user_email) if user_email else db.get_user_by_username(user_id)
         if user:
-            await log_audit_event(
-                event_type="authentication",
-                action="mcp_key_validation",
-                user_id=user.get("username"),
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-                result="success",
-                details=f"MCP API key: {mcp_key_info.get('key_name')}"
-            )
-
             return User(
                 id=user["id"],
                 username=user["username"],

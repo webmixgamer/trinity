@@ -87,7 +87,7 @@ After **EVERY** change, update:
 - Never expose credentials, API keys, or tokens in code or logs
 - Never commit internal URLs, IP addresses, or email addresses
 - Use environment variables for all secrets
-- All credential operations logged via audit logger (values masked)
+- All credential operations logged via structured logging (values masked, captured by Vector)
 - Use placeholder values in example configs (e.g., `your-domain.com`, `your-api-key`)
 - Review diffs before committing for accidental sensitive data
 
@@ -129,7 +129,7 @@ docker-compose logs -f backend
 - **Web UI**: http://localhost:3000
 - **Backend API**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
-- **Audit Logger**: http://localhost:8001/docs
+- **Vector (logs)**: http://localhost:8686/health
 
 ### Production Deployment (GCP)
 
@@ -165,14 +165,14 @@ project_trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend (main.py, database.py, credentials.py)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS
-│   ├── mcp-server/       # Trinity MCP server (12 tools)
-│   └── audit-logger/     # Audit service
+│   └── mcp-server/       # Trinity MCP server (12 tools)
 ├── docker/
 │   ├── base-image/       # Universal agent base (agent-server.py)
 │   ├── backend/          # Backend Dockerfile
 │   └── frontend/         # Frontend Dockerfile
 ├── config/
-│   └── agent-templates/  # Pre-configured templates
+│   ├── agent-templates/  # Pre-configured templates
+│   └── vector.yaml       # Vector log aggregation config
 ├── .claude/
 │   ├── memory/           # Persistent project memory
 │   ├── commands/         # Slash commands
@@ -199,7 +199,7 @@ project_trinity/
 
 1. **Don't break existing environments**: The `environments/` directory contains working production setups. Don't modify these.
 
-2. **Credential security**: Never log credentials. Use audit logger for tracking access, not values.
+2. **Credential security**: Never log credentials. Credential values are masked in all logs.
 
 3. **Docker socket access**: Backend has read-only Docker socket access. Be cautious with Docker API calls.
 
@@ -207,7 +207,7 @@ project_trinity/
 
 5. **Data persistence**: SQLite at `~/trinity-data/trinity.db` (bind mount). Redis for secrets (Docker volume). Run `scripts/deploy/backup-database.sh` before major changes.
 
-6. **Audit logging is async**: Uses 2-second timeout. Operations continue if audit logger is down.
+6. **Logging via Vector**: All container logs are captured by Vector and written to JSON files. Query logs with `jq` or grep.
 
 7. **Frontend dev mode**: Vite with hot reload. Changes to `.vue` files reflect immediately.
 

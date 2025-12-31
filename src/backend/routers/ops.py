@@ -19,7 +19,6 @@ import httpx
 from models import User
 from database import db
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, docker_client, list_all_agents
 from db.agents import SYSTEM_AGENT_NAME
 
@@ -111,15 +110,6 @@ async def get_fleet_status(
     high_context = sum(
         1 for name, stats in context_stats.items()
         if stats.get("context_percent", 0) > 75
-    )
-
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_status",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"total_agents": total, "running": running}
     )
 
     return {
@@ -230,19 +220,6 @@ async def get_fleet_health(
     else:
         overall = "healthy"
 
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_health",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "overall": overall,
-            "critical_count": len(critical_issues),
-            "warning_count": len(warnings)
-        }
-    )
-
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "overall": overall,
@@ -350,19 +327,6 @@ async def restart_fleet(
             })
             failures += 1
 
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_restart",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if failures == 0 else "partial",
-        details={
-            "successes": successes,
-            "failures": failures,
-            "skipped": skipped
-        }
-    )
-
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "summary": {
@@ -456,19 +420,6 @@ async def stop_fleet(
             })
             failures += 1
 
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_stop",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if failures == 0 else "partial",
-        details={
-            "successes": successes,
-            "failures": failures,
-            "skipped": skipped
-        }
-    )
-
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "summary": {
@@ -517,15 +468,6 @@ async def pause_all_schedules(
             paused += 1
         except Exception as e:
             logger.error(f"Failed to pause schedule {schedule.id}: {e}")
-
-    await log_audit_event(
-        event_type="ops",
-        action="schedules_pause",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"paused": paused, "agent_name": agent_name}
-    )
 
     return {
         "success": True,
@@ -577,15 +519,6 @@ async def resume_all_schedules(
             resumed += 1
         except Exception as e:
             logger.error(f"Failed to resume schedule {schedule.id}: {e}")
-
-    await log_audit_event(
-        event_type="ops",
-        action="schedules_resume",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"resumed": resumed, "agent_name": agent_name}
-    )
 
     return {
         "success": True,
@@ -645,16 +578,6 @@ async def emergency_stop(
             except Exception as e:
                 results["errors"].append(f"Agent {agent_name}: {e}")
 
-    await log_audit_event(
-        event_type="ops",
-        action="emergency_stop",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        severity="warning",
-        details=results
-    )
-
     return {
         "success": True,
         "message": "Emergency stop completed",
@@ -678,11 +601,10 @@ async def list_alerts(
     """
     List recent operational alerts.
 
-    Alerts are derived from audit logs with ops-related events.
+    Alerts are derived from platform events (errors, health checks, etc.).
     """
-    # Get ops-related audit events
-    # This would ideally be a dedicated alerts table, but for now use audit logs
-    # TODO: Implement dedicated alerts table in future
+    # TODO: Implement dedicated alerts table
+    # For now, return placeholder - check fleet health for issues
 
     return {
         "timestamp": datetime.utcnow().isoformat(),
@@ -835,15 +757,6 @@ async def get_ops_costs(
                     "lines_removed": metrics.get("lines", {}).get("removed", 0)
                 }
             }
-
-            await log_audit_event(
-                event_type="ops",
-                action="costs_report",
-                user_id=current_user.username,
-                ip_address=request.client.host if request.client else None,
-                result="success",
-                details={"total_cost": total_cost, "alerts_count": len(alerts)}
-            )
 
             return result
 

@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from models import User
 from database import db, SystemSetting, SystemSettingUpdate
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -110,14 +109,6 @@ async def get_all_settings(
     try:
         settings = db.get_all_settings()
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="list",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return settings
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get settings: {str(e)}")
@@ -147,14 +138,6 @@ async def get_api_keys_status(
 
         # Check if it's from settings or env
         key_from_settings = bool(db.get_setting_value('anthropic_api_key', None))
-
-        await log_audit_event(
-            event_type="system_settings",
-            action="read_api_keys",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
 
         # Get GitHub PAT
         github_pat = get_github_pat()
@@ -202,15 +185,6 @@ async def update_anthropic_key(
         # Store in settings
         db.set_setting('anthropic_api_key', key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_anthropic_key",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"key_masked": mask_api_key(key)}
-        )
-
         return {
             "success": True,
             "masked": mask_api_key(key)
@@ -218,15 +192,6 @@ async def update_anthropic_key(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_anthropic_key",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update API key: {str(e)}")
 
 
@@ -244,15 +209,6 @@ async def delete_anthropic_key(
 
     try:
         deleted = db.delete_setting('anthropic_api_key')
-
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete_anthropic_key",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"deleted": deleted}
-        )
 
         # Check if env var fallback exists
         env_key = os.getenv('ANTHROPIC_API_KEY', '')
@@ -302,14 +258,6 @@ async def test_anthropic_key(
             )
 
             if response.status_code == 200:
-                await log_audit_event(
-                    event_type="system_settings",
-                    action="test_anthropic_key",
-                    user_id=current_user.username,
-                    ip_address=request.client.host if request.client else None,
-                    result="success",
-                    details={"valid": True}
-                )
                 return {"valid": True}
             elif response.status_code == 401:
                 return {
@@ -359,15 +307,6 @@ async def update_github_pat(
         # Store in settings
         db.set_setting('github_pat', key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_github_pat",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"key_masked": mask_api_key(key)}
-        )
-
         return {
             "success": True,
             "masked": mask_api_key(key)
@@ -375,15 +314,6 @@ async def update_github_pat(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_github_pat",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update GitHub PAT: {str(e)}")
 
 
@@ -401,15 +331,6 @@ async def delete_github_pat(
 
     try:
         deleted = db.delete_setting('github_pat')
-
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete_github_pat",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"deleted": deleted}
-        )
 
         # Check if env var fallback exists
         env_key = os.getenv('GITHUB_PAT', '')
@@ -493,20 +414,6 @@ async def test_github_pat(
                     scopes = [s.strip() for s in scope_header.split(",") if s.strip()]
                     has_repo_access = "repo" in scopes or "public_repo" in scopes
 
-                await log_audit_event(
-                    event_type="system_settings",
-                    action="test_github_pat",
-                    user_id=current_user.username,
-                    ip_address=request.client.host if request.client else None,
-                    result="success",
-                    details={
-                        "valid": True,
-                        "github_user": data.get("login"),
-                        "token_type": "fine-grained" if is_fine_grained else "classic",
-                        "has_repo_access": has_repo_access
-                    }
-                )
-
                 return {
                     "valid": True,
                     "username": data.get("login"),
@@ -555,15 +462,6 @@ async def list_email_whitelist(
 
     whitelist = db.list_whitelist(limit=1000)
 
-    await log_audit_event(
-        event_type="email_whitelist",
-        action="list",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"count": len(whitelist)}
-    )
-
     return {"whitelist": whitelist}
 
 
@@ -596,26 +494,9 @@ async def add_email_to_whitelist(
                 detail=f"Email {email} is already whitelisted"
             )
 
-        await log_audit_event(
-            event_type="email_whitelist",
-            action="add",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"email": email, "source": add_request.source}
-        )
-
         return {"success": True, "email": email}
 
     except ValueError as e:
-        await log_audit_event(
-            event_type="email_whitelist",
-            action="add",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            details={"email": email, "error": str(e)}
-        )
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -640,15 +521,6 @@ async def remove_email_from_whitelist(
             status_code=404,
             detail=f"Email {email} not found in whitelist"
         )
-
-    await log_audit_event(
-        event_type="email_whitelist",
-        action="remove",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"email": email}
-    )
 
     return {"success": True, "email": email}
 
@@ -677,15 +549,6 @@ async def get_setting(
         if not setting:
             raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="read",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return setting
     except HTTPException:
         raise
@@ -710,28 +573,8 @@ async def update_setting(
     try:
         setting = db.set_setting(key, body.value)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"key": key, "value_length": len(body.value)}
-        )
-
         return setting
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update setting: {str(e)}")
 
 
@@ -751,28 +594,8 @@ async def delete_setting(
     try:
         deleted = db.delete_setting(key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"deleted": deleted}
-        )
-
         return {"success": True, "deleted": deleted}
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to delete setting: {str(e)}")
 
 
@@ -808,14 +631,6 @@ async def get_ops_settings(
                 "is_default": current_value == default_value
             }
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="read_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return {
             "settings": ops_config
         }
@@ -848,30 +663,12 @@ async def update_ops_settings(
             else:
                 ignored.append(key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"updated": updated, "ignored": ignored}
-        )
-
         return {
             "success": True,
             "updated": updated,
             "ignored": ignored if ignored else None
         }
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update ops settings: {str(e)}")
 
 
@@ -893,15 +690,6 @@ async def reset_ops_settings(
         for key in OPS_SETTINGS_DEFAULTS.keys():
             if db.delete_setting(key):
                 deleted.append(key)
-
-        await log_audit_event(
-            event_type="system_settings",
-            action="reset_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"reset": deleted}
-        )
 
         return {
             "success": True,

@@ -1,3 +1,37 @@
+### 2025-12-31 03:00:00
+🔄 **Vector Log Aggregation Migration**
+
+**Major Change**: Replaced unreliable audit-logger with Vector for centralized, reliable log aggregation.
+
+**Why**:
+- Audit-logger used fire-and-forget HTTP with 2s timeout (silently dropped events)
+- 173+ manual call sites meant incomplete coverage and maintenance burden
+- No retry/fallback meant single failures = events lost forever
+
+**What Changed**:
+- **Added**: Vector service (timberio/vector:0.43.1-alpine) that captures ALL container stdout/stderr via Docker socket
+- **Added**: `config/vector.yaml` - Routes logs to `/data/logs/platform.json` and `/data/logs/agents.json`
+- **Added**: `src/backend/logging_config.py` - Structured JSON logging for Python backend
+- **Removed**: `src/audit-logger/` directory and `docker/audit-logger/` Dockerfile
+- **Removed**: `src/backend/services/audit_service.py` and all 173+ `log_audit_event()` calls across 24 files
+- **Removed**: `/api/audit/logs` endpoint
+- **Updated**: docker-compose.yml and docker-compose.prod.yml
+- **Updated**: CLAUDE.md, DEPLOYMENT.md with new architecture
+- **Added**: `docs/QUERYING_LOGS.md` - Guide for querying logs with jq/grep
+
+**Benefits**:
+- **Reliable**: Never drops logs - captures everything Docker sees
+- **Complete**: ALL containers automatically (no manual call sites)
+- **Zero maintenance**: No application changes needed after migration
+- **Queryable**: JSON files searchable with grep/jq
+
+**Files Removed** (24 files cleaned):
+- All routers: agents.py, credentials.py, settings.py, auth.py, mcp_keys.py, ops.py, chat.py, system_agent.py, schedules.py, public_links.py, public.py, systems.py, sharing.py, git.py, setup.py
+- All services: files.py, permissions.py, crud.py, queue.py, terminal.py, deploy.py, folders.py, api_key.py
+- dependencies.py, main.py, config.py, services/__init__.py
+
+---
+
 ### 2025-12-31 01:30:00
 👁️ **Execution Log Viewer in Tasks Tab**
 

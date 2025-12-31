@@ -10,7 +10,6 @@ from fastapi import HTTPException, Request
 from models import User
 from database import db
 from services.docker_service import get_agent_container
-from services.audit_service import log_audit_event
 from .helpers import check_api_key_env_matches
 
 logger = logging.getLogger(__name__)
@@ -75,18 +74,6 @@ async def update_agent_api_key_setting_logic(
 
     # Update setting
     db.set_use_platform_api_key(agent_name, bool(use_platform_key))
-
-    await log_audit_event(
-        event_type="agent_settings",
-        action="update_api_key_setting",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "use_platform_api_key": use_platform_key
-        }
-    )
 
     return {
         "status": "updated",

@@ -12,7 +12,6 @@ from typing import List
 from models import User
 from database import db, PublicLinkCreate, PublicLinkUpdate, PublicLinkWithUrl
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container
 from config import FRONTEND_URL
 
@@ -69,15 +68,6 @@ async def create_public_link(
 
     # Verify user owns the agent (only owners can create public links)
     if not db.can_user_share_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="public_link",
-            action="create",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning"
-        )
         raise HTTPException(
             status_code=403,
             detail="Only the agent owner can create public links"
@@ -90,20 +80,6 @@ async def create_public_link(
         name=link_request.name,
         require_email=link_request.require_email,
         expires_at=link_request.expires_at
-    )
-
-    await log_audit_event(
-        event_type="public_link",
-        action="create",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "link_id": link["id"],
-            "require_email": link["require_email"],
-            "expires_at": link.get("expires_at")
-        }
     )
 
     # Broadcast event
@@ -193,15 +169,6 @@ async def update_public_link(
 
     # Verify ownership
     if not db.can_user_share_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="public_link",
-            action="update",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning"
-        )
         raise HTTPException(
             status_code=403,
             detail="Only the agent owner can update public links"
@@ -219,19 +186,6 @@ async def update_public_link(
         enabled=update_request.enabled,
         require_email=update_request.require_email,
         expires_at=update_request.expires_at
-    )
-
-    await log_audit_event(
-        event_type="public_link",
-        action="update",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "link_id": link_id,
-            "updates": update_request.model_dump(exclude_none=True)
-        }
     )
 
     # Broadcast event
@@ -263,15 +217,6 @@ async def delete_public_link(
 
     # Verify ownership
     if not db.can_user_share_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="public_link",
-            action="delete",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning"
-        )
         raise HTTPException(
             status_code=403,
             detail="Only the agent owner can delete public links"
@@ -284,16 +229,6 @@ async def delete_public_link(
 
     # Delete the link
     db.delete_public_link(link_id)
-
-    await log_audit_event(
-        event_type="public_link",
-        action="delete",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"link_id": link_id}
-    )
 
     # Broadcast event
     if manager:

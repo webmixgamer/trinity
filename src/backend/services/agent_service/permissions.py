@@ -10,7 +10,6 @@ from fastapi import HTTPException, Request
 from models import User
 from database import db
 from services.docker_service import get_agent_container
-from services.audit_service import log_audit_event
 from .helpers import get_accessible_agents
 
 logger = logging.getLogger(__name__)
@@ -100,16 +99,6 @@ async def set_agent_permissions_logic(
     # Set permissions
     db.set_agent_permissions(agent_name, permitted_agents, current_user.username)
 
-    await log_audit_event(
-        event_type="agent_permissions",
-        action="set_permissions",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"permitted_count": len(permitted_agents)}
-    )
-
     return {
         "status": "updated",
         "source_agent": agent_name,
@@ -147,15 +136,6 @@ async def add_agent_permission_logic(
     result = db.add_agent_permission(agent_name, target_agent, current_user.username)
 
     if result:
-        await log_audit_event(
-            event_type="agent_permissions",
-            action="add_permission",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"target_agent": target_agent}
-        )
         return {"status": "added", "source_agent": agent_name, "target_agent": target_agent}
     else:
         return {"status": "already_exists", "source_agent": agent_name, "target_agent": target_agent}
@@ -183,15 +163,6 @@ async def remove_agent_permission_logic(
     removed = db.remove_agent_permission(agent_name, target_agent)
 
     if removed:
-        await log_audit_event(
-            event_type="agent_permissions",
-            action="remove_permission",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"target_agent": target_agent}
-        )
         return {"status": "removed", "source_agent": agent_name, "target_agent": target_agent}
     else:
         return {"status": "not_found", "source_agent": agent_name, "target_agent": target_agent}

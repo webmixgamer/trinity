@@ -13,7 +13,6 @@ import json
 from models import User
 from dependencies import get_current_user
 from database import db, Schedule, ScheduleCreate, ScheduleExecution
-from services.audit_service import log_audit_event
 from services.scheduler_service import scheduler_service
 
 router = APIRouter(prefix="/api/agents", tags=["schedules"])
@@ -121,16 +120,6 @@ async def create_schedule(
     if schedule.enabled:
         scheduler_service.add_schedule(schedule)
 
-    await log_audit_event(
-        event_type="schedule_management",
-        action="create",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule.id}",
-        result="success",
-        details={"schedule_name": schedule.name, "cron": schedule.cron_expression}
-    )
-
     return ScheduleResponse(**schedule.model_dump())
 
 
@@ -196,16 +185,6 @@ async def update_schedule(
     # Update in scheduler
     scheduler_service.update_schedule(updated_schedule)
 
-    await log_audit_event(
-        event_type="schedule_management",
-        action="update",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule_id}",
-        result="success",
-        details={"updates": list(update_dict.keys())}
-    )
-
     return ScheduleResponse(**updated_schedule.model_dump())
 
 
@@ -232,15 +211,6 @@ async def delete_schedule(
             detail="Cannot delete schedule - access denied"
         )
 
-    await log_audit_event(
-        event_type="schedule_management",
-        action="delete",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule_id}",
-        result="success"
-    )
-
 
 # Schedule Control Endpoints
 
@@ -266,15 +236,6 @@ async def enable_schedule(
 
     scheduler_service.enable_schedule(schedule_id)
 
-    await log_audit_event(
-        event_type="schedule_management",
-        action="enable",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule_id}",
-        result="success"
-    )
-
     return {"status": "enabled", "schedule_id": schedule_id}
 
 
@@ -299,15 +260,6 @@ async def disable_schedule(
         )
 
     scheduler_service.disable_schedule(schedule_id)
-
-    await log_audit_event(
-        event_type="schedule_management",
-        action="disable",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule_id}",
-        result="success"
-    )
 
     return {"status": "disabled", "schedule_id": schedule_id}
 
@@ -338,16 +290,6 @@ async def trigger_schedule(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to trigger schedule"
         )
-
-    await log_audit_event(
-        event_type="schedule_management",
-        action="manual_trigger",
-        user_id=current_user.username,
-        agent_name=name,
-        resource=f"schedule-{schedule_id}",
-        result="success",
-        details={"execution_id": execution_id}
-    )
 
     return {
         "status": "triggered",

@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from models import User
 from services.docker_service import get_agent_container
 from services.execution_queue import get_execution_queue
-from services.audit_service import log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -63,16 +62,6 @@ async def clear_agent_queue_logic(
         queue = get_execution_queue()
         cleared_count = await queue.clear_queue(agent_name)
 
-        await log_audit_event(
-            event_type="agent_queue",
-            action="clear_queue",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            resource=f"agent-{agent_name}",
-            result="success",
-            details={"cleared_count": cleared_count}
-        )
-
         return {
             "status": "cleared",
             "agent": agent_name,
@@ -102,17 +91,6 @@ async def force_release_agent_logic(
     try:
         queue = get_execution_queue()
         was_running = await queue.force_release(agent_name)
-
-        await log_audit_event(
-            event_type="agent_queue",
-            action="force_release",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            resource=f"agent-{agent_name}",
-            result="success",
-            details={"was_running": was_running},
-            severity="warning"
-        )
 
         return {
             "status": "released",

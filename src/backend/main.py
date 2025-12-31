@@ -8,7 +8,7 @@ Refactored for better concern separation:
 - config.py: Configuration constants
 - models.py: Pydantic models
 - dependencies.py: FastAPI dependencies (auth)
-- services/: Business logic (audit, docker, template)
+- services/: Business logic (docker, template)
 - routers/: API endpoints organized by domain
 - utils/: Helper functions
 """
@@ -20,7 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
-from config import CORS_ORIGINS, AUDIT_URL, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
+from config import CORS_ORIGINS, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
 from models import User
 from dependencies import get_current_user
 from services.docker_service import docker_client, list_all_agents
@@ -56,6 +56,9 @@ from services.system_agent_service import system_agent_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
+
+# Import logging configuration
+from logging_config import setup_logging
 
 
 class ConnectionManager:
@@ -157,6 +160,9 @@ def initialize_github_pat():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    # Set up structured JSON logging (captured by Vector)
+    setup_logging()
+
     # Initialize GitHub PAT from environment to Redis
     initialize_github_pat()
 
@@ -317,41 +323,6 @@ async def get_version():
         "runtimes": ["claude-code", "gemini-cli"],
         "build_date": os.getenv("BUILD_DATE", "unknown")
     }
-
-
-# Audit logs endpoint (admin only)
-@app.get("/api/audit/logs")
-async def get_audit_logs(
-    request: Request,
-    event_type: str = None,
-    agent_name: str = None,
-    limit: int = 100,
-    current_user: User = Depends(get_current_user)
-):
-    """Get audit logs (admin only)."""
-    if current_user.role != "admin":
-        from fastapi import HTTPException, status
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-
-    try:
-        async with httpx.AsyncClient() as client:
-            params = {"limit": limit}
-            if event_type:
-                params["event_type"] = event_type
-            if agent_name:
-                params["agent_name"] = agent_name
-
-            response = await client.get(
-                f"{AUDIT_URL}/api/audit/logs",
-                params=params,
-                timeout=5.0
-            )
-            return response.json()
-    except Exception as e:
-        import logging
-        logging.getLogger("trinity.errors").error(f"Failed to get audit logs: {e}")
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail="Failed to retrieve audit logs")
 
 
 # User info endpoint

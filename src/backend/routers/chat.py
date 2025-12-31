@@ -13,7 +13,6 @@ from typing import Optional
 
 from models import User, ChatMessageRequest, ModelChangeRequest, ParallelTaskRequest, ActivityType, ExecutionSource
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container
 from services.activity_service import activity_service
 from services.execution_queue import get_execution_queue, QueueFullError, AgentBusyError
@@ -343,15 +342,6 @@ async def chat_with_agent(
                 execution_log=tool_calls_json  # execution_log same as tool_calls for chat
             )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="chat",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="success"
-        )
-
         execution_success = True
 
         # Add execution metadata to response
@@ -381,16 +371,6 @@ async def chat_with_agent(
                 error=f"HTTP error: {type(e).__name__}"
             )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="chat",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error_type": type(e).__name__, "execution_id": execution.id}
-        )
         raise HTTPException(
             status_code=503,
             detail="Failed to communicate with agent. The agent may be starting up or busy."
@@ -536,21 +516,6 @@ async def execute_parallel_task(
             }
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="parallel_task",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="success",
-            details={
-                "source": source.value,
-                "source_agent": x_source_agent,
-                "session_id": response_data.get("session_id"),
-                "execution_id": execution_id
-            }
-        )
-
         return response_data
 
     except httpx.TimeoutException:
@@ -568,16 +533,6 @@ async def execute_parallel_task(
             error="Task execution timed out"
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="parallel_task",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error": "timeout", "source_agent": x_source_agent, "execution_id": execution_id}
-        )
         raise HTTPException(
             status_code=504,
             detail=f"Task execution timed out after {request.timeout_seconds} seconds"
@@ -601,16 +556,6 @@ async def execute_parallel_task(
             error=type(e).__name__
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="parallel_task",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error_type": type(e).__name__, "source_agent": x_source_agent, "execution_id": execution_id}
-        )
         raise HTTPException(
             status_code=503,
             detail="Failed to execute task. The agent may be unavailable."
@@ -899,16 +844,6 @@ async def set_agent_model(
             )
             response.raise_for_status()
 
-            await log_audit_event(
-                event_type="agent_interaction",
-                action="model_change",
-                user_id=current_user.username,
-                agent_name=name,
-                resource=f"agent-{name}",
-                result="success",
-                details={"model": request.model}
-            )
-
             return response.json()
     except httpx.HTTPError as e:
         import logging
@@ -1061,14 +996,6 @@ async def close_chat_session(
     success = db.close_chat_session(session_id)
 
     if success:
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="close_chat_session",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"session-{session_id}",
-            result="success"
-        )
         return {"status": "closed", "session_id": session_id}
     else:
         raise HTTPException(status_code=500, detail="Failed to close session")

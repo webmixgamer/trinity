@@ -12,7 +12,6 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from models import User
 from database import db
 from services.docker_service import get_agent_container
-from services.audit_service import log_audit_event
 from .helpers import agent_http_request
 
 logger = logging.getLogger(__name__)
@@ -59,16 +58,6 @@ async def list_agent_files_logic(
             timeout=30.0
         )
         if response.status_code == 200:
-            # Audit log the file list access
-            await log_audit_event(
-                event_type="file_access",
-                action="file_list",
-                user_id=current_user.username,
-                agent_name=agent_name,
-                ip_address=request.client.host if request.client else None,
-                details={"path": path},
-                result="success"
-            )
             return response.json()
         else:
             raise HTTPException(
@@ -86,15 +75,6 @@ async def list_agent_files_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="file_access",
-            action="file_list",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"path": path, "error": str(e)},
-            result="error"
-        )
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
 
 
@@ -131,16 +111,6 @@ async def download_agent_file_logic(
             timeout=60.0
         )
         if response.status_code == 200:
-            # Audit log the file download
-            await log_audit_event(
-                event_type="file_access",
-                action="file_download",
-                user_id=current_user.username,
-                agent_name=agent_name,
-                ip_address=request.client.host if request.client else None,
-                details={"file_path": path},
-                result="success"
-            )
             return PlainTextResponse(content=response.text)
         else:
             raise HTTPException(
@@ -158,15 +128,6 @@ async def download_agent_file_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="file_access",
-            action="file_download",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"file_path": path, "error": str(e)},
-            result="error"
-        )
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
 
@@ -203,20 +164,6 @@ async def delete_agent_file_logic(
         )
         if response.status_code == 200:
             result = response.json()
-            # Audit log the file deletion
-            await log_audit_event(
-                event_type="file_access",
-                action="file_delete",
-                user_id=current_user.username,
-                agent_name=agent_name,
-                ip_address=request.client.host if request.client else None,
-                details={
-                    "path": path,
-                    "type": result.get("type", "unknown"),
-                    "file_count": result.get("file_count", 1)
-                },
-                result="success"
-            )
             return result
         else:
             raise HTTPException(
@@ -234,15 +181,6 @@ async def delete_agent_file_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="file_access",
-            action="file_delete",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"path": path, "error": str(e)},
-            result="error"
-        )
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
 
 
@@ -287,17 +225,6 @@ async def preview_agent_file_logic(
         content_type = response.headers.get("content-type", "application/octet-stream")
         content_disposition = response.headers.get("content-disposition")
 
-        # Audit log the preview access
-        await log_audit_event(
-            event_type="file_access",
-            action="file_preview",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"file_path": path, "content_type": content_type},
-            result="success"
-        )
-
         # For small files, return directly
         return StreamingResponse(
             iter([response.content]),
@@ -316,15 +243,6 @@ async def preview_agent_file_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="file_access",
-            action="file_preview",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"file_path": path, "error": str(e)},
-            result="error"
-        )
         raise HTTPException(status_code=500, detail=f"Failed to preview file: {str(e)}")
 
 
@@ -370,19 +288,6 @@ async def update_agent_file_logic(
         )
         if response.status_code == 200:
             result = response.json()
-            # Audit log the file update
-            await log_audit_event(
-                event_type="file_access",
-                action="file_update",
-                user_id=current_user.username,
-                agent_name=agent_name,
-                ip_address=request.client.host if request.client else None,
-                details={
-                    "path": path,
-                    "size": result.get("size", 0)
-                },
-                result="success"
-            )
             return result
         else:
             raise HTTPException(
@@ -400,13 +305,4 @@ async def update_agent_file_logic(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="file_access",
-            action="file_update",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            details={"path": path, "error": str(e)},
-            result="error"
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update file: {str(e)}")

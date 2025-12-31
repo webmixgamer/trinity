@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from database import db
 from dependencies import hash_password
-from services.audit_service import log_audit_event
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
@@ -52,15 +51,6 @@ async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
     """
     # Check setup not already completed
     if db.get_setting_value('setup_completed', 'false') == 'true':
-        await log_audit_event(
-            event_type="setup",
-            action="admin_password",
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="blocked",
-            severity="warning",
-            details={"reason": "Setup already completed"}
-        )
         raise HTTPException(
             status_code=403,
             detail="Setup already completed. Password cannot be changed through this endpoint."
@@ -87,15 +77,5 @@ async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
 
     # Mark setup as completed
     db.set_setting('setup_completed', 'true')
-
-    await log_audit_event(
-        event_type="setup",
-        action="admin_password",
-        user_id="admin",
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        result="success",
-        details={"message": "Admin password set via first-time setup"}
-    )
 
     return {"success": True}

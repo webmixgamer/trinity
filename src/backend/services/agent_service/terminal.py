@@ -13,7 +13,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from database import db
 from services.docker_service import docker_client, get_agent_container
-from services.audit_service import log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -181,15 +180,8 @@ class TerminalSessionManager:
                 await websocket.close(code=4004, reason="Container not running")
                 return
 
-            # Step 4: Audit log - session start
+            # Step 4: Track session start
             session_start = datetime.utcnow()
-            await log_audit_event(
-                event_type="terminal_session",
-                action="start",
-                user_id=user_email,
-                agent_name=agent_name,
-                details={"mode": mode}
-            )
 
             # Step 5: Create exec with TTY
             # Support multiple terminal modes: claude (Claude Code), gemini (Gemini CLI), bash
@@ -316,24 +308,10 @@ class TerminalSessionManager:
             if user_email and agent_name:
                 self._unregister_session(user_email, agent_name)
 
-                # Audit log - session end
+                # Calculate session duration for logging
                 session_duration = None
                 if session_start:
                     session_duration = (datetime.utcnow() - session_start).total_seconds()
-
-                try:
-                    await log_audit_event(
-                        event_type="terminal_session",
-                        action="end",
-                        user_id=user_email,
-                        agent_name=agent_name,
-                        details={
-                            "mode": mode,
-                            "duration_seconds": session_duration
-                        }
-                    )
-                except:
-                    pass
 
                 if session_duration:
                     logger.info(f"Terminal session ended for {user_email}@{agent_name} (duration: {session_duration:.1f}s)")

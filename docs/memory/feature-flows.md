@@ -3,6 +3,11 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2025-12-31)**: Vector Logging feature flow documented:
+> - **vector-logging.md**: New infrastructure flow documenting Vector log aggregation replacing audit-logger
+> - Complete data flow: Docker socket -> VRL transforms -> platform.json/agents.json
+> - Includes structured logging config, query examples, troubleshooting guide
+>
 > **Updated (2025-12-31)**: Execution log storage feature documented:
 > - **execution-queue.md**: Added revision history entry for execution_log storage
 > - **tasks-tab.md**: Added `GET /api/agents/{name}/executions/{execution_id}/log` endpoint documentation with response examples, added `execution_log` column to database schema
@@ -116,6 +121,7 @@
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling, execution log retrieval (Updated 2025-12-31) |
+| **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 
 ---
 

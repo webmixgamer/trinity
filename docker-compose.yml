@@ -11,7 +11,6 @@ services:
       - SECRET_KEY=${SECRET_KEY:-}  # Required - generate with: openssl rand -hex 32
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}  # Required - set a strong password
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - AUDIT_URL=http://audit-logger:8001
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - REDIS_URL=redis://redis:6379
@@ -38,11 +37,12 @@ services:
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - agent-configs:/agent-configs
-      - audit-logs:/logs
       - trinity-data:/data
     depends_on:
-      - redis
-      - audit-logger
+      redis:
+        condition: service_started
+      vector:
+        condition: service_healthy  # Ensure Vector is ready before backend starts agents
     networks:
       - trinity-network
     security_opt:
@@ -101,26 +101,6 @@ services:
         fi
       '
 
-  audit-logger:
-    build:
-      context: .
-      dockerfile: docker/audit-logger/Dockerfile
-    container_name: trinity-audit-logger
-    ports:
-      - "8001:8001"
-    volumes:
-      - audit-data:/data
-    networks:
-      - trinity-network
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    environment:
-      - AUDIT_DB_PATH=/data/audit.db
-
   mcp-server:
     build:
       context: ./src/mcp-server
@@ -147,6 +127,30 @@ services:
       - NET_BIND_SERVICE
     restart: unless-stopped
 
+  # Vector - centralized log aggregation from all containers
+  vector:
+    image: timberio/vector:0.43.1-alpine
+    container_name: trinity-vector
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/vector.yaml:/etc/vector/vector.yaml:ro
+      - trinity-logs:/data/logs
+    ports:
+      - "8686:8686"  # Vector API (health checks)
+    networks:
+      - trinity-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8686/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s  # Give Vector time to start before health checks
+
   # OpenTelemetry Collector - receives metrics from Claude Code agents
   otel-collector:
     image: otel/opentelemetry-collector:0.91.0
@@ -171,9 +175,8 @@ services:
 volumes:
   agent-configs:
   redis-data:
-  audit-data:
-  audit-logs:
   trinity-data:
+  trinity-logs:  # Vector log storage
 
 networks:
   trinity-network:

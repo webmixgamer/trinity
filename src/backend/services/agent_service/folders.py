@@ -10,7 +10,6 @@ from fastapi import HTTPException, Request
 from models import User
 from database import db
 from services.docker_service import get_agent_container
-from services.audit_service import log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -127,19 +126,6 @@ async def update_agent_folders_logic(
         agent_name,
         expose_enabled=expose_enabled,
         consume_enabled=consume_enabled
-    )
-
-    await log_audit_event(
-        event_type="agent_folders",
-        action="update_config",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "expose_enabled": config.expose_enabled,
-            "consume_enabled": config.consume_enabled
-        }
     )
 
     return {

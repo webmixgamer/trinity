@@ -26,7 +26,6 @@ from services.template_service import (
     generate_credential_files,
 )
 from services import git_service
-from services.audit_service import log_audit_event
 from routers.settings import get_anthropic_api_key
 from utils.helpers import sanitize_agent_name
 
@@ -364,7 +363,6 @@ async def create_agent_internal(
                 str(config_path): {'bind': '/config/agent-config.yaml', 'mode': 'ro'},
                 str(credentials_path): {'bind': '/config/credentials.json', 'mode': 'ro'},
                 'encrypted-data': {'bind': '/data', 'mode': 'rw'},
-                'audit-logs': {'bind': '/logs', 'mode': 'rw'},
                 agent_volume_name: {'bind': '/home/developer', 'mode': 'rw'}  # Persistent workspace
             }
 
@@ -497,36 +495,8 @@ async def create_agent_internal(
                 except Exception as e:
                     logger.warning(f"Failed to create git config for {config.name}: {e}")
 
-            await log_audit_event(
-                event_type="agent_management",
-                action="create",
-                user_id=current_user.username,
-                agent_name=config.name,
-                resource=f"agent-{config.name}",
-                ip_address=request.client.host if request.client else None,
-                result="success",
-                details={
-                    "type": config.type,
-                    "port": config.port,
-                    "owner": current_user.username,
-                    "git_sync": bool(github_repo_for_agent),
-                    "git_branch": git_working_branch if github_repo_for_agent else None
-                }
-            )
-
             return agent_status
         except Exception as e:
-            await log_audit_event(
-                event_type="agent_management",
-                action="create",
-                user_id=current_user.username,
-                agent_name=config.name,
-                resource=f"agent-{config.name}",
-                ip_address=request.client.host if request.client else None,
-                result="failed",
-                severity="error",
-                details={"error_type": type(e).__name__}  # Don't expose error message
-            )
             logger.error(f"Failed to create agent {config.name}: {e}")
             raise HTTPException(status_code=500, detail="Failed to create agent. Please try again.")
     else:

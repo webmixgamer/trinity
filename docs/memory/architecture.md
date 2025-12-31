@@ -22,9 +22,9 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 │                           Trinity Agent Platform                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │   Frontend   │  │   Backend    │  │  MCP Server  │  │ Audit Logger │    │
-│  │   (Vue.js)   │  │  (FastAPI)   │  │  (FastMCP)   │  │  (FastAPI)   │    │
-│  │   :3000      │  │   :8000      │  │   :8080      │  │   :8001      │    │
+│  │   Frontend   │  │   Backend    │  │  MCP Server  │  │    Vector    │    │
+│  │   (Vue.js)   │  │  (FastAPI)   │  │  (FastMCP)   │  │   (Logs)     │    │
+│  │   :3000      │  │   :8000      │  │   :8080      │  │   :8686      │    │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │
 │         │                 │                 │                 │             │
 │         └─────────────────┼─────────────────┼─────────────────┘             │
@@ -111,11 +111,14 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `git.py` - Git sync endpoints (status, sync, log, pull)
 
 **Services (`services/`):**
-- `audit_service.py` - Async audit event logging
 - `docker_service.py` - Docker container management
 - `template_service.py` - GitHub template cloning and processing
 - `scheduler_service.py` - APScheduler-based scheduling service
 - `git_service.py` - Git sync operations for GitHub-native agents
+
+**Logging (`logging_config.py`):**
+- Structured JSON logging for production
+- Captured by Vector via Docker stdout/stderr
 
 **Utilities (`utils/`):**
 - `helpers.py` - Shared helper functions
@@ -186,17 +189,27 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 11. `reload_credentials` - Hot-reload credentials
 12. `get_credential_status` - Check credential files
 
-### Audit Logger (`src/audit-logger/`)
+### Vector Log Aggregator (`config/vector.yaml`)
 
-**File:** `audit_logger.py` (174 lines)
+**Technology:** Vector 0.43.1 (timberio/vector:0.43.1-alpine)
 
-**Event Types:**
-- `authentication` - Login/logout events
-- `agent_management` - Create/delete/start/stop
-- `agent_access` - Chat, logs access
-- `credential_access` - Credential operations
+**Features:**
+- Captures ALL container stdout/stderr via Docker socket
+- Routes platform logs to `/data/logs/platform.json`
+- Routes agent logs to `/data/logs/agents.json`
+- Enriches with container metadata (name, labels)
+- Parses JSON logs for structured querying
 
-**Storage:** SQLite database with query API
+**Health Check:** `http://localhost:8686/health`
+
+**Query Logs:**
+```bash
+# Platform logs
+docker exec trinity-vector sh -c "tail -50 /data/logs/platform.json" | jq .
+
+# Agent logs
+docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
+```
 
 ### Agent Containers
 
@@ -869,7 +882,7 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 | Frontend | http://localhost:3000 |
 | Backend API | http://localhost:8000/docs |
 | MCP Server | http://localhost:8080/mcp |
-| Audit Logger | http://localhost:8001/docs |
+| Vector (logs) | http://localhost:8686/health |
 | Redis | localhost:6379 |
 
 ### Production URLs
@@ -878,7 +891,7 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 | Frontend | `https://your-domain.com` |
 | Backend API | `https://your-domain.com/api/` |
 | MCP Server | `http://your-server:8007/mcp` |
-| Audit Logger | `http://your-server:8006/docs` |
+| Vector (logs) | `http://your-server:8686/health` |
 
 ### Landing Page (Optional)
 Landing page is a separate project that can be deployed on Vercel or any static hosting.

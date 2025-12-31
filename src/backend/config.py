@@ -25,9 +25,6 @@ SECRET_KEY = _secret_key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 10080  # 7 days (was 30 minutes)
 
-# Service URLs
-AUDIT_URL = os.getenv("AUDIT_URL", "http://audit-logger:8001")
-
 # Redis URL - supports password via REDIS_PASSWORD env var or in URL
 _redis_password = os.getenv("REDIS_PASSWORD", "")
 _redis_base_url = os.getenv("REDIS_URL", "redis://redis:6379")

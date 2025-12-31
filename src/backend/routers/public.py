@@ -19,7 +19,6 @@ from database import (
 )
 from services.docker_service import get_agent_container
 from services.email_service import email_service
-from services.audit_service import log_audit_event
 
 
 
@@ -96,16 +95,6 @@ async def request_verification_code(
     # Rate limiting
     recent_requests = db.count_recent_verification_requests(verification.email, minutes=10)
     if recent_requests >= MAX_VERIFICATION_REQUESTS_PER_EMAIL:
-        await log_audit_event(
-            event_type="public_verification",
-            action="request_code",
-            user_id="public",
-            agent_name=link["agent_name"],
-            ip_address=_get_client_ip(request),
-            result="rate_limited",
-            severity="warning",
-            details={"email": verification.email, "requests_count": recent_requests}
-        )
         raise HTTPException(
             status_code=429,
             detail="Too many verification requests. Please wait 10 minutes."
@@ -131,16 +120,6 @@ async def request_verification_code(
             status_code=500,
             detail="Failed to send verification code. Please try again."
         )
-
-    await log_audit_event(
-        event_type="public_verification",
-        action="request_code",
-        user_id="public",
-        agent_name=link["agent_name"],
-        ip_address=_get_client_ip(request),
-        result="success",
-        details={"email": verification.email}
-    )
 
     return {
         "message": "Verification code sent",
@@ -172,29 +151,10 @@ async def confirm_verification_code(
     )
 
     if not success:
-        await log_audit_event(
-            event_type="public_verification",
-            action="confirm_code",
-            user_id="public",
-            agent_name=link["agent_name"],
-            ip_address=_get_client_ip(request),
-            result="failed",
-            details={"email": confirmation.email, "error": error}
-        )
         return VerificationResponse(
             verified=False,
             error=error
         )
-
-    await log_audit_event(
-        event_type="public_verification",
-        action="confirm_code",
-        user_id="public",
-        agent_name=link["agent_name"],
-        ip_address=_get_client_ip(request),
-        result="success",
-        details={"email": confirmation.email}
-    )
 
     return VerificationResponse(
         verified=True,
@@ -242,16 +202,6 @@ async def public_chat(
     # Rate limiting by IP
     recent_messages = db.count_recent_messages_by_ip(client_ip, minutes=1)
     if recent_messages >= MAX_CHAT_MESSAGES_PER_IP:
-        await log_audit_event(
-            event_type="public_chat",
-            action="message",
-            user_id="public",
-            agent_name=link["agent_name"],
-            ip_address=client_ip,
-            result="rate_limited",
-            severity="warning",
-            details={"email": verified_email}
-        )
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please wait a moment."
@@ -294,20 +244,6 @@ async def public_chat(
                 )
 
             result = response.json()
-
-            await log_audit_event(
-                event_type="public_chat",
-                action="message",
-                user_id="public",
-                agent_name=link["agent_name"],
-                ip_address=client_ip,
-                result="success",
-                details={
-                    "email": verified_email,
-                    "link_id": link["id"],
-                    "message_length": len(chat_request.message)
-                }
-            )
 
             return PublicChatResponse(
                 response=result.get("response", result.get("result", "")),

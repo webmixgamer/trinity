@@ -196,8 +196,8 @@ EXTRA_CORS_ORIGINS=https://your-domain.com,http://your-domain.com
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server     │
 │     Port 3000       │     Port 8000       │    Port 8080    │
 ├─────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Audit Logger   │
-│   Internal only     │   /data volume      │    Port 8001    │
+│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)  │
+│   Internal only     │   /data volume      │    Port 8686    │
 ├─────────────────────────────────────────────────────────────┤
 │                    Agent Containers                          │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐                     │

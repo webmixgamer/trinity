@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from models import User
 from database import db
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services import git_service
 
 router = APIRouter(prefix="/api/agents", tags=["git"])
@@ -139,22 +138,6 @@ async def sync_to_github(
         strategy=body.strategy
     )
 
-    # Log the sync operation
-    await log_audit_event(
-        event_type="git_operation",
-        action="sync",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success" if result.success else "failed",
-        severity="info" if result.success else "warning",
-        details={
-            "commit_sha": result.commit_sha,
-            "files_changed": result.files_changed,
-            "message": result.message
-        }
-    )
-
     if not result.success:
         # Return 409 for conflicts, 400 for other failures
         status_code = 409 if result.conflict_type else 400
@@ -234,18 +217,6 @@ async def pull_from_github(
         raise HTTPException(status_code=403, detail="Only agent owners can pull from GitHub")
 
     result = await git_service.pull_from_github(agent_name, strategy=body.strategy)
-
-    # Log the pull operation
-    await log_audit_event(
-        event_type="git_operation",
-        action="pull",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success" if result.get("success") else "failed",
-        severity="info" if result.get("success") else "warning",
-        details={"message": result.get("message"), "strategy": body.strategy}
-    )
 
     if not result.get("success"):
         # Return 409 for conflicts, 400 for other failures
@@ -576,21 +547,6 @@ async def initialize_github_sync(
             instance_id=instance_id
         )
 
-        # Log the initialization
-        await log_audit_event(
-            event_type="git_operation",
-            action="initialize",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={
-                "github_repo": repo_full_name,
-                "working_branch": working_branch,
-                "created_repo": body.create_repo
-            }
-        )
-
         return {
             "success": True,
             "message": "GitHub sync initialized successfully",
@@ -603,14 +559,4 @@ async def initialize_github_sync(
     except HTTPException:
         raise
     except Exception as e:
-        await log_audit_event(
-            event_type="git_operation",
-            action="initialize",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to initialize GitHub sync: {str(e)}")

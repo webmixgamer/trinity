@@ -20,7 +20,6 @@ import httpx
 from models import User
 from database import db
 from dependencies import get_current_user, decode_token
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, docker_client
 from db.agents import SYSTEM_AGENT_NAME
 
@@ -93,15 +92,6 @@ async def get_system_agent_status(
                     result["health"] = response.json()
         except Exception as e:
             result["health_error"] = str(e)
-
-    await log_audit_event(
-        event_type="system_agent",
-        action="status",
-        user_id=current_user.username,
-        agent_name=SYSTEM_AGENT_NAME,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     return result
 
@@ -190,19 +180,6 @@ async def reinitialize_system_agent(
         else:
             errors.append("Trinity injection function not available")
 
-        await log_audit_event(
-            event_type="system_agent",
-            action="reinitialize",
-            user_id=current_user.username,
-            agent_name=SYSTEM_AGENT_NAME,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={
-                "steps_completed": steps_completed,
-                "errors": errors if errors else None
-            }
-        )
-
         return {
             "success": True,
             "message": "System agent re-initialized successfully",
@@ -213,16 +190,6 @@ async def reinitialize_system_agent(
 
     except Exception as e:
         logger.error(f"Failed to re-initialize system agent: {e}")
-        await log_audit_event(
-            event_type="system_agent",
-            action="reinitialize",
-            user_id=current_user.username,
-            agent_name=SYSTEM_AGENT_NAME,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e), "steps_completed": steps_completed}
-        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to re-initialize system agent: {str(e)}"
@@ -267,15 +234,6 @@ async def restart_system_agent(
             except Exception as e:
                 logger.warning(f"Trinity injection after restart failed: {e}")
 
-        await log_audit_event(
-            event_type="system_agent",
-            action="restart",
-            user_id=current_user.username,
-            agent_name=SYSTEM_AGENT_NAME,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return {
             "success": True,
             "message": "System agent restarted successfully",
@@ -286,16 +244,6 @@ async def restart_system_agent(
 
     except Exception as e:
         logger.error(f"Failed to restart system agent: {e}")
-        await log_audit_event(
-            event_type="system_agent",
-            action="restart",
-            user_id=current_user.username,
-            agent_name=SYSTEM_AGENT_NAME,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to restart system agent: {str(e)}"
@@ -448,15 +396,8 @@ async def system_agent_terminal(
             await websocket.close(code=4004, reason="Container not running")
             return
 
-        # Step 4: Audit log - session start
+        # Step 4: Session start
         session_start = datetime.utcnow()
-        await log_audit_event(
-            event_type="terminal_session",
-            action="start",
-            user_id=user_email,
-            agent_name=SYSTEM_AGENT_NAME,
-            details={"mode": mode}
-        )
 
         # Step 5: Create exec with TTY
         # Support multiple terminal modes: claude (Claude Code), gemini (Gemini CLI), bash
@@ -579,23 +520,9 @@ async def system_agent_terminal(
             with _terminal_lock:
                 _active_terminal_sessions.pop(user_email, None)
 
-            # Audit log - session end
+            # Session end
             session_duration = None
             if session_start:
                 session_duration = (datetime.utcnow() - session_start).total_seconds()
-
-            try:
-                await log_audit_event(
-                    event_type="terminal_session",
-                    action="end",
-                    user_id=user_email,
-                    agent_name=SYSTEM_AGENT_NAME,
-                    details={
-                        "mode": mode,
-                        "duration_seconds": session_duration
-                    }
-                )
-            except:
-                pass
 
             logger.info(f"Terminal session ended for {user_email} (duration: {session_duration:.1f}s)" if session_duration else f"Terminal session ended for {user_email}")
