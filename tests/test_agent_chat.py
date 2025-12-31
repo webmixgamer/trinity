@@ -178,6 +178,152 @@ class TestChatSessions:
         data = assert_json_response(response)
         assert isinstance(data, (list, dict))
 
+    def test_list_chat_sessions_structure(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Chat sessions list returns expected structure."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/chat/sessions"
+        )
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should be a list of sessions
+        if isinstance(data, list) and len(data) > 0:
+            session = data[0]
+            # Sessions should have id and created_at
+            assert "id" in session or "session_id" in session
+            assert "created_at" in session or "started_at" in session
+
+    def test_list_chat_sessions_nonexistent_agent_returns_404(
+        self,
+        api_client: TrinityApiClient
+    ):
+        """GET /api/agents/{name}/chat/sessions for nonexistent agent returns 404."""
+        response = api_client.get("/api/agents/nonexistent-agent-xyz123/chat/sessions")
+        assert_status(response, 404)
+
+    def test_get_session_details(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/chat/sessions/{id} returns session details."""
+        # First get list of sessions
+        list_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/chat/sessions"
+        )
+
+        if list_response.status_code != 200:
+            pytest.skip("Cannot list sessions")
+
+        sessions = list_response.json()
+
+        # Handle both list and dict response formats
+        if isinstance(sessions, dict):
+            session_list = sessions.get("sessions", [])
+        elif isinstance(sessions, list):
+            session_list = sessions
+        else:
+            pytest.skip("Unexpected sessions format")
+
+        if not session_list or len(session_list) == 0:
+            pytest.skip("No sessions available for testing")
+
+        # Get first session ID
+        session = session_list[0]
+        session_id = session.get("id") or session.get("session_id")
+
+        if not session_id:
+            pytest.skip("Session has no ID")
+
+        # Get session details
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/chat/sessions/{session_id}"
+        )
+
+        assert_status(response, 200)
+        data = response.json()
+        assert isinstance(data, dict)
+
+    def test_get_session_details_nonexistent_returns_404(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/chat/sessions/{id} for nonexistent session returns 404."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/chat/sessions/nonexistent-session-xyz"
+        )
+        assert_status(response, 404)
+
+    def test_close_session(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/chat/sessions/{id}/close closes a session."""
+        # First get list of sessions
+        list_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/chat/sessions"
+        )
+
+        if list_response.status_code != 200:
+            pytest.skip("Cannot list sessions")
+
+        sessions = list_response.json()
+
+        # Handle both list and dict response formats
+        if isinstance(sessions, dict):
+            session_list = sessions.get("sessions", [])
+        elif isinstance(sessions, list):
+            session_list = sessions
+        else:
+            pytest.skip("Unexpected sessions format")
+
+        if not session_list or len(session_list) == 0:
+            pytest.skip("No sessions available for testing")
+
+        # Get first session ID
+        session = session_list[0]
+        session_id = session.get("id") or session.get("session_id")
+
+        if not session_id:
+            pytest.skip("Session has no ID")
+
+        # Close the session
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/chat/sessions/{session_id}/close"
+        )
+
+        assert_status_in(response, [200, 204])
+
+    def test_close_session_nonexistent_returns_404(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/chat/sessions/{id}/close for nonexistent session returns 404."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/chat/sessions/nonexistent-session-xyz/close"
+        )
+        assert_status(response, 404)
+
+    def test_close_session_requires_auth(
+        self,
+        unauthenticated_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/chat/sessions/{id}/close requires authentication."""
+        response = unauthenticated_client.post(
+            f"/api/agents/{created_agent['name']}/chat/sessions/test-session/close",
+            auth=False
+        )
+        assert_status(response, 401)
+
 
 class TestModelManagement:
     """REQ-CHAT-004: Model management endpoint tests."""

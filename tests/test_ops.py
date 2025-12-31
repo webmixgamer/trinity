@@ -378,3 +378,77 @@ class TestFleetStatusWithAgent:
         # (could be healthy, warning, or critical)
         assert is_healthy or has_warning or has_critical, \
             f"Agent {agent_name} should appear in health check results"
+
+
+class TestContextStats:
+    """Tests for GET /api/agents/context-stats endpoint."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_get_context_stats(self, api_client: TrinityApiClient):
+        """GET /api/agents/context-stats returns context statistics."""
+        response = api_client.get("/api/agents/context-stats")
+
+        assert_status(response, 200)
+        data = assert_json_response(response)
+
+        # Should return dict with "agents" key
+        assert isinstance(data, dict)
+        assert "agents" in data
+        assert isinstance(data["agents"], list)
+
+    def test_context_stats_structure(self, api_client: TrinityApiClient, created_agent):
+        """Context stats for an agent has expected structure."""
+        response = api_client.get("/api/agents/context-stats")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Get agents list
+        agents = data.get("agents", [])
+        agent_name = created_agent["name"]
+
+        # Find our agent in the list
+        agent_stats = next((a for a in agents if a.get("name") == agent_name), None)
+        if agent_stats:
+            assert isinstance(agent_stats, dict)
+            # Should have context-related fields
+            assert "status" in agent_stats
+            assert "activityState" in agent_stats
+
+    def test_context_stats_entries_have_valid_structure(self, api_client: TrinityApiClient):
+        """Context stats entries have expected fields."""
+        response = api_client.get("/api/agents/context-stats")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Get agents list from response
+        agents = data.get("agents", [])
+
+        # All entries should be dicts with agent info
+        for agent in agents:
+            assert isinstance(agent, dict), "Each agent entry should be a dict"
+            assert "name" in agent
+            assert "status" in agent
+            assert "activityState" in agent
+            assert "contextPercent" in agent
+
+    def test_context_stats_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """GET /api/agents/context-stats requires authentication."""
+        response = unauthenticated_client.get(
+            "/api/agents/context-stats",
+            auth=False
+        )
+        assert_status(response, 401)
+
+    def test_context_stats_returns_valid_response(self, api_client: TrinityApiClient):
+        """Context stats returns valid response structure."""
+        response = api_client.get("/api/agents/context-stats")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should be dict with agents key
+        assert isinstance(data, dict)
+        assert "agents" in data

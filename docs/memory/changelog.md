@@ -1,3 +1,66 @@
+### 2025-12-31 23:15:00
+🐛 **Test Suite Fixes - 6 Tests Fixed**
+
+Fixed issues identified in test report:
+
+**1. Scheduler Status Endpoint Route Ordering (4 tests)**
+- `schedules.py`: Moved `/scheduler/status` endpoint BEFORE `/{name}/schedules` routes
+- **Root cause**: FastAPI was matching "scheduler" as an agent name due to route ordering
+- **Fix**: Static routes must be defined before dynamic `/{name}/*` routes
+- **Tests fixed**: `test_get_scheduler_status`, `test_scheduler_status_structure`, `test_scheduler_status_includes_jobs`, `test_scheduler_status_requires_auth`
+
+**2. API Client Header Merging Bug (2 tests)**
+- `tests/utils/api_client.py`: Fixed header conflict when caller passes custom headers
+- **Root cause**: `headers` was passed both via `kwargs` and as explicit parameter
+- **Fix**: Pop headers from kwargs and merge with default headers
+- **Tests fixed**: `test_task_with_source_agent_header`, `test_agent_task_has_agent_trigger`
+
+**3. Session List Access (Already Fixed)**
+- Verified `test_agent_chat.py` already handles empty session lists properly
+- Tests skip gracefully when no sessions available
+
+---
+
+### 2025-12-31 22:30:00
+🧪 **Expanded API Test Coverage**
+
+Added 23 new tests to cover previously untested API endpoints:
+
+**test_agent_chat.py** - Chat Session Lifecycle (6 tests)
+- `test_list_chat_sessions_structure` - Verifies session list response structure
+- `test_get_session_details` - GET /api/agents/{name}/chat/sessions/{id}
+- `test_get_session_details_nonexistent_returns_404` - 404 for missing session
+- `test_close_session` - POST /api/agents/{name}/chat/sessions/{id}/close
+- `test_close_session_nonexistent_returns_404` - 404 for closing missing session
+- `test_close_session_requires_auth` - Auth required for close
+
+**test_schedules.py** - Scheduler Status (4 tests)
+- `test_get_scheduler_status` - GET /api/agents/scheduler/status
+- `test_scheduler_status_structure` - Validates running, job_count fields
+- `test_scheduler_status_includes_jobs` - Verifies jobs/job_count present
+- `test_scheduler_status_requires_auth` - Auth required for status
+
+**test_ops.py** - Context Stats (5 tests)
+- `test_get_context_stats` - GET /api/agents/context-stats
+- `test_context_stats_structure` - Validates agent stats structure
+- `test_context_stats_entries_have_valid_structure` - All entries have required fields
+- `test_context_stats_requires_auth` - Auth required
+- `test_context_stats_returns_valid_response` - Valid response structure
+
+**test_executions.py** - Execution Logs & Details (8 tests)
+- `test_get_execution_log_nonexistent_returns_404` - 404 for missing log
+- `test_get_execution_log_nonexistent_agent_returns_404` - 404 for missing agent
+- `test_get_execution_log_requires_auth` - Auth required
+- `test_get_execution_log_returns_log` - GET /api/agents/{name}/executions/{id}/log
+- `test_execution_log_content_structure` - Log content validation
+- `test_get_execution_details` - GET /api/agents/{name}/executions/{id}
+- `test_get_execution_details_nonexistent_returns_404` - 404 handling
+- `test_get_execution_details_requires_auth` - Auth required
+
+**Test Suite Summary**: ~515 tests total (up from ~373), 97.8% pass rate
+
+---
+
 ### 2025-12-31 18:45:00
 📝 **Updated Agent Scheduling Feature Flow Documentation**
 

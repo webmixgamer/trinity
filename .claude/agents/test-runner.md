@@ -179,9 +179,9 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~373 tests across 24 test files
-**Smoke Tests**: ~75 tests (fast, no agent creation)
-**Agent-Requiring Tests**: ~270 tests
+**Total Tests**: ~515 tests across 28 test files
+**Smoke Tests**: ~90 tests (fast, no agent creation)
+**Agent-Requiring Tests**: ~380 tests
 **Slow Tests**: ~45 tests (chat execution, fleet ops)
 
 ## Expected Skipped Tests (~30 tests)

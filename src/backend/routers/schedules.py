@@ -2,6 +2,10 @@
 Schedule management routes for the Trinity backend.
 
 Provides CRUD operations for agent schedules and execution history.
+
+IMPORTANT: Route ordering matters! Static routes like /scheduler/status must be
+defined BEFORE dynamic routes like /{name}/schedules to avoid FastAPI matching
+"scheduler" as an agent name.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,6 +20,28 @@ from database import db, Schedule, ScheduleCreate, ScheduleExecution
 from services.scheduler_service import scheduler_service
 
 router = APIRouter(prefix="/api/agents", tags=["schedules"])
+
+
+# =============================================================================
+# SCHEDULER STATUS ENDPOINT (must be before /{name}/* routes!)
+# =============================================================================
+
+@router.get("/scheduler/status")
+async def get_scheduler_status(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get scheduler status (admin only).
+
+    Returns information about the scheduler state and scheduled jobs.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+
+    return scheduler_service.get_scheduler_status()
 
 
 # Request/Response Models
@@ -347,19 +373,3 @@ async def get_execution_log(
         "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
         "status": execution.status
     }
-
-
-# Scheduler Status Endpoint
-
-@router.get("/scheduler/status")
-async def get_scheduler_status(
-    current_user: User = Depends(get_current_user)
-):
-    """Get scheduler status (admin only)."""
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-
-    return scheduler_service.get_scheduler_status()

@@ -434,3 +434,193 @@ class TestExecutionFiltering:
         assert_status(response, 200)
         data = response.json()
         assert isinstance(data, list)
+
+
+class TestExecutionLog:
+    """Tests for GET /api/agents/{name}/executions/{execution_id}/log endpoint."""
+
+    def test_get_execution_log_nonexistent_returns_404(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id}/log for nonexistent execution returns 404."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/nonexistent-exec-xyz123/log"
+        )
+        assert_status(response, 404)
+
+    def test_get_execution_log_nonexistent_agent_returns_404(
+        self,
+        api_client: TrinityApiClient
+    ):
+        """GET /api/agents/{name}/executions/{id}/log for nonexistent agent returns 404."""
+        response = api_client.get(
+            "/api/agents/nonexistent-agent-xyz123/executions/some-exec-id/log"
+        )
+        assert_status(response, 404)
+
+    def test_get_execution_log_requires_auth(
+        self,
+        unauthenticated_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id}/log requires authentication."""
+        response = unauthenticated_client.get(
+            f"/api/agents/{created_agent['name']}/executions/some-exec-id/log",
+            auth=False
+        )
+        assert_status(response, 401)
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_get_execution_log_returns_log(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id}/log returns execution log."""
+        # First, create an execution
+        task_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/task",
+            json={"message": "Log test task"},
+            timeout=120.0
+        )
+
+        if task_response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(task_response, 200)
+        time.sleep(3)
+
+        # Get executions to find the execution ID
+        exec_response = api_client.get(f"/api/agents/{created_agent['name']}/executions")
+        assert_status(exec_response, 200)
+        executions = exec_response.json()
+
+        if not executions:
+            pytest.skip("No executions found")
+
+        execution_id = executions[0].get("id")
+        if not execution_id:
+            pytest.skip("Execution has no ID")
+
+        # Get the log
+        log_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/{execution_id}/log"
+        )
+
+        # May not have log if not recorded
+        if log_response.status_code == 404:
+            pytest.skip("Execution log not available")
+
+        assert_status(log_response, 200)
+        data = log_response.json()
+
+        # Log should be a string or object
+        assert isinstance(data, (str, dict, list))
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_execution_log_content_structure(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Execution log has expected content structure."""
+        # Run a task
+        task_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/task",
+            json={"message": "Structure test"},
+            timeout=120.0
+        )
+
+        if task_response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(task_response, 200)
+        time.sleep(3)
+
+        # Get executions
+        exec_response = api_client.get(f"/api/agents/{created_agent['name']}/executions")
+        assert_status(exec_response, 200)
+        executions = exec_response.json()
+
+        if not executions:
+            pytest.skip("No executions found")
+
+        execution_id = executions[0].get("id")
+        if not execution_id:
+            pytest.skip("Execution has no ID")
+
+        # Get log
+        log_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/{execution_id}/log"
+        )
+
+        if log_response.status_code == 404:
+            pytest.skip("Execution log not available")
+
+        assert_status(log_response, 200)
+        data = log_response.json()
+
+        # If it's a dict, check for expected log fields
+        if isinstance(data, dict):
+            # May have 'log', 'entries', or 'content' field
+            assert "log" in data or "entries" in data or "content" in data or "execution_log" in data
+
+
+class TestExecutionDetails:
+    """Tests for GET /api/agents/{name}/executions/{execution_id} endpoint."""
+
+    def test_get_execution_details(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id} returns execution details."""
+        # First get list of executions
+        list_response = api_client.get(f"/api/agents/{created_agent['name']}/executions")
+
+        if list_response.status_code != 200:
+            pytest.skip("Cannot list executions")
+
+        executions = list_response.json()
+        if not executions:
+            pytest.skip("No executions available")
+
+        execution_id = executions[0].get("id")
+        if not execution_id:
+            pytest.skip("Execution has no ID")
+
+        # Get execution details
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/{execution_id}"
+        )
+
+        assert_status(response, 200)
+        data = assert_json_response(response)
+        assert isinstance(data, dict)
+
+    def test_get_execution_details_nonexistent_returns_404(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id} for nonexistent execution returns 404."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/nonexistent-exec-xyz123"
+        )
+        assert_status(response, 404)
+
+    def test_get_execution_details_requires_auth(
+        self,
+        unauthenticated_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET /api/agents/{name}/executions/{id} requires authentication."""
+        response = unauthenticated_client.get(
+            f"/api/agents/{created_agent['name']}/executions/some-exec-id",
+            auth=False
+        )
+        assert_status(response, 401)
