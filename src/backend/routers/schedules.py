@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 from models import User
-from dependencies import get_current_user
+from dependencies import get_current_user, get_authorized_agent, AuthorizedAgent, CurrentUser
 from database import db, Schedule, ScheduleCreate, ScheduleExecution
 from services.scheduler_service import scheduler_service
 
@@ -76,18 +76,8 @@ class ExecutionResponse(BaseModel):
 # Schedule CRUD Endpoints
 
 @router.get("/{name}/schedules", response_model=List[ScheduleResponse])
-async def list_agent_schedules(
-    name: str,
-    current_user: User = Depends(get_current_user)
-):
+async def list_agent_schedules(name: AuthorizedAgent):
     """List all schedules for an agent."""
-    # Check user has access to this agent
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     schedules = db.list_agent_schedules(name)
     return [ScheduleResponse(**s.model_dump()) for s in schedules]
 
@@ -125,17 +115,10 @@ async def create_schedule(
 
 @router.get("/{name}/schedules/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(
-    name: str,
-    schedule_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    schedule_id: str
 ):
     """Get a specific schedule."""
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     schedule = db.get_schedule(schedule_id)
     if not schedule or schedule.agent_name != name:
         raise HTTPException(
@@ -216,9 +199,8 @@ async def delete_schedule(
 
 @router.post("/{name}/schedules/{schedule_id}/enable")
 async def enable_schedule(
-    name: str,
-    schedule_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    schedule_id: str
 ):
     """Enable a schedule."""
     schedule = db.get_schedule(schedule_id)
@@ -228,12 +210,6 @@ async def enable_schedule(
             detail="Schedule not found"
         )
 
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     scheduler_service.enable_schedule(schedule_id)
 
     return {"status": "enabled", "schedule_id": schedule_id}
@@ -241,9 +217,8 @@ async def enable_schedule(
 
 @router.post("/{name}/schedules/{schedule_id}/disable")
 async def disable_schedule(
-    name: str,
-    schedule_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    schedule_id: str
 ):
     """Disable a schedule."""
     schedule = db.get_schedule(schedule_id)
@@ -253,12 +228,6 @@ async def disable_schedule(
             detail="Schedule not found"
         )
 
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     scheduler_service.disable_schedule(schedule_id)
 
     return {"status": "disabled", "schedule_id": schedule_id}
@@ -266,9 +235,8 @@ async def disable_schedule(
 
 @router.post("/{name}/schedules/{schedule_id}/trigger")
 async def trigger_schedule(
-    name: str,
-    schedule_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    schedule_id: str
 ):
     """Manually trigger a schedule execution."""
     schedule = db.get_schedule(schedule_id)
@@ -276,12 +244,6 @@ async def trigger_schedule(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Schedule not found"
-        )
-
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
         )
 
     execution_id = await scheduler_service.trigger_schedule(schedule_id)
@@ -302,10 +264,9 @@ async def trigger_schedule(
 
 @router.get("/{name}/schedules/{schedule_id}/executions", response_model=List[ExecutionResponse])
 async def get_schedule_executions(
-    name: str,
+    name: AuthorizedAgent,
     schedule_id: str,
-    limit: int = 50,
-    current_user: User = Depends(get_current_user)
+    limit: int = 50
 ):
     """Get execution history for a schedule."""
     schedule = db.get_schedule(schedule_id)
@@ -315,46 +276,26 @@ async def get_schedule_executions(
             detail="Schedule not found"
         )
 
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     executions = db.get_schedule_executions(schedule_id, limit=limit)
     return [ExecutionResponse(**e.model_dump()) for e in executions]
 
 
 @router.get("/{name}/executions", response_model=List[ExecutionResponse])
 async def get_agent_executions(
-    name: str,
-    limit: int = 50,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    limit: int = 50
 ):
     """Get all executions for an agent across all schedules."""
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     executions = db.get_agent_executions(name, limit=limit)
     return [ExecutionResponse(**e.model_dump()) for e in executions]
 
 
 @router.get("/{name}/executions/{execution_id}", response_model=ExecutionResponse)
 async def get_execution(
-    name: str,
-    execution_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    execution_id: str
 ):
     """Get details of a specific execution."""
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     execution = db.get_execution(execution_id)
     if not execution or execution.agent_name != name:
         raise HTTPException(
@@ -367,9 +308,8 @@ async def get_execution(
 
 @router.get("/{name}/executions/{execution_id}/log")
 async def get_execution_log(
-    name: str,
-    execution_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    execution_id: str
 ):
     """
     Get the full execution log for a specific execution.
@@ -377,12 +317,6 @@ async def get_execution_log(
     Returns the raw Claude Code execution transcript as JSON array.
     This includes all tool calls, thinking, and responses.
     """
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
     execution = db.get_execution(execution_id)
     if not execution or execution.agent_name != name:
         raise HTTPException(

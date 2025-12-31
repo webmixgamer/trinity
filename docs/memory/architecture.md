@@ -95,7 +95,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | `main.py` | FastAPI app initialization, WebSocket manager, router mounting (182 lines) |
 | `config.py` | Centralized configuration constants |
 | `models.py` | All Pydantic request/response models |
-| `dependencies.py` | FastAPI dependencies (auth, token validation) |
+| `dependencies.py` | FastAPI dependencies (auth, token validation, agent access control) |
 | `database.py` | SQLite persistence (users, agent ownership, MCP API keys) |
 | `credentials.py` | Redis-backed credential manager with OAuth2 flows |
 
@@ -115,6 +115,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `template_service.py` - GitHub template cloning and processing
 - `scheduler_service.py` - APScheduler-based scheduling service
 - `git_service.py` - Git sync operations for GitHub-native agents
+- `settings_service.py` - Centralized settings retrieval (API keys, ops config)
 
 **Logging (`logging_config.py`):**
 - Structured JSON logging for production

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from models import AgentConfig, AgentStatus, User, DeployLocalRequest
 from database import db
-from dependencies import get_current_user, decode_token
+from dependencies import get_current_user, decode_token, AuthorizedAgentByName, CurrentUser
 from services.docker_service import (
     docker_client,
     get_agent_container,
@@ -138,14 +138,11 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 
 
 @router.get("/{agent_name}")
-async def get_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Get details of a specific agent."""
     agent = get_agent_by_name(agent_name)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
 
     agent_dict = agent.dict() if hasattr(agent, 'dict') else dict(agent)
     user_data = db.get_user_by_username(current_user.username)
@@ -390,15 +387,11 @@ async def force_release_agent(
 
 @router.get("/{agent_name}/info")
 async def get_agent_info_endpoint(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: AuthorizedAgentByName,
+    request: Request
 ):
     """Get template info and metadata for an agent."""
     import httpx
-
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
 
     container = get_agent_container(agent_name)
     if not container:
@@ -539,16 +532,12 @@ async def update_agent_file_endpoint(
 
 @router.get("/{agent_name}/activities")
 async def get_agent_activities(
-    agent_name: str,
+    agent_name: AuthorizedAgentByName,
     activity_type: Optional[str] = None,
     activity_state: Optional[str] = None,
-    limit: int = 100,
-    current_user: User = Depends(get_current_user)
+    limit: int = 100
 ):
     """Get activity history for a specific agent."""
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
-
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")

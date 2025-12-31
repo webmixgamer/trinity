@@ -21,7 +21,7 @@ from services.docker_service import (
     get_next_available_port,
 )
 from credentials import CredentialManager
-from routers.settings import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key
 
 logger = logging.getLogger(__name__)
 

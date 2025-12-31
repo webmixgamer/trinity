@@ -26,7 +26,7 @@ from services.template_service import (
     generate_credential_files,
 )
 from services import git_service
-from routers.settings import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)

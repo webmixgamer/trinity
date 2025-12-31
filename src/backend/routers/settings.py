@@ -14,6 +14,17 @@ from models import User
 from database import db, SystemSetting, SystemSettingUpdate
 from dependencies import get_current_user
 
+# Import from settings_service (these are re-exported for backward compatibility)
+from services.settings_service import (
+    get_anthropic_api_key,
+    get_github_pat,
+    get_google_api_key,
+    get_ops_setting,
+    settings_service,
+    OPS_SETTINGS_DEFAULTS,
+    OPS_SETTINGS_DESCRIPTIONS,
+)
+
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
@@ -31,20 +42,8 @@ class ApiKeyTest(BaseModel):
     api_key: str
 
 
-def get_anthropic_api_key() -> str:
-    """Get Anthropic API key from settings, fallback to env var."""
-    key = db.get_setting_value('anthropic_api_key', None)
-    if key:
-        return key
-    return os.getenv('ANTHROPIC_API_KEY', '')
-
-
-def get_github_pat() -> str:
-    """Get GitHub PAT from settings, fallback to env var."""
-    key = db.get_setting_value('github_pat', None)
-    if key:
-        return key
-    return os.getenv('GITHUB_PAT', '')
+# Note: get_anthropic_api_key and get_github_pat are now imported from
+# services.settings_service for proper architecture (services shouldn't import from routers)
 
 
 def mask_api_key(key: str) -> str:
@@ -58,29 +57,8 @@ def mask_api_key(key: str) -> str:
 # Ops Settings Configuration
 # ============================================================================
 
-# Default values for ops settings (as specified in requirements)
-OPS_SETTINGS_DEFAULTS = {
-    "ops_context_warning_threshold": "75",  # Context % to trigger warning
-    "ops_context_critical_threshold": "90",  # Context % to trigger reset/action
-    "ops_idle_timeout_minutes": "30",  # Minutes before stuck detection
-    "ops_cost_limit_daily_usd": "50.0",  # Daily cost limit (0 = unlimited)
-    "ops_max_execution_minutes": "10",  # Max chat execution time
-    "ops_alert_suppression_minutes": "15",  # Suppress duplicate alerts
-    "ops_log_retention_days": "7",  # Days to keep container logs
-    "ops_health_check_interval": "60",  # Seconds between health checks
-}
-
-# Descriptions for each ops setting
-OPS_SETTINGS_DESCRIPTIONS = {
-    "ops_context_warning_threshold": "Context usage percentage to trigger a warning (default: 75)",
-    "ops_context_critical_threshold": "Context usage percentage to trigger critical alert or action (default: 90)",
-    "ops_idle_timeout_minutes": "Minutes of inactivity before an agent is considered stuck (default: 30)",
-    "ops_cost_limit_daily_usd": "Maximum daily cost limit in USD per agent (0 = unlimited) (default: 50.0)",
-    "ops_max_execution_minutes": "Maximum allowed execution time for a single chat in minutes (default: 10)",
-    "ops_alert_suppression_minutes": "Minutes to suppress duplicate alerts for same agent+type (default: 15)",
-    "ops_log_retention_days": "Number of days to retain container logs (default: 7)",
-    "ops_health_check_interval": "Seconds between automated health checks (default: 60)",
-}
+# Note: OPS_SETTINGS_DEFAULTS and OPS_SETTINGS_DESCRIPTIONS are now imported from
+# services.settings_service for proper architecture
 
 
 class OpsSettingsUpdate(BaseModel):
@@ -700,22 +678,6 @@ async def reset_ops_settings(
         raise HTTPException(status_code=500, detail=f"Failed to reset ops settings: {str(e)}")
 
 
-def get_ops_setting(key: str, as_type: type = str):
-    """
-    Helper function to get an ops setting value with proper type conversion.
-
-    Used internally by the ops module to retrieve settings.
-    Returns the default if not set.
-    """
-    default = OPS_SETTINGS_DEFAULTS.get(key, "")
-    value = db.get_setting_value(key, default)
-
-    if as_type == int:
-        return int(value)
-    elif as_type == float:
-        return float(value)
-    elif as_type == bool:
-        return value.lower() in ("true", "1", "yes")
-    return value
+# Note: get_ops_setting is now imported from services.settings_service
 
 

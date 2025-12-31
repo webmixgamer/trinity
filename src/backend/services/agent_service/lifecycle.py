@@ -14,7 +14,7 @@ from services.docker_service import (
     docker_client,
     get_agent_container,
 )
-from routers.settings import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches
 
 logger = logging.getLogger(__name__)

@@ -1,3 +1,89 @@
+### 2025-12-31 16:05:00
+🔒 **Access Control Dependencies - DRY Refactoring**
+
+**Problem Solved**: Same access control pattern repeated 50+ times across routers:
+```python
+if not db.can_user_access_agent(current_user.username, name):
+    raise HTTPException(status_code=403, detail="Access denied")
+```
+
+This violated DRY principle, caused inconsistent error messages, and was error-prone.
+
+**Solution**: Created FastAPI dependencies in `dependencies.py`:
+- `get_authorized_agent(name)` - validates read access, for `{name}` path param
+- `get_owned_agent(name)` - validates owner access, for `{name}` path param
+- `get_authorized_agent_by_name(agent_name)` - for `{agent_name}` path param
+- `get_owned_agent_by_name(agent_name)` - for `{agent_name}` path param
+- Type aliases: `AuthorizedAgent`, `OwnedAgent`, `AuthorizedAgentByName`, `OwnedAgentByName`, `CurrentUser`
+
+**Usage Example** (before → after):
+```python
+# Before
+@router.get("/{name}/schedules")
+async def list_schedules(name: str, current_user: User = Depends(get_current_user)):
+    if not db.can_user_access_agent(current_user.username, name):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return db.list_schedules(name)
+
+# After
+@router.get("/{name}/schedules")
+async def list_schedules(name: AuthorizedAgent):
+    return db.list_schedules(name)
+```
+
+**Files Changed**:
+- `dependencies.py` - Added 4 dependency functions + 5 type aliases
+- `routers/schedules.py` - Replaced 10 access checks with `AuthorizedAgent`
+- `routers/git.py` - Replaced 6 access checks with `AuthorizedAgentByName`/`OwnedAgentByName`
+- `routers/sharing.py` - Replaced 3 access checks with `OwnedAgentByName`
+- `routers/public_links.py` - Replaced 5 access checks with `OwnedAgentByName`
+- `routers/agents.py` - Replaced 3 access checks with `AuthorizedAgentByName`
+
+**Benefits**:
+- ~50 lines of duplicated access control code removed
+- Consistent 403 error messages across all endpoints
+- New endpoints automatically get proper authorization
+- OpenAPI schema shows authorization requirements
+- Single point of change for access control logic
+
+---
+
+### 2025-12-31 07:40:00
+🏗️ **Settings Service - Architecture Fix**
+
+**Problem Solved**: Services were importing from routers (architectural violation):
+- `services/agent_service/crud.py` → `routers/settings.py`
+- `services/agent_service/lifecycle.py` → `routers/settings.py`
+- `services/agent_service/helpers.py` → `routers/settings.py`
+- `services/system_agent_service.py` → `routers/settings.py`
+- `routers/git.py` → `routers/settings.py`
+
+This inverted the dependency direction (services should never depend on routers) and created circular dependency risk.
+
+**Solution**: Created `services/settings_service.py` with:
+- `get_anthropic_api_key()` - Anthropic API key with env fallback
+- `get_github_pat()` - GitHub PAT with env fallback
+- `get_google_api_key()` - Google API key with env fallback
+- `get_ops_setting()` - Ops settings with type conversion
+- `OPS_SETTINGS_DEFAULTS` / `OPS_SETTINGS_DESCRIPTIONS` - Moved from router
+
+**Files Changed**:
+- **Added**: `src/backend/services/settings_service.py`
+- **Updated**: `services/agent_service/crud.py` - Import from service
+- **Updated**: `services/agent_service/lifecycle.py` - Import from service
+- **Updated**: `services/agent_service/helpers.py` - Import from service
+- **Updated**: `services/system_agent_service.py` - Import from service
+- **Updated**: `routers/git.py` - Import from service
+- **Updated**: `routers/settings.py` - Re-exports from service for backward compatibility
+- **Updated**: `docs/memory/architecture.md` - Added settings_service to services list
+
+**Benefits**:
+- Clean architecture: Services no longer depend on routers
+- Testability: Easy to mock settings in unit tests
+- Single source of truth: All settings logic in one place
+
+---
+
 ### 2025-12-31 03:00:00
 🔄 **Vector Log Aggregation Migration**
 

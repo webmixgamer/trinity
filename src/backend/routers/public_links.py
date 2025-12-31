@@ -11,7 +11,7 @@ from typing import List
 
 from models import User
 from database import db, PublicLinkCreate, PublicLinkUpdate, PublicLinkWithUrl
-from dependencies import get_current_user
+from dependencies import get_current_user, OwnedAgentByName, CurrentUser
 from services.docker_service import get_agent_container
 from config import FRONTEND_URL
 
@@ -55,23 +55,16 @@ def _link_to_response(link: dict, include_usage: bool = True) -> PublicLinkWithU
 
 @router.post("/{agent_name}/public-links", response_model=PublicLinkWithUrl)
 async def create_public_link(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     link_request: PublicLinkCreate,
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """Create a new public shareable link for an agent."""
     # Verify agent exists
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Verify user owns the agent (only owners can create public links)
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the agent owner can create public links"
-        )
 
     # Create the public link
     link = db.create_public_link(
@@ -98,9 +91,8 @@ async def create_public_link(
 
 @router.get("/{agent_name}/public-links", response_model=List[PublicLinkWithUrl])
 async def list_public_links(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: OwnedAgentByName,
+    request: Request
 ):
     """List all public links for an agent."""
     # Verify agent exists
@@ -108,43 +100,21 @@ async def list_public_links(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Verify user can access the agent
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this agent"
-        )
-
-    # Only owner can see public links
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the agent owner can view public links"
-        )
-
     links = db.list_agent_public_links(agent_name)
     return [_link_to_response(link) for link in links]
 
 
 @router.get("/{agent_name}/public-links/{link_id}", response_model=PublicLinkWithUrl)
 async def get_public_link(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     link_id: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    request: Request
 ):
     """Get details of a specific public link."""
     # Verify agent exists
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Verify ownership
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the agent owner can view public links"
-        )
 
     link = db.get_public_link(link_id)
     if not link or link["agent_name"] != agent_name:
@@ -155,24 +125,16 @@ async def get_public_link(
 
 @router.put("/{agent_name}/public-links/{link_id}", response_model=PublicLinkWithUrl)
 async def update_public_link(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     link_id: str,
     update_request: PublicLinkUpdate,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    request: Request
 ):
     """Update a public link (enable/disable, expiry, etc.)."""
     # Verify agent exists
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Verify ownership
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the agent owner can update public links"
-        )
 
     # Verify link exists and belongs to this agent
     existing_link = db.get_public_link(link_id)
@@ -204,23 +166,15 @@ async def update_public_link(
 
 @router.delete("/{agent_name}/public-links/{link_id}")
 async def delete_public_link(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     link_id: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    request: Request
 ):
     """Delete (revoke) a public link."""
     # Verify agent exists
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Verify ownership
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the agent owner can delete public links"
-        )
 
     # Verify link exists and belongs to this agent
     existing_link = db.get_public_link(link_id)

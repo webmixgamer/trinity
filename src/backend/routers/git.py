@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from models import User
 from database import db
-from dependencies import get_current_user
+from dependencies import get_current_user, AuthorizedAgentByName, OwnedAgentByName
 from services import git_service
 
 router = APIRouter(prefix="/api/agents", tags=["git"])
@@ -42,9 +42,8 @@ class GitInitializeRequest(BaseModel):
 
 @router.get("/{agent_name}/git/status")
 async def get_git_status(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: AuthorizedAgentByName,
+    request: Request
 ):
     """
     Get git status for an agent.
@@ -57,10 +56,6 @@ async def get_git_status(
     - changes: List of modified/untracked files
     - sync_status: "up_to_date" or "pending_sync"
     """
-    # Check access
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Access denied")
-
     # Get database config
     git_config = git_service.get_agent_git_config(agent_name)
 
@@ -99,10 +94,9 @@ async def get_git_status(
 
 @router.post("/{agent_name}/git/sync")
 async def sync_to_github(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     request: Request,
-    body: GitSyncRequest = GitSyncRequest(),
-    current_user: User = Depends(get_current_user)
+    body: GitSyncRequest = GitSyncRequest()
 ):
     """
     Sync agent changes to GitHub.
@@ -126,10 +120,6 @@ async def sync_to_github(
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Check access (owners and admins only)
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Only agent owners can sync to GitHub")
 
     result = await git_service.sync_to_github(
         agent_name=agent_name,
@@ -159,10 +149,9 @@ async def sync_to_github(
 
 @router.get("/{agent_name}/git/log")
 async def get_git_log(
-    agent_name: str,
+    agent_name: AuthorizedAgentByName,
     request: Request,
-    limit: int = 10,
-    current_user: User = Depends(get_current_user)
+    limit: int = 10
 ):
     """
     Get recent git commits for an agent.
@@ -174,10 +163,6 @@ async def get_git_log(
     - author: Commit author
     - date: Commit date
     """
-    # Check access
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Access denied")
-
     log = await git_service.get_git_log(agent_name, limit=limit)
 
     if log is None:
@@ -191,10 +176,9 @@ async def get_git_log(
 
 @router.post("/{agent_name}/git/pull")
 async def pull_from_github(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     request: Request,
-    body: GitPullRequest = GitPullRequest(),
-    current_user: User = Depends(get_current_user)
+    body: GitPullRequest = GitPullRequest()
 ):
     """
     Pull latest changes from GitHub to the agent.
@@ -211,10 +195,6 @@ async def pull_from_github(
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Check access (owners and admins only)
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Only agent owners can pull from GitHub")
 
     result = await git_service.pull_from_github(agent_name, strategy=body.strategy)
 
@@ -233,9 +213,8 @@ async def pull_from_github(
 
 @router.get("/{agent_name}/git/config")
 async def get_git_config(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: AuthorizedAgentByName,
+    request: Request
 ):
     """
     Get git configuration for an agent from the database.
@@ -247,10 +226,6 @@ async def get_git_config(
     - last_sync_at: Last sync timestamp
     - sync_enabled: Whether sync is enabled
     """
-    # Check access
-    if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Access denied")
-
     config = git_service.get_agent_git_config(agent_name)
 
     if not config:
@@ -275,10 +250,9 @@ async def get_git_config(
 
 @router.post("/{agent_name}/git/initialize")
 async def initialize_github_sync(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     body: GitInitializeRequest,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    request: Request
 ):
     """
     Initialize GitHub synchronization for an agent.
@@ -298,7 +272,7 @@ async def initialize_github_sync(
     """
     import httpx
     from services.docker_service import get_agent_container, execute_command_in_container
-    from routers.settings import get_github_pat
+    from services.settings_service import get_github_pat
 
     # Check if agent exists
     container = get_agent_container(agent_name)
@@ -308,10 +282,6 @@ async def initialize_github_sync(
     # Check if agent is running
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to initialize Git sync")
-
-    # Check access (owners and admins only)
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="Only agent owners can initialize GitHub sync")
 
     # Check if already configured
     existing_config = git_service.get_agent_git_config(agent_name)

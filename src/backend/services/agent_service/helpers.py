@@ -16,7 +16,7 @@ from services.docker_service import (
     list_all_agents,
     get_agent_container,
 )
-from routers.settings import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)
