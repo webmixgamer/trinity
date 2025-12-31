@@ -111,7 +111,7 @@ class ParallelTaskRequest(BaseModel):
     model: Optional[str] = None  # Model override: sonnet, opus, haiku, or full model name
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
-    timeout_seconds: Optional[int] = 300  # Execution timeout (5 minutes default)
+    timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
 
 
 # ============================================================================

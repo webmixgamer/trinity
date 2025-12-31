@@ -84,7 +84,7 @@ class AgentClient:
     """
 
     # Default timeouts
-    CHAT_TIMEOUT = 300.0      # 5 minutes for chat
+    CHAT_TIMEOUT = 900.0      # 15 minutes for chat
     SESSION_TIMEOUT = 5.0     # 5 seconds for session info
     INJECT_TIMEOUT = 10.0     # 10 seconds for Trinity injection
     DEFAULT_TIMEOUT = 30.0    # 30 seconds default

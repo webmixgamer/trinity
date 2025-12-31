@@ -100,7 +100,7 @@ class AgentRuntime(ABC):
         model: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
-        timeout_seconds: int = 300
+        timeout_seconds: int = 900
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute a stateless task in headless mode (no conversation context).

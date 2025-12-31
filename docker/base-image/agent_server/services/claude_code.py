@@ -93,7 +93,7 @@ class ClaudeCodeRuntime(AgentRuntime):
         model: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
-        timeout_seconds: int = 300
+        timeout_seconds: int = 900
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """Execute Claude Code in headless mode for parallel tasks."""
         return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds)
@@ -523,7 +523,7 @@ async def execute_headless_task(
     model: Optional[str] = None,
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
-    timeout_seconds: int = 300
+    timeout_seconds: int = 900
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     """
     Execute Claude Code in headless mode for parallel task execution.
