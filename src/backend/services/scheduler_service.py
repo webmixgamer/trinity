@@ -290,11 +290,13 @@ class SchedulerService:
             # Cost
             cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
 
-            # Tool calls summary
+            # Tool calls summary and execution log
             tool_calls_json = None
+            execution_log_json = None
             if execution_log:
                 import json
-                tool_calls_json = json.dumps(execution_log)
+                execution_log_json = json.dumps(execution_log)
+                tool_calls_json = execution_log_json  # Keep for backwards compatibility
 
             # Update execution status
             db.update_execution_status(
@@ -304,7 +306,8 @@ class SchedulerService:
                 context_used=context_used,
                 context_max=context_max,
                 cost=cost,
-                tool_calls=tool_calls_json
+                tool_calls=tool_calls_json,
+                execution_log=execution_log_json
             )
 
             # Update schedule last run time
@@ -498,11 +501,13 @@ class SchedulerService:
             # Cost
             cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
 
-            # Tool calls summary
+            # Tool calls summary and execution log
             tool_calls_json = None
+            execution_log_json = None
             if execution_log:
                 import json
-                tool_calls_json = json.dumps(execution_log)
+                execution_log_json = json.dumps(execution_log)
+                tool_calls_json = execution_log_json  # Keep for backwards compatibility
 
             db.update_execution_status(
                 execution_id=execution_id,
@@ -511,7 +516,8 @@ class SchedulerService:
                 context_used=context_used,
                 context_max=context_max,
                 cost=cost,
-                tool_calls=tool_calls_json
+                tool_calls=tool_calls_json,
+                execution_log=execution_log_json
             )
 
             execution_success = True

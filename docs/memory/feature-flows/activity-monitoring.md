@@ -76,11 +76,11 @@ const startActivityPolling = () => {
 ### Endpoints
 | Line | Endpoint | Purpose |
 |------|----------|---------|
-| 215-257 | `GET /api/agents/{name}/activity` | Activity summary |
-| 260-289 | `GET /api/agents/{name}/activity/{tool_id}` | Tool call details |
-| 292-320 | `DELETE /api/agents/{name}/activity` | Clear activity |
+| 681-723 | `GET /api/agents/{name}/activity` | Activity summary |
+| 726-757 | `GET /api/agents/{name}/activity/{tool_id}` | Tool call details |
+| 760-790 | `DELETE /api/agents/{name}/activity` | Clear activity |
 
-### Proxy Pattern (`routers/chat.py:215-257`)
+### Proxy Pattern (`routers/chat.py:681-723`)
 ```python
 @router.get("/{name}/activity")
 async def get_agent_activity(name: str, current_user: User = Depends(get_current_user)):
@@ -104,21 +104,33 @@ async def get_agent_activity(name: str, current_user: User = Depends(get_current
 
 ---
 
-## Agent Layer (`docker/base-image/agent-server.py`)
+## Agent Layer (`docker/base-image/agent_server/`)
 
-### Session Activity State (`agent-server.py:161-177`)
+> **Note**: The agent-server was refactored from a monolithic `agent-server.py` to a modular package at `docker/base-image/agent_server/`. Activity tracking is handled in the routers and state modules.
+
+### Session Activity State (`docker/base-image/agent_server/state.py:68-80`)
 ```python
-self.session_activity = {
-    "status": "idle",           # "running" | "idle"
-    "active_tool": None,        # Current tool being executed
-    "tool_counts": {},          # {"Read": 5, "Bash": 3}
-    "timeline": [],             # List of TimelineEntry objects
-    "totals": {"calls": 0, "duration_ms": 0, "started_at": None}
-}
-self.tool_outputs = {}          # Full outputs for drill-down
+def _create_empty_activity(self) -> Dict:
+    """Create empty session activity structure"""
+    return {
+        "status": "idle",
+        "active_tool": None,
+        "tool_counts": {},
+        "timeline": [],
+        "totals": {
+            "calls": 0,
+            "duration_ms": 0,
+            "started_at": None
+        }
+    }
 ```
 
-### Stream-JSON Parsing (`agent-server.py:409+`)
+Tool outputs stored separately for drill-down (`state.py:40`):
+```python
+self.tool_outputs: Dict[str, str] = {}
+```
+
+### Stream-JSON Parsing (`agent_server/routers/chat.py`)
 
 Claude Code outputs one JSON object per line with `--output-format stream-json`:
 ```json
@@ -128,7 +140,7 @@ Claude Code outputs one JSON object per line with `--output-format stream-json`:
 
 ### Real-Time Tool Tracking
 
-**start_tool_execution** (`agent-server.py:329-369`)
+**start_tool_execution** (`agent_server/routers/chat.py`)
 ```python
 def start_tool_execution(tool_id: str, tool: str, input_data: Dict):
     agent_state.session_activity["status"] = "running"
@@ -141,7 +153,7 @@ def start_tool_execution(tool_id: str, tool: str, input_data: Dict):
     agent_state.session_activity["tool_counts"][display_name] += 1
 ```
 
-**complete_tool_execution** (`agent-server.py:372-403`)
+**complete_tool_execution** (`agent_server/routers/chat.py`)
 ```python
 def complete_tool_execution(tool_id: str, success: bool, output: str = None):
     entry["duration_ms"] = duration_ms
@@ -151,7 +163,7 @@ def complete_tool_execution(tool_id: str, success: bool, output: str = None):
     agent_state.session_activity["active_tool"] = None
 ```
 
-### Input Summary Generation (`agent-server.py:255-295`)
+### Input Summary Generation (`agent_server/routers/chat.py`)
 - Read/Edit/Write: Shows shortened file path
 - Grep: Shows pattern
 - Bash: Shows first 50 chars of command
@@ -209,7 +221,7 @@ def complete_tool_execution(tool_id: str, success: bool, output: str = None):
 ## ThreadPoolExecutor for Non-blocking I/O
 
 ```python
-# agent-server.py:28, 762-763
+# agent_server/routers/chat.py
 _executor = ThreadPoolExecutor(max_workers=2)
 
 # Run blocking subprocess in thread pool - allows polling during execution
@@ -272,7 +284,17 @@ curl http://localhost:8000/api/agents/test-agent/activity/tool_123 \
 ---
 
 ## Status
-✅ **Working** - Activity monitoring functional with real-time polling
+**Last Updated**: 2025-12-30
+**Verified**: All line numbers updated for current codebase structure (modular agent_server package)
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-12-30 | **Updated line numbers**: Backend chat.py activity endpoints now at lines 681-790 (moved due to code additions). Updated agent-server references from monolithic `agent-server.py` to modular `agent_server/` package structure. |
+| 2025-12-02 | Initial documentation |
 
 ---
 

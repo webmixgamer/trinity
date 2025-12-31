@@ -1,6 +1,6 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2025-12-19
+> **Last Updated**: 2025-12-30
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -31,116 +31,120 @@ The Agent Network view was previously a separate page at `/network` (`AgentNetwo
 #### Dashboard.vue (`src/frontend/src/views/Dashboard.vue`)
 Main dashboard view component with integrated Agent Network visualization.
 
-**Key Features** (Updated line references for Dashboard.vue):
-- Lines 256-317: Vue Flow canvas with Background, Controls, and MiniMap
-- Lines 79-86: Connection status indicator (green/red dot with tooltip)
-- Lines 67-77: **Time Range Filter** dropdown (1h, 6h, 24h, 3d, 7d)
-- Lines 94-104: Refresh button to reload agents and historical data
-- Lines 106-115: Reset Layout button to clear saved positions
-- Lines 8-40: **Compact Header** with inline stats (agents, running, messages)
-- Lines 44-64: **Live/Replay Mode Toggle** buttons
-- Lines 319-396: **Message History Panel** (collapsible) with "Live Feed" and "Historical" sections
-- Lines 120-226: **Replay Controls Panel** (visible in replay mode) with playback controls and timeline scrubber
+**Key Features** (Updated line references for Dashboard.vue - 2025-12-30):
+- Lines 274-335: Vue Flow canvas with Background, Controls, and MiniMap
+- Lines 97-104: Connection status indicator (green/red dot with tooltip)
+- Lines 84-95: **Time Range Filter** dropdown (1h, 6h, 24h, 3d, 7d)
+- Lines 112-122: Refresh button to reload agents and historical data
+- Lines 124-133: Reset Layout button to clear saved positions
+- Lines 8-57: **Compact Header** with inline stats (agents, running, messages, OTel cost/tokens)
+- Lines 63-82: **Live/Replay Mode Toggle** buttons
+- Lines 337-414: **Message History Panel** (collapsible) with "Live Feed" and "Historical" sections
+- Lines 138-244: **Replay Controls Panel** (visible in replay mode) with playback controls and timeline scrubber
+- Lines 416-418: **ObservabilityPanel** component for OTel metrics visualization
 
 **Dark Mode Support** (Added 2025-12-14):
 - Line 2: Root container uses `dark:bg-gray-900`
 - Line 8: Header uses `dark:bg-gray-800 dark:border-gray-700`
-- Lines 45-64: Mode toggle buttons use dark-aware classes
-- Lines 229, 265: Vue Flow canvas uses `dark:from-gray-800 dark:to-gray-900`
-- Lines 337, 340-341: History panel uses `dark:bg-gray-800 dark:border-gray-700`
-- Lines 581-641: Scoped styles include `:root.dark` selectors for minimap and controls
+- Lines 63-82: Mode toggle buttons use dark-aware classes
+- Lines 247, 283: Vue Flow canvas uses `dark:from-gray-800 dark:to-gray-900`
+- Lines 353-355: History panel uses `dark:bg-gray-800 dark:border-gray-700`
+- Lines 608-664: Scoped styles include `:root.dark` selectors for minimap and controls
 
 **Lifecycle**:
-- Lines 462-482: `onMounted()` - Fetches agents, loads historical communications, connects WebSocket, starts polling, fits view
-- Lines 484-488: `onUnmounted()` - Disconnects WebSocket, stops polling on cleanup
+- Lines 486-509: `onMounted()` - Fetches agents, loads historical communications, connects WebSocket, starts polling, initializes observability, fits view
+- Lines 511-515: `onUnmounted()` - Disconnects WebSocket, stops polling on cleanup
 
 **Event Handlers**:
-- Lines 490-496: `refreshAll()` - Reloads agents and historical data, refits view
-- Lines 498-501: `onTimeRangeChange()` - Updates time filter and reloads data
-- Lines 503-508: `resetLayout()` - Clears localStorage positions and refits view
-- Lines 510-512: `onNodeDragStop()` - Saves node positions to localStorage
-- Lines 514-526: `getNodeColor()` - Maps agent status to minimap colors
-- Lines 528-536: `formatTime()` - Human-readable relative timestamps
-- Lines 538-578: Replay mode handlers (toggleMode, handlePlay, handlePause, handleStop, etc.)
+- Lines 517-523: `refreshAll()` - Reloads agents and historical data, refits view
+- Lines 525-528: `onTimeRangeChange()` - Updates time filter and reloads data
+- Lines 530-535: `resetLayout()` - Clears localStorage positions and refits view
+- Lines 537-539: `onNodeDragStop()` - Saves node positions to localStorage
+- Lines 541-553: `getNodeColor()` - Maps agent status to minimap colors
+- Lines 555-563: `formatTime()` - Human-readable relative timestamps
+- Lines 565-605: Replay mode handlers (toggleMode, handlePlay, handlePause, handleStop, etc.)
 
 #### AgentNode.vue (`src/frontend/src/components/AgentNode.vue`)
-Custom node component for each agent (updated 2025-12-19).
+Custom node component for each agent (updated 2025-12-30).
 
 **Layout** (280px wide, min 160px height):
-- Lines 2-11: Clean white card with rounded corners, border, shadow, **flex flex-col** for layout
-- Lines 14-18: Top connection handle for incoming edges
-- Lines 113-117: Bottom connection handle for outgoing edges
+- Lines 2-14: Clean white card with rounded corners, border, shadow, **flex flex-col** for layout. System agents get distinct purple styling.
+- Lines 16-20: Top connection handle for incoming edges
+- Lines 104-108: Bottom connection handle for outgoing edges
 
 **Dark Mode Support** (Added 2025-12-14):
-- Lines 4-6: Card uses `dark:bg-gray-800`, `dark:border-gray-700`
-- Line 17: Handle uses `dark:bg-gray-600 dark:border-gray-500`
-- Line 24: Agent name uses `dark:text-white`
-- Lines 40-43, 152-157: Activity state labels use dark-aware classes
-- Lines 60-61: Context label uses `dark:text-gray-400`, value uses `dark:text-gray-300`
-- Lines 63, 96: Progress bar background uses `dark:bg-gray-700`
-- Line 106: View Details button uses `dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300`
+- Lines 9-11: Card uses `dark:bg-gray-800`, `dark:border-gray-700` (system agents: `dark:bg-purple-900/20 dark:border-purple-700`)
+- Line 19: Handle uses `dark:!border-gray-800`
+- Line 27: Agent name uses `dark:text-white`
+- Lines 51-60: Activity state labels use dark-aware classes
+- Lines 74-75: Context label uses `dark:text-gray-400`, value uses `dark:text-gray-300`
+- Line 77: Progress bar background uses `dark:bg-gray-700`
+- Line 89: View Details button uses `dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300`
 
 **Header Section**:
-- Lines 22-35: Agent name (truncated) with status indicator dot
-- Lines 28-34: Status dot with activity-based color (green for active/idle, gray for offline)
-- Line 31: Pulsing animation for active agents (`active-pulse` class)
+- Lines 25-49: Agent name (truncated) with RuntimeBadge, SYSTEM badge (if applicable), and status indicator dot
+- Lines 42-48: Status dot with activity-based color (green for active/idle, gray for offline)
+- Line 45: Pulsing animation for active agents (`active-pulse` class)
 
 **Status Display**:
-- Lines 38-47: Activity state label ("Active", "Idle", "Offline")
-- Lines 49-55: GitHub repo display (if from GitHub template)
+- Lines 51-61: Activity state label ("Active", "Idle", "Offline")
+- Lines 63-69: GitHub repo display (if from GitHub template)
 
 **Progress Bars**:
-- Lines 57-82: Context usage progress bar with percentage and color coding
+- Lines 71-84: Context usage progress bar with percentage and color coding
 
 **Interaction**:
-- Lines 104-110: "View Details" button with `nodrag` class and **mt-auto** for bottom alignment
-- Lines 232-234: `viewDetails()` - Navigates to `/agents/:name` on button click
+- Lines 87-101: "View Details" button (for regular agents) or "System Dashboard" link (for system agents) with `nodrag` class and **mt-auto** for bottom alignment
+- Lines 202-204: `viewDetails()` - Navigates to `/agents/:name` on button click
 
-**Computed Properties** (Lines 136-200):
-- `activityState` (137-139): active, idle, or offline based on `data.activityState`
-- `statusDotColor` (159-164): Green (#10b981) for active/idle, gray (#9ca3af) for offline
-- `contextPercentDisplay` (187-190): Rounded context percentage
-- `progressBarColor` (192-197): Green/Yellow/Orange/Red based on context usage threshold
+**Computed Properties** (Lines 128-200):
+- `isSystemAgent` (129-131): checks if agent is a system agent
+- `activityState` (134-136): active, idle, or offline based on `data.activityState`
+- `statusDotColor` (156-161): Green (#10b981) for active/idle, gray (#9ca3af) for offline
+- `contextPercentDisplay` (184-187): Rounded context percentage
+- `progressBarColor` (194-200): Green/Yellow/Orange/Red based on context usage threshold
 
 ### State Management
 
 #### network.js (`src/frontend/src/stores/network.js`)
 Pinia store managing graph state and WebSocket communication. **Note**: Previously named `collaborations.js`, renamed to `network.js` (2025-12-07).
 
-**State** (Lines 6-33):
-- `agents` (7) - Raw agent data from API
-- `nodes` (8) - Vue Flow node objects
-- `edges` (9) - Vue Flow edge objects
-- `collaborationHistory` (10) - Last 100 real-time communication events (in-memory)
-- `lastEventTime` (11) - Timestamp of most recent event
-- `activeCollaborations` (12) - Count of currently animated edges
-- `websocket` (13) - WebSocket connection instance
-- `isConnected` (14) - Connection status boolean
-- `nodePositions` (15) - localStorage cache
-- `historicalCollaborations` (16) - Persistent data from Activity Stream API
-- `totalCollaborationCount` (17) - Database count from selected time range
-- `timeRangeHours` (18) - Selected filter (1, 6, 24, 72, 168)
-- `isLoadingHistory` (19) - Loading indicator for historical data queries
-- `contextStats` (20) - Map of agent name -> context stats
-- `contextPollingInterval` (21) - Interval ID for context polling
-- `agentRefreshInterval` (22) - Interval ID for agent list refresh
-- **Replay State** (24-31): `isReplayMode`, `isPlaying`, `replaySpeed`, `currentEventIndex`, `replayInterval`, `replayStartTime`, `replayElapsedMs`
+**State** (Lines 6-58):
+- `agents` (8) - Raw agent data from API
+- `nodes` (9) - Vue Flow node objects
+- `collaborationEdges` (10) - Edges from collaboration history
+- `permissionEdges` (11) - Edges from agent-to-agent permissions
+- `edges` (14-36) - Computed property merging collaboration and permission edges
+- `collaborationHistory` (37) - Last 100 real-time communication events (in-memory)
+- `lastEventTime` (38) - Timestamp of most recent event
+- `activeCollaborations` (39) - Count of currently animated edges
+- `websocket` (40) - WebSocket connection instance
+- `isConnected` (41) - Connection status boolean
+- `nodePositions` (42) - localStorage cache
+- `historicalCollaborations` (43) - Persistent data from Activity Stream API
+- `totalCollaborationCount` (44) - Database count from selected time range
+- `timeRangeHours` (45) - Selected filter (1, 6, 24, 72, 168)
+- `isLoadingHistory` (46) - Loading indicator for historical data queries
+- `contextStats` (47) - Map of agent name -> context stats
+- `contextPollingInterval` (48) - Interval ID for context polling
+- `agentRefreshInterval` (49) - Interval ID for agent list refresh
+- **Replay State** (51-58): `isReplayMode`, `isPlaying`, `replaySpeed`, `currentEventIndex`, `replayInterval`, `replayStartTime`, `replayElapsedMs`
 
-**Computed** (Lines 44-89):
-- `activeCollaborationCount` (45-47) - Number of animated edges (filters `edge.animated === true`)
-- `lastEventTimeFormatted` (49-58) - Human-readable relative time (e.g., "2m ago")
-- **Replay Computed** (60-89): `totalEvents`, `totalDuration`, `playbackPosition`, `timelineStart`, `timelineEnd`, `currentTime`
+**Computed** (Lines 60-105):
+- `activeCollaborationCount` (61-63) - Number of animated edges (filters `edge.animated === true`)
+- `lastEventTimeFormatted` (65-74) - Human-readable relative time (e.g., "2m ago")
+- **Replay Computed** (76-105): `totalEvents`, `totalDuration`, `playbackPosition`, `timelineStart`, `timelineEnd`, `currentTime`
 
 **Actions**:
 
-##### fetchAgents() (Lines 92-100)
+##### fetchAgents() (Lines 108-116)
 ```javascript
 await axios.get('/api/agents')
 // -> convertAgentsToNodes()
 ```
 Fetches all agents and converts to Vue Flow nodes with grid layout.
 
-##### fetchHistoricalCollaborations() (Lines 102-161)
+##### fetchHistoricalCollaborations() (Lines 118-177)
 ```javascript
 async function fetchHistoricalCollaborations(hours = null) {
   const hoursToQuery = hours || timeRangeHours.value
@@ -179,7 +183,7 @@ async function fetchHistoricalCollaborations(hours = null) {
 
 Queries Activity Stream API for communication history in selected time range. Creates gray inactive edges on graph with count labels.
 
-##### createHistoricalEdges() (Lines 163-232)
+##### createHistoricalEdges() (Lines 179-248)
 Groups communications by source-target pair and creates inactive edges:
 ```javascript
 // Edge style for historical data
@@ -201,7 +205,7 @@ Groups communications by source-target pair and creates inactive edges:
 }
 ```
 
-##### convertAgentsToNodes() (Lines 234-269)
+##### convertAgentsToNodes() (Lines 250-287)
 - Calculates grid layout: `Math.ceil(Math.sqrt(agentList.length))`
 - Spacing: 350px between nodes (increased to prevent overlap)
 - Loads saved positions from localStorage or uses default grid
@@ -212,17 +216,17 @@ Groups communications by source-target pair and creates inactive edges:
   ```
   This prevents running agents from briefly showing "Offline" before the first context-stats poll completes.
 
-##### connectWebSocket() (Lines 271-318)
+##### connectWebSocket() (Lines 289-336)
 WebSocket connection with auto-reconnect:
-- Line 272: Constructs WebSocket URL from window.location
-- Lines 277-280: `onopen` - Sets `isConnected = true`
-- Lines 282-296: `onmessage` - Routes events to handlers:
+- Line 290: Constructs WebSocket URL from window.location
+- Lines 295-298: `onopen` - Sets `isConnected = true`
+- Lines 300-314: `onmessage` - Routes events to handlers:
   - `agent_collaboration` -> `handleCollaborationEvent()`
   - `agent_status` -> `handleAgentStatusChange()`
   - `agent_deleted` -> `handleAgentDeleted()`
-- Lines 303-314: `onclose` - Reconnects after 5 seconds
+- Lines 321-332: `onclose` - Reconnects after 5 seconds
 
-##### handleCollaborationEvent() (Lines 320-345)
+##### handleCollaborationEvent() (Lines 338-363)
 ```javascript
 // Event format: {type, source_agent, target_agent, action, timestamp}
 1. Add to in-memory history (max 100 events, for real-time feed)
@@ -239,7 +243,7 @@ WebSocket connection with auto-reconnect:
 - After 6 seconds, edge fades back to gray (extended from 3s)
 - Communication count increments (e.g., "5x" -> "6x")
 
-##### animateEdge() (Lines 377-474)
+##### animateEdge() (Lines 395-492)
 Creates or updates edge with animation:
 ```javascript
 {
@@ -256,10 +260,10 @@ Creates or updates edge with animation:
   markerEnd: { type: 'arrowclosed', color: '#06b6d4' }
 }
 ```
-- Line 463: Increments `activeCollaborations`
-- Lines 470-473: Sets 6-second (or 8-second extended) timeout to fade edge
+- Line 481: Increments `activeCollaborations`
+- Lines 485-491: Sets 6-second (or 8-second extended) timeout to fade edge
 
-##### fadeEdgeAnimation() / clearEdgeAnimation() (Lines 476-525)
+##### fadeEdgeAnimation() / clearEdgeAnimation() (Lines 494-543)
 Fades edge back to inactive state:
 ```javascript
 {
@@ -269,39 +273,39 @@ Fades edge back to inactive state:
 }
 ```
 
-##### saveNodePositions() / loadNodePositions() (Lines 527-548)
+##### saveNodePositions() / loadNodePositions() (Lines 545-566)
 - Stores node positions in `localStorage` key: `trinity-collaboration-node-positions`
 - Saves on every drag stop event
 - Loads on initial render
 
-##### handleAgentStatusChange() (Lines 347-359)
+##### handleAgentStatusChange() (Lines 365-377)
 Updates node color when agent starts/stops.
 
-##### handleAgentDeleted() (Lines 361-372)
+##### handleAgentDeleted() (Lines 379-390)
 Removes node and all connected edges.
 
-##### fetchContextStats() (Lines 563-591)
+##### fetchContextStats() (Lines 582-619)
 - Fetches context stats from `/api/agents/context-stats`
 - Updates node data with context percentage and activity state
 
-##### startContextPolling() / stopContextPolling() (Lines 593-619)
+##### startContextPolling() / stopContextPolling() (Lines 621-645)
 - Polls every 5 seconds for context stats
 - Automatically starts on dashboard mount, stops on unmount
 
-##### startAgentRefresh() / stopAgentRefresh() (Lines 699-739)
+##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
 - Polls every 10 seconds for agent list changes
 - Detects new/deleted agents and updates graph
 
-##### Replay Mode Functions (Lines 741-949)
-- `setReplayMode()` (742-760): Toggle between live and replay mode
-- `startReplay()` (762-780): Begin playback from current position
-- `pauseReplay()` (782-789): Pause at current event
-- `stopReplay()` (791-805): Reset to beginning
-- `setReplaySpeed()` (807-816): Change playback speed (1x-50x)
-- `scheduleNextEvent()` (818-849): Schedule next event with time-compressed delay
-- `jumpToTime()` / `jumpToEvent()` (851-889): Seek to specific point
-- `resetAllEdges()` (891-922): Set all edges to inactive state
-- `getEventPosition()` / `handleTimelineClick()` (924-949): Timeline scrubber support
+##### Replay Mode Functions (Lines 689-897)
+- `setReplayMode()` (690-708): Toggle between live and replay mode
+- `startReplay()` (710-728): Begin playback from current position
+- `pauseReplay()` (730-737): Pause at current event
+- `stopReplay()` (739-753): Reset to beginning
+- `setReplaySpeed()` (755-764): Change playback speed (1x-50x)
+- `scheduleNextEvent()` (766-797): Schedule next event with time-compressed delay
+- `jumpToTime()` / `jumpToEvent()` (799-837): Seek to specific point
+- `resetAllEdges()` (839-870): Set all edges to inactive state
+- `getEventPosition()` / `handleTimelineClick()` (872-897): Timeline scrubber support
 
 ### Dependencies
 
@@ -311,7 +315,7 @@ Removes node and all connected edges.
 - `@vue-flow/controls`: ^1.1.3 - Zoom/pan controls
 - `@vue-flow/minimap`: ^1.5.4 - Mini overview map
 
-**Imported Styles** (`Dashboard.vue:414-418`):
+**Imported Styles** (`Dashboard.vue:439-442`):
 ```javascript
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -326,7 +330,7 @@ import '@vue-flow/minimap/dist/style.css'
 #### Endpoint Configuration
 **File**: `src/backend/main.py`
 
-##### ConnectionManager Class (Lines 52-71)
+##### ConnectionManager Class (Lines 61-80)
 ```python
 class ConnectionManager:
     """WebSocket connection manager for broadcasting events."""
@@ -350,10 +354,10 @@ class ConnectionManager:
                 pass
 ```
 
-##### WebSocket Endpoint (Lines 211-219)
+##### WebSocket Endpoint (Lines 240-268)
 ```python
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str = None):
     """WebSocket endpoint for real-time updates."""
     await manager.connect(websocket)
     try:
@@ -363,12 +367,16 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 ```
 
-##### Manager Injection (Lines 77-85)
+##### Manager Injection (Lines 86-98)
 WebSocket manager injected into routers:
 ```python
 set_agents_ws_manager(manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
+set_public_links_ws_manager(manager)
+
+# Inject trinity meta-prompt function into system agent router
+set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
 
 # Set up scheduler broadcast callback
 scheduler_service.set_broadcast_callback(manager.broadcast)
@@ -381,7 +389,7 @@ activity_service.set_websocket_manager(manager)
 
 **File**: `src/backend/routers/chat.py`
 
-#### set_websocket_manager() (Lines 29-32)
+#### set_websocket_manager() (Lines 85-88)
 ```python
 def set_websocket_manager(manager):
     """Set WebSocket manager for broadcasting collaboration events."""
@@ -389,7 +397,7 @@ def set_websocket_manager(manager):
     _websocket_manager = manager
 ```
 
-#### broadcast_collaboration_event() (Lines 35-48)
+#### broadcast_collaboration_event() (Lines 91-103)
 ```python
 async def broadcast_collaboration_event(source_agent: str, target_agent: str, action: str = "chat"):
     """Broadcast agent collaboration event to all WebSocket clients."""
@@ -404,7 +412,7 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
         await _websocket_manager.broadcast(json.dumps(event))
 ```
 
-#### Agent-to-Agent Detection (Lines 50-86)
+#### Agent-to-Agent Detection (Lines 106-142)
 ```python
 @router.post("/{name}/chat")
 async def chat_with_agent(
@@ -413,7 +421,7 @@ async def chat_with_agent(
     current_user: User = Depends(get_current_user),
     x_source_agent: Optional[str] = Header(None)  # Key detection header
 ):
-    # Lines 71-76: Determine execution source
+    # Lines 127-131: Determine execution source
     if x_source_agent:
         source = ExecutionSource.AGENT
     else:
@@ -432,14 +440,15 @@ async def chat_with_agent(
 
 **File**: `src/backend/routers/agents.py`
 
-#### GET /api/agents/context-stats (Lines 208-288)
+#### GET /api/agents/context-stats (Lines 142-145)
 ```python
 @router.get("/context-stats")
 async def get_agents_context_stats(current_user: User = Depends(get_current_user)):
     """Get context window stats and activity state for all accessible agents."""
-    # Fetches context stats from each running agent's internal API
-    # Determines activity state (active/idle/offline) from recent activities
+    return await get_agents_context_stats_logic(current_user)
 ```
+
+**Note**: Business logic moved to `src/backend/services/agent_service/stats.py` for cleaner separation.
 
 Returns JSON:
 ```json

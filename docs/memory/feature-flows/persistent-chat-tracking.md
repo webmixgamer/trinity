@@ -89,13 +89,13 @@ const response = await axios.get(`/api/agents/${name}/chat/sessions`,
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 50-294 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
-| 586-625 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
-| 628-660 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
-| 663-698 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
-| 701-736 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
+| 106-356 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
+| 876-915 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
+| 918-950 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
+| 953-988 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
+| 991-1027 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
 
-### Modified Chat Endpoint (`routers/chat.py:50-294`)
+### Modified Chat Endpoint (`routers/chat.py:106-356`)
 
 **Key Changes**:
 1. Get or create chat session before sending message
@@ -170,7 +170,7 @@ async def chat_with_agent(
     return response_data
 ```
 
-### New Persistent History Endpoint (`routers/chat.py:586-625`)
+### New Persistent History Endpoint (`routers/chat.py:876-915`)
 
 ```python
 @router.get("/{name}/chat/history/persistent")
@@ -213,7 +213,7 @@ async def get_persistent_chat_history(
     }
 ```
 
-### Sessions List Endpoint (`routers/chat.py:628-660`)
+### Sessions List Endpoint (`routers/chat.py:918-950`)
 
 ```python
 @router.get("/{name}/chat/sessions")
@@ -249,7 +249,7 @@ async def get_agent_chat_sessions(
     }
 ```
 
-### Session Detail Endpoint (`routers/chat.py:663-698`)
+### Session Detail Endpoint (`routers/chat.py:953-988`)
 
 ```python
 @router.get("/{name}/chat/sessions/{session_id}")
@@ -281,7 +281,7 @@ async def get_chat_session_detail(
     }
 ```
 
-### Close Session Endpoint (`routers/chat.py:701-736`)
+### Close Session Endpoint (`routers/chat.py:991-1027`)
 
 ```python
 @router.post("/{name}/chat/sessions/{session_id}/close")
@@ -324,7 +324,7 @@ async def close_chat_session(
 
 ### Schema (`src/backend/database.py`)
 
-#### Chat Sessions Table (`database.py:302-318`)
+#### Chat Sessions Table (`database.py:380-396`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -348,7 +348,7 @@ CREATE INDEX idx_chat_sessions_user ON chat_sessions(user_id)
 CREATE INDEX idx_chat_sessions_status ON chat_sessions(status)
 ```
 
-#### Chat Messages Table (`database.py:320-339`)
+#### Chat Messages Table (`database.py:398-417`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -376,7 +376,7 @@ CREATE INDEX idx_chat_messages_user ON chat_messages(user_id)
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp)
 ```
 
-### Models (`src/backend/db_models.py:185-215`)
+### Models (`src/backend/db_models.py:187-217`)
 
 ```python
 class ChatSession(BaseModel):
@@ -974,7 +974,7 @@ LIMIT 100;
 ## Migration Notes
 
 ### Database Migration
-Handled automatically by `init_database()` in `database.py:159-438`:
+Handled automatically by `init_database()` in `database.py` (tables created in init block):
 1. Creates `chat_sessions` table if not exists
 2. Creates `chat_messages` table if not exists
 3. Creates indexes
@@ -991,3 +991,10 @@ To show persistent history in UI:
 3. Display sessions list with costs/timestamps
 4. Click session -> view all messages
 5. Filter by date range, user (admin only)
+
+---
+
+## Changelog
+
+- **2025-12-30**: Updated line numbers to reflect current codebase after execution queue integration. Chat endpoint now at lines 106-356 (was 50-294). Persistent history endpoints now at lines 876-1027 (was 586-736). Database schema lines updated.
+- **2025-12-01**: Initial implementation of persistent chat session tracking

@@ -65,7 +65,7 @@ FileManager.vue
   |-- Delete Confirmation Modal
 ```
 
-#### State Management (Lines 271-289)
+#### State Management (Lines 300-318)
 
 ```javascript
 // Component state
@@ -89,10 +89,14 @@ const saving = ref(false)
 const hasUnsavedChanges = ref(false)
 ```
 
-#### Protected Paths (Line 273)
+#### Protected Paths (Lines 320-324)
 
 ```javascript
-const PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', '.mcp.json', '.mcp.json.template']
+// Protected paths (cannot be deleted)
+const DELETE_PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', '.mcp.json', '.mcp.json.template']
+
+// Edit protected paths (cannot be edited) - CLAUDE.md and .mcp.json ARE editable
+const EDIT_PROTECTED_PATHS = ['.trinity', '.git', '.gitignore', '.env', '.mcp.json.template']
 ```
 
 #### Agent Selector (Lines 10-26)
@@ -101,7 +105,7 @@ const PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', 
 - Selection persisted to `localStorage.fileManager.selectedAgent`
 - Auto-loads files on agent change
 
-#### Search/Filter (Lines 74-86, 302-322)
+#### Search/Filter (Lines 353-373)
 
 ```javascript
 const filteredTree = computed(() => {
@@ -131,28 +135,34 @@ const filteredTree = computed(() => {
 
 | Method | Lines | Purpose |
 |--------|-------|---------|
-| `loadFiles()` | 406-422 | Fetch file tree from agent (with showHidden) |
-| `onAgentChange()` | 424-430 | Handle agent selection, clear state |
-| `onFileSelect()` | 432-452 | Select file and load preview, reset edit state |
-| `loadPreview()` | 454-464 | Fetch file preview as blob |
-| `downloadFile()` | 466-488 | Download file via blob URL |
-| `deleteFile()` | 489-512 | Delete file/folder after confirmation |
-| `startEdit()` | 515-528 | Enter edit mode, load text content |
-| `cancelEdit()` | 530-539 | Exit edit mode with unsaved changes check |
-| `saveFile()` | 546-568 | Save edited content to agent |
-| `onEditContentChange()` | 541-544 | Track content changes |
+| `loadFiles()` | 404-420 | Fetch file tree from agent (with showHidden) |
+| `onAgentChange()` | 422-427 | Handle agent selection, clear state |
+| `onFileSelect()` | 429-449 | Select file and load preview, reset edit state |
+| `loadPreview()` | 451-462 | Fetch file preview as blob |
+| `downloadFile()` | 464-496 | Download file via blob URL |
+| `deleteFile()` | 498-521 | Delete file/folder after confirmation |
+| `startEdit()` | 524-529+ | Enter edit mode, load text content |
+| `cancelEdit()` | ~540 | Exit edit mode with unsaved changes check |
+| `saveFile()` | ~555 | Save edited content to agent |
+| `onEditContentChange()` | ~541-544 | Track content changes |
 
-#### Protected Path Check (Lines 324-328)
+#### Protected Path Check (Lines 375-385)
 
 ```javascript
-const isProtectedPath = computed(() => {
+const isDeleteProtected = computed(() => {
   if (!selectedFile.value) return false
   const name = selectedFile.value.name
-  return PROTECTED_PATHS.includes(name)
+  return DELETE_PROTECTED_PATHS.includes(name)
+})
+
+const isEditProtected = computed(() => {
+  if (!selectedFile.value) return false
+  const name = selectedFile.value.name
+  return EDIT_PROTECTED_PATHS.includes(name)
 })
 ```
 
-When a protected file is selected, the Delete button is disabled with tooltip "Protected file cannot be deleted" and a warning message appears.
+When a delete-protected file is selected, the Delete button is disabled with tooltip "Protected file cannot be deleted" and a warning message appears. Note: CLAUDE.md and .mcp.json are editable but not deletable.
 
 ### FileTreeNode Component
 
@@ -251,7 +261,7 @@ watch(() => props.previewData, async (data) => {
 
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
 
-#### listAgentFiles (Lines 372-379)
+#### listAgentFiles (Lines 391-398)
 
 ```javascript
 async listAgentFiles(name, path = '/home/developer', showHidden = false) {
@@ -264,7 +274,7 @@ async listAgentFiles(name, path = '/home/developer', showHidden = false) {
 }
 ```
 
-#### deleteAgentFile (Lines 391-398)
+#### deleteAgentFile (Lines 410-417)
 
 ```javascript
 async deleteAgentFile(name, filePath) {
@@ -277,7 +287,7 @@ async deleteAgentFile(name, filePath) {
 }
 ```
 
-#### updateAgentFile (Lines 400-409)
+#### updateAgentFile (Lines 419-428)
 
 ```javascript
 async updateAgentFile(name, filePath, content) {
@@ -292,7 +302,7 @@ async updateAgentFile(name, filePath, content) {
 }
 ```
 
-#### getFilePreviewBlob (Lines 399-412)
+#### getFilePreviewBlob (Lines 430-445)
 
 ```javascript
 async getFilePreviewBlob(name, filePath) {
@@ -318,21 +328,21 @@ async getFilePreviewBlob(name, filePath) {
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:549-590` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/files.py` (287 lines) | File operations logic |
+| Router | `src/backend/routers/agents.py:551-619` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/files.py` (413 lines) | File operations logic |
 
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:549-557`
-**Service**: `src/backend/services/agent_service/files.py:20-77`
+**Router**: `src/backend/routers/agents.py:551-565`
+**Service**: `src/backend/services/agent_service/files.py:21-98`
 
 See [file-browser.md](file-browser.md) for full documentation.
 
 #### GET /api/agents/{agent_name}/files/preview
 
-**Router**: `src/backend/routers/agents.py:571-579`
+**Router**: `src/backend/routers/agents.py:579-587`
 
 ```python
 @router.get("/{agent_name}/files/preview")
@@ -346,7 +356,7 @@ async def preview_agent_file_endpoint(
     return await preview_agent_file_logic(agent_name, path, current_user, request)
 ```
 
-**Service**: `src/backend/services/agent_service/files.py:204-287`
+**Service**: `src/backend/services/agent_service/files.py:249-328`
 
 ```python
 async def preview_agent_file_logic(
@@ -374,7 +384,7 @@ async def preview_agent_file_logic(
 
 #### DELETE /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:582-590`
+**Router**: `src/backend/routers/agents.py:590-598`
 
 ```python
 @router.delete("/{agent_name}/files")
@@ -388,7 +398,7 @@ async def delete_agent_file_endpoint(
     return await delete_agent_file_logic(agent_name, path, current_user, request)
 ```
 
-**Service**: `src/backend/services/agent_service/files.py:140-201`
+**Service**: `src/backend/services/agent_service/files.py:173-246`
 
 ```python
 async def delete_agent_file_logic(
@@ -420,7 +430,7 @@ async def delete_agent_file_logic(
 
 **File**: `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/files.py`
 
-### GET /api/files/preview (Lines 229-279)
+### GET /api/files/preview (Lines 262-311)
 
 ```python
 @router.get("/api/files/preview")
@@ -438,7 +448,7 @@ async def preview_file(path: str):
 - Path security (only `/home/developer`)
 - Returns `FileResponse` for efficient streaming
 
-### DELETE /api/files (Lines 169-226)
+### DELETE /api/files (Lines 202-259)
 
 ```python
 @router.delete("/api/files")
@@ -450,8 +460,9 @@ async def delete_file(path: str):
     # Single file deletion with Path.unlink()
 ```
 
-**Protected Paths** (Lines 146-154):
+**Protected Paths** (Lines 156-175):
 ```python
+# Protected paths that cannot be deleted
 PROTECTED_PATHS = [
     "CLAUDE.md",
     ".trinity",
@@ -461,12 +472,22 @@ PROTECTED_PATHS = [
     ".mcp.json",
     ".mcp.json.template",
 ]
+
+# Paths that cannot be edited (subset of PROTECTED_PATHS)
+# CLAUDE.md and .mcp.json ARE editable since users need to modify them
+EDIT_PROTECTED_PATHS = [
+    ".trinity",
+    ".git",
+    ".gitignore",
+    ".env",
+    ".mcp.json.template",
+]
 ```
 
-**_is_protected_path()** (Lines 157-166):
+**_is_protected_path()** (Lines 178-187):
 ```python
 def _is_protected_path(path: Path) -> bool:
-    """Check if path is a protected file/directory."""
+    """Check if path is a protected file/directory (for deletion)."""
     for protected in PROTECTED_PATHS:
         if path.name == protected:
             return True
@@ -477,7 +498,7 @@ def _is_protected_path(path: Path) -> bool:
     return False
 ```
 
-### PUT /api/files (Lines 292-347)
+### PUT /api/files (Lines 314-369)
 
 ```python
 @router.put("/api/files")
@@ -826,6 +847,7 @@ Working - Feature implemented 2025-12-27, updated 2025-12-29 (hidden files + edi
 
 ## Changelog
 
+- **2025-12-30**: Updated line numbers to reflect current codebase. Fixed protected path documentation to show split into DELETE_PROTECTED_PATHS and EDIT_PROTECTED_PATHS.
 - **2025-12-29**: Hidden files toggle and inline text editing
   - Added "Show hidden" checkbox in header (persisted to localStorage)
   - Agent server and backend accept `show_hidden` query parameter

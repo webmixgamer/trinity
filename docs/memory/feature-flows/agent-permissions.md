@@ -1,6 +1,6 @@
 # Feature: Agent-to-Agent Permissions System
 
-> **Updated**: 2025-12-27 - Refactored to service layer architecture. Permission logic moved to `services/agent_service/permissions.py`.
+> **Updated**: 2025-12-30 - Verified file paths and line numbers. Permission logic in `services/agent_service/permissions.py` and composable `useAgentPermissions.js`.
 
 ## Overview
 
@@ -9,7 +9,7 @@ Fine-grained permission control for agent-to-agent communication. Allows owners 
 **Requirement**: 9.10 - Agent-to-Agent Collaboration Permissions
 **Phase**: 9.10
 **Implemented**: 2025-12-10
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-30
 
 ## User Story
 
@@ -29,12 +29,12 @@ When an agent is created, it automatically receives **bidirectional permissions*
 ## Entry Points
 
 ### User Configuration (UI)
-- **UI**: `src/frontend/src/views/AgentDetail.vue:250-261` - Permissions tab button
-- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:801-890` - Checkbox list UI
+- **UI**: `src/frontend/src/views/AgentDetail.vue:288-299` - Permissions tab button
+- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:797-893` - Checkbox list UI
 
 ### MCP Tool Enforcement
-- **list_agents**: `src/mcp-server/src/tools/agents.ts:57-68` - Filters visible agents
-- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:26-57` - Blocks unauthorized calls
+- **list_agents**: `src/mcp-server/src/tools/agents.ts:61-74` - Filters visible agents
+- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:29-67` - Blocks unauthorized calls
 
 ### Backend API
 - `GET /api/agents/{name}/permissions` - List permitted agents
@@ -48,7 +48,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### Components
 
-#### AgentDetail.vue:250-261 - Permissions Tab Button
+#### AgentDetail.vue:288-299 - Permissions Tab Button
 ```vue
 <button
   v-if="agent.can_share"
@@ -59,7 +59,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 </button>
 ```
 
-#### AgentDetail.vue:801-890 - Permissions Tab Content
+#### AgentDetail.vue:797-893 - Permissions Tab Content
 - Checkbox list of all other accessible agents
 - "Allow All" / "Allow None" bulk actions
 - Save button with dirty state tracking
@@ -67,7 +67,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### State Management
 
-#### `src/frontend/src/stores/agents.js:270-285`
+#### `src/frontend/src/stores/agents.js:275-290`
 
 ```javascript
 // Get permissions for an agent
@@ -90,32 +90,34 @@ async setAgentPermissions(name, permittedAgents) {
 }
 ```
 
-### Component Methods
+### Composable - Permission Methods
 
-#### AgentDetail.vue:1809-1855 - Permission Methods
+#### `src/frontend/src/composables/useAgentPermissions.js`
+
+Permission methods have been refactored to a composable for reusability:
 
 ```javascript
-// Load permissions from backend
+// Load permissions from backend (useAgentPermissions.js:18-37)
 const loadPermissions = async () => {
   permissionsLoading.value = true
-  const response = await agentsStore.getAgentPermissions(agent.value.name)
+  const response = await agentsStore.getAgentPermissions(agentRef.value.name)
   availableAgents.value = response.available_agents || []
   permissionsDirty.value = false
   permissionsLoading.value = false
 }
 
-// Save permissions to backend
+// Save permissions to backend (useAgentPermissions.js:39-66)
 const savePermissions = async () => {
   permissionsSaving.value = true
   const permittedAgentNames = availableAgents.value
     .filter(a => a.permitted)
     .map(a => a.name)
-  await agentsStore.setAgentPermissions(agent.value.name, permittedAgentNames)
+  await agentsStore.setAgentPermissions(agentRef.value.name, permittedAgentNames)
   permissionsDirty.value = false
   permissionsSaving.value = false
 }
 
-// Bulk actions
+// Bulk actions (useAgentPermissions.js:68-76)
 const allowAllAgents = () => {
   availableAgents.value.forEach(a => { a.permitted = true })
   permissionsDirty.value = true
@@ -137,16 +139,16 @@ The permissions feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:642-682` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/permissions.py` (197 lines) | Permission business logic |
+| Router | `src/backend/routers/agents.py:696-736` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/permissions.py` (198 lines) | Permission business logic |
 
 ### Endpoint: GET /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:642-649`
+**Router**: `src/backend/routers/agents.py:696-703`
 **Service**: `src/backend/services/agent_service/permissions.py:19-67`
 
 ```python
-# Router (agents.py:642-649)
+# Router (agents.py:696-703)
 @router.get("/{agent_name}/permissions")
 async def get_agent_permissions(
     agent_name: str,
@@ -190,7 +192,7 @@ async def get_agent_permissions_logic(agent_name: str, current_user: User) -> di
 
 ### Endpoint: PUT /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:652-660`
+**Router**: `src/backend/routers/agents.py:706-714`
 **Service**: `src/backend/services/agent_service/permissions.py:70-117`
 
 ```python
@@ -223,15 +225,15 @@ async def set_agent_permissions_logic(
 
 ### Endpoint: POST /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:663-671`
+**Router**: `src/backend/routers/agents.py:717-725`
 **Service**: `src/backend/services/agent_service/permissions.py:120-161`
 
 Adds a single permission. Returns `{status: "added"}` or `{status: "already_exists"}`.
 
 ### Endpoint: DELETE /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:674-682`
-**Service**: `src/backend/services/agent_service/permissions.py:164-197`
+**Router**: `src/backend/routers/agents.py:728-736`
+**Service**: `src/backend/services/agent_service/permissions.py:164-198`
 
 Removes a single permission. Returns `{status: "removed"}` or `{status: "not_found"}`.
 
@@ -241,7 +243,7 @@ Removes a single permission. Returns `{status: "removed"}` or `{status: "not_fou
 
 ### Database Table
 
-**File**: `src/backend/database.py:366-377`
+**File**: `src/backend/database.py:444-453`
 
 ```sql
 CREATE TABLE IF NOT EXISTS agent_permissions (
@@ -254,7 +256,7 @@ CREATE TABLE IF NOT EXISTS agent_permissions (
 )
 ```
 
-**Indexes** (`src/backend/database.py:432-433`):
+**Indexes** (created in `src/backend/database.py` table initialization):
 ```sql
 CREATE INDEX IF NOT EXISTS idx_permissions_source ON agent_permissions(source_agent)
 CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_agent)
@@ -275,11 +277,11 @@ CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_ag
 | `remove_permission(source, target)` | 112-125 | Remove single permission |
 | `set_permissions(source, targets, by)` | 127-155 | Full replacement (delete + insert) |
 | `delete_agent_permissions(agent)` | 157-180 | Cleanup when agent deleted |
-| `grant_default_permissions(agent, owner)` | 182-222 | Bidirectional with same-owner agents |
+| `grant_default_permissions(agent, owner)` | 182-223 | Bidirectional with same-owner agents |
 
 ### Database Manager Delegation
 
-**File**: `src/backend/database.py:735-757`
+**File**: `src/backend/database.py:962-984`
 
 ```python
 def get_permitted_agents(self, source_agent: str):
@@ -306,6 +308,8 @@ def grant_default_permissions(self, agent_name: str, owner_username: str):
 
 **File**: `src/mcp-server/src/client.ts:182-200`
 
+Note: Line numbers for MCP server are approximate and may vary with TypeScript transpilation.
+
 ```typescript
 // Get permitted agents for a source agent
 async getPermittedAgents(sourceAgent: string): Promise<string[]> {
@@ -329,7 +333,7 @@ async isAgentPermitted(sourceAgent: string, targetAgent: string): Promise<boolea
 
 ### list_agents Filtering
 
-**File**: `src/mcp-server/src/tools/agents.ts:57-68`
+**File**: `src/mcp-server/src/tools/agents.ts:61-74`
 
 ```typescript
 // Phase 9.10: Filter agents for agent-scoped keys
@@ -349,7 +353,7 @@ if (authContext?.scope === "agent" && authContext?.agentName) {
 
 ### chat_with_agent Permission Check
 
-**File**: `src/mcp-server/src/tools/chat.ts:26-57`
+**File**: `src/mcp-server/src/tools/chat.ts:29-67`
 
 ```typescript
 async function checkAgentAccess(
@@ -394,7 +398,7 @@ async function checkAgentAccess(
 
 ### CLAUDE.md Injection
 
-**File**: `docker/base-image/agent_server/routers/trinity.py:216-227`
+**File**: `docker/base-image/agent_server/routers/trinity.py` (around line 102-112)
 
 When Trinity is injected into an agent, the CLAUDE.md file is updated with an "Agent Collaboration" section:
 
@@ -416,7 +420,7 @@ Use `list_agents` to discover your available collaborators.
 
 ### Agent Creation
 
-**File**: `src/backend/services/agent_service/crud.py:391-397`
+**File**: `src/backend/services/agent_service/crud.py:418-424`
 
 ```python
 # Phase 9.10: Grant default permissions (Option B - same-owner agents)
@@ -430,7 +434,7 @@ except Exception as e:
 
 ### Agent Deletion
 
-**File**: `src/backend/routers/agents.py:274-278`
+**File**: `src/backend/routers/agents.py:277-281`
 
 ```python
 # Delete agent permissions

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
+import json
 
 from models import User
 from dependencies import get_current_user
@@ -67,6 +68,7 @@ class ExecutionResponse(BaseModel):
     context_max: Optional[int] = None
     cost: Optional[float] = None
     tool_calls: Optional[str] = None
+    execution_log: Optional[str] = None  # Full Claude Code execution transcript (JSON)
 
     class Config:
         from_attributes = True
@@ -419,6 +421,56 @@ async def get_execution(
         )
 
     return ExecutionResponse(**execution.model_dump())
+
+
+@router.get("/{name}/executions/{execution_id}/log")
+async def get_execution_log(
+    name: str,
+    execution_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the full execution log for a specific execution.
+
+    Returns the raw Claude Code execution transcript as JSON array.
+    This includes all tool calls, thinking, and responses.
+    """
+    if not db.can_user_access_agent(current_user.username, name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+
+    execution = db.get_execution(execution_id)
+    if not execution or execution.agent_name != name:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found"
+        )
+
+    if not execution.execution_log:
+        return {
+            "execution_id": execution_id,
+            "has_log": False,
+            "log": None,
+            "message": "No execution log available for this execution"
+        }
+
+    # Parse the JSON log for structured response
+    try:
+        log_data = json.loads(execution.execution_log)
+    except json.JSONDecodeError:
+        log_data = execution.execution_log
+
+    return {
+        "execution_id": execution_id,
+        "agent_name": name,
+        "has_log": True,
+        "log": log_data,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+        "status": execution.status
+    }
 
 
 # Scheduler Status Endpoint

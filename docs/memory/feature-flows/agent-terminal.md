@@ -1,6 +1,6 @@
 # Feature: Web Terminal for Agents
 
-> **Updated**: 2025-12-27 - Refactored to service layer architecture. Terminal session management moved to `services/agent_service/terminal.py`.
+> **Updated**: 2025-12-30 - Verified line numbers. Terminal session management in `services/agent_service/terminal.py`. Frontend uses `composables/useAgentTerminal.js`.
 
 ## Overview
 
@@ -14,11 +14,11 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:354-460` - Terminal tab (auto-connects when agent running)
-- **UI**: `src/frontend/src/views/AgentDetail.vue:415-449` - API key authentication toggle (when agent stopped)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:375-493` - Terminal tab (auto-connects when agent running)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:446-480` - API key authentication toggle (when agent stopped)
 - **API**: `GET /api/agents/{agent_name}/api-key-setting` - Get current API key setting
 - **API**: `PUT /api/agents/{agent_name}/api-key-setting` - Update API key setting (owner only)
-- **API**: `WS /api/agents/{agent_name}/terminal?mode=claude|bash` - Terminal WebSocket connection
+- **API**: `WS /api/agents/{agent_name}/terminal?mode=claude|bash|gemini` - Terminal WebSocket connection
 
 ---
 
@@ -28,13 +28,13 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
 
 #### AgentDetail.vue (Parent)
 - **File**: `src/frontend/src/views/AgentDetail.vue`
-- **Terminal Tab**: Lines 354-460 - Terminal embedded in tab panel with fullscreen support
-- **State**:
+- **Terminal Tab**: Lines 375-493 - Terminal embedded in tab panel with fullscreen support
+- **State** (via `useAgentTerminal` composable at line 1231-1240):
   - `isTerminalFullscreen` ref controls fullscreen mode
   - `terminalRef` ref for calling terminal methods
   - `apiKeySetting` ref for API key authentication mode
   - `apiKeySettingLoading` ref for loading state
-- **Event Handlers**:
+- **Event Handlers** (from composable):
   - `onTerminalConnected()` - Shows success notification
   - `onTerminalDisconnected()` - Shows info notification
   - `onTerminalError()` - Shows error notification
@@ -43,7 +43,7 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
   - `loadApiKeySetting()` - Fetches current API key setting
   - `updateApiKeySetting(usePlatformKey)` - Updates API key setting
 
-**API Key Authentication Toggle** (Lines 415-449):
+**API Key Authentication Toggle** (Lines 446-480):
 When agent is stopped, the Terminal tab shows an authentication toggle (owner-only control):
 - **Use Platform API Key** (default): Agent uses Trinity's configured Anthropic API key
   - Platform key injected as `ANTHROPIC_API_KEY` environment variable
@@ -141,13 +141,13 @@ The terminal feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:773-785` | WebSocket endpoint definition |
-| Service | `src/backend/services/agent_service/terminal.py` (346 lines) | Session management, PTY handling |
-| Service | `src/backend/services/agent_service/api_key.py` (97 lines) | API key setting logic |
+| Router | `src/backend/routers/agents.py:827-841` | WebSocket endpoint definition |
+| Service | `src/backend/services/agent_service/terminal.py` (342 lines) | Session management, PTY handling |
+| Service | `src/backend/services/agent_service/api_key.py` | API key setting logic |
 
 ### API Key Setting Endpoints
 
-- **Router**: `src/backend/routers/agents.py:748-766`
+- **Router**: `src/backend/routers/agents.py:802-820`
 - **Service**: `src/backend/services/agent_service/api_key.py`
 
 #### GET `/api/agents/{agent_name}/api-key-setting`
@@ -250,27 +250,31 @@ async def update_agent_api_key_setting(agent_name: str, body: dict, ...) -> dict
 
 ### WebSocket Endpoint
 
-- **Router**: `src/backend/routers/agents.py:773-785`
+- **Router**: `src/backend/routers/agents.py:827-841`
 - **Service**: `src/backend/services/agent_service/terminal.py`
-- **Query Params**: `mode: str` (default: "claude") - Either "claude" or "bash"
+- **Query Params**:
+  - `mode: str` (default: "claude") - "claude", "gemini", or "bash"
+  - `model: str` (default: None) - Optional model override (e.g., "gemini-2.5-flash")
 
 ```python
 @router.websocket("/{agent_name}/terminal")
 async def agent_terminal(
     websocket: WebSocket,
     agent_name: str,
-    mode: str = Query(default="claude")
+    mode: str = Query(default="claude"),
+    model: str = Query(default=None)
 ):
     """Interactive terminal WebSocket for any agent."""
     await _terminal_manager.handle_terminal_session(
         websocket=websocket,
         agent_name=agent_name,
         mode=mode,
-        decode_token_fn=decode_token
+        decode_token_fn=decode_token,
+        model=model
     )
 ```
 
-### TerminalSessionManager Class (`services/agent_service/terminal.py:22-346`)
+### TerminalSessionManager Class (`services/agent_service/terminal.py:21-342`)
 
 The terminal session management is encapsulated in the `TerminalSessionManager` class:
 
@@ -286,11 +290,11 @@ class TerminalSessionManager:
 ```
 
 **Key Methods:**
-- `_check_and_register_session()` (line 34-51): Check/register session with 5-minute timeout
-- `_unregister_session()` (line 53-57): Remove session from tracking
-- `handle_terminal_session()` (line 59-346): Main WebSocket handler
+- `_check_and_register_session()` (line 33-50): Check/register session with 5-minute timeout
+- `_unregister_session()` (line 52-56): Remove session from tracking
+- `handle_terminal_session()` (line 58-342): Main WebSocket handler
 
-### Authentication Flow (terminal.py:83-147)
+### Authentication Flow (terminal.py:84-148)
 
 ```python
 # Step 1: Wait for auth message (10 second timeout)
@@ -312,7 +316,7 @@ if not db.can_user_access_agent(user_email, agent_name) and user_role != "admin"
     return
 ```
 
-### Session Limiting (terminal.py:34-57)
+### Session Limiting (terminal.py:33-56)
 
 ```python
 def _check_and_register_session(self, user_email: str, agent_name: str, timeout_seconds: int = 300) -> bool:
@@ -331,11 +335,20 @@ def _check_and_register_session(self, user_email: str, agent_name: str, timeout_
         return True
 ```
 
-### Docker Exec Creation (terminal.py:193-215)
+### Docker Exec Creation (terminal.py:194-228)
 
 ```python
-# Build command based on mode
-cmd = ["claude"] if mode == "claude" else ["/bin/bash"]
+# Build command based on mode (supports claude, gemini, bash)
+if mode == "claude":
+    cmd = ["claude"]
+    if model:
+        cmd.extend(["--model", model])
+elif mode == "gemini":
+    cmd = ["gemini"]
+    if model:
+        cmd.extend(["--model", model])
+else:
+    cmd = ["/bin/bash"]
 
 # Create exec instance with TTY
 exec_instance = docker_client.api.exec_create(
@@ -357,7 +370,7 @@ docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
 
-**Note**: The `ANTHROPIC_API_KEY` environment variable is set during container creation, not in the exec environment. The API key setting determines whether this env var is injected when the container starts.
+**Note**: The `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` environment variable is set during container creation, not in the exec environment. The API key setting determines whether these env vars are injected when the container starts.
 
 ---
 
@@ -541,7 +554,7 @@ User Click          WebSocket          Backend           Docker
 
 - **Related**: [web-terminal.md](web-terminal.md) - System Agent terminal (similar implementation)
 - **Upstream**: [agent-lifecycle.md](agent-lifecycle.md) - Agent must be running
-- **Upstream**: [auth0-authentication.md](auth0-authentication.md) - JWT token creation
+- **Upstream**: [email-authentication.md](email-authentication.md) - JWT token creation (replaces auth0-authentication.md)
 - **Replaces**: [agent-chat.md](agent-chat.md) - Previous chat-based interaction (now deprecated)
 
 ---
@@ -659,6 +672,7 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
+| 2025-12-30 | **Line number verification**: Verified and updated all line numbers. Added Gemini runtime support to terminal modes. Updated WebSocket query params documentation. |
 | 2025-12-27 | **Service layer refactoring**: Terminal session management moved to `services/agent_service/terminal.py`. API key logic moved to `api_key.py`. Router reduced to thin endpoint definitions. |
 | 2025-12-25 | Initial implementation - replaced Chat tab with Terminal tab |
 | 2025-12-25 | Added fullscreen toggle with ESC key to exit |

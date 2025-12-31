@@ -49,10 +49,10 @@ Trinity implements infrastructure for **System 2 AI** — Deep Agents that plan,
 
 | Pillar | Description | Agent Responsibility | Platform Responsibility |
 |--------|-------------|---------------------|------------------------|
-| **I. Explicit Planning** | Task DAGs persisting outside context window | Execute plans following injected instructions | **Inject planning prompt**, store DAGs, visualize |
+| **I. Explicit Planning** | Scheduling and activity tracking | Respond to scheduled triggers | Cron scheduling, activity timeline |
 | **II. Hierarchical Delegation** | Orchestrator-Worker with context quarantine | Call other agents via MCP | Route messages, enforce access control |
 | **III. Persistent Memory** | Virtual filesystems, memory management | Manage own memory files | GitHub sync, file browser, storage |
-| **IV. Extreme Context Engineering** | High-Order Prompts defining reasoning | Domain-specific CLAUDE.md | **Inject Trinity Meta-Prompt**, credential injection |
+| **IV. Extreme Context Engineering** | High-Order Prompts defining reasoning | Domain-specific CLAUDE.md | Credential injection, MCP config |
 
 **Key Insight**: Agents focus on **domain expertise**. Trinity handles **orchestration infrastructure**.
 
@@ -212,11 +212,6 @@ my-agent/
 │   ├── preferences.json           # User preferences
 │   └── session_notes/             # Per-session notes
 │
-├── plans/                         # Task DAGs (managed via platform commands)
-│   ├── active/                    # Currently executing plans
-│   │   └── {plan-id}.yaml         # Active plan with task states
-│   └── archive/                   # Finished plans
-│
 ├── outputs/                       # Generated content (COMMITTED)
 │   ├── reports/
 │   └── data/
@@ -339,20 +334,12 @@ git:
   push_enabled: true              # Only applies to Working Branch Mode
   commit_paths:                   # Paths auto-committed on sync (Working Branch Mode only)
     - memory/
-    - plans/
     - outputs/
     - CLAUDE.md
   ignore_paths:
     - .mcp.json
     - .env
     - "*.log"
-
-# === TASK PLANNING ===
-planning:
-  enabled: true
-  max_active_plans: 5
-  default_task_timeout_minutes: 30
-  auto_checkpoint: true           # Auto-commit on plan completion
 
 # === SHARED FOLDERS ===
 # File-based collaboration between agents
@@ -541,95 +528,6 @@ You are running on the **Trinity Deep Agent Platform**...
 # Agent Name
 [Your agent's own content starts here...]
 ```
-
----
-
-## Task Planning System
-
-Deep Agents need plans that persist **outside the context window**:
-
-- Context resets don't lose progress
-- Multiple agents can collaborate on same plan
-- Human oversight of agent reasoning
-- Recovery from failures with plan state intact
-
-### Plan File Format
-
-Plans are stored as YAML in `plans/active/{plan-id}.yaml`:
-
-```yaml
-id: "plan-abc123"
-name: "Research and write blog post"
-created_at: "2025-12-05T10:00:00Z"
-created_by: "agent-ruby"
-status: "active"  # active | completed | failed | paused
-
-goal: |
-  Research the topic of AI agents and produce a 1500-word blog post.
-
-tasks:
-  - id: "task-001"
-    name: "Research topic"
-    status: "completed"
-    started_at: "2025-12-05T10:01:00Z"
-    completed_at: "2025-12-05T10:15:00Z"
-    result_summary: "Found 12 relevant sources"
-    depends_on: []
-
-  - id: "task-002"
-    name: "Create outline"
-    status: "completed"
-    depends_on: ["task-001"]
-
-  - id: "task-003"
-    name: "Write draft"
-    status: "active"
-    depends_on: ["task-002"]
-    assigned_to: "agent-ruby"
-
-  - id: "task-004"
-    name: "Generate social snippets"
-    status: "pending"
-    depends_on: ["task-003"]
-
-  - id: "task-005"
-    name: "Review and publish"
-    status: "blocked"
-    depends_on: ["task-003", "task-004"]
-    blocked_reason: "Waiting for draft completion"
-
-metadata:
-  total_tasks: 5
-  completed_tasks: 2
-```
-
-### Task State Machine
-
-```
-                    ┌──────────────────────────────────────┐
-                    │                                      │
-                    ▼                                      │
-┌─────────┐    ┌─────────┐    ┌───────────┐    ┌─────────┴─┐
-│ pending │───►│ active  │───►│ completed │    │  failed   │
-└─────────┘    └─────────┘    └───────────┘    └───────────┘
-     │              │                               ▲
-     │              │                               │
-     ▼              └───────────────────────────────┘
-┌─────────┐
-│ blocked │  (waiting on dependencies)
-└─────────┘
-```
-
-### Platform-Injected Commands
-
-These commands are automatically available after Trinity injection:
-
-| Command | Purpose |
-|---------|---------|
-| `/trinity-plan-create` | Create a new task plan |
-| `/trinity-plan-status` | View all active plans |
-| `/trinity-plan-update` | Update task status |
-| `/trinity-plan-list` | List all plans |
 
 ---
 
@@ -865,7 +763,7 @@ fi
 cat .mcp.json.template | envsubst > .mcp.json
 
 # Create directories
-mkdir -p memory plans/active plans/archive outputs
+mkdir -p memory outputs
 
 echo "Agent ready for local development"
 ```
@@ -885,9 +783,7 @@ An agent is Trinity-compatible if:
 
 ### Directory Structure
 - [ ] Has `memory/` directory for persistent state
-- [ ] Has `plans/` directory (created by platform if missing)
 - [ ] Does NOT have `.trinity/` in repo (platform creates this)
-- [ ] Does NOT have `.claude/commands/trinity/` in repo (platform injects this)
 
 ### Security
 - [ ] No credentials stored in repository
@@ -895,8 +791,7 @@ An agent is Trinity-compatible if:
 - [ ] Sensitive files excluded from git sync paths
 
 ### Behavior
-- [ ] Agent CLAUDE.md does NOT include planning instructions (platform injects them)
-- [ ] Agent does NOT define `/trinity-*` commands (platform injects them)
+- [ ] Agent CLAUDE.md focuses on domain-specific instructions
 - [ ] Can run both locally (with init.sh) and on Trinity platform
 
 ---
@@ -1074,14 +969,13 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 | Date | Changes |
 |------|---------|
-| 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration |
+| 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |
 | 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
 | 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |
 | 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |
 | 2025-12-14 | Consolidated from AGENT_TEMPLATE_SPEC.md and trinity-compatible-agent.md |
 | 2025-12-13 | Added shared folders |
 | 2025-12-10 | Added custom metrics specification |
-| 2025-12-05 | Added Task DAG system (Pillar I) |
 
 ---
 

@@ -30,7 +30,7 @@ As a platform administrator deploying Trinity for the first time, I want to be g
 ### Frontend Layer
 
 #### Router Guard
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:88-143`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:94-117`
 
 ```javascript
 // Cache for setup status check
@@ -86,27 +86,33 @@ router.beforeEach(async (to, from, next) => {
 - Submits to `/api/setup/admin-password`
 
 ```javascript
-// Submit handler (line 209-236)
+// Submit handler (lines 209-236)
 async function handleSubmit() {
   if (!isValid.value) return
 
   loading.value = true
+  error.value = null
+
   try {
     await axios.post('/api/setup/admin-password', {
       password: password.value,
       confirm_password: confirmPassword.value
     })
 
-    // Clear cache so router knows setup is done
+    // Clear the cache so router knows setup is done
     clearSetupCache()
 
-    // Redirect to login
+    // Redirect to login page
     router.push('/login')
   } catch (e) {
     if (e.response?.status === 403) {
       error.value = 'Setup has already been completed.'
       setTimeout(() => router.push('/login'), 2000)
+    } else {
+      error.value = e.response?.data?.detail || 'Failed to set password. Please try again.'
     }
+  } finally {
+    loading.value = false
   }
 }
 ```
@@ -122,7 +128,7 @@ from routers.setup import router as setup_router
 # Line 175 (approx): app.include_router(setup_router)
 ```
 
-#### GET /api/setup/status (line 23-35)
+#### GET /api/setup/status (lines 23-35)
 ```python
 @router.get("/status")
 async def get_setup_status():
@@ -131,7 +137,7 @@ async def get_setup_status():
     return {"setup_completed": setup_completed}
 ```
 
-#### POST /api/setup/admin-password (line 38-101)
+#### POST /api/setup/admin-password (lines 38-101)
 ```python
 @router.post("/admin-password")
 async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
@@ -164,8 +170,6 @@ async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py:16-38`
 
 ```python
-from passlib.context import CryptContext
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
@@ -176,6 +180,7 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
     """Verify password against stored hash.
     For backward compatibility, also checks plaintext passwords.
     """
+    # First try bcrypt verification
     try:
         if pwd_context.verify(plain_password, stored_password):
             return True
@@ -247,6 +252,11 @@ def is_setup_completed() -> bool:
 
 @router.post("/token", response_model=Token)
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login with username/password and get JWT token.
+
+    Used for admin login (username 'admin' with password).
+    Regular users should use email authentication.
+    """
     # Block login if setup is not completed
     if not is_setup_completed():
         raise HTTPException(
@@ -256,10 +266,14 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     # ... rest of login logic
 ```
 
-**Auth mode endpoint also reports setup status**:
+**Auth mode endpoint also reports setup status** (lines 31-50):
 ```python
 @router.get("/api/auth/mode")
 async def get_auth_mode():
+    """Get authentication mode configuration. No auth required."""
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    email_auth_enabled = email_auth_setting.lower() == "true"
+
     return {
         "email_auth_enabled": email_auth_enabled,
         "setup_completed": is_setup_completed()

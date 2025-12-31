@@ -2,21 +2,21 @@
 
 > **Status**: Implemented and Tested
 > **Created**: 2025-12-07
-> **Last Updated**: 2025-12-19
-> **Last Tested**: 2025-12-17 (179/179 tests passing)
+> **Last Updated**: 2025-12-30
+> **Last Tested**: 2025-12-30 (474+ tests in suite)
 > **Purpose**: Systematic verification of Trinity platform functionality using predictable test agents and automated pytest suite
 
 ---
 
 ## Overview
 
-Trinity includes a comprehensive test suite with **179 automated pytest tests** covering backend APIs, agent-server endpoints, and platform functionality. Additionally, there are **8 testing agent repositories** (local only) designed for manual integration testing with predictable, deterministic behavior.
+Trinity includes a comprehensive test suite with **474+ automated pytest tests** covering backend APIs, agent-server endpoints, and platform functionality. Additionally, there are **8 testing agent repositories** (local only) designed for manual integration testing with predictable, deterministic behavior.
 
 ### Automated Test Suite (Primary)
 - **Location**: `tests/` directory
 - **Framework**: pytest with async support
-- **Coverage**: Backend API, agent-server, schedules, credentials, templates, permissions
-- **Status**: 179/179 passing (as of 2025-12-17)
+- **Coverage**: Backend API, agent-server, schedules, credentials, templates, permissions, activities, systems, and more
+- **Status**: 474+ tests across 32 test files (as of 2025-12-30)
 
 ### Manual Test Agents (Secondary)
 - **Location**: `repositories/test-agent-*` (local repos, not in GitHub)
@@ -120,8 +120,8 @@ As a Trinity developer, I want predictable test agents so that I can systematica
 
 | File | Line | Purpose |
 |------|------|---------|
-| `src/backend/config.py` | 64 | `GITHUB_TEMPLATES` - Production templates only |
-| `src/backend/config.py` | 137 | `ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES` |
+| `src/backend/config.py` | 99 | `GITHUB_TEMPLATES` - Production templates only |
+| `src/backend/config.py` | 172 | `ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES` |
 | `src/backend/routers/templates.py` | 9 | Imports `ALL_GITHUB_TEMPLATES` |
 | `src/backend/services/template_service.py` | 11 | Imports `ALL_GITHUB_TEMPLATES` |
 | `src/backend/services/template_service.py` | 14-19 | `get_github_template()` function |
@@ -436,3 +436,4 @@ test-agent-{name}/
 | 2025-12-17 | Automated pytest suite: 179/179 tests passing |
 | 2025-12-19 | Updated documentation: Test agent templates removed from config.py, backend modularized (routers/), agent-server refactored to modular package (docker/base-image/agent_server/) |
 | 2025-12-23 | Removed reference to deleted plans router (Workplan/Task DAG system removed per Req 9.8) |
+| 2025-12-30 | Updated test count to 474+ tests, corrected config.py line numbers (GITHUB_TEMPLATES now at line 99, ALL_GITHUB_TEMPLATES at line 172) |

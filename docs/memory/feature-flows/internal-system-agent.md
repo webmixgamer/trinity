@@ -2,7 +2,7 @@
 
 > **Phase 11.1 & 11.2** - Platform operations manager with privileged access
 >
-> **Updated 2025-12-21**: Added Cost Monitoring data flow, 5-step reinitialize process, OTel access fix documentation
+> **Updated 2025-12-30**: Line numbers verified against codebase
 
 ## Overview
 
@@ -444,7 +444,7 @@ User: /ops/costs (or "show me platform costs")
 
 **Files Modified:**
 - `config/agent-templates/trinity-system/.claude/commands/ops/costs.md:11` - Fixed env var
-- `config/agent-templates/trinity-system/CLAUDE.md:128-147` - Added Cost Monitoring section
+- `config/agent-templates/trinity-system/CLAUDE.md:123-147` - Added Cost Monitoring section
 
 ### 5. Reinitialize Flow (5-Step Process)
 
@@ -509,7 +509,7 @@ The previous reinitialize flow had 4 steps but was missing template re-copy:
 
 Fix: Added explicit template copy step between workspace clear and Trinity injection.
 
-**File:** `src/backend/routers/system_agent.py:163-174`
+**File:** `src/backend/routers/system_agent.py:167-178`
 
 ```python
 # Step 4: Re-copy template files (.claude and CLAUDE.md)
@@ -622,7 +622,7 @@ curl -X PUT http://localhost:8000/api/settings/ops/config \
 
 2. **Missing /trinity-meta-prompt mount on creation**
    - Problem: System agent created without Trinity meta-prompt mount
-   - Fix: Added mount in `_create_system_agent()` (line 216-220)
+   - Fix: Added mount in `_create_system_agent()` (lines 215-221)
    - File: `src/backend/services/system_agent_service.py`
 
 3. **Reinitialize deleted slash commands without restoring them**

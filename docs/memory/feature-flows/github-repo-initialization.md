@@ -13,8 +13,8 @@ As a **Trinity platform user**, I want to **enable GitHub synchronization for an
 | Type | Location | Description |
 |------|----------|-------------|
 | **UI** | `src/frontend/src/views/Settings.vue:126-218` | GitHub PAT configuration with test/save |
-| **UI** | `src/frontend/src/components/GitPanel.vue:18-26` | "Initialize GitHub Sync" button |
-| **UI** | `src/frontend/src/components/GitPanel.vue:29-163` | Initialize modal form |
+| **UI** | `src/frontend/src/components/GitPanel.vue:17-26` | "Initialize GitHub Sync" button |
+| **UI** | `src/frontend/src/components/GitPanel.vue:29-166` | Initialize modal form |
 | **API** | `POST /api/agents/{name}/git/initialize` | Initialize git sync endpoint |
 | **MCP** | `initialize_github_sync` tool | MCP tool for programmatic initialization |
 
@@ -159,16 +159,16 @@ async function saveGithubPat() {
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 10-26 | Git Not Enabled state | Shows when `!gitStatus?.git_enabled` |
+| 10-27 | Git Not Enabled state | Shows when `!gitStatus?.git_enabled` |
 | 17-26 | Initialize button | Primary action to open modal |
-| 29-163 | Initialize modal | Full-screen form with inputs |
+| 29-166 | Initialize modal | Full-screen form with inputs |
 | 54-68 | Repository owner input | GitHub username/org |
 | 70-84 | Repository name input | Repo name |
 | 87-98 | Create repo checkbox | Whether to create if doesn't exist |
 | 100-111 | Private checkbox | Make repository private (if creating) |
-| 113-134 | Info box | Explains what will happen + timing warning |
-| 140-151 | Initialize button | Calls `initializeGitHub()` with form data |
-| 356-385 | `initializeGitHub()` | Method with console logging |
+| 113-137 | Info box | Explains what will happen + timing warning |
+| 143-154 | Initialize button | Calls `initializeGitHub()` with form data |
+| 350-385 | `initializeGitHub()` | Method with console logging |
 
 **Key Methods**:
 
@@ -218,10 +218,10 @@ const initializeGitHub = async () => {
 
 | Lines | Method | Description |
 |-------|--------|-------------|
-| 362-369 | `initializeGitHub()` | Store action with 120-second timeout |
+| 382-389 | `initializeGitHub()` | Store action with 120-second timeout |
 
 ```javascript
-// Line 362-369: Initialize GitHub Sync (with timeout)
+// Line 382-389: Initialize GitHub Sync (with timeout)
 async initializeGitHub(name, config) {
   const authStore = useAuthStore()
   const response = await axios.post(`/api/agents/${name}/git/initialize`, config, {
@@ -244,7 +244,7 @@ async initializeGitHub(name, config) {
 |-------|----------|-------------|
 | 43-48 | `get_github_pat()` | Helper to get PAT from settings or env |
 | 337-388 | `PUT /api/settings/api-keys/github` | Save GitHub PAT to database |
-| 426-537 | `POST /api/settings/api-keys/github/test` | Test PAT validity and permissions |
+| 426-538 | `POST /api/settings/api-keys/github/test` | Test PAT validity and permissions |
 
 **GitHub PAT Test Flow**:
 
@@ -296,14 +296,14 @@ async def test_github_pat(body: ApiKeyTest, ...):
 | Lines | Component | Description |
 |-------|-----------|-------------|
 | 29-36 | `GitInitializeRequest` model | Request body schema |
-| 282-594 | `POST /{agent_name}/git/initialize` | Main initialization endpoint |
-| 322-342 | Orphaned record cleanup | Detects and removes orphaned DB records |
-| 442-476 | Smart directory detection | Chooses workspace vs home directory |
-| 534-547 | Git verification | Verifies git initialization before DB insert |
+| 284-596 | `POST /{agent_name}/git/initialize` | Main initialization endpoint |
+| 324-344 | Orphaned record cleanup | Detects and removes orphaned DB records |
+| 444-478 | Smart directory detection | Chooses workspace vs home directory |
+| 536-549 | Git verification | Verifies git initialization before DB insert |
 
 **Critical Bug Fixes**:
 
-1. **Orphaned Record Cleanup** (Lines 322-342):
+1. **Orphaned Record Cleanup** (Lines 324-344):
 ```python
 # Check if already configured
 existing_config = git_service.get_agent_git_config(agent_name)
@@ -328,7 +328,7 @@ if existing_config:
         # Continue with initialization
 ```
 
-2. **Smart Directory Detection** (Lines 442-476):
+2. **Smart Directory Detection** (Lines 444-478):
 ```python
 # Step 2: Determine git directory
 # Check if workspace exists and has content
@@ -367,7 +367,7 @@ else:
     )
 ```
 
-3. **Git Verification Before DB Insert** (Lines 534-547):
+3. **Git Verification Before DB Insert** (Lines 536-549):
 ```python
 # Step 5: Verify git was initialized successfully
 verify_result = execute_command_in_container(
@@ -391,9 +391,9 @@ print(f"Git initialization verified successfully in {git_dir}")
 
 | Lines | Function | Description |
 |-------|----------|-------------|
-| 122-156 | `execute_command_in_container()` | Execute commands in container (ADDED) |
+| 135-168 | `execute_command_in_container()` | Execute commands in container |
 
-**Critical Bug Fix - Missing Function** (Lines 122-156):
+**Function Definition** (Lines 135-168):
 ```python
 def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
     """Execute a command in a Docker container.
@@ -470,7 +470,7 @@ def get_agent_git_config(agent_name: str):
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 439-513 | `initializeGithubSync` tool | MCP tool definition |
+| 436-514 | `initializeGithubSync` tool | MCP tool definition |
 
 **Tool Definition**:
 
@@ -632,7 +632,6 @@ None - this is a one-time configuration operation
 | Git command failed | 500 | "Git command failed: {cmd}" | Check container logs |
 | Repo creation failed | 400 | "Failed to create repository: {message}" | Check PAT has repo scope |
 | Git verification failed | 500 | "Git initialization verification failed. Git directory not found" | Check container state |
-| Missing function | 500 | "execute_command_in_container() not found" | FIXED: Function added to docker_service.py |
 
 ---
 
@@ -991,12 +990,11 @@ docker exec agent-{name} bash -c "[ -d /home/developer/.git ] && echo exists || 
 **Status**: ✅ Working (as of 2025-12-26)
 
 **Recent Bug Fixes** (2025-12-26):
-- ✅ Fixed ImportError: Added missing `execute_command_in_container()` to docker_service.py (Lines 122-156)
-- ✅ Fixed empty repositories: Smart directory detection chooses correct location (Lines 442-476)
-- ✅ Fixed orphaned records: Auto-cleanup of DB records when git doesn't exist (Lines 322-342)
-- ✅ Fixed timeout issue: Increased frontend timeout to 120 seconds + console logging (Lines 356-385, 362-369)
-- ✅ Fixed verification: Git initialization verified before DB insert (Lines 534-547)
-- ✅ Fixed system files: Created .gitignore to exclude .bashrc, .ssh/, etc. (Lines 461-476)
+- Fixed empty repositories: Smart directory detection chooses correct location (git.py Lines 444-478)
+- Fixed orphaned records: Auto-cleanup of DB records when git doesn't exist (git.py Lines 324-344)
+- Fixed timeout issue: Increased frontend timeout to 120 seconds + console logging (GitPanel.vue Lines 350-385, agents.js Lines 382-389)
+- Fixed verification: Git initialization verified before DB insert (git.py Lines 536-549)
+- Fixed system files: Created .gitignore to exclude .bashrc, .ssh/, etc. (git.py Lines 463-478)
 
 **Test Coverage**:
 - ✅ Settings UI: PAT configuration and testing

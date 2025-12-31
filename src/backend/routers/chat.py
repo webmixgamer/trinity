@@ -329,7 +329,7 @@ async def chat_with_agent(
                 }
             )
 
-        # Update task execution record for agent-to-agent calls
+        # Update task execution record for MCP calls (agent-to-agent or user MCP)
         if task_execution_id:
             context_used = session_data.get("context_tokens", 0)
             db.update_execution_status(
@@ -339,7 +339,8 @@ async def chat_with_agent(
                 context_used=context_used if context_used > 0 else None,
                 context_max=session_data.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),
-                tool_calls=tool_calls_json
+                tool_calls=tool_calls_json,
+                execution_log=tool_calls_json  # execution_log same as tool_calls for chat
             )
 
         await log_audit_event(
@@ -500,9 +501,11 @@ async def execute_parallel_task(
         # Update execution record with success
         if execution_id:
             tool_calls_json = None
+            execution_log_json = None
             if response_data.get("execution_log"):
                 try:
-                    tool_calls_json = json.dumps(response_data["execution_log"])
+                    execution_log_json = json.dumps(response_data["execution_log"])
+                    tool_calls_json = execution_log_json  # Keep for backwards compatibility
                 except Exception:
                     pass
 
@@ -516,7 +519,8 @@ async def execute_parallel_task(
                 context_used=context_used if context_used > 0 else None,
                 context_max=metadata.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),
-                tool_calls=tool_calls_json
+                tool_calls=tool_calls_json,
+                execution_log=execution_log_json
             )
 
         # Track task completion

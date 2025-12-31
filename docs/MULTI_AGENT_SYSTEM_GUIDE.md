@@ -127,57 +127,7 @@ Worker B:     "10,40 * * * *"  (at :10 and :40)
 Worker C:     "15,45 * * * *"  (at :15 and :45)
 ```
 
-#### 3. Workplan System (Task DAGs) ⚡ RUNTIME INJECTION
-
-Trinity injects a **planning system** for persistent task tracking outside the context window.
-
-> **DO NOT** document planning commands in your CLAUDE.md. Trinity injects:
-> - `.trinity/prompt.md` (system prompt)
-> - `.claude/commands/trinity/trinity-plan-*.md` (4 planning commands)
-> - `plans/active/` and `plans/archive/` directories
-> - Planning instructions appended to CLAUDE.md
-
-| Aspect | Details |
-|--------|---------|
-| **Storage** | YAML files in `plans/active/` and `plans/archive/` |
-| **Commands** | `/trinity-plan-create`, `/trinity-plan-status`, `/trinity-plan-update`, `/trinity-plan-list` |
-| **States** | pending → active → completed/failed, blocked (for dependencies) |
-| **Visibility** | Plans tab in UI, aggregate API |
-
-**Why It Matters for Multi-Agent Systems:**
-- Plans persist across context resets
-- Multiple agents can reference the same plan
-- Human oversight of agent reasoning
-- Recovery from failures with plan state intact
-- Cross-agent task coordination
-
-**Plan File Format:**
-```yaml
-id: "plan-abc123"
-name: "Multi-agent research project"
-status: "active"
-goal: "Research and synthesize information on topic X"
-
-tasks:
-  - id: "task-001"
-    name: "Gather sources"
-    status: "completed"
-    assigned_to: "researcher-agent"
-
-  - id: "task-002"
-    name: "Analyze findings"
-    status: "active"
-    assigned_to: "analyst-agent"
-    depends_on: ["task-001"]
-
-  - id: "task-003"
-    name: "Write synthesis"
-    status: "blocked"
-    assigned_to: "writer-agent"
-    depends_on: ["task-002"]
-```
-
-#### 4. Trinity MCP Tools (Agent-to-Agent) ⚡ RUNTIME INJECTION
+#### 2. Trinity MCP Tools (Agent-to-Agent) ⚡ RUNTIME INJECTION
 
 Every agent gets **Trinity MCP tools** auto-injected for inter-agent communication.
 
@@ -207,7 +157,7 @@ response = mcp__trinity__chat_with_agent(
 )
 ```
 
-#### 5. Shared Folders
+#### 3. Shared Folders
 
 File-based collaboration via **Docker volumes**.
 
@@ -223,7 +173,7 @@ File-based collaboration via **Docker volumes**.
 
 > **Note**: Shared folder paths are NOT injected into CLAUDE.md. If your agent uses shared folders, document the paths and expected file formats in your agent's CLAUDE.md.
 
-#### 6. Credential System
+#### 4. Credential System
 
 Trinity provides a comprehensive credential management system. Understanding how it works is essential for multi-agent systems.
 
@@ -335,7 +285,7 @@ POST /api/agents/{name}/credentials/reload
 
 ### Platform-Level Features
 
-#### 7. Collaboration Dashboard
+#### 5. Collaboration Dashboard
 
 Real-time visualization at `/` showing:
 - All agents as draggable nodes
@@ -344,7 +294,7 @@ Real-time visualization at `/` showing:
 - Activity state (Active/Idle/Offline)
 - Replay mode for historical analysis
 
-#### 8. Activity Stream
+#### 6. Activity Stream
 
 Unified audit trail across all agents:
 - Tool calls with timing
@@ -357,14 +307,14 @@ Unified audit trail across all agents:
 GET /api/activities/timeline?activity_types=agent_collaboration&limit=100
 ```
 
-#### 9. Context Tracking
+#### 7. Context Tracking
 
 Monitor context window usage per agent:
 - Visual progress bars in dashboard
 - Color-coded warnings (green → yellow → orange → red)
 - API endpoint: `GET /api/agents/context-stats`
 
-#### 10. Custom Metrics
+#### 8. Custom Metrics
 
 Define agent-specific KPIs in `template.yaml`:
 
@@ -388,7 +338,7 @@ metrics:
 
 Agent writes to `workspace/metrics.json`, Trinity displays in UI.
 
-#### 11. Git Sync
+#### 9. Git Sync
 
 GitHub synchronization for agents created from GitHub templates:
 

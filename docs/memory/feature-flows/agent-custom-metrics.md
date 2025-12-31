@@ -1,11 +1,11 @@
 # Agent Custom Metrics - Feature Flow
 
-> **Updated**: 2025-12-27 - Refactored to service layer architecture. Metrics logic moved to `services/agent_service/metrics.py`.
+> **Updated**: 2025-12-30 - Verified file paths and line numbers. Refactored to service layer architecture. Metrics logic moved to `services/agent_service/metrics.py`.
 
 **Feature ID**: 9.9
 **Status**: Implemented
 **Date**: 2025-12-10
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-30
 
 ## Overview
 
@@ -130,17 +130,17 @@ Same as above, plus:
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Agent Server | `docker/base-image/agent_server/routers/info.py:161` | GET /api/metrics endpoint |
-| Router | `src/backend/routers/agents.py:689-696` | GET /api/agents/{name}/metrics endpoint |
-| Service | `src/backend/services/agent_service/metrics.py` (92 lines) | Metrics proxy logic |
-| Frontend | `src/frontend/src/components/MetricsPanel.vue` | Metrics display component (350 lines) |
-| Frontend | `src/frontend/src/views/AgentDetail.vue:342` | Metrics tab content integration |
-| Store | `src/frontend/src/stores/agents.js:439` | getAgentMetrics action |
+| Agent Server | `docker/base-image/agent_server/routers/info.py:169` | GET /api/metrics endpoint |
+| Router | `src/backend/routers/agents.py:743-750` | GET /api/agents/{name}/metrics endpoint |
+| Service | `src/backend/services/agent_service/metrics.py` (93 lines) | Metrics proxy logic |
+| Frontend | `src/frontend/src/components/MetricsPanel.vue` | Metrics display component (349 lines) |
+| Frontend | `src/frontend/src/views/AgentDetail.vue:369-370` | Metrics tab content integration |
+| Store | `src/frontend/src/stores/agents.js:446` | getAgentMetrics action |
 
 ### Backend Architecture
 
 ```python
-# Router (agents.py:689-696)
+# Router (agents.py:743-750)
 @router.get("/{agent_name}/metrics")
 async def get_agent_metrics(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
     """Get agent custom metrics."""
@@ -148,7 +148,7 @@ async def get_agent_metrics(agent_name: str, request: Request, current_user: Use
 ```
 
 ```python
-# Service (metrics.py:18-92)
+# Service (metrics.py:18-93)
 async def get_agent_metrics_logic(agent_name: str, current_user: User) -> dict:
     """Get agent custom metrics from agent's internal API."""
     if not db.can_user_access_agent(current_user.username, agent_name):

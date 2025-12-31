@@ -10,7 +10,7 @@
 
 | Pillar | Trinity Implementation |
 |--------|----------------------|
-| **I. Explicit Planning** | Task DAG engine, plan persistence, Trinity meta-prompt injection, scheduling, activity timeline |
+| **I. Explicit Planning** | Scheduling, activity timeline, Trinity meta-prompt injection (Task DAGs removed 2025-12-23) |
 | **II. Hierarchical Delegation** | Agent-to-Agent via MCP, access control, collaboration dashboard |
 | **III. Persistent Memory** | SQLite chat persistence, virtual filesystems, file browser |
 | **IV. Extreme Context Engineering** | Template system with CLAUDE.md, credential injection, Trinity commands |
@@ -374,22 +374,6 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | POST | `/api/agents/{name}/schedules/{id}/disable` | Disable schedule |
 | POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger |
 | GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history |
-
-### Plans - Task DAG System (8 endpoints) - NEW: 2025-12-05
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/agents/plans/aggregate` | Cross-agent plan summary (must come before `/{name}`) |
-| GET | `/api/agents/{name}/plans` | List agent's plans |
-| POST | `/api/agents/{name}/plans` | Create new plan |
-| GET | `/api/agents/{name}/plans/summary` | Aggregate plan stats for agent |
-| GET | `/api/agents/{name}/plans/{plan_id}` | Get specific plan with tasks |
-| PUT | `/api/agents/{name}/plans/{plan_id}` | Update plan metadata |
-| DELETE | `/api/agents/{name}/plans/{plan_id}` | Delete plan |
-| PUT | `/api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | Update task status |
-
-**Note**: `/plans/aggregate` route must be defined BEFORE `/{name}` routes to avoid FastAPI matching "plans" as an agent name.
-
-**Implementation**: Backend proxies to agent container's `/api/plans` endpoints. Plans stored as YAML files in `plans/active/` and `plans/archive/`.
 
 ### Auth & MCP (12 endpoints)
 | Method | Path | Description |

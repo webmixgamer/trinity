@@ -225,15 +225,15 @@ The file browser feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:547-566` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/files.py` (137 lines) | File listing and download logic |
+| Router | `src/backend/routers/agents.py:551-619` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/files.py` (413 lines) | File listing, download, preview, delete, and update logic |
 
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:547-555`
-**Service**: `src/backend/services/agent_service/files.py:20-77`
+**Router**: `src/backend/routers/agents.py:551-565`
+**Service**: `src/backend/services/agent_service/files.py:21-98`
 
 **Purpose**: List all files in agent workspace as hierarchical tree structure
 
@@ -300,8 +300,8 @@ await log_audit_event(
 
 #### GET /api/agents/{agent_name}/files/download
 
-**Router**: `src/backend/routers/agents.py:558-566`
-**Service**: `src/backend/services/agent_service/files.py:80-137`
+**Router**: `src/backend/routers/agents.py:568-576`
+**Service**: `src/backend/services/agent_service/files.py:101-170`
 
 **Purpose**: Download file content from agent workspace
 
@@ -341,9 +341,9 @@ await log_audit_event(
 
 ### Agent Server Endpoints
 
-**File**: `/Users/eugene/Dropbox/Coding/N8N_Main_repos/project_trinity/docker/base-image/agent_server/routers/files.py`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/files.py`
 
-#### GET /api/files (Line 15-96)
+#### GET /api/files (Line 23-109)
 
 **Purpose**: Recursively list files in workspace directory as hierarchical tree
 
@@ -366,7 +366,7 @@ await log_audit_event(
    - Returns `{"children": [...], "file_count": N}`
 4. Return structured tree response
 
-**build_tree() Function** (`agent_server/routers/files.py:34-82`):
+**build_tree() Function** (`agent_server/routers/files.py:46-94`):
 ```python
 def build_tree(directory: Path, base_path: Path) -> dict:
     """Build a hierarchical tree structure from a directory."""
@@ -429,7 +429,7 @@ def build_tree(directory: Path, base_path: Path) -> dict:
 }
 ```
 
-#### GET /api/files/download (Line 99-140)
+#### GET /api/files/download (Line 112-153)
 
 **Purpose**: Download file content as plain text
 
@@ -756,6 +756,7 @@ Working - Feature tested and operational as of 2025-12-01
 
 ## Changelog
 
+- **2025-12-30**: Updated line numbers to reflect current codebase. Service file grew from 137 to 413 lines (added update function). Fixed file paths.
 - **2025-12-27**: **Service layer refactoring**: File operations moved to `services/agent_service/files.py`. Router reduced to thin endpoint definitions.
 - **2025-12-06**: Updated agent-server references to new modular structure (`agent_server/routers/files.py`)
 - **2025-12-06**: Updated line numbers for files endpoints (15-140 in modular file vs 1701-1842 in old monolithic)

@@ -15,7 +15,7 @@ As a user, I want to login with my email address and a verification code so that
 As an admin, I want to control who can access the platform via an email whitelist so that I can manage access control independently of OAuth providers.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/Login.vue:37-140` - Email login form with 2-step verification
+- **UI**: `src/frontend/src/views/Login.vue:37-123` - Email login form with 2-step verification
 - **UI**: `src/frontend/src/views/Settings.vue:291-390` - Email Whitelist management section
 - **API**: `POST /api/auth/email/request` - Request verification code
 - **API**: `POST /api/auth/email/verify` - Verify code and login
@@ -194,13 +194,13 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 | 17 | `emailAuthEnabled` state | Boolean flag for email auth mode |
 | 58 | Mode detection | Sets `emailAuthEnabled` from `/api/auth/mode` |
 | 63-65 | Auth mode logging | Logs EMAIL/DEV/AUTH0 mode to console |
-| 250-270 | `requestEmailCode()` | Request verification code via email |
-| 272-298 | `verifyEmailCode()` | Verify code and authenticate |
+| 224-248 | `requestEmailCode()` | Request verification code via email |
+| 250-276 | `verifyEmailCode()` | Verify code and authenticate |
 
-**Email Authentication Methods**:
+**Email Authentication Methods** (from `src/frontend/src/stores/auth.js`):
 
 ```javascript
-// Lines 250-270: Request a verification code via email
+// Lines 224-248: Request a verification code via email
 async requestEmailCode(email) {
   if (!this.emailAuthEnabled) {
     this.authError = 'Email authentication is disabled'
@@ -222,7 +222,7 @@ async requestEmailCode(email) {
   }
 }
 
-// Lines 272-298: Verify email code and login
+// Lines 250-276: Verify email code and login
 async verifyEmailCode(email, code) {
   if (!this.emailAuthEnabled) {
     this.authError = 'Email authentication is disabled'
@@ -265,14 +265,14 @@ async verifyEmailCode(email, code) {
 | 73-75 | Countdown timer | Displays "Code expires in MM:SS" |
 | 114-122 | Admin Login button | Switch to admin password login |
 | 125-171 | Admin login section | Fixed username 'admin', password-only form |
-| 190-195 | Email state | `emailInput`, `codeInput`, `codeSent`, `countdown` refs |
+| 190-196 | Email state | `emailInput`, `codeInput`, `codeSent`, `countdown` refs |
 | 198 | UI state | `showAdminLogin` ref |
 | 214-218 | Timer formatting | `formatTime()` converts seconds to MM:SS |
 | 220-233 | Countdown logic | `startCountdown()` with setInterval |
 | 243-255 | `handleRequestCode()` | Submit email, start countdown |
 | 257-267 | `handleVerifyCode()` | Submit code, redirect on success |
 | 269-277 | `handleBackToEmail()` | Reset to step 1, clear timer |
-| 293-304 | `handleAdminLogin()` | Admin login with fixed username 'admin' |
+| 294-304 | `handleAdminLogin()` | Admin login with fixed username 'admin' |
 
 **2-Step UI Flow**:
 
@@ -346,13 +346,10 @@ async verifyEmailCode(email, code) {
 | 304-324 | Add email form | Input field + Add button |
 | 327-383 | Whitelist table | Shows email, source, date, actions |
 | 356-380 | Table rows | Iterates over `emailWhitelist` array |
-| 361-366 | Source badges | 🤝 Auto (Agent Sharing) or ✋ Manual |
+| 361-366 | Source badges | Auto (Agent Sharing) or Manual |
 | 372-378 | Remove button | DELETE action per email |
 | 385-387 | Help text | "When you share an agent..." tip |
-| 465-469 | Whitelist state | `emailWhitelist`, `newEmail`, loading flags |
-| 695-706 | `loadEmailWhitelist()` | Fetch whitelist from API |
-| 708-730 | `addEmailToWhitelist()` | POST new email |
-| 732-754 | `removeEmailFromWhitelist()` | DELETE email |
+| 465-470 | Whitelist state | `emailWhitelist`, `newEmail`, loading flags |
 
 **Whitelist Table UI**:
 
@@ -399,10 +396,10 @@ async verifyEmailCode(email, code) {
 </p>
 ```
 
-**Methods**:
+**Methods** (defined in script setup section):
 
 ```javascript
-// Lines 695-706: Load whitelist
+// Load whitelist from API
 async function loadEmailWhitelist() {
   try {
     const response = await axios.get('/api/settings/email-whitelist', {
@@ -414,7 +411,7 @@ async function loadEmailWhitelist() {
   }
 }
 
-// Lines 708-730: Add email
+// Add email to whitelist
 async function addEmailToWhitelist() {
   if (!newEmail.value) return
 
@@ -439,7 +436,7 @@ async function addEmailToWhitelist() {
   }
 }
 
-// Lines 732-754: Remove email
+// Remove email from whitelist
 async function removeEmailFromWhitelist(email) {
   if (!confirm(`Remove ${email} from whitelist?`)) return
 
@@ -517,7 +514,7 @@ CREATE INDEX idx_email_login_codes_code ON email_login_codes(code)
 
 ### Authentication Endpoints (`src/backend/routers/auth.py`)
 
-#### POST /api/auth/email/request (Lines 287-375)
+#### POST /api/auth/email/request (Lines 273-361)
 
 **Request verification code - Unauthenticated endpoint**
 
@@ -526,6 +523,9 @@ CREATE INDEX idx_email_login_codes_code ON email_login_codes(code)
 async def request_email_login_code(request: Request):
     """
     Request a login code via email.
+
+    Unauthenticated endpoint. Sends a 6-digit code to the provided email
+    if it's in the whitelist.
 
     Rate limit: 3 requests per 10 minutes per email.
     """
@@ -539,19 +539,19 @@ async def request_email_login_code(request: Request):
 ```
 
 **Business Logic:**
-1. Check if setup is completed (line 301-305)
-2. Check if email auth is enabled (line 308-313)
-3. Parse and lowercase email (line 316-318)
-4. Check if email is whitelisted (line 321-334)
+1. Check if setup is completed (lines 287-291)
+2. Check if email auth is enabled (lines 293-299)
+3. Parse and lowercase email (lines 301-304)
+4. Check if email is whitelisted (lines 306-320)
    - If not whitelisted: Return generic success message (prevent enumeration)
    - Audit log with `result="denied"`, `reason="not_whitelisted"`
-5. Check rate limit: 3 requests per 10 minutes (line 337-351)
+5. Check rate limit: 3 requests per 10 minutes (lines 322-337)
    - If exceeded: Return 429 with audit log
-6. Generate 6-digit code (line 354)
+6. Generate 6-digit code (line 340)
    - `db.create_login_code(email, expiry_minutes=10)`
-7. Send email via EmailService (line 357-358)
-8. Audit log: `event_type="authentication"`, `action="email_login_code_sent"` (line 361-369)
-9. Return success response (line 371-375)
+7. Send email via EmailService (lines 343-344)
+8. Audit log: `event_type="authentication"`, `action="email_login_code_sent"` (lines 346-355)
+9. Return success response (lines 357-361)
 
 **Response:**
 ```json
@@ -564,7 +564,7 @@ async def request_email_login_code(request: Request):
 
 **Security:** Returns generic success message even if email is not whitelisted (prevents email enumeration).
 
-#### POST /api/auth/email/verify (Lines 378-465)
+#### POST /api/auth/email/verify (Lines 364-452)
 
 **Verify code and get JWT - Unauthenticated endpoint**
 
@@ -573,6 +573,8 @@ async def request_email_login_code(request: Request):
 async def verify_email_login_code(request: Request):
     """
     Verify email login code and get JWT token.
+
+    Unauthenticated endpoint. Verifies the code and creates/returns user session.
     """
 ```
 
@@ -585,25 +587,25 @@ async def verify_email_login_code(request: Request):
 ```
 
 **Business Logic:**
-1. Check if setup is completed (line 388-392)
-2. Check if email auth is enabled (line 395-400)
-3. Parse request (line 403-406)
-4. Verify code (line 409)
+1. Check if setup is completed (lines 373-378)
+2. Check if email auth is enabled (lines 380-386)
+3. Parse request (lines 388-392)
+4. Verify code (line 395)
    - `db.verify_login_code(email, code)`
    - Checks: code exists, not already used, not expired
    - Marks code as verified with `used_at` timestamp
-5. If invalid: audit log and return 401 (line 410-424)
-6. Get or create user (line 427-432)
+5. If invalid: audit log and return 401 (lines 396-410)
+6. Get or create user (lines 412-418)
    - `db.get_or_create_email_user(email)`
    - Username = email (lowercase)
    - Role = "user"
    - No password set (email auth only)
-7. Update last login (line 435)
-8. Create JWT token (line 438-443)
+7. Update last login (line 421)
+8. Create JWT token (lines 423-429)
    - 7-day expiry (ACCESS_TOKEN_EXPIRE_MINUTES = 10080)
    - Include `mode="email"` claim
-9. Audit log: `event_type="authentication"`, `action="email_login"` (line 446-453)
-10. Return token and user profile (line 455-465)
+9. Audit log: `event_type="authentication"`, `action="email_login"` (lines 431-439)
+10. Return token and user profile (lines 441-451)
 
 **Response:**
 ```json

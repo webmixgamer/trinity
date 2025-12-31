@@ -15,6 +15,7 @@ As an agent operator, I want to view and trigger headless task executions from a
 - **API**: `POST /api/agents/{name}/task` - Execute a parallel task (creates execution record)
 - **API**: `POST /api/agents/{name}/chat` - Agent-to-agent chat (creates execution record when `X-Source-Agent` header present) *(added 2025-12-30)*
 - **API**: `GET /api/agents/{name}/executions` - Get execution history
+- **API**: `GET /api/agents/{name}/executions/{execution_id}/log` - Get full execution log *(added 2025-12-31)*
 - **API**: `GET /api/agents/{name}/queue` - Get queue status
 - **API**: `POST /api/agents/{name}/queue/clear` - Clear queued tasks
 - **API**: `POST /api/agents/{name}/queue/release` - Force release queue
@@ -219,6 +220,49 @@ Returns `QueueStatus` model with:
 - `queue_length`: Number of waiting executions
 - `queued_executions`: List of queued execution details
 
+#### GET /api/agents/{name}/executions/{execution_id}/log
+
+**File**: `src/backend/routers/schedules.py:426-473`
+
+Get the full execution log for a specific execution. *(Added 2025-12-31)*
+
+```python
+@router.get("/{name}/executions/{execution_id}/log")
+async def get_execution_log(
+    name: str,
+    execution_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get the full execution log for a specific execution."""
+```
+
+**Response** (log available):
+```json
+{
+  "execution_id": "abc123",
+  "agent_name": "my-agent",
+  "has_log": true,
+  "log": [
+    {"type": "assistant", "message": {...}},
+    {"type": "tool_use", "name": "Read", "input": {...}},
+    {"type": "tool_result", "content": [...]}
+  ],
+  "started_at": "2025-12-31T10:00:00Z",
+  "completed_at": "2025-12-31T10:01:00Z",
+  "status": "success"
+}
+```
+
+**Response** (no log):
+```json
+{
+  "execution_id": "abc123",
+  "has_log": false,
+  "log": null,
+  "message": "No execution log available for this execution"
+}
+```
+
 #### POST /api/agents/{name}/queue/clear
 
 **File**: `src/backend/routers/agents.py:454-460`
@@ -366,6 +410,7 @@ def get_agent_executions(self, agent_name: str, limit: int = 50) -> List[Schedul
 | `context_max` | INTEGER | Context window size (nullable) |
 | `cost` | REAL | Cost in USD (nullable) |
 | `tool_calls` | TEXT | JSON array of tool calls (nullable) |
+| `execution_log` | TEXT | Full Claude Code execution transcript (JSON, nullable) *(added 2025-12-31)* |
 
 ---
 
@@ -556,4 +601,4 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 - Multiple rapid task submissions (all should complete independently)
 
 ### Status
-Verified 2025-12-30 - Agent-to-agent chat calls now create execution records and appear in Tasks tab
+Verified 2025-12-31 - Execution log storage and retrieval endpoint added

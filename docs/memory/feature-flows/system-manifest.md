@@ -126,7 +126,7 @@ permissions:
 
 ### Models (`src/backend/models.py`)
 
-**SystemAgentConfig** (Lines 216-222)
+**SystemAgentConfig** (Lines 232-237)
 ```python
 class SystemAgentConfig(BaseModel):
     """Configuration for a single agent in a system manifest."""
@@ -136,7 +136,7 @@ class SystemAgentConfig(BaseModel):
     schedules: Optional[List[dict]] = None  # [{name, cron, message, ...}]
 ```
 
-**SystemPermissions** (Lines 224-228)
+**SystemPermissions** (Lines 240-243)
 ```python
 class SystemPermissions(BaseModel):
     """Permission configuration for system agents."""
@@ -144,7 +144,7 @@ class SystemPermissions(BaseModel):
     explicit: Optional[Dict[str, List[str]]] = None  # {"orchestrator": ["worker1", "worker2"]}
 ```
 
-**SystemManifest** (Lines 230-237)
+**SystemManifest** (Lines 246-252)
 ```python
 class SystemManifest(BaseModel):
     """Parsed system manifest from YAML."""
@@ -155,7 +155,7 @@ class SystemManifest(BaseModel):
     permissions: Optional[SystemPermissions] = None
 ```
 
-**SystemDeployRequest** (Lines 239-243)
+**SystemDeployRequest** (Lines 255-258)
 ```python
 class SystemDeployRequest(BaseModel):
     """Request to deploy a system from YAML manifest."""
@@ -163,7 +163,7 @@ class SystemDeployRequest(BaseModel):
     dry_run: bool = False
 ```
 
-**SystemDeployResponse** (Lines 245-254)
+**SystemDeployResponse** (Lines 261-270)
 ```python
 class SystemDeployResponse(BaseModel):
     """Response from system deployment."""
@@ -955,7 +955,7 @@ Returns: 3 (total permissions configured)
 
 All tools support MCP API key authentication when `requireApiKey=true` in server config.
 
-#### deploy_system (Lines 44-100)
+#### deploy_system (Lines 42-100)
 ```typescript
 {
   name: "deploy_system",
@@ -975,7 +975,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### list_systems (Lines 105-133)
+#### list_systems (Lines 103-133)
 ```typescript
 {
   name: "list_systems",
@@ -989,7 +989,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### restart_system (Lines 138-167)
+#### restart_system (Lines 136-167)
 ```typescript
 {
   name: "restart_system",
@@ -1008,7 +1008,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### get_system_manifest (Lines 172-202)
+#### get_system_manifest (Lines 170-202)
 ```typescript
 {
   name: "get_system_manifest",
@@ -1049,7 +1049,7 @@ const getClient = (authContext?: McpAuthContext): TrinityClient => {
 
 ### Database Operations
 
-#### System Settings Table (Lines 389-395 in database.py)
+#### System Settings Table (Lines 467-474 in database.py)
 ```sql
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,
@@ -1844,11 +1844,11 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/backend/models.py` | 216-254 | Pydantic models for manifests and requests |
+| `src/backend/models.py` | 232-270 | Pydantic models for manifests and requests |
 | `src/backend/services/system_service.py` | 1-551 | YAML parsing, validation, deployment logic |
 | `src/backend/routers/systems.py` | 1-500 | FastAPI endpoints for system management |
 | `src/backend/routers/agents.py` | 286-680 | `create_agent_internal()` for agent creation |
-| `src/backend/database.py` | 389-395, 790-809 | Settings table and operations |
+| `src/backend/database.py` | 467-474 | Settings table and operations |
 | `src/mcp-server/src/tools/systems.ts` | 1-204 | MCP tools for system operations |
 | `tests/test_systems.py` | 1-1051 | Comprehensive test suite (30+ tests) |
 | `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md` | - | Design document |
@@ -1857,7 +1857,7 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 ---
 
-**Last Updated**: 2025-12-18 04:30:00
+**Last Updated**: 2025-12-30 (Line numbers verified)
 **Status**: ✅ Complete (Phases 1, 2, 3)
 **Test Coverage**: 93%+ (28/30 tests passing)
 **Feature Flag**: None (always enabled)

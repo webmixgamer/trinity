@@ -113,13 +113,13 @@ The local agent deployment uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:191-204` | Endpoint definition |
-| Service | `src/backend/services/agent_service/deploy.py` (306 lines) | Deployment business logic |
+| Router | `src/backend/routers/agents.py:195-208` | Endpoint definition |
+| Service | `src/backend/services/agent_service/deploy.py` (319 lines) | Deployment business logic |
 
 ### Endpoint: POST /api/agents/deploy-local
 
-**Router**: `src/backend/routers/agents.py:191-204`
-**Service**: `src/backend/services/agent_service/deploy.py:40-307`
+**Router**: `src/backend/routers/agents.py:195-208`
+**Service**: `src/backend/services/agent_service/deploy.py:40-319`
 
 ```python
 # Router
@@ -155,7 +155,7 @@ class DeployLocalResponse(BaseModel):
     code: Optional[str]                       # Error code
 ```
 
-### Deployment Flow (`deploy.py:40-307`)
+### Deployment Flow (`deploy.py:40-319`)
 
 1. **Decode & Validate** (lines 70-99)
    - Decode base64 archive
@@ -376,6 +376,7 @@ rm -f "$ARCHIVE"
 ---
 
 **Implemented**: 2025-12-21
+**Updated**: 2025-12-30 - Verified line numbers
 **Updated**: 2025-12-27 - Service layer refactoring: Deploy logic moved to `services/agent_service/deploy.py`
 **Updated**: 2025-12-24 - Changed from local path to archive-based deployment
 **Status**: Working

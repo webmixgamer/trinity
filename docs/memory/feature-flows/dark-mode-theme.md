@@ -7,8 +7,8 @@ Client-side theme management system supporting Light, Dark, and System (OS-prefe
 As a user, I want to switch between light, dark, and system theme modes so that I can use Trinity comfortably in different lighting conditions and match my OS preferences.
 
 ## Entry Points
-- **UI (Quick Toggle)**: `src/frontend/src/components/NavBar.vue:64-81` - Theme icon button in navbar
-- **UI (Full Selector)**: `src/frontend/src/components/NavBar.vue:117-152` - Theme selector in user dropdown menu
+- **UI (Quick Toggle)**: `src/frontend/src/components/NavBar.vue:82-99` - Theme icon button in navbar
+- **UI (Full Selector)**: `src/frontend/src/components/NavBar.vue:136-170` - Theme selector in user dropdown menu
 
 ## Frontend Layer
 
@@ -33,7 +33,7 @@ initTheme()          // Initialize on mount + add OS preference listener
 **Key Functions**:
 
 ```javascript
-// :13-18 - Get stored theme or default to 'system'
+// :13-19 - Get stored theme or default to 'system'
 function getStoredTheme() {
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored && ['light', 'dark', 'system'].includes(stored)) {
@@ -79,12 +79,14 @@ darkMode: 'class'  // Uses class strategy (not media query)
 This means Tailwind generates `dark:` variants that activate when `.dark` class is on an ancestor element.
 
 ### App Initialization
-**File**: `src/frontend/src/App.vue:20`
+**File**: `src/frontend/src/App.vue:20,25`
 
 ```javascript
+const themeStore = useThemeStore()  // line 20
+
 onMounted(async () => {
   // Initialize theme immediately to prevent flash
-  themeStore.initTheme()
+  themeStore.initTheme()  // line 25
   // ...
 })
 ```
@@ -92,7 +94,7 @@ onMounted(async () => {
 ### NavBar Component
 **File**: `src/frontend/src/components/NavBar.vue`
 
-**Theme Toggle Button** (:64-81):
+**Theme Toggle Button** (:82-99):
 - Cycles through themes on click via `themeStore.toggleTheme()`
 - Displays contextual icon:
   - Sun icon for light mode
@@ -100,13 +102,13 @@ onMounted(async () => {
   - Computer/monitor icon for system mode
 - Shows tooltip with current mode and hint to click
 
-**Theme Selector in Dropdown** (:117-152):
+**Theme Selector in Dropdown** (:136-170):
 - Three buttons: Light, Dark, Auto (System)
 - Active state highlighted with blue background
 - Calls `themeStore.setTheme(themeName)` on click
 
 ```javascript
-// :188-204 - Theme handling in component
+// :207-221 - Theme handling in component
 const themeTitle = computed(() => {
   const titles = {
     light: 'Light mode (click to switch)',
@@ -334,3 +336,8 @@ localStorage.getItem('trinity-theme')  // Should return current theme
 | `src/frontend/src/components/GitPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
 | `src/frontend/src/components/SchedulesPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
 | `src/frontend/src/components/ExecutionsPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
+
+---
+
+*Feature implemented: 2025-12-14*
+*Last updated: 2025-12-30* (verified line numbers against current codebase)

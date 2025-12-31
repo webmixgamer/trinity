@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented (2025-12-07)
 > **Tested**: ✅ All features verified working
-> **Last Updated**: 2025-12-19
+> **Last Updated**: 2025-12-30
 
 ## Overview
 
@@ -374,8 +374,9 @@ const getProgressBarColor = (agentName) => {
 
 ## References
 
+> Line numbers verified 2025-12-30
 - **AgentNode.vue**: `/src/frontend/src/components/AgentNode.vue` - Visual design reference
-- **network.js**: `/src/frontend/src/stores/network.js:564-601` - API polling reference (fetchContextStats)
-- **agents.js**: `/src/frontend/src/stores/agents.js` - Context stats fetching + polling
-- **Backend endpoint**: `/src/backend/routers/agents.py:208-290` - context-stats endpoint
-- **Agents.vue**: `/src/frontend/src/views/Agents.vue:1-295` - Full component with dark mode support
+- **network.js**: `/src/frontend/src/stores/network.js:582-640` - API polling reference (fetchContextStats)
+- **agents.js**: `/src/frontend/src/stores/agents.js:460-500` - Context stats fetching + polling
+- **Backend endpoint**: `/src/backend/routers/agents.py:142-145` - context-stats endpoint (delegated to service)
+- **Agents.vue**: `/src/frontend/src/views/Agents.vue:1-283` - Full component with dark mode support (283 lines total)

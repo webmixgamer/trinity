@@ -11,7 +11,7 @@ As an **admin**, I want to access an interactive terminal for the System Agent d
 ## Entry Points
 
 - **UI**: `src/frontend/src/views/SystemAgent.vue:300-370` - Embedded terminal panel (admin-only, auto-connects when agent running)
-- **API**: `WS /api/system-agent/terminal?mode=claude|bash`
+- **API**: `WS /api/system-agent/terminal?mode=claude|gemini|bash`
 
 ---
 
@@ -173,13 +173,13 @@ resizeObserver.observe(terminalContainer.value)
 
 ### WebSocket Endpoint
 
-- **File**: `src/backend/routers/system_agent.py:314-649`
+- **File**: `src/backend/routers/system_agent.py:314-602`
 - **Endpoint**: `@router.websocket("/terminal")`
-- **Query Params**: `mode: str` (default: "claude") - Either "claude" or "bash"
+- **Query Params**: `mode: str` (default: "claude") - One of "claude", "gemini", or "bash"
 
 **Note**: There are two implementations:
-- **System Agent**: `src/backend/routers/system_agent.py:314-649` - Admin-only access
-- **Regular Agents**: `src/backend/services/agent_service/terminal.py:58-381` - Access-controlled per agent
+- **System Agent**: `src/backend/routers/system_agent.py:314-602` - Admin-only access
+- **Regular Agents**: `src/backend/services/agent_service/terminal.py` - Access-controlled per agent
 
 ### Authentication Flow (lines 341-404)
 
@@ -205,19 +205,31 @@ if user.get("role") != "admin":
 
 ### Token Decoding Helper
 
-- **File**: `src/backend/dependencies.py:72-102`
+- **File**: `src/backend/dependencies.py:72-103`
 - **Function**: `decode_token(token: str) -> Optional[dict]`
 
 ```python
 def decode_token(token: str) -> Optional[dict]:
     """
-    Decode JWT without FastAPI dependency.
-    Returns: {sub, email, role, exp, mode} or None
+    Decode a JWT token without FastAPI dependency.
+    Returns the token payload with user info if valid, None if invalid.
+    Useful for WebSocket authentication where Depends() doesn't work.
+
+    Returns:
+        dict with keys: sub, email, role, exp, mode (if valid)
+        None if token is invalid or expired
     """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
+        if not username:
+            return None
+
+        # Get full user record from database
         user = db.get_user_by_username(username)
+        if not user:
+            return None
+
         return {
             "sub": username,
             "email": user.get("email"),
@@ -250,11 +262,16 @@ with _terminal_lock:
     _active_terminal_sessions[user_email] = {"started_at": datetime.utcnow()}
 ```
 
-### Docker Exec Creation (lines 461-484)
+### Docker Exec Creation (lines 461-491)
 
 ```python
-# Build command based on mode
-cmd = ["claude"] if mode == "claude" else ["/bin/bash"]
+# Build command based on mode - supports multiple terminal modes
+if mode == "claude":
+    cmd = ["claude"]
+elif mode == "gemini":
+    cmd = ["gemini"]
+else:
+    cmd = ["/bin/bash"]
 
 # Create exec instance with TTY
 exec_instance = docker_client.api.exec_create(
@@ -276,7 +293,7 @@ docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
 
-### Bidirectional Forwarding (lines 491-550)
+### Bidirectional Forwarding (lines 497-556)
 
 The terminal uses **asyncio socket coroutines** (`loop.sock_recv()` and `loop.sock_sendall()`) for proper async I/O without thread pool overhead. These are true coroutines that await until data is available, unlike the broken `add_reader` callback approach.
 
@@ -355,7 +372,7 @@ await asyncio.gather(
 
 ### Audit Logging
 
-Session start (lines 451-459):
+Session start (lines 452-459):
 ```python
 await log_audit_event(
     event_type="terminal_session",
@@ -366,7 +383,7 @@ await log_audit_event(
 )
 ```
 
-Session end (lines 630-646):
+Session end (lines 587-598):
 ```python
 session_duration = None
 if session_start:
@@ -386,7 +403,7 @@ await log_audit_event(
 
 ### Session Cleanup
 
-On disconnect (lines 617-628):
+On disconnect (lines 569-580):
 ```python
 finally:
     # Cleanup

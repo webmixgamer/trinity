@@ -1,3 +1,21 @@
+### 2025-12-31 01:30:00
+👁️ **Execution Log Viewer in Tasks Tab**
+
+**Feature**: View full execution logs for completed tasks via popup modal.
+
+**Implementation**:
+- "View Log" button (document icon) appears on completed tasks in Tasks tab
+- Clicking opens modal with full Claude Code execution transcript
+- Uses existing `GET /api/agents/{name}/executions/{execution_id}/log` endpoint
+- Log displayed as formatted JSON in monospace font
+- Modal shows status, timestamp, and scrollable log content
+- Graceful handling of tasks without logs
+
+**Files Modified**:
+- `src/frontend/src/components/TasksPanel.vue` - Added log modal, view button, and related state/functions
+
+---
+
 ### 2025-12-31 01:05:00
 🔧 **All MCP Chat Calls Now Tracked in Tasks Tab**
 

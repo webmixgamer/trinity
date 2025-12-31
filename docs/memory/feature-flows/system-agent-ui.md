@@ -1,6 +1,8 @@
 # Feature Flow: System Agent UI
 
 > **Requirement 11.3** - Dedicated System Agent management interface
+> **Created**: 2025-12-20
+> **Updated**: 2025-12-30
 
 ## Overview
 
@@ -14,8 +16,8 @@ As a **platform administrator**, I want a dedicated interface for the System Age
 
 | Type | Location | Description |
 |------|----------|-------------|
-| **NavBar Link** | `src/frontend/src/components/NavBar.vue:46-56` | "System" link with CPU icon (admin-only) |
-| **Route** | `src/frontend/src/router/index.js:54-58` | `/system-agent` route definition |
+| **NavBar Link** | `src/frontend/src/components/NavBar.vue:53-63` | "System" link with CPU icon (admin-only) |
+| **Route** | `src/frontend/src/router/index.js:72-76` | `/system-agent` route definition |
 | **View** | `src/frontend/src/views/SystemAgent.vue` | Main page component |
 
 ## Frontend Layer
@@ -23,7 +25,7 @@ As a **platform administrator**, I want a dedicated interface for the System Age
 ### Route Configuration
 
 ```javascript
-// src/frontend/src/router/index.js:54-58
+// src/frontend/src/router/index.js:72-76
 {
   path: '/system-agent',
   name: 'SystemAgent',
@@ -35,7 +37,7 @@ As a **platform administrator**, I want a dedicated interface for the System Age
 ### NavBar Component
 
 ```html
-<!-- src/frontend/src/components/NavBar.vue:46-56 -->
+<!-- src/frontend/src/components/NavBar.vue:53-63 -->
 <router-link
   v-if="isAdmin"
   to="/system-agent"
@@ -48,25 +50,25 @@ As a **platform administrator**, I want a dedicated interface for the System Age
 </router-link>
 ```
 
-Admin check: `NavBar.vue:197` fetches user role from `/api/users/me` and sets `isAdmin` computed property.
+Admin check: `NavBar.vue:231-244` fetches user role from `/api/users/me` and sets `isAdmin` computed property (line 204).
 
 ### SystemAgent.vue Component Structure
 
 | Section | Lines | Description |
 |---------|-------|-------------|
-| Compact Header | 30-75 | Agent info, SYSTEM badge, status, Start/Restart button (single row) |
+| Compact Header | 28-75 | Agent info, SYSTEM badge, status, Start/Restart button (single row) |
 | Fleet Stats Bar | 77-112 | Inline horizontal: Fleet count, running, stopped, issues |
 | OTel Metrics Grid | 114-238 | 6 metric cards with icons and progress bars |
-| Quick Actions | 241-297 | Emergency Stop, Restart All, Pause/Resume Schedules |
-| Operations Console | 300-406 | Chat interface with quick command buttons (/ops/costs added) |
-| Notification Toast | 409-421 | Success/error feedback |
+| Quick Actions | 243-298 | Emergency Stop, Restart All, Pause/Resume Schedules |
+| System Terminal | 300-369 | Interactive terminal with fullscreen toggle (replaced chat interface) |
+| Notification Toast | 372-384 | Success/error feedback |
 
 ### State Management
 
 The component uses local reactive state (no Pinia store):
 
 ```javascript
-// src/frontend/src/views/SystemAgent.vue:443-502
+// src/frontend/src/views/SystemAgent.vue:403-462
 const loading = ref(true)
 const systemAgent = ref(null)
 const fleetStatus = ref({ total: 0, running: 0, stopped: 0, issues: 0 })
@@ -78,9 +80,8 @@ const otelMetrics = ref({
   metrics: { cost_by_model: {}, tokens_by_model: {}, lines_of_code: {} },
   totals: { total_cost: 0, total_tokens: 0, tokens_by_type: {} }
 })
-const messages = ref([])
-const inputMessage = ref('')
-const isTyping = ref(false)
+const terminalRef = ref(null)
+const isFullscreen = ref(false)
 ```
 
 ### API Calls
@@ -96,12 +97,12 @@ const isTyping = ref(false)
 | `restartAllAgents()` | `POST /api/ops/fleet/restart` | Restart all non-system agents |
 | `pauseAllSchedules()` | `POST /api/ops/schedules/pause` | Pause all enabled schedules |
 | `resumeAllSchedules()` | `POST /api/ops/schedules/resume` | Resume all paused schedules |
-| `sendMessage()` | `POST /api/agents/trinity-system/chat` | Send ops command to system agent |
+| **Terminal WebSocket** | `WS /api/system-agent/terminal` | PTY-based interactive terminal |
 
 ### Polling
 
 ```javascript
-// src/frontend/src/views/SystemAgent.vue:802-817
+// src/frontend/src/views/SystemAgent.vue:728-743
 // Fleet status every 10 seconds
 pollingInterval = setInterval(() => {
   loadSystemAgent()
@@ -141,9 +142,10 @@ States handled:
 
 | Endpoint | Method | Line | Handler | Description |
 |----------|--------|------|---------|-------------|
-| `/api/system-agent/status` | GET | 42 | `get_system_agent_status()` | Get agent status and health |
-| `/api/system-agent/reinitialize` | POST | 105 | `reinitialize_system_agent()` | Reset to clean state (admin) |
-| `/api/system-agent/restart` | POST | 215 | `restart_system_agent()` | Simple stop/start (admin) |
+| `/api/system-agent/status` | GET | 46 | `get_system_agent_status()` | Get agent status and health |
+| `/api/system-agent/reinitialize` | POST | 109 | `reinitialize_system_agent()` | Reset to clean state (admin) |
+| `/api/system-agent/restart` | POST | 232 | `restart_system_agent()` | Simple stop/start (admin) |
+| `/api/system-agent/terminal` | WS | 314 | `system_agent_terminal()` | PTY-based terminal WebSocket |
 
 ### Fleet Operations Router
 
@@ -158,10 +160,11 @@ States handled:
 | `/api/ops/schedules/pause` | POST | 488 | `pause_all_schedules()` | Pause all schedules |
 | `/api/ops/schedules/resume` | POST | 538 | `resume_all_schedules()` | Resume all schedules |
 | `/api/ops/emergency-stop` | POST | 598 | `emergency_stop()` | Halt all executions |
+| `/api/ops/costs` | GET | 719 | `get_ops_costs()` | OTel cost metrics with alerts |
 
-### Chat Endpoint
+### Chat Endpoint (for terminal use)
 
-**File**: `src/backend/routers/chat.py:50`
+**File**: `src/backend/routers/chat.py:106`
 
 ```python
 @router.post("/{name}/chat")
@@ -169,7 +172,7 @@ async def chat_with_agent(name: str, request: ChatMessageRequest, ...):
     """Proxy chat messages to agent's internal web server."""
 ```
 
-The Operations Console sends messages to `POST /api/agents/trinity-system/chat`.
+The System Terminal connects via WebSocket to `WS /api/system-agent/terminal`.
 
 ### System Agent Service
 
@@ -225,20 +228,20 @@ SYSTEM_AGENT_NAME = "trinity-system"
 |  [CPU Icon]  System Agent                       [running] [Restart]   |
 |              Platform Operations Manager          SYSTEM              |
 +-----------------------------------------------------------------------+
-|                                                                       |
-|  +----------+  +----------+  +----------+  +----------+               |
-|  |  Total   |  | Running  |  | Stopped  |  |  Issues  |               |
-|  |    12    |  |     8    |  |     4    |  |     1    |               |
-|  +----------+  +----------+  +----------+  +----------+               |
+|  Fleet: 12 agents | [o] 8 running | [o] 4 stopped | [!] 1 issues     |
++-----------------------------------------------------------------------+
+|  +------------------+------------------+------------------+            |
+|  | Total Cost       | Tokens           | Sessions        | ...        |
+|  | $0.00 [=====]    | 0K [====]        | 0               |            |
+|  +------------------+------------------+------------------+            |
 |                                                                       |
 |  +------------------+  +------------------------------------------+   |
-|  | Quick Actions    |  | Operations Console                       |   |
-|  |                  |  |  [/ops/status] [/ops/health] [/ops/sch] |   |
-|  | [Emergency Stop] |  |                                          |   |
-|  | [Restart All]    |  |  User: /ops/status                       |   |
-|  | [Pause Scheds]   |  |  Agent: Fleet status report...           |   |
-|  | [Resume Scheds]  |  |                                          |   |
-|  | [Refresh Status] |  |  [Enter command...           ] [Send]    |   |
+|  | Quick Actions    |  | System Terminal                          |   |
+|  |                  |  |  [Fullscreen toggle]                      |   |
+|  | [Emergency Stop] |  |  ---------------------------------------- |   |
+|  | [Restart All]    |  |  $ claude (PTY-based interactive shell)  |   |
+|  | [Pause Scheds]   |  |  > ...                                    |   |
+|  | [Resume Scheds]  |  |                                           |   |
 |  +------------------+  +------------------------------------------+   |
 +-----------------------------------------------------------------------+
 ```
@@ -313,41 +316,43 @@ User clicks [Emergency Stop]
 +------------------------+
 ```
 
-### 3. Operations Console Chat
+### 3. System Terminal Session
 
 ```
-User enters "/ops/status" and clicks Send
+User opens System Agent page
         |
         v
-+------------------------+
-| messages.push({        |
-|   role: 'user',        |
-|   content: message     |
-| })                     |
-+------------------------+
++-----------------------------+
+| SystemAgentTerminal         |
+| component auto-connects     |
++-----------------------------+
         |
         v
-+------------------------+
-| POST /api/agents/      |
-| trinity-system/chat    |
-| { message: "/ops/..." }|
-+------------------------+
++-----------------------------+
+| WS /api/system-agent/       |
+| terminal?mode=claude        |
++-----------------------------+
         |
         v
-+------------------------+
-| chat.py:               |
-| - Execution queue      |
-| - Proxy to agent       |
-| - Stream response      |
-+------------------------+
++-----------------------------+
+| system_agent.py:314         |
+| - Auth via first message    |
+| - Admin check               |
+| - Create exec with PTY      |
++-----------------------------+
         |
         v
-+------------------------+
-| messages.push({        |
-|   role: 'assistant',   |
-|   content: response    |
-| })                     |
-+------------------------+
++-----------------------------+
+| docker_client.api.exec_create|
+| cmd=["claude"]               |
+| stdin=True, tty=True         |
++-----------------------------+
+        |
+        v
++-----------------------------+
+| Bidirectional forwarding    |
+| WebSocket <-> Docker socket |
++-----------------------------+
 ```
 
 ## Side Effects

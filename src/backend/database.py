@@ -145,7 +145,8 @@ def _migrate_schedule_executions_observability(cursor, conn):
         ("context_used", "INTEGER"),
         ("context_max", "INTEGER"),
         ("cost", "REAL"),
-        ("tool_calls", "TEXT")
+        ("tool_calls", "TEXT"),
+        ("execution_log", "TEXT")  # Full Claude Code execution transcript (JSON)
     ]
 
     for col_name, col_type in new_columns:
@@ -354,6 +355,7 @@ def init_database():
                 context_max INTEGER,
                 cost REAL,
                 tool_calls TEXT,
+                execution_log TEXT,
                 FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
             )
         """)
@@ -854,9 +856,9 @@ class DatabaseManager:
         return self._schedule_ops.create_schedule_execution(schedule_id, agent_name, message, triggered_by)
 
     def update_execution_status(self, execution_id: str, status: str, response: str = None, error: str = None,
-                                context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None):
+                                context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None, execution_log: str = None):
         return self._schedule_ops.update_execution_status(execution_id, status, response, error,
-                                                          context_used, context_max, cost, tool_calls)
+                                                          context_used, context_max, cost, tool_calls, execution_log)
 
     def get_schedule_executions(self, schedule_id: str, limit: int = 50):
         return self._schedule_ops.get_schedule_executions(schedule_id, limit)

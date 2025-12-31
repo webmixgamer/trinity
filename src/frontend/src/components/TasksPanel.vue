@@ -202,6 +202,18 @@
 
             <!-- Right side: Actions -->
             <div class="flex items-center space-x-2 ml-4">
+              <!-- View Log Button -->
+              <button
+                v-if="task.status !== 'running' && !task.id.startsWith('local-')"
+                @click="viewExecutionLog(task)"
+                class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                title="View execution log"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </button>
+              <!-- Re-run Button -->
               <button
                 v-if="task.status !== 'running'"
                 @click="rerunTask(task)"
@@ -213,6 +225,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
+              <!-- Expand/Collapse Button -->
               <button
                 @click="toggleTaskExpand(task.id)"
                 class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
@@ -233,6 +246,51 @@
         </div>
       </div>
     </div>
+
+    <!-- Execution Log Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showLogModal"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        @click.self="closeLogModal"
+      >
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="fixed inset-0 bg-black/50 transition-opacity"></div>
+          <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Execution Log</h3>
+                <p v-if="logData" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ logData.status }} • {{ logData.started_at ? new Date(logData.started_at).toLocaleString() : '' }}
+                </p>
+              </div>
+              <button
+                @click="closeLogModal"
+                class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <!-- Modal Body -->
+            <div class="flex-1 overflow-y-auto p-4">
+              <div v-if="logLoading" class="flex items-center justify-center py-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+              </div>
+              <div v-else-if="logError" class="text-center py-8">
+                <p class="text-red-500 dark:text-red-400">{{ logError }}</p>
+              </div>
+              <div v-else-if="logData && !logData.has_log" class="text-center py-8">
+                <p class="text-gray-500 dark:text-gray-400">No execution log available for this task.</p>
+              </div>
+              <pre v-else-if="logData" class="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-4 overflow-x-auto whitespace-pre-wrap font-mono">{{ formatLogData(logData.log) }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Queue Management (collapsible) -->
     <div v-if="queueStatus?.queue_length > 0 || queueStatus?.current_execution" class="text-right">
@@ -284,6 +342,12 @@ const taskLoading = ref(false)
 const releaseLoading = ref(false)
 const clearLoading = ref(false)
 const expandedTaskId = ref(null)
+
+// Execution log modal state
+const showLogModal = ref(false)
+const logData = ref(null)
+const logLoading = ref(false)
+const logError = ref(null)
 
 // Polling interval
 let pollInterval = null
@@ -442,6 +506,40 @@ function rerunTask(task) {
 // Toggle task expansion
 function toggleTaskExpand(taskId) {
   expandedTaskId.value = expandedTaskId.value === taskId ? null : taskId
+}
+
+// View execution log
+async function viewExecutionLog(task) {
+  showLogModal.value = true
+  logLoading.value = true
+  logError.value = null
+  logData.value = null
+
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/executions/${task.id}/log`, {
+      headers: authStore.authHeader
+    })
+    logData.value = response.data
+  } catch (error) {
+    logError.value = error.response?.data?.detail || error.message || 'Failed to load execution log'
+  } finally {
+    logLoading.value = false
+  }
+}
+
+// Close log modal
+function closeLogModal() {
+  showLogModal.value = false
+  logData.value = null
+  logError.value = null
+}
+
+// Format log data for display
+function formatLogData(log) {
+  if (!log) return ''
+  if (typeof log === 'string') return log
+  // Pretty print JSON array/object
+  return JSON.stringify(log, null, 2)
 }
 
 // Force release queue

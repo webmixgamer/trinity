@@ -59,9 +59,11 @@ const removeShare = async (email) => {
 }
 ```
 
-### State Management (`src/frontend/src/stores/agents.js:209-231`)
+### State Management (`src/frontend/src/stores/agents.js:249-272`)
 ```javascript
+// Agent Sharing Actions
 async shareAgent(name, email) {
+  const authStore = useAuthStore()
   const response = await axios.post(`/api/agents/${name}/share`,
     { email },
     { headers: authStore.authHeader }
@@ -70,13 +72,14 @@ async shareAgent(name, email) {
 }
 
 async unshareAgent(name, email) {
-  const response = await axios.delete(`/api/agents/${name}/share/${email}`, {
+  const authStore = useAuthStore()
+  await axios.delete(`/api/agents/${name}/share/${encodeURIComponent(email)}`, {
     headers: authStore.authHeader
   })
-  return response.data
 }
 
 async getAgentShares(name) {
+  const authStore = useAuthStore()
   const response = await axios.get(`/api/agents/${name}/shares`, {
     headers: authStore.authHeader
   })
@@ -92,14 +95,19 @@ async getAgentShares(name) {
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 24-74 | `/api/agents/{name}/share` | POST | Share agent with email |
-| 77-122 | `/api/agents/{name}/share/{email}` | DELETE | Remove share |
-| 125-140 | `/api/agents/{name}/shares` | GET | List shares |
+| 24-88 | `/api/agents/{name}/share` | POST | Share agent with email |
+| 91-136 | `/api/agents/{name}/share/{email}` | DELETE | Remove share |
+| 139-155 | `/api/agents/{name}/shares` | GET | List shares |
 
-### Share Agent (`routers/sharing.py:24-74`)
+### Share Agent (`routers/sharing.py:24-88`)
 ```python
 @router.post("/{agent_name}/share", response_model=AgentShare)
 async def share_agent_endpoint(agent_name: str, share_request: AgentShareRequest, current_user: User):
+    # Check agent exists
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
     # Check authorization (must be owner or admin)
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(403, "You don't have permission to share this agent")
@@ -113,11 +121,9 @@ async def share_agent_endpoint(agent_name: str, share_request: AgentShareRequest
     if not share:
         raise HTTPException(409, f"Agent is already shared with {share_request.email}")
 
-    # Broadcast WebSocket event
-    await manager.broadcast({
-        "event": "agent_shared",
-        "data": {"name": agent_name, "shared_with": share_request.email}
-    })
+    # Auto-add email to whitelist if email auth is enabled (Phase 12.4)
+    if email_auth_enabled:
+        db.add_to_whitelist(share_request.email, current_user.username, source="agent_sharing")
 
     # Audit log
     await log_audit_event(
@@ -128,12 +134,23 @@ async def share_agent_endpoint(agent_name: str, share_request: AgentShareRequest
         result="success",
         details={"shared_with": share_request.email}
     )
+
+    # Broadcast WebSocket event
+    await manager.broadcast(json.dumps({
+        "event": "agent_shared",
+        "data": {"name": agent_name, "shared_with": share_request.email}
+    }))
 ```
 
-### Remove Share (`routers/sharing.py:77-122`)
+### Remove Share (`routers/sharing.py:91-136`)
 ```python
 @router.delete("/{agent_name}/share/{email}")
 async def unshare_agent_endpoint(agent_name: str, email: str, current_user: User):
+    # Check agent exists
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(403, "You don't have permission to modify sharing for this agent")
 
@@ -150,30 +167,44 @@ async def unshare_agent_endpoint(agent_name: str, email: str, current_user: User
         result="success",
         details={"removed_user": email}
     )
+
+    # Broadcast WebSocket event
+    await manager.broadcast(json.dumps({
+        "event": "agent_unshared",
+        "data": {"name": agent_name, "removed_user": email}
+    }))
 ```
 
-### Access Control in List Agents (`routers/agents.py:47-78`)
+### Access Control in List Agents (`routers/agents.py:129-140`)
+
+Agent access control is handled by `services/agent_service/helpers.py:get_accessible_agents()`:
+
 ```python
 @router.get("")
-async def list_agents_endpoint(current_user: User):
-    all_agents = list_all_agents()
-
-    for agent in all_agents:
-        owner = db.get_agent_owner(agent.name)
-
-        # Determine access level
-        is_owner = owner and owner["owner_username"] == current_user.username
-        is_admin = user_data and user_data["role"] == "admin"
-        is_shared = db.is_agent_shared_with_user(agent_name, current_user.username)
-
-        agent_dict["can_delete"] = db.can_user_delete_agent(current_user.username, agent_name)
-        agent_dict["can_share"] = db.can_user_share_agent(current_user.username, agent_name)
-        agent_dict["is_shared"] = not is_owner and not is_admin and is_shared
+async def list_agents_endpoint(request: Request, current_user: User = Depends(get_current_user)):
+    """List all agents accessible to the current user."""
+    await log_audit_event(
+        event_type="agent_access",
+        action="list",
+        user_id=current_user.username,
+        ip_address=request.client.host if request.client else None,
+        result="success"
+    )
+    return get_accessible_agents(current_user)
 ```
+
+Access levels are determined in `get_accessible_agents()`:
+- `is_owner`: Owner of the agent
+- `is_admin`: User has admin role
+- `is_shared`: Agent shared with user via email
+- `can_delete`: Owner or admin (not system agents)
+- `can_share`: Owner or admin
 
 ---
 
-## Database Layer (`src/backend/database.py`)
+## Database Layer (`src/backend/db/agents.py`)
+
+Database operations are delegated from `database.py` to `db/agents.py`.
 
 ### Schema
 ```sql
@@ -181,62 +212,64 @@ CREATE TABLE IF NOT EXISTS agent_sharing (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_name TEXT NOT NULL,
     shared_with_email TEXT NOT NULL,
-    shared_by_user_id INTEGER NOT NULL,
+    shared_by_id INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(agent_name, shared_with_email),
-    FOREIGN KEY (shared_by_user_id) REFERENCES users(id)
+    FOREIGN KEY (shared_by_id) REFERENCES users(id)
 )
 ```
 
-### Operations
+### Operations (`db/agents.py`)
 
 | Method | Line | Purpose |
 |--------|------|---------|
-| `share_agent()` | 937-980 | Create share record |
-| `unshare_agent()` | 982-995 | Remove share record |
-| `get_agent_shares()` | 997-1026 | List shares for agent |
-| `is_agent_shared_with_user()` | 1028-1044 | Access check |
-| `can_user_share_agent()` | 1046-1064 | Authorization check |
+| `share_agent()` | 164-207 | Create share record |
+| `unshare_agent()` | 209-222 | Remove share record |
+| `get_agent_shares()` | 224-236 | List shares for agent |
+| `get_shared_agents()` | 238-253 | Get agents shared with user |
+| `is_agent_shared_with_user()` | 255-271 | Access check |
+| `can_user_share_agent()` | 273-283 | Authorization check |
+| `delete_agent_shares()` | 285-290 | Cascade delete shares |
 
-### Share Agent (`database.py:937-980`)
+### Share Agent (`db/agents.py:164-207`)
 ```python
 def share_agent(self, agent_name: str, owner_username: str, share_with_email: str) -> Optional[AgentShare]:
+    # Get owner and validate permission
+    owner = self._user_ops.get_user_by_username(owner_username)
+    if not owner:
+        return None
+
+    # Check if user can share (owner or admin)
+    if not self.can_user_share_agent(owner_username, agent_name):
+        return None
+
+    # Prevent self-sharing
+    if owner.get("email", "").lower() == share_with_email.lower():
+        return None
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
-
-        # Get owner user ID
-        user = self.get_user_by_username(owner_username)
-
-        # Check if already shared
-        cursor.execute("""
-            SELECT * FROM agent_sharing
-            WHERE agent_name = ? AND shared_with_email = ?
-        """, (agent_name, share_with_email))
-
-        if cursor.fetchone():
+        try:
+            cursor.execute("""
+                INSERT INTO agent_sharing (agent_name, shared_with_email, shared_by_id, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (agent_name, share_with_email.lower(), owner["id"], now))
+            conn.commit()
+            return AgentShare(...)
+        except sqlite3.IntegrityError:
             return None  # Already shared
-
-        # Insert share record
-        cursor.execute("""
-            INSERT INTO agent_sharing (agent_name, shared_with_email, shared_by_user_id, created_at)
-            VALUES (?, ?, ?, ?)
-        """, (agent_name, share_with_email, user["id"], datetime.now().isoformat()))
-
-        conn.commit()
-        return self._row_to_agent_share(cursor.execute(...).fetchone())
 ```
 
-### Cascade Delete
+### Cascade Delete (`db/agents.py:285-290`)
 When an agent is deleted, all sharing records are removed:
 ```python
-def delete_agent_ownership(self, agent_name: str):
+def delete_agent_shares(self, agent_name: str) -> int:
+    """Delete all sharing records for an agent (when agent is deleted)."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Delete sharing records first
         cursor.execute("DELETE FROM agent_sharing WHERE agent_name = ?", (agent_name,))
-        # Then delete ownership
-        cursor.execute("DELETE FROM agent_ownership WHERE agent_name = ?", (agent_name,))
         conn.commit()
+        return cursor.rowcount
 ```
 
 ---
@@ -293,6 +326,7 @@ await log_audit_event(
 3. **Cascade Delete**: Shares removed when agent deleted
 4. **Access Validation**: Every endpoint checks authorization via `can_user_share_agent()`
 5. **Audit Trail**: All sharing actions logged with IP address
+6. **Auto-Whitelist**: When email auth is enabled, shared emails are auto-added to whitelist (Phase 12.4)
 
 ---
 
@@ -322,11 +356,19 @@ curl http://localhost:8000/api/agents \
 ---
 
 ## Status
-✅ **Working** - Agent sharing fully functional with email-based collaboration
+Working - Agent sharing fully functional with email-based collaboration
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-12-30 | **Flow verification**: Updated line numbers for routers/sharing.py (24-88, 91-136, 139-155). Updated database layer to reference db/agents.py. Updated store action line numbers. Added auto-whitelist feature note. |
 
 ---
 
 ## Related Flows
 
 - **Upstream**: Authentication (user identity)
-- **Related**: Agent Lifecycle (delete cascades shares), MCP Orchestration (agent-to-agent access control)
+- **Related**: Agent Lifecycle (delete cascades shares), MCP Orchestration (agent-to-agent access control), Email Authentication (auto-whitelist)

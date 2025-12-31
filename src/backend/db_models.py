@@ -148,6 +148,7 @@ class ScheduleExecution(BaseModel):
     context_max: Optional[int] = None   # Max context window
     cost: Optional[float] = None        # Cost in USD
     tool_calls: Optional[str] = None    # JSON array of tool calls
+    execution_log: Optional[str] = None # Full Claude Code execution transcript (JSON)
 
 
 # =========================================================================

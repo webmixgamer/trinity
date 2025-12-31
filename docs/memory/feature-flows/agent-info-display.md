@@ -7,7 +7,7 @@ Displays template metadata (capabilities, commands, sub-agents, platforms, resou
 As a platform user, I want to see what an agent is capable of so that I understand its purpose and available commands before interacting with it.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:279-281` - Info tab is the default active tab
+- **UI**: `src/frontend/src/views/AgentDetail.vue:364-366` - Info tab content rendering
 - **API**: `GET /api/agents/{name}/info`
 
 ---
@@ -16,51 +16,55 @@ As a platform user, I want to see what an agent is capable of so that I understa
 
 ### Components
 
-#### AgentDetail.vue:179-189
+#### AgentDetail.vue:207-216
 Tab button for Info panel:
 ```vue
 <button
   @click="activeTab = 'info'"
   :class="[
-    'px-6 py-3 border-b-2 font-medium text-sm transition-colors',
+    'inline-flex items-center px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
     activeTab === 'info'
-      ? 'border-indigo-500 text-indigo-600'
-      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
   ]"
 >
   Info
 </button>
 ```
 
-#### AgentDetail.vue:279-281
+#### AgentDetail.vue:364-366
 Info tab content rendering:
 ```vue
 <div v-if="activeTab === 'info'" class="p-6">
-  <InfoPanel :agent-name="agent.name" :agent-status="agent.status" />
+  <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @use-case-click="handleUseCaseClick" />
 </div>
 ```
 
-#### InfoPanel.vue:1-257
+#### InfoPanel.vue:1-338
 The complete Info Panel component displaying template metadata.
 
 **Key sections displayed:**
 | Section | Lines | Data Field | Visual Style |
 |---------|-------|------------|--------------|
-| Header (name, version, author) | 27-63 | `display_name`, `version`, `author`, `type` | Gradient header box |
-| Resources (CPU, Memory) | 66-83 | `resources.cpu`, `resources.memory` | White card with icon |
-| Capabilities | 86-102 | `capabilities[]` | Green pills |
-| Slash Commands | 105-121 | `commands[]` | Purple mono pills |
-| Sub-Agents | 124-141 | `sub_agents[]` | Blue grid cards |
-| Platforms | 144-160 | `platforms[]` | Gray pills |
-| MCP Servers | 163-179 | `mcp_servers[]` | Yellow mono pills |
-| Enabled Tools | 182-199 | `tools[]` | Orange pills |
+| Header (name, version, author) | 27-67 | `display_name`, `tagline`, `version`, `author`, `type` | Gradient header box |
+| Use Cases | 70-91 | `use_cases[]` | Clickable prompts grid |
+| Resources (CPU, Memory) | 93-111 | `resources.cpu`, `resources.memory` | White card with icon |
+| Sub-Agents | 113-136 | `sub_agents[]` | Blue grid cards |
+| Slash Commands | 138-158 | `commands[]` | Purple mono pills |
+| MCP Servers | 160-180 | `mcp_servers[]` | Yellow mono pills |
+| Skills | 182-202 | `skills[]` | Teal pills |
+| Capabilities | 204-221 | `capabilities[]` | Green pills |
+| Platforms | 223-240 | `platforms[]` | Gray pills |
+| Enabled Tools | 242-260 | `tools[]` | Orange pills |
 
-**Component script (lines 204-257):**
+**Component script (lines 265-337):**
 ```javascript
 const props = defineProps({
   agentName: { type: String, required: true },
   agentStatus: { type: String, default: 'stopped' }
 })
+
+const emit = defineEmits(['use-case-click'])
 
 const loadTemplateInfo = async () => {
   loading.value = true
@@ -91,7 +95,7 @@ onMounted(() => {
 
 ### State Management
 
-#### stores/agents.js:191-197
+#### stores/agents.js:224-230
 ```javascript
 async getAgentInfo(name) {
   const authStore = useAuthStore()
@@ -114,7 +118,7 @@ Headers: Authorization: Bearer {token}
 
 ### Endpoint
 
-#### src/backend/routers/agents.py:625-705
+#### src/backend/routers/agents.py:478-549
 ```python
 @router.get("/{agent_name}/info")
 async def get_agent_info_endpoint(
@@ -143,7 +147,7 @@ async def get_agent_info_endpoint(
                            +-> RUNNING --> Proxy to agent container API
 ```
 
-**When agent is STOPPED (lines 651-664):**
+**When agent is STOPPED (lines 496-509):**
 Returns limited info from Docker container labels:
 ```python
 labels = container.labels
@@ -161,7 +165,7 @@ return {
 }
 ```
 
-**When agent is RUNNING (lines 667-689):**
+**When agent is RUNNING (lines 511-532):**
 Proxies request to agent container:
 ```python
 agent_url = f"http://agent-{agent_name}:8000/api/template/info"
@@ -184,9 +188,9 @@ async with httpx.AsyncClient(timeout=10.0) as client:
 
 ### Agent Server Endpoint
 
-#### docker/base-image/agent-server.py:1504-1565
+#### docker/base-image/agent_server/routers/info.py:81-152
 ```python
-@app.get("/api/template/info")
+@router.get("/api/template/info")
 async def get_template_info():
     """
     Get template metadata from template.yaml if available.
@@ -195,7 +199,7 @@ async def get_template_info():
 ```
 
 ### Template Discovery
-Searches for `template.yaml` in multiple locations (lines 1513-1531):
+Searches for `template.yaml` in multiple locations (lines 87-94):
 ```python
 template_paths = [
     home_dir / "template.yaml",
@@ -206,7 +210,7 @@ template_paths = [
 
 ### Response Schema
 
-**When template exists (lines 1543-1565):**
+**When template exists (lines 126-152):**
 ```python
 return {
     "has_template": True,
@@ -215,6 +219,7 @@ return {
     # Core metadata
     "name": template_data.get("name", ""),
     "display_name": template_data.get("display_name", template_data.get("name", "")),
+    "tagline": template_data.get("tagline", ""),
     "description": template_data.get("description", ""),
     "version": template_data.get("version", ""),
     "author": template_data.get("author", ""),
@@ -222,18 +227,21 @@ return {
     # Type and resources
     "type": template_data.get("type", ""),
     "resources": template_data.get("resources", {}),
-    # Capabilities and features
+    # Use cases - example prompts for users
+    "use_cases": template_data.get("use_cases", []),
+    # Capabilities and features (can be strings or {name, description} objects)
     "capabilities": template_data.get("capabilities", []),
     "sub_agents": template_data.get("sub_agents", []),
     "commands": template_data.get("commands", []),
     "platforms": template_data.get("platforms", []),
     "tools": template_data.get("tools", []),
-    # MCP servers (just the names, not credentials)
-    "mcp_servers": list(template_data.get("credentials", {}).get("mcp_servers", {}).keys()),
+    "skills": template_data.get("skills", []),
+    # MCP servers (can be strings or {name, description} objects)
+    "mcp_servers": mcp_servers_raw,
 }
 ```
 
-**When no template (lines 1535-1540):**
+**When no template (lines 110-117):**
 ```python
 return {
     "has_template": False,
@@ -410,9 +418,9 @@ Renders all metadata sections when `templateInfo.has_template === true`
 
 ---
 
-## Helper Function
+## Helper Functions
 
-### formatCapability (InfoPanel.vue:239-245)
+### formatCapability (InfoPanel.vue:314-320)
 Converts snake_case capability names to Title Case:
 ```javascript
 const formatCapability = (capability) => {
@@ -420,6 +428,20 @@ const formatCapability = (capability) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+```
+
+### getItemName / getItemDescription (InfoPanel.vue:303-312)
+Handle items that can be either strings or {name, description} objects:
+```javascript
+const getItemName = (item) => {
+  if (typeof item === 'string') return item
+  return item?.name || ''
+}
+
+const getItemDescription = (item) => {
+  if (typeof item === 'string') return null
+  return item?.description || null
 }
 ```
 
@@ -446,4 +468,10 @@ const formatCapability = (capability) => {
 ---
 
 ## Status
-✅ **Working** - Verified implementation, all line numbers accurate as of 2025-12-02
+**Working** - Verified implementation, line numbers updated as of 2025-12-30
+
+**Key Changes Since 2025-12-02:**
+- Agent server refactored to modular package structure (`docker/base-image/agent_server/`)
+- InfoPanel.vue now supports `use_cases`, `skills`, `tagline` fields
+- Items can be strings or {name, description} objects for rich display
+- Added `@use-case-click` event for interactive use cases

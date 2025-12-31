@@ -109,7 +109,7 @@ const userScrolledUp = ref(false)   // Smart scroll tracking
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/logs
-**File**: `src/backend/routers/agents.py:558-584`
+**File**: `src/backend/routers/agents.py:404-430`
 
 **Handler**:
 ```python
@@ -153,9 +153,10 @@ async def get_agent_logs_endpoint(
 ```
 
 #### GET /api/agents/{agent_name}/stats
-**File**: `src/backend/routers/agents.py:587-648`
+**File**: `src/backend/routers/agents.py:433-440` (delegates to service layer)
+**Business Logic**: `src/backend/services/agent_service/stats.py:101-162`
 
-**Handler**:
+**Handler** (thin router layer):
 ```python
 @router.get("/{agent_name}/stats")
 async def get_agent_stats_endpoint(
@@ -163,6 +164,13 @@ async def get_agent_stats_endpoint(
     request: Request,
     current_user: User = Depends(get_current_user)
 ):
+    """Get live container stats (CPU, memory, network) for an agent."""
+    return await get_agent_stats_logic(agent_name, current_user)
+```
+
+**Service Logic** (`services/agent_service/stats.py`):
+```python
+async def get_agent_stats_logic(agent_name: str, current_user: User) -> dict:
     """Get live container stats (CPU, memory, network) for an agent."""
     container = get_agent_container(agent_name)
     if not container:
@@ -191,35 +199,38 @@ async def get_agent_stats_endpoint(
 
 ### Business Logic
 
+> **Note**: Business logic has been refactored from `agents.py` to `services/agent_service/stats.py`
+
 #### CPU Calculation
-**Location**: `src/backend/routers/agents.py:600-615`
+**Location**: `src/backend/services/agent_service/stats.py:119-130`
 
 ```python
-cpu_stats = stats["cpu_stats"]
-precpu_stats = stats["precpu_stats"]
-num_cpus = cpu_stats.get("online_cpus", len(cpu_stats.get("cpu_usage", {}).get("percpu_usage", [1])))
+cpu_stats = stats.get("cpu_stats", {})
+precpu_stats = stats.get("precpu_stats", {})
 
-cpu_delta = cpu_stats["cpu_usage"]["total_usage"] - precpu_stats["cpu_usage"]["total_usage"]
-system_delta = cpu_stats["system_cpu_usage"] - precpu_stats["system_cpu_usage"]
+cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - \
+            precpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+system_delta = cpu_stats.get("system_cpu_usage", 0) - \
+               precpu_stats.get("system_cpu_usage", 0)
 
-cpu_percent = 0.0
 if system_delta > 0 and cpu_delta > 0:
+    num_cpus = len(cpu_stats.get("cpu_usage", {}).get("percpu_usage", [])) or 1
     cpu_percent = (cpu_delta / system_delta) * num_cpus * 100.0
 ```
 
 #### Memory Calculation
-**Location**: `src/backend/routers/agents.py:617-621`
+**Location**: `src/backend/services/agent_service/stats.py:132-136`
 
 ```python
-memory_stats = stats["memory_stats"]
+memory_stats = stats.get("memory_stats", {})
 memory_used = memory_stats.get("usage", 0)
+memory_limit = memory_stats.get("limit", 0)
 cache = memory_stats.get("stats", {}).get("cache", 0)
 memory_used_actual = max(0, memory_used - cache)  # Subtract cache
-memory_limit = memory_stats.get("limit", 0)
 ```
 
 #### Network Stats
-**Location**: `src/backend/routers/agents.py:623-626`
+**Location**: `src/backend/services/agent_service/stats.py:138-140`
 
 ```python
 networks = stats.get("networks", {})
@@ -228,7 +239,7 @@ network_tx = sum(net.get("tx_bytes", 0) for net in networks.values())
 ```
 
 #### Uptime Calculation
-**Location**: `src/backend/routers/agents.py:628-635`
+**Location**: `src/backend/services/agent_service/stats.py:142-149`
 
 ```python
 started_at = container.attrs.get("State", {}).get("StartedAt", "")
@@ -279,7 +290,7 @@ This feature reads directly from Docker API - no database persistence.
 ## Side Effects
 
 ### Audit Logging
-**Location**: `src/backend/routers/agents.py:573-580`
+**Location**: `src/backend/routers/agents.py:419-425`
 
 ```python
 await log_audit_event(
@@ -342,4 +353,14 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 ---
 
 ## Status
-✅ **Working** - Verified implementation, all line numbers accurate as of 2025-12-02
+**Last Updated**: 2025-12-30
+**Verified**: All line numbers updated for current codebase structure
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-12-30 | **Updated for service layer refactor**: Stats logic moved from `agents.py` to `services/agent_service/stats.py`. Logs endpoint now at lines 404-430 (was 558-584). Stats endpoint now at 433-440 delegating to service layer. Updated all business logic line references to stats.py. |
+| 2025-12-02 | Initial documentation |

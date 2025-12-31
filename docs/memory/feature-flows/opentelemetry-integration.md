@@ -49,7 +49,7 @@ As a platform operator, I want agents to export standardized metrics so that I c
 
 ### Environment Variables
 
-**File**: `.env.example` (lines 80-94)
+**File**: `.env.example` (lines 98-112)
 
 ```bash
 # Enable OpenTelemetry metrics export from Claude Code agents
@@ -86,7 +86,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 ### Agent Creation - Environment Injection
 
-**File**: `src/backend/routers/agents.py` (lines 514-522)
+**File**: `src/backend/services/agent_service/crud.py` (lines 247-254)
 
 ```python
 # OpenTelemetry Configuration (enabled by default)
@@ -113,7 +113,7 @@ if os.getenv('OTEL_ENABLED', '1') == '1':
 
 ### OTEL Collector Service
 
-**File**: `docker-compose.yml` (lines 132-151)
+**File**: `docker-compose.yml` (lines 150-169)
 
 ```yaml
 # OpenTelemetry Collector - receives metrics from Claude Code agents
@@ -428,12 +428,12 @@ Existing agents keep their OTel config until restarted.
 
 | File | Change |
 |------|--------|
-| `src/backend/routers/agents.py` | Added OTel env var injection (lines 514-522) |
+| `src/backend/services/agent_service/crud.py` | OTel env var injection (lines 247-254) |
 | `src/backend/routers/observability.py` | New file - metrics API endpoints (257 lines) |
-| `src/backend/main.py` | Added observability router import (line 41) and registration (line 209) |
-| `docker-compose.yml` | Added otel-collector service (lines 132-151) |
+| `src/backend/main.py` | Added observability router import (line 41) and registration (line 231) |
+| `docker-compose.yml` | Added otel-collector service (lines 150-169) |
 | `config/otel-collector.yaml` | New file - collector configuration |
-| `.env.example` | Added OTel environment variables (lines 80-94) |
+| `.env.example` | Added OTel environment variables (lines 98-112) |
 | `docs/DEPLOYMENT.md` | Added OpenTelemetry section |
 | `src/frontend/src/stores/observability.js` | New file - Pinia store for observability state (269 lines) |
 | `src/frontend/src/components/ObservabilityPanel.vue` | New file - collapsible metrics panel (186 lines) |
@@ -522,7 +522,7 @@ async def get_observability_status(
 
 **File**: `src/backend/main.py`
 - Import: line 41
-- Registration: line 209
+- Registration: line 231
 
 ```python
 from routers.observability import router as observability_router
@@ -797,3 +797,7 @@ curl http://localhost:8889/metrics | grep trinity_claude_code
 | Phase 2.5: UI Integration | 2 hours | Completed 2025-12-20 |
 | Phase 3: Prometheus/Grafana | 4 hours | Not started |
 | Phase 4: Hooks Integration | 1-2 days | Not started |
+
+---
+
+**Last Updated**: 2025-12-30 (Line numbers verified)

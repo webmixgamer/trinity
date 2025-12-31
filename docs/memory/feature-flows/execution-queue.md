@@ -697,7 +697,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 - [ ] TTL expiration: Stuck execution auto-clears after 10 min
 
 **Status**: Ready for testing
-**Last Updated**: 2025-12-30
+**Last Updated**: 2025-12-31
 
 ---
 
@@ -864,6 +864,7 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 | Date | Changes |
 |------|---------|
+| 2025-12-31 | **Execution log storage**: All execution records now store full Claude Code execution transcript in `execution_log` column. New endpoint `GET /api/agents/{name}/executions/{execution_id}/log` retrieves full execution log for debugging and audit purposes. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: `/chat` endpoint now creates `schedule_executions` record when `X-Source-Agent` header is present, ensuring agent-to-agent MCP calls appear in Tasks tab alongside scheduled and manual tasks. |
 | 2025-12-30 | **Merged agent-chat.md content**: Added "Chat API Implementation Details" section covering Claude Code CLI execution, stream-JSON parsing, session state management, context window tracking (with bug fixes from 2025-12-11 and 2025-12-19), and chat endpoint session flow. |
 | 2025-12-30 | **Line number verification**: Updated all line numbers to match current codebase state |

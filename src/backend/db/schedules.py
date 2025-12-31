@@ -65,7 +65,8 @@ class ScheduleOperations:
             context_used=row["context_used"] if "context_used" in row_keys else None,
             context_max=row["context_max"] if "context_max" in row_keys else None,
             cost=row["cost"] if "cost" in row_keys else None,
-            tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None
+            tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None,
+            execution_log=row["execution_log"] if "execution_log" in row_keys else None
         )
 
     @staticmethod
@@ -371,7 +372,8 @@ class ScheduleOperations:
         context_used: int = None,
         context_max: int = None,
         cost: float = None,
-        tool_calls: str = None
+        tool_calls: str = None,
+        execution_log: str = None
     ) -> bool:
         """Update execution status when completed."""
         with get_db_connection() as conn:
@@ -390,7 +392,7 @@ class ScheduleOperations:
             cursor.execute("""
                 UPDATE schedule_executions
                 SET status = ?, completed_at = ?, duration_ms = ?, response = ?, error = ?,
-                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?
+                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?, execution_log = ?
                 WHERE id = ?
             """, (
                 status,
@@ -402,6 +404,7 @@ class ScheduleOperations:
                 context_max,
                 cost,
                 tool_calls,
+                execution_log,
                 execution_id
             ))
             conn.commit()

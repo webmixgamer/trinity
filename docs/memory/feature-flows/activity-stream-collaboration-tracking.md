@@ -1,6 +1,6 @@
 # Feature: Activity Stream Collaboration Tracking
 
-**Last Updated**: 2025-12-19
+**Last Updated**: 2025-12-30
 
 ## Overview
 End-to-end tracking of agent-to-agent collaborations from MCP tool invocation through database persistence, real-time WebSocket broadcasting, and historical visualization in the Dashboard with replay capabilities.
@@ -19,7 +19,7 @@ As a platform administrator, I want to track and visualize all agent collaborati
 ### MCP Client Implementation
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts`
 
-#### chat() Method (Lines 288-329)
+#### chat() Method (Lines 288-320)
 Accepts optional `sourceAgent` parameter for collaboration tracking:
 
 ```typescript
@@ -47,7 +47,7 @@ async chat(name: string, message: string, sourceAgent?: string): Promise<ChatRes
 ### MCP Chat Tool
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/tools/chat.ts`
 
-#### chatWithAgent Tool (Lines 122-189)
+#### chatWithAgent Tool (Lines 132-270)
 Extracts source agent from auth context and passes to client:
 
 ```typescript
@@ -64,12 +64,12 @@ execute: async ({ agent_name, message }, context) => {
     return JSON.stringify({ error: "Access denied", reason: accessCheck.reason });
   }
 
-  // Log successful collaboration (Line 166-168)
+  // Log successful collaboration (Lines 224-227)
   if (authContext?.scope === "agent") {
     console.log(`[Agent Collaboration] ${authContext.agentName} -> ${agent_name}`);
   }
 
-  // Pass source agent for collaboration tracking (Line 171-172)
+  // Pass source agent for collaboration tracking (Lines 229-230)
   const sourceAgent = authContext?.scope === "agent" ? authContext.agentName : undefined;
   const response = await apiClient.chat(agent_name, message, sourceAgent);
   return JSON.stringify(response, null, 2);
@@ -87,7 +87,7 @@ execute: async ({ agent_name, message }, context) => {
 ### Chat Router with Activity Tracking
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py`
 
-#### WebSocket Manager Injection (Lines 25-32)
+#### WebSocket Manager Injection (Lines 84-88)
 ```python
 _websocket_manager = None
 
@@ -99,7 +99,7 @@ def set_websocket_manager(manager):
 
 Called from `main.py` to inject WebSocket manager into router.
 
-#### Collaboration Broadcasting (Lines 35-47)
+#### Collaboration Broadcasting (Lines 91-103)
 ```python
 async def broadcast_collaboration_event(source_agent: str, target_agent: str, action: str = "chat"):
     """Broadcast agent collaboration event to all WebSocket clients."""
@@ -121,7 +121,7 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
 - `action`: "chat" (default)
 - `timestamp`: ISO 8601 timestamp
 
-#### Chat Endpoint with Activity Detection (Lines 50-294)
+#### Chat Endpoint with Activity Detection (Lines 106-400)
 ```python
 @router.post("/{name}/chat")
 async def chat_with_agent(
@@ -132,7 +132,7 @@ async def chat_with_agent(
 ):
 ```
 
-**Detection Logic** (Lines 107-130):
+**Detection Logic** (Lines 163-193):
 ```python
 # Broadcast collaboration event if this is agent-to-agent communication
 collaboration_activity_id = None
@@ -160,7 +160,7 @@ if x_source_agent:
     )
 ```
 
-**Parent-Child Activity Tracking** (Lines 139-152):
+**Parent-Child Activity Tracking** (Lines 195-210):
 ```python
 # Track chat start activity
 chat_activity_id = await activity_service.track_activity(
@@ -178,7 +178,7 @@ chat_activity_id = await activity_service.track_activity(
 )
 ```
 
-**Activity Completion** (Lines 237-248):
+**Activity Completion** (Lines 280-295):
 ```python
 # Complete collaboration activity if this was agent-to-agent
 if collaboration_activity_id:
@@ -205,6 +205,7 @@ AGENT_COLLABORATION (source agent)
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py`
 
 #### track_activity() Method (Lines 46-107)
+> Note: Line numbers verified 2025-12-30
 Central service for creating activity records:
 
 ```python
@@ -248,6 +249,7 @@ async def track_activity(
 **Returns**: UUID of created activity for linking child activities.
 
 #### complete_activity() Method (Lines 109-159)
+> Note: Line numbers verified 2025-12-30
 Marks activity as completed or failed:
 
 ```python
@@ -272,6 +274,7 @@ async def complete_activity(
 ```
 
 #### Action Description Generator (Lines 214-244)
+> Note: Line numbers verified 2025-12-30
 Human-readable activity descriptions:
 
 ```python
@@ -286,6 +289,7 @@ def _get_action_description(self, activity_type: ActivityType, details: Optional
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/activities.py`
 
 #### Timeline Endpoint (Lines 15-55)
+> Note: Line numbers verified 2025-12-30
 Cross-agent activity timeline with access control:
 
 ```python
@@ -341,6 +345,7 @@ async def get_activity_timeline(
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py`
 
 #### create_activity() (Lines 39-71)
+> Note: Line numbers verified 2025-12-30
 ```python
 def create_activity(self, activity: 'ActivityCreate') -> str:
     activity_id = str(uuid.uuid4())
@@ -360,6 +365,7 @@ def create_activity(self, activity: 'ActivityCreate') -> str:
 ```
 
 #### get_activities_in_range() (Lines 152-183)
+> Note: Line numbers verified 2025-12-30
 ```python
 def get_activities_in_range(self, start_time: Optional[str] = None,
                             end_time: Optional[str] = None,
@@ -386,7 +392,7 @@ def get_activities_in_range(self, start_time: Optional[str] = None,
 ```
 
 ### agent_activities Table Schema
-**Location**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py` (Lines 424-430)
+**Location**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py` (Lines 421-441)
 
 ```sql
 CREATE TABLE agent_activities (
@@ -407,7 +413,7 @@ CREATE TABLE agent_activities (
     created_at TEXT NOT NULL            -- Record creation timestamp
 );
 
--- Indexes for efficient querying
+-- Indexes for efficient querying (database.py lines 574-580)
 CREATE INDEX idx_activities_agent ON agent_activities(agent_name, created_at DESC);
 CREATE INDEX idx_activities_type ON agent_activities(activity_type);
 CREATE INDEX idx_activities_state ON agent_activities(activity_state);
@@ -451,7 +457,7 @@ CREATE INDEX idx_activities_execution ON agent_activities(related_execution_id);
 ### Network Store
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js`
 
-#### State Variables (Lines 16-23)
+#### State Variables (Lines 40-46)
 ```javascript
 const historicalCollaborations = ref([])  // Persistent data from Activity Stream
 const totalCollaborationCount = ref(0)
@@ -460,7 +466,7 @@ const isLoadingHistory = ref(false)
 const contextStats = ref({})              // Map of agent name -> context stats
 ```
 
-#### Replay Mode State (Lines 36-42)
+#### Replay Mode State (Lines 51-56)
 ```javascript
 const isReplayMode = ref(false)
 const isPlaying = ref(false)
@@ -469,7 +475,7 @@ const currentEventIndex = ref(0)
 const replayInterval = ref(null)
 ```
 
-#### fetchHistoricalCollaborations() Method (Lines 102-161)
+#### fetchHistoricalCollaborations() Method (Lines 118-165)
 Fetches collaboration history from Activity Stream API:
 
 ```javascript
@@ -521,7 +527,7 @@ async function fetchHistoricalCollaborations(hours = null) {
 }
 ```
 
-#### createHistoricalEdges() Method (Lines 163-232)
+#### createHistoricalEdges() Method (Lines 167-236)
 Creates inactive edges with collaboration counts:
 
 ```javascript
@@ -565,7 +571,7 @@ function createHistoricalEdges(collaborations) {
 - **Inactive** (historical): Gray (#cbd5e1), 2px width, 50% opacity, count label
 - **Active** (real-time): Cyan gradient, 3px width, 100% opacity, animated flow with glow
 
-#### Real-Time Event Handling (Lines 320-345)
+#### Real-Time Event Handling (Lines 340-360)
 Merges real-time events with historical data:
 
 ```javascript
@@ -595,7 +601,7 @@ function handleCollaborationEvent(event) {
 }
 ```
 
-#### Replay Mode Functions (Lines 741-949)
+#### Replay Mode Functions (Lines 689-830)
 Complete replay functionality with timeline scrubbing:
 
 ```javascript
@@ -619,9 +625,9 @@ function jumpToEvent(index) { ... }
 ```
 
 ### Dashboard UI
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue` (720 lines total)
 
-#### Header Statistics (Lines 10-39)
+#### Header Statistics (Lines 8-57)
 ```html
 <div class="flex items-center space-x-3 text-xs text-gray-500">
   <span>{{ agents.length }} agents</span>
@@ -631,10 +637,10 @@ function jumpToEvent(index) { ... }
 </div>
 ```
 
-#### Mode Toggle (Lines 44-64)
+#### Mode Toggle (Lines 62-82)
 Toggle between Live and Replay modes with styled buttons.
 
-#### Time Range Filter (Lines 67-77)
+#### Time Range Filter (Lines 84-96)
 ```html
 <select v-model="selectedTimeRange" @change="onTimeRangeChange">
   <option :value="1">1h</option>
@@ -645,13 +651,13 @@ Toggle between Live and Replay modes with styled buttons.
 </select>
 ```
 
-#### Replay Controls Panel (Lines 120-226)
+#### Replay Controls Panel (Lines 120-230)
 Complete playback controls with timeline scrubber when in replay mode.
 
-#### History Panel (Lines 334-396)
+#### History Panel (Lines 330-400)
 Split into "Live Feed" and "Historical" sections with collapsible UI.
 
-#### Component Lifecycle (Lines 462-488)
+#### Component Lifecycle (Lines 460-490)
 ```javascript
 onMounted(async () => {
   // 1. Fetch agents first
@@ -942,14 +948,15 @@ WHERE a1.activity_type = 'agent_collaboration'
 ## References
 
 ### Code Files
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py:50-294`
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/activities.py:15-55`
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py:46-244`
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py:39-183`
-- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js:102-949`
-- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue:1-787`
-- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts:288-329`
-- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/tools/chat.ts:122-189`
+> Line numbers verified 2025-12-30
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py:106-400` - Chat endpoint with collaboration tracking
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/activities.py:15-55` - Timeline endpoint
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py:46-248` - Activity service
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py:39-191` - Activity database operations
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js:1-830` - Network store (830 lines total)
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue:1-720` - Dashboard (720 lines total)
+- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts:288-320` - MCP client chat method
+- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/tools/chat.ts:132-270` - MCP chat_with_agent tool
 
 ### Documentation
 - **Requirements**: `docs/memory/requirements.md` REQ-9.7 (Activity Stream)
