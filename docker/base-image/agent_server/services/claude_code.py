@@ -585,6 +585,8 @@ async def execute_headless_task(
 
         # Initialize tracking structures
         execution_log: List[ExecutionLogEntry] = []
+        raw_messages: List[Dict] = []  # Capture ALL raw JSON messages from Claude Code
+        verbose_output_lines: List[str] = []  # Capture verbose text output (stderr)
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
@@ -609,24 +611,46 @@ async def execute_headless_task(
         # Helper function that reads subprocess output (runs in thread pool)
         def read_subprocess_output_with_timeout():
             """Blocking function to read subprocess output line by line with timeout"""
+            import threading
+
+            # Read stderr in separate thread (verbose output with thinking/tool calls)
+            def read_stderr():
+                try:
+                    for line in iter(process.stderr.readline, ''):
+                        if not line:
+                            break
+                        verbose_output_lines.append(line.rstrip('\n'))
+                except Exception as e:
+                    logger.error(f"[Headless Task] Error reading stderr: {e}")
+
+            stderr_thread = threading.Thread(target=read_stderr)
+            stderr_thread.start()
+
+            # Read stdout (stream-json for metadata)
             try:
                 for line in iter(process.stdout.readline, ''):
                     if not line:
                         break
-                    # Process each line immediately
+                    # Capture raw JSON for full execution log
+                    try:
+                        raw_msg = json.loads(line.strip())
+                        raw_messages.append(raw_msg)
+                    except json.JSONDecodeError:
+                        pass
+                    # Process each line for metadata/tool tracking
                     process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
             except Exception as e:
-                logger.error(f"[Headless Task] Error reading output: {e}")
+                logger.error(f"[Headless Task] Error reading stdout: {e}")
 
-            # Wait for process to complete and get stderr
-            stderr = process.stderr.read()
+            # Wait for stderr thread and process to complete
+            stderr_thread.join(timeout=5)
             return_code = process.wait()
-            return stderr, return_code
+            return return_code
 
         # Run with timeout using asyncio
         loop = asyncio.get_event_loop()
         try:
-            stderr_output, return_code = await asyncio.wait_for(
+            return_code = await asyncio.wait_for(
                 loop.run_in_executor(None, read_subprocess_output_with_timeout),
                 timeout=timeout_seconds
             )
@@ -640,12 +664,16 @@ async def execute_headless_task(
                 detail=f"Task execution timed out after {timeout_seconds} seconds"
             )
 
+        # Build verbose transcript from stderr (the human-readable execution log)
+        verbose_transcript = "\n".join(verbose_output_lines)
+
         # Check for errors
         if return_code != 0:
-            logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {stderr_output[:500]}")
+            error_preview = verbose_transcript[:500] if verbose_transcript else "Unknown error"
+            logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {error_preview}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Task execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                detail=f"Task execution failed: {error_preview[:200]}"
             )
 
         # Build final response text
@@ -664,9 +692,11 @@ async def execute_headless_task(
         # Use session_id from Claude if available, otherwise use our generated one
         final_session_id = metadata.session_id or task_session_id
 
-        logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}")
+        logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
 
-        return response_text, execution_log, metadata, final_session_id
+        # Return raw_messages as the execution log (full JSON transcript from Claude Code)
+        # Contains: init, assistant (thinking/tool_use), user (tool_result), result
+        return response_text, raw_messages, metadata, final_session_id
 
     except HTTPException:
         raise

@@ -266,8 +266,9 @@ async def chat_with_agent(
         session_data = response_data.get("session", {})
 
         # Serialize tool calls if present
+        # Note: Check is not None, not truthiness - empty list [] is valid log
         execution_log = response_data.get("execution_log", [])
-        tool_calls_json = json.dumps(execution_log) if execution_log else None
+        tool_calls_json = json.dumps(execution_log) if execution_log is not None else None
 
         # Log assistant response to database with observability data
         assistant_message = db.add_chat_message(
@@ -482,7 +483,8 @@ async def execute_parallel_task(
         if execution_id:
             tool_calls_json = None
             execution_log_json = None
-            if response_data.get("execution_log"):
+            # Note: Check for key existence, not truthiness - empty list [] is valid log
+            if "execution_log" in response_data and response_data["execution_log"] is not None:
                 try:
                     execution_log_json = json.dumps(response_data["execution_log"])
                     tool_calls_json = execution_log_json  # Keep for backwards compatibility

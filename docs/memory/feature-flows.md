@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2025-12-31)**: Execution Log Viewer feature flow documented:
+> - **execution-log-viewer.md**: New feature flow documenting the Tasks panel log viewer modal
+> - Complete vertical slice: View button -> API call -> parseExecutionLog() -> formatted transcript
+> - Covers all entry types: init, assistant-text, tool-call, tool-result, result
+> - Includes visual styling, truncation logic, error handling
+>
 > **Updated (2025-12-31)**: Vector Logging feature flow documented:
 > - **vector-logging.md**: New infrastructure flow documenting Vector log aggregation replacing audit-logger
 > - Complete data flow: Docker socket -> VRL transforms -> platform.json/agents.json
@@ -121,6 +127,7 @@
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling, execution log retrieval (Updated 2025-12-31) |
+| **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - parseExecutionLog() transforms JSON stream into formatted chat-like display with init/text/tool-call/tool-result/result blocks (Created 2025-12-31) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 
 ---

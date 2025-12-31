@@ -275,7 +275,7 @@
               </button>
             </div>
             <!-- Modal Body -->
-            <div class="flex-1 overflow-y-auto p-4">
+            <div class="flex-1 overflow-y-auto overflow-x-hidden p-4">
               <div v-if="logLoading" class="flex items-center justify-center py-12">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
               </div>
@@ -285,7 +285,80 @@
               <div v-else-if="logData && !logData.has_log" class="text-center py-8">
                 <p class="text-gray-500 dark:text-gray-400">No execution log available for this task.</p>
               </div>
-              <pre v-else-if="logData" class="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-4 overflow-x-auto whitespace-pre-wrap font-mono">{{ formatLogData(logData.log) }}</pre>
+              <!-- Formatted execution log transcript -->
+              <div v-else-if="logData && logData.log" class="space-y-3">
+                <template v-for="(entry, idx) in parseExecutionLog(logData.log)" :key="idx">
+                  <!-- Session Init -->
+                  <div v-if="entry.type === 'init'" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 text-xs">
+                    <div class="flex items-center space-x-2 text-gray-500 dark:text-gray-400 mb-1">
+                      <span class="font-semibold">Session Started</span>
+                      <span>•</span>
+                      <span>{{ entry.model }}</span>
+                      <span>•</span>
+                      <span>{{ entry.toolCount }} tools</span>
+                    </div>
+                    <div v-if="entry.mcpServers.length" class="text-gray-400 dark:text-gray-500">
+                      MCP: {{ entry.mcpServers.join(', ') }}
+                    </div>
+                  </div>
+
+                  <!-- Assistant Message (thinking text) -->
+                  <div v-else-if="entry.type === 'assistant-text'" class="flex space-x-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center">
+                      <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div class="flex-1 min-w-0 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3">
+                      <div class="text-xs font-medium text-indigo-700 dark:text-indigo-300 mb-1">Claude</div>
+                      <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">{{ entry.text }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Tool Call -->
+                  <div v-else-if="entry.type === 'tool-call'" class="flex space-x-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center">
+                      <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <div class="flex-1 min-w-0 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-xs font-medium text-amber-700 dark:text-amber-300">{{ entry.tool }}</span>
+                      </div>
+                      <pre class="text-xs text-gray-600 dark:text-gray-400 bg-white/50 dark:bg-black/20 rounded p-2 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{{ entry.input }}</pre>
+                    </div>
+                  </div>
+
+                  <!-- Tool Result -->
+                  <div v-else-if="entry.type === 'tool-result'" class="flex space-x-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center">
+                      <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div class="flex-1 min-w-0 bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                      <div class="text-xs font-medium text-green-700 dark:text-green-300 mb-1">Result</div>
+                      <pre class="text-xs text-gray-600 dark:text-gray-400 bg-white/50 dark:bg-black/20 rounded p-2 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{{ entry.content }}</pre>
+                    </div>
+                  </div>
+
+                  <!-- Final Result -->
+                  <div v-else-if="entry.type === 'result'" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 text-xs border-t-2 border-gray-300 dark:border-gray-600">
+                    <div class="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                      <div class="flex items-center space-x-3">
+                        <span class="font-semibold text-green-600 dark:text-green-400">Completed</span>
+                        <span>{{ entry.numTurns }} turns</span>
+                      </div>
+                      <div class="flex items-center space-x-3 font-mono">
+                        <span>{{ entry.duration }}</span>
+                        <span class="text-indigo-600 dark:text-indigo-400">${{ entry.cost }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -540,6 +613,100 @@ function formatLogData(log) {
   if (typeof log === 'string') return log
   // Pretty print JSON array/object
   return JSON.stringify(log, null, 2)
+}
+
+// Parse execution log JSON into structured entries for display
+function parseExecutionLog(log) {
+  if (!log) return []
+
+  // Handle string log (legacy format)
+  if (typeof log === 'string') {
+    try {
+      log = JSON.parse(log)
+    } catch {
+      return [{ type: 'assistant-text', text: log }]
+    }
+  }
+
+  // Must be an array
+  if (!Array.isArray(log)) {
+    return [{ type: 'assistant-text', text: JSON.stringify(log, null, 2) }]
+  }
+
+  const entries = []
+
+  for (const msg of log) {
+    // Session init message
+    if (msg.type === 'system' && msg.subtype === 'init') {
+      entries.push({
+        type: 'init',
+        model: msg.model || 'unknown',
+        toolCount: msg.tools?.length || 0,
+        mcpServers: msg.mcp_servers?.map(s => s.name) || []
+      })
+      continue
+    }
+
+    // Assistant message (can contain text and/or tool_use)
+    if (msg.type === 'assistant') {
+      const content = msg.message?.content || []
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          entries.push({
+            type: 'assistant-text',
+            text: block.text
+          })
+        } else if (block.type === 'tool_use') {
+          entries.push({
+            type: 'tool-call',
+            tool: block.name || 'unknown',
+            input: typeof block.input === 'string'
+              ? block.input
+              : JSON.stringify(block.input, null, 2)
+          })
+        }
+      }
+      continue
+    }
+
+    // User message (typically tool results)
+    if (msg.type === 'user') {
+      const content = msg.message?.content || []
+      for (const block of content) {
+        if (block.type === 'tool_result') {
+          // Content can be string or array of content blocks
+          let resultContent = block.content
+          if (Array.isArray(resultContent)) {
+            resultContent = resultContent
+              .map(c => c.text || c.content || JSON.stringify(c))
+              .join('\n')
+          }
+          // Truncate very long results
+          if (resultContent && resultContent.length > 2000) {
+            resultContent = resultContent.substring(0, 2000) + '\n... (truncated)'
+          }
+          entries.push({
+            type: 'tool-result',
+            content: resultContent || '(empty result)'
+          })
+        }
+      }
+      continue
+    }
+
+    // Final result message
+    if (msg.type === 'result') {
+      entries.push({
+        type: 'result',
+        numTurns: msg.num_turns || msg.numTurns || '-',
+        duration: msg.duration_ms ? formatDuration(msg.duration_ms) : (msg.duration || '-'),
+        cost: msg.cost_usd?.toFixed(4) || msg.total_cost_usd?.toFixed(4) || '0.0000'
+      })
+      continue
+    }
+  }
+
+  return entries
 }
 
 // Force release queue

@@ -108,7 +108,7 @@ async def execute_task(request: ParallelTaskRequest):
 
     # Execute via runtime adapter in headless mode (no lock, no --continue)
     runtime = get_runtime()
-    response_text, execution_log, metadata, session_id = await runtime.execute_headless(
+    response_text, raw_messages, metadata, session_id = await runtime.execute_headless(
         prompt=request.message,
         model=request.model,
         allowed_tools=request.allowed_tools,
@@ -118,9 +118,11 @@ async def execute_task(request: ParallelTaskRequest):
 
     logger.info(f"[Task] Task {session_id} completed successfully")
 
+    # raw_messages contains the full Claude Code JSON stream (init, assistant, user, result)
+    # This is the complete execution transcript showing thinking, tool calls, and results
     return {
         "response": response_text,
-        "execution_log": [entry.model_dump() for entry in execution_log],
+        "execution_log": raw_messages,  # Full JSON transcript from Claude Code
         "metadata": metadata.model_dump(),
         "session_id": session_id,
         "timestamp": datetime.now().isoformat()

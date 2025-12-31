@@ -291,9 +291,10 @@ class SchedulerService:
             cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
 
             # Tool calls summary and execution log
+            # Note: Check is not None, not truthiness - empty list [] is valid log
             tool_calls_json = None
             execution_log_json = None
-            if execution_log:
+            if execution_log is not None:
                 import json
                 execution_log_json = json.dumps(execution_log)
                 tool_calls_json = execution_log_json  # Keep for backwards compatibility
@@ -502,9 +503,10 @@ class SchedulerService:
             cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
 
             # Tool calls summary and execution log
+            # Note: Check is not None, not truthiness - empty list [] is valid log
             tool_calls_json = None
             execution_log_json = None
-            if execution_log:
+            if execution_log is not None:
                 import json
                 execution_log_json = json.dumps(execution_log)
                 tool_calls_json = execution_log_json  # Keep for backwards compatibility
