@@ -80,7 +80,7 @@
                   <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
                   <!-- Pull Latest button -->
                   <button
-                    @click="pullFromGithub"
+                    @click="pullFromGithub()"
                     :disabled="gitPulling || gitSyncing"
                     class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white"
                     title="Pull latest changes from GitHub"
@@ -96,7 +96,7 @@
                   </button>
                   <!-- Sync (Push) button -->
                   <button
-                    @click="syncToGithub"
+                    @click="syncToGithub()"
                     :disabled="gitSyncing || gitPulling"
                     class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors"
                     :class="gitHasChanges
