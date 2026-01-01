@@ -84,31 +84,21 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 
 ### 2. Authentication & Authorization
 
-#### 2.1 Auth0 + Google OAuth
-- **Status**: ✅ Implemented
-- **Priority**: High
-- **Description**: SSO via Auth0 with Google OAuth provider
-- **Acceptance Criteria**:
-  - [x] Auth0 integration
-  - [x] Google OAuth single sign-on
-  - [x] JWT token management
-  - [x] User profile display with avatar
+#### ~~2.1 Auth0 + Google OAuth~~ (REMOVED 2026-01-01)
+- **Status**: ❌ Removed
+- **Priority**: N/A
+- **Description**: ~~SSO via Auth0 with Google OAuth provider~~ **Replaced by Email Authentication**
+- **Reason for Removal**: Auth0 SDK caused blank pages on HTTP LAN access (required "secure origins"). Email auth is simpler and works everywhere.
 
-#### 2.2 Domain Restriction
-- **Status**: ✅ Implemented
-- **Priority**: High
-- **Description**: Restrict access to @ability.ai domain
-- **Acceptance Criteria**:
-  - [x] Only @ability.ai emails allowed
-  - [x] Non-ability.ai emails rejected with "Access Denied"
+#### ~~2.2 Domain Restriction~~ (REMOVED 2026-01-01)
+- **Status**: ❌ Removed
+- **Priority**: N/A
+- **Description**: ~~Restrict access to @ability.ai domain~~ **Replaced by Email Whitelist** (see 12.4)
 
-#### 2.3 Development Mode Bypass
-- **Status**: ✅ Implemented
-- **Priority**: Medium
-- **Description**: Skip Auth0 for local development
-- **Acceptance Criteria**:
-  - [x] `VITE_DEV_MODE=true` bypasses Auth0
-  - [x] Uses backend admin credentials
+#### ~~2.3 Development Mode Bypass~~ (REMOVED 2026-01-01)
+- **Status**: ❌ Removed
+- **Priority**: N/A
+- **Description**: ~~Skip Auth0 for local development~~ **Not needed - Email auth works everywhere**
 
 #### 2.4 Session Persistence
 - **Status**: ✅ Implemented
@@ -1345,7 +1335,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   7. **Admin Whitelist**: Add/remove emails via Settings page
   8. **Email Providers**: Test with console, SMTP, SendGrid, Resend
   9. **Audit Logs**: All operations logged with details
-  10. **Fallback Methods**: Dev mode and Auth0 still accessible
+  10. **Admin Login**: Password-based fallback for admin user
 - **Documentation**:
   - Feature flow: `docs/memory/feature-flows/email-authentication.md` (1200+ lines)
   - Architecture, security, testing, troubleshooting
@@ -1354,8 +1344,8 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - Uses system_settings from Req 11.1 (System-Wide Trinity Prompt)
   - Integrates with agent sharing from Req 9.3 (Agent Sharing)
 - **Notes**:
-  - Default authentication method (replaces Auth0 as primary)
-  - Auth0 and Dev mode still available as fallback options
+  - Primary authentication method (Auth0 removed 2026-01-01)
+  - Admin password login available as secondary option
   - Email whitelist provides fine-grained access control
   - Auto-whitelist enables seamless collaboration via agent sharing
 

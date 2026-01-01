@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-01)**: Auth0 completely removed from codebase:
+> - **auth0-authentication.md**: Updated to REMOVED status (was DEPRECATED)
+> - Frontend: Deleted `@auth0/auth0-vue` package, `config/auth0.js`, Auth0 SDK initialization
+> - Backend: Removed `/api/auth/exchange` endpoint, `Auth0TokenExchange` model, `AUTH0_*` config vars
+> - Fix: Trinity now works on HTTP over LAN (Auth0 SDK required "secure origins")
+>
 > **Updated (2026-01-01)**: Dashboard Execution Stats feature added:
 > - **agent-network.md**: Updated with execution stats display on Agent Cards
 > - New `GET /api/agents/execution-stats` endpoint documented (agents.py:140-161)
@@ -42,7 +48,7 @@
 > **Updated (2025-12-30)**: Feature flows line number verification:
 > - **Agent Lifecycle**: Updated line numbers after composable refactoring. Frontend lifecycle methods now in `composables/useAgentLifecycle.js`.
 > - **Agent Terminal**: Verified line numbers, added Gemini runtime support documentation.
-> - **Auth0 Authentication**: Verified as properly deprecated with reference to email-authentication.md.
+> - **Auth0 Authentication**: Marked as REMOVED (2026-01-01) - all Auth0 code deleted from codebase.
 > - **Testing Agents**: Updated test count to 474+ tests (was 179), corrected config.py line numbers.
 > - **Agent Custom Metrics**: Corrected router line (743), service lines, frontend/store lines.
 > - **Agent Permissions**: Updated router lines (696-736), added composable docs, corrected database table line (444-453).
@@ -92,7 +98,7 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| ~~Authentication Mode System~~ | ~~High~~ | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **DEPRECATED** - see email-authentication.md (Updated 2025-12-29) |
+| ~~Authentication Mode System~~ | ~~High~~ | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **REMOVED** (2026-01-01) - Auth0 code deleted, see email-authentication.md |
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, frontend: useAgentLifecycle.js composable (Updated 2025-12-30) |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | ~~Agent Chat~~ | ~~High~~ | ~~[agent-chat.md](feature-flows/agent-chat.md)~~ | ❌ DEPRECATED (2025-12-25) - Replaced by Agent Terminal for direct Claude Code interaction |

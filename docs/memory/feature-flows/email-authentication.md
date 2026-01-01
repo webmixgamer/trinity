@@ -953,7 +953,7 @@ backend:
 
 ### Disabling Email Auth
 
-To disable email authentication and use only Auth0 or dev mode:
+To disable email authentication and use only admin login:
 
 **Via environment variable:**
 ```yaml
@@ -976,7 +976,6 @@ curl -X PUT /api/settings/email_auth_enabled \
 
 ### Upstream Dependencies
 - **First-Time Setup** ([first-time-setup.md](first-time-setup.md)) - Must complete setup before login
-- **Auth Mode Detection** ([auth0-authentication.md](auth0-authentication.md)) - Runtime detection of available auth methods
 
 ### Downstream Flows
 - **Agent Sharing** ([agent-sharing.md](agent-sharing.md)) - Auto-adds emails to whitelist
@@ -1518,8 +1517,7 @@ access_token = create_access_token(
 ```
 
 This allows distinguishing between:
-- `mode="dev"` - Dev mode (username/password)
-- `mode="prod"` - Auth0 OAuth
+- `mode="admin"` - Admin login (username/password)
 - `mode="email"` - Email verification code (default)
 
 ### Source Tracking

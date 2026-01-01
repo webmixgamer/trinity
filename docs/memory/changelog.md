@@ -1,3 +1,32 @@
+### 2026-01-01 01:00:00
+🗑️ **Remove Auth0 from Frontend and Backend - Fix HTTP Access on LAN**
+
+**Problem**: Auth0 SDK threw errors when accessing Trinity via HTTP on local network IPs (e.g., `http://192.168.1.127:3000`), causing a blank white page. Auth0 SDK requires "secure origins" (HTTPS or localhost).
+
+**Solution**: Since Auth0 login was already disabled and email authentication is the primary method, removed all Auth0 code from both frontend and backend.
+
+**Frontend Files Removed**:
+- `src/frontend/src/config/auth0.js` - Deleted
+
+**Frontend Files Changed**:
+- `src/frontend/src/main.js` - Removed Auth0 import, createAuth0(), app.use(auth0), secure origin checks
+- `src/frontend/src/components/NavBar.vue` - Removed useAuth0 import and usage
+- `src/frontend/src/stores/auth.js` - Removed setAuth0Instance(), handleAuth0Callback(), ALLOWED_DOMAIN import
+- `src/frontend/package.json` - Removed `@auth0/auth0-vue` dependency
+
+**Backend Files Changed**:
+- `src/backend/routers/auth.py` - Removed `/api/auth/exchange` endpoint, Auth0 imports
+- `src/backend/models.py` - Removed `Auth0TokenExchange` model
+- `src/backend/config.py` - Removed `AUTH0_DOMAIN`, `AUTH0_ALLOWED_DOMAIN` config vars
+
+**Kept for backward compatibility** (no DB migration needed):
+- `auth0_sub` column in users table
+- `get_user_by_auth0_sub()`, `get_or_create_auth0_user()` methods in database layer
+
+**Result**: Trinity now works on any HTTP origin. Email authentication and admin password login remain fully functional.
+
+---
+
 ### 2026-01-01 00:15:00
 📊 **Dashboard Execution Stats - Agent Cards Show Task Metrics**
 

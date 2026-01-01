@@ -61,11 +61,6 @@ class Token(BaseModel):
     token_type: str
 
 
-class Auth0TokenExchange(BaseModel):
-    """Request model for Auth0 token exchange."""
-    auth0_token: str
-
-
 class BulkCredentialImport(BaseModel):
     """Request model for bulk credential import."""
     content: str  # .env-style content: KEY=VALUE pairs

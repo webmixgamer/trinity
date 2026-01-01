@@ -403,7 +403,7 @@ curl http://localhost:8889/metrics | grep claude_code
 
 1. **Never expose Redis externally** - Keep it internal only
 2. **Use strong SECRET_KEY** - Generate with `openssl rand -hex 32`
-3. **Enable Auth0 in production** - Don't use dev mode
+3. **Use email whitelist** - Restrict access to approved email addresses only
 4. **Regular backups** - Automate database backups
 5. **Limit agent SSH access** - Use firewall rules
 6. **Keep Docker updated** - Regular security patches

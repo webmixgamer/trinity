@@ -54,7 +54,6 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | Tailwind CSS | 3.x | Styling |
 | Pinia | 2.x | State management |
 | Vite | 5.x | Build system |
-| Auth0 Vue | 2.x | Authentication |
 
 ### Backend
 | Technology | Version | Purpose |
@@ -100,7 +99,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | `credentials.py` | Redis-backed credential manager with OAuth2 flows |
 
 **Routers (`routers/`):**
-- `auth.py` - Authentication endpoints (login, Auth0 exchange, token validation)
+- `auth.py` - Authentication endpoints (admin login, email auth, token validation)
 - `agents.py` - Agent CRUD, start/stop, logs, stats
 - `credentials.py` - Credential management (env files, MCP configs)
 - `templates.py` - Template listing and GitHub repo fetching
@@ -141,7 +140,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 
 **State Management:**
 - `stores/agents.js` - Agent CRUD, chat, activity
-- `stores/auth.js` - Auth0 + JWT authentication
+- `stores/auth.js` - Email/admin authentication + JWT
 - `stores/collaborations.js` - Collaboration graph state, WebSocket integration
 
 **Real-time:**
@@ -670,7 +669,7 @@ Trinity has multiple authentication layers for different component interactions:
 │                                                                                   │
 │   [Human User]                                                                    │
 │        │                                                                          │
-│        │ (1) User Auth: JWT via Auth0/OAuth or Dev credentials                    │
+│        │ (1) User Auth: JWT via Email verification or Admin login                  │
 │        ▼                                                                          │
 │   ┌─────────┐    JWT Token    ┌─────────────┐                                    │
 │   │ Browser │───────────────►│   Backend   │                                    │
@@ -855,12 +854,9 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 
 ## External Integrations
 
-### Auth0 (User Authentication)
-| Setting | Environment Variable |
-|---------|---------------------|
-| Domain | `AUTH0_DOMAIN` |
-| Client ID | `VITE_AUTH0_CLIENT_ID` |
-| Allowed Domain | `AUTH0_ALLOWED_DOMAIN` (optional) |
+### User Authentication
+Email-based authentication with verification codes (primary) and admin password login (secondary).
+Auth0 OAuth was removed in 2026-01-01 - see [email-authentication.md](feature-flows/email-authentication.md).
 
 ### OAuth Providers (Agent Credentials)
 - Google (Workspace access)

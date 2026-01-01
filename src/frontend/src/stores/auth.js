@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
-import { ALLOWED_DOMAIN } from '../config/auth0'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -9,8 +8,6 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: false,
     isLoading: true,
     authError: null,
-    // Auth0 instance will be set from main.js
-    auth0: null,
     // Runtime mode detection (from backend)
     emailAuthEnabled: null,  // Email-based authentication
     modeDetected: false
@@ -41,11 +38,6 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    // Set Auth0 instance from main.js
-    setAuth0Instance(auth0) {
-      this.auth0 = auth0
-    },
-
     // Detect authentication mode from backend (called before login)
     async detectAuthMode() {
       try {
@@ -117,62 +109,6 @@ export const useAuthStore = defineStore('auth', {
         return JSON.parse(jsonPayload)
       } catch (e) {
         return null
-      }
-    },
-
-    // Handle Auth0 callback after OAuth redirect
-    async handleAuth0Callback(auth0User, getAccessToken) {
-      this.isLoading = true
-      this.authError = null
-
-      try {
-        // Basic validation first
-        if (!auth0User.email) {
-          throw new Error('No email found in user profile')
-        }
-
-        const emailDomain = auth0User.email.split('@')[1]
-        if (emailDomain !== ALLOWED_DOMAIN) {
-          throw new Error(`Access restricted to @${ALLOWED_DOMAIN} domain users only.`)
-        }
-
-        if (!auth0User.email_verified) {
-          throw new Error('Please verify your email address before accessing this application.')
-        }
-
-        // Get Auth0 access token
-        const auth0Token = await getAccessToken()
-
-        // Exchange Auth0 token for backend JWT
-        const response = await axios.post('/api/auth/exchange', {
-          auth0_token: auth0Token
-        })
-
-        const backendToken = response.data.access_token
-
-        // Set auth state with backend token
-        this.user = auth0User
-        this.token = backendToken
-        this.isAuthenticated = true
-
-        // Persist to localStorage
-        localStorage.setItem('token', backendToken)
-        localStorage.setItem('auth0_user', JSON.stringify(auth0User))
-
-        // Setup axios and cookie
-        this.setupAxiosAuth()
-
-        console.log('✅ Auth0 authentication successful for:', auth0User.email)
-        return true
-      } catch (error) {
-        console.error('❌ Auth0 callback error:', error.response?.data?.detail || error.message)
-        this.authError = error.response?.data?.detail || error.message
-        this.isAuthenticated = false
-        this.user = null
-        this.token = null
-        return false
-      } finally {
-        this.isLoading = false
       }
     },
 

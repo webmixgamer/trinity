@@ -1,40 +1,45 @@
 # Feature: Authentication Mode System
 
-> **⚠️ DEPRECATED (2025-12-29)**: This document describes the legacy Auth0/Dev Mode authentication system.
-> The login page has been simplified to use **Email Authentication** (primary) and **Admin Login** (secondary).
+> **❌ REMOVED (2026-01-01)**: Auth0 has been completely removed from both frontend and backend.
 > See [email-authentication.md](email-authentication.md) for the current authentication flow.
-> Auth0 OAuth and Dev Mode are no longer exposed in the login UI.
 
 ---
 
-## Historical Summary
+## Removal Summary (2026-01-01)
 
-This document previously described a dual-mode authentication system:
+Auth0 SDK was causing blank white pages when accessing Trinity via HTTP on local network IPs (e.g., `http://192.168.1.127:3000`) because Auth0 requires "secure origins" (HTTPS or localhost).
 
-1. **Dev Mode** (`DEV_MODE_ENABLED=true`): Username/password login for local development
-2. **Production Mode** (`DEV_MODE_ENABLED=false`): Auth0 OAuth with Google
+Since Auth0 login was already disabled in the UI (2025-12-29), all Auth0 code was removed entirely.
 
-### What Changed (2025-12-29)
+### Frontend Removed
 
-- **Removed**: `DEV_MODE_ENABLED` environment variable
-- **Removed**: Auth0/Google OAuth from login UI
-- **Removed**: `devModeEnabled` state from frontend
+- `@auth0/auth0-vue` package
+- `src/frontend/src/config/auth0.js`
+- `createAuth0()` and `app.use(auth0)` from main.js
+- `useAuth0()` from NavBar.vue
+- `handleAuth0Callback()` from auth.js
 
-### Current Authentication (See [email-authentication.md](email-authentication.md))
+### Backend Removed
+
+- `/api/auth/exchange` endpoint
+- `Auth0TokenExchange` model
+- `AUTH0_DOMAIN`, `AUTH0_ALLOWED_DOMAIN` config vars
+
+### Kept for Backward Compatibility
+
+- `auth0_sub` column in users table (no DB migration needed)
+- `get_user_by_auth0_sub()`, `get_or_create_auth0_user()` methods (unused but harmless)
+
+---
+
+## Current Authentication
+
+See [email-authentication.md](email-authentication.md) for the active authentication system:
 
 | Method | Description |
 |--------|-------------|
 | **Email Login** (primary) | Email → 6-digit code → Verify |
 | **Admin Login** (secondary) | Password-based for 'admin' user |
-
-### Preserved from Legacy System
-
-The following concepts from the old system are still used:
-
-- **JWT tokens** with mode claim (`email` or `admin` instead of `dev` or `prod`)
-- **Bcrypt password hashing** for admin password
-- **SECRET_KEY** handling and security warnings
-- **Token expiration** and automatic logout
 
 ---
 
@@ -45,5 +50,5 @@ The following concepts from the old system are still used:
 
 ---
 
-**Status**: ❌ Deprecated (2025-12-29)
+**Status**: ❌ Removed (2026-01-01)
 **Replaced By**: Email Authentication + Admin Login

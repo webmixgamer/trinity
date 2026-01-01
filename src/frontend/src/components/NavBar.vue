@@ -188,7 +188,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth0 } from '@auth0/auth0-vue'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import { useWebSocket } from '../utils/websocket'
@@ -220,9 +219,6 @@ const cycleTheme = () => {
 const setTheme = (theme) => {
   themeStore.setTheme(theme)
 }
-
-// Auth0 is always available (plugin always loaded)
-const auth0 = useAuth0()
 
 // User menu state
 const showUserMenu = ref(false)
@@ -260,9 +256,8 @@ const handleClickOutside = (event) => {
 const handleLogout = () => {
   showUserMenu.value = false
 
-  // Clear local auth state and handle Auth0 logout if in prod mode
-  // The authStore.logout() will call auth0.logout() if not in dev mode
-  authStore.logout(auth0.logout)
+  // Clear local auth state
+  authStore.logout()
 
   // Redirect to login
   router.push('/login')

@@ -5,15 +5,12 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-import httpx
 
-from models import Token, Auth0TokenExchange
+from models import Token
 from config import (
     SECRET_KEY,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    AUTH0_DOMAIN,
-    AUTH0_ALLOWED_DOMAIN,
     EMAIL_AUTH_ENABLED,
 )
 from database import db
@@ -85,80 +82,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 async def login_api(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Alias for /token endpoint."""
     return await login(request, form_data)
-
-
-@router.post("/api/auth/exchange", response_model=Token)
-async def exchange_auth0_token(request: Request, token_data: Auth0TokenExchange):
-    """
-    Exchange an Auth0 access token for a backend JWT.
-
-    Validates the Auth0 token by calling Auth0's /userinfo endpoint,
-    checks domain restrictions, and returns a backend-signed JWT.
-    """
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://{AUTH0_DOMAIN}/userinfo",
-                headers={"Authorization": f"Bearer {token_data.auth0_token}"},
-                timeout=10.0
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid Auth0 token",
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
-
-            user_info = response.json()
-
-        email = user_info.get("email")
-        if not email:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No email found in Auth0 profile"
-            )
-
-        email_domain = email.split("@")[1] if "@" in email else ""
-        if email_domain != AUTH0_ALLOWED_DOMAIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access restricted to @{AUTH0_ALLOWED_DOMAIN} domain users only"
-            )
-
-        if not user_info.get("email_verified", False):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Email not verified"
-            )
-
-        user = db.get_or_create_auth0_user(
-            auth0_sub=user_info.get("sub"),
-            email=email,
-            name=user_info.get("name"),
-            picture=user_info.get("picture")
-        )
-        username = user["username"]
-        db.update_last_login(username)
-
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": username},
-            expires_delta=access_token_expires,
-            mode="prod"  # Mark as production (Auth0) token
-        )
-
-        return {"access_token": access_token, "token_type": "bearer"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        import logging
-        logging.getLogger("trinity.errors").error(f"Auth0 token exchange failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication failed. Please try again."
-        )
 
 
 @router.get("/api/auth/validate")

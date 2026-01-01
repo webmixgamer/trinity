@@ -54,11 +54,6 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 GITHUB_PAT = os.getenv("GITHUB_PAT", "")
 GITHUB_PAT_CREDENTIAL_ID = "github-pat-templates"  # Fixed ID for consistent reference
 
-# Auth0 Configuration
-# Set these environment variables to enable Auth0 authentication
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")  # e.g., "your-tenant.us.auth0.com"
-AUTH0_ALLOWED_DOMAIN = os.getenv("AUTH0_ALLOWED_DOMAIN", "")  # e.g., "your-company.com" (leave empty to allow all)
-
 # OAuth Provider Configs
 OAUTH_CONFIGS = {
     "google": {

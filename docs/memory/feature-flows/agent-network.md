@@ -727,7 +727,7 @@ Removes node and edges from graph.
 - **Route Protection**: Lines 12-15 in `src/frontend/src/router/index.js` - Dashboard route has `meta: { requiresAuth: true }`
 - **Legacy Redirect**: Lines 53-57 - `/network` redirects to `/`
 - **Auth Guard**: Lines 71-97 check `authStore.isAuthenticated` before access
-- **JWT Required**: All API calls include JWT token from Auth0
+- **JWT Required**: All API calls include JWT token from email/admin auth
 
 ### Authorization
 - **Agent Visibility**: Dashboard shows all agents user has access to (via `GET /api/agents`)
@@ -764,7 +764,7 @@ Removes node and edges from graph.
    ```bash
    ./scripts/deploy/start.sh
    ```
-2. **Authentication**: Valid Auth0 session or dev mode enabled
+2. **Authentication**: Valid session (email login or admin login)
 3. **Test Agents**: At least 2 running agents for communication testing
 4. **Browser**: Chrome/Firefox with WebSocket support
 
@@ -961,7 +961,7 @@ Removes node and edges from graph.
 ### Upstream Flows
 - **[Agent Lifecycle](agent-lifecycle.md)**: Agents must exist and be running to appear in graph
 - **[Agent-to-Agent Communication](agent-to-agent-collaboration.md)**: Trinity MCP `trinity_chat_with_agent` tool triggers communication events
-- **[Auth0 Authentication](auth0-authentication.md)**: User must be authenticated to access dashboard
+- **[Email Authentication](email-authentication.md)**: User must be authenticated to access dashboard
 - **[Activity Stream Communication Tracking](activity-stream-collaboration-tracking.md)**: **NEW** - Complete flow from MCP to database to visualization
 
 ### Downstream Flows
