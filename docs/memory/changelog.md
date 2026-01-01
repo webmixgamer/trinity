@@ -1,3 +1,39 @@
+### 2026-01-01 00:15:00
+📊 **Dashboard Execution Stats - Agent Cards Show Task Metrics**
+
+Added execution statistics to each agent card on the Dashboard, providing at-a-glance visibility into agent workload and performance.
+
+**Display Format** (on each AgentNode):
+```
+12 tasks · 92% · $0.45 · 2m ago
+```
+
+**Backend Changes**:
+- `db/schedules.py`: Added `get_all_agents_execution_stats(hours=24)` - single query aggregating stats per agent
+- `database.py`: Added delegate method
+- `routers/agents.py`: Added `GET /api/agents/execution-stats` endpoint (returns stats for accessible agents only)
+
+**Frontend Changes**:
+- `stores/network.js`: Added `executionStats` state and `fetchExecutionStats()` (polls every 5s with context stats)
+- `components/AgentNode.vue`: Added compact stats row with task count, success rate (color-coded), cost, and relative time
+
+**Stats Shown**:
+| Metric | Description |
+|--------|-------------|
+| Task count | Executions in last 24h |
+| Success rate | % with status='success' (green >80%, yellow 50-80%, red <50%) |
+| Total cost | Sum of execution costs |
+| Last run | Relative time since last execution |
+
+**Files Changed**:
+- `src/backend/db/schedules.py` - Added aggregation query
+- `src/backend/database.py` - Delegate method
+- `src/backend/routers/agents.py` - New endpoint
+- `src/frontend/src/stores/network.js` - State and polling
+- `src/frontend/src/components/AgentNode.vue` - UI display
+
+---
+
 ### 2025-12-31 23:15:00
 🐛 **Test Suite Fixes - 6 Tests Fixed**
 

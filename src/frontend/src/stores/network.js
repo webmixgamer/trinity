@@ -45,6 +45,7 @@ export const useNetworkStore = defineStore('network', () => {
   const timeRangeHours = ref(24) // Default to last 24 hours
   const isLoadingHistory = ref(false)
   const contextStats = ref({}) // Map of agent name -> context stats
+  const executionStats = ref({}) // Map of agent name -> execution stats
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
 
@@ -618,7 +619,45 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
-  // Start polling context stats every 5 seconds
+  // Fetch execution stats from backend
+  async function fetchExecutionStats() {
+    try {
+      const response = await axios.get('/api/agents/execution-stats')
+      const agentStats = response.data.agents
+
+      // Update execution stats map
+      const newStats = {}
+      agentStats.forEach(stat => {
+        newStats[stat.name] = {
+          taskCount: stat.task_count_24h,
+          successCount: stat.success_count,
+          failedCount: stat.failed_count,
+          runningCount: stat.running_count,
+          successRate: stat.success_rate,
+          totalCost: stat.total_cost,
+          lastExecutionAt: stat.last_execution_at
+        }
+      })
+      executionStats.value = newStats
+
+      // Update node data with execution stats
+      nodes.value.forEach(node => {
+        const stats = newStats[node.id]
+        if (stats) {
+          node.data = {
+            ...node.data,
+            executionStats: stats
+          }
+        }
+      })
+
+      console.log('[Collaboration] Execution stats updated')
+    } catch (error) {
+      console.error('Failed to fetch execution stats:', error)
+    }
+  }
+
+  // Start polling context and execution stats every 5 seconds
   function startContextPolling() {
     if (contextPollingInterval.value) {
       clearInterval(contextPollingInterval.value)
@@ -626,10 +665,12 @@ export const useNetworkStore = defineStore('network', () => {
 
     // Fetch immediately
     fetchContextStats()
+    fetchExecutionStats()
 
     // Then poll every 5 seconds
     contextPollingInterval.value = setInterval(() => {
       fetchContextStats()
+      fetchExecutionStats()
     }, 5000)
 
     console.log('[Collaboration] Started context polling (every 5s)')
@@ -910,6 +951,7 @@ export const useNetworkStore = defineStore('network', () => {
     timeRangeHours,
     isLoadingHistory,
     contextStats,
+    executionStats,
     // Replay state
     isReplayMode,
     isPlaying,
@@ -947,6 +989,7 @@ export const useNetworkStore = defineStore('network', () => {
     resetNodePositions,
     onNodeDragStop,
     fetchContextStats,
+    fetchExecutionStats,
     startContextPolling,
     stopContextPolling,
     startAgentRefresh,

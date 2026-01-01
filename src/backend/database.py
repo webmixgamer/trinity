@@ -869,6 +869,10 @@ class DatabaseManager:
     def get_execution(self, execution_id: str):
         return self._schedule_ops.get_execution(execution_id)
 
+    def get_all_agents_execution_stats(self, hours: int = 24):
+        """Get execution statistics for all agents."""
+        return self._schedule_ops.get_all_agents_execution_stats(hours)
+
     # =========================================================================
     # Git Configuration Management (delegated to db/schedules.py)
     # =========================================================================

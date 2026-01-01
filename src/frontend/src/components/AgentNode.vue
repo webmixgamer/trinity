@@ -83,6 +83,25 @@
         </div>
       </div>
 
+      <!-- Execution Stats (compact row) -->
+      <div v-if="hasExecutionStats" class="flex items-center flex-wrap text-xs text-gray-500 dark:text-gray-400 gap-x-1.5 gap-y-0.5 mb-3">
+        <span class="font-medium text-gray-700 dark:text-gray-300">{{ executionStats.taskCount }}</span>
+        <span>tasks</span>
+        <span class="text-gray-300 dark:text-gray-600">·</span>
+        <span :class="successRateColorClass" class="font-medium">{{ executionStats.successRate }}%</span>
+        <template v-if="executionStats.totalCost > 0">
+          <span class="text-gray-300 dark:text-gray-600">·</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ executionStats.totalCost.toFixed(2) }}</span>
+        </template>
+        <template v-if="lastExecutionDisplay">
+          <span class="text-gray-300 dark:text-gray-600">·</span>
+          <span>{{ lastExecutionDisplay }}</span>
+        </template>
+      </div>
+      <div v-else class="text-xs text-gray-400 dark:text-gray-500 mb-3">
+        No tasks (24h)
+      </div>
+
       <!-- Click-through button (nodrag class prevents drag) - Hidden for system agents -->
       <button
         v-if="!isSystemAgent"
@@ -197,6 +216,37 @@ const progressBarColor = computed(() => {
   if (percent >= 75) return 'bg-orange-500'
   if (percent >= 50) return 'bg-yellow-500'
   return 'bg-green-500'
+})
+
+// Execution stats
+const executionStats = computed(() => {
+  return props.data.executionStats || null
+})
+
+const hasExecutionStats = computed(() => {
+  return executionStats.value && executionStats.value.taskCount > 0
+})
+
+const successRateColorClass = computed(() => {
+  if (!executionStats.value) return 'text-gray-500 dark:text-gray-400'
+  const rate = executionStats.value.successRate
+  if (rate >= 80) return 'text-green-600 dark:text-green-400'
+  if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const lastExecutionDisplay = computed(() => {
+  if (!executionStats.value?.lastExecutionAt) return null
+  const lastTime = new Date(executionStats.value.lastExecutionAt)
+  const now = new Date()
+  const diffMs = now - lastTime
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  return `${Math.floor(diffHours / 24)}d ago`
 })
 
 function viewDetails() {

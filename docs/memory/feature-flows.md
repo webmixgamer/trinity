@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-01)**: Dashboard Execution Stats feature added:
+> - **agent-network.md**: Updated with execution stats display on Agent Cards
+> - New `GET /api/agents/execution-stats` endpoint documented (agents.py:140-161)
+> - Database layer: `get_all_agents_execution_stats()` in db/schedules.py:445-489
+> - Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s
+> - AgentNode.vue: Compact stats row showing "12 tasks - 92% - $0.45 - 2m ago" (lines 86-103)
+>
 > **Updated (2025-12-31)**: Execution Log Viewer feature flow documented:
 > - **execution-log-viewer.md**: New feature flow documenting the Tasks panel log viewer modal
 > - Complete vertical slice: View button -> API call -> parseExecutionLog() -> formatted transcript
@@ -103,7 +110,7 @@
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
-| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** (Updated 2025-12-30) |
+| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - includes execution stats display on Agent Cards (Updated 2026-01-01) |
 | Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Updated 2025-12-30) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |

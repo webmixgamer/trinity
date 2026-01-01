@@ -1,6 +1,6 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2025-12-30
+> **Last Updated**: 2026-01-01
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -93,23 +93,42 @@ Custom node component for each agent (updated 2025-12-30).
 **Progress Bars**:
 - Lines 71-84: Context usage progress bar with percentage and color coding
 
-**Interaction**:
-- Lines 87-101: "View Details" button (for regular agents) or "System Dashboard" link (for system agents) with `nodrag` class and **mt-auto** for bottom alignment
-- Lines 202-204: `viewDetails()` - Navigates to `/agents/:name` on button click
+**Execution Stats Display** (Lines 86-103):
+- Lines 87-100: Compact stats row for agents with task history:
+  ```
+  12 tasks · 92% · $0.45 · 2m ago
+  ```
+- Lines 101-103: "No tasks (24h)" placeholder for agents without recent executions
 
-**Computed Properties** (Lines 128-200):
-- `isSystemAgent` (129-131): checks if agent is a system agent
-- `activityState` (134-136): active, idle, or offline based on `data.activityState`
-- `statusDotColor` (156-161): Green (#10b981) for active/idle, gray (#9ca3af) for offline
-- `contextPercentDisplay` (184-187): Rounded context percentage
-- `progressBarColor` (194-200): Green/Yellow/Orange/Red based on context usage threshold
+**Stats Row Format**:
+| Element | Source | Styling |
+|---------|--------|---------|
+| Task count | `executionStats.taskCount` | Bold gray |
+| Success rate | `executionStats.successRate` | Color-coded: green (>=80%), yellow (50-80%), red (<50%) |
+| Total cost | `executionStats.totalCost` | Bold gray, `$X.XX` format |
+| Last run | `executionStats.lastExecutionAt` | Relative time ("2m ago") |
+
+**Interaction**:
+- Lines 105-120: "View Details" button (for regular agents) or "System Dashboard" link (for system agents) with `nodrag` class and **mt-auto** for bottom alignment
+- Lines 252-254: `viewDetails()` - Navigates to `/agents/:name` on button click
+
+**Computed Properties** (Lines 131-250):
+- `isSystemAgent` (148-150): checks if agent is a system agent
+- `activityState` (153-155): active, idle, or offline based on `data.activityState`
+- `statusDotColor` (175-180): Green (#10b981) for active/idle, gray (#9ca3af) for offline
+- `contextPercentDisplay` (203-206): Rounded context percentage
+- `progressBarColor` (213-219): Green/Yellow/Orange/Red based on context usage threshold
+- `executionStats` (222-224): Execution stats object from node data
+- `hasExecutionStats` (226-228): True if taskCount > 0
+- `successRateColorClass` (230-236): Color class based on success rate threshold
+- `lastExecutionDisplay` (238-250): Relative time string for last execution
 
 ### State Management
 
 #### network.js (`src/frontend/src/stores/network.js`)
 Pinia store managing graph state and WebSocket communication. **Note**: Previously named `collaborations.js`, renamed to `network.js` (2025-12-07).
 
-**State** (Lines 6-58):
+**State** (Lines 6-59):
 - `agents` (8) - Raw agent data from API
 - `nodes` (9) - Vue Flow node objects
 - `collaborationEdges` (10) - Edges from collaboration history
@@ -126,9 +145,10 @@ Pinia store managing graph state and WebSocket communication. **Note**: Previous
 - `timeRangeHours` (45) - Selected filter (1, 6, 24, 72, 168)
 - `isLoadingHistory` (46) - Loading indicator for historical data queries
 - `contextStats` (47) - Map of agent name -> context stats
-- `contextPollingInterval` (48) - Interval ID for context polling
-- `agentRefreshInterval` (49) - Interval ID for agent list refresh
-- **Replay State** (51-58): `isReplayMode`, `isPlaying`, `replaySpeed`, `currentEventIndex`, `replayInterval`, `replayStartTime`, `replayElapsedMs`
+- `executionStats` (48) - Map of agent name -> execution stats (task count, success rate, cost, last run)
+- `contextPollingInterval` (49) - Interval ID for context polling
+- `agentRefreshInterval` (50) - Interval ID for agent list refresh
+- **Replay State** (52-59): `isReplayMode`, `isPlaying`, `replaySpeed`, `currentEventIndex`, `replayInterval`, `replayStartTime`, `replayElapsedMs`
 
 **Computed** (Lines 60-105):
 - `activeCollaborationCount` (61-63) - Number of animated edges (filters `edge.animated === true`)
@@ -284,12 +304,44 @@ Updates node color when agent starts/stops.
 ##### handleAgentDeleted() (Lines 379-390)
 Removes node and all connected edges.
 
-##### fetchContextStats() (Lines 582-619)
+##### fetchContextStats() (Lines 583-620)
 - Fetches context stats from `/api/agents/context-stats`
 - Updates node data with context percentage and activity state
 
-##### startContextPolling() / stopContextPolling() (Lines 621-645)
-- Polls every 5 seconds for context stats
+##### fetchExecutionStats() (Lines 622-658)
+```javascript
+async function fetchExecutionStats() {
+  const response = await axios.get('/api/agents/execution-stats')
+  const agentStats = response.data.agents
+
+  // Update execution stats map
+  const newStats = {}
+  agentStats.forEach(stat => {
+    newStats[stat.name] = {
+      taskCount: stat.task_count_24h,
+      successCount: stat.success_count,
+      failedCount: stat.failed_count,
+      runningCount: stat.running_count,
+      successRate: stat.success_rate,
+      totalCost: stat.total_cost,
+      lastExecutionAt: stat.last_execution_at
+    }
+  })
+  executionStats.value = newStats
+
+  // Update node data with execution stats
+  nodes.value.forEach(node => {
+    const stats = newStats[node.id]
+    if (stats) {
+      node.data = { ...node.data, executionStats: stats }
+    }
+  })
+}
+```
+
+##### startContextPolling() / stopContextPolling() (Lines 660-686)
+- Polls every 5 seconds for context stats AND execution stats
+- Calls both `fetchContextStats()` and `fetchExecutionStats()` on each poll
 - Automatically starts on dashboard mount, stops on unmount
 
 ##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
@@ -440,7 +492,7 @@ async def chat_with_agent(
 
 **File**: `src/backend/routers/agents.py`
 
-#### GET /api/agents/context-stats (Lines 142-145)
+#### GET /api/agents/context-stats (Lines 134-137)
 ```python
 @router.get("/context-stats")
 async def get_agents_context_stats(current_user: User = Depends(get_current_user)):
@@ -449,6 +501,76 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 ```
 
 **Note**: Business logic moved to `src/backend/services/agent_service/stats.py` for cleaner separation.
+
+#### GET /api/agents/execution-stats (Lines 140-161)
+```python
+@router.get("/execution-stats")
+async def get_agents_execution_stats(
+    hours: int = 24,
+    current_user: User = Depends(get_current_user)
+):
+    """Get execution statistics for all accessible agents."""
+    # Get all stats from database
+    all_stats = db.get_all_agents_execution_stats(hours=hours)
+
+    # Filter to only agents the user can access
+    accessible_agents = {a['name'] for a in get_accessible_agents(current_user)}
+
+    filtered_stats = [
+        stat for stat in all_stats
+        if stat["name"] in accessible_agents
+    ]
+
+    return {"agents": filtered_stats}
+```
+
+**Query Parameter**:
+- `hours`: Time window in hours (default: 24)
+
+**Response Format**:
+```json
+{
+  "agents": [
+    {
+      "name": "agent-name",
+      "task_count_24h": 12,
+      "success_count": 11,
+      "failed_count": 1,
+      "running_count": 0,
+      "success_rate": 91.7,
+      "total_cost": 0.45,
+      "last_execution_at": "2025-12-31T22:45:30.123456"
+    }
+  ]
+}
+```
+
+**Database Layer**: `src/backend/db/schedules.py:445-489`
+```python
+def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
+    """Get execution statistics for all agents."""
+    # Single aggregation query per agent
+    cursor.execute("""
+        SELECT
+            agent_name,
+            COUNT(*) as task_count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
+            SUM(COALESCE(cost, 0)) as total_cost,
+            MAX(started_at) as last_execution_at
+        FROM schedule_executions
+        WHERE started_at > datetime('now', ? || ' hours')
+        GROUP BY agent_name
+    """, (f"-{hours}",))
+```
+
+**Delegate Method**: `src/backend/database.py:872-874`
+```python
+def get_all_agents_execution_stats(self, hours: int = 24):
+    """Get execution statistics for all agents."""
+    return self._schedule_ops.get_all_agents_execution_stats(hours)
+```
 
 Returns JSON:
 ```json
@@ -1163,6 +1285,25 @@ onUnmounted(() => {
 
 **Status**: Working (2025-12-02)
 
+**Test Case**: Execution Stats Display (Added 2026-01-01)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | View Dashboard with agents | Agent cards show execution stats row |
+| 2 | Trigger a task on an agent | Within 5s, task count increments |
+| 3 | Task completes successfully | Success rate recalculates, last run updates |
+| 4 | Trigger a failing task | Success rate decreases, red color if <50% |
+| 5 | Check cost accumulation | Total cost sums all task costs |
+| 6 | Agent with no tasks | Shows "No tasks (24h)" placeholder |
+
+**Test Case**: Execution Stats Success Rate Colors
+| Success Rate | Expected Color |
+|--------------|----------------|
+| >= 80% | Green (`text-green-600`) |
+| 50-79% | Yellow (`text-yellow-600`) |
+| < 50% | Red (`text-red-600`) |
+
+**Status**: Working (2026-01-01)
+
 ---
 
 ## Bug Fixes & UX Improvements
@@ -1236,6 +1377,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-01 | **Execution Stats Display**: Added task execution metrics to AgentNode cards. New `GET /api/agents/execution-stats` endpoint (agents.py:140-161). Database aggregation in `db/schedules.py:445-489`. Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s with context stats. AgentNode shows compact row: "12 tasks - 92% - $0.45 - 2m ago" with color-coded success rate. |
 | 2025-12-19 | **Documentation Update**: Updated all line number references for Dashboard.vue, AgentNode.vue, network.js, agents.py, chat.py, and main.py. Added dark mode styling documentation. Verified store rename (collaborations.js to network.js). Updated file path references. |
 | 2025-12-23 | **Workplan removal**: Removed Task DAG progress display from AgentNode.vue. Plan stats removed from network.js store. |
 | 2025-12-09 | **Bug Fix - Agent Status Display**: Added initial `activityState` to node data in `convertAgentsToNodes()`. Running agents now show "Idle" immediately instead of "Offline" until first context-stats poll. |
@@ -1251,12 +1393,14 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 ### Code Files
 - `src/frontend/src/views/Dashboard.vue` - Main view with Agent Network visualization
-- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node
+- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node with execution stats display (lines 86-103)
 - `src/frontend/src/stores/network.js` - Pinia store for graph state (renamed from collaborations.js)
 - `src/frontend/src/router/index.js` - Routes (/ for Dashboard, /network redirects to /)
 - `src/frontend/src/components/NavBar.vue` - Navigation (Dashboard link)
 - `src/backend/routers/chat.py` - WebSocket broadcast for messages
-- `src/backend/routers/agents.py` - Context stats endpoint (line 208)
+- `src/backend/routers/agents.py` - Context stats (line 134) and execution stats (line 140) endpoints
+- `src/backend/db/schedules.py` - Database operations including `get_all_agents_execution_stats()` (line 445)
+- `src/backend/database.py` - Delegate method for execution stats (line 872)
 - `src/backend/main.py` - WebSocket endpoint (line 211)
 
 ### Deleted/Renamed Files

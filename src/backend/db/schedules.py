@@ -442,6 +442,52 @@ class ScheduleOperations:
             row = cursor.fetchone()
             return self._row_to_schedule_execution(row) if row else None
 
+    def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
+        """Get execution statistics for all agents.
+
+        Returns aggregated stats per agent for the specified time window.
+
+        Args:
+            hours: Time window in hours (default: 24)
+
+        Returns:
+            List of dicts with agent execution stats
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    agent_name,
+                    COUNT(*) as task_count,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
+                    SUM(COALESCE(cost, 0)) as total_cost,
+                    MAX(started_at) as last_execution_at
+                FROM schedule_executions
+                WHERE started_at > datetime('now', ? || ' hours')
+                GROUP BY agent_name
+            """, (f"-{hours}",))
+
+            results = []
+            for row in cursor.fetchall():
+                task_count = row["task_count"]
+                success_count = row["success_count"]
+                success_rate = round((success_count / task_count * 100), 1) if task_count > 0 else 0
+
+                results.append({
+                    "name": row["agent_name"],
+                    "task_count_24h": task_count,
+                    "success_count": success_count,
+                    "failed_count": row["failed_count"],
+                    "running_count": row["running_count"],
+                    "success_rate": success_rate,
+                    "total_cost": round(row["total_cost"], 4) if row["total_cost"] else 0,
+                    "last_execution_at": row["last_execution_at"]
+                })
+
+            return results
+
     # =========================================================================
     # Git Configuration Management (Phase 7: GitHub Bidirectional Sync)
     # =========================================================================

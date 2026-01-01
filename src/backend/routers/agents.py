@@ -137,6 +137,30 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
     return await get_agents_context_stats_logic(current_user)
 
 
+@router.get("/execution-stats")
+async def get_agents_execution_stats(
+    hours: int = 24,
+    current_user: User = Depends(get_current_user)
+):
+    """Get execution statistics for all accessible agents.
+
+    Returns task counts, success rates, costs, and last execution times
+    for all agents the user can access within the specified time window.
+    """
+    # Get all stats from database
+    all_stats = db.get_all_agents_execution_stats(hours=hours)
+
+    # Filter to only agents the user can access
+    accessible_agents = {a['name'] for a in get_accessible_agents(current_user)}
+
+    filtered_stats = [
+        stat for stat in all_stats
+        if stat["name"] in accessible_agents
+    ]
+
+    return {"agents": filtered_stats}
+
+
 @router.get("/{agent_name}")
 async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Get details of a specific agent."""
