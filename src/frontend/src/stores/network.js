@@ -252,13 +252,44 @@ export const useNetworkStore = defineStore('network', () => {
     // Load saved positions from localStorage
     const savedPositions = loadNodePositions()
 
-    // Calculate grid layout with better spacing to prevent overlap
-    const gridSize = Math.ceil(Math.sqrt(agentList.length))
-    const spacing = 350 // Increased from 250 to prevent overlap
-    const offsetX = 150
-    const offsetY = 150
+    // Separate system agent from regular agents
+    const systemAgent = agentList.find(a => a.is_system)
+    const regularAgents = agentList.filter(a => !a.is_system)
 
-    nodes.value = agentList.map((agent, index) => {
+    // Calculate grid layout for regular agents
+    const gridSize = Math.ceil(Math.sqrt(regularAgents.length)) || 1
+    const spacing = 350
+    const offsetX = 150
+    const offsetY = systemAgent ? 280 : 150 // Push down if system agent exists
+
+    const result = []
+
+    // Add system agent at top-center (wider position)
+    if (systemAgent) {
+      const systemDefaultPosition = {
+        x: offsetX + (gridSize * spacing) / 2 - 200, // Center it (accounting for wider width)
+        y: 50 // Fixed at top
+      }
+      result.push({
+        id: systemAgent.name,
+        type: 'system-agent', // Special type for wider rendering
+        data: {
+          label: systemAgent.name,
+          status: systemAgent.status,
+          type: systemAgent.type || 'system',
+          owner: systemAgent.owner,
+          runtime: systemAgent.runtime || 'claude-code',
+          githubRepo: systemAgent.github_repo || null,
+          is_system: true,
+          activityState: systemAgent.status === 'running' ? 'idle' : 'offline'
+        },
+        position: savedPositions[systemAgent.name] || systemDefaultPosition,
+        draggable: true
+      })
+    }
+
+    // Add regular agents in grid below
+    regularAgents.forEach((agent, index) => {
       const row = Math.floor(index / gridSize)
       const col = index % gridSize
 
@@ -267,7 +298,7 @@ export const useNetworkStore = defineStore('network', () => {
         y: offsetY + row * spacing
       }
 
-      return {
+      result.push({
         id: agent.name,
         type: 'agent',
         data: {
@@ -277,14 +308,15 @@ export const useNetworkStore = defineStore('network', () => {
           owner: agent.owner,
           runtime: agent.runtime || 'claude-code',
           githubRepo: agent.github_repo || null,
-          is_system: agent.is_system || false,
-          // Set initial activityState based on running status to avoid "Offline" flash
+          is_system: false,
           activityState: agent.status === 'running' ? 'idle' : 'offline'
         },
         position: savedPositions[agent.name] || defaultPosition,
         draggable: true
-      }
+      })
     })
+
+    nodes.value = result
   }
 
   function connectWebSocket() {

@@ -282,9 +282,12 @@
         @node-drag-stop="onNodeDragStop"
         class="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-gray-800 dark:to-gray-900"
       >
-        <!-- Custom node template -->
+        <!-- Custom node templates -->
         <template #node-agent="nodeProps">
           <AgentNode v-bind="nodeProps" />
+        </template>
+        <template #node-system-agent="nodeProps">
+          <SystemAgentNode v-bind="nodeProps" />
         </template>
 
         <!-- SVG Definitions for gradients -->
@@ -432,6 +435,7 @@ import { useNetworkStore } from '@/stores/network'
 import { useObservabilityStore } from '@/stores/observability'
 import { storeToRefs } from 'pinia'
 import AgentNode from '@/components/AgentNode.vue'
+import SystemAgentNode from '@/components/SystemAgentNode.vue'
 import ObservabilityPanel from '@/components/ObservabilityPanel.vue'
 import { useNotification } from '@/composables/useNotification'
 
@@ -539,6 +543,11 @@ function onNodeDragStop(event) {
 }
 
 function getNodeColor(node) {
+  // System agent gets purple color
+  if (node.data?.is_system) {
+    return '#a855f7' // purple-500
+  }
+
   const status = node.data?.status?.toLowerCase() || 'stopped'
 
   const colors = {
