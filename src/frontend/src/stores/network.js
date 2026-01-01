@@ -281,6 +281,7 @@ export const useNetworkStore = defineStore('network', () => {
           runtime: systemAgent.runtime || 'claude-code',
           githubRepo: systemAgent.github_repo || null,
           is_system: true,
+          autonomy_enabled: false, // System agent doesn't use autonomy mode
           activityState: systemAgent.status === 'running' ? 'idle' : 'offline'
         },
         position: savedPositions[systemAgent.name] || systemDefaultPosition,
@@ -309,6 +310,7 @@ export const useNetworkStore = defineStore('network', () => {
           runtime: agent.runtime || 'claude-code',
           githubRepo: agent.github_repo || null,
           is_system: false,
+          autonomy_enabled: agent.autonomy_enabled || false,
           activityState: agent.status === 'running' ? 'idle' : 'offline'
         },
         position: savedPositions[agent.name] || defaultPosition,

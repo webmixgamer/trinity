@@ -134,6 +134,30 @@
                     Git enabled
                   </span>
                 </template>
+                <!-- Autonomy Mode Toggle (not for system agents) -->
+                <template v-if="!agent.is_system && agent.can_share">
+                  <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                  <button
+                    @click="toggleAutonomy"
+                    :disabled="autonomyLoading"
+                    :class="[
+                      'inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors',
+                      agent.autonomy_enabled
+                        ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/70'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    ]"
+                    :title="agent.autonomy_enabled ? 'Autonomy Mode ON - Scheduled tasks are running' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
+                  >
+                    <svg v-if="autonomyLoading" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}
+                  </button>
+                </template>
                 <button
                   v-if="agent.can_delete"
                   @click="deleteAgent"
@@ -1372,6 +1396,49 @@ const {
   startGitStatusPolling,
   stopGitStatusPolling
 } = useGitSync(agent, agentsStore, showNotification)
+
+// Autonomy mode state
+const autonomyLoading = ref(false)
+
+async function toggleAutonomy() {
+  if (!agent.value || autonomyLoading.value) return
+
+  autonomyLoading.value = true
+  const newState = !agent.value.autonomy_enabled
+
+  try {
+    const response = await fetch(`/api/agents/${agent.value.name}/autonomy`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ enabled: newState })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to update autonomy mode')
+    }
+
+    const result = await response.json()
+
+    // Update local state
+    agent.value.autonomy_enabled = newState
+
+    showNotification(
+      newState
+        ? `Autonomy enabled. ${result.schedules_updated} schedule(s) activated.`
+        : `Autonomy disabled. ${result.schedules_updated} schedule(s) paused.`,
+      'success'
+    )
+  } catch (error) {
+    console.error('Failed to toggle autonomy:', error)
+    showNotification(error.message || 'Failed to update autonomy mode', 'error')
+  } finally {
+    autonomyLoading.value = false
+  }
+}
 
 // File browser composable
 const {

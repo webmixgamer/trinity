@@ -317,3 +317,41 @@ class AgentOperations:
             """, (1 if use_platform_key else 0, agent_name))
             conn.commit()
             return cursor.rowcount > 0
+
+    # =========================================================================
+    # Autonomy Mode
+    # =========================================================================
+
+    def get_autonomy_enabled(self, agent_name: str) -> bool:
+        """Check if autonomy mode is enabled for agent (scheduled tasks run automatically)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(autonomy_enabled, 0) as autonomy_enabled
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                return bool(row["autonomy_enabled"])
+            return False  # Default to disabled
+
+    def set_autonomy_enabled(self, agent_name: str, enabled: bool) -> bool:
+        """Set whether autonomy mode is enabled for agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET autonomy_enabled = ?
+                WHERE agent_name = ?
+            """, (1 if enabled else 0, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_all_agents_autonomy_status(self) -> Dict[str, bool]:
+        """Get autonomy status for all agents (for dashboard display)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT agent_name, COALESCE(autonomy_enabled, 0) as autonomy_enabled
+                FROM agent_ownership
+            """)
+            return {row["agent_name"]: bool(row["autonomy_enabled"]) for row in cursor.fetchall()}

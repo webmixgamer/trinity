@@ -48,7 +48,7 @@
         ></div>
       </div>
 
-      <!-- Activity state label -->
+      <!-- Activity state label and autonomy indicator -->
       <div class="flex items-center space-x-2 mb-2">
         <div
           :class="[
@@ -58,6 +58,14 @@
         >
           {{ activityStateLabel }}
         </div>
+        <!-- Autonomy indicator (not for system agent) -->
+        <span
+          v-if="autonomyEnabled && !isSystemAgent"
+          class="px-1.5 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+          title="Autonomy Mode - Scheduled tasks are running"
+        >
+          AUTO
+        </span>
       </div>
 
       <!-- GitHub repo or placeholder (always shown for consistent height) -->
@@ -155,6 +163,11 @@ const router = useRouter()
 // Check if this is a system agent
 const isSystemAgent = computed(() => {
   return props.data.is_system === true
+})
+
+// Check if autonomy mode is enabled
+const autonomyEnabled = computed(() => {
+  return props.data.autonomy_enabled === true
 })
 
 // Compute activity state (active, idle, offline)

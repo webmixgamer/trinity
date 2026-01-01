@@ -307,11 +307,12 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 
 ## API Endpoints
 
-### Agents (26 endpoints)
+### Agents (29 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/agents` | List all agents |
 | GET | `/api/agents/context-stats` | Get context & activity state for all agents (NEW: 2025-12-02) |
+| GET | `/api/agents/autonomy-status` | Get autonomy status for all accessible agents (NEW: 2026-01-01) |
 | POST | `/api/agents` | Create agent |
 | GET | `/api/agents/{name}` | Get agent details |
 | DELETE | `/api/agents/{name}` | Delete agent |
@@ -334,8 +335,10 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 | PUT | `/api/agents/{name}/folders` | Update shared folder config |
 | GET | `/api/agents/{name}/folders/available` | List mountable folders from permitted agents |
 | GET | `/api/agents/{name}/folders/consumers` | List agents that will mount this folder |
+| GET | `/api/agents/{name}/autonomy` | Get autonomy status with schedule counts (NEW: 2026-01-01) |
+| PUT | `/api/agents/{name}/autonomy` | Enable/disable autonomy (toggles all schedules) |
 
-**Note**: Route ordering is critical. `/context-stats` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
+**Note**: Route ordering is critical. `/context-stats` and `/autonomy-status` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
 
 ### Activities (1 endpoint)
 | Method | Path | Description |

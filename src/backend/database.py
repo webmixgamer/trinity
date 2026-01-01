@@ -216,6 +216,17 @@ def _migrate_agent_git_config_source_branch(cursor, conn):
     conn.commit()
 
 
+def _migrate_agent_ownership_autonomy(cursor, conn):
+    """Add autonomy_enabled column to agent_ownership table for autonomous scheduling control."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "autonomy_enabled" not in columns:
+        print("Adding autonomy_enabled column to agent_ownership for autonomous scheduling...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN autonomy_enabled INTEGER DEFAULT 0")
+        conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -255,6 +266,11 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_git_config source_branch): {e}")
 
+        try:
+            _migrate_agent_ownership_autonomy(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership autonomy_enabled): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -281,6 +297,7 @@ def init_database():
                 created_at TEXT NOT NULL,
                 is_system INTEGER DEFAULT 0,
                 use_platform_api_key INTEGER DEFAULT 1,
+                autonomy_enabled INTEGER DEFAULT 0,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -775,6 +792,19 @@ class DatabaseManager:
 
     def set_use_platform_api_key(self, agent_name: str, use_platform_key: bool):
         return self._agent_ops.set_use_platform_api_key(agent_name, use_platform_key)
+
+    # =========================================================================
+    # Agent Autonomy Mode (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_autonomy_enabled(self, agent_name: str):
+        return self._agent_ops.get_autonomy_enabled(agent_name)
+
+    def set_autonomy_enabled(self, agent_name: str, enabled: bool):
+        return self._agent_ops.set_autonomy_enabled(agent_name, enabled)
+
+    def get_all_agents_autonomy_status(self):
+        return self._agent_ops.get_all_agents_autonomy_status()
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)

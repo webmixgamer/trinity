@@ -71,6 +71,10 @@ from services.agent_service import (
     # API Key
     get_agent_api_key_setting_logic,
     update_agent_api_key_setting_logic,
+    # Autonomy
+    get_autonomy_status_logic,
+    set_autonomy_status_logic,
+    get_all_autonomy_status_logic,
 )
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -161,6 +165,14 @@ async def get_agents_execution_stats(
     return {"agents": filtered_stats}
 
 
+@router.get("/autonomy-status")
+async def get_all_autonomy_status(
+    current_user: User = Depends(get_current_user)
+):
+    """Get autonomy status for all accessible agents (for dashboard display)."""
+    return await get_all_autonomy_status_logic(current_user)
+
+
 @router.get("/{agent_name}")
 async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Get details of a specific agent."""
@@ -180,6 +192,7 @@ async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request
     agent_dict["is_system"] = owner.get("is_system", False) if owner else False
     agent_dict["can_share"] = db.can_user_share_agent(current_user.username, agent_name)
     agent_dict["can_delete"] = db.can_user_delete_agent(current_user.username, agent_name)
+    agent_dict["autonomy_enabled"] = db.get_autonomy_enabled(agent_name)
 
     if agent_dict["can_share"]:
         shares = db.get_agent_shares(agent_name)
@@ -744,6 +757,37 @@ async def update_agent_api_key_setting(
 ):
     """Update the API key setting for an agent."""
     return await update_agent_api_key_setting_logic(agent_name, body, current_user, request)
+
+
+# ============================================================================
+# Autonomy Mode Endpoints (per-agent)
+# ============================================================================
+
+@router.get("/{agent_name}/autonomy")
+async def get_agent_autonomy_status(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get the autonomy status for an agent."""
+    return await get_autonomy_status_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/autonomy")
+async def set_agent_autonomy_status(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the autonomy status for an agent.
+
+    Body:
+    - enabled: True to enable autonomy, False to disable
+
+    When autonomy is enabled, all schedules for the agent are enabled.
+    When disabled, all schedules are paused.
+    """
+    return await set_autonomy_status_logic(agent_name, body, current_user)
 
 
 # ============================================================================

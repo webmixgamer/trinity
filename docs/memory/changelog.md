@@ -1,3 +1,70 @@
+### 2026-01-01 18:45:00
+🔄 **Autonomy Mode Toggle**
+
+Implemented master switch for agent autonomous operation:
+
+**Dashboard**:
+- "AUTO" badge (amber) shown on agents with autonomy enabled
+- Badge excluded for system agent
+
+**Agent Detail Page**:
+- AUTO/Manual toggle button in header (next to Delete button)
+- Owners only can toggle (uses `can_share` permission)
+- Real-time UI update on toggle
+
+**Backend**:
+- `autonomy_enabled` column added to `agent_ownership` table
+- `GET /api/agents/{name}/autonomy` - Get autonomy status with schedule counts
+- `PUT /api/agents/{name}/autonomy` - Enable/disable autonomy (bulk toggles all schedules)
+- `GET /api/agents/autonomy-status` - Dashboard overview for all accessible agents
+- New service module: `services/agent_service/autonomy.py`
+
+**Behavior**:
+- Enabling autonomy enables ALL schedules for the agent
+- Disabling autonomy disables ALL schedules for the agent
+- System agent excluded from autonomy controls
+
+**Files Changed**:
+- `src/backend/database.py` - Migration + delegate methods
+- `src/backend/db/agents.py` - CRUD for autonomy_enabled
+- `src/backend/services/agent_service/autonomy.py` (new)
+- `src/backend/services/agent_service/__init__.py` - Exports
+- `src/backend/routers/agents.py` - API endpoints + agent detail response
+- `src/backend/services/agent_service/helpers.py` - get_accessible_agents
+- `src/frontend/src/components/AgentNode.vue` - AUTO badge
+- `src/frontend/src/stores/network.js` - Pass autonomy_enabled to nodes
+- `src/frontend/src/views/AgentDetail.vue` - Toggle button
+
+---
+
+### 2026-01-01 12:30:00
+🤖 **Implement Research Network Demo**
+
+Created and validated two-agent autonomous research system demo:
+
+**Templates Created**:
+- `demo-researcher` - Autonomous web researcher with `/research` and `/status` commands
+- `demo-analyst` - Strategic analyst with `/briefing`, `/opportunities`, `/ask`, `/request-research` commands
+
+**System Manifest**:
+- `config/manifests/research-network.yaml` - Full system recipe with shared folders, schedules, permissions
+
+**Validation Results**:
+- Both agents deployed and running via system manifest
+- Shared folder collaboration working (researcher exposes, analyst consumes)
+- Schedules configured: researcher every 4h, analyst daily at 9 AM
+- File sharing verified: test findings file written by researcher, readable by analyst
+
+**Files Created**:
+- `config/agent-templates/demo-researcher/` (template.yaml, CLAUDE.md, commands/, .gitignore)
+- `config/agent-templates/demo-analyst/` (template.yaml, CLAUDE.md, commands/, .gitignore)
+- `config/manifests/research-network.yaml`
+
+**Docs Updated**:
+- `docs/memory/autonomous-agent-demos.md` - Added validation log and success criteria
+
+---
+
 ### 2026-01-01 08:20:00
 🎨 **Simplify System Agent UI - Terminal-Centric Layout**
 

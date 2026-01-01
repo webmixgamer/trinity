@@ -65,6 +65,11 @@ from .api_key import (
     get_agent_api_key_setting_logic,
     update_agent_api_key_setting_logic,
 )
+from .autonomy import (
+    get_autonomy_status_logic,
+    set_autonomy_status_logic,
+    get_all_autonomy_status_logic,
+)
 
 __all__ = [
     # Helpers
@@ -116,4 +121,8 @@ __all__ = [
     # API Key
     "get_agent_api_key_setting_logic",
     "update_agent_api_key_setting_logic",
+    # Autonomy
+    "get_autonomy_status_logic",
+    "set_autonomy_status_logic",
+    "get_all_autonomy_status_logic",
 ]

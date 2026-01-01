@@ -106,6 +106,9 @@ def get_accessible_agents(current_user: User) -> list:
         # Add is_system flag for system agents (deletion-protected)
         agent_dict["is_system"] = owner.get("is_system", False) if owner else False
 
+        # Add autonomy_enabled flag for autonomous scheduled operations
+        agent_dict["autonomy_enabled"] = db.get_autonomy_enabled(agent_name)
+
         # Add GitHub repo info if agent was created from GitHub template
         git_config = db.get_git_config(agent_name)
         if git_config:

@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-01)**: Autonomy Mode feature documented:
+> - **autonomy-mode.md**: New feature flow for agent autonomous operation toggle
+> - Dashboard UI: AgentNode.vue shows "AUTO" badge when autonomy enabled (lines 62-68)
+> - Agent Detail UI: AUTO/Manual toggle button in header (AgentDetail.vue:137-160, 1401-1441)
+> - Service layer: `services/agent_service/autonomy.py` - business logic for enable/disable
+> - Database: `autonomy_enabled` column in `agent_ownership` table (db/agents.py:325-357)
+> - API: `GET /api/agents/autonomy-status`, `GET/PUT /api/agents/{name}/autonomy` (agents.py:168-174, 766-791)
+>
 > **Updated (2026-01-01)**: Auth0 completely removed from codebase:
 > - **auth0-authentication.md**: Updated to REMOVED status (was DEPRECATED)
 > - Frontend: Deleted `@auth0/auth0-vue` package, `config/auth0.js`, Auth0 SDK initialization
@@ -142,6 +150,7 @@
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling, execution log retrieval (Updated 2025-12-31) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - parseExecutionLog() transforms JSON stream into formatted chat-like display with init/text/tool-call/tool-result/result blocks (Created 2025-12-31) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
+| **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single button - **service layer: autonomy.py**, dashboard "AUTO" badge, owner-only access (Created 2026-01-01) |
 
 ---
 

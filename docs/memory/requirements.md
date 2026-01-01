@@ -463,6 +463,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - [x] Timezone support (UTC, EST, PST, etc.)
   - [x] Schedule CRUD via REST API
   - [x] WebSocket broadcasts for execution events
+  - [x] **Autonomy Mode Toggle** (2026-01-01): Master switch for agent autonomous operation
+    - Dashboard shows "AUTO" badge on agents with autonomy enabled
+    - Agent detail page has AUTO/Manual toggle button
+    - Toggling enables/disables ALL schedules for the agent
+    - System agent excluded from autonomy controls
+    - API: `GET/PUT /api/agents/{name}/autonomy`
+    - API: `GET /api/agents/autonomy-status` (dashboard overview)
 
 #### 9.2 GitHub-Native Agents (GitHub Sync)
 - **Status**: ✅ Implemented
