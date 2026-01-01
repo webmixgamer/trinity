@@ -965,10 +965,62 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 ---
 
+## Autonomous Agent Design
+
+Trinity agents achieve autonomy through a three-phase lifecycle:
+
+```
+DEVELOP → PACKAGE → SCHEDULE
+```
+
+1. **Develop** — Refine procedures interactively until they consistently produce good results
+2. **Package** — Codify proven procedures as slash commands in `.claude/commands/`
+3. **Schedule** — Run commands on cron via `schedules:` in template.yaml or the UI
+
+### Autonomy Design Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **Self-contained** | No user input during execution |
+| **Deterministic output** | Consistent format for parsing/alerts |
+| **Graceful degradation** | Partial results better than failure |
+| **Bounded scope** | Predictable runtime and cost |
+| **Idempotent** | Safe to run multiple times |
+
+### Quick Example
+
+```yaml
+# template.yaml
+schedules:
+  - name: Morning Health Check
+    cron: "0 8 * * *"
+    message: "/health-check"
+    timezone: "UTC"
+    enabled: true
+```
+
+```markdown
+# .claude/commands/health-check.md
+---
+description: Automated fleet health check
+allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
+---
+
+# Health Check
+1. List all agents using `mcp__trinity__list_agents`
+2. Evaluate context usage and last activity
+3. Generate structured report
+```
+
+→ **Full guide**: [Autonomous Agent Design Guide](AUTONOMOUS_AGENT_DESIGN.md)
+
+---
+
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
 | 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |
 | 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
 | 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |

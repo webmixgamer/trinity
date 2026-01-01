@@ -1,3 +1,36 @@
+### 2026-01-01 03:00:00
+📖 **Add Autonomy Section to Main Agent Guide**
+
+Updated `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` with compact autonomy section covering:
+- Three-phase lifecycle: Develop → Package → Schedule
+- Design principles table (self-contained, deterministic, graceful degradation, bounded, idempotent)
+- Quick example showing template.yaml schedule and slash command
+- Reference to detailed AUTONOMOUS_AGENT_DESIGN.md
+
+Maintains single source of truth principle - main guide has overview, detailed guide has depth.
+
+---
+
+### 2026-01-01 02:30:00
+📖 **Add Autonomous Agent Design Guide**
+
+Created `docs/AUTONOMOUS_AGENT_DESIGN.md` - focused guide on designing Trinity agents that run autonomously via scheduled commands.
+
+**Key concepts documented**:
+- **Autonomy lifecycle**: Develop interactively → Package as slash command → Schedule via Trinity
+- **Command design principles**: Self-contained, deterministic output, graceful degradation, bounded scope, idempotent
+- **Template configuration**: `schedules` block in template.yaml with cron expressions
+- **Best practices**: Focused commands, structured output, execution time bounds, error handling
+
+**Example patterns**:
+- Complete autonomous agent template with health checks and cost reports
+- Slash command structure with frontmatter (`description`, `allowed-tools`)
+- Cron expression reference
+
+This guide complements the comprehensive TRINITY_COMPATIBLE_AGENT_GUIDE.md by focusing specifically on the scheduled automation use case.
+
+---
+
 ### 2026-01-01 01:00:00
 🗑️ **Remove Auth0 from Frontend and Backend - Fix HTTP Access on LAN**
 
