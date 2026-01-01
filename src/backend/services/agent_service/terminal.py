@@ -186,7 +186,7 @@ class TerminalSessionManager:
             # Step 5: Create exec with TTY
             # Support multiple terminal modes: claude (Claude Code), gemini (Gemini CLI), bash
             if mode == "claude":
-                cmd = ["claude"]
+                cmd = ["claude", "--dangerously-skip-permissions"]
                 if model:
                     cmd.extend(["--model", model])
             elif mode == "gemini":
