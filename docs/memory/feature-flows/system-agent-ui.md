@@ -2,7 +2,7 @@
 
 > **Requirement 11.3** - Dedicated System Agent management interface
 > **Created**: 2025-12-20
-> **Updated**: 2025-12-30
+> **Updated**: 2026-01-01
 
 ## Overview
 
@@ -58,17 +58,17 @@ Admin check: `NavBar.vue:231-244` fetches user role from `/api/users/me` and set
 |---------|-------|-------------|
 | Compact Header | 28-75 | Agent info, SYSTEM badge, status, Start/Restart button (single row) |
 | Fleet Stats Bar | 77-112 | Inline horizontal: Fleet count, running, stopped, issues |
-| OTel Metrics Grid | 114-238 | 6 metric cards with icons and progress bars |
-| Quick Actions | 243-298 | Emergency Stop, Restart All, Pause/Resume Schedules |
-| System Terminal | 300-369 | Interactive terminal with fullscreen toggle (replaced chat interface) |
-| Notification Toast | 372-384 | Success/error feedback |
+| OTel Section (collapsible) | 115-219 | Collapsible panel, only shown when data available, collapsed by default |
+| System Terminal | 221-344 | Full-width terminal (600px height) with Quick Actions in header bar |
+| Quick Actions | 238-306 | Icon buttons in terminal header: Emergency Stop, Restart All, Pause/Resume Schedules |
+| Notification Toast | 346-358 | Success/error feedback |
 
 ### State Management
 
 The component uses local reactive state (no Pinia store):
 
 ```javascript
-// src/frontend/src/views/SystemAgent.vue:403-462
+// src/frontend/src/views/SystemAgent.vue:377-435
 const loading = ref(true)
 const systemAgent = ref(null)
 const fleetStatus = ref({ total: 0, running: 0, stopped: 0, issues: 0 })
@@ -82,6 +82,7 @@ const otelMetrics = ref({
 })
 const terminalRef = ref(null)
 const isFullscreen = ref(false)
+const otelExpanded = ref(false)  // OTel section collapsed by default
 ```
 
 ### API Calls
@@ -230,21 +231,25 @@ SYSTEM_AGENT_NAME = "trinity-system"
 +-----------------------------------------------------------------------+
 |  Fleet: 12 agents | [o] 8 running | [o] 4 stopped | [!] 1 issues     |
 +-----------------------------------------------------------------------+
-|  +------------------+------------------+------------------+            |
-|  | Total Cost       | Tokens           | Sessions        | ...        |
-|  | $0.00 [=====]    | 0K [====]        | 0               |            |
-|  +------------------+------------------+------------------+            |
+|  [v] OpenTelemetry  $0.45 · 125K tokens     (collapsed by default)    |
++-----------------------------------------------------------------------+
+|  System Terminal         [!][↻][⏸][▶]  |  [⛶]                        |
+|  -------------------------------------------------------------------- |
+|  $ claude (PTY-based interactive shell)                               |
+|  > ...                                                                |
 |                                                                       |
-|  +------------------+  +------------------------------------------+   |
-|  | Quick Actions    |  | System Terminal                          |   |
-|  |                  |  |  [Fullscreen toggle]                      |   |
-|  | [Emergency Stop] |  |  ---------------------------------------- |   |
-|  | [Restart All]    |  |  $ claude (PTY-based interactive shell)  |   |
-|  | [Pause Scheds]   |  |  > ...                                    |   |
-|  | [Resume Scheds]  |  |                                           |   |
-|  +------------------+  +------------------------------------------+   |
+|                         (600px height, full width)                    |
+|                                                                       |
 +-----------------------------------------------------------------------+
 ```
+
+**Terminal Header Icons (left to right)**:
+- `[!]` Emergency Stop (red) - stops all agents
+- `[↻]` Restart All Agents
+- `[⏸]` Pause Schedules
+- `[▶]` Resume Schedules
+- `|` Divider
+- `[⛶]` Fullscreen toggle
 
 ## Data Flow
 
@@ -443,5 +448,6 @@ User opens System Agent page
 
 | Date | Change |
 |------|--------|
+| 2026-01-01 | Terminal-centric layout: full-width terminal, Quick Actions as icon buttons in header, collapsible OTel section |
 | 2025-12-21 | Compact header redesign + OTel metrics visualization |
 | 2025-12-20 | Initial document created |

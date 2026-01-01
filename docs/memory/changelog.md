@@ -1,3 +1,25 @@
+### 2026-01-01 08:20:00
+🎨 **Simplify System Agent UI - Terminal-Centric Layout**
+
+Redesigned `/system-agent` page to give the terminal central prominence:
+
+**Layout Changes**:
+- **Terminal**: Now full width (was 2/3), increased height to 600px, central focus on page
+- **Quick Actions**: Moved to compact icon buttons in terminal header bar (was separate card with large buttons)
+- **OpenTelemetry**: Collapsible section, only shown when data available, collapsed by default
+
+**Quick Actions (now in terminal header)**:
+- Emergency Stop (red icon with tooltip)
+- Restart All Agents
+- Pause Schedules
+- Resume Schedules
+- Fullscreen toggle (separated by divider)
+
+**Files Changed**:
+- `src/frontend/src/views/SystemAgent.vue` - Complete layout restructure
+
+---
+
 ### 2026-01-01 03:00:00
 📖 **Add Autonomy Section to Main Agent Guide**
 

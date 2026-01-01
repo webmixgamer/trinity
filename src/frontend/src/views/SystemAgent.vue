@@ -74,8 +74,8 @@
             </div>
           </div>
 
-          <!-- Middle Row: Fleet Stats (compact) -->
-          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
+          <!-- Bottom Row: Fleet Stats (compact) -->
+          <div class="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50">
             <div class="flex items-center space-x-6">
               <div class="flex items-center space-x-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400">Fleet:</span>
@@ -110,34 +110,29 @@
               </button>
             </div>
           </div>
+        </div>
 
-          <!-- Bottom Row: OpenTelemetry Metrics -->
-          <div class="px-4 py-3">
-            <!-- OTel Status Indicator -->
-            <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center space-x-2">
-                <div :class="[
-                  'w-2 h-2 rounded-full',
-                  otelMetrics.available ? 'bg-green-500' : otelMetrics.enabled ? 'bg-yellow-500' : 'bg-gray-400'
-                ]"></div>
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">OpenTelemetry</span>
-                <span v-if="!otelMetrics.enabled" class="text-xs text-gray-400 dark:text-gray-500">(disabled)</span>
-                <span v-else-if="!otelMetrics.available" class="text-xs text-yellow-600 dark:text-yellow-400">(unavailable)</span>
-              </div>
-              <button
-                @click="refreshOtelMetrics"
-                :disabled="otelLoading"
-                class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center space-x-1"
-              >
-                <svg :class="['w-3 h-3', otelLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
-              </button>
+        <!-- Collapsible OpenTelemetry Section -->
+        <div v-if="otelMetrics.available && otelMetrics.hasData" class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 mb-6">
+          <button
+            @click="otelExpanded = !otelExpanded"
+            class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            <div class="flex items-center space-x-2">
+              <div class="w-2 h-2 rounded-full bg-green-500"></div>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">OpenTelemetry</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                ${{ otelMetrics.totals.total_cost.toFixed(2) }} · {{ formatTokens(otelMetrics.totals.total_tokens) }} tokens
+              </span>
             </div>
+            <svg :class="['w-4 h-4 text-gray-400 transition-transform', otelExpanded ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
+          <div v-show="otelExpanded" class="px-4 pb-4">
             <!-- OTel Metrics Grid -->
-            <div v-if="otelMetrics.available && otelMetrics.hasData" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               <!-- Total Cost -->
               <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
                 <div class="flex items-center justify-between mb-1">
@@ -220,101 +215,80 @@
                 <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">changed</div>
               </div>
             </div>
-
-            <!-- OTel Not Available State -->
-            <div v-else-if="otelMetrics.enabled && !otelMetrics.available" class="text-center py-4">
-              <p class="text-sm text-yellow-600 dark:text-yellow-400">{{ otelMetrics.error || 'Collector not reachable' }}</p>
-            </div>
-
-            <!-- OTel Not Enabled State -->
-            <div v-else-if="!otelMetrics.enabled" class="text-center py-4">
-              <p class="text-sm text-gray-500 dark:text-gray-400">Set <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">OTEL_ENABLED=1</code> to enable metrics</p>
-            </div>
-
-            <!-- No Data Yet -->
-            <div v-else class="text-center py-4">
-              <p class="text-sm text-gray-500 dark:text-gray-400">No metrics data yet. Chat with agents to generate data.</p>
-            </div>
           </div>
         </div>
 
-        <!-- Quick Actions and Chat -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Quick Actions -->
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
+        <!-- System Terminal (Full Width, Central Focus) -->
+        <div
+          :class="[
+            'bg-gray-900 rounded-lg shadow overflow-hidden flex flex-col transition-all duration-300',
+            isFullscreen ? 'fixed inset-0 z-50 rounded-none' : ''
+          ]"
+          :style="isFullscreen ? {} : { height: '600px' }"
+        >
+          <!-- Terminal Header with Quick Actions -->
+          <div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span class="text-sm font-medium text-gray-300">System Terminal</span>
             </div>
-            <div class="p-4 space-y-3">
+
+            <!-- Quick Actions (Compact Icon Buttons) -->
+            <div class="flex items-center space-x-1">
               <!-- Emergency Stop -->
               <button
                 @click="emergencyStop"
                 :disabled="emergencyLoading"
-                class="w-full flex items-center justify-center space-x-2 border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 text-red-700 dark:text-red-400 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
+                title="Emergency Stop - Stop all agents"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', emergencyLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                 </svg>
-                <span class="text-sm">{{ emergencyLoading ? 'Stopping...' : 'Emergency Stop' }}</span>
               </button>
 
               <!-- Restart All -->
               <button
                 @click="restartAllAgents"
                 :disabled="restartAllLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Restart All Agents"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', restartAllLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span class="text-sm">{{ restartAllLoading ? 'Restarting...' : 'Restart All Agents' }}</span>
               </button>
 
               <!-- Pause Schedules -->
               <button
                 @click="pauseAllSchedules"
                 :disabled="pauseLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Pause All Schedules"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', pauseLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-sm">{{ pauseLoading ? 'Pausing...' : 'Pause Schedules' }}</span>
               </button>
 
               <!-- Resume Schedules -->
               <button
                 @click="resumeAllSchedules"
                 :disabled="resumeLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Resume All Schedules"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', resumeLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-sm">{{ resumeLoading ? 'Resuming...' : 'Resume Schedules' }}</span>
               </button>
-            </div>
-          </div>
 
-          <!-- Terminal Panel -->
-          <div
-            :class="[
-              'bg-gray-900 rounded-lg shadow overflow-hidden flex flex-col transition-all duration-300',
-              isFullscreen
-                ? 'fixed inset-0 z-50 rounded-none'
-                : 'lg:col-span-2'
-            ]"
-            :style="isFullscreen ? {} : { height: '500px' }"
-          >
-            <!-- Terminal Header with Fullscreen Toggle -->
-            <div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
-              <div class="flex items-center space-x-2">
-                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span class="text-sm font-medium text-gray-300">System Terminal</span>
-              </div>
+              <div class="w-px h-4 bg-gray-600 mx-1"></div>
+
+              <!-- Fullscreen Toggle -->
               <button
                 @click="toggleFullscreen"
                 class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
@@ -330,6 +304,7 @@
                 </svg>
               </button>
             </div>
+          </div>
             <!-- Terminal Content -->
             <div class="flex-1 min-h-0">
               <SystemAgentTerminal
@@ -367,7 +342,6 @@
               </div>
             </div>
           </div>
-        </div>
 
         <!-- Notification Toast -->
         <div
@@ -456,6 +430,9 @@ const terminalRef = ref(null)
 
 // Fullscreen state
 const isFullscreen = ref(false)
+
+// OTel section expanded state (default collapsed)
+const otelExpanded = ref(false)
 
 // User role for admin checks
 const userRole = ref(null)
