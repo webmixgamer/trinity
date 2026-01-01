@@ -1,7 +1,7 @@
 ---
 name: ui-integration-tester
 description: UI integration test executor for Trinity platform using modular phase-based testing. Each invocation handles one specific phase (0-18) from the docs/testing/phases/ directory. The orchestrator specifies which phase to run.
-tools: Bash, Read, Grep, WebFetch, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__hover, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__press_key
+tools: Bash, Read, Grep, WebFetch, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_navigate, mcp__playwright__browser_tabs, mcp__playwright__browser_hover, mcp__playwright__browser_wait_for, mcp__playwright__browser_press_key, mcp__playwright__browser_fill_form, mcp__playwright__browser_select_option
 model: sonnet
 ---
 
@@ -145,11 +145,32 @@ After completing the phase:
 6. **Wait adequately** - 10-15 seconds after agent starts, 20 seconds for delegator
 7. **Handle failures** - Document and continue if possible, stop if blocking
 
+## Playwright MCP Notes
+
+The UI tester uses **Playwright MCP** which:
+- Spawns a **separate Chromium browser** (not your main Chrome)
+- Starts with a **fresh session** - no existing logins
+- Uses **accessibility tree** for element targeting (not screenshots)
+- Browser window is visible - look for Chromium on your screen
+
+**Tool Mapping** (from old Chrome DevTools):
+| Action | Playwright Tool |
+|--------|-----------------|
+| Navigate | `browser_navigate` |
+| Click | `browser_click` (requires `element` description + `ref` from snapshot) |
+| Type | `browser_type` (for single field) or `browser_fill_form` (for multiple) |
+| Snapshot | `browser_snapshot` (returns accessibility tree, better than screenshot) |
+| Screenshot | `browser_take_screenshot` |
+| Wait | `browser_wait_for` |
+
+**IMPORTANT**: Always call `browser_snapshot` first to get element `ref` values needed for clicks/typing.
+
 ## Important Notes
 
 1. You execute ONE phase per invocation
 2. Always READ the phase file, don't assume instructions
 3. Phase files are the source of truth for test steps
 4. Report issues found but do NOT fix them (testing mode)
-5. Take snapshot at start to confirm browser state
+5. **Take snapshot first** to get element refs for interactions
 6. **Re-login after deploy**: JWT tokens are invalidated when backend restarts. If you see 401 errors, logout and login again with fresh credentials
+7. **Fresh browser**: Playwright starts with no logins - you must authenticate via the login form each time
