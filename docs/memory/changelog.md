@@ -1,3 +1,34 @@
+### 2026-01-02 10:10:00
+📊 **Host & Container Telemetry Dashboard**
+
+Added real-time system metrics display to Dashboard header with sparkline charts.
+
+**Features**:
+- CPU usage with rolling 60-sample sparkline (5-minute history)
+- Memory usage with sparkline and formatted value (used/total GB)
+- Disk usage with progress bar and percentage
+- Container stats: aggregate CPU/memory across all running agents (shown when agents running)
+- 5-second polling interval
+- Color-coded values (green < 50%, yellow 50-75%, orange 75-90%, red > 90%)
+- Dark/light theme support
+
+**Backend Endpoints**:
+- `GET /api/telemetry/host` - Host CPU, memory, disk stats via psutil
+- `GET /api/telemetry/containers` - Aggregate stats across agent containers
+
+**Files Created**:
+- `src/backend/routers/telemetry.py` - New telemetry router
+- `src/frontend/src/components/HostTelemetry.vue` - Sparkline component using uPlot
+
+**Files Changed**:
+- `src/backend/main.py` - Mount telemetry router
+- `docker/backend/Dockerfile` - Add psutil dependency
+- `docker/frontend/Dockerfile` - Use npm ci with lock file
+- `src/frontend/package.json` - Add uplot dependency
+- `src/frontend/src/views/Dashboard.vue` - Import and render HostTelemetry
+
+---
+
 ### 2026-01-01 18:45:00
 🔄 **Autonomy Mode Toggle**
 

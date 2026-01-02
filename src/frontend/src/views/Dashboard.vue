@@ -54,6 +54,9 @@
                   </svg>
                   <span>OTel</span>
                 </span>
+                <!-- Host Telemetry (inline) -->
+                <span class="text-gray-300 dark:text-gray-600">·</span>
+                <HostTelemetry />
               </div>
             </div>
 
@@ -426,6 +429,7 @@
 
 <script setup>
 import NavBar from '@/components/NavBar.vue'
+import HostTelemetry from '@/components/HostTelemetry.vue'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'

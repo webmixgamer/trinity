@@ -44,6 +44,7 @@ from routers.ops import router as ops_router
 from routers.public_links import router as public_links_router, set_websocket_manager as set_public_links_ws_manager
 from routers.public import router as public_router
 from routers.setup import router as setup_router
+from routers.telemetry import router as telemetry_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -240,6 +241,7 @@ app.include_router(ops_router)
 app.include_router(public_links_router)
 app.include_router(public_router)
 app.include_router(setup_router)
+app.include_router(telemetry_router)
 
 
 # WebSocket endpoint
