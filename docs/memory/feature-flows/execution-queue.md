@@ -1,6 +1,6 @@
 # Feature: Execution Queue System
 
-> **Updated**: 2025-12-31 - Added AgentClient service for centralized agent HTTP communication. Scheduler now uses `AgentClient.chat()` instead of raw `httpx` calls.
+> **Updated**: 2025-01-02 - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` to ensure execution logs are stored in raw Claude Code `stream-json` format for proper display in the log viewer.
 
 ## Overview
 The Execution Queue System prevents parallel execution on agents by serializing all execution requests through a Redis-backed queue. This ensures only one execution runs per agent at a time, protecting Claude Code's conversation state from corruption.
@@ -336,20 +336,21 @@ async def _execute_schedule(self, schedule_id: str):
         db.update_execution_status(execution_id=execution.id, status="failed", error=error_msg)
         return
 
-    # Execute using AgentClient (centralized HTTP client)
+    # Execute using AgentClient.task() for raw Claude Code log format
+    # Changed from client.chat() to client.task() on 2025-01-02 to fix log viewer
     client = get_agent_client(schedule.agent_name)
-    chat_response = await client.chat(schedule.message, stream=False)
+    task_response = await client.task(schedule.message)
 
     # Update execution with parsed response metrics
     db.update_execution_status(
         execution_id=execution.id,
         status="success",
-        response=chat_response.response_text,
-        context_used=chat_response.metrics.context_used,
-        context_max=chat_response.metrics.context_max,
-        cost=chat_response.metrics.cost_usd,
-        tool_calls=chat_response.metrics.tool_calls_json,
-        execution_log=chat_response.metrics.execution_log_json
+        response=task_response.response_text,
+        context_used=task_response.metrics.context_used,
+        context_max=task_response.metrics.context_max,
+        cost=task_response.metrics.cost_usd,
+        tool_calls=task_response.metrics.tool_calls_json,
+        execution_log=task_response.metrics.execution_log_json  # Raw Claude Code format
     )
 
     finally:
@@ -359,8 +360,9 @@ async def _execute_schedule(self, schedule_id: str):
 
 **Key Points:**
 - Uses `ExecutionSource.SCHEDULE`
-- Uses `AgentClient.chat()` for HTTP communication (not raw httpx)
-- Response parsing centralized in `AgentClient._parse_chat_response()`
+- Uses `AgentClient.task()` for stateless execution with raw log format (changed from `chat()` on 2025-01-02)
+- Response parsing via `AgentClient._parse_task_response()`
+- Execution log stored in raw Claude Code `stream-json` format for log viewer compatibility
 - Logs queue full as failure (doesn't retry)
 - Always releases queue in `finally`
 
@@ -374,19 +376,22 @@ from services.agent_client import get_agent_client, AgentClientError, AgentNotRe
 # Create client for agent
 client = get_agent_client(schedule.agent_name)
 
-# Send chat message - returns AgentChatResponse
-chat_response = await client.chat(schedule.message, stream=False)
+# Send task message - returns AgentChatResponse with raw Claude Code log
+# Uses /api/task endpoint for stateless execution with proper log format
+task_response = await client.task(schedule.message)
 
 # Access parsed metrics
-chat_response.response_text          # The agent's response (truncated if > 10000 chars)
-chat_response.metrics.context_used   # Tokens used
-chat_response.metrics.context_max    # Context window size
-chat_response.metrics.context_percent # Usage percentage
-chat_response.metrics.cost_usd       # Cost in USD
-chat_response.metrics.tool_calls_json     # JSON string of tool calls
-chat_response.metrics.execution_log_json  # JSON string of execution log
-chat_response.raw_response           # Original response dict
+task_response.response_text          # The agent's response (truncated if > 10000 chars)
+task_response.metrics.context_used   # Tokens used
+task_response.metrics.context_max    # Context window size
+task_response.metrics.context_percent # Usage percentage
+task_response.metrics.cost_usd       # Cost in USD
+task_response.metrics.tool_calls_json     # JSON string of tool calls
+task_response.metrics.execution_log_json  # Raw Claude Code stream-json format
+task_response.raw_response           # Original response dict
 ```
+
+**Note**: The `task()` method was added on 2025-01-02 to fix execution log viewer compatibility. It calls `/api/task` which returns raw Claude Code `stream-json` format, unlike `chat()` which calls `/api/chat` and returns a simplified format.
 
 #### Response Data Classes (`src/backend/services/agent_client.py:22-48`)
 
@@ -974,6 +979,7 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 | Date | Changes |
 |------|---------|
+| 2025-01-02 | **Scheduler log fix**: Changed scheduler from `AgentClient.chat()` to `AgentClient.task()`. The `task()` method calls `/api/task` endpoint which returns raw Claude Code `stream-json` format. This fixes execution log viewer which could not parse the simplified format from `/api/chat`. Added `task()` method and `_parse_task_response()` to `AgentClient`. |
 | 2025-12-31 | **AgentClient service**: Scheduler now uses centralized `AgentClient` from `services/agent_client.py` instead of raw `httpx` calls. Response parsing logic moved to `AgentClient._parse_chat_response()`. Added `AgentChatResponse` and `AgentChatMetrics` dataclasses. Context token bug fix documented (cache tokens are subsets, not additional). |
 | 2025-12-31 | **Execution log storage**: All execution records now store full Claude Code execution transcript in `execution_log` column. New endpoint `GET /api/agents/{name}/executions/{execution_id}/log` retrieves full execution log for debugging and audit purposes. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: `/chat` endpoint now creates `schedule_executions` record when `X-Source-Agent` header is present, ensuring agent-to-agent MCP calls appear in Tasks tab alongside scheduled and manual tasks. |

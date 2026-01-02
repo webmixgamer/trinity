@@ -261,20 +261,21 @@ class SchedulerService:
             return
 
         try:
-            # Send message to agent using AgentClient
+            # Send task to agent using AgentClient (stateless execution)
+            # Uses /api/task for raw Claude Code execution log format
             client = get_agent_client(schedule.agent_name)
-            chat_response = await client.chat(schedule.message, stream=False)
+            task_response = await client.task(schedule.message)
 
             # Update execution status with parsed response
             db.update_execution_status(
                 execution_id=execution.id,
                 status="success",
-                response=chat_response.response_text,
-                context_used=chat_response.metrics.context_used,
-                context_max=chat_response.metrics.context_max,
-                cost=chat_response.metrics.cost_usd,
-                tool_calls=chat_response.metrics.tool_calls_json,
-                execution_log=chat_response.metrics.execution_log_json
+                response=task_response.response_text,
+                context_used=task_response.metrics.context_used,
+                context_max=task_response.metrics.context_max,
+                cost=task_response.metrics.cost_usd,
+                tool_calls=task_response.metrics.tool_calls_json,
+                execution_log=task_response.metrics.execution_log_json
             )
 
             # Update schedule last run time
@@ -286,7 +287,7 @@ class SchedulerService:
             execution_success = True
 
             # Get execution log for tool count
-            execution_log = chat_response.raw_response.get("execution_log")
+            execution_log = task_response.raw_response.get("execution_log")
 
             # Track schedule completion
             await activity_service.complete_activity(
@@ -294,9 +295,9 @@ class SchedulerService:
                 status="completed",
                 details={
                     "related_execution_id": execution.id,
-                    "context_used": chat_response.metrics.context_used,
-                    "context_max": chat_response.metrics.context_max,
-                    "cost_usd": chat_response.metrics.cost_usd,
+                    "context_used": task_response.metrics.context_used,
+                    "context_max": task_response.metrics.context_max,
+                    "cost_usd": task_response.metrics.cost_usd,
                     "tool_count": len(execution_log) if execution_log else 0,
                     "queue_execution_id": queue_execution.id
                 }
@@ -444,19 +445,20 @@ class SchedulerService:
             return
 
         try:
-            # Send message to agent using AgentClient
+            # Send task to agent using AgentClient (stateless execution)
+            # Uses /api/task for raw Claude Code execution log format
             client = get_agent_client(schedule.agent_name)
-            chat_response = await client.chat(schedule.message, stream=False)
+            task_response = await client.task(schedule.message)
 
             db.update_execution_status(
                 execution_id=execution_id,
                 status="success",
-                response=chat_response.response_text,
-                context_used=chat_response.metrics.context_used,
-                context_max=chat_response.metrics.context_max,
-                cost=chat_response.metrics.cost_usd,
-                tool_calls=chat_response.metrics.tool_calls_json,
-                execution_log=chat_response.metrics.execution_log_json
+                response=task_response.response_text,
+                context_used=task_response.metrics.context_used,
+                context_max=task_response.metrics.context_max,
+                cost=task_response.metrics.cost_usd,
+                tool_calls=task_response.metrics.tool_calls_json,
+                execution_log=task_response.metrics.execution_log_json
             )
 
             execution_success = True

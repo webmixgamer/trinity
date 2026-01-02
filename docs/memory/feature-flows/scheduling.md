@@ -23,6 +23,9 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 - Access control via `AuthorizedAgent` dependency (not inline checks)
 - Agent HTTP communication via `AgentClient` service (not raw httpx)
 
+**Fixed (2025-01-02):**
+- Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` to ensure execution logs are stored in raw Claude Code `stream-json` format for proper display in the [Execution Log Viewer](execution-log-viewer.md)
+
 ---
 
 ## Architecture
@@ -119,14 +122,14 @@ _execute_schedule()
                                   create_execution(running)
                                   broadcast(started)
                                   |
-                                  # AGENT CLIENT (Refactored 2025-12-31)
+                                  # AGENT CLIENT (Fixed 2025-01-02)
                                   client = get_agent_client(agent_name)
-                                  chat_response = await client.chat(message)
-                                  |                                 POST /api/chat
-                                  # Response parsing via AgentChatResponse
-                                  chat_response.metrics.context_used
-                                  chat_response.metrics.cost_usd
-                                  chat_response.metrics.tool_calls_json
+                                  task_response = await client.task(message)
+                                  |                                 POST /api/task
+                                  # Response parsing via _parse_task_response()
+                                  task_response.metrics.context_used
+                                  task_response.metrics.cost_usd
+                                  task_response.metrics.execution_log_json  # Raw Claude Code format
                                   |
                                   update_execution(success/failed)
                                   broadcast(completed)
@@ -135,11 +138,13 @@ _execute_schedule()
                                   queue.complete()  # Release queue slot
 ```
 
+**Note**: Changed from `client.chat()` to `client.task()` on 2025-01-02. The `/api/task` endpoint returns raw Claude Code `stream-json` format which is required for the [Execution Log Viewer](execution-log-viewer.md) to properly render execution transcripts.
+
 **Queue Full Handling**: If the agent's queue is full (3 pending requests), the scheduled execution fails with error "Agent queue full (N waiting), skipping scheduled execution".
 
 **Files:**
-- `src/backend/services/scheduler_service.py:169-373` - _execute_schedule() with queue and AgentClient
-- `src/backend/services/agent_client.py:75-242` - AgentClient HTTP communication
+- `src/backend/services/scheduler_service.py:169-373` - _execute_schedule() with queue and AgentClient.task()
+- `src/backend/services/agent_client.py:194-281` - AgentClient.task() and _parse_task_response()
 - `src/backend/services/execution_queue.py` - Execution queue service
 - `src/backend/database.py:1318-1348` - create_schedule_execution()
 - `src/backend/database.py:1350-1378` - update_execution_status()
@@ -152,24 +157,26 @@ _execute_schedule()
 Frontend                          Backend                           Agent
 --------                          -------                           -----
 SchedulesPanel.vue               schedules.py:236              →    agent-{name}:8000
-POST .../trigger                  trigger_schedule()                POST /api/chat
+POST .../trigger                  trigger_schedule()                POST /api/task
                                   ↓
-                                  scheduler_service.py:374
+                                  scheduler_service.py:375
                                   trigger_schedule()
                                   create_execution(manual)
                                   asyncio.create_task(_execute_manual_trigger)
                                   ↓
-                                  scheduler_service.py:412
+                                  scheduler_service.py:413
                                   _execute_manual_trigger()
                                   client = get_agent_client(...)
-                                  client.chat(message)
+                                  client.task(message)  # Uses /api/task for raw log format
 ```
+
+**Note**: Manual triggers also use `client.task()` (not `client.chat()`) to ensure consistent log format across all execution types.
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - triggerSchedule() method
 - `src/backend/routers/schedules.py:236-260` - trigger_schedule endpoint
-- `src/backend/services/scheduler_service.py:374-410` - trigger_schedule()
-- `src/backend/services/scheduler_service.py:412-508` - _execute_manual_trigger() with AgentClient
+- `src/backend/services/scheduler_service.py:375-411` - trigger_schedule()
+- `src/backend/services/scheduler_service.py:413-510` - _execute_manual_trigger() with AgentClient.task()
 
 ### 4. Enable/Disable Flow
 
@@ -423,20 +430,21 @@ The scheduler uses `AgentClient` from `src/backend/services/agent_client.py` for
 ```python
 from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
 
-# Send message to agent using AgentClient
+# Send task to agent using AgentClient.task() for raw log format
+# Changed from client.chat() to client.task() on 2025-01-02
 client = get_agent_client(schedule.agent_name)
-chat_response = await client.chat(schedule.message, stream=False)
+task_response = await client.task(schedule.message)
 
 # Update execution status with parsed response
 db.update_execution_status(
     execution_id=execution.id,
     status="success",
-    response=chat_response.response_text,
-    context_used=chat_response.metrics.context_used,
-    context_max=chat_response.metrics.context_max,
-    cost=chat_response.metrics.cost_usd,
-    tool_calls=chat_response.metrics.tool_calls_json,
-    execution_log=chat_response.metrics.execution_log_json
+    response=task_response.response_text,
+    context_used=task_response.metrics.context_used,
+    context_max=task_response.metrics.context_max,
+    cost=task_response.metrics.cost_usd,
+    tool_calls=task_response.metrics.tool_calls_json,
+    execution_log=task_response.metrics.execution_log_json  # Raw Claude Code format
 )
 ```
 
@@ -446,10 +454,13 @@ db.update_execution_status(
 
 | Method | Purpose | Timeout |
 |--------|---------|---------|
-| `chat(message, stream)` | Send chat message | 300s (5 min) |
+| `task(message)` | Execute stateless task (raw log format) | 900s (15 min) |
+| `chat(message, stream)` | Send chat message (simplified log format) | 900s (15 min) |
 | `get_session()` | Get context info | 5s |
 | `health_check()` | Check agent health | 5s |
 | `inject_trinity_prompt()` | Inject meta-prompt | 10s |
+
+**Important**: The scheduler uses `task()` not `chat()`. The `task()` method calls `/api/task` which returns raw Claude Code `stream-json` format required by the log viewer. The `chat()` method calls `/api/chat` which returns a simplified format that is not compatible with `parseExecutionLog()`.
 
 ### Response Models
 
@@ -725,6 +736,7 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
+**Updated 2025-01-02** - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` for raw log format compatibility with execution log viewer
 **Updated 2025-12-31** - Documented access control dependencies and AgentClient service (Plan 02/03 refactoring)
 **Updated 2025-12-29** - Fixed API endpoint line numbers to match current schedules.py (post-refactoring)
 **Updated 2025-12-06** - Added Execution Queue integration documentation

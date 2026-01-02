@@ -4,6 +4,8 @@
 
 The Tasks tab provides a unified view for headless agent executions within the Agent Detail page. It consolidates all task executions (manual, scheduled, agent-to-agent) into a single interface with the ability to trigger new tasks directly, monitor running tasks and queue status in real-time, and re-run historical tasks.
 
+**Log Format Standardization (2025-01-02)**: All execution types (manual tasks, scheduled executions, manual triggers) now use the `/api/task` endpoint which returns raw Claude Code `stream-json` format. This ensures the [Execution Log Viewer](execution-log-viewer.md) can properly render all execution transcripts.
+
 ## User Story
 
 As an agent operator, I want to view and trigger headless task executions from a single location so that I can manage agent workloads without entering the terminal or managing multiple interfaces.
@@ -548,8 +550,18 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 - **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation
 - **Upstream**: [execution-queue.md](execution-queue.md) - Queue system (bypassed by tasks)
-- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table
+- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format)
+- **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-01-02 | Added note about log format standardization - all execution types now use `/api/task` for raw Claude Code format |
+| 2025-12-31 | Initial documentation - execution log viewer added |
 
 ---
 

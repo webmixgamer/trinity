@@ -191,6 +191,95 @@ class AgentClient:
         result = response.json()
         return self._parse_chat_response(result)
 
+    async def task(
+        self,
+        message: str,
+        timeout: float = None
+    ) -> AgentChatResponse:
+        """
+        Execute a stateless task on the agent (no conversation context).
+
+        Unlike chat(), this endpoint:
+        - Does NOT maintain conversation history
+        - Each call is independent (no --continue flag)
+        - Returns raw Claude Code execution log (full transcript)
+
+        Use this for scheduled executions and independent tasks.
+
+        Args:
+            message: Task prompt to execute
+            timeout: Request timeout (default: 15 minutes)
+
+        Returns:
+            AgentChatResponse with parsed metrics and raw execution log
+
+        Raises:
+            AgentNotReachableError: If agent is not reachable
+            AgentRequestError: If request fails
+        """
+        timeout = timeout or self.CHAT_TIMEOUT
+
+        response = await self.post(
+            "/api/task",
+            json={"message": message, "timeout_seconds": int(timeout)},
+            timeout=timeout + 10  # Add buffer to agent timeout
+        )
+
+        # Check for error response and extract detailed error message
+        if response.status_code >= 400:
+            error_msg = self._extract_error_detail(response)
+            raise AgentRequestError(error_msg, status_code=response.status_code)
+
+        result = response.json()
+        return self._parse_task_response(result)
+
+    def _parse_task_response(self, result: Dict[str, Any]) -> AgentChatResponse:
+        """
+        Parse agent task response into structured data.
+
+        Similar to _parse_chat_response but handles /api/task format
+        which returns raw Claude Code execution log.
+        """
+        # Extract response text
+        response_text = result.get("response", str(result))
+        if len(response_text) > 10000:
+            response_text = response_text[:10000] + "... (truncated)"
+
+        # Extract observability data (task response has metadata but no session)
+        metadata = result.get("metadata", {})
+        execution_log = result.get("execution_log")
+
+        # Context usage from metadata
+        context_used = metadata.get("input_tokens", 0)
+        context_max = metadata.get("context_window", 200000)
+        context_percent = round(context_used / max(context_max, 1) * 100, 1)
+
+        # Cost
+        cost = metadata.get("cost_usd")
+
+        # Execution log - raw Claude Code transcript
+        # Note: Check is not None, not truthiness - empty list [] is valid log
+        tool_calls_json = None
+        execution_log_json = None
+        if execution_log is not None:
+            execution_log_json = json.dumps(execution_log)
+            tool_calls_json = execution_log_json  # Backwards compatibility
+
+        metrics = AgentChatMetrics(
+            context_used=context_used,
+            context_max=context_max,
+            context_percent=context_percent,
+            cost_usd=cost,
+            tool_calls_json=tool_calls_json,
+            execution_log_json=execution_log_json
+        )
+
+        return AgentChatResponse(
+            response_text=response_text,
+            metrics=metrics,
+            raw_response=result
+        )
+
     def _extract_error_detail(self, response: httpx.Response) -> str:
         """Extract detailed error message from agent HTTP response."""
         try:

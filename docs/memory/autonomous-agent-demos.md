@@ -1,458 +1,622 @@
-# Autonomous Agent Business Demos on Trinity
+# Autonomous Agent Demo: Research Network
 
-> **Purpose**: Practical demo ideas based on "The Rise of Self-Sustaining AI Businesses" article.
-> These are systems that can be built on Trinity to demonstrate autonomous agent business patterns.
+> **Purpose**: Step-by-step guide to deploy an autonomous multi-agent research system on Trinity.
+> **Setup Time**: 2-3 hours
+> **Agents**: 2 (researcher + analyst)
 >
-> **Source**: autonomous-agent-businesses.md (2025-12-13)
 > **Created**: 2025-12-14
+> **Updated**: 2026-01-01 - Simplified to focused Research Network demo
 
 ---
 
-## Trinity Platform Capabilities (Reference)
+## Demo Overview
 
-What Trinity provides out of the box:
+A two-agent autonomous research network that demonstrates:
+- **Scheduled execution** - Researcher runs on cron schedule
+- **Shared folders** - Findings passed between agents via files
+- **Agent collaboration** - Analyst can query researcher via MCP
+- **Real-time dashboard** - Watch collaboration edges light up
 
-| Capability | Feature | Demo Value |
-|------------|---------|------------|
-| **Multi-Agent Orchestration** | Agent-to-agent via MCP, permissions | HIGH |
-| **Autonomous Execution** | APScheduler, cron-style triggers | HIGH |
-| **Explicit Planning** | Task DAG/Workplan system | HIGH |
-| **Persistent Memory** | SQLite chat history, Chroma vector DB | HIGH |
-| **Tool Integration** | MCP servers (Google, Slack, GitHub, etc.) | HIGH |
-| **File Collaboration** | Shared folders between agents | MEDIUM |
-| **Custom Metrics** | Agent-defined KPIs in UI | MEDIUM |
-| **Real-time Monitoring** | WebSocket dashboard, activity stream | MEDIUM |
-
----
-
-## Article Pattern Analysis
-
-### Pattern 1: Micro-SaaS Empire
-**Article Concept**: Launch 100+ micro-products/year, kill losers fast, scale winners.
-
-**Trinity Fit**: PARTIAL (research/validation phases only)
-
-**What Trinity CAN do**:
-- Niche discovery via web search MCP
-- Market validation research
-- Landing page copy generation
-- Technical feasibility analysis
-- Competitor research
-
-**What Trinity CANNOT do (without extensions)**:
-- Actual SaaS deployment
-- Payment processing
-- Revenue tracking
-- User analytics
-
-**Demo Potential**: ⭐⭐⭐ (3/5) - Good for showing the research pipeline
-
----
-
-### Pattern 2: Self-Improving Arbitrage Loop
-**Article Concept**: Trade → profit → buy compute → improve → trade better
-
-**Trinity Fit**: LOW (requires financial integrations)
-
-**Challenges**:
-- No DeFi/trading integrations
-- Self-improvement = retraining (outside Trinity scope)
-- Compute purchasing requires external APIs
-
-**Demo Potential**: ⭐ (1/5) - Not recommended for demo
-
----
-
-### Pattern 3: Digital Asset Factory
-**Article Concept**: Content at industrial scale, automated performance optimization
-
-**Trinity Fit**: HIGH - This is Trinity's sweet spot
-
-**What Trinity CAN do**:
-- Multi-agent content generation (different niches/voices)
-- Scheduled content production
-- Performance metric tracking (custom metrics)
-- Content storage and versioning (shared folders)
-- Style/pattern learning (vector memory)
-- SEO research and optimization
-- Cross-platform content adaptation
-
-**Demo Potential**: ⭐⭐⭐⭐⭐ (5/5) - Excellent demo candidate
-
----
-
-### Pattern 4: AI-Selling-AI Agency
-**Article Concept**: Agent scrapes leads, sends outreach, closes deals, delivers services
-
-**Trinity Fit**: HIGH for delivery, MEDIUM for sales
-
-**What Trinity CAN do**:
-- Lead research and qualification
-- Proposal/quote generation
-- Service delivery (code, docs, analysis)
-- Project management via workplans
-- Client communication drafts
-- Quality control between agents
-
-**What would need external integration**:
-- CRM systems
-- Calendar/meeting scheduling
-- Payment processing
-
-**Demo Potential**: ⭐⭐⭐⭐ (4/5) - Can demonstrate the full loop conceptually
-
----
-
-### Pattern 5: Gig Economy Dominator
-**Article Concept**: Complete freelance work, learn from feedback, specialize, arbitrage
-
-**Trinity Fit**: MEDIUM (concept demonstrable, platforms need integration)
-
-**What Trinity CAN do**:
-- Task completion (code, writing, analysis)
-- Skill improvement via vector memory
-- Specialization through agent templates
-- Work delegation between agents
-- Quality tracking via metrics
-
-**What would need external integration**:
-- Upwork/Fiverr APIs
-- Payment handling
-
-**Demo Potential**: ⭐⭐⭐ (3/5) - Good for internal demonstration
-
----
-
-## Recommended Demo Systems
-
-### Demo 1: Content Empire Network (Digital Asset Factory)
-**Difficulty**: EASY | **Impact**: HIGH | **Time**: 2-4 hours setup
-
-A multi-agent content operation demonstrating autonomous content creation at scale.
-
-**Agent Architecture**:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    CONTENT EMPIRE NETWORK                        │
+│                    RESEARCH NETWORK                              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│   ┌─────────────┐         ┌─────────────────────────────────┐   │
-│   │  Strategist │────────▶│         Shared Folders          │   │
-│   │   (Daily)   │         │  /content-queue/                │   │
-│   └──────┬──────┘         │  /published/                    │   │
-│          │                │  /performance-data/             │   │
-│          ▼                └─────────────────────────────────┘   │
-│   ┌──────────────────────────────────────────────────────┐      │
-│   │              SPECIALIZED WRITERS                      │      │
-│   ├──────────────┬──────────────┬──────────────┐         │      │
-│   │ Tech Writer  │ Business     │ Lifestyle    │  ...    │      │
-│   │ (Hourly)    │ Writer       │ Writer       │         │      │
-│   └──────────────┴──────────────┴──────────────┘         │      │
-│          │                                                       │
-│          ▼                                                       │
-│   ┌─────────────┐                                               │
-│   │   Editor    │  ◀── Quality gate before "publish"            │
-│   │  (On-demand)│                                               │
-│   └─────────────┘                                               │
+│   ┌─────────────────┐                                            │
+│   │    RESEARCHER   │  ◀── Scheduled: Every 4 hours              │
+│   │                 │      Task: Research trending topics         │
+│   │  - Web search   │      Output: findings.md in shared folder  │
+│   │  - Summarize    │                                            │
+│   │  - Write report │                                            │
+│   └────────┬────────┘                                            │
+│            │                                                      │
+│            │ writes to                                            │
+│            ▼                                                      │
+│   ┌─────────────────┐                                            │
+│   │  SHARED FOLDER  │  /shared-out/findings/                     │
+│   │                 │  - YYYY-MM-DD-findings.md                  │
+│   │                 │  - summary.md (rolling)                    │
+│   └────────┬────────┘                                            │
+│            │                                                      │
+│            │ reads from                                           │
+│            ▼                                                      │
+│   ┌─────────────────┐                                            │
+│   │     ANALYST     │  ◀── On-demand or scheduled daily          │
+│   │                 │      Task: Synthesize findings, answer Qs  │
+│   │  - Read findings│      Can also call researcher via MCP      │
+│   │  - Synthesize   │                                            │
+│   │  - Report       │                                            │
+│   └─────────────────┘                                            │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Agents**:
+---
 
-| Agent | Template | Schedule | Role |
-|-------|----------|----------|------|
-| `content-strategist` | custom | Daily 9am | Researches trends, creates content briefs |
-| `tech-writer` | custom | Hourly | Writes technical articles from briefs |
-| `business-writer` | custom | Hourly | Writes business/marketing content |
-| `content-editor` | custom | On-demand | Reviews, improves, approves content |
+## What You'll See in the Demo
 
-**Key Features Demonstrated**:
-- Scheduled autonomous execution
-- Agent-to-agent collaboration via shared folders
-- Workplan system for content pipeline
-- Vector memory for style consistency
-- Custom metrics (articles/day, word count, topics covered)
-
-**Implementation Steps**:
-1. Create agent templates with specialized CLAUDE.md prompts
-2. Set up shared folder structure
-3. Configure schedules for each agent
-4. Grant permissions for collaboration
-5. Create initial content briefs
-6. Watch the system produce content autonomously
-
-**Success Metrics**:
-- Articles generated per day
-- Consistency of voice/style
-- Topic coverage breadth
-- Edit cycles before "publish ready"
+1. **Dashboard**: Two agent nodes with status indicators
+2. **Scheduled Execution**: Researcher auto-runs every 4 hours (or manual trigger)
+3. **Collaboration Edge**: Animated connection when analyst calls researcher
+4. **File Output**: Research findings accumulating in shared folder
+5. **Execution Stats**: Task counts, success rates, costs on agent cards
 
 ---
 
-### Demo 2: Market Intelligence Network (Micro-SaaS Research)
-**Difficulty**: EASY | **Impact**: HIGH | **Time**: 2-3 hours setup
-
-A research network that identifies and validates business opportunities.
-
-**Agent Architecture**:
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              MARKET INTELLIGENCE NETWORK                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐        │
-│   │   Reddit    │    │   HN/Tech   │    │   Twitter   │        │
-│   │   Scanner   │    │   Scanner   │    │   Scanner   │        │
-│   │  (4x daily) │    │  (4x daily) │    │  (4x daily) │        │
-│   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘        │
-│          │                  │                  │                 │
-│          └──────────────────┼──────────────────┘                 │
-│                             ▼                                    │
-│                    ┌─────────────────┐                          │
-│                    │   Opportunity   │                          │
-│                    │   Aggregator    │                          │
-│                    │    (Daily)      │                          │
-│                    └────────┬────────┘                          │
-│                             │                                    │
-│                             ▼                                    │
-│                    ┌─────────────────┐                          │
-│                    │   Validation    │                          │
-│                    │     Agent       │                          │
-│                    │  (On-demand)    │                          │
-│                    └────────┬────────┘                          │
-│                             │                                    │
-│                             ▼                                    │
-│                    ┌─────────────────┐                          │
-│                    │  Vector Memory  │  ◀── Stores all findings │
-│                    │  (Queryable)    │      for pattern matching│
-│                    └─────────────────┘                          │
-│                                                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Agents**:
-
-| Agent | Schedule | Role |
-|-------|----------|------|
-| `reddit-scanner` | Every 6h | Monitors startup/SaaS subreddits for pain points |
-| `hn-scanner` | Every 6h | Monitors Hacker News for emerging tech trends |
-| `twitter-scanner` | Every 6h | Monitors indie hacker community |
-| `opportunity-aggregator` | Daily | Consolidates findings, ranks opportunities |
-| `validation-agent` | On-demand | Deep-dives into top opportunities |
-
-**Key Features Demonstrated**:
-- Multi-source intelligence gathering
-- Vector memory for pattern recognition ("Have we seen this before?")
-- Scheduled autonomous research
-- Opportunity scoring and prioritization
-
-**Output**: Daily report of validated business opportunities with market size estimates, competition analysis, and build complexity scores.
-
----
-
-### Demo 3: Internal AI Agency (AI-Selling-AI Concept)
-**Difficulty**: MEDIUM | **Impact**: VERY HIGH | **Time**: 4-6 hours setup
-
-Demonstrates the "agent delivers what agent sells" concept with an internal agency model.
-
-**Agent Architecture**:
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    INTERNAL AI AGENCY                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│   ┌─────────────┐                                               │
-│   │   Project   │  ◀── Receives work requests (manual input)    │
-│   │   Manager   │                                                │
-│   └──────┬──────┘                                               │
-│          │ Creates workplan, delegates tasks                     │
-│          ▼                                                       │
-│   ┌──────────────────────────────────────────────────────┐      │
-│   │              SPECIALIST AGENTS                        │      │
-│   ├──────────────┬──────────────┬──────────────┐         │      │
-│   │ Code Review  │ Doc Writer   │ Test Gen     │         │      │
-│   │    Agent     │    Agent     │   Agent      │         │      │
-│   └──────────────┴──────────────┴──────────────┘         │      │
-│          │                                                       │
-│          ▼                                                       │
-│   ┌─────────────┐                                               │
-│   │     QA      │  ◀── Final quality check                      │
-│   │   Agent     │                                                │
-│   └──────┬──────┘                                               │
-│          │                                                       │
-│          ▼                                                       │
-│   ┌─────────────────┐                                           │
-│   │  Deliverables   │  ◀── Final output to shared folder        │
-│   │     Folder      │                                           │
-│   └─────────────────┘                                           │
-│                                                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Service Offerings**:
-1. **Code Review Service** - Analyze PRs, suggest improvements
-2. **Documentation Service** - Generate docs from code
-3. **Test Generation Service** - Create test suites
-4. **Technical Writing Service** - Blog posts, tutorials
-5. **Architecture Review** - System design analysis
-
-**Key Features Demonstrated**:
-- Workplan-driven task orchestration
-- Specialist agent delegation
-- Quality gates between agents
-- Deliverable packaging
-- The "AI delivering AI services" loop
-
-**Demo Flow**:
-1. Submit "project request" to Project Manager agent
-2. PM creates workplan with tasks for specialists
-3. Each specialist completes their portion
-4. QA agent reviews all deliverables
-5. Final package ready in deliverables folder
-
----
-
-### Demo 4: Knowledge Amplifier (Simpler Alternative)
-**Difficulty**: VERY EASY | **Impact**: MEDIUM | **Time**: 1-2 hours setup
-
-A simple but effective demo of autonomous knowledge building.
-
-**Agents**:
-
-| Agent | Role |
-|-------|------|
-| `researcher` | Finds and summarizes information on topics |
-| `librarian` | Organizes findings in vector memory |
-| `analyst` | Answers questions using accumulated knowledge |
-
-**Key Features**:
-- Vector memory as persistent knowledge base
-- Query-based retrieval
-- Continuous learning from new information
-
-**Use Case**: "Build expertise on [topic] over time"
-
----
-
-### Demo 5: Code Quality Sentinel (Gig Economy Prep)
-**Difficulty**: EASY | **Impact**: MEDIUM | **Time**: 2-3 hours setup
-
-Demonstrates skill specialization and quality improvement loops.
-
-**Agents**:
-
-| Agent | Specialization |
-|-------|----------------|
-| `security-reviewer` | Finds vulnerabilities, suggests fixes |
-| `performance-reviewer` | Identifies bottlenecks, optimizations |
-| `style-reviewer` | Enforces coding standards |
-| `doc-generator` | Creates documentation from code |
-
-**Key Feature**: Each agent improves via vector memory storing past reviews and feedback.
-
----
-
-## Implementation Priority
-
-Based on ease of setup and demonstration impact:
-
-| Priority | Demo | Why |
-|----------|------|-----|
-| 1 | **Content Empire Network** | Most complete demo of autonomous operation |
-| 2 | **Internal AI Agency** | Best illustration of "AI selling AI" concept |
-| 3 | **Market Intelligence Network** | Shows research automation potential |
-| 4 | **Knowledge Amplifier** | Quick win, easy to understand |
-| 5 | **Code Quality Sentinel** | Useful but more niche |
-
----
-
-## Quick Start: Content Empire Network
+## Implementation
 
 ### Step 1: Create Agent Templates
 
-Create template directory structure:
-```
-config/agent-templates/
-├── content-strategist/
-│   ├── template.yaml
-│   └── .claude/
-│       └── CLAUDE.md  # Content strategy instructions
-├── tech-writer/
-│   ├── template.yaml
-│   └── .claude/
-│       └── CLAUDE.md  # Technical writing style guide
-└── content-editor/
-    ├── template.yaml
-    └── .claude/
-        └── CLAUDE.md  # Editing standards
+Create two template directories in `config/agent-templates/`:
+
+#### 1.1 Researcher Template
+
+**File: `config/agent-templates/demo-researcher/template.yaml`**
+```yaml
+name: demo-researcher
+display_name: Research Agent
+description: Autonomous researcher that gathers and summarizes information on trending topics
+version: "1.0.0"
+author: Trinity Demo
+
+resources:
+  cpu: "1"
+  memory: "2g"
+
+capabilities:
+  - web-search
+  - summarization
+  - report-generation
+
+# Default schedule (can be overridden in manifest)
+schedules:
+  - name: research-cycle
+    cron: "0 */4 * * *"  # Every 4 hours
+    message: "/research"
+    description: Regular research cycle
 ```
 
-### Step 2: Deploy Agents
+**File: `config/agent-templates/demo-researcher/CLAUDE.md`**
+```markdown
+# Research Agent
+
+You are an autonomous research agent. Your job is to discover and summarize interesting trends, opportunities, and insights.
+
+## Your Mission
+
+When triggered (via schedule or manual), you should:
+1. Search for trending topics in technology, startups, and AI
+2. Identify interesting patterns or opportunities
+3. Write a structured findings report
+4. Save it to your shared folder for the analyst
+
+## Output Location
+
+Save all findings to: `/home/developer/shared-out/findings/`
+
+File naming:
+- Daily findings: `YYYY-MM-DD-findings.md`
+- Rolling summary: `summary.md` (updated each run)
+
+## Report Format
+
+```markdown
+# Research Findings - [DATE]
+
+## Key Trends
+- Trend 1: [description]
+- Trend 2: [description]
+
+## Opportunities Identified
+1. **[Opportunity Name]**
+   - Description: ...
+   - Why interesting: ...
+   - Complexity: Low/Medium/High
+
+## Notable Signals
+- [Signal 1]
+- [Signal 2]
+
+## Raw Sources
+- [URL 1]
+- [URL 2]
+```
+
+## Slash Commands
+
+### /research
+Run a full research cycle on current trends.
+
+### /research [topic]
+Research a specific topic in depth.
+
+### /status
+Report on recent research activity and findings count.
+```
+
+**File: `config/agent-templates/demo-researcher/.claude/commands/research.md`**
+```markdown
+---
+description: Run a research cycle on trending topics
+allowed-tools: WebSearch, WebFetch, Write, Read
+---
+
+# Research Cycle
+
+Execute a research cycle:
+
+1. **Discover**: Search for trending topics in:
+   - AI and machine learning developments
+   - Startup ecosystem news
+   - Developer tools and productivity
+
+2. **Analyze**: For each interesting finding:
+   - Summarize the key points
+   - Assess potential opportunity
+   - Rate complexity to pursue
+
+3. **Document**: Write findings to `/home/developer/shared-out/findings/`:
+   - Create `[DATE]-findings.md` with today's findings
+   - Update `summary.md` with cumulative insights
+
+4. **Report**: Output a brief summary of what was found
+
+Start the research now.
+```
+
+#### 1.2 Analyst Template
+
+**File: `config/agent-templates/demo-analyst/template.yaml`**
+```yaml
+name: demo-analyst
+display_name: Analysis Agent
+description: Synthesizes research findings and answers strategic questions
+version: "1.0.0"
+author: Trinity Demo
+
+resources:
+  cpu: "1"
+  memory: "2g"
+
+capabilities:
+  - synthesis
+  - strategic-analysis
+  - report-generation
+
+schedules:
+  - name: daily-briefing
+    cron: "0 9 * * *"  # Daily at 9 AM
+    message: "/briefing"
+    description: Daily synthesis of research findings
+```
+
+**File: `config/agent-templates/demo-analyst/CLAUDE.md`**
+```markdown
+# Analysis Agent
+
+You are a strategic analyst. You synthesize research findings and provide actionable insights.
+
+## Your Mission
+
+1. Read research findings from the shared folder
+2. Identify patterns across multiple research cycles
+3. Prioritize opportunities by potential impact
+4. Answer strategic questions from users
+
+## Input Location
+
+Research findings are at: `/home/developer/shared-in/demo-researcher/findings/`
+
+## Capabilities
+
+### Reading Research
+- Access all findings via the shared folder mount
+- The researcher agent writes daily findings there
+- Look for `summary.md` for the rolling summary
+
+### Calling the Researcher
+If you need fresh research on a specific topic, you can call the researcher directly:
+```
+Use Trinity MCP tool: chat_with_agent
+Target: demo-researcher
+Message: /research [specific topic]
+```
+
+## Slash Commands
+
+### /briefing
+Generate a daily briefing from recent findings.
+
+### /opportunities
+List and rank all identified opportunities.
+
+### /ask [question]
+Answer a strategic question using accumulated research.
+
+### /request-research [topic]
+Ask the researcher to investigate a specific topic.
+```
+
+**File: `config/agent-templates/demo-analyst/.claude/commands/briefing.md`**
+```markdown
+---
+description: Generate daily briefing from research findings
+allowed-tools: Read, Glob, Write
+---
+
+# Daily Briefing
+
+Generate a briefing from recent research:
+
+1. **Read** all findings from `/home/developer/shared-in/demo-researcher/findings/`
+2. **Identify** the top 3-5 most significant trends
+3. **Prioritize** opportunities by impact potential
+4. **Synthesize** into an executive briefing format
+
+Output format:
+```markdown
+# Daily Briefing - [DATE]
+
+## Executive Summary
+[2-3 sentence overview]
+
+## Top Trends
+1. [Trend with brief explanation]
+2. [Trend with brief explanation]
+3. [Trend with brief explanation]
+
+## Recommended Actions
+- [ ] Action 1
+- [ ] Action 2
+
+## Opportunities to Watch
+| Opportunity | Potential | Effort | Priority |
+|-------------|-----------|--------|----------|
+| ... | High/Med/Low | High/Med/Low | 1-5 |
+```
+
+Generate the briefing now.
+```
+
+---
+
+### Step 2: Create System Manifest
+
+**File: `config/manifests/research-network.yaml`**
+```yaml
+# Research Network - Autonomous Demo System
+# Deploy with: POST /api/systems/deploy
+
+name: research-network
+description: Two-agent autonomous research and analysis system
+
+# System-wide instructions (injected into all agents)
+prompt: |
+  You are part of the Research Network - an autonomous system for discovering
+  and analyzing opportunities. Work collaboratively with other agents.
+
+  Key principles:
+  - Be thorough but concise in reports
+  - Always cite sources
+  - Flag high-priority findings clearly
+  - Maintain consistent formatting
+
+agents:
+  researcher:
+    template: local:demo-researcher
+    resources:
+      cpu: "1"
+      memory: "2g"
+    folders:
+      expose: true    # Shares /shared-out with analyst
+      consume: false
+    schedules:
+      - name: research-cycle
+        cron: "0 */4 * * *"  # Every 4 hours
+        message: "/research"
+        timezone: UTC
+
+  analyst:
+    template: local:demo-analyst
+    resources:
+      cpu: "1"
+      memory: "2g"
+    folders:
+      expose: false
+      consume: true   # Mounts researcher's shared folder
+    schedules:
+      - name: daily-briefing
+        cron: "0 9 * * *"  # Daily at 9 AM UTC
+        message: "/briefing"
+        timezone: UTC
+
+# Permission configuration
+permissions:
+  preset: full-mesh  # Both agents can call each other
+```
+
+---
+
+### Step 3: Deploy the System
+
+#### Option A: Via API (Recommended)
+
 ```bash
-# Via Trinity UI or API
-POST /api/agents
-{
-  "name": "content-strategist",
-  "template": "local:content-strategist"
-}
-# Repeat for each agent
+# Deploy the system
+curl -X POST http://localhost:8000/api/systems/deploy \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d @config/manifests/research-network.yaml
+
+# Or with dry-run first
+curl -X POST "http://localhost:8000/api/systems/deploy?dry_run=true" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d @config/manifests/research-network.yaml
 ```
 
-### Step 3: Configure Shared Folders
-- Enable "Expose Shared Folder" on strategist
-- Enable "Mount Shared Folders" on writers
-- Grant permissions between agents
+#### Option B: Via Trinity MCP
 
-### Step 4: Set Up Schedules
-- Strategist: Daily at 9:00 AM UTC
-- Writers: Hourly, checking for new briefs
-- Editor: Triggered when content ready for review
+```
+Use tool: deploy_system
+manifest: [paste YAML content]
+dry_run: false
+```
 
-### Step 5: Initialize and Observe
-Send initial prompt to strategist, then watch the collaboration dashboard as agents communicate and produce content.
+#### Option C: Manual Setup
 
----
-
-## Metrics to Track
-
-For any demo, track these to show autonomous operation:
-
-| Metric | Measures |
-|--------|----------|
-| **Agent Messages** | Total inter-agent communications |
-| **Scheduled Executions** | Autonomous runs without human trigger |
-| **Workplan Completion** | Tasks completed vs created |
-| **Content/Deliverables** | Actual output produced |
-| **Context Usage** | Agent "thinking" effort |
-| **Session Costs** | Total compute cost |
+1. Create agents from templates via UI
+2. Configure shared folders in each agent's Folders tab
+3. Grant permissions in Permissions tab
+4. Create schedules in Schedules tab
 
 ---
 
-## Future Enhancements
+### Step 4: Verify Deployment
 
-To make demos more compelling:
+After deployment, verify:
 
-1. **Revenue Simulation** - Add mock payment tracking via custom metrics
-2. **External Integrations** - Add Stripe MCP for real payments
-3. **Social Publishing** - Add Twitter/LinkedIn MCPs for actual posting
-4. **Analytics Loop** - Feed performance data back into agents
-5. **Self-Scaling** - Agent that spawns new agents based on demand
+1. **Dashboard** (`/`): Both agents visible as nodes
+2. **Agent Status**: Both showing "running" (green)
+3. **Permissions**: Check analyst can see researcher in permissions
+4. **Shared Folders**:
+   - Researcher: "Expose" enabled
+   - Analyst: "Consume" enabled, shows researcher in available mounts
+5. **Schedules**: Both agents have schedules visible in Schedules tab
 
 ---
 
-## Conclusion
+### Step 5: Test the System
 
-Trinity is well-suited for demonstrating the **Digital Asset Factory** and **AI-Selling-AI Agency** patterns from the article. The platform's strengths in:
+#### 5.1 Manual Trigger - Researcher
 
-- Multi-agent orchestration
-- Scheduled autonomous execution
-- Persistent memory (vector + relational)
-- Workplan-based task coordination
-- File-based collaboration
+Open terminal for `research-network-researcher`:
+```
+/research
+```
 
-...make it an ideal environment for showing how autonomous agent businesses can operate.
+Watch:
+- Research cycle executes
+- Files appear in `/home/developer/shared-out/findings/`
 
-**Recommended first demo**: Content Empire Network - it's the most complete demonstration of autonomous operation with visible, tangible output.
+#### 5.2 Manual Trigger - Analyst
 
-**Key insight from the article to emphasize**: Trinity agents have the "emptiness advantage" - they can run the portfolio approach (launch many, kill losers) without human emotional attachment slowing them down.
+Open terminal for `research-network-analyst`:
+```
+/briefing
+```
+
+Watch:
+- Analyst reads from `/home/developer/shared-in/research-network-researcher/findings/`
+- Generates briefing from findings
+
+#### 5.3 Test Collaboration
+
+In analyst terminal:
+```
+/request-research AI agents for content creation
+```
+
+Watch Dashboard:
+- Collaboration edge lights up between analyst → researcher
+- Researcher executes research task
+- Results flow back
+
+---
+
+## Demo Script
+
+### For Live Demo (15 minutes)
+
+1. **Show Dashboard** (2 min)
+   - Point out the two agent nodes
+   - Explain the research → analyst flow
+
+2. **Trigger Researcher** (3 min)
+   - Open researcher terminal
+   - Run `/research`
+   - Show output being generated
+
+3. **Check Shared Folder** (2 min)
+   - Go to File Manager (`/files`)
+   - Select researcher agent
+   - Show findings file created
+
+4. **Trigger Analyst** (3 min)
+   - Open analyst terminal
+   - Run `/briefing`
+   - Show it reading researcher's findings
+
+5. **Show Collaboration** (3 min)
+   - In analyst, ask it to request specific research
+   - Watch Dashboard light up with collaboration edge
+   - Explain the MCP-based communication
+
+6. **Show Schedules** (2 min)
+   - Open each agent's Schedules tab
+   - Show upcoming executions
+   - Explain autonomous operation
+
+### Key Talking Points
+
+- "These agents run autonomously on schedule - no human in the loop"
+- "They collaborate via shared folders and direct MCP calls"
+- "The dashboard shows all collaboration in real-time"
+- "Each agent has specialized capabilities defined in its template"
+- "The system manifest deploys everything with one command"
+
+---
+
+## Troubleshooting
+
+### Shared Folder Empty
+- Verify researcher has "Expose Shared Folder" enabled
+- Verify analyst has "Mount Shared Folders" enabled
+- Restart both agents after changing folder config
+
+### Collaboration Not Working
+- Check Permissions tab - analyst needs permission to call researcher
+- Verify both agents are running
+- Check agent logs for MCP errors
+
+### Schedule Not Firing
+- Verify schedule is enabled (toggle in Schedules tab)
+- Check timezone settings
+- Manual trigger to verify command works
+
+### Agent Won't Start
+- Check Docker logs: `docker logs research-network-researcher`
+- Verify base image exists: `docker images | grep trinity-agent-base`
+- Rebuild if needed: `./scripts/deploy/build-base-image.sh`
+
+---
+
+## Extending the Demo
+
+### Add More Researchers
+Duplicate the researcher template with different focus areas:
+- `demo-researcher-tech` - Technology trends
+- `demo-researcher-market` - Market opportunities
+- `demo-researcher-competitor` - Competitor analysis
+
+### Add Alerting
+Configure the analyst to detect high-priority findings and send notifications:
+- Add Slack MCP for alerts
+- Create `/alert` command that posts to channel
+
+### Add Metrics
+Define custom metrics in template.yaml:
+```yaml
+metrics:
+  findings_count:
+    type: counter
+    label: Findings Discovered
+  opportunities_high:
+    type: gauge
+    label: High-Priority Opportunities
+```
+
+---
+
+## Files Summary
+
+After implementation, you should have:
+
+```
+config/
+├── agent-templates/
+│   ├── demo-researcher/
+│   │   ├── template.yaml
+│   │   ├── CLAUDE.md
+│   │   └── .claude/
+│   │       └── commands/
+│   │           └── research.md
+│   └── demo-analyst/
+│       ├── template.yaml
+│       ├── CLAUDE.md
+│       └── .claude/
+│           └── commands/
+│               └── briefing.md
+└── manifests/
+    └── research-network.yaml
+```
+
+---
+
+## Success Criteria
+
+The demo is successful when:
+
+- [x] Both agents deployed and running
+- [x] Researcher produces findings on schedule (or manual trigger)
+- [x] Analyst can read researcher's findings
+- [x] Collaboration edge visible on Dashboard when agents communicate
+- [x] Schedules show next execution times
+- [x] File Manager shows research output files
+
+**All criteria validated 2026-01-01 12:45 UTC**
+
+---
+
+## Validation Log
+
+**Validated**: 2026-01-01 12:45 UTC
+
+### Deployment Results
+```
+System: research-network
+Status: deployed
+Agents created: research-network-researcher, research-network-analyst
+Permissions configured: 2 (full-mesh)
+Schedules created: 2
+```
+
+### Functional Tests
+
+| Test | Command | Result |
+|------|---------|--------|
+| Research cycle | `/research` on researcher | ✅ Generated 8 trends, 6 opportunities, saved to shared folder |
+| Shared folder access | Check analyst mount | ✅ `2026-01-01-findings.md` and `summary.md` visible |
+| Briefing synthesis | `/briefing` on analyst | ✅ Read findings, generated executive briefing |
+| Agent collaboration | `/request-research quantum computing` | ✅ Analyst called researcher via MCP, new `quantum-findings.md` created |
+
+### Files Generated
+```
+/home/developer/shared-out/findings/
+├── 2026-01-01-findings.md        (8.6 KB - initial research)
+├── 2026-01-01-quantum-findings.md (9.1 KB - collaboration request)
+└── summary.md                     (5.3 KB - rolling summary)
+```
+
+### Infrastructure Verification
+| Check | Result |
+|-------|--------|
+| Researcher running | `docker ps` shows `agent-research-network-researcher` Up |
+| Analyst running | `docker ps` shows `agent-research-network-analyst` Up |
+| Researcher expose folder | `/home/developer/shared-out/findings/` exists |
+| Analyst mount | `/home/developer/shared-in/research-network-researcher/` mounted |
+| Researcher schedule | `research-cycle: 0 */4 * * *` - Next: 2026-01-01T20:00:00Z |
+| Analyst schedule | `daily-briefing: 0 9 * * *` - Next: 2026-01-02T09:00:00Z |
+
+### Issues Found
+None - all demo scenarios executed successfully.

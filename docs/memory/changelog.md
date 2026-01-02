@@ -1,3 +1,50 @@
+### 2026-01-02 12:45:00
+🐛 **Fix Execution Log Viewer for Scheduled Tasks**
+
+Fixed bug where execution logs from scheduled/triggered tasks wouldn't display in the Tasks panel log viewer.
+
+**Root Cause**:
+- Two different log formats: raw Claude Code stream-json (`/api/task`) vs simplified ExecutionLogEntry (`/api/chat`)
+- Scheduled executions were using `/api/chat` which returns simplified format
+- `parseExecutionLog()` expected raw Claude Code format
+
+**Fix (Standardization)**:
+- Added `AgentClient.task()` method that calls `/api/task` for stateless execution
+- Changed scheduler to use `client.task()` instead of `client.chat()`
+- All scheduled/triggered executions now return raw Claude Code format
+- No frontend changes needed - format is now consistent
+
+**Files Changed**:
+- `src/backend/services/agent_client.py` - Added `task()` method + `_parse_task_response()`
+- `src/backend/services/scheduler_service.py` - Use `client.task()` for scheduled executions
+
+---
+
+### 2026-01-02 11:30:00
+📈 **Agent Container Telemetry with Sparkline Charts**
+
+Added sparkline charts for CPU and memory on Agent Detail page, matching Dashboard telemetry style.
+
+**Reusable Component**:
+- Created `SparklineChart.vue` - configurable uPlot-based sparkline (color, yMax, width, height)
+- Used by both `HostTelemetry.vue` (Dashboard) and `AgentDetail.vue` (Agent page)
+
+**Agent Detail Stats**:
+- Replaced progress bars with sparkline charts for CPU and memory
+- 60-sample rolling history (5-minute window at 5s intervals)
+- Color-coded percentage values (green/yellow/red thresholds)
+- Consistent styling with Dashboard telemetry
+
+**Files Created**:
+- `src/frontend/src/components/SparklineChart.vue` - Reusable sparkline component
+
+**Files Changed**:
+- `src/frontend/src/composables/useAgentStats.js` - Added cpuHistory/memoryHistory tracking
+- `src/frontend/src/views/AgentDetail.vue` - Use SparklineChart for stats display
+- `src/frontend/src/components/HostTelemetry.vue` - Refactored to use SparklineChart
+
+---
+
 ### 2026-01-02 10:10:00
 📊 **Host & Container Telemetry Dashboard**
 

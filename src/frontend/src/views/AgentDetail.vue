@@ -181,26 +181,32 @@
                 <!-- CPU -->
                 <div class="flex items-center space-x-2">
                   <span class="text-gray-400 dark:text-gray-500 w-8">CPU</span>
-                  <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
-                      :class="agentStats.cpu_percent > 80 ? 'bg-red-500' : agentStats.cpu_percent > 50 ? 'bg-yellow-500' : 'bg-green-500'"
-                      :style="{ width: `${Math.min(100, agentStats.cpu_percent)}%` }"
-                    ></div>
-                  </div>
-                  <span class="text-gray-600 dark:text-gray-400 font-mono w-12 text-right">{{ agentStats.cpu_percent }}%</span>
+                  <SparklineChart
+                    :data="cpuHistory"
+                    color="#3b82f6"
+                    :y-max="100"
+                    :width="60"
+                    :height="20"
+                  />
+                  <span
+                    class="font-mono w-12 text-right"
+                    :class="agentStats.cpu_percent > 80 ? 'text-red-500' : agentStats.cpu_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
+                  >{{ agentStats.cpu_percent }}%</span>
                 </div>
                 <!-- Memory -->
                 <div class="flex items-center space-x-2">
                   <span class="text-gray-400 dark:text-gray-500 w-8">MEM</span>
-                  <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500 animate-progress-pulse"
-                      :class="agentStats.memory_percent > 80 ? 'bg-red-500' : agentStats.memory_percent > 50 ? 'bg-yellow-500' : 'bg-green-500'"
-                      :style="{ width: `${Math.min(100, agentStats.memory_percent)}%` }"
-                    ></div>
-                  </div>
-                  <span class="text-gray-600 dark:text-gray-400 font-mono w-20 text-right">{{ formatBytes(agentStats.memory_used_bytes) }}</span>
+                  <SparklineChart
+                    :data="memoryHistory"
+                    color="#a855f7"
+                    :y-max="100"
+                    :width="60"
+                    :height="20"
+                  />
+                  <span
+                    class="font-mono w-20 text-right"
+                    :class="agentStats.memory_percent > 80 ? 'text-red-500' : agentStats.memory_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
+                  >{{ formatBytes(agentStats.memory_used_bytes) }}</span>
                 </div>
                 <!-- Network -->
                 <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
@@ -1097,6 +1103,7 @@ import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 import AgentTerminal from '../components/AgentTerminal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import GitConflictModal from '../components/GitConflictModal.vue'
+import SparklineChart from '../components/SparklineChart.vue'
 
 // Import composables
 import { useNotification, useFormatters } from '../composables'
@@ -1283,6 +1290,8 @@ const {
 const {
   agentStats,
   statsLoading,
+  cpuHistory,
+  memoryHistory,
   startStatsPolling,
   stopStatsPolling
 } = useAgentStats(agent, agentsStore)

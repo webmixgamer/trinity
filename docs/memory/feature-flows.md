@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2025-01-02)**: Scheduler execution log fix:
+> - **execution-log-viewer.md**: Documented log format standardization - all execution types now use `/api/task` for raw Claude Code `stream-json` format
+> - **execution-queue.md**: Updated scheduler to use `AgentClient.task()` instead of `AgentClient.chat()`
+> - **scheduling.md**: Updated execution flow diagrams and AgentClient API table
+> - **tasks-tab.md**: Added note about log format standardization
+> - New `AgentClient.task()` method and `_parse_task_response()` in `src/backend/services/agent_client.py:194-281`
+> - Fix: Scheduled execution logs now display properly in the Tasks panel log viewer
+>
 > **Updated (2026-01-01)**: Autonomy Mode feature documented:
 > - **autonomy-mode.md**: New feature flow for agent autonomous operation toggle
 > - Dashboard UI: AgentNode.vue shows "AUTO" badge when autonomy enabled (lines 62-68)
@@ -111,7 +119,7 @@
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | ~~Agent Chat~~ | ~~High~~ | ~~[agent-chat.md](feature-flows/agent-chat.md)~~ | ❌ DEPRECATED (2025-12-25) - Replaced by Agent Terminal for direct Claude Code interaction |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
-| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking |
+| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format (Updated 2025-01-02) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
@@ -128,7 +136,7 @@
 | Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Updated 2025-12-30) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
-| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - now with execution_log storage (Updated 2025-12-31) |
+| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |
 | **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Activity indicators, context stats, task progress, sorting - reusing Collaboration Dashboard APIs (Implemented 2025-12-07, Updated 2025-12-19) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
@@ -147,8 +155,8 @@
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
-| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, real-time queue status polling, execution log retrieval (Updated 2025-12-31) |
-| **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - parseExecutionLog() transforms JSON stream into formatted chat-like display with init/text/tool-call/tool-result/result blocks (Created 2025-12-31) |
+| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, all execution types use raw log format (Updated 2025-01-02) |
+| **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user) now produce parseable logs (Updated 2025-01-02) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single button - **service layer: autonomy.py**, dashboard "AUTO" badge, owner-only access (Created 2026-01-01) |
 

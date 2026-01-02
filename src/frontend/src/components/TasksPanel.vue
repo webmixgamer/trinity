@@ -636,6 +636,7 @@ function formatLogData(log) {
 }
 
 // Parse execution log JSON into structured entries for display
+// Expects raw Claude Code stream-json format: {type: "system/assistant/user/result", ...}
 function parseExecutionLog(log) {
   if (!log) return []
 

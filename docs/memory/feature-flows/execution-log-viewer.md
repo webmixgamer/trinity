@@ -4,6 +4,8 @@
 
 The Execution Log Viewer displays Claude Code execution transcripts in a formatted chat-like interface within the Tasks panel. When users click the document icon on a completed task, a modal window shows the complete execution history including Claude's thinking, tool calls, tool results, and final cost/duration metrics.
 
+**Important**: All execution types (scheduled, manual trigger, user tasks) now use the same log format - raw Claude Code `stream-json` output. This was standardized on 2025-01-02 by switching the scheduler from `/api/chat` to `/api/task`.
+
 ## User Story
 
 As an agent operator, I want to view the complete execution transcript of any task so that I can understand what Claude did, debug issues, and verify the reasoning process.
@@ -403,6 +405,56 @@ async def execute_headless_task(
     return response_text, raw_messages, metadata, final_session_id
 ```
 
+### How Scheduled Executions Get Raw Logs
+
+**Scheduler uses `/api/task` endpoint** (Fixed 2025-01-02)
+
+Previously, the scheduler used `/api/chat` which returned a simplified `ExecutionLogEntry` format that `parseExecutionLog()` could not parse. Now the scheduler uses `AgentClient.task()` which calls `/api/task` and returns raw Claude Code `stream-json` format.
+
+**File**: `src/backend/services/agent_client.py:194-281` - `task()` method and `_parse_task_response()`
+
+```python
+async def task(self, message: str, timeout: float = None) -> AgentChatResponse:
+    """
+    Execute a stateless task on the agent (no conversation context).
+
+    Unlike chat(), this endpoint:
+    - Does NOT maintain conversation history
+    - Each call is independent (no --continue flag)
+    - Returns raw Claude Code execution log (full transcript)
+
+    Use this for scheduled executions and independent tasks.
+    """
+    response = await self.post(
+        "/api/task",
+        json={"message": message, "timeout_seconds": int(timeout)},
+        timeout=timeout + 10
+    )
+    result = response.json()
+    return self._parse_task_response(result)
+```
+
+**File**: `src/backend/services/scheduler_service.py:263-278` - Scheduler execution:
+
+```python
+# Send task to agent using AgentClient (stateless execution)
+# Uses /api/task for raw Claude Code execution log format
+client = get_agent_client(schedule.agent_name)
+task_response = await client.task(schedule.message)
+
+# Update execution status with parsed response
+db.update_execution_status(
+    execution_id=execution.id,
+    status="success",
+    response=task_response.response_text,
+    context_used=task_response.metrics.context_used,
+    context_max=task_response.metrics.context_max,
+    cost=task_response.metrics.cost_usd,
+    tool_calls=task_response.metrics.tool_calls_json,
+    execution_log=task_response.metrics.execution_log_json  # Raw Claude Code format
+)
+```
+
 ### Claude Code Output Format
 
 Claude Code with `--output-format stream-json` outputs one JSON object per line:
@@ -491,11 +543,53 @@ if execution_id:
 
 ---
 
+## Log Format Standardization (2025-01-02)
+
+### Problem
+
+Scheduled executions were not displaying in the log viewer. The root cause was a format mismatch:
+
+| Endpoint | Response Format | `parseExecutionLog()` Compatible |
+|----------|-----------------|----------------------------------|
+| `/api/task` | Raw Claude Code `stream-json` | Yes |
+| `/api/chat` | Simplified `ExecutionLogEntry` | No |
+
+The scheduler was using `AgentClient.chat()` which called `/api/chat`. This returned a simplified format that `parseExecutionLog()` could not parse.
+
+### Solution
+
+Added `AgentClient.task()` method (`src/backend/services/agent_client.py:194-281`) that:
+1. Calls `/api/task` endpoint instead of `/api/chat`
+2. Returns raw Claude Code `stream-json` format via `_parse_task_response()`
+
+Changed scheduler to use `client.task()`:
+- Regular schedule execution: `src/backend/services/scheduler_service.py:266-278`
+- Manual trigger execution: `src/backend/services/scheduler_service.py:450-461`
+
+### Verification
+
+All execution types now produce logs that `parseExecutionLog()` can render:
+- **User tasks** (via Tasks panel Run button): Uses `/api/task` directly
+- **Scheduled tasks** (cron): Uses `AgentClient.task()` -> `/api/task`
+- **Manual triggers** (play button): Uses `AgentClient.task()` -> `/api/task`
+
+---
+
 ## Related Flows
 
 - **Upstream**: [tasks-tab.md](tasks-tab.md) - Tasks panel that hosts the log viewer
 - **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - How tasks are executed and logs captured
+- **Upstream**: [scheduling.md](scheduling.md) - Scheduled executions now use `/api/task` for raw log format
 - **Related**: [agent-terminal.md](agent-terminal.md) - Alternative interactive execution method
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-01-02 | **Scheduler log fix**: Documented switch from `/api/chat` to `/api/task` for scheduled executions. Added `AgentClient.task()` method and `_parse_task_response()`. All execution types now produce parseable logs. |
+| 2025-12-31 | Initial documentation |
 
 ---
 
