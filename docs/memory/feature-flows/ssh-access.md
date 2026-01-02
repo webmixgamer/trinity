@@ -9,6 +9,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-01-02 | Fixed password setting (sed → usermod), improved host detection |
 | 2026-01-02 | Added UI toggle in Settings.vue for ssh_access_enabled |
 | 2026-01-02 | Initial documentation |
 
@@ -257,12 +258,19 @@ def set_container_password(self, agent_name: str, password: str) -> bool:
     salt = crypt.mksalt(crypt.METHOD_SHA512)
     encrypted = crypt.crypt(password, salt)
 
-    # Update /etc/shadow directly (bypasses PAM issues in containers)
-    escaped_encrypted = encrypted.replace("/", "\\/").replace("&", "\\&")
-    container.exec_run(
-        f"sed -i 's|^developer:[^:]*:|developer:{escaped_encrypted}:|' /etc/shadow",
+    # Use usermod -p with single-quoted password (handles $ in hash correctly)
+    # SHA-512 hashes look like: $6$salt$hash - the $ signs are literal
+    result = container.exec_run(
+        f"usermod -p '{encrypted}' developer",
         user="root"
     )
+
+    if result.exit_code != 0:
+        # Fallback to chpasswd with plaintext password
+        result = container.exec_run(
+            f"sh -c 'echo \"developer:{password}\" | chpasswd'",
+            user="root"
+        )
 
     # Enable password authentication in sshd_config
     container.exec_run(
@@ -311,34 +319,54 @@ def store_credential_metadata(
     self.redis_client.setex(redis_key, ttl_seconds, json.dumps(metadata))
 ```
 
-#### Host Detection (Lines 473-502)
+#### Host Detection (Lines 479-553)
 
 ```python
 def get_ssh_host() -> str:
     """
     Get the host IP for SSH connections.
+
     Priority:
     1. SSH_HOST environment variable (explicit configuration)
-    2. Tailscale IP detection (tailscale ip -4)
-    3. Fallback to localhost
+    2. Tailscale IP detection
+    3. host.docker.internal (Docker Desktop for Mac/Windows)
+    4. Default gateway IP (often the Docker host on Linux)
+    5. Fallback to localhost
+
+    Note: This runs inside the backend container, so we need special
+    handling to get the actual Docker host IP, not the container's IP.
     """
-    # Option 1: Explicit environment variable
+    # Option 1: Explicit environment variable (most reliable)
     ssh_host = os.getenv("SSH_HOST")
     if ssh_host:
         return ssh_host
 
     # Option 2: Try to detect Tailscale IP
     try:
-        result = subprocess.run(
-            ["tailscale", "ip", "-4"],
-            capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["tailscale", "ip", "-4"], ...)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Option 3: Fallback
+    # Option 3: Try host.docker.internal (Docker Desktop Mac/Windows)
+    try:
+        ip = socket.gethostbyname("host.docker.internal")
+        if ip and not ip.startswith("172.") and not ip.startswith("127."):
+            return ip
+    except socket.gaierror:
+        pass
+
+    # Option 4: Get default gateway IP (Linux Docker host)
+    try:
+        result = subprocess.run(["ip", "route", "show", "default"], ...)
+        # Parse "default via 192.168.1.1 dev eth0" → 192.168.1.1
+        if gateway_ip and not gateway_ip.startswith("172."):
+            return gateway_ip
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Option 5: Fallback to localhost with warning
     return "localhost"
 ```
 

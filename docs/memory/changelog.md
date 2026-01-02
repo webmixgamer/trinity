@@ -1,3 +1,29 @@
+### 2026-01-02 18:00:00
+🐛 **Fix SSH Password Authentication & Host Detection**
+
+Fixed two critical bugs in the SSH ephemeral password system:
+
+**Bug 1: Password Not Being Set (sed escaping)**
+- SHA-512 password hashes contain `$` characters (e.g., `$6$salt$hash`)
+- The `$` was not escaped in sed, causing the replacement to fail
+- **Fix**: Use `usermod -p` with single-quoted password instead of sed
+- **Fallback**: If usermod fails, try `chpasswd` with plaintext password
+
+**Bug 2: Host Detection Returns Docker IP**
+- `get_ssh_host()` runs inside the backend container
+- Socket-based detection returned container's Docker network IP (172.28.x.x)
+- **Fix**: Improved detection priority:
+  1. SSH_HOST env var (explicit config)
+  2. Tailscale IP detection
+  3. `host.docker.internal` (Docker Desktop Mac/Windows)
+  4. Default gateway IP (Linux Docker host)
+  5. Fallback to localhost with warning
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py` - `set_container_password()` and `get_ssh_host()`
+
+---
+
 ### 2026-01-02 17:15:00
 🔧 **SSH Access Toggle in Settings UI**
 

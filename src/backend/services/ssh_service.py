@@ -166,19 +166,25 @@ class SshService:
             salt = crypt.mksalt(crypt.METHOD_SHA512)
             encrypted = crypt.crypt(password, salt)
 
-            # Escape special characters for sed (the $ signs in the hash)
-            escaped_encrypted = encrypted.replace("/", "\\/").replace("&", "\\&")
-
-            # Update password directly in /etc/shadow using sed
-            # This bypasses PAM issues that can occur with chpasswd in containers
+            # Use usermod -p with single-quoted password (handles $ in hash correctly)
+            # SHA-512 hashes look like: $6$salt$hash - the $ signs are literal
+            # Single quotes in shell preserve all special characters
             result = container.exec_run(
-                f"sed -i 's|^developer:[^:]*:|developer:{escaped_encrypted}:|' /etc/shadow",
+                f"usermod -p '{encrypted}' developer",
                 user="root"
             )
 
             if result.exit_code != 0:
-                logger.error(f"Failed to set password via sed: {result.output}")
-                return False
+                logger.error(f"Failed to set password via usermod: {result.output}")
+                # Fallback to chpasswd with plaintext password
+                logger.info("Trying chpasswd fallback...")
+                result = container.exec_run(
+                    f"sh -c 'echo \"developer:{password}\" | chpasswd'",
+                    user="root"
+                )
+                if result.exit_code != 0:
+                    logger.error(f"chpasswd fallback also failed: {result.output}")
+                    return False
 
             # Ensure password authentication is enabled in sshd_config
             container.exec_run(
@@ -477,16 +483,23 @@ def get_ssh_host() -> str:
     Priority:
     1. SSH_HOST environment variable (explicit configuration)
     2. Tailscale IP detection
-    3. Primary network interface IP (LAN IP)
-    4. Fallback to localhost
+    3. host.docker.internal (Docker Desktop for Mac/Windows)
+    4. Default gateway IP (often the Docker host on Linux)
+    5. Fallback to localhost
+
+    Note: This runs inside the backend container, so we need special
+    handling to get the actual Docker host IP, not the container's IP.
     """
-    # Option 1: Explicit environment variable
+    import socket
+    import subprocess
+
+    # Option 1: Explicit environment variable (most reliable)
     ssh_host = os.getenv("SSH_HOST")
     if ssh_host:
+        logger.debug(f"SSH host from SSH_HOST env: {ssh_host}")
         return ssh_host
 
-    # Option 2: Try to detect Tailscale IP
-    import subprocess
+    # Option 2: Try to detect Tailscale IP (if running in container or on host)
     try:
         result = subprocess.run(
             ["tailscale", "ip", "-4"],
@@ -495,25 +508,48 @@ def get_ssh_host() -> str:
             timeout=5
         )
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            ip = result.stdout.strip()
+            logger.debug(f"SSH host from Tailscale: {ip}")
+            return ip
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Option 3: Get primary network interface IP
-    import socket
+    # Option 3: Try host.docker.internal (works on Docker Desktop Mac/Windows)
     try:
-        # Connect to external address to determine the primary interface IP
-        # This doesn't actually send data, just determines the route
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        if ip and ip != "127.0.0.1":
+        ip = socket.gethostbyname("host.docker.internal")
+        if ip and not ip.startswith("172.") and not ip.startswith("127."):
+            logger.debug(f"SSH host from host.docker.internal: {ip}")
             return ip
-    except Exception:
+    except socket.gaierror:
         pass
 
-    # Option 4: Fallback to localhost
+    # Option 4: Get default gateway IP (often the Docker host on Linux)
+    try:
+        result = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            # Output like: "default via 192.168.1.1 dev eth0"
+            parts = result.stdout.strip().split()
+            if "via" in parts:
+                idx = parts.index("via")
+                if idx + 1 < len(parts):
+                    gateway_ip = parts[idx + 1]
+                    # Gateway is often the Docker host, but filter Docker IPs
+                    if not gateway_ip.startswith("172."):
+                        logger.debug(f"SSH host from default gateway: {gateway_ip}")
+                        return gateway_ip
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Option 5: Fallback to localhost (user will need to set SSH_HOST)
+    logger.warning(
+        "Could not detect SSH host IP. Falling back to localhost. "
+        "Set SSH_HOST environment variable for proper host detection."
+    )
     return "localhost"
 
 
