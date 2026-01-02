@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-02)**: Agent Resource Allocation feature documented:
+> - **agent-resource-allocation.md**: New feature flow for per-agent memory and CPU configuration
+> - Frontend: Gear button in AgentDetail.vue header (lines 225, 243) opens modal dialog
+> - Composable: `useAgentSettings.js` manages `resourceLimits` state and API calls
+> - Store: `agents.js` - `getResourceLimits()` and `setResourceLimits()` actions (lines 601-618)
+> - API: `GET/PUT /api/agents/{name}/resources` (agents.py:797-898)
+> - Database: `memory_limit` and `cpu_limit` columns in `agent_ownership` table (db/agents.py:363-409)
+> - Lifecycle: `check_resource_limits_match()` in helpers.py triggers container recreation on start
+>
 > **Updated (2025-01-02)**: Scheduler execution log fix:
 > - **execution-log-viewer.md**: Documented log format standardization - all execution types now use `/api/task` for raw Claude Code `stream-json` format
 > - **execution-queue.md**: Updated scheduler to use `AgentClient.task()` instead of `AgentClient.chat()`
@@ -159,6 +168,7 @@
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user) now produce parseable logs (Updated 2025-01-02) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single button - **service layer: autonomy.py**, dashboard "AUTO" badge, owner-only access (Created 2026-01-01) |
+| **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 
 ---
 

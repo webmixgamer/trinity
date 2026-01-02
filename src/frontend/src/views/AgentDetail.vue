@@ -189,9 +189,10 @@
                     :height="20"
                   />
                   <span
-                    class="font-mono w-12 text-right"
+                    class="font-mono text-right"
                     :class="agentStats.cpu_percent > 80 ? 'text-red-500' : agentStats.cpu_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
                   >{{ agentStats.cpu_percent }}%</span>
+                  <span class="text-gray-400 dark:text-gray-500 font-mono">/ {{ resourceLimits.current_cpu || '2' }}</span>
                 </div>
                 <!-- Memory -->
                 <div class="flex items-center space-x-2">
@@ -204,9 +205,10 @@
                     :height="20"
                   />
                   <span
-                    class="font-mono w-20 text-right"
+                    class="font-mono text-right"
                     :class="agentStats.memory_percent > 80 ? 'text-red-500' : agentStats.memory_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
                   >{{ formatBytes(agentStats.memory_used_bytes) }}</span>
+                  <span class="text-gray-400 dark:text-gray-500 font-mono">/ {{ (resourceLimits.current_memory || '4g').toUpperCase() }}</span>
                 </div>
                 <!-- Network -->
                 <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
@@ -219,13 +221,41 @@
                   <span class="text-gray-400 dark:text-gray-500">UP</span>
                   <span class="font-mono">{{ formatUptime(agentStats.uptime_seconds) }}</span>
                 </div>
+                <!-- Resource Config Button -->
+                <button
+                  v-if="agent.can_share"
+                  @click="showResourceModal = true"
+                  class="ml-4 p-1 text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  title="Configure resources (Memory/CPU)"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
               </div>
               <div v-else class="text-xs text-gray-400 dark:text-gray-500">Stats unavailable</div>
             </div>
 
             <!-- Stopped state info -->
-            <div v-else class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              Created {{ formatRelativeTime(agent.created) }}
+            <div v-else class="mt-2 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+              <div class="flex items-center space-x-4">
+                <span>Created {{ formatRelativeTime(agent.created) }}</span>
+                <span class="text-gray-300 dark:text-gray-600">|</span>
+                <span class="font-mono">{{ resourceLimits.current_cpu || '2' }} CPU</span>
+                <span class="font-mono">{{ (resourceLimits.current_memory || '4g').toUpperCase() }} RAM</span>
+              </div>
+              <button
+                v-if="agent.can_share"
+                @click="showResourceModal = true"
+                class="p-1 text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                title="Configure resources (Memory/CPU)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -398,6 +428,100 @@
             <!-- Metrics Tab Content -->
             <div v-if="activeTab === 'metrics'" class="p-6">
               <MetricsPanel :agent-name="agent.name" :agent-status="agent.status" />
+            </div>
+
+            <!-- Resource Configuration Modal -->
+            <div v-if="showResourceModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+              <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <!-- Background overlay -->
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 transition-opacity" @click="showResourceModal = false"></div>
+
+                <!-- Modal panel -->
+                <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                  <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 dark:bg-indigo-900/50">
+                      <svg class="h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                      <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+                        Configure Resource Allocation
+                      </h3>
+                      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        Adjust memory and CPU allocation for this agent.
+                      </p>
+                    </div>
+                  </div>
+
+                  <!-- Warning Banner -->
+                  <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <div class="flex">
+                      <svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <p class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+                        If the agent is running, it will be automatically restarted to apply changes.
+                      </p>
+                    </div>
+                  </div>
+
+                  <!-- Resource Configuration Form -->
+                  <div class="mt-5 space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Memory</label>
+                      <select
+                        v-model="resourceLimits.memory"
+                        :disabled="resourceLimitsLoading"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        <option :value="null">Default ({{ resourceLimits.current_memory || '4g' }})</option>
+                        <option value="1g">1 GB</option>
+                        <option value="2g">2 GB</option>
+                        <option value="4g">4 GB</option>
+                        <option value="8g">8 GB</option>
+                        <option value="16g">16 GB</option>
+                        <option value="32g">32 GB</option>
+                        <option value="64g">64 GB</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CPU Cores</label>
+                      <select
+                        v-model="resourceLimits.cpu"
+                        :disabled="resourceLimitsLoading"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        <option :value="null">Default ({{ resourceLimits.current_cpu || '2' }})</option>
+                        <option value="1">1 Core</option>
+                        <option value="2">2 Cores</option>
+                        <option value="4">4 Cores</option>
+                        <option value="8">8 Cores</option>
+                        <option value="16">16 Cores</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Modal Actions -->
+                  <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button
+                      type="button"
+                      @click="saveResourceLimits"
+                      :disabled="resourceLimitsLoading"
+                      class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:col-start-2 sm:text-sm disabled:opacity-50"
+                    >
+                      {{ resourceLimitsLoading ? 'Saving...' : 'Save Changes' }}
+                    </button>
+                    <button
+                      type="button"
+                      @click="showResourceModal = false"
+                      class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Terminal Tab Content -->
@@ -1272,6 +1396,7 @@ const loading = ref(true)
 const error = ref('')
 const activeTab = ref('info')
 const credentialFilter = ref('')
+const showResourceModal = ref(false)
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -1510,8 +1635,34 @@ const {
   updateApiKeySetting,
   currentModel,
   modelLoading,
-  changeModel
+  changeModel,
+  resourceLimits,
+  resourceLimitsLoading,
+  loadResourceLimits,
+  updateResourceLimits
 } = useAgentSettings(agent, agentsStore, showNotification)
+
+// Save resource limits and restart agent if needed
+async function saveResourceLimits() {
+  // Check if values actually changed
+  const newMemory = resourceLimits.value.memory || resourceLimits.value.current_memory
+  const newCpu = resourceLimits.value.cpu || resourceLimits.value.current_cpu
+  const oldMemory = resourceLimits.value.current_memory
+  const oldCpu = resourceLimits.value.current_cpu
+  const valuesChanged = newMemory !== oldMemory || newCpu !== oldCpu
+
+  await updateResourceLimits()
+  showResourceModal.value = false
+
+  // If values changed and agent is running, restart it
+  if (valuesChanged && agent.value?.status === 'running') {
+    showNotification('Restarting agent to apply new resource limits...', 'info')
+    await stopAgent()
+    // Wait a moment for container to fully stop
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    await startAgent()
+  }
+}
 
 // Session activity composable
 // NOTE: sessionInfo contains cost/context tracking data (total_cost_usd, context_tokens, etc.)
@@ -1554,6 +1705,7 @@ watch(() => route.params.name, async (newName, oldName) => {
     await loadCredentials()
     await loadSessionInfo()
     await loadApiKeySetting()
+    await loadResourceLimits()
     startAllPolling()
     // Connect terminal to new agent if on terminal tab and agent is running
     if (activeTab.value === 'terminal' && agent.value?.status === 'running') {
@@ -1625,6 +1777,7 @@ onMounted(async () => {
   await loadCredentials()
   await loadSessionInfo()
   await loadApiKeySetting()
+  await loadResourceLimits()
   startAllPolling()
 })
 

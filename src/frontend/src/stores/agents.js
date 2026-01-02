@@ -595,6 +595,26 @@ export const useAgentsStore = defineStore('agents', {
         headers: authStore.authHeader
       })
       return response.data
+    },
+
+    // Resource Limits (Per-agent memory and CPU allocation)
+    async getResourceLimits(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/resources`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async setResourceLimits(name, memory, cpu) {
+      const authStore = useAuthStore()
+      const response = await axios.put(`/api/agents/${name}/resources`, {
+        memory: memory,
+        cpu: cpu
+      }, {
+        headers: authStore.authHeader
+      })
+      return response.data
     }
   }
 })

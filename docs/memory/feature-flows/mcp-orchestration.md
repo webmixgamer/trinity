@@ -736,6 +736,7 @@ mcp-server:
 {
   "mcpServers": {
     "trinity": {
+      "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": {
         "Authorization": "Bearer trinity_mcp_YOUR_API_KEY"

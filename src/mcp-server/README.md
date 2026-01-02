@@ -72,6 +72,7 @@ Add to `.mcp.json` with the `headers` option:
 {
   "mcpServers": {
     "trinity": {
+      "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": {
         "Authorization": "Bearer trinity_mcp_YOUR_API_KEY_HERE"

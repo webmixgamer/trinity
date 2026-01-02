@@ -1,3 +1,51 @@
+### 2026-01-02 15:00:00
+⚙️ **Per-Agent Resource Limits Configuration**
+
+Added ability to configure memory and CPU allocation for individual agents. Changes take effect on agent restart.
+
+**Features**:
+- Memory options: 1g, 2g, 4g, 8g, 16g, 32g, 64g
+- CPU options: 1, 2, 4, 8, 16 cores
+- UI in **Metrics tab** - "Resource Allocation" card with "Configure" button
+- Modal dialog with warning: "Changes require an agent restart to take effect"
+- Works regardless of agent state (running or stopped)
+- Container is automatically recreated with new limits on next start
+
+**Backend**:
+- New columns in `agent_ownership`: `memory_limit`, `cpu_limit`
+- `GET /api/agents/{name}/resources` - Get current and configured limits
+- `PUT /api/agents/{name}/resources` - Set new limits (owner-only)
+- `check_resource_limits_match()` helper triggers container recreation on start
+
+**Files Changed**:
+- `src/backend/database.py` - Migration + delegate methods
+- `src/backend/db/agents.py` - `get_resource_limits()`, `set_resource_limits()`
+- `src/backend/services/agent_service/helpers.py` - `check_resource_limits_match()`
+- `src/backend/services/agent_service/lifecycle.py` - Resource check on start
+- `src/backend/routers/agents.py` - API endpoints
+- `src/frontend/src/composables/useAgentSettings.js` - Resource limits state
+- `src/frontend/src/stores/agents.js` - Store methods
+- `src/frontend/src/views/AgentDetail.vue` - Resource Allocation UI panel
+
+---
+
+### 2026-01-02 13:15:00
+📝 **Fix MCP Config Examples - Add Missing `type: http`**
+
+Fixed MCP configuration examples that were missing the required `"type": "http"` field for HTTP transport.
+
+**Issue**: Claude Code requires explicit `"type": "http"` for URL-based MCP servers. Without it, config validation fails with "Invalid MCP configuration".
+
+**Files Fixed**:
+- `src/frontend/src/views/ApiKeys.vue` - API Keys page example config
+- `src/mcp-server/README.md` - MCP server documentation
+- `docs/memory/architecture.md` - Architecture docs
+- `docs/memory/feature-flows/mcp-orchestration.md` - MCP orchestration flow
+
+**Note**: The agent injection code (`docker/base-image/agent_server/services/trinity_mcp.py`) has been correct since Dec 12, 2025. If agents have incorrect config, rebuild the base image with `./scripts/deploy/build-base-image.sh`.
+
+---
+
 ### 2026-01-02 12:45:00
 🐛 **Fix Execution Log Viewer for Scheduled Tasks**
 

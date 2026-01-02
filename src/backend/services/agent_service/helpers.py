@@ -294,3 +294,36 @@ def check_api_key_env_matches(container, agent_name: str) -> bool:
     else:
         # Should NOT have the key
         return not has_api_key
+
+
+def check_resource_limits_match(container, agent_name: str) -> bool:
+    """
+    Check if container's resource limits match the current database settings.
+    Returns True if resources match, False if recreation needed.
+    """
+    # Get DB settings (may be None if using template defaults)
+    db_limits = db.get_resource_limits(agent_name)
+
+    # Get current container limits from labels (stored during creation)
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_memory = labels.get("trinity.memory", "4g")
+    current_cpu = labels.get("trinity.cpu", "2")
+
+    if db_limits is None:
+        # No custom limits set in DB - container should use template defaults
+        # Don't trigger recreation just because DB is empty
+        return True
+
+    # Compare DB limits with current container limits
+    expected_memory = db_limits.get("memory") or current_memory
+    expected_cpu = db_limits.get("cpu") or current_cpu
+
+    if expected_memory != current_memory:
+        logger.info(f"Resource mismatch for {agent_name}: memory {current_memory} -> {expected_memory}")
+        return False
+
+    if expected_cpu != current_cpu:
+        logger.info(f"Resource mismatch for {agent_name}: cpu {current_cpu} -> {expected_cpu}")
+        return False
+
+    return True

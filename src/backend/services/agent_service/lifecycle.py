@@ -15,7 +15,7 @@ from services.docker_service import (
 )
 from services.settings_service import get_anthropic_api_key
 from services.agent_client import get_agent_client
-from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches
+from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +70,12 @@ async def start_agent_internal(agent_name: str) -> dict:
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check if container needs recreation for shared folders or API key settings
+    # Check if container needs recreation for shared folders, API key, or resource limits
     container.reload()
     needs_recreation = (
         not check_shared_folder_mounts_match(container, agent_name) or
-        not check_api_key_env_matches(container, agent_name)
+        not check_api_key_env_matches(container, agent_name) or
+        not check_resource_limits_match(container, agent_name)
     )
 
     if needs_recreation:
@@ -123,9 +124,18 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
     # Get port from labels
     ssh_port = int(labels.get("trinity.ssh-port", 2222))
 
-    # Get resource limits
-    cpu = labels.get("trinity.cpu", "2")
-    memory = labels.get("trinity.memory", "4g")
+    # Get resource limits - check DB for overrides, fallback to labels/defaults
+    db_limits = db.get_resource_limits(agent_name)
+    if db_limits:
+        cpu = db_limits.get("cpu") or labels.get("trinity.cpu", "2")
+        memory = db_limits.get("memory") or labels.get("trinity.memory", "4g")
+    else:
+        cpu = labels.get("trinity.cpu", "2")
+        memory = labels.get("trinity.memory", "4g")
+
+    # Update labels with new resource limits for future reference
+    labels["trinity.cpu"] = cpu
+    labels["trinity.memory"] = memory
 
     # Stop and remove old container
     try:

@@ -791,6 +791,114 @@ async def set_agent_autonomy_status(
 
 
 # ============================================================================
+# Resource Limits Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/resources")
+async def get_agent_resources(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the resource limits for an agent.
+
+    Returns:
+    - memory: Memory limit (e.g., "4g", "8g", "16g") or null if using template default
+    - cpu: CPU limit (e.g., "2", "4", "8") or null if using template default
+    - current_memory: Current container memory limit
+    - current_cpu: Current container CPU limit
+    """
+    # Check access
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get DB limits (may be None)
+    db_limits = db.get_resource_limits(agent_name)
+
+    # Get current container limits from labels
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_memory = labels.get("trinity.memory", "4g")
+    current_cpu = labels.get("trinity.cpu", "2")
+
+    return {
+        "memory": db_limits.get("memory") if db_limits else None,
+        "cpu": db_limits.get("cpu") if db_limits else None,
+        "current_memory": current_memory,
+        "current_cpu": current_cpu
+    }
+
+
+@router.put("/{agent_name}/resources")
+async def set_agent_resources(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the resource limits for an agent.
+
+    Body:
+    - memory: Memory limit (e.g., "4g", "8g", "16g") or null to use template default
+    - cpu: CPU limit (e.g., "2", "4", "8") or null to use template default
+
+    Changes take effect on next agent restart.
+
+    Valid memory values: 1g, 2g, 4g, 8g, 16g, 32g
+    Valid CPU values: 1, 2, 4, 8, 16
+    """
+    # Only owners can change resources
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change resource limits")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    memory = body.get("memory")
+    cpu = body.get("cpu")
+
+    # Validate memory format
+    valid_memory = ["1g", "2g", "4g", "8g", "16g", "32g", "64g"]
+    if memory and memory not in valid_memory:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid memory value. Must be one of: {', '.join(valid_memory)}"
+        )
+
+    # Validate CPU format
+    valid_cpu = ["1", "2", "4", "8", "16"]
+    if cpu and cpu not in valid_cpu:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid CPU value. Must be one of: {', '.join(valid_cpu)}"
+        )
+
+    # Update database
+    db.set_resource_limits(agent_name, memory=memory, cpu=cpu)
+
+    # Check if restart is needed
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_memory = labels.get("trinity.memory", "4g")
+    current_cpu = labels.get("trinity.cpu", "2")
+
+    restart_needed = (
+        (memory and memory != current_memory) or
+        (cpu and cpu != current_cpu)
+    )
+
+    return {
+        "message": "Resource limits updated",
+        "memory": memory,
+        "cpu": cpu,
+        "restart_needed": restart_needed
+    }
+
+
+# ============================================================================
 # Terminal WebSocket Endpoint
 # ============================================================================
 

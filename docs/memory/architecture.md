@@ -733,6 +733,7 @@ External Claude Code clients authenticate to Trinity MCP Server using MCP API Ke
 {
   "mcpServers": {
     "trinity": {
+      "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": { "Authorization": "Bearer trinity_mcp_..." }
     }

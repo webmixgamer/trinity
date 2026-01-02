@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 
 /**
- * Composable for agent API key and model settings
- * Manages API key toggle and model selection
+ * Composable for agent API key, model, and resource settings
+ * Manages API key toggle, model selection, and resource limits
  */
 export function useAgentSettings(agentRef, agentsStore, showNotification) {
   const apiKeySetting = ref({
@@ -12,6 +12,16 @@ export function useAgentSettings(agentRef, agentsStore, showNotification) {
   const apiKeySettingLoading = ref(false)
   const currentModel = ref('')
   const modelLoading = ref(false)
+
+  // Resource limits
+  const resourceLimits = ref({
+    memory: null,
+    cpu: null,
+    current_memory: '4g',
+    current_cpu: '2',
+    restart_needed: false
+  })
+  const resourceLimitsLoading = ref(false)
 
   const loadApiKeySetting = async () => {
     if (!agentRef.value) return
@@ -65,14 +75,52 @@ export function useAgentSettings(agentRef, agentsStore, showNotification) {
     }
   }
 
+  const loadResourceLimits = async () => {
+    if (!agentRef.value) return
+    try {
+      const result = await agentsStore.getResourceLimits(agentRef.value.name)
+      resourceLimits.value = {
+        memory: result.memory,
+        cpu: result.cpu,
+        current_memory: result.current_memory || '4g',
+        current_cpu: result.current_cpu || '2',
+        restart_needed: false
+      }
+    } catch (err) {
+      console.error('Failed to load resource limits:', err)
+    }
+  }
+
+  const updateResourceLimits = async () => {
+    if (resourceLimitsLoading.value) return
+    resourceLimitsLoading.value = true
+    try {
+      const result = await agentsStore.setResourceLimits(
+        agentRef.value.name,
+        resourceLimits.value.memory,
+        resourceLimits.value.cpu
+      )
+      resourceLimits.value.restart_needed = result.restart_needed
+      showNotification(result.message, 'success')
+    } catch (err) {
+      showNotification(err.message || 'Failed to update resource limits', 'error')
+    } finally {
+      resourceLimitsLoading.value = false
+    }
+  }
+
   return {
     apiKeySetting,
     apiKeySettingLoading,
     currentModel,
     modelLoading,
+    resourceLimits,
+    resourceLimitsLoading,
     loadApiKeySetting,
     updateApiKeySetting,
     loadModelInfo,
-    changeModel
+    changeModel,
+    loadResourceLimits,
+    updateResourceLimits
   }
 }

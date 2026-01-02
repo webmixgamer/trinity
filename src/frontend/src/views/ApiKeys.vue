@@ -38,6 +38,7 @@
               <pre class="mt-2 bg-blue-100 dark:bg-blue-800 rounded p-3 text-xs overflow-x-auto text-blue-900 dark:text-blue-100">{
   "mcpServers": {
     "trinity": {
+      "type": "http",
       "url": "{{ mcpServerUrl }}",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"

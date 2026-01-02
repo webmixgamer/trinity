@@ -355,3 +355,55 @@ class AgentOperations:
                 FROM agent_ownership
             """)
             return {row["agent_name"]: bool(row["autonomy_enabled"]) for row in cursor.fetchall()}
+
+    # =========================================================================
+    # Resource Limits
+    # =========================================================================
+
+    def get_resource_limits(self, agent_name: str) -> Optional[Dict[str, str]]:
+        """
+        Get per-agent resource limits (memory and CPU).
+
+        Returns None if no custom limits are set, otherwise returns dict with:
+        - memory: Memory limit (e.g., "8g", "16g")
+        - cpu: CPU limit (e.g., "4", "8")
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT memory_limit, cpu_limit
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                memory = row["memory_limit"]
+                cpu = row["cpu_limit"]
+                # Return None if no custom limits set
+                if memory is None and cpu is None:
+                    return None
+                return {
+                    "memory": memory,
+                    "cpu": cpu
+                }
+            return None
+
+    def set_resource_limits(self, agent_name: str, memory: Optional[str] = None, cpu: Optional[str] = None) -> bool:
+        """
+        Set per-agent resource limits.
+
+        Args:
+            agent_name: Name of the agent
+            memory: Memory limit (e.g., "4g", "8g", "16g") or None to clear
+            cpu: CPU limit (e.g., "2", "4", "8") or None to clear
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET memory_limit = ?, cpu_limit = ?
+                WHERE agent_name = ?
+            """, (memory, cpu, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0

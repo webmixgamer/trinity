@@ -227,6 +227,24 @@ def _migrate_agent_ownership_autonomy(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_ownership_resource_limits(cursor, conn):
+    """Add memory_limit and cpu_limit columns to agent_ownership table for per-agent resource configuration."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("memory_limit", "TEXT"),  # e.g., "4g", "8g", "16g"
+        ("cpu_limit", "TEXT")  # e.g., "2", "4", "8"
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_ownership for resource configuration...")
+            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -271,6 +289,11 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_ownership autonomy_enabled): {e}")
 
+        try:
+            _migrate_agent_ownership_resource_limits(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership resource_limits): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -298,6 +321,8 @@ def init_database():
                 is_system INTEGER DEFAULT 0,
                 use_platform_api_key INTEGER DEFAULT 1,
                 autonomy_enabled INTEGER DEFAULT 0,
+                memory_limit TEXT,
+                cpu_limit TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -805,6 +830,16 @@ class DatabaseManager:
 
     def get_all_agents_autonomy_status(self):
         return self._agent_ops.get_all_agents_autonomy_status()
+
+    # =========================================================================
+    # Agent Resource Limits (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_resource_limits(self, agent_name: str):
+        return self._agent_ops.get_resource_limits(agent_name)
+
+    def set_resource_limits(self, agent_name: str, memory: str = None, cpu: str = None):
+        return self._agent_ops.set_resource_limits(agent_name, memory, cpu)
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
