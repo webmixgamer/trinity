@@ -835,7 +835,9 @@ async function toggleSshAccess() {
   try {
     const newValue = !sshAccessEnabled.value
     await axios.put('/api/settings/ops/config', {
-      ssh_access_enabled: newValue ? 'true' : 'false'
+      settings: {
+        ssh_access_enabled: newValue ? 'true' : 'false'
+      }
     }, {
       headers: authStore.authHeader
     })
