@@ -29,6 +29,7 @@ OPS_SETTINGS_DEFAULTS = {
     "ops_alert_suppression_minutes": "15",  # Suppress duplicate alerts
     "ops_log_retention_days": "7",  # Days to keep container logs
     "ops_health_check_interval": "60",  # Seconds between health checks
+    "ssh_access_enabled": "false",  # Enable SSH access via MCP tool
 }
 
 # Descriptions for each ops setting
@@ -41,6 +42,7 @@ OPS_SETTINGS_DESCRIPTIONS = {
     "ops_alert_suppression_minutes": "Minutes to suppress duplicate alerts for same agent+type (default: 15)",
     "ops_log_retention_days": "Number of days to retain container logs (default: 7)",
     "ops_health_check_interval": "Seconds between automated health checks (default: 60)",
+    "ssh_access_enabled": "Enable ephemeral SSH access to agent containers via MCP tool (default: false)",
 }
 
 

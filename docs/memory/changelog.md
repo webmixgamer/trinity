@@ -1,3 +1,64 @@
+### 2026-01-02 16:30:00
+🔐 **MCP SSH Access Tool - Password Auth & System Setting**
+
+Enhanced SSH access with password-based authentication and system-wide enable/disable setting.
+
+**New Features**:
+- Password-based auth: `auth_method: "password"` returns sshpass one-liner command
+- System setting `ssh_access_enabled` (default: false) - must be enabled in Settings → Ops Settings
+- Password set directly in container's `/etc/shadow` (bypasses PAM issues)
+
+**Container Security Updates** (required for SSH):
+- Added capabilities: `SETGID`, `SETUID`, `CHOWN`, `SYS_CHROOT`, `AUDIT_WRITE`
+- Removed `no-new-privileges:true` (blocks SSH privilege separation)
+- **Note**: Existing agents must be deleted and recreated to get new settings
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py` - Password generation, shadow file editing
+- `src/backend/services/settings_service.py` - `ssh_access_enabled` ops setting
+- `src/backend/services/agent_service/crud.py` - Container capabilities
+- `src/backend/services/agent_service/lifecycle.py` - Container capabilities
+
+---
+
+### 2026-01-02 15:48:00
+🔐 **MCP SSH Access Tool - Ephemeral SSH Credentials**
+
+Added new MCP tool `get_agent_ssh_access` to generate ephemeral SSH credentials for direct terminal access to agent containers. Designed for Tailscale/VPN environments.
+
+**Features**:
+- Generate ED25519 key pairs on demand
+- Auto-inject public key into agent's `~/.ssh/authorized_keys`
+- Configurable TTL (0.1-24 hours, default: 4 hours)
+- Keys auto-expire via Redis TTL
+- Returns SSH command, private key, and connection instructions
+- Host auto-detection (SSH_HOST env → Tailscale IP → localhost)
+
+**MCP Tool**:
+- `get_agent_ssh_access(agent_name, ttl_hours, auth_method)` - Returns credentials and connection command
+
+**Backend API**:
+- `POST /api/agents/{name}/ssh-access` - Generate ephemeral SSH credentials
+
+**Security**:
+- Private key shown once, never stored on server
+- Credentials automatically removed from containers on expiry
+- User must have access to agent
+- Agent must be running
+- Controlled by `ssh_access_enabled` system setting (default: disabled)
+
+**Files Created**:
+- `src/backend/services/ssh_service.py` - SSH key generation, password management, injection, cleanup
+
+**Files Changed**:
+- `src/backend/routers/agents.py` - SSH access endpoint
+- `src/mcp-server/src/tools/agents.ts` - `getAgentSshAccess` tool
+- `src/mcp-server/src/client.ts` - `createSshAccess()` method
+- `src/mcp-server/src/types.ts` - `SshAccessResponse` type
+- `src/mcp-server/src/server.ts` - Register new tool
+
+---
+
 ### 2026-01-02 15:00:00
 ⚙️ **Per-Agent Resource Limits Configuration**
 

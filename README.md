@@ -37,6 +37,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Browser** — Browse and download agent workspace files via web UI
+- **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
 
 ## Quick Start
 
@@ -246,6 +247,7 @@ Trinity includes an MCP server for external orchestration of agents:
 | `list_templates` | List available templates |
 | `reload_credentials` | Hot-reload agent credentials |
 | `get_credential_status` | Check credential files |
+| `get_agent_ssh_access` | Generate ephemeral SSH credentials for direct terminal access |
 
 ## Multi-Agent Systems
 

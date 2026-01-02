@@ -165,6 +165,7 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(agentTools.listTemplates);
   server.addTool(agentTools.reloadCredentials);
   server.addTool(agentTools.getCredentialStatus);
+  server.addTool(agentTools.getAgentSshAccess);
   server.addTool(agentTools.deployLocalAgent);
   server.addTool(agentTools.initializeGithubSync);
 

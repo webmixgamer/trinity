@@ -333,6 +333,46 @@ export function createAgentTools(
     },
 
     // ========================================================================
+    // get_agent_ssh_access - Generate ephemeral SSH credentials for agent
+    // ========================================================================
+    getAgentSshAccess: {
+      name: "get_agent_ssh_access",
+      description:
+        "Generate ephemeral SSH credentials for direct terminal access to an agent container. " +
+        "Supports two auth methods: 'key' (save private key locally) or 'password' (one-liner with sshpass). " +
+        "Credentials expire automatically (default: 4 hours). Agent must be running. " +
+        "Ideal for Tailscale/VPN environments where you need direct SSH access. " +
+        "IMPORTANT: For key auth, save the private key immediately - it cannot be retrieved again.",
+      parameters: z.object({
+        agent_name: z.string().describe("Name of the agent to access"),
+        ttl_hours: z
+          .number()
+          .optional()
+          .default(4)
+          .describe("How long the SSH key should be valid (0.1-24 hours, default: 4)"),
+        auth_method: z
+          .enum(["key", "password"])
+          .optional()
+          .default("key")
+          .describe("Authentication method: 'key' for SSH key pair (more secure, requires saving key file), 'password' for one-liner with sshpass (convenient, requires sshpass installed)"),
+      }),
+      execute: async (
+        { agent_name, ttl_hours = 4, auth_method = "key" }: { agent_name: string; ttl_hours?: number; auth_method?: "key" | "password" },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(`[get_agent_ssh_access] Generating SSH access for agent '${agent_name}' (TTL: ${ttl_hours}h, method: ${auth_method})`);
+
+        const response = await apiClient.createSshAccess(agent_name, ttl_hours, auth_method);
+
+        // Return the response directly - it already has the right structure
+        return JSON.stringify(response, null, 2);
+      },
+    },
+
+    // ========================================================================
     // deploy_local_agent - Deploy a Trinity-compatible local agent
     // ========================================================================
     deployLocalAgent: {

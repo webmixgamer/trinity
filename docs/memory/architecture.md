@@ -177,7 +177,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - Tools access auth context via `context.session` parameter
 - Agent-to-agent collaboration uses agent-scoped keys for access control
 
-**12 Tools:**
+**13 Tools:**
 1. `list_agents` - List all agents
 2. `get_agent` - Get agent details
 3. `create_agent` - Create new agent
@@ -190,6 +190,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 10. `get_agent_logs` - Get container logs
 11. `reload_credentials` - Hot-reload credentials
 12. `get_credential_status` - Check credential files
+13. `get_agent_ssh_access` - Generate ephemeral SSH credentials (NEW: 2026-01-02)
 
 ### Vector Log Aggregator (`config/vector.yaml`)
 
@@ -307,7 +308,7 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 
 ## API Endpoints
 
-### Agents (29 endpoints)
+### Agents (30 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/agents` | List all agents |
@@ -337,6 +338,7 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 | GET | `/api/agents/{name}/folders/consumers` | List agents that will mount this folder |
 | GET | `/api/agents/{name}/autonomy` | Get autonomy status with schedule counts (NEW: 2026-01-01) |
 | PUT | `/api/agents/{name}/autonomy` | Enable/disable autonomy (toggles all schedules) |
+| POST | `/api/agents/{name}/ssh-access` | Generate ephemeral SSH credentials (NEW: 2026-01-02) |
 
 **Note**: Route ordering is critical. `/context-stats` and `/autonomy-status` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
 

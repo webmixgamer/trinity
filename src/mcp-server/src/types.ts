@@ -80,3 +80,24 @@ export interface AgentAccessCheckResult {
   allowed: boolean;
   reason?: string;       // Denial reason if not allowed
 }
+
+// SSH Access Types
+
+export interface SshConnectionInfo {
+  command: string;
+  host: string;
+  port: number;
+  user: string;
+  password?: string;  // Only for password auth
+}
+
+export interface SshAccessResponse {
+  status: string;
+  agent: string;
+  auth_method: "key" | "password";
+  connection: SshConnectionInfo;
+  private_key?: string;  // Only for key auth
+  expires_at: string;
+  expires_in_hours: number;
+  instructions: string[];
+}

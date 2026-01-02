@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-02)**: SSH Access feature documented:
+> - **ssh-access.md**: New feature flow for ephemeral SSH credentials to agent containers
+> - MCP Tool: `get_agent_ssh_access` in agents.ts:338-373 with key/password auth methods
+> - Backend: `POST /api/agents/{name}/ssh-access` endpoint (agents.py:905-1072)
+> - Service: `ssh_service.py` - ED25519 key generation, password hashing, Redis TTL, container exec
+> - Settings: `ssh_access_enabled` ops setting (default: false) controls feature availability
+> - Container security: Requires SETGID, SETUID, CHOWN, SYS_CHROOT, AUDIT_WRITE capabilities for SSH privilege separation
+>
 > **Updated (2026-01-02)**: Agent Resource Allocation feature documented:
 > - **agent-resource-allocation.md**: New feature flow for per-agent memory and CPU configuration
 > - Frontend: Gear button in AgentDetail.vue header (lines 225, 243) opens modal dialog
@@ -169,6 +177,7 @@
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single button - **service layer: autonomy.py**, dashboard "AUTO" badge, owner-only access (Created 2026-01-01) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
+| **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
 
 ---
 

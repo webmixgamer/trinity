@@ -12,6 +12,7 @@ import type {
   Template,
   TokenResponse,
   AgentAccessInfo,
+  SshAccessResponse,
 } from "./types.js";
 
 export class TrinityClient {
@@ -272,6 +273,25 @@ export class TrinityClient {
     }>(
       "GET",
       `/api/agents/${encodeURIComponent(name)}/credentials/status`
+    );
+  }
+
+  /**
+   * Generate ephemeral SSH credentials for direct agent access
+   * Returns private key (one-time display) or password and connection command
+   * @param name - Agent name
+   * @param ttlHours - Credential validity in hours (0.1-24, default: 4)
+   * @param authMethod - Authentication method: "key" (default) or "password"
+   */
+  async createSshAccess(
+    name: string,
+    ttlHours: number = 4,
+    authMethod: "key" | "password" = "key"
+  ): Promise<SshAccessResponse> {
+    return this.request<SshAccessResponse>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/ssh-access`,
+      { ttl_hours: ttlHours, auth_method: authMethod }
     );
   }
 

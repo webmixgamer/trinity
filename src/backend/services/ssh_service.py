@@ -1,0 +1,515 @@
+"""
+SSH Service for ephemeral SSH credential generation and management.
+
+Provides functionality to:
+1. Generate ED25519 key pairs
+2. Generate ephemeral passwords
+3. Inject credentials into agent containers
+4. Clean up expired credentials from containers
+5. Track credentials in Redis with TTL for auto-expiry
+"""
+
+import os
+import json
+import logging
+import secrets
+import string
+import time
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, Literal
+
+import redis
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from services.docker_service import docker_client, get_agent_container
+
+logger = logging.getLogger(__name__)
+
+# Configuration
+SSH_ACCESS_DEFAULT_TTL_HOURS = int(os.getenv("SSH_ACCESS_DEFAULT_TTL_HOURS", "4"))
+SSH_ACCESS_MAX_TTL_HOURS = int(os.getenv("SSH_ACCESS_MAX_TTL_HOURS", "24"))
+SSH_ACCESS_CLEANUP_INTERVAL = int(os.getenv("SSH_ACCESS_CLEANUP_INTERVAL", "900"))  # 15 minutes
+
+# Redis key prefix
+SSH_ACCESS_PREFIX = "ssh_access:"
+
+
+class SshService:
+    """Service for managing ephemeral SSH access to agent containers."""
+
+    def __init__(self, redis_url: str = "redis://redis:6379"):
+        self.redis_client = redis.from_url(redis_url, decode_responses=True)
+
+    def generate_ssh_keypair(self, agent_name: str) -> Dict[str, str]:
+        """
+        Generate an ED25519 SSH key pair.
+
+        Returns:
+            Dictionary with:
+            - private_key: OpenSSH format private key
+            - public_key: OpenSSH format public key (one line)
+            - comment: Key comment for identification
+        """
+        # Generate key pair
+        private_key = Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        # Create unique comment for tracking
+        timestamp = int(time.time())
+        comment = f"trinity-ephemeral-{agent_name}-{timestamp}"
+
+        # Serialize private key in OpenSSH format
+        private_key_bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.OpenSSH,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        # Serialize public key in OpenSSH format
+        public_key_bytes = public_key.public_bytes(
+            encoding=serialization.Encoding.OpenSSH,
+            format=serialization.PublicFormat.OpenSSH
+        )
+
+        # Add comment to public key
+        public_key_line = f"{public_key_bytes.decode('utf-8')} {comment}"
+
+        return {
+            "private_key": private_key_bytes.decode('utf-8'),
+            "public_key": public_key_line,
+            "comment": comment
+        }
+
+    def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
+        """
+        Inject SSH public key into agent's authorized_keys file.
+
+        Args:
+            agent_name: Name of the agent
+            public_key: Full public key line (including comment)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        container = get_agent_container(agent_name)
+        if not container:
+            logger.error(f"Container not found for agent: {agent_name}")
+            return False
+
+        try:
+            # Ensure .ssh directory exists with correct permissions
+            container.exec_run(
+                'sh -c "mkdir -p /home/developer/.ssh && chmod 700 /home/developer/.ssh"',
+                user="developer"
+            )
+
+            # Append public key to authorized_keys (escape the key for shell)
+            # Use printf to handle potential special characters
+            escaped_key = public_key.replace("'", "'\"'\"'")
+            result = container.exec_run(
+                f"sh -c 'printf \"%s\\n\" '\"'{escaped_key}'\"' >> /home/developer/.ssh/authorized_keys'",
+                user="developer"
+            )
+
+            if result.exit_code != 0:
+                logger.error(f"Failed to append key: {result.output}")
+                return False
+
+            # Set correct permissions on authorized_keys
+            container.exec_run(
+                'chmod 600 /home/developer/.ssh/authorized_keys',
+                user="developer"
+            )
+
+            logger.info(f"Injected SSH key into agent {agent_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error injecting SSH key into {agent_name}: {e}")
+            return False
+
+    def generate_password(self, length: int = 24) -> str:
+        """
+        Generate a secure random password for SSH access.
+
+        Args:
+            length: Password length (default 24 chars)
+
+        Returns:
+            Random password string (alphanumeric, safe for shell)
+        """
+        # Use alphanumeric characters only - safe for shell commands
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    def set_container_password(self, agent_name: str, password: str) -> bool:
+        """
+        Set SSH password for developer user in agent container.
+
+        Args:
+            agent_name: Name of the agent
+            password: Password to set
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import crypt
+
+        container = get_agent_container(agent_name)
+        if not container:
+            logger.error(f"Container not found for agent: {agent_name}")
+            return False
+
+        try:
+            # Generate encrypted password using SHA-512
+            salt = crypt.mksalt(crypt.METHOD_SHA512)
+            encrypted = crypt.crypt(password, salt)
+
+            # Escape special characters for sed (the $ signs in the hash)
+            escaped_encrypted = encrypted.replace("/", "\\/").replace("&", "\\&")
+
+            # Update password directly in /etc/shadow using sed
+            # This bypasses PAM issues that can occur with chpasswd in containers
+            result = container.exec_run(
+                f"sed -i 's|^developer:[^:]*:|developer:{escaped_encrypted}:|' /etc/shadow",
+                user="root"
+            )
+
+            if result.exit_code != 0:
+                logger.error(f"Failed to set password via sed: {result.output}")
+                return False
+
+            # Ensure password authentication is enabled in sshd_config
+            container.exec_run(
+                "sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config",
+                user="root"
+            )
+
+            # Restart SSH daemon to pick up changes (HUP isn't enough for auth changes)
+            container.exec_run("pkill sshd", user="root")
+            container.exec_run("sh -c '/usr/sbin/sshd'", user="root")
+
+            logger.info(f"Set ephemeral password for agent {agent_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error setting password for {agent_name}: {e}")
+            return False
+
+    def clear_container_password(self, agent_name: str) -> bool:
+        """
+        Clear/lock the developer user password in agent container.
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            True if successful, False otherwise
+        """
+        container = get_agent_container(agent_name)
+        if not container:
+            # Container may have been deleted - that's ok
+            logger.info(f"Container not found for agent {agent_name} during password cleanup")
+            return True
+
+        try:
+            # Lock the account password (user can still use key auth)
+            result = container.exec_run("passwd -l developer", user="root")
+
+            if result.exit_code != 0:
+                logger.warning(f"Failed to lock password: {result.output}")
+
+            logger.info(f"Cleared password for agent {agent_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error clearing password for {agent_name}: {e}")
+            return False
+
+    def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
+        """
+        Remove SSH key by comment from agent's authorized_keys.
+
+        Args:
+            agent_name: Name of the agent
+            comment: The key comment to search for and remove
+
+        Returns:
+            True if successful, False otherwise
+        """
+        container = get_agent_container(agent_name)
+        if not container:
+            # Container may have been deleted - that's ok
+            logger.info(f"Container not found for agent {agent_name} during key cleanup")
+            return True
+
+        try:
+            # Use sed to remove lines containing the comment
+            # Escape special characters in comment for sed
+            escaped_comment = comment.replace("/", "\\/").replace(".", "\\.")
+            result = container.exec_run(
+                f"sed -i '/{escaped_comment}/d' /home/developer/.ssh/authorized_keys",
+                user="developer"
+            )
+
+            if result.exit_code != 0:
+                logger.warning(f"sed command returned non-zero: {result.output}")
+                # File might not exist, which is fine
+
+            logger.info(f"Removed SSH key '{comment}' from agent {agent_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error removing SSH key from {agent_name}: {e}")
+            return False
+
+    def store_credential_metadata(
+        self,
+        agent_name: str,
+        credential_id: str,
+        auth_type: Literal["key", "password"],
+        created_by: str,
+        ttl_hours: float,
+        public_key: Optional[str] = None
+    ) -> None:
+        """
+        Store SSH credential metadata in Redis with TTL.
+
+        Args:
+            agent_name: Name of the agent
+            credential_id: Unique identifier (key comment or password session id)
+            auth_type: Type of authentication ("key" or "password")
+            created_by: Email/username of creator
+            ttl_hours: Time-to-live in hours
+            public_key: Public key line (for key auth only)
+        """
+        now = datetime.utcnow()
+        expires_at = now + timedelta(hours=ttl_hours)
+
+        redis_key = f"{SSH_ACCESS_PREFIX}{agent_name}:{credential_id}"
+
+        metadata = {
+            "agent_name": agent_name,
+            "credential_id": credential_id,
+            "auth_type": auth_type,
+            "created_at": now.isoformat() + "Z",
+            "expires_at": expires_at.isoformat() + "Z",
+            "created_by": created_by
+        }
+
+        if public_key:
+            metadata["public_key"] = public_key
+
+        # Store with TTL
+        ttl_seconds = int(ttl_hours * 3600)
+        self.redis_client.setex(
+            redis_key,
+            ttl_seconds,
+            json.dumps(metadata)
+        )
+
+        logger.info(f"Stored SSH {auth_type} metadata: {redis_key} (TTL: {ttl_hours}h)")
+
+    # Backwards compatibility alias
+    def store_key_metadata(
+        self,
+        agent_name: str,
+        comment: str,
+        public_key: str,
+        created_by: str,
+        ttl_hours: float
+    ) -> None:
+        """Backwards compatible wrapper for store_credential_metadata."""
+        self.store_credential_metadata(
+            agent_name=agent_name,
+            credential_id=comment,
+            auth_type="key",
+            created_by=created_by,
+            ttl_hours=ttl_hours,
+            public_key=public_key
+        )
+
+    def list_active_keys(self, agent_name: Optional[str] = None) -> list:
+        """
+        List active SSH keys, optionally filtered by agent.
+
+        Args:
+            agent_name: Optional agent name filter
+
+        Returns:
+            List of key metadata dictionaries
+        """
+        pattern = f"{SSH_ACCESS_PREFIX}{agent_name or '*'}:*"
+        keys = self.redis_client.keys(pattern)
+
+        result = []
+        for key in keys:
+            data = self.redis_client.get(key)
+            if data:
+                result.append(json.loads(data))
+
+        return result
+
+    def cleanup_expired_credentials(self) -> int:
+        """
+        Clean up expired SSH credentials from containers.
+
+        This is called periodically by a background task.
+        Redis TTL handles the metadata cleanup automatically,
+        but we need to remove credentials from containers.
+
+        Returns:
+            Number of credentials cleaned up
+        """
+        # Note: This is a best-effort cleanup. Credentials might remain in containers
+        # if the container was stopped during the credential's lifetime.
+        # The main security guarantee comes from short TTLs.
+
+        cleaned = 0
+        pattern = f"{SSH_ACCESS_PREFIX}*"
+
+        # Get all credentials that are about to expire (within cleanup interval)
+        for redis_key in self.redis_client.keys(pattern):
+            ttl = self.redis_client.ttl(redis_key)
+
+            # If TTL is very low or negative, the credential is about to expire
+            # Clean it from the container proactively
+            if ttl is not None and 0 <= ttl <= 60:
+                try:
+                    data = self.redis_client.get(redis_key)
+                    if data:
+                        metadata = json.loads(data)
+                        agent_name = metadata.get("agent_name")
+                        auth_type = metadata.get("auth_type", "key")
+                        credential_id = metadata.get("credential_id") or metadata.get("comment")
+
+                        if agent_name and credential_id:
+                            if auth_type == "password":
+                                self.clear_container_password(agent_name)
+                            else:
+                                self.remove_ssh_key(agent_name, credential_id)
+                            cleaned += 1
+                except Exception as e:
+                    logger.warning(f"Error during credential cleanup for {redis_key}: {e}")
+
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} expired SSH credentials")
+
+        return cleaned
+
+    # Backwards compatibility alias
+    def cleanup_expired_keys(self) -> int:
+        """Backwards compatible wrapper for cleanup_expired_credentials."""
+        return self.cleanup_expired_credentials()
+
+    def revoke_key(self, agent_name: str, comment: str) -> bool:
+        """
+        Immediately revoke an SSH key.
+
+        Args:
+            agent_name: Name of the agent
+            comment: Key comment to revoke
+
+        Returns:
+            True if successful
+        """
+        # Remove from container
+        self.remove_ssh_key(agent_name, comment)
+
+        # Remove from Redis
+        redis_key = f"{SSH_ACCESS_PREFIX}{agent_name}:{comment}"
+        self.redis_client.delete(redis_key)
+
+        logger.info(f"Revoked SSH key: {comment} for agent {agent_name}")
+        return True
+
+    def cleanup_agent_credentials(self, agent_name: str) -> int:
+        """
+        Clean up all SSH credentials for an agent (called on agent stop/delete).
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            Number of credentials cleaned up
+        """
+        pattern = f"{SSH_ACCESS_PREFIX}{agent_name}:*"
+        redis_keys = self.redis_client.keys(pattern)
+
+        has_password_creds = False
+        for key in redis_keys:
+            try:
+                data = self.redis_client.get(key)
+                if data:
+                    metadata = json.loads(data)
+                    auth_type = metadata.get("auth_type", "key")
+                    credential_id = metadata.get("credential_id") or metadata.get("comment")
+
+                    if auth_type == "password":
+                        has_password_creds = True
+                    elif credential_id:
+                        self.remove_ssh_key(agent_name, credential_id)
+            except Exception as e:
+                logger.warning(f"Error cleaning up credential {key}: {e}")
+
+            self.redis_client.delete(key)
+
+        # Clear password once if any password credentials existed
+        if has_password_creds:
+            self.clear_container_password(agent_name)
+
+        if redis_keys:
+            logger.info(f"Cleaned up {len(redis_keys)} SSH credentials for agent {agent_name}")
+
+        return len(redis_keys)
+
+    # Backwards compatibility alias
+    def cleanup_agent_keys(self, agent_name: str) -> int:
+        """Backwards compatible wrapper for cleanup_agent_credentials."""
+        return self.cleanup_agent_credentials(agent_name)
+
+
+def get_ssh_host() -> str:
+    """
+    Get the host IP for SSH connections.
+
+    Priority:
+    1. SSH_HOST environment variable (explicit configuration)
+    2. Tailscale IP detection
+    3. Fallback to localhost
+    """
+    # Option 1: Explicit environment variable
+    ssh_host = os.getenv("SSH_HOST")
+    if ssh_host:
+        return ssh_host
+
+    # Option 2: Try to detect Tailscale IP
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Option 3: Fallback to localhost
+    return "localhost"
+
+
+# Singleton instance
+_ssh_service: Optional[SshService] = None
+
+
+def get_ssh_service() -> SshService:
+    """Get the SSH service singleton."""
+    global _ssh_service
+    if _ssh_service is None:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        _ssh_service = redis_url and SshService(redis_url)
+    return _ssh_service

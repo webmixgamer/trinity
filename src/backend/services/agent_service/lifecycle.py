@@ -216,9 +216,9 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
         volumes=volumes,
         environment=env_vars,
         labels=labels,
-        security_opt=['no-new-privileges:true', 'apparmor:docker-default'],
+        security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH support
         cap_drop=['ALL'],
-        cap_add=['NET_BIND_SERVICE'],
+        cap_add=['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],  # Needed for SSH
         read_only=False,
         tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
         network='trinity-agent-network',
