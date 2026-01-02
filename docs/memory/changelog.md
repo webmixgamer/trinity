@@ -1,3 +1,19 @@
+### 2026-01-02 18:15:00
+🐛 **Fix SSH Privilege Separation Directory**
+
+Fixed SSH failing to start due to missing privilege separation directory.
+
+**Issue**: `/var/run/sshd` created in Dockerfile, but `/var/run` is often a tmpfs that gets wiped on container restart.
+
+**Fix**: Added `mkdir -p /var/run/sshd` in startup.sh before starting sshd.
+
+**Files Changed**:
+- `docker/base-image/startup.sh` - Ensure `/var/run/sshd` exists before sshd start
+
+**Note**: Requires base image rebuild: `./scripts/deploy/build-base-image.sh`
+
+---
+
 ### 2026-01-02 18:00:00
 🐛 **Fix SSH Password Authentication & Host Detection**
 

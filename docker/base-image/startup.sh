@@ -235,6 +235,9 @@ python3 -m pip install --user --quiet --upgrade \
 # Start SSH if enabled
 if [ "${ENABLE_SSH}" = "true" ]; then
     echo "Starting SSH server..."
+    # Ensure privilege separation directory exists (tmpfs may clear it)
+    sudo mkdir -p /var/run/sshd
+    sudo chmod 0755 /var/run/sshd
     sudo /usr/sbin/sshd -D &
 fi
 
