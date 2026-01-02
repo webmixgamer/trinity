@@ -477,7 +477,8 @@ def get_ssh_host() -> str:
     Priority:
     1. SSH_HOST environment variable (explicit configuration)
     2. Tailscale IP detection
-    3. Fallback to localhost
+    3. Primary network interface IP (LAN IP)
+    4. Fallback to localhost
     """
     # Option 1: Explicit environment variable
     ssh_host = os.getenv("SSH_HOST")
@@ -498,7 +499,21 @@ def get_ssh_host() -> str:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Option 3: Fallback to localhost
+    # Option 3: Get primary network interface IP
+    import socket
+    try:
+        # Connect to external address to determine the primary interface IP
+        # This doesn't actually send data, just determines the route
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and ip != "127.0.0.1":
+            return ip
+    except Exception:
+        pass
+
+    # Option 4: Fallback to localhost
     return "localhost"
 
 
