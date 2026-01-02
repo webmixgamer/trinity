@@ -39,6 +39,7 @@ export const useNetworkStore = defineStore('network', () => {
   const activeCollaborations = ref(0)
   const websocket = ref(null)
   const isConnected = ref(false)
+  const intentionalDisconnect = ref(false) // Prevents reconnection after intentional disconnect
   const nodePositions = ref({}) // Store node positions in localStorage
   const historicalCollaborations = ref([]) // Persistent data from Activity Stream
   const totalCollaborationCount = ref(0)
@@ -322,7 +323,16 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function connectWebSocket() {
+    // Reset intentional disconnect flag when intentionally connecting
+    intentionalDisconnect.value = false
+
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+
+    // Prevent duplicate connections
+    if (websocket.value?.readyState === WebSocket.OPEN) {
+      console.log('[Collaboration] WebSocket already connected')
+      return
+    }
 
     try {
       websocket.value = new WebSocket(wsUrl)
@@ -357,13 +367,15 @@ export const useNetworkStore = defineStore('network', () => {
         console.log('[Collaboration] WebSocket disconnected')
         isConnected.value = false
 
-        // Attempt reconnection after 5 seconds
-        setTimeout(() => {
-          if (!isConnected.value) {
-            console.log('[Collaboration] Attempting to reconnect...')
-            connectWebSocket()
-          }
-        }, 5000)
+        // Only reconnect if this was NOT an intentional disconnect
+        if (!intentionalDisconnect.value) {
+          setTimeout(() => {
+            if (!isConnected.value && !intentionalDisconnect.value) {
+              console.log('[Collaboration] Attempting to reconnect...')
+              connectWebSocket()
+            }
+          }, 5000)
+        }
       }
     } catch (error) {
       console.error('[Collaboration] Failed to connect WebSocket:', error)
@@ -601,6 +613,9 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function disconnectWebSocket() {
+    // Set flag BEFORE closing to prevent reconnection
+    intentionalDisconnect.value = true
+
     if (websocket.value) {
       websocket.value.close()
       websocket.value = null
