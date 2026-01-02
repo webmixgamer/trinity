@@ -9,6 +9,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-01-02 | Added UI toggle in Settings.vue for ssh_access_enabled |
 | 2026-01-02 | Initial documentation |
 
 ---
@@ -464,8 +465,15 @@ OPS_SETTINGS_DESCRIPTIONS = {
 
 ### Admin Configuration
 
-SSH access must be explicitly enabled in:
-`Settings -> Ops Settings -> ssh_access_enabled = true`
+SSH access must be explicitly enabled in the UI:
+**Settings page → SSH Access section → Enable SSH Access toggle**
+
+Or via API:
+```bash
+curl -X PUT /api/settings/ops/config \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"ssh_access_enabled": "true"}'
+```
 
 ---
 

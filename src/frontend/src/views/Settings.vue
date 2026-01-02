@@ -389,6 +389,46 @@ Example:
             </div>
           </div>
 
+          <!-- SSH Access Section -->
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">SSH Access</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Allow generating ephemeral SSH credentials for direct terminal access to agent containers.
+              </p>
+            </div>
+
+            <div class="px-6 py-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label for="ssh-access-toggle" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Enable SSH Access
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    When enabled, the MCP tool <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">get_agent_ssh_access</code> can generate temporary SSH credentials.
+                  </p>
+                </div>
+                <button
+                  id="ssh-access-toggle"
+                  type="button"
+                  :class="[
+                    sshAccessEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2'
+                  ]"
+                  :disabled="savingSshAccess"
+                  @click="toggleSshAccess"
+                >
+                  <span
+                    :class="[
+                      sshAccessEnabled ? 'translate-x-5' : 'translate-x-0',
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                    ]"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Info Box -->
           <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <div class="flex">
@@ -497,6 +537,10 @@ const githubPatStatus = ref({
   masked: null,
   source: null
 })
+
+// SSH Access state
+const sshAccessEnabled = ref(false)
+const savingSshAccess = ref(false)
 
 const hasChanges = computed(() => {
   return trinityPrompt.value !== originalPrompt.value
@@ -772,11 +816,48 @@ function formatDate(dateString) {
   return date.toLocaleDateString()
 }
 
+// SSH Access methods
+async function loadOpsSettings() {
+  try {
+    const response = await axios.get('/api/settings/ops/config', {
+      headers: authStore.authHeader
+    })
+    sshAccessEnabled.value = response.data.ssh_access_enabled === 'true'
+  } catch (e) {
+    console.error('Failed to load ops settings:', e)
+  }
+}
+
+async function toggleSshAccess() {
+  savingSshAccess.value = true
+  error.value = null
+
+  try {
+    const newValue = !sshAccessEnabled.value
+    await axios.put('/api/settings/ops/config', {
+      ssh_access_enabled: newValue ? 'true' : 'false'
+    }, {
+      headers: authStore.authHeader
+    })
+
+    sshAccessEnabled.value = newValue
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to update SSH access setting'
+  } finally {
+    savingSshAccess.value = false
+  }
+}
+
 onMounted(() => {
   // Check if user is admin
   const userData = authStore.user
   // For now, allow access - backend will reject if not admin
   loadSettings()
   loadEmailWhitelist()
+  loadOpsSettings()
 })
 </script>

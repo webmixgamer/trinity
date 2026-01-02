@@ -1,3 +1,15 @@
+### 2026-01-02 17:15:00
+🔧 **SSH Access Toggle in Settings UI**
+
+Added UI toggle for `ssh_access_enabled` in the Settings page.
+
+**Location**: Settings → SSH Access section → Enable SSH Access toggle
+
+**Files Changed**:
+- `src/frontend/src/views/Settings.vue` - Added SSH Access section with toggle switch
+
+---
+
 ### 2026-01-02 16:30:00
 🔐 **MCP SSH Access Tool - Password Auth & System Setting**
 
