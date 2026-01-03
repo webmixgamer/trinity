@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-03)**: Dashboard Autonomy Toggle Switch:
+> - **autonomy-mode.md**: Replaced static "AUTO" badge with interactive toggle switch on Dashboard agent tiles
+> - **agent-network.md**: Added `toggleAutonomy()` action documentation (network.js:993-1030)
+> - Dashboard UI: AgentNode.vue toggle switch (lines 62-96) with "AUTO/Manual" label
+> - Store: `toggleAutonomy(agentName)` calls API and updates node data reactively
+> - Visual: Amber toggle when enabled, gray when disabled, loading state during API call
+>
 > **Updated (2026-01-03)**: MCP `get_agent_info` tool documented:
 > - **mcp-orchestration.md**: Tool count updated to 21 (was 17). Added `get_agent_info` (agents.ts:103-145) and `get_agent_ssh_access` (agents.ts:385-420)
 > - **agent-info-display.md**: Added MCP Tool Access section - agents can retrieve template metadata programmatically via `get_agent_info` tool
@@ -35,7 +42,7 @@
 >
 > **Updated (2026-01-01)**: Autonomy Mode feature documented:
 > - **autonomy-mode.md**: New feature flow for agent autonomous operation toggle
-> - Dashboard UI: AgentNode.vue shows "AUTO" badge when autonomy enabled (lines 62-68)
+> - Dashboard UI: AgentNode.vue toggle switch (lines 62-96) - see 2026-01-03 update for toggle details
 > - Agent Detail UI: AUTO/Manual toggle button in header (AgentDetail.vue:137-160, 1401-1441)
 > - Service layer: `services/agent_service/autonomy.py` - business logic for enable/disable
 > - Database: `autonomy_enabled` column in `agent_ownership` table (db/agents.py:325-357)
@@ -180,7 +187,7 @@
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, all execution types use raw log format (Updated 2025-01-02) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user) now produce parseable logs (Updated 2025-01-02) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
-| **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single button - **service layer: autonomy.py**, dashboard "AUTO" badge, owner-only access (Created 2026-01-01) |
+| **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
 
