@@ -3,6 +3,7 @@ Agent Service Stats - Container and context statistics.
 
 Handles fetching context window and container stats.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -17,85 +18,106 @@ from .helpers import get_accessible_agents
 logger = logging.getLogger(__name__)
 
 
+async def _fetch_single_agent_context(agent: dict, client: httpx.AsyncClient) -> dict:
+    """Fetch context stats for a single agent (used for concurrent fetching)."""
+    agent_name = agent["name"]
+    status = agent["status"]
+
+    # Initialize default stats
+    stats = {
+        "name": agent_name,
+        "status": status,
+        "activityState": "offline",
+        "contextPercent": 0,
+        "contextUsed": 0,
+        "contextMax": 200000,
+        "lastActivityTime": None
+    }
+
+    # Only fetch context stats for running agents
+    if status != "running":
+        return stats
+
+    # Fetch context stats from agent's internal API
+    try:
+        container = get_agent_container(agent_name)
+        if container:
+            agent_url = f"http://{container.name}:8000/api/chat/session"
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                session_data = response.json()
+                stats["contextPercent"] = session_data.get("context_percent", 0)
+                stats["contextUsed"] = session_data.get("context_tokens", 0)
+                stats["contextMax"] = session_data.get("context_window", 200000)
+    except Exception as e:
+        logger.debug(f"Error fetching context stats for {agent_name}: {e}")
+
+    # Determine active/idle state based on recent activity
+    try:
+        cutoff_time = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+        recent_activities = db.get_agent_activities(
+            agent_name=agent_name,
+            limit=1
+        )
+
+        if recent_activities and len(recent_activities) > 0:
+            last_activity = recent_activities[0]
+            activity_time = last_activity.get("created_at")
+            stats["lastActivityTime"] = activity_time
+
+            if activity_time and activity_time > cutoff_time:
+                if last_activity.get("activity_state") == "started":
+                    stats["activityState"] = "active"
+                else:
+                    stats["activityState"] = "idle"
+            else:
+                stats["activityState"] = "idle"
+        else:
+            stats["activityState"] = "idle"
+    except Exception as e:
+        logger.debug(f"Error determining activity state for {agent_name}: {e}")
+        stats["activityState"] = "idle"
+
+    return stats
+
+
 async def get_agents_context_stats_logic(
     current_user: User
 ) -> dict:
     """
     Get context window stats and activity state for all accessible agents.
 
+    Fetches all agent stats CONCURRENTLY for better performance.
+
     Returns: List of agent stats with context usage and active/idle/offline state
     """
-    # Get all accessible agents
     accessible_agents = get_accessible_agents(current_user)
-    agent_stats = []
 
-    for agent in accessible_agents:
-        agent_name = agent["name"]
-        status = agent["status"]
+    # Fetch all agent stats concurrently using a shared client
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        tasks = [_fetch_single_agent_context(agent, client) for agent in accessible_agents]
+        agent_stats = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Initialize default stats
-        stats = {
-            "name": agent_name,
-            "status": status,  # Docker status: running/stopped/etc
-            "activityState": "offline",  # Activity state: active/idle/offline
-            "contextPercent": 0,
-            "contextUsed": 0,
-            "contextMax": 200000,
-            "lastActivityTime": None
-        }
+    # Filter out any exceptions and keep successful results
+    valid_stats = []
+    for i, result in enumerate(agent_stats):
+        if isinstance(result, Exception):
+            logger.debug(f"Error fetching stats for agent: {result}")
+            # Return default stats for failed agents
+            agent = accessible_agents[i]
+            valid_stats.append({
+                "name": agent["name"],
+                "status": agent["status"],
+                "activityState": "offline" if agent["status"] != "running" else "idle",
+                "contextPercent": 0,
+                "contextUsed": 0,
+                "contextMax": 200000,
+                "lastActivityTime": None
+            })
+        else:
+            valid_stats.append(result)
 
-        # Only fetch context stats for running agents
-        if status == "running":
-            try:
-                # Get agent container
-                container = get_agent_container(agent_name)
-                if container:
-                    # Fetch context stats from agent's internal API
-                    agent_url = f"http://{container.name}:8000/api/chat/session"
-                    async with httpx.AsyncClient(timeout=2.0) as client:
-                        response = await client.get(agent_url)
-                        if response.status_code == 200:
-                            session_data = response.json()
-                            stats["contextPercent"] = session_data.get("context_percent", 0)
-                            stats["contextUsed"] = session_data.get("context_tokens", 0)
-                            stats["contextMax"] = session_data.get("context_window", 200000)
-            except Exception as e:
-                # Log error but continue with default values
-                logger.debug(f"Error fetching context stats for {agent_name}: {e}")
-
-            # Determine active/idle state based on recent activity
-            try:
-                # Look for any activity in last 60 seconds
-                cutoff_time = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
-                recent_activities = db.get_agent_activities(
-                    agent_name=agent_name,
-                    limit=1
-                )
-
-                if recent_activities and len(recent_activities) > 0:
-                    last_activity = recent_activities[0]
-                    activity_time = last_activity.get("created_at")
-                    stats["lastActivityTime"] = activity_time
-
-                    # Check if activity is within last 60 seconds
-                    if activity_time and activity_time > cutoff_time:
-                        # Check if activity is currently running
-                        if last_activity.get("activity_state") == "started":
-                            stats["activityState"] = "active"
-                        else:
-                            stats["activityState"] = "idle"
-                    else:
-                        stats["activityState"] = "idle"
-                else:
-                    stats["activityState"] = "idle"
-            except Exception as e:
-                # Default to idle if we can't determine activity
-                logger.debug(f"Error determining activity state for {agent_name}: {e}")
-                stats["activityState"] = "idle"
-
-        agent_stats.append(stats)
-
-    return {"agents": agent_stats}
+    return {"agents": valid_stats}
 
 
 async def get_agent_stats_logic(
