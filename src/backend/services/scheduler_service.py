@@ -183,6 +183,11 @@ class SchedulerService:
             logger.info(f"Schedule {schedule_id} is disabled, skipping")
             return
 
+        # Check if agent has autonomy enabled (master switch for all schedules)
+        if not db.get_autonomy_enabled(schedule.agent_name):
+            logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
+            return
+
         logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name}")
 
         # Import activity service (avoid circular import)

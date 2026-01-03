@@ -1,3 +1,85 @@
+### 2026-01-03 17:55:00
+🐛 **Fix: Scheduler now respects Autonomy Mode**
+
+Fixed bug where scheduled tasks would execute even when agent's Autonomy Mode was disabled (Manual mode).
+
+**Root Cause**: `scheduler_service._execute_schedule()` only checked `schedule.enabled` but not the agent's `autonomy_enabled` flag.
+
+**Fix**: Added autonomy check in `_execute_schedule()` before task execution:
+```python
+if not db.get_autonomy_enabled(schedule.agent_name):
+    logger.info(f"Schedule skipped: agent autonomy is disabled")
+    return
+```
+
+**Files Changed**: `src/backend/services/scheduler_service.py:186-189`
+
+**Behavior Now**:
+- Manual mode (autonomy disabled) = no schedules run
+- AUTO mode (autonomy enabled) = schedules run as configured
+
+---
+
+### 2026-01-03 14:15:00
+🔧 **GitHub Agent Templates - Updated for Trinity Compatibility**
+
+Updated all three GitHub demo agent templates (Cornelius, Corbin, Ruby) to match TRINITY_COMPATIBLE_AGENT_GUIDE.md.
+
+**Changes pushed to GitHub:**
+
+| Repository | Commit | Changes |
+|------------|--------|---------|
+| `abilityai/agent-cornelius` | `043d24a` | +.gitignore updates, +memory/, +outputs/, template.yaml commit_paths |
+| `abilityai/agent-corbin` | `481bf59` | +.gitignore updates, +outputs/, template.yaml commit_paths |
+| `abilityai/agent-ruby` | `b946886` | +.gitignore updates, +memory/, +outputs/ |
+
+**Common .gitignore additions:**
+- `.trinity/` - Platform-managed directory (injected at startup)
+- `.claude/commands/trinity/` - Platform-injected slash commands
+- `content/` - Large generated assets (videos, audio, images)
+
+**Directory structure updates:**
+- Added `memory/` directory with .gitkeep (Cornelius, Ruby)
+- Added `outputs/` directory with .gitkeep (all three)
+- Updated `git.commit_paths` to include new directories
+
+**Note**: These agents already had comprehensive template.yaml files with tagline, use_cases, capabilities, metrics, etc. The updates focused on .gitignore and directory structure per the guide.
+
+---
+
+### 2026-01-03 13:30:00
+📚 **Demo Agent Templates - Updated for Flexibility & Best Practices**
+
+Updated local demo templates (demo-researcher, demo-analyst) to follow TRINITY_COMPATIBLE_AGENT_GUIDE.md and improved `/create-demo-agent-fleet` command.
+
+**Command Updates** (`.claude/commands/create-demo-agent-fleet.md`):
+- Added Option A (Recommended): Local Research Network using system manifest deployment
+- Option B: GitHub Templates (Cornelius, Corbin, Ruby) kept for reference
+- Added complete system manifest example with permissions and shared folders
+- Added test collaboration examples showing inter-agent communication
+
+**Template Improvements** (`config/agent-templates/demo-*`):
+- Added `tagline` and `use_cases` fields to template.yaml files
+- Added `memory/` directories with .gitkeep files
+- Added `outputs/` directory to demo-analyst for generated briefings
+- Updated all slash commands to use dynamic agent/path discovery instead of hardcoded names
+- Added Bash tool to allowed-tools for filesystem discovery
+
+**Key Changes**:
+- demo-analyst CLAUDE.md: Instructions for dynamic shared folder discovery
+- briefing.md: Discovers researcher folder dynamically
+- opportunities.md, ask.md: Dynamic path resolution
+- request-research.md: Lists agents first, then calls researcher
+
+**Files Changed**:
+- `.claude/commands/create-demo-agent-fleet.md` - Complete rewrite with 2 deployment options
+- `config/agent-templates/demo-researcher/template.yaml` - Added tagline, use_cases
+- `config/agent-templates/demo-analyst/template.yaml` - Added tagline, use_cases
+- `config/agent-templates/demo-analyst/CLAUDE.md` - Dynamic agent naming instructions
+- `config/agent-templates/demo-analyst/.claude/commands/*.md` - All updated for dynamic paths
+
+---
+
 ### 2026-01-03 11:45:00
 🔧 **MCP Tool: get_agent_info - Agent Template Metadata Access**
 

@@ -378,6 +378,29 @@ for schedule in schedules:
     db.set_schedule_enabled(schedule.id, enabled)
 ```
 
+### Scheduler Enforcement
+The scheduler service double-checks autonomy before executing any schedule:
+
+**File**: `src/backend/services/scheduler_service.py`
+
+```python
+async def _execute_schedule(self, schedule_id: str):
+    # ... get schedule ...
+
+    if not schedule.enabled:
+        logger.info(f"Schedule {schedule_id} is disabled, skipping")
+        return
+
+    # Check if agent has autonomy enabled (master switch for all schedules)
+    if not db.get_autonomy_enabled(schedule.agent_name):
+        logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
+        return
+
+    # ... execute schedule ...
+```
+
+This provides defense-in-depth: even if a schedule is somehow enabled in the database, it won't execute unless the agent's autonomy is also enabled.
+
 ### Logging
 Server-side logging when autonomy state changes:
 ```python
@@ -485,7 +508,7 @@ Response:
    - Verify: Direct API call returns 403
 
 ### Status
-- Working (2026-01-01)
+- Working (2026-01-03)
 
 ---
 
@@ -501,4 +524,5 @@ Response:
 
 | Date | Change |
 |------|--------|
+| 2026-01-03 | Added scheduler enforcement section - scheduler now double-checks autonomy before executing |
 | 2026-01-01 | Initial documentation of Autonomy Mode feature |
