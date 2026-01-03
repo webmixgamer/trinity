@@ -1,16 +1,17 @@
 <template>
   <div
     :class="[
-      'px-5 py-4 rounded-xl border-2 shadow-lg',
+      'px-5 py-4 rounded-xl border shadow-lg',
       'transition-all duration-200 hover:shadow-xl cursor-move',
       'relative',
       'flex flex-col',
-      // System agent gets distinct purple styling
+      'backdrop-blur-sm',
+      // System agent gets distinct purple styling with transparency
       isSystemAgent
-        ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
-        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+        ? 'bg-purple-50/80 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700/50'
+        : 'bg-white/80 dark:bg-gray-800/80 border-gray-200/60 dark:border-gray-700/50'
     ]"
-    style="width: 280px; min-height: 160px;"
+    style="width: 320px; min-height: 180px;"
   >
     <!-- Connection handles - styled for permission edge creation -->
     <Handle
@@ -100,7 +101,7 @@
       </div>
 
       <!-- Execution Stats (compact row) -->
-      <div v-if="hasExecutionStats" class="flex items-center flex-wrap text-xs text-gray-500 dark:text-gray-400 gap-x-1.5 gap-y-0.5 mb-3">
+      <div v-if="hasExecutionStats" class="flex items-center flex-wrap text-xs text-gray-500 dark:text-gray-400 gap-x-1.5 gap-y-0.5 mb-2">
         <span class="font-medium text-gray-700 dark:text-gray-300">{{ executionStats.taskCount }}</span>
         <span>tasks</span>
         <span class="text-gray-300 dark:text-gray-600">·</span>
@@ -114,8 +115,27 @@
           <span>{{ lastExecutionDisplay }}</span>
         </template>
       </div>
-      <div v-else class="text-xs text-gray-400 dark:text-gray-500 mb-3">
+      <div v-else class="text-xs text-gray-400 dark:text-gray-500 mb-2">
         No tasks (24h)
+      </div>
+
+      <!-- Resource indicators (subtle footer) -->
+      <div v-if="hasResourceInfo" class="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500 mb-3 pt-2 border-t border-gray-100 dark:border-gray-700/50">
+        <!-- Memory -->
+        <div class="flex items-center gap-1.5" :title="'Memory limit: ' + memoryDisplay">
+          <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          </svg>
+          <span class="font-medium">{{ memoryDisplay }}</span>
+        </div>
+        <!-- CPU -->
+        <div class="flex items-center gap-1.5" :title="'CPU limit: ' + cpuDisplay + ' cores'">
+          <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <span class="font-medium">{{ cpuDisplay }}</span>
+          <span class="text-gray-300 dark:text-gray-600">cores</span>
+        </div>
       </div>
 
       <!-- Click-through button (nodrag class prevents drag) - Hidden for system agents -->
@@ -268,6 +288,21 @@ const lastExecutionDisplay = computed(() => {
   if (diffMins < 60) return `${diffMins}m ago`
   if (diffHours < 24) return `${diffHours}h ago`
   return `${Math.floor(diffHours / 24)}d ago`
+})
+
+// Resource indicators - always show for consistent card layout
+const hasResourceInfo = computed(() => true)
+
+const memoryDisplay = computed(() => {
+  const mem = props.data.memoryLimit
+  if (!mem) return '4g'
+  return mem
+})
+
+const cpuDisplay = computed(() => {
+  const cpu = props.data.cpuLimit
+  if (!cpu) return '2'
+  return cpu
 })
 
 function viewDetails() {

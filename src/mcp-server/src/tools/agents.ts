@@ -98,6 +98,53 @@ export function createAgentTools(
     },
 
     // ========================================================================
+    // get_agent_info - Get agent template metadata and capabilities
+    // ========================================================================
+    getAgentInfo: {
+      name: "get_agent_info",
+      description:
+        "Get full template metadata and capabilities for an agent. " +
+        "Returns detailed information from the agent's template.yaml including: " +
+        "display name, description, version, author, capabilities, available commands, " +
+        "MCP servers, tools, skills, and example use cases. " +
+        "Useful for understanding what an agent can do before interacting with it. " +
+        "Access control: agents can only get info about agents they have permission to call.",
+      parameters: z.object({
+        name: z.string().describe("The name of the agent to get information about"),
+      }),
+      execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        // Access control for agent-scoped keys
+        if (authContext?.scope === "agent" && authContext?.agentName) {
+          const callerAgentName = authContext.agentName;
+
+          // Agent can always get info about itself
+          if (name !== callerAgentName) {
+            // Check if caller has permission to access target agent
+            const permittedAgents = await apiClient.getPermittedAgents(callerAgentName);
+
+            if (!permittedAgents.includes(name)) {
+              console.log(`[get_agent_info] Agent '${callerAgentName}' denied access to '${name}' (not permitted)`);
+              return JSON.stringify({
+                error: "Access denied",
+                reason: `Agent '${callerAgentName}' does not have permission to access '${name}'`,
+                hint: "Request permission from the agent owner or use the agent permissions API",
+              }, null, 2);
+            }
+          }
+
+          console.log(`[get_agent_info] Agent '${callerAgentName}' accessing info for '${name}'`);
+        }
+
+        // System agents and user-scoped keys can access all agents they have access to
+        const info = await apiClient.getAgentInfo(name);
+        return JSON.stringify(info, null, 2);
+      },
+    },
+
+    // ========================================================================
     // create_agent - Create a new agent
     // ========================================================================
     createAgent: {

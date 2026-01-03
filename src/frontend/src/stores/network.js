@@ -283,7 +283,9 @@ export const useNetworkStore = defineStore('network', () => {
           githubRepo: systemAgent.github_repo || null,
           is_system: true,
           autonomy_enabled: false, // System agent doesn't use autonomy mode
-          activityState: systemAgent.status === 'running' ? 'idle' : 'offline'
+          activityState: systemAgent.status === 'running' ? 'idle' : 'offline',
+          memoryLimit: systemAgent.memory_limit || null,
+          cpuLimit: systemAgent.cpu_limit || null
         },
         position: savedPositions[systemAgent.name] || systemDefaultPosition,
         draggable: true
@@ -312,7 +314,9 @@ export const useNetworkStore = defineStore('network', () => {
           githubRepo: agent.github_repo || null,
           is_system: false,
           autonomy_enabled: agent.autonomy_enabled || false,
-          activityState: agent.status === 'running' ? 'idle' : 'offline'
+          activityState: agent.status === 'running' ? 'idle' : 'offline',
+          memoryLimit: agent.memory_limit || null,
+          cpuLimit: agent.cpu_limit || null
         },
         position: savedPositions[agent.name] || defaultPosition,
         draggable: true

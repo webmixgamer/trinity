@@ -3,6 +3,11 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-03)**: MCP `get_agent_info` tool documented:
+> - **mcp-orchestration.md**: Tool count updated to 21 (was 17). Added `get_agent_info` (agents.ts:103-145) and `get_agent_ssh_access` (agents.ts:385-420)
+> - **agent-info-display.md**: Added MCP Tool Access section - agents can retrieve template metadata programmatically via `get_agent_info` tool
+> - **agent-permissions.md**: Added `get_agent_info` to MCP tool enforcement list - respects permission boundaries for agent-scoped keys
+>
 > **Updated (2026-01-02)**: SSH Access feature documented:
 > - **ssh-access.md**: New feature flow for ephemeral SSH credentials to agent containers
 > - MCP Tool: `get_agent_ssh_access` in agents.ts:338-373 with key/password auth methods
@@ -141,10 +146,10 @@
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 12 MCP tools for external agent management |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 21 MCP tools for external agent management, including `get_agent_info` for template metadata access (Updated 2026-01-03) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - **refactored**: GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency (Updated 2025-12-31) |
-| Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) |
+| Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP (Implemented 2025-11-29) |
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
@@ -157,7 +162,7 @@
 | **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Activity indicators, context stats, task progress, sorting - reusing Collaboration Dashboard APIs (Implemented 2025-12-07, Updated 2025-12-19) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
-| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** (Updated 2025-12-30) |
+| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |
 | **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File collaboration via shared volumes - **service layer: folders.py** (Updated 2025-12-27) |
 | ~~Agent Vector Memory~~ | ~~Medium~~ | ~~[vector-memory.md](feature-flows/vector-memory.md)~~ | ❌ REMOVED (2025-12-24) - Templates should define their own memory. Platform should not inject agent capabilities. |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |

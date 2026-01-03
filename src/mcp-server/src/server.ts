@@ -158,6 +158,7 @@ export async function createServer(config: ServerConfig = {}) {
   const agentTools = createAgentTools(client, requireApiKey);
   server.addTool(agentTools.listAgents);
   server.addTool(agentTools.getAgent);
+  server.addTool(agentTools.getAgentInfo);
   server.addTool(agentTools.createAgent);
   server.addTool(agentTools.deleteAgent);
   server.addTool(agentTools.startAgent);

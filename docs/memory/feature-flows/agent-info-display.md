@@ -447,14 +447,89 @@ const getItemDescription = (item) => {
 
 ---
 
+## MCP Tool Access (Added 2026-01-03)
+
+Agents can also retrieve template metadata for other agents via the MCP tool `get_agent_info`:
+
+### MCP Tool: `get_agent_info`
+
+**File**: `src/mcp-server/src/tools/agents.ts:103-145`
+
+```typescript
+// Tool usage
+get_agent_info({ name: "target-agent" })
+
+// Returns: AgentTemplateInfo with full template.yaml metadata
+```
+
+### Access Control
+
+| Key Scope | Access Rule |
+|-----------|-------------|
+| Agent-scoped | Self + permitted agents only (via `getPermittedAgents()`) |
+| System-scoped | Full access to all agents |
+| User-scoped | All accessible agents (owned + shared) |
+
+### Client Method
+
+**File**: `src/mcp-server/src/client.ts:184-189`
+
+```typescript
+async getAgentInfo(name: string): Promise<AgentTemplateInfo> {
+  return this.request<AgentTemplateInfo>(
+    "GET",
+    `/api/agents/${encodeURIComponent(name)}/info`
+  );
+}
+```
+
+### Types
+
+**File**: `src/mcp-server/src/types.ts:84-114`
+
+```typescript
+export interface AgentTemplateInfo {
+  has_template: boolean;
+  agent_name: string;
+  display_name?: string;
+  description?: string;
+  version?: string;
+  capabilities?: string[];
+  commands?: AgentCommand[];
+  mcp_servers?: string[];
+  tools?: string[];
+  skills?: string[];
+  use_cases?: string[];
+  // ... additional fields
+}
+```
+
+### Use Case
+
+Head agents can inspect sub-agent capabilities before delegating tasks:
+
+```typescript
+// Get sub-agent capabilities
+const info = await mcp_trinity_get_agent_info({ name: "worker-agent" });
+// Check if it has required skills
+if (info.capabilities?.includes("code_review")) {
+  await mcp_trinity_chat_with_agent({ agent_name: "worker-agent", message: "Review this PR" });
+}
+```
+
+---
+
 ## Related Flows
 
 - **Upstream**:
   - [Agent Lifecycle](agent-lifecycle.md) - Agent must exist to display info
   - [Template Processing](template-processing.md) - Template must be parsed at agent creation
 - **Downstream**:
-  - [Agent Chat](agent-chat.md) - User understands commands before chatting
+  - [Agent Terminal](agent-terminal.md) - User understands commands before interacting
   - [Credential Injection](credential-injection.md) - User sees required MCP servers
+- **MCP Integration**:
+  - [MCP Orchestration](mcp-orchestration.md) - `get_agent_info` tool (agents.ts:103-145)
+  - [Agent Permissions](agent-permissions.md) - Access control for agent-scoped keys
 
 ---
 
@@ -468,10 +543,12 @@ const getItemDescription = (item) => {
 ---
 
 ## Status
-**Working** - Verified implementation, line numbers updated as of 2025-12-30
+**Working** - Verified implementation, line numbers updated as of 2026-01-03
 
-**Key Changes Since 2025-12-02:**
-- Agent server refactored to modular package structure (`docker/base-image/agent_server/`)
+**Key Changes:**
+- **2026-01-03**: Added MCP tool `get_agent_info` for programmatic access to template metadata
+- **2025-12-30**: Line numbers verified for agent server modular package
+- **2025-12-06**: Agent server refactored to modular package structure (`docker/base-image/agent_server/`)
 - InfoPanel.vue now supports `use_cases`, `skills`, `tagline` fields
 - Items can be strings or {name, description} objects for rich display
 - Added `@use-case-click` event for interactive use cases

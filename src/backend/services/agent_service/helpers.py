@@ -116,6 +116,11 @@ def get_accessible_agents(current_user: User) -> list:
         else:
             agent_dict["github_repo"] = None
 
+        # Add resource limits for dashboard display
+        resource_limits = db.get_resource_limits(agent_name)
+        agent_dict["memory_limit"] = resource_limits.get("memory_limit") if resource_limits else None
+        agent_dict["cpu_limit"] = resource_limits.get("cpu_limit") if resource_limits else None
+
         accessible_agents.append(agent_dict)
 
     return accessible_agents

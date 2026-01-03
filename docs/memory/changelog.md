@@ -1,3 +1,58 @@
+### 2026-01-03 11:45:00
+🔧 **MCP Tool: get_agent_info - Agent Template Metadata Access**
+
+New MCP tool allowing agents to discover detailed information about other agents they have permission to access.
+
+**New Tool**: `get_agent_info(name)`
+
+Returns full template.yaml metadata including:
+- Display name, description, tagline, version, author
+- Capabilities (e.g., `["synthesis", "strategic-analysis"]`)
+- Available slash commands with descriptions
+- MCP servers the agent uses
+- Tools, skills, and example use cases
+- Resource allocation (CPU/memory)
+- Current status (running/stopped)
+
+**Access Control**:
+- Agent-scoped keys: Can only access self + permitted agents
+- System agents: Full access to all agents
+- User-scoped keys: Access to all accessible agents
+
+**Use Case**: Enables orchestrator agents to understand worker capabilities before delegating tasks.
+
+**Files Changed**:
+- `src/mcp-server/src/types.ts` - Added `AgentTemplateInfo` and `AgentCommand` types
+- `src/mcp-server/src/client.ts` - Added `getAgentInfo()` method
+- `src/mcp-server/src/tools/agents.ts` - Added `get_agent_info` tool with access control
+- `src/mcp-server/src/server.ts` - Registered new tool
+
+---
+
+### 2026-01-03 10:30:00
+🎨 **Dashboard Agent Cards - Enhanced Styling & Resource Indicators**
+
+Improved agent cards on the Dashboard with a more refined look and resource information display.
+
+**Visual Changes**:
+- Increased card width from 280px to 320px for better readability
+- Added backdrop-blur and semi-transparent backgrounds for a modern glass effect
+- Softer border styling (removed double border, adjusted opacity)
+- Minimum height increased to 180px for consistent layout
+
+**New Features**:
+- Added resource indicators row showing Memory and CPU limits
+- Displays configured limits (e.g., "4g", "2 cores") or defaults
+- Subtle separator line between execution stats and resources
+- Tooltips show full resource details on hover
+
+**Files Changed**:
+- `src/frontend/src/components/AgentNode.vue` - Styling and resource display
+- `src/frontend/src/stores/network.js` - Pass memoryLimit/cpuLimit to node data
+- `src/backend/services/agent_service/helpers.py` - Include resource limits in agent data
+
+---
+
 ### 2026-01-02 18:15:00
 🐛 **Fix SSH Privilege Separation Directory**
 

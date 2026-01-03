@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 16 tools for agent lifecycle, chat, system management, and credential management through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 21 tools for agent lifecycle, chat, system management, credential management, and SSH access through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 
@@ -355,7 +355,7 @@ console.log(`Registered ${totalTools} tools`);
 
 ---
 
-## MCP Tools (16 total)
+## MCP Tools (21 total)
 
 ### Agent Management (`src/mcp-server/src/tools/agents.ts`)
 
@@ -363,15 +363,17 @@ console.log(`Registered ${totalTools} tools`);
 |------|------|------------|------------------|
 | `list_agents` | 44-79 | `{}` | `GET /api/agents` |
 | `get_agent` | 84-98 | `{name}` | `GET /api/agents/{name}` |
-| `create_agent` | 103-198 | `{name, type?, template?, resources?}` | `POST /api/agents` |
-| `delete_agent` | 203-230 | `{name}` | `DELETE /api/agents/{name}` |
-| `start_agent` | 235-250 | `{name}` | `POST /api/agents/{name}/start` |
-| `stop_agent` | 255-270 | `{name}` | `POST /api/agents/{name}/stop` |
-| `list_templates` | 275-288 | `{}` | `GET /api/templates` |
-| `reload_credentials` | 293-309 | `{name}` | `POST /api/agents/{name}/credentials/reload` |
-| `get_credential_status` | 314-329 | `{name}` | `GET /api/agents/{name}/credentials/status` |
-| `deploy_local_agent` | 334-434 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
-| `initialize_github_sync` | 439-514 | `{agent_name, repo_owner, repo_name, ...}` | `POST /api/agents/{name}/git/initialize` |
+| `get_agent_info` | 103-145 | `{name}` | `GET /api/agents/{name}/info` |
+| `create_agent` | 150-249 | `{name, type?, template?, resources?}` | `POST /api/agents` |
+| `delete_agent` | 254-281 | `{name}` | `DELETE /api/agents/{name}` |
+| `start_agent` | 286-301 | `{name}` | `POST /api/agents/{name}/start` |
+| `stop_agent` | 306-321 | `{name}` | `POST /api/agents/{name}/stop` |
+| `list_templates` | 326-339 | `{}` | `GET /api/templates` |
+| `reload_credentials` | 344-360 | `{name}` | `POST /api/agents/{name}/credentials/reload` |
+| `get_credential_status` | 365-380 | `{name}` | `GET /api/agents/{name}/credentials/status` |
+| `get_agent_ssh_access` | 385-420 | `{agent_name, ttl_hours?, auth_method?}` | `POST /api/agents/{name}/ssh-access` |
+| `deploy_local_agent` | 425-525 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
+| `initialize_github_sync` | 530-605 | `{agent_name, repo_owner, repo_name, ...}` | `POST /api/agents/{name}/git/initialize` |
 
 ### Chat Tools (`src/mcp-server/src/tools/chat.ts`)
 
@@ -878,12 +880,17 @@ npm start
 # Test with MCP inspector
 npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 
-# Verify 12 tools are registered:
-# - list_agents, get_agent, create_agent, delete_agent
+# Verify 21 tools are registered:
+# Agent tools (13):
+# - list_agents, get_agent, get_agent_info, create_agent, delete_agent
 # - start_agent, stop_agent, list_templates
-# - reload_credentials, get_credential_status
+# - reload_credentials, get_credential_status, get_agent_ssh_access
+# - deploy_local_agent, initialize_github_sync
+# Chat tools (3):
 # - chat_with_agent, get_chat_history, get_agent_logs
+# System tools (4):
 # - deploy_system, list_systems, restart_system, get_system_manifest
+# Docs tools (1):
 # - get_agent_requirements
 ```
 
@@ -911,9 +918,11 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-01-03 | **get_agent_info tool**: Added new tool to retrieve full template.yaml metadata for agents. Supports access control - agent-scoped keys can only access self + permitted agents. Returns capabilities, commands, MCP servers, tools, skills, use cases. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: Non-parallel `chat_with_agent` calls now create `schedule_executions` records when agent-scoped, ensuring all MCP agent communications appear in Tasks tab. |
 | 2025-12-30 | **Dynamic GitHub Templates**: `create_agent` now supports any `github:owner/repo` format - not just pre-defined templates. Uses system GITHUB_PAT for access. |
 | 2025-12-30 | **Flow verification**: Updated tool count to 16 (11 agent, 3 chat, 4 system, 1 docs). Updated line numbers for all TypeScript files. Added deploy_local_agent, initialize_github_sync tools. Added queue handling and parallel task client methods. Added System Agent (Phase 11.1) access control rules. |
+| 2026-01-03 | **Tool count update**: 21 tools total (13 agent, 3 chat, 4 system, 1 docs). Added `get_agent_info` (agents.ts:103-145) and `get_agent_ssh_access` (agents.ts:385-420). Updated all line numbers. |
 | 2025-12-22 | Added parallel mode to chat_with_agent tool |
 | 2025-12-03 | MCP API key authentication deployed to production |
 | 2025-12-02 | Fixed race condition bug in auth context handling |
@@ -921,7 +930,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 ---
 
 ## Status
-Working - All 16 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
+Working - All 21 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
 
 ---
 

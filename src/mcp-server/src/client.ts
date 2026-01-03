@@ -13,6 +13,7 @@ import type {
   TokenResponse,
   AgentAccessInfo,
   SshAccessResponse,
+  AgentTemplateInfo,
 } from "./types.js";
 
 export class TrinityClient {
@@ -174,6 +175,17 @@ export class TrinityClient {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Get agent template info (full metadata from template.yaml)
+   * Returns detailed information about the agent's capabilities, commands, etc.
+   */
+  async getAgentInfo(name: string): Promise<AgentTemplateInfo> {
+    return this.request<AgentTemplateInfo>(
+      "GET",
+      `/api/agents/${encodeURIComponent(name)}/info`
+    );
   }
 
   /**

@@ -1,15 +1,15 @@
 # Feature: Agent-to-Agent Permissions System
 
-> **Updated**: 2025-12-31 - Documented new access control dependencies from `dependencies.py`. Permission endpoints currently use inline checks but can migrate to dependency pattern for consistency.
+> **Updated**: 2026-01-03 - Added `get_agent_info` MCP tool enforcement. Documented new access control dependencies from `dependencies.py`. Permission endpoints currently use inline checks but can migrate to dependency pattern for consistency.
 
 ## Overview
 
-Fine-grained permission control for agent-to-agent communication. Allows owners to specify which agents their agents can collaborate with via Trinity MCP tools (`list_agents`, `chat_with_agent`). Enforced at the MCP server layer.
+Fine-grained permission control for agent-to-agent communication. Allows owners to specify which agents their agents can collaborate with via Trinity MCP tools (`list_agents`, `get_agent_info`, `chat_with_agent`). Enforced at the MCP server layer.
 
 **Requirement**: 9.10 - Agent-to-Agent Collaboration Permissions
 **Phase**: 9.10
 **Implemented**: 2025-12-10
-**Last Updated**: 2025-12-31
+**Last Updated**: 2026-01-03
 
 ## User Story
 
@@ -34,6 +34,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### MCP Tool Enforcement
 - **list_agents**: `src/mcp-server/src/tools/agents.ts:61-74` - Filters visible agents
+- **get_agent_info**: `src/mcp-server/src/tools/agents.ts:119-139` - Access control for template metadata
 - **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:29-67` - Blocks unauthorized calls
 
 ### Backend API
