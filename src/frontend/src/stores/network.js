@@ -990,6 +990,45 @@ export const useNetworkStore = defineStore('network', () => {
     jumpToTime(new Date(targetTime).toISOString())
   }
 
+  // Toggle autonomy mode for an agent
+  async function toggleAutonomy(agentName) {
+    // Find the node to get current state
+    const node = nodes.value.find(n => n.id === agentName)
+    if (!node) {
+      console.error('[Network] Agent not found:', agentName)
+      return { success: false, error: 'Agent not found' }
+    }
+
+    const currentState = node.data.autonomy_enabled
+    const newState = !currentState
+
+    try {
+      const token = localStorage.getItem('token')
+      const response = await axios.put(
+        `/api/agents/${agentName}/autonomy`,
+        { enabled: newState },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      // Update the node data
+      node.data.autonomy_enabled = newState
+
+      console.log(`[Network] Autonomy ${newState ? 'enabled' : 'disabled'} for ${agentName}`)
+
+      return {
+        success: true,
+        enabled: newState,
+        schedulesUpdated: response.data.schedules_updated
+      }
+    } catch (error) {
+      console.error('[Network] Failed to toggle autonomy:', error)
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to update autonomy mode'
+      }
+    }
+  }
+
   return {
     // State
     agents,
@@ -1058,6 +1097,7 @@ export const useNetworkStore = defineStore('network', () => {
     resetAllEdges,
     getEventPosition,
     handleTimelineClick,
-    jumpToTimelinePosition
+    jumpToTimelinePosition,
+    toggleAutonomy
   }
 })

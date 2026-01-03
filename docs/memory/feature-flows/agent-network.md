@@ -87,8 +87,13 @@ Custom node component for each agent (updated 2025-12-30).
 - Line 45: Pulsing animation for active agents (`active-pulse` class)
 
 **Status Display**:
-- Lines 51-61: Activity state label ("Active", "Idle", "Offline")
-- Lines 63-69: GitHub repo display (if from GitHub template)
+- Lines 52-61: Activity state label ("Active", "Idle", "Offline") and Autonomy toggle
+- Lines 62-96: Autonomy toggle switch (not shown for system agent):
+  - Toggle switch (36x20px) with sliding knob animation
+  - Label shows "AUTO" (amber) or "Manual" (gray)
+  - Clicking calls `networkStore.toggleAutonomy(agentName)`
+  - Loading state disables toggle during API call
+- Lines 99-101: GitHub repo display (if from GitHub template)
 
 **Progress Bars**:
 - Lines 71-84: Context usage progress bar with percentage and color coding
@@ -347,6 +352,20 @@ async function fetchExecutionStats() {
 ##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
 - Polls every 10 seconds for agent list changes
 - Detects new/deleted agents and updates graph
+
+##### toggleAutonomy() (Lines 993-1030)
+```javascript
+async function toggleAutonomy(agentName) {
+  const node = nodes.value.find(n => n.id === agentName)
+  const newState = !node.data.autonomy_enabled
+
+  const response = await axios.put(`/api/agents/${agentName}/autonomy`, { enabled: newState })
+  node.data.autonomy_enabled = newState  // Update reactively
+
+  return { success: true, enabled: newState, schedulesUpdated: response.data.schedules_updated }
+}
+```
+Toggles autonomy mode for an agent and updates the node data reactively.
 
 ##### Replay Mode Functions (Lines 689-897)
 - `setReplayMode()` (690-708): Toggle between live and replay mode
@@ -1377,6 +1396,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-03 | **Autonomy Toggle Switch**: Added interactive toggle switch to AgentNode cards (lines 62-96). Replaces static "AUTO" badge with clickable toggle showing "AUTO/Manual" label. Toggle calls `networkStore.toggleAutonomy()` (lines 993-1030) to enable/disable all agent schedules. Amber styling when enabled, gray when disabled. |
 | 2026-01-01 | **Execution Stats Display**: Added task execution metrics to AgentNode cards. New `GET /api/agents/execution-stats` endpoint (agents.py:140-161). Database aggregation in `db/schedules.py:445-489`. Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s with context stats. AgentNode shows compact row: "12 tasks - 92% - $0.45 - 2m ago" with color-coded success rate. |
 | 2025-12-19 | **Documentation Update**: Updated all line number references for Dashboard.vue, AgentNode.vue, network.js, agents.py, chat.py, and main.py. Added dark mode styling documentation. Verified store rename (collaborations.js to network.js). Updated file path references. |
 | 2025-12-23 | **Workplan removal**: Removed Task DAG progress display from AgentNode.vue. Plan stats removed from network.js store. |

@@ -1,3 +1,29 @@
+### 2026-01-03 19:30:00
+🎛️ **Dashboard Autonomy Toggle Switch**
+
+Added interactive toggle switch to Dashboard agent tiles for quick autonomy mode control.
+
+**Visual Design**:
+- Toggle switch (36x20px) with smooth sliding animation
+- Label shows "AUTO" (amber) or "Manual" (gray) next to switch
+- Disabled state with opacity during API call
+- Tooltips explain current state and action
+
+**Files Changed**:
+- `src/frontend/src/components/AgentNode.vue:62-96` - Toggle switch UI and handler
+- `src/frontend/src/stores/network.js:993-1030` - `toggleAutonomy()` action
+
+**Behavior**:
+- Click toggle to enable/disable all schedules for the agent
+- Node data updates reactively (no page refresh needed)
+- System agents do not show the toggle (autonomy N/A)
+
+**Documentation Updated**:
+- `docs/memory/feature-flows/autonomy-mode.md` - Full toggle documentation
+- `docs/memory/feature-flows/agent-network.md` - AgentNode toggle reference
+
+---
+
 ### 2026-01-03 17:55:00
 🐛 **Fix: Scheduler now respects Autonomy Mode**
 

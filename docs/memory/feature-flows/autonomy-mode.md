@@ -7,7 +7,7 @@ Autonomy Mode enables or disables all scheduled tasks for an agent with a single
 As an agent owner, I want to toggle autonomous operation for my agent so that I can quickly enable or disable all scheduled tasks without managing each schedule individually.
 
 ## Entry Points
-- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:62-68` - Shows "AUTO" badge when autonomy is enabled
+- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:62-96` - Toggle switch with "AUTO/Manual" label
 - **Agent Detail UI**: `src/frontend/src/views/AgentDetail.vue:137-160` - AUTO/Manual toggle button in header
 - **API**: `GET /api/agents/autonomy-status` - Bulk status for dashboard
 - **API**: `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
@@ -21,19 +21,48 @@ As an agent owner, I want to toggle autonomous operation for my agent so that I 
 
 **File**: `src/frontend/src/components/AgentNode.vue`
 
-#### Display Logic (lines 62-68)
+#### Toggle Switch (lines 62-96)
+The Dashboard agent tiles include an inline toggle switch for quick autonomy control:
 ```vue
-<!-- Autonomy indicator (not for system agent) -->
-<span
-  v-if="autonomyEnabled && !isSystemAgent"
-  class="px-1.5 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
-  title="Autonomy Mode - Scheduled tasks are running"
->
-  AUTO
-</span>
+<!-- Autonomy toggle switch with label (not for system agent) -->
+<div v-if="!isSystemAgent" class="flex items-center gap-1.5">
+  <span :class="autonomyEnabled ? 'text-amber-600' : 'text-gray-400'">
+    {{ autonomyEnabled ? 'AUTO' : 'Manual' }}
+  </span>
+  <button
+    @click="handleAutonomyToggle"
+    :disabled="autonomyLoading"
+    :class="autonomyEnabled ? 'bg-amber-500' : 'bg-gray-200'"
+    role="switch"
+    :aria-checked="autonomyEnabled"
+  >
+    <span :class="autonomyEnabled ? 'translate-x-4' : 'translate-x-0'" />
+  </button>
+</div>
 ```
 
-#### Computed Property (lines 169-171)
+**Visual Design**:
+- Toggle switch (36x20px) with sliding knob
+- Label shows "AUTO" (amber) or "Manual" (gray)
+- Disabled state with opacity when API call in progress
+- Tooltips explain the current state and action
+
+#### Toggle Handler (lines 317-330)
+```javascript
+async function handleAutonomyToggle(event) {
+  event.stopPropagation() // Prevent card drag
+  if (autonomyLoading.value || isSystemAgent.value) return
+
+  autonomyLoading.value = true
+  try {
+    await networkStore.toggleAutonomy(props.data.label)
+  } finally {
+    autonomyLoading.value = false
+  }
+}
+```
+
+#### Computed Property (lines 189-191)
 ```javascript
 const autonomyEnabled = computed(() => {
   return props.data.autonomy_enabled === true
@@ -44,7 +73,36 @@ const autonomyEnabled = computed(() => {
 
 **File**: `src/frontend/src/stores/network.js`
 
-#### Node Conversion (lines 293-318)
+#### Toggle Autonomy Action (lines 993-1030)
+```javascript
+async function toggleAutonomy(agentName) {
+  const node = nodes.value.find(n => n.id === agentName)
+  if (!node) return { success: false, error: 'Agent not found' }
+
+  const newState = !node.data.autonomy_enabled
+
+  try {
+    const response = await axios.put(
+      `/api/agents/${agentName}/autonomy`,
+      { enabled: newState },
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+
+    // Update the node data reactively
+    node.data.autonomy_enabled = newState
+
+    return {
+      success: true,
+      enabled: newState,
+      schedulesUpdated: response.data.schedules_updated
+    }
+  } catch (error) {
+    return { success: false, error: error.response?.data?.detail }
+  }
+}
+```
+
+#### Node Conversion (lines 305-327)
 The store passes `autonomy_enabled` from agent data to dashboard nodes:
 ```javascript
 regularAgents.forEach((agent, index) => {
@@ -482,12 +540,18 @@ Response:
 
 ### Test Steps
 
-1. **Dashboard Badge Display**
+1. **Dashboard Toggle Switch**
    - Action: Open Dashboard (/)
-   - Expected: Agent cards without autonomy show no badge
-   - Verify: Enable autonomy on an agent and refresh - "AUTO" badge appears
+   - Expected: Agent cards show toggle switch with "Manual" label (gray)
+   - Verify: Click toggle - switch slides right, label changes to "AUTO" (amber)
+   - Verify: Click again - switch slides left, returns to "Manual"
 
-2. **Toggle from Agent Detail**
+2. **Dashboard Toggle Immediate Effect**
+   - Action: Toggle autonomy on an agent with schedules
+   - Expected: Schedules are immediately enabled/disabled in the backend
+   - Verify: Open Agent Detail → Schedules tab, confirm schedule states match
+
+3. **Toggle from Agent Detail**
    - Action: Open agent detail page, click "Manual" button
    - Expected: Button changes to "AUTO", success notification shows schedule count
    - Verify: Refresh page - state persists
@@ -524,5 +588,6 @@ Response:
 
 | Date | Change |
 |------|--------|
+| 2026-01-03 | **Dashboard Toggle Switch**: Replaced static "AUTO" badge with interactive toggle switch. Users can now enable/disable autonomy directly from Dashboard agent tiles. Added `toggleAutonomy()` action to network.js store (lines 993-1030). Toggle includes "AUTO/Manual" label with amber/gray styling. |
 | 2026-01-03 | Added scheduler enforcement section - scheduler now double-checks autonomy before executing |
 | 2026-01-01 | Initial documentation of Autonomy Mode feature |

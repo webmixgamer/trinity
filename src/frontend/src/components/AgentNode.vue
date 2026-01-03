@@ -49,8 +49,8 @@
         ></div>
       </div>
 
-      <!-- Activity state label and autonomy indicator -->
-      <div class="flex items-center space-x-2 mb-2">
+      <!-- Activity state label and autonomy toggle -->
+      <div class="flex items-center justify-between mb-2">
         <div
           :class="[
             'text-xs font-medium capitalize',
@@ -59,14 +59,41 @@
         >
           {{ activityStateLabel }}
         </div>
-        <!-- Autonomy indicator (not for system agent) -->
-        <span
-          v-if="autonomyEnabled && !isSystemAgent"
-          class="px-1.5 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
-          title="Autonomy Mode - Scheduled tasks are running"
-        >
-          AUTO
-        </span>
+        <!-- Autonomy toggle switch with label (not for system agent) -->
+        <div v-if="!isSystemAgent" class="flex items-center gap-1.5">
+          <span
+            :class="[
+              'text-xs font-medium transition-colors',
+              autonomyEnabled
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-gray-400 dark:text-gray-500'
+            ]"
+          >
+            {{ autonomyEnabled ? 'AUTO' : 'Manual' }}
+          </span>
+          <button
+            @click="handleAutonomyToggle"
+            :disabled="autonomyLoading"
+            :class="[
+              'nodrag relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2',
+              autonomyEnabled
+                ? 'bg-amber-500 focus:ring-amber-500'
+                : 'bg-gray-200 dark:bg-gray-600 focus:ring-gray-400',
+              autonomyLoading ? 'opacity-50 cursor-wait' : ''
+            ]"
+            :title="autonomyEnabled ? 'Autonomy Mode ON - Click to disable scheduled tasks' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
+            role="switch"
+            :aria-checked="autonomyEnabled"
+          >
+            <span class="sr-only">Toggle autonomy mode</span>
+            <span
+              :class="[
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                autonomyEnabled ? 'translate-x-4' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
       </div>
 
       <!-- GitHub repo or placeholder (always shown for consistent height) -->
@@ -165,10 +192,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
 import RuntimeBadge from './RuntimeBadge.vue'
+import { useNetworkStore } from '../stores/network'
 
 const props = defineProps({
   id: String,
@@ -179,6 +207,10 @@ const props = defineProps({
 })
 
 const router = useRouter()
+const networkStore = useNetworkStore()
+
+// Autonomy toggle loading state
+const autonomyLoading = ref(false)
 
 // Check if this is a system agent
 const isSystemAgent = computed(() => {
@@ -307,6 +339,21 @@ const cpuDisplay = computed(() => {
 
 function viewDetails() {
   router.push(`/agents/${props.data.label}`)
+}
+
+// Handle autonomy toggle
+async function handleAutonomyToggle(event) {
+  // Stop propagation to prevent card drag
+  event.stopPropagation()
+
+  if (autonomyLoading.value || isSystemAgent.value) return
+
+  autonomyLoading.value = true
+  try {
+    await networkStore.toggleAutonomy(props.data.label)
+  } finally {
+    autonomyLoading.value = false
+  }
 }
 </script>
 
