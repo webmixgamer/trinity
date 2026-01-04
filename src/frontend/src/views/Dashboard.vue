@@ -138,113 +138,24 @@
           </div>
         </div>
 
-    <!-- Replay Controls (only visible in replay mode) -->
-    <div v-if="isReplayMode" class="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-gray-800 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600 px-6 py-4">
-      <!-- Playback Controls -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center space-x-4">
-          <!-- Play/Pause/Stop buttons -->
-          <div class="flex items-center space-x-2">
-            <button
-              @click="handlePlay"
-              :disabled="isPlaying || totalEvents === 0"
-              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 text-sm font-medium flex items-center space-x-1"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
-              <span>Play</span>
-            </button>
-
-            <button
-              @click="handlePause"
-              :disabled="!isPlaying"
-              class="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 text-sm font-medium flex items-center space-x-1"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
-              </svg>
-              <span>Pause</span>
-            </button>
-
-            <button
-              @click="handleStop"
-              class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-150 text-sm font-medium flex items-center space-x-1"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M5.25 3A2.25 2.25 0 003 5.25v9.5A2.25 2.25 0 005.25 17h9.5A2.25 2.25 0 0017 14.75v-9.5A2.25 2.25 0 0014.75 3h-9.5z" />
-              </svg>
-              <span>Stop</span>
-            </button>
-          </div>
-
-          <!-- Speed selector -->
-          <div class="flex items-center space-x-2">
-            <label class="text-xs text-gray-600 dark:text-gray-400 font-medium">Speed:</label>
-            <select
-              :value="replaySpeed"
-              @change="handleSpeedChange"
-              class="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-gray-200"
-            >
-              <option :value="1">1x</option>
-              <option :value="2">2x</option>
-              <option :value="5">5x</option>
-              <option :value="10">10x</option>
-              <option :value="20">20x</option>
-              <option :value="50">50x</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Progress stats -->
-        <div class="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500 dark:text-gray-500">Event:</span>
-            <span class="font-medium">{{ currentEventIndex }} / {{ totalEvents }}</span>
-            <span class="text-gray-400 dark:text-gray-500">({{ Math.round((currentEventIndex / totalEvents) * 100) || 0 }}%)</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500 dark:text-gray-500">Time:</span>
-            <span class="font-medium">{{ formatDuration(replayElapsedMs) }} / {{ formatDuration(totalDuration) }}</span>
-          </div>
-          <div v-if="isPlaying" class="flex items-center space-x-2">
-            <span class="text-xs text-gray-500 dark:text-gray-500">Remaining:</span>
-            <span class="font-medium">{{ formatDuration(totalDuration - replayElapsedMs) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Timeline Scrubber -->
-      <div class="timeline-scrubber">
-        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
-          <span>{{ formatTimestamp(timelineStart) }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">{{ formatTimestamp(currentTime) }}</span>
-          <span>{{ formatTimestamp(timelineEnd) }}</span>
-        </div>
-
-        <div
-          class="timeline-track relative h-10 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-250 dark:hover:bg-gray-600 transition-colors"
-          @click="handleTimelineClick"
-        >
-          <!-- Event markers -->
-          <div
-            v-for="(event, i) in historicalCollaborations"
-            :key="'marker-' + i"
-            class="event-marker absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full hover:bg-blue-500 hover:w-3 hover:h-3 transition-all cursor-pointer"
-            :style="{ left: networkStore.getEventPosition(event) + '%' }"
-            :title="`${event.source_agent} → ${event.target_agent} at ${formatTimestamp(event.timestamp)}`"
-          ></div>
-
-          <!-- Playback position marker -->
-          <div
-            class="playback-marker absolute top-0 bottom-0 w-1 bg-blue-600 cursor-ew-resize"
-            :style="{ left: playbackPosition + '%' }"
-          >
-            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 rounded-full border-2 border-white dark:border-gray-800 shadow-lg"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Replay Timeline (only visible in replay mode) -->
+    <ReplayTimeline
+      v-if="isReplayMode"
+      :agents="agents"
+      :events="historicalCollaborations"
+      :timeline-start="timelineStart"
+      :timeline-end="timelineEnd"
+      :current-event-index="currentEventIndex"
+      :total-events="totalEvents"
+      :total-duration="totalDuration"
+      :replay-elapsed-ms="replayElapsedMs"
+      :replay-speed="replaySpeed"
+      :is-playing="isPlaying"
+      @play="handlePlay"
+      @pause="handlePause"
+      @stop="handleStop"
+      @speed-change="handleSpeedChange"
+    />
 
     <!-- Graph Canvas - Full Height (expands to fill remaining space) -->
     <div class="relative bg-white dark:bg-gray-800 shadow-sm dark:shadow-gray-900 flex-1 min-h-0">
@@ -430,6 +341,7 @@
 <script setup>
 import NavBar from '@/components/NavBar.vue'
 import HostTelemetry from '@/components/HostTelemetry.vue'
+import ReplayTimeline from '@/components/ReplayTimeline.vue'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'

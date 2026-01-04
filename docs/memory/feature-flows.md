@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-04)**: ReplayTimeline Component documented:
+> - **replay-timeline.md**: New feature flow for Dashboard replay timeline waterfall visualization
+> - Waterfall-style timeline with agent rows, activity bars, and communication arrows
+> - Zoom controls (50%-2000%), "Active only" toggle, blinking execution indicator
+> - Smooth playback cursor using requestAnimationFrame, "Now" marker, 15-minute grid lines
+> - Sticky headers for time scale and agent labels
+> - Component: `src/frontend/src/components/ReplayTimeline.vue` (664 lines)
+>
 > **Updated (2026-01-03)**: Dashboard Autonomy Toggle Switch:
 > - **autonomy-mode.md**: Replaced static "AUTO" badge with interactive toggle switch on Dashboard agent tiles
 > - **agent-network.md**: Added `toggleAutonomy()` action documentation (network.js:993-1030)
@@ -163,6 +171,7 @@
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - includes execution stats display on Agent Cards (Updated 2026-01-01) |
 | Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Updated 2025-12-30) |
+| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline visualization for replay mode - agent rows, activity bars, communication arrows, zoom controls, smooth cursor, 15-min grid (Created 2026-01-04) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |

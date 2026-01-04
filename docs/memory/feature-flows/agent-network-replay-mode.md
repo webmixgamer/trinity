@@ -1,9 +1,18 @@
 # Feature: Agent Network Replay Mode
 
-> **Last Updated**: 2025-12-30
+> **Last Updated**: 2026-01-04
 
 ## Overview
 Time-compressed replay of historical agent messages, allowing users to visualize past interaction patterns at accelerated speeds (1x-50x) with VCR-style controls and timeline scrubbing.
+
+> **Note (2026-01-04)**: The replay controls have been refactored into a dedicated `ReplayTimeline.vue` component with a waterfall-style timeline visualization. See **[replay-timeline.md](replay-timeline.md)** for detailed documentation of the new timeline component including:
+> - Waterfall visualization with agent rows and activity bars
+> - Communication arrows between agent rows
+> - Zoom controls (50% - 2000%)
+> - "Active only" toggle to hide inactive agents
+> - Smooth playback cursor using requestAnimationFrame
+> - 15-minute grid lines with hour marks
+> - Sticky headers for time scale and agent labels
 
 ## User Story
 As a platform user, I want to replay historical agent messages from a specific time period so that I can analyze communication patterns, debug issues, and understand multi-agent workflows without having to trigger live interactions.
@@ -1427,6 +1436,7 @@ localStorage.removeItem('trinity-replay-mode')
 
 | Date | Changes |
 |------|---------|
+| 2026-01-04 | **ReplayTimeline component**: Replay controls refactored into dedicated `ReplayTimeline.vue` component with waterfall timeline. See [replay-timeline.md](replay-timeline.md) for new component documentation. |
 | 2025-12-30 | **Line reference update**: Updated all line numbers to match current codebase after OTel and system agent additions |
 | 2025-12-19 | **Store renamed**: `collaborations.js` renamed to `network.js`. Updated all line number references. Updated feature-flows.md index. |
 | 2025-12-07 | **Major refactor**: Merged into Dashboard.vue (AgentNetwork.vue deleted). Route changed from `/network` to `/`. Updated line references. Renamed "communications" to "messages". |
