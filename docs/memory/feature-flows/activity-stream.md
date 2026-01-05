@@ -44,7 +44,7 @@ As a platform operator, I want to track all agent activities in a unified system
 
 ## Data Layer
 
-### Database Schema (`src/backend/database.py:341-364`)
+### Database Schema (`src/backend/database.py:421-442`)
 
 **Table: agent_activities**
 ```sql
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS agent_activities (
 )
 ```
 
-**Indexes** (`database.py:424-430`)
+**Indexes** (`database.py:574-580`)
 ```sql
 idx_activities_agent         ON (agent_name, created_at DESC)  -- Per-agent queries
 idx_activities_type          ON (activity_type)                -- Filter by type
@@ -120,7 +120,7 @@ class ActivityState(str, Enum):
 
 ### ActivityService (`src/backend/services/activity_service.py`)
 
-**Initialization** (lines 18-35)
+**Initialization** (lines 18-36)
 ```python
 class ActivityService:
     def __init__(self):
@@ -128,7 +128,7 @@ class ActivityService:
         self.subscribers: List[Callable] = []  # Future extensibility
 
     def set_websocket_manager(self, manager):
-        """Called from main.py:85 during app startup"""
+        """Called from main.py:98 during app startup"""
         self.websocket_manager = manager
 ```
 
@@ -141,7 +141,7 @@ class ActivityService:
 | 161-163 | `get_current_activities()` | Query in-progress activities |
 | 165-200 | `_broadcast_activity_event()` | WebSocket broadcasting |
 | 202-212 | `_notify_subscribers()` | Extensibility for plugins |
-| 214-244 | `_get_action_description()` | Human-readable descriptions |
+| 214-245 | `_get_action_description()` | Human-readable descriptions |
 
 **Activity Creation Flow** (`activity_service.py:46-107`)
 ```python
@@ -871,7 +871,7 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 ## Implementation Notes
 
 **Date**: 2025-12-02
-**Last Updated**: 2025-12-20
+**Last Updated**: 2025-12-30
 **Requirement**: 9.7 - Unified Activity Stream
 **Implemented By**: Feature implementation commit
 **Related Docs**:

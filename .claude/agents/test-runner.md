@@ -19,14 +19,14 @@ The test suite is located at: `/Users/eugene/Dropbox/trinity/trinity/tests/`
 
 Before running tests, determine which tier to use based on the user's request:
 
-### Tier 1: SMOKE TESTS (~30 seconds)
+### Tier 1: SMOKE TESTS (~45 seconds)
 Use for: Quick validation, CI pipelines, development feedback
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
 source .venv/bin/activate
 python -m pytest -m smoke -v --tb=short 2>&1
 ```
-Tests: auth, templates, mcp_keys (no agent creation)
+Tests: auth, templates, mcp_keys, setup, settings/api-keys, activities, metrics, folders, deploy-local (no agent creation)
 
 ### Tier 2: CORE TESTS (~3-5 minutes)
 Use for: Standard validation, pre-commit checks, feature verification
@@ -128,24 +128,42 @@ Create the following files:
 ## Test Categories
 
 The test suite covers:
+
+### Smoke Tests (Fast, No Agent Required)
 - **Authentication** (test_auth.py) - Login, token validation, auth modes [SMOKE]
 - **Templates** (test_templates.py) - Template listing [SMOKE]
 - **MCP Keys** (test_mcp_keys.py) - API key management [SMOKE]
+- **First-Time Setup** (test_setup.py) - Setup status, admin password validation [SMOKE]
+
+### Agent Lifecycle & Management
 - **Agent Lifecycle** (test_agent_lifecycle.py) - CRUD, start/stop, logs
-- **Agent Chat** (test_agent_chat.py) - Message sending, history, sessions
+- **Agent Chat** (test_agent_chat.py) - Message sending, history, sessions, in-memory activity, model selection
 - **Agent Files** (test_agent_files.py) - File browser, downloads
-- **Agent Plans** (test_agent_plans.py) - Workplan management, DAG execution
 - **Agent Sharing** (test_agent_sharing.py) - Share/unshare agents
 - **Agent Permissions** (test_agent_permissions.py) - Agent-to-agent permission CRUD, defaults, cascade delete (Req 9.10)
 - **Agent Git** (test_agent_git.py) - Git sync operations
+- **Agent Metrics** (test_agent_metrics.py) - Custom metrics endpoint (Req 9.9)
+- **Agent Shared Folders** (test_shared_folders.py) - Folder expose/consume configuration (Req 9.11)
+
+### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
+- **Settings** (test_settings.py) - System settings, Trinity prompt, API keys management
 - **Schedules** (test_schedules.py) - Scheduled executions
 - **Execution Queue** (test_execution_queue.py) - Queue management
+
+### System & Deployment
 - **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules (Req 10.7)
-- **Settings** (test_settings.py) - System settings and Trinity prompt management
-- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule pause/resume, emergency stop, alerts, costs [SLOW for fleet ops]
-- **System Agent** (test_system_agent.py) - System agent status, restart, reinitialize [SLOW for restart/reinit]
+- **Local Deployment** (test_deploy_local.py) - Deploy local agents via MCP (Req 11.2)
+- **Public Links** (test_public_links.py) - Public agent sharing with email verification (Req 11.3)
+
+### Operations & Observability
+- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule pause/resume, emergency stop, alerts, costs [SLOW]
+- **System Agent** (test_system_agent.py) - System agent status, restart, reinitialize [SLOW]
 - **Observability** (test_observability.py) - OTel status, metrics, cost tracking
+- **Activity Stream** (test_activities.py) - Cross-agent timeline, per-agent activities
+- **Parallel Tasks** (test_parallel_task.py) - Parallel headless execution (Req 12.1)
+
+### Direct Agent Tests
 - **Agent Server Direct** (agent_server/) - Direct agent server tests [SKIPPED unless TEST_AGENT_NAME set]
 
 ## Performance Notes (2025-12-09)
@@ -159,7 +177,14 @@ The test suite covers:
 - Each agent takes ~30-45 seconds to create and become ready
 - Module-scoped fixtures mean this overhead is paid once per file, not per test
 
-## Expected Skipped Tests (~27 tests)
+## Test Suite Statistics
+
+**Total Tests**: ~515 tests across 28 test files
+**Smoke Tests**: ~90 tests (fast, no agent creation)
+**Agent-Requiring Tests**: ~380 tests
+**Slow Tests**: ~45 tests (chat execution, fleet ops)
+
+## Expected Skipped Tests (~30 tests)
 
 Skipped tests are **intentional** - they indicate missing prerequisites, not failures:
 
@@ -168,6 +193,7 @@ Skipped tests are **intentional** - they indicate missing prerequisites, not fai
 | Agent Server Direct | 20 | Need `TEST_AGENT_NAME` env var |
 | Git not configured | 3 | Test agent has no git template |
 | Queue full tests | 2 | Hard to trigger in test |
+| Setup already complete | 3 | Can only test validation on fresh install |
 | Optional features | 2 | Feature not implemented/no test data |
 
 **To run agent server direct tests:**

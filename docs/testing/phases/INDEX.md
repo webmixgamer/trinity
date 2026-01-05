@@ -17,18 +17,20 @@
 | 3 | Context Validation (CRITICAL) | 10 min | Phase 2 | Context tracking verified | 🟡 Known bug |
 | 4 | State Persistence + Activity | 10 min | Phase 3 | File I/O + Activity tracking | 🟢 |
 | 5 | Agent Collaboration + Permissions | 25 min | Phase 4 | MCP communication + permission enforcement | 🟢 |
-| 6 | Workplan System | 20 min | Phase 5 | Workplan creation & tracking | 🟢 |
-| 7 | Scheduling & Autonomy | 15 min | Phase 6 | Schedule execution verified | 🟢 |
+| 7 | Scheduling & Autonomy | 15 min | Phase 5 | Schedule execution verified | 🟢 |
 | 8 | Execution Queue | 15 min | Phase 7 | Concurrency handling tested | 🟢 |
 | 9 | File Browser | 10 min | Phase 8 | File operations verified | 🟢 |
 | 10 | Error Handling | 10 min | Phase 9 | Failure recovery tested | 🟢 |
 | 11 | Multi-Agent Dashboard | 10 min | Phase 10 | All features together | 🟢 |
 | 12 | Cleanup | 5 min | Any phase | All agents deleted | 🟢 |
-| 13 | System Settings | 15 min | Phase 1 | Trinity Prompt CRUD + injection | 🟢 |
+| 13 | System Settings | 20 min | Phase 1 | Trinity Prompt + Email Whitelist + API Keys | 🟢 |
 | 14 | OpenTelemetry | 15 min | Phase 1 | OTel metrics collection + UI display | 🟢 |
-| 15 | System Agent & Ops | 20 min | Phase 1, 14 | System agent, fleet ops, admin UI | 🟢 |
+| 15 | System Agent & Ops | 20 min | Phase 1, 14 | System agent, fleet ops, Web Terminal | 🟢 |
+| 16 | Web Terminal | 15 min | Phase 1, 2 | Terminal for all agents (Req 11.5) | 🟢 |
+| 17 | Email Authentication | 15 min | Phase 0 | Email OTP login flow (Req 12.4) | 🟢 |
+| 18 | GitHub Initialization | 15 min | Phase 1, 2 | Agent files synced to GitHub | 🟢 |
 
-**Total Time**: ~225 minutes (~3.75 hours) for full suite
+**Total Time**: ~270 minutes (~4.5 hours) for full suite
 
 ---
 
@@ -48,7 +50,7 @@ python3 run_test_phases.py --phase 3
 python3 run_test_phases.py --from 2 --to 5
 
 # Skip to phase (requires manual verification of prior phases)
-python3 run_test_phases.py --phase 6 --skip-prerequisites
+python3 run_test_phases.py --phase 7 --skip-prerequisites
 ```
 
 ### Manual (Single Phase)
@@ -116,9 +118,8 @@ All other phases can be skipped if time-constrained, but phases 0-3 are mandator
 |-------|-------|--------|--------|
 | 2 | Template pre-selection bug | Known | Minor - use API workaround |
 | 3 | **Context stuck at 0%** | **CRITICAL BUG** | **Blocks testing** |
-| 3 | Task indicator stuck at "—" | Needs investigation | Blocks workplan testing |
 | 5 | UI tab switching broken | Confirmed | Use API for testing |
-| 6+ | Not yet executed | TBD | Unknown |
+| 7+ | Not yet executed | TBD | Unknown |
 
 ---
 
@@ -219,8 +220,6 @@ Phase 4 (State Persistence)
     ↓
 Phase 5 (Agent Collaboration)
     ↓
-Phase 6 (Workplan System)
-    ↓
 Phase 7 (Scheduling)
     ↓
 Phase 8 (Execution Queue)
@@ -257,7 +256,6 @@ Prerequisite Checklist:
 - [ ] Context tracking working (Phase 3) - or bug documented
 - [ ] State persistence working (Phase 4)
 - [ ] Agent collaboration working (Phase 5)
-- [ ] Workplan system working (Phase 6)
 
 Only after all above: can proceed to Phase 7
 
@@ -305,13 +303,13 @@ All phase files in: `docs/testing/phases/`
 ```
 docs/testing/phases/
 ├── INDEX.md (this file)
+├── README.md
 ├── PHASE_00_SETUP.md
 ├── PHASE_01_AUTHENTICATION.md
 ├── PHASE_02_AGENT_CREATION.md
 ├── PHASE_03_CONTEXT_VALIDATION.md
 ├── PHASE_04_STATE_PERSISTENCE.md
 ├── PHASE_05_AGENT_COLLABORATION.md
-├── PHASE_06_WORKPLAN_SYSTEM.md
 ├── PHASE_07_SCHEDULING.md
 ├── PHASE_08_EXECUTION_QUEUE.md
 ├── PHASE_09_FILE_BROWSER.md
@@ -320,7 +318,10 @@ docs/testing/phases/
 ├── PHASE_12_CLEANUP.md
 ├── PHASE_13_SETTINGS.md
 ├── PHASE_14_OPENTELEMETRY.md
-└── PHASE_15_SYSTEM_AGENT.md
+├── PHASE_15_SYSTEM_AGENT.md
+├── PHASE_16_WEB_TERMINAL.md
+├── PHASE_17_EMAIL_AUTHENTICATION.md
+└── PHASE_18_GITHUB_INITIALIZATION.md
 ```
 
 ---
@@ -361,6 +362,13 @@ Phase X+1: Name
 
 | Date | Changes |
 |------|---------|
+| 2025-12-26 | Added Phase 18: GitHub Repository Initialization |
+| 2025-12-26 | Added Phase 17: Email-Based Authentication (Req 12.4) |
+| 2025-12-26 | Added Phase 16: Web Terminal Testing (Req 11.5) |
+| 2025-12-26 | Updated Phase 13: Added Email Whitelist + Per-Agent API Key (Req 11.7) |
+| 2025-12-26 | Updated Phases 3, 4: Chat tab replaced by Terminal tab |
+| 2025-12-26 | Updated Phase 1: Added email auth mode documentation |
+| 2025-12-26 | Updated Phase 15: Added Web Terminal testing for System Agent |
 | 2025-12-21 | Added Phase 14: OpenTelemetry Integration (Req 10.8) |
 | 2025-12-21 | Added Phase 15: System Agent & Ops (Req 11.1, 11.2) |
 | 2025-12-14 | Added Phase 13: System Settings for Trinity Prompt (Req 10.6) |
@@ -388,5 +396,5 @@ python3 docs/testing/run_test_phases.py --all
 
 ---
 
-**All Phases Ready**: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 (16 total)
-**Last Updated**: 2025-12-21
+**All Phases Ready**: 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 (18 total)
+**Last Updated**: 2025-12-26

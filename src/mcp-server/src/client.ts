@@ -12,6 +12,8 @@ import type {
   Template,
   TokenResponse,
   AgentAccessInfo,
+  SshAccessResponse,
+  AgentTemplateInfo,
 } from "./types.js";
 
 export class TrinityClient {
@@ -176,6 +178,17 @@ export class TrinityClient {
   }
 
   /**
+   * Get agent template info (full metadata from template.yaml)
+   * Returns detailed information about the agent's capabilities, commands, etc.
+   */
+  async getAgentInfo(name: string): Promise<AgentTemplateInfo> {
+    return this.request<AgentTemplateInfo>(
+      "GET",
+      `/api/agents/${encodeURIComponent(name)}/info`
+    );
+  }
+
+  /**
    * Get permitted agents for a source agent (Phase 9.10)
    * Returns list of agent names that the source agent can communicate with
    */
@@ -275,6 +288,25 @@ export class TrinityClient {
     );
   }
 
+  /**
+   * Generate ephemeral SSH credentials for direct agent access
+   * Returns private key (one-time display) or password and connection command
+   * @param name - Agent name
+   * @param ttlHours - Credential validity in hours (0.1-24, default: 4)
+   * @param authMethod - Authentication method: "key" (default) or "password"
+   */
+  async createSshAccess(
+    name: string,
+    ttlHours: number = 4,
+    authMethod: "key" | "password" = "key"
+  ): Promise<SshAccessResponse> {
+    return this.request<SshAccessResponse>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/ssh-access`,
+      { ttl_hours: ttlHours, auth_method: authMethod }
+    );
+  }
+
   // ============================================================================
   // Chat & Communication
   // ============================================================================
@@ -290,6 +322,7 @@ export class TrinityClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      "X-Via-MCP": "true",  // Always mark as MCP call for task tracking
     };
 
     // Add X-Source-Agent header for collaboration tracking

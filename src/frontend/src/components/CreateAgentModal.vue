@@ -57,13 +57,47 @@
                       </svg>
                     </div>
                     <div class="ml-3 flex-1">
-                      <p class="text-sm font-medium text-gray-900 dark:text-white">Blank Agent</p>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Start with an empty configuration</p>
+                      <p class="text-sm font-medium text-gray-900 dark:text-white">Blank Agent (Claude Code)</p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Start with empty config using Claude Code runtime</p>
                     </div>
                     <div v-if="form.template === ''" class="flex-shrink-0 text-indigo-500 dark:text-indigo-400">
                       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                       </svg>
+                    </div>
+                  </div>
+
+                  <!-- Local templates section (shown first after Blank Agent) -->
+                  <div v-if="localTemplates.length > 0" class="pt-2">
+                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center">
+                      <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                      </svg>
+                      Local Templates
+                    </p>
+                    <div
+                      v-for="template in localTemplates"
+                      :key="template.id"
+                      @click="form.template = template.id"
+                      :class="[
+                        'relative flex items-center p-3 border rounded-lg cursor-pointer transition-all',
+                        form.template === template.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-2 ring-indigo-500' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                      ]"
+                    >
+                      <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div class="ml-3 flex-1">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ template.display_name }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ truncateDescription(template.description) }}</p>
+                      </div>
+                      <div v-if="form.template === template.id" class="flex-shrink-0 text-indigo-500 dark:text-indigo-400">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
 
@@ -92,40 +126,6 @@
                       <div class="ml-3 flex-1">
                         <p class="text-sm font-medium text-gray-900 dark:text-white">{{ template.display_name }}</p>
                         <p class="text-xs text-gray-500 dark:text-gray-400">{{ template.github_repo }}</p>
-                      </div>
-                      <div v-if="form.template === template.id" class="flex-shrink-0 text-indigo-500 dark:text-indigo-400">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Local templates section -->
-                  <div v-if="localTemplates.length > 0" class="pt-2">
-                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center">
-                      <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                      </svg>
-                      Local Templates
-                    </p>
-                    <div
-                      v-for="template in localTemplates"
-                      :key="template.id"
-                      @click="form.template = template.id"
-                      :class="[
-                        'relative flex items-center p-3 border rounded-lg cursor-pointer transition-all',
-                        form.template === template.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-2 ring-indigo-500' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                      ]"
-                    >
-                      <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
-                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div class="ml-3 flex-1">
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ template.display_name }}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ truncateDescription(template.description) }}</p>
                       </div>
                       <div v-if="form.template === template.id" class="flex-shrink-0 text-indigo-500 dark:text-indigo-400">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">

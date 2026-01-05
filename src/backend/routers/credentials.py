@@ -14,10 +14,11 @@ from models import (
     BulkCredentialImport,
     BulkCredentialResult,
     HotReloadCredentialsRequest,
+    CredentialAssignRequest,
+    CredentialBulkAssignRequest,
 )
 from config import OAUTH_CONFIGS, BACKEND_URL
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, get_agent_status_from_container
 from services.template_service import (
     get_github_template,
@@ -50,27 +51,8 @@ async def create_credential(
     try:
         credential = credential_manager.create_credential(current_user.username, cred_data)
 
-        await log_audit_event(
-            event_type="credential_management",
-            action="create",
-            user_id=current_user.username,
-            resource=f"credential-{credential.id}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"service": cred_data.service, "type": cred_data.type}
-        )
-
         return credential
     except Exception as e:
-        await log_audit_event(
-            event_type="credential_management",
-            action="create",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to create credential: {str(e)}")
 
 
@@ -82,14 +64,6 @@ async def list_credentials(
     """List all credentials for the current user."""
     try:
         credentials = credential_manager.list_credentials(current_user.username)
-
-        await log_audit_event(
-            event_type="credential_access",
-            action="list",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
 
         return credentials
     except Exception as e:
@@ -108,15 +82,6 @@ async def get_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    await log_audit_event(
-        event_type="credential_access",
-        action="get",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return credential
 
 
@@ -133,15 +98,6 @@ async def update_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="update",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return credential
 
 
@@ -156,15 +112,6 @@ async def delete_credential(
 
     if not success:
         raise HTTPException(status_code=404, detail="Credential not found")
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="delete",
-        user_id=current_user.username,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
 
     return {"message": f"Credential {cred_id} deleted"}
 
@@ -222,19 +169,6 @@ async def bulk_import_credentials(
             errors.append(f"{key}: {str(e)}")
             skipped_count += 1
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="bulk_import",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if created_count > 0 else "partial",
-        details={
-            "created": created_count,
-            "skipped": skipped_count,
-            "errors": errors[:10]
-        }
-    )
-
     return BulkCredentialResult(
         created=created_count,
         skipped=skipped_count,
@@ -269,15 +203,6 @@ async def init_oauth(
         config["client_id"],
         redirect_uri,
         state
-    )
-
-    await log_audit_event(
-        event_type="oauth",
-        action="init",
-        user_id=current_user.username,
-        resource=provider,
-        ip_address=request.client.host if request.client else None,
-        result="success"
     )
 
     return {"auth_url": auth_url, "state": state}
@@ -364,16 +289,6 @@ async def oauth_callback(
 
     credential = credential_manager.create_credential(state_data["user_id"], cred_data)
 
-    await log_audit_event(
-        event_type="oauth",
-        action="callback",
-        user_id=state_data["user_id"],
-        resource=provider,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"credential_id": credential.id}
-    )
-
     return {
         "message": "OAuth authentication successful",
         "credential_id": credential.id,
@@ -458,15 +373,6 @@ async def get_agent_credentials_requirements(
             "configured": is_configured
         })
 
-    await log_audit_event(
-        event_type="agent_access",
-        action="get_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success"
-    )
-
     return {
         "agent_name": agent_name,
         "template": template_id,
@@ -519,19 +425,16 @@ async def reload_agent_credentials(
                 with open(mcp_template_path) as f:
                     mcp_template_content = f.read()
 
-    agent_credentials = credential_manager.get_agent_credentials(
-        agent_name,
-        mcp_servers,
-        current_user.username
-    )
-
-    if not agent_credentials:
-        agent_credentials = {}
+    # Get only explicitly assigned credentials
+    agent_credentials = credential_manager.get_assigned_credential_values(agent_name, current_user.username)
 
     mcp_config = None
     if mcp_template_content and template_data:
         generated_files = generate_credential_files(template_data, agent_credentials, agent_name)
         mcp_config = generated_files.get(".mcp.json")
+
+    # Get only explicitly assigned file-type credentials
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, current_user.username)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -539,7 +442,8 @@ async def reload_agent_credentials(
                 f"http://agent-{agent_name}:8000/api/credentials/update",
                 json={
                     "credentials": agent_credentials,
-                    "mcp_config": mcp_config
+                    "mcp_config": mcp_config,
+                    "files": file_credentials if file_credentials else None
                 },
                 timeout=30.0
             )
@@ -558,19 +462,6 @@ async def reload_agent_credentials(
             status_code=503,
             detail=f"Failed to connect to agent: {str(e)}"
         )
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="reload_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "credential_count": len(agent_credentials),
-            "updated_files": agent_response.get("updated_files", [])
-        }
-    )
 
     return {
         "message": f"Credentials reloaded on agent {agent_name}",
@@ -621,7 +512,15 @@ async def hot_reload_credentials(
     request: Request,
     current_user: User = Depends(get_current_user)
 ):
-    """Hot-reload credentials on a running agent by parsing .env-style text."""
+    """Hot-reload credentials on a running agent by parsing .env-style text.
+
+    This endpoint:
+    1. Parses .env-style KEY=VALUE text
+    2. Saves each credential to Redis (with conflict resolution)
+    3. Pushes credentials to the running agent's .env file
+
+    Credentials are persisted in Redis so they survive agent restarts.
+    """
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -633,6 +532,7 @@ async def hot_reload_credentials(
             detail=f"Agent is not running (status: {agent_status.status}). Start the agent first."
         )
 
+    # Parse credentials from text
     credentials = {}
     for line in request_body.credentials_text.splitlines():
         line = line.strip()
@@ -654,13 +554,37 @@ async def hot_reload_credentials(
             detail="No valid credentials found in the provided text"
         )
 
+    # Save credentials to Redis with conflict resolution AND assign to this agent
+    # This ensures hot-reloaded credentials persist across agent restarts
+    saved_credentials = []
+    for key, value in credentials.items():
+        result = credential_manager.import_credential_with_conflict_resolution(
+            key, value, current_user.username
+        )
+        saved_credentials.append({
+            "name": result["name"],
+            "status": result["status"],
+            "original": result.get("original")
+        })
+
+        # Also assign the credential to this agent
+        # Find the credential by name to get its ID
+        cred = credential_manager.get_credential_by_name(result["name"], current_user.username)
+        if cred:
+            credential_manager.assign_credential(agent_name, cred.id, current_user.username)
+
+    # Get only assigned file-type credentials (not all user credentials)
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, current_user.username)
+
+    # Push credentials to the running agent
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"http://agent-{agent_name}:8000/api/credentials/update",
                 json={
                     "credentials": credentials,
-                    "mcp_config": None
+                    "mcp_config": None,
+                    "files": file_credentials if file_credentials else None
                 },
                 timeout=30.0
             )
@@ -680,37 +604,249 @@ async def hot_reload_credentials(
             detail=f"Failed to connect to agent: {str(e)}"
         )
 
-    await log_audit_event(
-        event_type="credential_management",
-        action="hot_reload_credentials",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "credential_count": len(credentials),
-            "credential_names": list(credentials.keys())
-        }
-    )
-
     return {
         "message": f"Hot-reloaded {len(credentials)} credentials on agent {agent_name}",
         "credential_count": len(credentials),
         "credential_names": list(credentials.keys()),
         "updated_files": agent_response.get("updated_files", []),
+        "saved_to_redis": saved_credentials,
         "note": agent_response.get("note", "")
     }
 
 
+# ============================================================================
+# Agent Credential Assignment Endpoints
+# ============================================================================
+
+@router.get("/agents/{agent_name}/credentials/assignments")
+async def get_credential_assignments(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all credentials with assignment status for an agent.
+
+    Returns two lists:
+    - assigned: credentials currently assigned to this agent
+    - available: credentials owned by user but not assigned to this agent
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get assigned credential IDs
+    assigned_ids = credential_manager.get_assigned_credential_ids(agent_name)
+
+    # Get all user credentials
+    all_credentials = credential_manager.list_credentials(current_user.username)
+
+    assigned = []
+    available = []
+
+    for cred in all_credentials:
+        cred_info = {
+            "id": cred.id,
+            "name": cred.name,
+            "service": cred.service,
+            "type": cred.type,
+            "file_path": cred.file_path
+        }
+
+        if cred.id in assigned_ids:
+            assigned.append(cred_info)
+        else:
+            available.append(cred_info)
+
+    return {
+        "agent_name": agent_name,
+        "assigned": assigned,
+        "available": available
+    }
+
+
+@router.post("/agents/{agent_name}/credentials/assign")
+async def assign_credential(
+    agent_name: str,
+    request_body: CredentialAssignRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Assign a credential to an agent."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    success = credential_manager.assign_credential(
+        agent_name,
+        request_body.credential_id,
+        current_user.username
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Credential not found")
+
+    return {
+        "message": "Credential assigned to agent",
+        "credential_id": request_body.credential_id,
+        "agent_name": agent_name
+    }
+
+
+@router.delete("/agents/{agent_name}/credentials/assign/{cred_id}")
+async def unassign_credential(
+    agent_name: str,
+    cred_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Unassign a credential from an agent."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    success = credential_manager.unassign_credential(agent_name, cred_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Credential assignment not found")
+
+    return {
+        "message": "Credential unassigned from agent",
+        "credential_id": cred_id,
+        "agent_name": agent_name
+    }
+
+
+@router.post("/agents/{agent_name}/credentials/assign/bulk")
+async def bulk_assign_credentials(
+    agent_name: str,
+    request_body: CredentialBulkAssignRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Assign multiple credentials to an agent at once."""
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    assigned = []
+    failed = []
+
+    for cred_id in request_body.credential_ids:
+        success = credential_manager.assign_credential(
+            agent_name,
+            cred_id,
+            current_user.username
+        )
+        if success:
+            assigned.append(cred_id)
+        else:
+            failed.append(cred_id)
+
+    return {
+        "message": f"Assigned {len(assigned)} credentials to agent",
+        "assigned_count": len(assigned),
+        "assigned_ids": assigned,
+        "failed_ids": failed
+    }
+
+
+@router.post("/agents/{agent_name}/credentials/apply")
+async def apply_credentials(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Apply assigned credentials to a running agent.
+
+    Pushes all assigned credentials (env vars and files) to the agent.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent_status = get_agent_status_from_container(container)
+    if agent_status.status != "running":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent is not running (status: {agent_status.status}). Start the agent first."
+        )
+
+    # Get assigned credentials (env vars)
+    credentials = credential_manager.get_assigned_credential_values(agent_name, current_user.username)
+
+    # Get assigned file credentials
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, current_user.username)
+
+    # Get template data for .mcp.json generation
+    template_id = agent_status.template or ""
+    mcp_config = None
+
+    if template_id and not template_id.startswith("github:"):
+        templates_dir = Path("/agent-configs/templates")
+        if not templates_dir.exists():
+            templates_dir = Path("./config/agent-templates")
+
+        template_path = templates_dir / template_id / "template.yaml"
+        if template_path.exists():
+            with open(template_path) as f:
+                template_data = yaml.safe_load(f)
+
+            if template_data:
+                generated_files = generate_credential_files(template_data, credentials, agent_name)
+                mcp_config = generated_files.get(".mcp.json")
+
+    # Push to agent
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://agent-{agent_name}:8000/api/credentials/update",
+                json={
+                    "credentials": credentials,
+                    "mcp_config": mcp_config,
+                    "files": file_credentials if file_credentials else None
+                },
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                error_detail = response.json().get("detail", "Unknown error")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent rejected credential update: {error_detail}"
+                )
+
+            agent_response = response.json()
+
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to agent: {str(e)}"
+        )
+
+    return {
+        "message": f"Applied {len(credentials)} credentials to agent {agent_name}",
+        "credential_count": len(credentials),
+        "file_count": len(file_credentials),
+        "file_paths": list(file_credentials.keys()) if file_credentials else [],
+        "updated_files": agent_response.get("updated_files", []),
+        "files_written": agent_response.get("files_written", []),
+        "note": agent_response.get("note", "")
+    }
+
+
+# ============================================================================
+# Legacy MCP Server Credential Assignment (must be AFTER /assign routes)
+# ============================================================================
+
 @router.post("/agents/{agent_name}/credentials/{mcp_server}")
-async def assign_credential_to_agent(
+async def assign_credential_to_mcp_server(
     agent_name: str,
     mcp_server: str,
     cred_id: str,
     request: Request,
     current_user: User = Depends(get_current_user)
 ):
-    """Assign a credential to an agent for a specific MCP server."""
+    """Assign a credential to an agent for a specific MCP server (legacy)."""
     from services.docker_service import get_agent_by_name
 
     if not get_agent_by_name(agent_name):
@@ -725,16 +861,5 @@ async def assign_credential_to_agent(
 
     if not success:
         raise HTTPException(status_code=404, detail="Credential not found")
-
-    await log_audit_event(
-        event_type="credential_management",
-        action="assign_to_agent",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        resource=f"credential-{cred_id}",
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"mcp_server": mcp_server}
-    )
 
     return {"message": f"Credential assigned to {agent_name} for {mcp_server}"}

@@ -1,13 +1,15 @@
 # Feature: Agent-to-Agent Permissions System
 
+> **Updated**: 2026-01-03 - Added `get_agent_info` MCP tool enforcement. Documented new access control dependencies from `dependencies.py`. Permission endpoints currently use inline checks but can migrate to dependency pattern for consistency.
+
 ## Overview
 
-Fine-grained permission control for agent-to-agent communication. Allows owners to specify which agents their agents can collaborate with via Trinity MCP tools (`list_agents`, `chat_with_agent`). Enforced at the MCP server layer.
+Fine-grained permission control for agent-to-agent communication. Allows owners to specify which agents their agents can collaborate with via Trinity MCP tools (`list_agents`, `get_agent_info`, `chat_with_agent`). Enforced at the MCP server layer.
 
 **Requirement**: 9.10 - Agent-to-Agent Collaboration Permissions
 **Phase**: 9.10
 **Implemented**: 2025-12-10
-**Last Updated**: 2025-12-19
+**Last Updated**: 2026-01-03
 
 ## User Story
 
@@ -27,12 +29,13 @@ When an agent is created, it automatically receives **bidirectional permissions*
 ## Entry Points
 
 ### User Configuration (UI)
-- **UI**: `src/frontend/src/views/AgentDetail.vue:250-261` - Permissions tab button
-- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:801-890` - Checkbox list UI
+- **UI**: `src/frontend/src/views/AgentDetail.vue:288-299` - Permissions tab button
+- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:797-893` - Checkbox list UI
 
 ### MCP Tool Enforcement
-- **list_agents**: `src/mcp-server/src/tools/agents.ts:57-68` - Filters visible agents
-- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:26-57` - Blocks unauthorized calls
+- **list_agents**: `src/mcp-server/src/tools/agents.ts:61-74` - Filters visible agents
+- **get_agent_info**: `src/mcp-server/src/tools/agents.ts:119-139` - Access control for template metadata
+- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:29-67` - Blocks unauthorized calls
 
 ### Backend API
 - `GET /api/agents/{name}/permissions` - List permitted agents
@@ -46,7 +49,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### Components
 
-#### AgentDetail.vue:250-261 - Permissions Tab Button
+#### AgentDetail.vue:288-299 - Permissions Tab Button
 ```vue
 <button
   v-if="agent.can_share"
@@ -57,7 +60,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 </button>
 ```
 
-#### AgentDetail.vue:801-890 - Permissions Tab Content
+#### AgentDetail.vue:797-893 - Permissions Tab Content
 - Checkbox list of all other accessible agents
 - "Allow All" / "Allow None" bulk actions
 - Save button with dirty state tracking
@@ -65,7 +68,7 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### State Management
 
-#### `src/frontend/src/stores/agents.js:270-285`
+#### `src/frontend/src/stores/agents.js:275-290`
 
 ```javascript
 // Get permissions for an agent
@@ -88,32 +91,34 @@ async setAgentPermissions(name, permittedAgents) {
 }
 ```
 
-### Component Methods
+### Composable - Permission Methods
 
-#### AgentDetail.vue:1809-1855 - Permission Methods
+#### `src/frontend/src/composables/useAgentPermissions.js`
+
+Permission methods have been refactored to a composable for reusability:
 
 ```javascript
-// Load permissions from backend
+// Load permissions from backend (useAgentPermissions.js:18-37)
 const loadPermissions = async () => {
   permissionsLoading.value = true
-  const response = await agentsStore.getAgentPermissions(agent.value.name)
+  const response = await agentsStore.getAgentPermissions(agentRef.value.name)
   availableAgents.value = response.available_agents || []
   permissionsDirty.value = false
   permissionsLoading.value = false
 }
 
-// Save permissions to backend
+// Save permissions to backend (useAgentPermissions.js:39-66)
 const savePermissions = async () => {
   permissionsSaving.value = true
   const permittedAgentNames = availableAgents.value
     .filter(a => a.permitted)
     .map(a => a.name)
-  await agentsStore.setAgentPermissions(agent.value.name, permittedAgentNames)
+  await agentsStore.setAgentPermissions(agentRef.value.name, permittedAgentNames)
   permissionsDirty.value = false
   permissionsSaving.value = false
 }
 
-// Bulk actions
+// Bulk actions (useAgentPermissions.js:68-76)
 const allowAllAgents = () => {
   availableAgents.value.forEach(a => { a.permitted = true })
   permissionsDirty.value = true
@@ -129,11 +134,68 @@ const allowNoAgents = () => {
 
 ## Backend Layer
 
-### Endpoint: GET /api/agents/{name}/permissions
+### Architecture (Post-Refactoring)
 
-**File**: `src/backend/routers/agents.py:2037-2087`
+The permissions feature uses a **thin router + service layer** architecture:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Router | `src/backend/routers/agents.py:598-638` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/permissions.py` (169 lines) | Permission business logic |
+| Dependencies | `src/backend/dependencies.py:158-267` | Access control dependencies |
+
+### Access Control Dependencies
+
+**File**: `src/backend/dependencies.py:158-267`
+
+The backend provides reusable FastAPI dependencies for access control. These are used by several routers (schedules, public_links, git, sharing) and can be adopted by permission endpoints for consistency.
+
+#### Type Aliases
+
+| Type Alias | Dependency | Use Case |
+|------------|------------|----------|
+| `AuthorizedAgent` | `get_authorized_agent()` | Read access via `{name}` path param |
+| `OwnedAgent` | `get_owned_agent()` | Owner access via `{name}` path param |
+| `AuthorizedAgentByName` | `get_authorized_agent_by_name()` | Read access via `{agent_name}` path param |
+| `OwnedAgentByName` | `get_owned_agent_by_name()` | Owner access via `{agent_name}` path param |
+| `CurrentUser` | `get_current_user()` | Authenticated user info |
+
+#### Dependency Pattern Benefits
+
+Using these dependencies instead of inline `db.can_user_access_agent()` calls provides:
+- **Consistent 403 messages**: "Access denied to agent" or "Owner access required"
+- **OpenAPI schema visibility**: Authorization requirements shown in API docs
+- **Automatic enforcement**: New endpoints automatically get proper authorization
+
+#### Example: Dependency-based Pattern (recommended)
 
 ```python
+# schedules.py uses this pattern
+@router.get("/{name}/schedules")
+async def list_agent_schedules(name: AuthorizedAgent):  # Access check in dependency
+    return await list_schedules_logic(name)
+```
+
+#### Current: Inline Pattern (permissions endpoints)
+
+```python
+# Current permissions endpoints still use inline checks in service layer
+@router.get("/{agent_name}/permissions")
+async def get_agent_permissions(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    return await get_agent_permissions_logic(agent_name, current_user)
+    # Access check happens inside get_agent_permissions_logic()
+```
+
+### Endpoint: GET /api/agents/{name}/permissions
+
+**Router**: `src/backend/routers/agents.py:598-605`
+**Service**: `src/backend/services/agent_service/permissions.py:18-66`
+
+```python
+# Router (agents.py:598-605)
 @router.get("/{agent_name}/permissions")
 async def get_agent_permissions(
     agent_name: str,
@@ -141,9 +203,15 @@ async def get_agent_permissions(
     current_user: User = Depends(get_current_user)
 ):
     """Get permissions for an agent."""
-    # Check access
+    return await get_agent_permissions_logic(agent_name, current_user)
+```
+
+```python
+# Service (permissions.py:18-66) - Inline access check
+async def get_agent_permissions_logic(agent_name: str, current_user: User) -> dict:
+    """Get permissions for an agent."""
     if not db.can_user_access_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
 
     # Get permitted agents
     permitted_list = db.get_permitted_agents(agent_name)
@@ -171,51 +239,46 @@ async def get_agent_permissions(
 
 ### Endpoint: PUT /api/agents/{name}/permissions
 
-**File**: `src/backend/routers/agents.py:2090-2138`
+**Router**: `src/backend/routers/agents.py:608-616`
+**Service**: `src/backend/services/agent_service/permissions.py:69-106`
 
 ```python
-@router.put("/{agent_name}/permissions")
-async def set_agent_permissions(
+# Service (permissions.py:69-106) - Inline access check
+async def set_agent_permissions_logic(
     agent_name: str,
-    request: Request,
     body: dict,
-    current_user: User = Depends(get_current_user)
-):
+    current_user: User,
+    request: Request
+) -> dict:
     """Set permissions for an agent (full replacement)."""
-    # Only owner or admin
+    # Only owner or admin (inline check - could use OwnedAgentByName dependency)
     if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="Only the owner can modify agent permissions")
 
     permitted_agents = body.get("permitted_agents", [])
 
     # Validate all targets exist and are accessible
     for target in permitted_agents:
         if not db.can_user_access_agent(current_user.username, target):
-            raise HTTPException(status_code=400, detail=f"Agent '{target}' not accessible")
+            raise HTTPException(status_code=400, detail=f"Agent '{target}' does not exist or is not accessible")
 
     # Set permissions (replaces all existing)
     db.set_agent_permissions(agent_name, permitted_agents, current_user.username)
-
-    await log_audit_event(
-        event_type="agent_permissions",
-        action="set_permissions",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        details={"permitted_count": len(permitted_agents)}
-    )
 
     return {"status": "updated", "permitted_count": len(permitted_agents)}
 ```
 
 ### Endpoint: POST /api/agents/{name}/permissions/{target}
 
-**File**: `src/backend/routers/agents.py:2141-2183`
+**Router**: `src/backend/routers/agents.py:619-627`
+**Service**: `src/backend/services/agent_service/permissions.py:109-141`
 
 Adds a single permission. Returns `{status: "added"}` or `{status: "already_exists"}`.
 
 ### Endpoint: DELETE /api/agents/{name}/permissions/{target}
 
-**File**: `src/backend/routers/agents.py:2186-2220`
+**Router**: `src/backend/routers/agents.py:630-638`
+**Service**: `src/backend/services/agent_service/permissions.py:144-168`
 
 Removes a single permission. Returns `{status: "removed"}` or `{status: "not_found"}`.
 
@@ -225,7 +288,7 @@ Removes a single permission. Returns `{status: "removed"}` or `{status: "not_fou
 
 ### Database Table
 
-**File**: `src/backend/database.py:366-377`
+**File**: `src/backend/database.py:444-453`
 
 ```sql
 CREATE TABLE IF NOT EXISTS agent_permissions (
@@ -238,7 +301,7 @@ CREATE TABLE IF NOT EXISTS agent_permissions (
 )
 ```
 
-**Indexes** (`src/backend/database.py:432-433`):
+**Indexes** (created in `src/backend/database.py` table initialization):
 ```sql
 CREATE INDEX IF NOT EXISTS idx_permissions_source ON agent_permissions(source_agent)
 CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_agent)
@@ -259,11 +322,11 @@ CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_ag
 | `remove_permission(source, target)` | 112-125 | Remove single permission |
 | `set_permissions(source, targets, by)` | 127-155 | Full replacement (delete + insert) |
 | `delete_agent_permissions(agent)` | 157-180 | Cleanup when agent deleted |
-| `grant_default_permissions(agent, owner)` | 182-222 | Bidirectional with same-owner agents |
+| `grant_default_permissions(agent, owner)` | 182-223 | Bidirectional with same-owner agents |
 
 ### Database Manager Delegation
 
-**File**: `src/backend/database.py:735-757`
+**File**: `src/backend/database.py:964-986`
 
 ```python
 def get_permitted_agents(self, source_agent: str):
@@ -290,6 +353,8 @@ def grant_default_permissions(self, agent_name: str, owner_username: str):
 
 **File**: `src/mcp-server/src/client.ts:182-200`
 
+Note: Line numbers for MCP server are approximate and may vary with TypeScript transpilation.
+
 ```typescript
 // Get permitted agents for a source agent
 async getPermittedAgents(sourceAgent: string): Promise<string[]> {
@@ -313,7 +378,7 @@ async isAgentPermitted(sourceAgent: string, targetAgent: string): Promise<boolea
 
 ### list_agents Filtering
 
-**File**: `src/mcp-server/src/tools/agents.ts:57-68`
+**File**: `src/mcp-server/src/tools/agents.ts:61-74`
 
 ```typescript
 // Phase 9.10: Filter agents for agent-scoped keys
@@ -333,7 +398,7 @@ if (authContext?.scope === "agent" && authContext?.agentName) {
 
 ### chat_with_agent Permission Check
 
-**File**: `src/mcp-server/src/tools/chat.ts:26-57`
+**File**: `src/mcp-server/src/tools/chat.ts:29-67`
 
 ```typescript
 async function checkAgentAccess(
@@ -378,7 +443,7 @@ async function checkAgentAccess(
 
 ### CLAUDE.md Injection
 
-**File**: `docker/base-image/agent_server/routers/trinity.py:216-227`
+**File**: `docker/base-image/agent_server/routers/trinity.py` (around line 102-112)
 
 When Trinity is injected into an agent, the CLAUDE.md file is updated with an "Agent Collaboration" section:
 
@@ -400,28 +465,28 @@ Use `list_agents` to discover your available collaborators.
 
 ### Agent Creation
 
-**File**: `src/backend/routers/agents.py:668-675`
+**File**: `src/backend/services/agent_service/crud.py:474-480`
 
 ```python
 # Phase 9.10: Grant default permissions (Option B - same-owner agents)
 try:
     permissions_count = db.grant_default_permissions(config.name, current_user.username)
     if permissions_count > 0:
-        print(f"Granted {permissions_count} default permissions for agent {config.name}")
+        logger.info(f"Granted {permissions_count} default permissions for agent {config.name}")
 except Exception as e:
-    print(f"Warning: Failed to grant default permissions for {config.name}: {e}")
+    logger.warning(f"Failed to grant default permissions for {config.name}: {e}")
 ```
 
 ### Agent Deletion
 
-**File**: `src/backend/routers/agents.py:782-786`
+**File**: `src/backend/routers/agents.py:239-243`
 
 ```python
-# Phase 9.10: Delete agent permissions (both as source and target)
+# Delete agent permissions
 try:
     db.delete_agent_permissions(agent_name)
 except Exception as e:
-    print(f"Warning: Failed to delete permissions for agent {agent_name}: {e}")
+    logger.warning(f"Failed to delete permissions for agent {agent_name}: {e}")
 ```
 
 ---

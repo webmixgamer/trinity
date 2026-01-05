@@ -65,18 +65,22 @@ class ScheduleOperations:
             context_used=row["context_used"] if "context_used" in row_keys else None,
             context_max=row["context_max"] if "context_max" in row_keys else None,
             cost=row["cost"] if "cost" in row_keys else None,
-            tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None
+            tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None,
+            execution_log=row["execution_log"] if "execution_log" in row_keys else None
         )
 
     @staticmethod
     def _row_to_git_config(row) -> AgentGitConfig:
         """Convert an agent_git_config row to an AgentGitConfig model."""
+        row_keys = row.keys() if hasattr(row, 'keys') else []
         return AgentGitConfig(
             id=row["id"],
             agent_name=row["agent_name"],
             github_repo=row["github_repo"],
             working_branch=row["working_branch"],
             instance_id=row["instance_id"],
+            source_branch=row["source_branch"] if "source_branch" in row_keys else "main",
+            source_mode=bool(row["source_mode"]) if "source_mode" in row_keys else False,
             created_at=datetime.fromisoformat(row["created_at"]),
             last_sync_at=datetime.fromisoformat(row["last_sync_at"]) if row["last_sync_at"] else None,
             last_commit_sha=row["last_commit_sha"],
@@ -295,8 +299,40 @@ class ScheduleOperations:
     # Schedule Execution Management
     # =========================================================================
 
+    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual") -> Optional[ScheduleExecution]:
+        """Create a new execution record for a manual/API-triggered task (no schedule)."""
+        execution_id = self._generate_id()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO schedule_executions (
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                execution_id,
+                "__manual__",  # Special marker for manual/API-triggered tasks
+                agent_name,
+                "running",
+                now,
+                message,
+                triggered_by
+            ))
+            conn.commit()
+
+            return ScheduleExecution(
+                id=execution_id,
+                schedule_id="__manual__",
+                agent_name=agent_name,
+                status="running",
+                started_at=datetime.fromisoformat(now),
+                message=message,
+                triggered_by=triggered_by
+            )
+
     def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule") -> Optional[ScheduleExecution]:
-        """Create a new execution record."""
+        """Create a new execution record for a scheduled task."""
         execution_id = self._generate_id()
         now = datetime.utcnow().isoformat()
 
@@ -336,7 +372,8 @@ class ScheduleOperations:
         context_used: int = None,
         context_max: int = None,
         cost: float = None,
-        tool_calls: str = None
+        tool_calls: str = None,
+        execution_log: str = None
     ) -> bool:
         """Update execution status when completed."""
         with get_db_connection() as conn:
@@ -355,7 +392,7 @@ class ScheduleOperations:
             cursor.execute("""
                 UPDATE schedule_executions
                 SET status = ?, completed_at = ?, duration_ms = ?, response = ?, error = ?,
-                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?
+                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?, execution_log = ?
                 WHERE id = ?
             """, (
                 status,
@@ -367,6 +404,7 @@ class ScheduleOperations:
                 context_max,
                 cost,
                 tool_calls,
+                execution_log,
                 execution_id
             ))
             conn.commit()
@@ -404,12 +442,77 @@ class ScheduleOperations:
             row = cursor.fetchone()
             return self._row_to_schedule_execution(row) if row else None
 
+    def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
+        """Get execution statistics for all agents.
+
+        Returns aggregated stats per agent for the specified time window.
+
+        Args:
+            hours: Time window in hours (default: 24)
+
+        Returns:
+            List of dicts with agent execution stats
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    agent_name,
+                    COUNT(*) as task_count,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
+                    SUM(COALESCE(cost, 0)) as total_cost,
+                    MAX(started_at) as last_execution_at
+                FROM schedule_executions
+                WHERE started_at > datetime('now', ? || ' hours')
+                GROUP BY agent_name
+            """, (f"-{hours}",))
+
+            results = []
+            for row in cursor.fetchall():
+                task_count = row["task_count"]
+                success_count = row["success_count"]
+                success_rate = round((success_count / task_count * 100), 1) if task_count > 0 else 0
+
+                results.append({
+                    "name": row["agent_name"],
+                    "task_count_24h": task_count,
+                    "success_count": success_count,
+                    "failed_count": row["failed_count"],
+                    "running_count": row["running_count"],
+                    "success_rate": success_rate,
+                    "total_cost": round(row["total_cost"], 4) if row["total_cost"] else 0,
+                    "last_execution_at": row["last_execution_at"]
+                })
+
+            return results
+
     # =========================================================================
     # Git Configuration Management (Phase 7: GitHub Bidirectional Sync)
     # =========================================================================
 
-    def create_git_config(self, agent_name: str, github_repo: str, working_branch: str, instance_id: str, sync_paths: List[str] = None) -> Optional[AgentGitConfig]:
-        """Create git configuration for an agent."""
+    def create_git_config(
+        self,
+        agent_name: str,
+        github_repo: str,
+        working_branch: str,
+        instance_id: str,
+        sync_paths: List[str] = None,
+        source_branch: str = "main",
+        source_mode: bool = False
+    ) -> Optional[AgentGitConfig]:
+        """Create git configuration for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            github_repo: GitHub repository (e.g., "owner/repo")
+            working_branch: Branch for Trinity to work on (legacy mode) or same as source_branch
+            instance_id: Unique instance identifier
+            sync_paths: Paths to sync (default: memory/, outputs/, etc.)
+            source_branch: Branch to pull updates from (default: "main")
+            source_mode: If True, track source_branch directly without creating a working branch
+        """
         config_id = self._generate_id()
         now = datetime.utcnow().isoformat()
         sync_paths_json = json.dumps(sync_paths) if sync_paths else json.dumps(["memory/", "outputs/", "CLAUDE.md", ".claude/"])
@@ -420,9 +523,10 @@ class ScheduleOperations:
                 cursor.execute("""
                     INSERT INTO agent_git_config (
                         id, agent_name, github_repo, working_branch, instance_id,
-                        created_at, sync_enabled, sync_paths
-                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-                """, (config_id, agent_name, github_repo, working_branch, instance_id, now, sync_paths_json))
+                        source_branch, source_mode, created_at, sync_enabled, sync_paths
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (config_id, agent_name, github_repo, working_branch, instance_id,
+                      source_branch, 1 if source_mode else 0, now, sync_paths_json))
                 conn.commit()
 
                 return AgentGitConfig(
@@ -431,6 +535,8 @@ class ScheduleOperations:
                     github_repo=github_repo,
                     working_branch=working_branch,
                     instance_id=instance_id,
+                    source_branch=source_branch,
+                    source_mode=source_mode,
                     created_at=datetime.fromisoformat(now),
                     sync_enabled=True,
                     sync_paths=sync_paths_json

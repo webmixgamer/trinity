@@ -45,9 +45,20 @@ SECRET_KEY=your-secret-key-here
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your-secure-password
 
-# Anthropic API Key - Required for agents
+# Anthropic API Key - Required for Claude-powered agents
 ANTHROPIC_API_KEY=sk-ant-your-api-key
 ```
+
+### Google API Key (Optional - for Gemini-powered agents)
+
+To use Gemini CLI as an alternative runtime (free tier with 1M token context):
+
+```bash
+# Get from: https://makersuite.google.com/app/apikey
+GOOGLE_API_KEY=your-google-api-key
+```
+
+See [Gemini Support Guide](GEMINI_SUPPORT.md) for details on multi-runtime configuration.
 
 ### GitHub Templates (Optional)
 
@@ -66,29 +77,24 @@ GITHUB_PAT=github_pat_xxxxx
 
 **Note:** The PAT is stored in Redis with a fixed credential ID (`github-pat-templates`). If you update the PAT in `.env`, restart the backend to sync it to Redis.
 
-### Authentication Modes
+### Authentication
 
-Trinity supports two authentication modes:
+Trinity supports two login methods:
 
-#### Development Mode (Default)
-Username/password login for local development:
+#### Email Login (Primary)
+Users enter email → receive 6-digit code → login. Configure email provider:
 ```bash
-DEV_MODE_ENABLED=true
+EMAIL_PROVIDER=resend  # console (dev), smtp, sendgrid, resend
+RESEND_API_KEY=re_xxxxx  # If using Resend
+SMTP_FROM=noreply@your-domain.com
 ```
 
-#### Production Mode (Auth0)
-OAuth authentication via Auth0:
-```bash
-DEV_MODE_ENABLED=false
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_ALLOWED_DOMAIN=your-company.com  # Optional domain restriction
-```
+Manage allowed emails in Settings → Email Whitelist.
 
-Frontend Auth0 variables (in `src/frontend/.env.local`):
+#### Admin Login
+Password-based login for admin user:
 ```bash
-VITE_AUTH0_DOMAIN=your-tenant.us.auth0.com
-VITE_AUTH0_CLIENT_ID=your-client-id
-VITE_AUTH0_ALLOWED_DOMAIN=your-company.com
+ADMIN_PASSWORD=your-secure-password
 ```
 
 ## Production Deployment
@@ -190,8 +196,8 @@ EXTRA_CORS_ORIGINS=https://your-domain.com,http://your-domain.com
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server     │
 │     Port 3000       │     Port 8000       │    Port 8080    │
 ├─────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Audit Logger   │
-│   Internal only     │   /data volume      │    Port 8001    │
+│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)  │
+│   Internal only     │   /data volume      │    Port 8686    │
 ├─────────────────────────────────────────────────────────────┤
 │                    Agent Containers                          │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐                     │
@@ -245,10 +251,10 @@ docker logs agent-myagent
 - Ensure Redis is running: `docker compose ps redis`
 - Check Redis logs: `docker compose logs redis`
 
-**Auth0 not working**
-- Verify `DEV_MODE_ENABLED=false`
-- Check Auth0 domain and client ID in frontend `.env.local`
-- Verify callback URLs in Auth0 dashboard
+**Email login not working**
+- Check backend logs: `docker compose logs backend`
+- Verify EMAIL_PROVIDER is set correctly
+- For production, use `resend` or `smtp` (not `console`)
 
 ## Cloud Deployment Options
 
@@ -397,7 +403,7 @@ curl http://localhost:8889/metrics | grep claude_code
 
 1. **Never expose Redis externally** - Keep it internal only
 2. **Use strong SECRET_KEY** - Generate with `openssl rand -hex 32`
-3. **Enable Auth0 in production** - Don't use dev mode
+3. **Use email whitelist** - Restrict access to approved email addresses only
 4. **Regular backups** - Automate database backups
 5. **Limit agent SSH access** - Use firewall rules
 6. **Keep Docker updated** - Regular security patches

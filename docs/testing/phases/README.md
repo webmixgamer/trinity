@@ -48,7 +48,6 @@ The monolithic `UI_INTEGRATION_TEST.md` has been **split into individual phase f
 | 3 | Context Validation | 10 min | **CRITICAL: context %, progress bar** |
 | 4 | State Persistence | 10 min | File I/O, counter.txt, state |
 | 5 | Agent Collaboration + Permissions | 25 min | Trinity MCP, delegation, Pillar II, **permissions UI + enforcement** |
-| 6 | Workplan System | 20 min | Task DAGs, dependencies, Pillar I |
 | 7 | Scheduling | 15 min | Cron, execution history, autonomy |
 | 8 | Execution Queue | 15 min | Concurrency, 429, queue ordering |
 | 9 | File Browser | 10 min | Tree structure, download, security |
@@ -75,10 +74,12 @@ Context % MUST increase as messages are sent:
 - ✅ If increasing: Bug fixed, continue testing
 - ❌ If stuck at 0%: Critical bug exists, document and continue
 
-### Task Progress (IMPORTANT)
-Task indicator should show actual task name:
-- ✅ If shows "Task 1/5": Working correctly
-- ❌ If stuck at "—": Known issue, check Plans tab
+### Terminal Tab (Replaces Chat)
+All agents now use the Web Terminal for interaction:
+- Terminal tab is default on agent detail pages
+- Full CLI access to agent containers
+- Supports shell commands and Claude Code
+- Per-agent API key toggle available
 
 ---
 
@@ -96,13 +97,18 @@ All files in `docs/testing/phases/`:
 | **PHASE_03_CONTEXT_VALIDATION.md** | Context %, progress bar (CRITICAL) |
 | **PHASE_04_STATE_PERSISTENCE.md** | File I/O, counter operations |
 | **PHASE_05_AGENT_COLLABORATION.md** | Trinity MCP, delegation, **Permissions system** |
-| **PHASE_06_WORKPLAN_SYSTEM.md** | Task DAGs, dependencies, Pillar I |
 | **PHASE_07_SCHEDULING.md** | Cron, execution history, autonomy |
 | **PHASE_08_EXECUTION_QUEUE.md** | Concurrency, 429, queue ordering |
 | **PHASE_09_FILE_BROWSER.md** | Tree structure, download, security |
 | **PHASE_10_ERROR_HANDLING.md** | Failures, recovery, cascading |
 | **PHASE_11_MULTI_AGENT_DASHBOARD.md** | Dashboard with 8 agents |
 | **PHASE_12_CLEANUP.md** | Delete all agents, clean slate |
+| **PHASE_13_SETTINGS.md** | Trinity Prompt, Email Whitelist, API Keys |
+| **PHASE_14_OPENTELEMETRY.md** | OTel metrics, Observability UI |
+| **PHASE_15_SYSTEM_AGENT.md** | System Agent, Fleet Ops, Admin UI |
+| **PHASE_16_WEB_TERMINAL.md** | Browser CLI for all agents (Req 11.5) |
+| **PHASE_17_EMAIL_AUTHENTICATION.md** | Email OTP login flow (Req 12.4) |
+| **PHASE_18_GITHUB_INITIALIZATION.md** | GitHub repo sync for agents |
 
 ---
 

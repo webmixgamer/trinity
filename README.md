@@ -8,31 +8,53 @@ Unlike reactive chatbots ("System 1" AI), Deep Agents operate with deliberative 
 
 Trinity implements four foundational capabilities that transform simple AI assistants into autonomous agents:
 
-1. **Explicit Planning** — Workplans that persist outside the context window
-2. **Hierarchical Delegation** — Orchestrator-Worker pattern with context quarantine
-3. **Persistent Memory** — Virtual filesystems, memory folding, episodic memory
-4. **Extreme Context Engineering** — High-Order Prompts defining reasoning processes
+1. **Hierarchical Delegation** — Orchestrator-Worker pattern with context quarantine
+2. **Persistent Memory** — Virtual filesystems, vector databases, episodic memory
+3. **Extreme Context Engineering** — High-Order Prompts defining reasoning processes
+4. **Autonomous Operations** — Scheduling, monitoring, and self-healing capabilities
 
 ## Features
 
+### Core Platform
 - **Isolated Agent Containers** — Each agent runs in its own Docker container with dedicated resources
 - **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
 - **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
-- **MCP Integration** — 12 tools for external agent orchestration via Model Context Protocol
-- **Agent-to-Agent Communication** — Hierarchical delegation with permission controls
-- **Workplan System** — Visual task graphs with dependencies and progress tracking
+- **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
+
+### Agent Capabilities
+- **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
+- **MCP Integration** — 16 tools for external agent orchestration via Model Context Protocol
+- **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
+- **Persistent Memory** — File-based and database-backed memory across sessions
+- **Shared Folders** — File-based state sharing between agents via Docker volumes
+- **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
+
+### Operations
+- **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
+- **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
 - **Credential Management** — Redis-backed secrets with hot-reload capability
 - **Scheduling** — Cron-based automation for recurring agent tasks
+- **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
+- **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Browser** — Browse and download agent workspace files via web UI
+- **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
 
 ## Quick Start
 
 ### Prerequisites
 
 - Docker and Docker Compose v2+
-- Anthropic API key (for Claude-powered agents)
+- Anthropic API key (for Claude-powered agents) OR Google API key (for Gemini-powered agents)
 
-### Installation
+### One-Line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abilityai/trinity/main/install.sh | bash
+```
+
+This will clone the repository, configure environment, build the base image, and start all services.
+
+### Manual Installation
 
 ```bash
 # 1. Clone the repository
@@ -43,8 +65,6 @@ cd trinity
 cp .env.example .env
 # Edit .env - at minimum set:
 #   SECRET_KEY (generate with: openssl rand -hex 32)
-#   ADMIN_PASSWORD
-#   ANTHROPIC_API_KEY
 
 # 3. Build the base agent image
 ./scripts/deploy/build-base-image.sh
@@ -53,13 +73,20 @@ cp .env.example .env
 ./scripts/deploy/start.sh
 ```
 
+### First-Time Setup
+
+On first launch, Trinity will guide you through initial setup:
+
+1. Open http://localhost:3000 — you'll be redirected to the setup wizard
+2. Set your **admin password** (minimum 8 characters)
+3. Log in with username `admin` and your new password
+4. Go to **Settings** → **API Keys** to configure your Anthropic API key
+
 ### Access
 
 - **Web UI**: http://localhost:3000
 - **API Docs**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
-
-Default login (dev mode): `admin` / your configured `ADMIN_PASSWORD`
 
 ### Create Your First Agent
 
@@ -73,20 +100,22 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Trinity Platform                        │
-├─────────────────────────────────────────────────────────────┤
-│  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server     │
-│     Port 3000       │     Port 8000       │    Port 8080    │
-├─────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Audit Logger   │
-│   Internal only     │   /data volume      │    Port 8001    │
-├─────────────────────────────────────────────────────────────┤
-│                    Agent Containers                          │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐                     │
-│  │ Agent 1 │  │ Agent 2 │  │ Agent N │  ...                │
-│  └─────────┘  └─────────┘  └─────────┘                     │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       Trinity Platform                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server         │
+│     Port 3000       │     Port 8000       │    Port 8080        │
+├─────────────────────────────────────────────────────────────────┤
+│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)      │
+│   Internal only     │   /data volume      │    Port 8686        │
+├─────────────────────────────────────────────────────────────────┤
+│                    Agent Containers                              │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────────────┐    │
+│  │ Agent 1 │  │ Agent 2 │  │ Agent N │  │ trinity-system │    │
+│  └─────────┘  └─────────┘  └─────────┘  └────────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
+│  (Optional) OTel Collector - Port 4317/8889 for metrics export  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Project Structure
@@ -96,14 +125,16 @@ trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   ├── mcp-server/       # Trinity MCP server (12 tools)
-│   └── audit-logger/     # Security audit service
+│   └── mcp-server/       # Trinity MCP server (16 tools)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
 │   ├── backend/          # Backend Dockerfile
 │   └── frontend/         # Frontend Dockerfile
 ├── config/
-│   └── agent-templates/  # Pre-configured agent templates
+│   ├── agent-templates/  # Pre-configured agent templates
+│   ├── vector.yaml       # Vector log aggregation config
+│   ├── otel-collector.yaml # OpenTelemetry collector config
+│   └── trinity-meta-prompt/ # Platform injection templates
 ├── scripts/
 │   └── deploy/           # Deployment and management scripts
 └── docs/                 # Documentation
@@ -135,11 +166,10 @@ my-template/
 | [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) | **Multi-agent systems** — Architecture patterns, shared folders, coordination, deployment |
 
 The Multi-Agent System Guide covers Trinity's platform capabilities that enable autonomous operation:
-- **Vector Database (Chroma)** — Per-agent semantic memory with MCP tools
 - **Scheduling System** — Cron-based autonomous execution
-- **Workplan System** — Persistent task DAGs outside context window
 - **Shared Folders** — File-based state sharing between agents
 - **Agent-to-Agent MCP** — Real-time delegation and collaboration
+- **Centralized Logging** — Vector-based log aggregation from all containers
 
 ### Public Agent Templates
 
@@ -186,20 +216,77 @@ Trinity includes an MCP server for external orchestration of agents:
 
 ### Available Tools
 
+#### Agent Management
 | Tool | Description |
 |------|-------------|
 | `list_agents` | List all agents with status |
 | `get_agent` | Get detailed agent information |
-| `create_agent` | Create a new agent |
+| `create_agent` | Create a new agent from template |
 | `start_agent` | Start a stopped agent |
 | `stop_agent` | Stop a running agent |
 | `delete_agent` | Delete an agent |
-| `chat_with_agent` | Send a message and get response |
+
+#### Communication
+| Tool | Description |
+|------|-------------|
+| `chat_with_agent` | Send a message and get response (supports parallel mode) |
 | `get_chat_history` | Retrieve conversation history |
+| `get_agent_logs` | View container logs |
+
+#### System Management
+| Tool | Description |
+|------|-------------|
+| `deploy_system` | Deploy multi-agent system from YAML manifest |
+| `list_systems` | List deployed systems with agent counts |
+| `restart_system` | Restart all agents in a system |
+| `get_system_manifest` | Export system configuration as YAML |
+
+#### Configuration
+| Tool | Description |
+|------|-------------|
 | `list_templates` | List available templates |
 | `reload_credentials` | Hot-reload agent credentials |
 | `get_credential_status` | Check credential files |
-| `get_agent_logs` | View container logs |
+| `get_agent_ssh_access` | Generate ephemeral SSH credentials for direct terminal access |
+
+## Multi-Agent Systems
+
+Deploy coordinated multi-agent systems from a single YAML manifest:
+
+```yaml
+name: content-production
+description: Autonomous content pipeline
+
+agents:
+  orchestrator:
+    template: github:abilityai/agent-corbin
+    resources: {cpu: "2", memory: "4g"}
+    folders: {expose: true, consume: true}
+    schedules:
+      - name: daily-review
+        cron: "0 9 * * *"
+        message: "Review today's content pipeline"
+
+  writer:
+    template: github:abilityai/agent-ruby
+    folders: {expose: true, consume: true}
+
+permissions:
+  preset: full-mesh  # All agents can communicate
+```
+
+Deploy via MCP or API:
+```bash
+# Via MCP tool
+mcp__trinity__deploy_system(manifest="...")
+
+# Via REST API
+curl -X POST http://localhost:8000/api/systems/deploy \
+  -H "Content-Type: application/json" \
+  -d '{"manifest": "...", "dry_run": false}'
+```
+
+See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for architecture patterns and best practices.
 
 ## Configuration
 
@@ -207,32 +294,37 @@ Trinity includes an MCP server for external orchestration of agents:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SECRET_KEY` | Yes | JWT signing key |
-| `ADMIN_PASSWORD` | Yes | Admin user password |
-| `ANTHROPIC_API_KEY` | Yes | For Claude-powered agents |
-| `DEV_MODE_ENABLED` | No | Enable local login (default: true) |
-| `AUTH0_DOMAIN` | No | Auth0 tenant for OAuth |
+| `SECRET_KEY` | Yes | JWT signing key (generate with `openssl rand -hex 32`) |
+| `ADMIN_PASSWORD` | Yes | Admin password for admin login |
+| `ANTHROPIC_API_KEY` | No | For Claude-powered agents (can also be set via Settings UI) |
+| `GITHUB_PAT` | No | GitHub PAT for cloning private template repos |
+| `OTEL_ENABLED` | No | Enable OpenTelemetry metrics export (default: false) |
+| `EMAIL_PROVIDER` | No | Email provider: console (dev), smtp, sendgrid, resend |
 | `EXTRA_CORS_ORIGINS` | No | Additional CORS origins |
 
 See [.env.example](.env.example) for the complete list.
 
 ### Authentication
 
-**Development Mode** (default): Username/password login
-```bash
-DEV_MODE_ENABLED=true
-```
+Trinity supports two login methods:
 
-**Production Mode**: Auth0 OAuth
+1. **Email Login** (primary): Users enter email → receive 6-digit code → login
+2. **Admin Login**: Password-based login for admin user
+
 ```bash
-DEV_MODE_ENABLED=false
-AUTH0_DOMAIN=your-tenant.us.auth0.com
+# Admin password (required)
+ADMIN_PASSWORD=your-secure-password
+
+# Email provider for verification codes
+EMAIL_PROVIDER=console  # Use 'resend' or 'smtp' for production
 ```
 
 ## Documentation
 
 - [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — How to develop Trinity (context loading, testing, documentation)
 - [Deployment Guide](docs/DEPLOYMENT.md) — Production deployment instructions
+- [Versioning & Upgrades](docs/VERSIONING_AND_UPGRADES.md) — Version strategy and upgrade procedures
+- [Gemini Support Guide](docs/GEMINI_SUPPORT.md) — Using Gemini CLI runtime for cost optimization
 - [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) — Building multi-agent systems with coordinated workflows
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards

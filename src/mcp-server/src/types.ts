@@ -80,3 +80,56 @@ export interface AgentAccessCheckResult {
   allowed: boolean;
   reason?: string;       // Denial reason if not allowed
 }
+
+// Agent Template Info Types
+
+export interface AgentCommand {
+  name: string;
+  description: string;
+}
+
+export interface AgentTemplateInfo {
+  has_template: boolean;
+  agent_name: string;
+  name?: string;
+  display_name?: string;
+  tagline?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  type?: string;
+  resources?: {
+    cpu?: string;
+    memory?: string;
+  };
+  capabilities?: string[];
+  commands?: AgentCommand[];
+  mcp_servers?: string[];
+  sub_agents?: string[];
+  platforms?: string[];
+  tools?: string[];
+  skills?: string[];
+  use_cases?: string[];
+  status?: "running" | "stopped";
+}
+
+// SSH Access Types
+
+export interface SshConnectionInfo {
+  command: string;
+  host: string;
+  port: number;
+  user: string;
+  password?: string;  // Only for password auth
+}
+
+export interface SshAccessResponse {
+  status: string;
+  agent: string;
+  auth_method: "key" | "password";
+  connection: SshConnectionInfo;
+  private_key?: string;  // Only for key auth
+  expires_at: string;
+  expires_in_hours: number;
+  instructions: string[];
+}

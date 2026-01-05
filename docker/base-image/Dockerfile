@@ -30,9 +30,9 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa && \
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs
 
-RUN wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz && \
-    rm go1.21.5.linux-amd64.tar.gz
+RUN wget -q https://go.dev/dl/go1.23.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz && \
+    rm go1.23.4.linux-amd64.tar.gz
 
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
@@ -40,6 +40,9 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /
     apt-get install -y docker-ce-cli
 
 RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Install Gemini CLI for multi-runtime support
+RUN npm install -g @google/gemini-cli
 
 RUN useradd -m -s /bin/bash -u 1000 developer && \
     echo "developer:developer" | chpasswd && \
@@ -70,13 +73,7 @@ RUN python3 -m pip install --user --upgrade pip && \
         python-multipart \
         pyyaml \
         rich \
-        cryptography \
-        chromadb \
-        sentence-transformers \
-        chroma-mcp
-
-# Pre-download embedding model to cache in image (avoids download on first use)
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+        cryptography
 
 RUN mkdir -p /home/developer/.claude-agent
 

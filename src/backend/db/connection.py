@@ -8,7 +8,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
-# Database path - uses same volume as audit logger
+# Database path - stored in trinity-data volume
 DB_PATH = os.getenv("TRINITY_DB_PATH", "/data/trinity.db")
 
 

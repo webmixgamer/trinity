@@ -98,13 +98,61 @@ export function createAgentTools(
     },
 
     // ========================================================================
+    // get_agent_info - Get agent template metadata and capabilities
+    // ========================================================================
+    getAgentInfo: {
+      name: "get_agent_info",
+      description:
+        "Get full template metadata and capabilities for an agent. " +
+        "Returns detailed information from the agent's template.yaml including: " +
+        "display name, description, version, author, capabilities, available commands, " +
+        "MCP servers, tools, skills, and example use cases. " +
+        "Useful for understanding what an agent can do before interacting with it. " +
+        "Access control: agents can only get info about agents they have permission to call.",
+      parameters: z.object({
+        name: z.string().describe("The name of the agent to get information about"),
+      }),
+      execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        // Access control for agent-scoped keys
+        if (authContext?.scope === "agent" && authContext?.agentName) {
+          const callerAgentName = authContext.agentName;
+
+          // Agent can always get info about itself
+          if (name !== callerAgentName) {
+            // Check if caller has permission to access target agent
+            const permittedAgents = await apiClient.getPermittedAgents(callerAgentName);
+
+            if (!permittedAgents.includes(name)) {
+              console.log(`[get_agent_info] Agent '${callerAgentName}' denied access to '${name}' (not permitted)`);
+              return JSON.stringify({
+                error: "Access denied",
+                reason: `Agent '${callerAgentName}' does not have permission to access '${name}'`,
+                hint: "Request permission from the agent owner or use the agent permissions API",
+              }, null, 2);
+            }
+          }
+
+          console.log(`[get_agent_info] Agent '${callerAgentName}' accessing info for '${name}'`);
+        }
+
+        // System agents and user-scoped keys can access all agents they have access to
+        const info = await apiClient.getAgentInfo(name);
+        return JSON.stringify(info, null, 2);
+      },
+    },
+
+    // ========================================================================
     // create_agent - Create a new agent
     // ========================================================================
     createAgent: {
       name: "create_agent",
       description:
         "Create a new agent in the Trinity platform. " +
-        "You can specify a template to use pre-configured settings, or customize the agent type, resources, and tools. " +
+        "You can create agents from: (1) any GitHub repo using 'github:owner/repo' format (PAT must have access), " +
+        "(2) pre-defined templates from list_templates, or (3) local templates. " +
         "The agent will be started automatically after creation.",
       parameters: z.object({
         name: z
@@ -122,7 +170,10 @@ export function createAgentTools(
           .string()
           .optional()
           .describe(
-            "Template ID to use for agent configuration (e.g., 'ruby-social-media-agent'). " +
+            "Template to use for agent configuration. Supports: " +
+            "(1) Pre-defined templates from list_templates (e.g., 'github:abilityai/agent-ruby'), " +
+            "(2) Any GitHub repo with 'github:owner/repo' format - requires system GITHUB_PAT to have access, " +
+            "(3) Local templates with 'local:template-name'. " +
             "Templates include pre-configured .claude directories, MCP servers, and instructions."
           ),
         resources: z
@@ -329,155 +380,109 @@ export function createAgentTools(
     },
 
     // ========================================================================
+    // get_agent_ssh_access - Generate ephemeral SSH credentials for agent
+    // ========================================================================
+    getAgentSshAccess: {
+      name: "get_agent_ssh_access",
+      description:
+        "Generate ephemeral SSH credentials for direct terminal access to an agent container. " +
+        "Supports two auth methods: 'key' (save private key locally) or 'password' (one-liner with sshpass). " +
+        "Credentials expire automatically (default: 4 hours). Agent must be running. " +
+        "Ideal for Tailscale/VPN environments where you need direct SSH access. " +
+        "IMPORTANT: For key auth, save the private key immediately - it cannot be retrieved again.",
+      parameters: z.object({
+        agent_name: z.string().describe("Name of the agent to access"),
+        ttl_hours: z
+          .number()
+          .optional()
+          .default(4)
+          .describe("How long the SSH key should be valid (0.1-24 hours, default: 4)"),
+        auth_method: z
+          .enum(["key", "password"])
+          .optional()
+          .default("key")
+          .describe("Authentication method: 'key' for SSH key pair (more secure, requires saving key file), 'password' for one-liner with sshpass (convenient, requires sshpass installed)"),
+      }),
+      execute: async (
+        { agent_name, ttl_hours = 4, auth_method = "key" }: { agent_name: string; ttl_hours?: number; auth_method?: "key" | "password" },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(`[get_agent_ssh_access] Generating SSH access for agent '${agent_name}' (TTL: ${ttl_hours}h, method: ${auth_method})`);
+
+        const response = await apiClient.createSshAccess(agent_name, ttl_hours, auth_method);
+
+        // Return the response directly - it already has the right structure
+        return JSON.stringify(response, null, 2);
+      },
+    },
+
+    // ========================================================================
     // deploy_local_agent - Deploy a Trinity-compatible local agent
     // ========================================================================
     deployLocalAgent: {
       name: "deploy_local_agent",
       description:
-        "Deploy a Trinity-compatible local agent to Trinity platform. " +
-        "Packages the agent directory, auto-imports credentials from .env, and deploys. " +
-        "The agent must have a valid template.yaml file with 'name' and 'resources' fields. " +
+        "Deploy a Trinity-compatible local agent to the remote Trinity platform. " +
+        "IMPORTANT: The calling agent must package the directory locally before calling this tool. " +
+        "Steps for the calling agent: " +
+        "1. Create tar.gz archive: `tar -czf agent.tar.gz --exclude='.git' --exclude='node_modules' --exclude='__pycache__' --exclude='.venv' --exclude='.env' -C /path/to agent-dir` " +
+        "2. Base64 encode: `base64 -i agent.tar.gz` (macOS) or `base64 agent.tar.gz` (Linux) " +
+        "3. Optionally read .env file for credentials " +
+        "4. Call this tool with the base64 archive and credentials. " +
+        "The archive must contain a template.yaml with 'name' and 'resources' fields. " +
         "If agent name exists, creates new version (my-agent-2) and stops old one.",
       parameters: z.object({
-        path: z.string().describe("Absolute path to the local agent directory"),
+        archive: z
+          .string()
+          .describe(
+            "Base64-encoded tar.gz archive of the agent directory. " +
+            "The archive should contain the agent files at the root level (template.yaml, CLAUDE.md, etc.). " +
+            "Exclude .git, node_modules, __pycache__, .venv, and .env from the archive."
+          ),
+        credentials: z
+          .record(z.string())
+          .optional()
+          .describe(
+            "Key-value pairs of credentials to inject (e.g., {\"API_KEY\": \"sk-xxx\", \"SECRET\": \"yyy\"}). " +
+            "Read these from the local .env file before calling."
+          ),
         name: z
           .string()
           .optional()
-          .describe("Agent name (defaults to name from template.yaml)"),
-        include_env: z
-          .boolean()
-          .default(true)
-          .describe("Include credentials from local .env file (default: true)"),
+          .describe("Agent name override (defaults to name from template.yaml)"),
       }),
       execute: async (
-        args: { path: string; name?: string; include_env?: boolean },
+        args: { archive: string; credentials?: Record<string, string>; name?: string },
         context?: { session?: McpAuthContext }
       ) => {
-        const fs = await import("fs");
-        const path_module = await import("path");
-        const { execSync } = await import("child_process");
-
         const authContext = context?.session;
         const apiClient = getClient(authContext);
 
-        const agentPath = args.path;
-        const includeEnv = args.include_env !== false;
-
-        // 1. Validate path exists
-        if (!fs.existsSync(agentPath)) {
-          throw new Error(`Directory does not exist: ${agentPath}`);
-        }
-
-        // 2. Check for template.yaml (Trinity-compatible check)
-        const templatePath = path_module.join(agentPath, "template.yaml");
-        if (!fs.existsSync(templatePath)) {
+        // Validate archive is provided
+        if (!args.archive || args.archive.trim() === "") {
           throw new Error(
-            "Not Trinity-compatible: missing template.yaml. " +
-              "Create a template.yaml with at least 'name' and 'resources' fields."
+            "Archive is required. The calling agent must package the local directory as a base64-encoded tar.gz."
           );
         }
 
-        // 3. Read and validate template.yaml
-        let templateContent: string;
-        try {
-          templateContent = fs.readFileSync(templatePath, "utf-8");
-        } catch (e) {
-          throw new Error(`Failed to read template.yaml: ${e}`);
-        }
-
-        // Basic YAML validation (check for required fields)
-        if (!templateContent.includes("name:")) {
+        // Basic validation - check it looks like base64
+        if (!/^[A-Za-z0-9+/=]+$/.test(args.archive.replace(/\s/g, ""))) {
           throw new Error(
-            "Not Trinity-compatible: template.yaml missing 'name' field"
-          );
-        }
-        if (!templateContent.includes("resources:")) {
-          throw new Error(
-            "Not Trinity-compatible: template.yaml missing 'resources' field"
+            "Invalid archive format. Must be a base64-encoded string."
           );
         }
 
-        // 4. Read credentials from .env if requested
-        const credentials: Record<string, string> = {};
-        if (includeEnv) {
-          const envPath = path_module.join(agentPath, ".env");
-          if (fs.existsSync(envPath)) {
-            const envContent = fs.readFileSync(envPath, "utf-8");
-            for (const line of envContent.split("\n")) {
-              const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith("#")) continue;
-              const eqIndex = trimmed.indexOf("=");
-              if (eqIndex > 0) {
-                const key = trimmed.substring(0, eqIndex).trim();
-                let value = trimmed.substring(eqIndex + 1).trim();
-                // Remove surrounding quotes
-                if (
-                  (value.startsWith('"') && value.endsWith('"')) ||
-                  (value.startsWith("'") && value.endsWith("'"))
-                ) {
-                  value = value.slice(1, -1);
-                }
-                // Only include valid env var names
-                if (/^[A-Z][A-Z0-9_]*$/.test(key) && value) {
-                  credentials[key] = value;
-                }
-              }
-            }
-            console.log(
-              `[deploy_local_agent] Read ${Object.keys(credentials).length} credentials from .env`
-            );
-          }
-        }
-
-        // 5. Create tar.gz archive
-        // Use shell command for simplicity (tar is available on all platforms)
-        const archivePath = `/tmp/trinity-deploy-${Date.now()}.tar.gz`;
-        const excludes = [
-          ".git",
-          "node_modules",
-          "__pycache__",
-          ".venv",
-          "venv",
-          ".env", // We extract credentials separately, don't include in archive
-          "*.pyc",
-          ".DS_Store",
-        ];
-
-        const excludeArgs = excludes.map((e) => `--exclude='${e}'`).join(" ");
-
-        try {
-          execSync(
-            `tar -czf "${archivePath}" ${excludeArgs} -C "${path_module.dirname(agentPath)}" "${path_module.basename(agentPath)}"`,
-            { stdio: "pipe" }
-          );
-        } catch (e) {
-          throw new Error(`Failed to create archive: ${e}`);
-        }
-
-        // 6. Read and base64 encode
-        const archiveBuffer = fs.readFileSync(archivePath);
-        const archiveBase64 = archiveBuffer.toString("base64");
-
-        // Check size limit (50MB)
-        if (archiveBuffer.length > 50 * 1024 * 1024) {
-          fs.unlinkSync(archivePath);
-          throw new Error(
-            `Archive too large: ${(archiveBuffer.length / (1024 * 1024)).toFixed(1)}MB exceeds 50MB limit`
-          );
-        }
-
-        // Cleanup archive
-        try {
-          fs.unlinkSync(archivePath);
-        } catch {
-          // Ignore cleanup errors
-        }
-
+        // Log for debugging
+        const archiveSize = Math.round((args.archive.length * 3) / 4 / 1024);
+        const credCount = args.credentials ? Object.keys(args.credentials).length : 0;
         console.log(
-          `[deploy_local_agent] Created archive: ${(archiveBuffer.length / 1024).toFixed(1)}KB`
+          `[deploy_local_agent] Deploying archive: ~${archiveSize}KB, ${credCount} credentials`
         );
 
-        // 7. Call backend
+        // Call backend
         interface DeployLocalResponse {
           status: string;
           agent?: {
@@ -509,10 +514,89 @@ export function createAgentTools(
           "POST",
           "/api/agents/deploy-local",
           {
-            archive: archiveBase64,
-            credentials:
-              Object.keys(credentials).length > 0 ? credentials : undefined,
+            archive: args.archive,
+            credentials: args.credentials,
             name: args.name,
+          }
+        );
+
+        return JSON.stringify(response, null, 2);
+      },
+    },
+
+    // ========================================================================
+    // initialize_github_sync - Initialize GitHub synchronization for an agent
+    // ========================================================================
+    initializeGithubSync: {
+      name: "initialize_github_sync",
+      description:
+        "Initialize GitHub synchronization for an existing agent (not created from GitHub template). " +
+        "Creates a GitHub repository (if requested), initializes git in the agent workspace, " +
+        "commits the current state, pushes to GitHub, and creates a working branch for sync. " +
+        "Requires GitHub Personal Access Token (PAT) to be configured in system settings with 'repo' scope. " +
+        "Note: Agents created from GitHub templates already have git sync enabled in source mode (pull-only). " +
+        "Agent must be running.",
+      parameters: z.object({
+        agent_name: z
+          .string()
+          .describe("The name of the agent to initialize GitHub sync for"),
+        repo_owner: z
+          .string()
+          .describe("GitHub username or organization name (e.g., 'your-username')"),
+        repo_name: z
+          .string()
+          .describe("Repository name (e.g., 'my-agent')"),
+        create_repo: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Whether to create the repository if it doesn't exist (default: true)"),
+        private: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Whether the new repository should be private (default: true)"),
+        description: z
+          .string()
+          .optional()
+          .describe("Repository description (optional)"),
+      }),
+      execute: async (
+        args: {
+          agent_name: string;
+          repo_owner: string;
+          repo_name: string;
+          create_repo?: boolean;
+          private?: boolean;
+          description?: string;
+        },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(
+          `[initialize_github_sync] Initializing GitHub sync for agent '${args.agent_name}' -> ${args.repo_owner}/${args.repo_name}`
+        );
+
+        interface GitInitializeResponse {
+          success: boolean;
+          message: string;
+          github_repo: string;
+          working_branch: string;
+          instance_id: string;
+          repo_url: string;
+        }
+
+        const response = await apiClient.request<GitInitializeResponse>(
+          "POST",
+          `/api/agents/${args.agent_name}/git/initialize`,
+          {
+            repo_owner: args.repo_owner,
+            repo_name: args.repo_name,
+            create_repo: args.create_repo ?? true,
+            private: args.private ?? true,
+            description: args.description,
           }
         );
 

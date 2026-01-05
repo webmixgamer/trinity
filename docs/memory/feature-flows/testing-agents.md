@@ -2,21 +2,21 @@
 
 > **Status**: Implemented and Tested
 > **Created**: 2025-12-07
-> **Last Updated**: 2025-12-19
-> **Last Tested**: 2025-12-17 (179/179 tests passing)
+> **Last Updated**: 2025-12-30
+> **Last Tested**: 2025-12-30 (474+ tests in suite)
 > **Purpose**: Systematic verification of Trinity platform functionality using predictable test agents and automated pytest suite
 
 ---
 
 ## Overview
 
-Trinity includes a comprehensive test suite with **179 automated pytest tests** covering backend APIs, agent-server endpoints, and platform functionality. Additionally, there are **8 testing agent repositories** (local only) designed for manual integration testing with predictable, deterministic behavior.
+Trinity includes a comprehensive test suite with **474+ automated pytest tests** covering backend APIs, agent-server endpoints, and platform functionality. Additionally, there are **8 testing agent repositories** (local only) designed for manual integration testing with predictable, deterministic behavior.
 
 ### Automated Test Suite (Primary)
 - **Location**: `tests/` directory
 - **Framework**: pytest with async support
-- **Coverage**: Backend API, agent-server, schedules, credentials, templates, permissions
-- **Status**: 179/179 passing (as of 2025-12-17)
+- **Coverage**: Backend API, agent-server, schedules, credentials, templates, permissions, activities, systems, and more
+- **Status**: 474+ tests across 32 test files (as of 2025-12-30)
 
 ### Manual Test Agents (Secondary)
 - **Location**: `repositories/test-agent-*` (local repos, not in GitHub)
@@ -35,7 +35,6 @@ As a Trinity developer, I want predictable test agents so that I can systematica
 |-------|------------|-------|----------|--------|
 | **test-echo** | `github:abilityai/test-agent-echo` | Basic chat, streaming | HIGH | PASSED |
 | **test-counter** | `github:abilityai/test-agent-counter` | File persistence, state | MEDIUM | PASSED |
-| **test-worker** | `github:abilityai/test-agent-worker` | Workplan system (Pillar I) | HIGH | PARTIAL |
 | **test-delegator** | `github:abilityai/test-agent-delegator` | Agent-to-agent (Pillar II) | HIGH | PASSED |
 | **test-scheduler** | `github:abilityai/test-agent-scheduler` | Cron execution | HIGH | Configured |
 | **test-queue** | `github:abilityai/test-agent-queue` | Execution queue, 429 | HIGH | Configured |
@@ -121,8 +120,8 @@ As a Trinity developer, I want predictable test agents so that I can systematica
 
 | File | Line | Purpose |
 |------|------|---------|
-| `src/backend/config.py` | 64 | `GITHUB_TEMPLATES` - Production templates only |
-| `src/backend/config.py` | 137 | `ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES` |
+| `src/backend/config.py` | 99 | `GITHUB_TEMPLATES` - Production templates only |
+| `src/backend/config.py` | 172 | `ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES` |
 | `src/backend/routers/templates.py` | 9 | Imports `ALL_GITHUB_TEMPLATES` |
 | `src/backend/services/template_service.py` | 11 | Imports `ALL_GITHUB_TEMPLATES` |
 | `src/backend/services/template_service.py` | 14-19 | `get_github_template()` function |
@@ -135,7 +134,6 @@ tests/
   test_agent_lifecycle.py        # Create, start, stop, delete agents
   test_agent_chat.py             # Chat with agents, streaming
   test_agent_files.py            # File browser API
-  test_agent_plans.py            # Workplan system
   test_agent_git.py              # Git sync operations
   test_agent_sharing.py          # Agent sharing/permissions
   test_agent_permissions.py      # Agent-to-agent permissions
@@ -155,18 +153,16 @@ tests/
     test_agent_info.py           # Info endpoint tests
     test_agent_chat_direct.py    # Direct chat tests
     test_agent_files_direct.py   # Direct file API tests
-    test_agent_plans_direct.py   # Direct workplan tests
 ```
 
 ### Local Repository Structure (Manual Testing Only)
 
-The 8 test agent repositories exist locally in `repositories/` for manual integration testing:
+The 7 test agent repositories exist locally in `repositories/` for manual integration testing:
 
 ```
 repositories/
   test-agent-echo/        # Basic chat, streaming
   test-agent-counter/     # File persistence, state
-  test-agent-worker/      # Workplan system (Pillar I)
   test-agent-delegator/   # Agent-to-agent (Pillar II)
   test-agent-scheduler/   # Cron execution (not in GitHub)
   test-agent-queue/       # Execution queue (not in GitHub)
@@ -216,20 +212,7 @@ Characters: [character count]
 - Context window growth
 - File browser API
 
-### 3. test-worker - Workplan System
-
-**Commands**: `create plan: [desc]`, `complete task: [id]`, `fail task: [id]`, `plan status`, `complete plan`
-
-**Tests**:
-- Workplan creation API
-- Task dependencies (blocked -> pending)
-- Plan completion/archiving
-- Dashboard visibility
-- Trinity command injection
-
-> **Note**: Workplan slash commands not yet implemented in GitHub repo CLAUDE.md
-
-### 4. test-delegator - Agent-to-Agent Communication
+### 3. test-delegator - Agent-to-Agent Communication
 
 **Commands**: `list agents`, `delegate to [agent]: [message]`, `ping [agent]`, `chain [a1] [a2]: [msg]`, `broadcast: [msg]`
 
@@ -311,17 +294,7 @@ Setup: test-queue
 3. Verify via GET /api/agents/test-queue/queue
 ```
 
-### Scenario 3: Workplan Lifecycle
-```
-Setup: test-worker
-
-1. "create plan: Integration Test" -> Plan created with 3 tasks
-2. Dashboard shows plan visibility
-3. "complete task: task-1" -> task-2 unblocks
-4. Complete remaining tasks -> Plan archives
-```
-
-### Scenario 4: Scheduled Delegation
+### Scenario 3: Scheduled Delegation
 ```
 Setup: test-delegator + test-counter
 
@@ -373,15 +346,6 @@ Setup: test-delegator + test-counter
 3. Send: "increment" -> Counter: 1
 4. Send: "add 10" -> Counter: 11
 5. **Verify**: File browser shows counter.txt
-
-### Test: Workplan Creation (PARTIAL)
-
-1. Create test-worker agent
-2. Send: "create plan: Test"
-3. **Verify**: Plans tab shows new plan with 3 tasks
-4. Dashboard shows plan in AgentNode
-
-> **Note**: Slash command parsing not yet in test-worker CLAUDE.md
 
 ### Test: Agent Collaboration (PASSED 2025-12-08)
 
@@ -440,7 +404,6 @@ test-agent-{name}/
 
 - **Testing Guide**: `docs/TESTING_GUIDE.md`
 - **Agent Lifecycle**: `docs/memory/feature-flows/agent-lifecycle.md`
-- **Workplan System**: `docs/memory/feature-flows/workplan-system.md`
 - **Agent Network**: `docs/memory/feature-flows/agent-network.md`
 - **Execution Queue**: `docs/memory/feature-flows/execution-queue.md`
 
@@ -454,7 +417,6 @@ test-agent-{name}/
 | Agent-Server Main | `docker/base-image/agent_server/main.py` |
 | Agent-Server Chat | `docker/base-image/agent_server/routers/chat.py` |
 | Agent-Server Files | `docker/base-image/agent_server/routers/files.py` |
-| Agent-Server Plans | `docker/base-image/agent_server/routers/plans.py` |
 | Test Fixtures | `tests/conftest.py` |
 
 ---
@@ -473,3 +435,5 @@ test-agent-{name}/
 | 2025-12-08 | Documented known issues: Template pre-selection bug, session expiration |
 | 2025-12-17 | Automated pytest suite: 179/179 tests passing |
 | 2025-12-19 | Updated documentation: Test agent templates removed from config.py, backend modularized (routers/), agent-server refactored to modular package (docker/base-image/agent_server/) |
+| 2025-12-23 | Removed reference to deleted plans router (Workplan/Task DAG system removed per Req 9.8) |
+| 2025-12-30 | Updated test count to 474+ tests, corrected config.py line numbers (GITHUB_TEMPLATES now at line 99, ALL_GITHUB_TEMPLATES at line 172) |

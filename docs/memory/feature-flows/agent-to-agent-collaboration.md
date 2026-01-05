@@ -320,53 +320,59 @@ Agent A Container
                                                          └─> Response returned to Agent A
 ```
 
-### Authentication Flow (Updated 2025-12-02)
+### Authentication Flow (Updated 2025-12-30)
 
 **Critical Change**: Authentication context now flows via FastMCP session pattern:
 
-1. **MCP Server Authentication** (`src/mcp-server/src/server.ts:106-139`):
+1. **MCP Server Authentication** (`src/mcp-server/src/server.ts:109-149`):
    ```typescript
    authenticate: async (request) => {
      const apiKey = extractBearerToken(request);
      const result = await validateMcpApiKey(trinityApiUrl, apiKey);
 
      // Return McpAuthContext - FastMCP stores in session
+     // System scope agents have full access to all agents (Phase 11.1)
      const authContext: McpAuthContext = {
        userId: result.user_id,
        userEmail: result.user_email,
        keyName: result.key_name,
-       agentName: result.agent_name,  // Set for agent-scoped keys
-       scope: result.scope as "user" | "agent",
+       agentName: result.agent_name,  // Set for agent-scoped or system-scoped keys
+       scope: result.scope as "user" | "agent" | "system",
        mcpApiKey: apiKey
      };
      return authContext;  // FastMCP stores this in session
    }
    ```
 
-2. **Tool Execution Context** (`src/mcp-server/src/tools/chat.ts:100-112`):
+2. **Tool Execution Context** (`src/mcp-server/src/tools/chat.ts:206-207`):
    ```typescript
-   execute: async ({ agent_name, message }, context: any) => {
+   execute: async ({ agent_name, message, parallel, ... }, context: any) => {
      // Get auth context from FastMCP session (NOT getAuthContext)
      const authContext = requireApiKey ? context?.session : undefined;
 
      // Access control uses session data
-     const accessCheck = await checkAgentAccess(client, authContext, agent_name);
+     const accessCheck = await checkAgentAccess(apiClient, authContext, agent_name);
    }
    ```
 
-3. **Access Control** (`src/mcp-server/src/tools/chat.ts:21-73`):
+3. **Access Control** (`src/mcp-server/src/tools/chat.ts:29-100`):
    ```typescript
    async function checkAgentAccess(
      client: TrinityClient,
      authContext: McpAuthContext | undefined,  // From context.session
      targetAgentName: string
    ): Promise<AgentAccessCheckResult> {
-     // Extract caller identity
-     if (authContext?.scope === "agent" && authContext.agentName) {
-       const callerAgent = await client.getAgentAccessInfo(authContext.agentName);
-       callerOwner = callerAgent.owner;
+     // Phase 11.1: System-scoped keys bypass ALL permission checks
+     if (authContext?.scope === "system") {
+       return { allowed: true };
      }
-     // ... check access rules
+
+     // Phase 9.10: Agent-scoped keys use permission system
+     if (authContext?.scope === "agent" && authContext.agentName) {
+       const isPermitted = await client.isAgentPermitted(callerAgentName, targetAgentName);
+       // ...
+     }
+     // ... check access rules for user-scoped keys
    }
    ```
 
@@ -376,10 +382,10 @@ Agent A Container
 
 | Layer | File | Key Lines | Purpose |
 |-------|------|-----------|---------|
-| **Agent Layer** | `docker/base-image/agent-server.py` | 420-470 | Trinity MCP injection, .mcp.json loading |
-| **MCP Auth** | `src/mcp-server/src/server.ts` | 106-139 | FastMCP authenticate callback, returns McpAuthContext |
-| **MCP Tools** | `src/mcp-server/src/tools/chat.ts` | 111 | Gets auth from `context.session` |
-| **Access Control** | `src/mcp-server/src/tools/chat.ts` | 21-73 | checkAgentAccess using session context |
+| **Agent Layer** | `docker/base-image/agent_server/services/trinity_mcp.py` | Full file | Trinity MCP injection, .mcp.json loading |
+| **MCP Auth** | `src/mcp-server/src/server.ts` | 109-149 | FastMCP authenticate callback, returns McpAuthContext |
+| **MCP Tools** | `src/mcp-server/src/tools/chat.ts` | 207 | Gets auth from `context.session` |
+| **Access Control** | `src/mcp-server/src/tools/chat.ts` | 29-100 | checkAgentAccess using session context |
 | **Types** | `src/mcp-server/src/types.ts` | 64-71 | McpAuthContext interface |
 | **Client** | `src/mcp-server/src/client.ts` | 152-162 | getAgentAccessInfo method |
 | **Backend** | `src/backend/routers/mcp_keys.py` | 1-200 | Agent-scoped MCP API key generation |
@@ -388,12 +394,28 @@ Agent A Container
 
 ### Access Control Matrix
 
+**For User-scoped keys (backward compatibility):**
+
 | Caller Type | Target Agent Owner | Target is_shared | Access |
 |-------------|-------------------|------------------|---------|
-| Agent (same owner) | Same | Any | ✅ Allowed |
-| Agent (different owner) | Different | true | ✅ Allowed |
-| Agent (different owner) | Different | false | ❌ Denied |
-| Admin agent/user | Any | Any | ✅ Allowed |
+| User (same owner) | Same | Any | Allowed |
+| User (different owner) | Different | true | Allowed |
+| User (different owner) | Different | false | Denied |
+| Admin user | Any | Any | Allowed |
+
+**For Agent-scoped keys (Phase 9.10):**
+
+| Caller Type | Target Agent | Access |
+|-------------|--------------|---------|
+| Agent (self) | Same agent | Allowed |
+| Agent | Target in permissions list | Allowed |
+| Agent | Target NOT in permissions list | Denied (even if same owner) |
+
+**For System-scoped keys (Phase 11.1):**
+
+| Caller Type | Target Agent | Access |
+|-------------|--------------|---------|
+| System agent | Any | Allowed (bypasses ALL checks) |
 
 ### WebSocket Events
 
@@ -432,9 +454,12 @@ Visualized in real-time on the [Collaboration Dashboard](collaboration-dashboard
 ---
 
 ## Status
-✅ **Implemented and Tested** - Agent-to-agent collaboration working as of 2025-11-30
-- Same-owner communication: ✅ Verified
-- Access denial (different owner, not shared): ✅ Verified
-- Audit logging: ✅ Verified
-- Authentication context fix: ✅ Updated 2025-12-02 (context.session pattern)
-- All line numbers accurate as of 2025-12-02
+**Implemented and Tested** - Agent-to-agent collaboration working
+- Same-owner communication: Verified (2025-11-30)
+- Access denial (different owner, not shared): Verified (2025-11-30)
+- Audit logging: Verified (2025-11-30)
+- Authentication context fix: Updated 2025-12-02 (context.session pattern)
+- Agent-scoped permission system (Phase 9.10): Added 2025-12
+- System-scoped keys (Phase 11.1): Added 2025-12
+- Parallel execution mode: Added 2025-12-22
+- Line numbers updated as of 2025-12-30

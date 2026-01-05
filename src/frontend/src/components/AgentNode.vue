@@ -1,32 +1,35 @@
 <template>
   <div
     :class="[
-      'px-5 py-4 rounded-xl border-2 shadow-lg',
+      'px-5 py-4 rounded-xl border shadow-lg',
       'transition-all duration-200 hover:shadow-xl cursor-move',
       'relative',
       'flex flex-col',
-      // System agent gets distinct purple styling
+      'backdrop-blur-sm',
+      // System agent gets distinct purple styling with transparency
       isSystemAgent
-        ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
-        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+        ? 'bg-purple-50/80 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700/50'
+        : 'bg-white/80 dark:bg-gray-800/80 border-gray-200/60 dark:border-gray-700/50'
     ]"
-    style="width: 280px; min-height: 160px;"
+    style="width: 320px; min-height: 180px;"
   >
-    <!-- Connection handles -->
+    <!-- Connection handles - styled for permission edge creation -->
     <Handle
       type="target"
       :position="Position.Top"
-      class="w-3 h-3 border-2 bg-gray-300 dark:bg-gray-600 border-gray-100 dark:border-gray-500"
+      class="!w-4 !h-4 !border-2 !bg-blue-400 !border-white dark:!border-gray-800 hover:!bg-blue-500 hover:!scale-125 !transition-all !duration-150"
     />
 
     <!-- Agent info -->
     <div class="flex flex-col flex-grow">
-      <!-- Header with name, system badge, and status dot -->
+      <!-- Header with name, runtime badge, system badge, and status dot -->
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center flex-1 mr-2 min-w-0">
           <div class="text-gray-900 dark:text-white font-bold text-base truncate" :title="data.label">
             {{ data.label }}
           </div>
+          <!-- Runtime badge (Claude/Gemini) -->
+          <RuntimeBadge :runtime="data.runtime" :show-label="false" class="ml-2 flex-shrink-0" />
           <!-- System agent badge -->
           <span
             v-if="isSystemAgent"
@@ -46,8 +49,8 @@
         ></div>
       </div>
 
-      <!-- Activity state label -->
-      <div class="flex items-center space-x-2 mb-2">
+      <!-- Activity state label and autonomy toggle -->
+      <div class="flex items-center justify-between mb-2">
         <div
           :class="[
             'text-xs font-medium capitalize',
@@ -56,14 +59,57 @@
         >
           {{ activityStateLabel }}
         </div>
+        <!-- Autonomy toggle switch with label (not for system agent) -->
+        <div v-if="!isSystemAgent" class="flex items-center gap-1.5">
+          <span
+            :class="[
+              'text-xs font-medium transition-colors',
+              autonomyEnabled
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-gray-400 dark:text-gray-500'
+            ]"
+          >
+            {{ autonomyEnabled ? 'AUTO' : 'Manual' }}
+          </span>
+          <button
+            @click="handleAutonomyToggle"
+            :disabled="autonomyLoading"
+            :class="[
+              'nodrag relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2',
+              autonomyEnabled
+                ? 'bg-amber-500 focus:ring-amber-500'
+                : 'bg-gray-200 dark:bg-gray-600 focus:ring-gray-400',
+              autonomyLoading ? 'opacity-50 cursor-wait' : ''
+            ]"
+            :title="autonomyEnabled ? 'Autonomy Mode ON - Click to disable scheduled tasks' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
+            role="switch"
+            :aria-checked="autonomyEnabled"
+          >
+            <span class="sr-only">Toggle autonomy mode</span>
+            <span
+              :class="[
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                autonomyEnabled ? 'translate-x-4' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
       </div>
 
-      <!-- GitHub repo (if from GitHub template) -->
-      <div v-if="githubRepo" class="flex items-center space-x-1 mb-3">
-        <svg class="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-          <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" clip-rule="evenodd" />
-        </svg>
-        <span class="text-xs text-gray-500 dark:text-gray-400 truncate" :title="githubRepo">{{ githubRepoShort }}</span>
+      <!-- GitHub repo or placeholder (always shown for consistent height) -->
+      <div class="flex items-center space-x-1 mb-3 h-4">
+        <template v-if="githubRepo">
+          <svg class="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" clip-rule="evenodd" />
+          </svg>
+          <span class="text-xs text-gray-500 dark:text-gray-400 truncate" :title="githubRepo">{{ githubRepoShort }}</span>
+        </template>
+        <template v-else>
+          <svg class="w-3 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14" />
+          </svg>
+          <span class="text-xs text-gray-300 dark:text-gray-600">Local agent</span>
+        </template>
       </div>
 
       <!-- Context progress bar -->
@@ -81,35 +127,41 @@
         </div>
       </div>
 
-      <!-- Task DAG Progress (always shown for consistent card height) -->
-      <div class="mb-3">
-        <!-- Current task (only shown when there is one) -->
-        <div v-if="currentTask" class="mb-2">
-          <div class="flex items-center space-x-1 mb-1">
-            <svg class="w-3 h-3 text-blue-500 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd" />
-            </svg>
-            <span class="text-xs text-gray-500 dark:text-gray-400">Current Task</span>
-          </div>
-          <div class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate pl-4" :title="currentTask">
-            {{ currentTask }}
-          </div>
+      <!-- Execution Stats (compact row) -->
+      <div v-if="hasExecutionStats" class="flex items-center flex-wrap text-xs text-gray-500 dark:text-gray-400 gap-x-1.5 gap-y-0.5 mb-2">
+        <span class="font-medium text-gray-700 dark:text-gray-300">{{ executionStats.taskCount }}</span>
+        <span>tasks</span>
+        <span class="text-gray-300 dark:text-gray-600">·</span>
+        <span :class="successRateColorClass" class="font-medium">{{ executionStats.successRate }}%</span>
+        <template v-if="executionStats.totalCost > 0">
+          <span class="text-gray-300 dark:text-gray-600">·</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ executionStats.totalCost.toFixed(2) }}</span>
+        </template>
+        <template v-if="lastExecutionDisplay">
+          <span class="text-gray-300 dark:text-gray-600">·</span>
+          <span>{{ lastExecutionDisplay }}</span>
+        </template>
+      </div>
+      <div v-else class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+        No tasks (24h)
+      </div>
+
+      <!-- Resource indicators (subtle footer) -->
+      <div v-if="hasResourceInfo" class="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500 mb-3 pt-2 border-t border-gray-100 dark:border-gray-700/50">
+        <!-- Memory -->
+        <div class="flex items-center gap-1.5" :title="'Memory limit: ' + memoryDisplay">
+          <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          </svg>
+          <span class="font-medium">{{ memoryDisplay }}</span>
         </div>
-        <!-- Task progress bar (always shown) -->
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-1">
-            <svg class="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            <span>Tasks</span>
-          </span>
-          <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ taskProgressDisplay }}</span>
-        </div>
-        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-          <div
-            class="h-full rounded-full transition-all duration-500 bg-purple-500"
-            :style="{ width: taskProgressPercent + '%' }"
-          ></div>
+        <!-- CPU -->
+        <div class="flex items-center gap-1.5" :title="'CPU limit: ' + cpuDisplay + ' cores'">
+          <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <span class="font-medium">{{ cpuDisplay }}</span>
+          <span class="text-gray-300 dark:text-gray-600">cores</span>
         </div>
       </div>
 
@@ -140,9 +192,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
+import RuntimeBadge from './RuntimeBadge.vue'
+import { useNetworkStore } from '../stores/network'
 
 const props = defineProps({
   id: String,
@@ -153,10 +207,19 @@ const props = defineProps({
 })
 
 const router = useRouter()
+const networkStore = useNetworkStore()
+
+// Autonomy toggle loading state
+const autonomyLoading = ref(false)
 
 // Check if this is a system agent
 const isSystemAgent = computed(() => {
   return props.data.is_system === true
+})
+
+// Check if autonomy mode is enabled
+const autonomyEnabled = computed(() => {
+  return props.data.autonomy_enabled === true
 })
 
 // Compute activity state (active, idle, offline)
@@ -228,35 +291,69 @@ const progressBarColor = computed(() => {
   return 'bg-green-500'
 })
 
-// Task DAG progress computed properties
-const hasActivePlan = computed(() => {
-  return props.data.activePlan || props.data.totalTasks > 0
+// Execution stats
+const executionStats = computed(() => {
+  return props.data.executionStats || null
 })
 
-const currentTask = computed(() => {
-  return props.data.currentTask || null
+const hasExecutionStats = computed(() => {
+  return executionStats.value && executionStats.value.taskCount > 0
 })
 
-const completedTasks = computed(() => {
-  return props.data.completedTasks || 0
+const successRateColorClass = computed(() => {
+  if (!executionStats.value) return 'text-gray-500 dark:text-gray-400'
+  const rate = executionStats.value.successRate
+  if (rate >= 80) return 'text-green-600 dark:text-green-400'
+  if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
 })
 
-const totalTasks = computed(() => {
-  return props.data.totalTasks || 0
+const lastExecutionDisplay = computed(() => {
+  if (!executionStats.value?.lastExecutionAt) return null
+  const lastTime = new Date(executionStats.value.lastExecutionAt)
+  const now = new Date()
+  const diffMs = now - lastTime
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  return `${Math.floor(diffHours / 24)}d ago`
 })
 
-const taskProgressPercent = computed(() => {
-  if (totalTasks.value === 0) return 0
-  return Math.round((completedTasks.value / totalTasks.value) * 100)
+// Resource indicators - always show for consistent card layout
+const hasResourceInfo = computed(() => true)
+
+const memoryDisplay = computed(() => {
+  const mem = props.data.memoryLimit
+  if (!mem) return '4g'
+  return mem
 })
 
-const taskProgressDisplay = computed(() => {
-  if (totalTasks.value === 0) return '—'
-  return `${completedTasks.value}/${totalTasks.value}`
+const cpuDisplay = computed(() => {
+  const cpu = props.data.cpuLimit
+  if (!cpu) return '2'
+  return cpu
 })
 
 function viewDetails() {
   router.push(`/agents/${props.data.label}`)
+}
+
+// Handle autonomy toggle
+async function handleAutonomyToggle(event) {
+  // Stop propagation to prevent card drag
+  event.stopPropagation()
+
+  if (autonomyLoading.value || isSystemAgent.value) return
+
+  autonomyLoading.value = true
+  try {
+    await networkStore.toggleAutonomy(props.data.label)
+  } finally {
+    autonomyLoading.value = false
+  }
 }
 </script>
 

@@ -3,6 +3,7 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
+> **Verified**: 2025-12-31
 
 ## Overview
 
@@ -114,25 +115,25 @@ POST /api/task
 
 ### Agent Server (docker/base-image/agent_server/)
 
-| File | Purpose |
-|------|---------|
-| `models.py` | ParallelTaskRequest, ParallelTaskResponse models |
-| `services/claude_code.py` | execute_headless_task() function |
-| `routers/chat.py` | POST /api/task endpoint |
+| File | Line | Purpose |
+|------|------|---------|
+| `models.py` | 204-223 | ParallelTaskRequest, ParallelTaskResponse models |
+| `services/claude_code.py` | 521-676 | execute_headless_task() function |
+| `routers/chat.py` | 90-127 | POST /api/task endpoint |
 
 ### Backend (src/backend/)
 
-| File | Purpose |
-|------|---------|
-| `models.py` | ParallelTaskRequest model |
-| `routers/chat.py` | POST /api/agents/{name}/task endpoint |
+| File | Line | Purpose |
+|------|------|---------|
+| `models.py` | 98 | ParallelTaskRequest model |
+| `routers/chat.py` | 358-475 | POST /api/agents/{name}/task endpoint |
 
 ### MCP Server (src/mcp-server/)
 
-| File | Purpose |
-|------|---------|
-| `src/client.ts` | task() method for API calls |
-| `src/tools/chat.ts` | chat_with_agent tool with parallel parameter |
+| File | Line | Purpose |
+|------|------|---------|
+| `src/client.ts` | 344-396 | task() method for API calls |
+| `src/tools/chat.ts` | 132-270 | chat_with_agent tool with parallel parameter |
 
 ## API Specifications
 
@@ -153,7 +154,7 @@ POST /api/task
 ```json
 {
   "response": "string",          // Claude's response
-  "execution_log": [...],        // Tool calls and results
+  "execution_log": [...],        // Tool calls and results (also saved to DB)
   "metadata": {
     "cost_usd": 0.01,
     "duration_ms": 5000,
@@ -166,6 +167,8 @@ POST /api/task
 }
 ```
 
+**Note**: As of 2025-12-31, the `execution_log` is persisted to the `schedule_executions` database table and can be retrieved via `GET /api/agents/{name}/executions/{execution_id}/log`.
+
 ### Backend: POST /api/agents/{name}/task
 
 Same request/response as agent server, with additional:
@@ -173,6 +176,30 @@ Same request/response as agent server, with additional:
 - Access control validation
 - Activity tracking
 - Audit logging
+- **Execution log persistence** - Full transcript saved to `schedule_executions.execution_log` *(added 2025-12-31)*
+
+### Backend: GET /api/agents/{name}/executions/{execution_id}/log *(added 2025-12-31)*
+
+Retrieve the full execution log for any task execution.
+
+**File**: `src/backend/routers/schedules.py:426-473`
+
+**Response**:
+```json
+{
+  "execution_id": "abc123",
+  "agent_name": "worker-1",
+  "has_log": true,
+  "log": [
+    {"type": "assistant", "message": {...}},
+    {"type": "tool_use", "name": "Read", "input": {...}},
+    {"type": "tool_result", "content": [...]}
+  ],
+  "started_at": "2025-12-31T10:00:00Z",
+  "completed_at": "2025-12-31T10:01:00Z",
+  "status": "success"
+}
+```
 
 ### MCP Tool: chat_with_agent
 

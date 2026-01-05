@@ -186,7 +186,7 @@ docker-compose restart redis
 ```
 
 ### Token Invalid
-- Check DEV_MODE_ENABLED=true in docker-compose.yml
+- Check ADMIN_PASSWORD is set in docker-compose.yml
 - Restart backend after changing env vars
 
 ---

@@ -54,24 +54,26 @@ The echo agent returns text without using tools. To test activity tracking, use 
 
 **Expected**:
 - [ ] Agent detail page loads
-- [ ] Chat tab is active (default)
+- [ ] Terminal tab is active (default) - *Note: Chat tab replaced by Terminal*
 - [ ] Context shows: "0 / 200K (0%)"
 - [ ] Progress bar is **empty** (no fill)
 - [ ] Progress bar is **green** (0-50% color)
 
 ---
 
-### Step 2: Send First Message
+### Step 2: Send First Message via Terminal
 **Action**:
-- Type: "Hello World"
-- Press Enter or click Send
+- In the Terminal tab, type a command or message
+- For test-echo: Type "Hello World" and press Enter
 - Wait 5-10 seconds for response
 
 **Expected**:
-- [ ] User message appears (right-aligned)
-- [ ] Loading indicator appears
-- [ ] Agent response streams in (left-aligned)
-- [ ] Response: "Echo: Hello World\nWords: 2\nCharacters: 11"
+- [ ] Command appears in terminal output
+- [ ] Agent processes the message
+- [ ] Response appears in terminal: "Echo: Hello World\nWords: 2\nCharacters: 11"
+- [ ] Terminal shows command history
+
+**Note**: The Terminal provides a full CLI interface. You can run shell commands or interact with the agent via its configured prompt.
 
 ---
 
@@ -170,6 +172,7 @@ Context: 1.4%
 - Navigate to Agents list
 - Click on test-counter
 - Verify context shows 0%
+- Terminal tab should be active
 
 ---
 
@@ -277,7 +280,6 @@ Phase 3 is **PASSED** when **ONE** of these is true:
 
 - **Phase 4**: State Persistence (test-counter)
 - **Phase 5**: Agent-to-Agent Collaboration (test-delegator)
-- **Phase 6**: Workplan System (test-worker)
 - **Phase 7**: Scheduling (test-scheduler)
 - **Phase 8**: Execution Queue (test-queue)
 - **Phase 9**: File Browser (test-files)

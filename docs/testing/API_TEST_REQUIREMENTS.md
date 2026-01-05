@@ -67,11 +67,11 @@ This document defines the requirements for comprehensive programmatic API tests 
 #### REQ-AUTH-001: Authentication Mode
 - **Endpoint**: `GET /api/auth/mode`
 - **Tests**:
-  - Returns valid mode (`dev` or `auth0`)
-  - Returns expected structure: `{mode, dev_mode_enabled, auth0_configured}`
+  - Returns valid configuration
+  - Returns expected structure: `{email_auth_enabled, setup_completed}`
 - **Priority**: HIGH
 
-#### REQ-AUTH-002: Login (Dev Mode)
+#### REQ-AUTH-002: Admin Login
 - **Endpoint**: `POST /token`
 - **Tests**:
   - Valid credentials return JWT token

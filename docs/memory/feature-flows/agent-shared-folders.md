@@ -1,6 +1,7 @@
 # Feature: Agent Shared Folders
 
-> **Last Updated**: 2025-12-19
+> **Updated**: 2025-12-27 - Refactored to service layer architecture. Folder logic moved to `services/agent_service/folders.py`.
+> **Last Updated**: 2025-12-30 (verified line numbers)
 
 ## Overview
 
@@ -18,7 +19,7 @@ As an operator, I want agents to share files with each other so that an orchestr
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:320` - Shared Folders tab (visible to owners)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:334-346` - Shared Folders tab (visible to owners)
 - **API**: `GET/PUT /api/agents/{name}/folders`
 - **API**: `GET /api/agents/{name}/folders/available`
 - **API**: `GET /api/agents/{name}/folders/consumers`
@@ -29,8 +30,8 @@ As an operator, I want agents to share files with each other so that an orchestr
 
 ### Components
 
-- `AgentDetail.vue:319-331` - Shared Folders tab button (v-if="agent.can_share")
-- `AgentDetail.vue:989` - FoldersPanel content render
+- `AgentDetail.vue:334-346` - Shared Folders tab button (v-if="agent.can_share")
+- `AgentDetail.vue:985` - FoldersPanel content render
 - `FoldersPanel.vue` - Complete folder configuration UI (306 lines)
 
 ### FoldersPanel.vue Features
@@ -58,10 +59,10 @@ As an operator, I want agents to share files with each other so that an orchestr
 
 ### State Management
 
-- `stores/agents.js:544` - `getAgentFolders(name)` - Fetch folder config
-- `stores/agents.js:552` - `updateAgentFolders(name, config)` - Update config
-- `stores/agents.js:560` - `getAvailableFolders(name)` - List mountable folders
-- `stores/agents.js:568` - `getFolderConsumers(name)` - List agents that will mount
+- `stores/agents.js:513` - `getAgentFolders(name)` - Fetch folder config
+- `stores/agents.js:521` - `updateAgentFolders(name, config)` - Update config
+- `stores/agents.js:529` - `getAvailableFolders(name)` - List mountable folders
+- `stores/agents.js:537` - `getFolderConsumers(name)` - List agents that will mount
 
 ### API Calls
 
@@ -86,14 +87,23 @@ await axios.get(`/api/agents/${name}/folders/consumers`)
 
 ## Backend Layer
 
-### Endpoints (src/backend/routers/agents.py)
+### Architecture (Post-Refactoring)
 
-| Method | Path | Handler | Line | Description |
-|--------|------|---------|------|-------------|
-| GET | `/api/agents/{name}/folders` | `get_agent_folders()` | 2312 | Get folder config and mount status |
-| PUT | `/api/agents/{name}/folders` | `update_agent_folders()` | 2395 | Update expose/consume settings |
-| GET | `/api/agents/{name}/folders/available` | `get_available_shared_folders()` | 2452 | List mountable folders |
-| GET | `/api/agents/{name}/folders/consumers` | `get_folder_consumers()` | 2494 | List consuming agents |
+The shared folders feature uses a **thin router + service layer** architecture:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Router | `src/backend/routers/agents.py:757-795` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/folders.py` (226 lines) | Folder business logic |
+
+### Endpoints
+
+| Method | Path | Router Line | Service Function |
+|--------|------|-------------|------------------|
+| GET | `/api/agents/{name}/folders` | 757-764 | `get_agent_folders_logic()` |
+| PUT | `/api/agents/{name}/folders` | 767-775 | `update_agent_folders_logic()` |
+| GET | `/api/agents/{name}/folders/available` | 778-785 | `get_available_shared_folders_logic()` |
+| GET | `/api/agents/{name}/folders/consumers` | 788-795 | `get_folder_consumers_logic()` |
 
 ### Request/Response Models
 
@@ -161,28 +171,28 @@ await axios.get(`/api/agents/${name}/folders/consumers`)
 }
 ```
 
-### Business Logic (src/backend/routers/agents.py)
+### Business Logic
 
-#### Agent Creation Flow (lines 570-622)
+#### Agent Creation Flow (`services/agent_service/crud.py:299-344`)
 
 1. Check if agent has shared folder config: `db.get_shared_folder_config(config.name)`
 2. If `expose_enabled`:
    - Create Docker volume `agent-{name}-shared` with labels
-   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 596-605)
+   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 318-328)
    - Mount at `/home/developer/shared-out` (rw)
 3. If `consume_enabled`:
    - Get available shared folders (permission-filtered): `db.get_available_shared_folders(config.name)`
    - For each available folder, check if source volume exists
    - Mount volume at `/home/developer/shared-in/{agent}` (rw)
 
-#### Agent Start Flow - Container Recreation (lines 114-154)
+#### Agent Start Flow - Container Recreation (`services/agent_service/lifecycle.py:84-127`)
 
-1. Check if shared folder mounts match config: `_check_shared_folder_mounts_match(container, agent_name)` (line 136)
-2. If mounts don't match, recreate container: `_recreate_container_with_shared_folders()` (line 141)
+1. Check if shared folder mounts match config: `check_shared_folder_mounts_match(container, agent_name)` (line 107)
+2. If mounts don't match, recreate container: `recreate_container_with_updated_config()` (line 114)
 3. Start the (possibly new) container
 4. WebSocket broadcast: `agent_started` event
 
-#### Helper: `_check_shared_folder_mounts_match()` (lines 935-976)
+#### Helper: `check_shared_folder_mounts_match()` (`services/agent_service/helpers.py:170-210`)
 
 Compares container's actual mounts to database config:
 1. If no config exists, verify no shared mounts present
@@ -190,7 +200,7 @@ Compares container's actual mounts to database config:
 3. If `consume_enabled`, verify all permitted source volumes are mounted
 4. Returns `True` if mounts match, `False` if recreation needed
 
-#### Helper: `_recreate_container_with_shared_folders()` (lines 821-932)
+#### Helper: `recreate_container_with_updated_config()` (`services/agent_service/lifecycle.py:130-251`)
 
 Recreates container with updated volume mounts:
 1. Extract config from old container (image, env vars, labels, ports, resources)
@@ -202,7 +212,7 @@ Recreates container with updated volume mounts:
 4. Create new container with same settings + updated mounts
 5. Log recreation message
 
-#### Agent Deletion Flow (lines 788-799)
+#### Agent Deletion Flow (`routers/agents.py:280-290`)
 
 1. Delete shared folder config from database: `db.delete_shared_folder_config(agent_name)`
 2. Delete shared volume if exists:
@@ -211,7 +221,7 @@ Recreates container with updated volume mounts:
    shared_volume.remove()
    ```
 
-#### Config Update Flow (lines 2395-2449)
+#### Config Update Flow (`services/agent_service/folders.py:99-152`)
 
 1. Validate owner permission: `db.can_user_share_agent()`
 2. Update database config: `db.upsert_shared_folder_config()`
@@ -242,7 +252,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_folders_expose ON agent_shared_folder_conf
 CREATE INDEX IF NOT EXISTS idx_shared_folders_consume ON agent_shared_folder_config(consume_enabled);
 ```
 
-### Pydantic Models (src/backend/db_models.py:243-274)
+### Pydantic Models (src/backend/db_models.py:245-276)
 
 ```python
 class SharedFolderConfig(BaseModel):
@@ -276,14 +286,14 @@ class SharedFolderInfo(BaseModel):
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `get_shared_folder_config(agent_name)` | 38 | Get config or None |
-| `upsert_shared_folder_config(agent_name, expose, consume)` | 56 | Create/update config |
-| `delete_shared_folder_config(agent_name)` | 120 | Delete on agent removal |
-| `get_agents_exposing_folders()` | 139 | List agents with expose=True |
-| `get_available_shared_folders(requesting_agent)` | 154 | Permission-filtered list |
-| `get_consuming_agents(source_agent)` | 178 | Agents that will mount source |
-| `get_shared_volume_name(agent_name)` | 210 | Static: `agent-{name}-shared` |
-| `get_shared_mount_path(source_agent)` | 219 | Static: `/home/developer/shared-in/{source}` |
+| `get_shared_folder_config(agent_name)` | 38-54 | Get config or None |
+| `upsert_shared_folder_config(agent_name, expose, consume)` | 56-118 | Create/update config |
+| `delete_shared_folder_config(agent_name)` | 120-133 | Delete on agent removal |
+| `get_agents_exposing_folders()` | 139-152 | List agents with expose=True |
+| `get_available_shared_folders(requesting_agent)` | 154-176 | Permission-filtered list |
+| `get_consuming_agents(source_agent)` | 178-203 | Agents that will mount source |
+| `get_shared_volume_name(agent_name)` | 209-216 | Static: `agent-{name}-shared` |
+| `get_shared_mount_path(source_agent)` | 218-225 | Static: `/home/developer/shared-in/{source}` |
 
 ### Volume Naming
 

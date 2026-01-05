@@ -1,36 +1,54 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import axios from 'axios'
+import { useAgentsStore } from './agents'
 
 export const useNetworkStore = defineStore('network', () => {
   // State
   const agents = ref([])
   const nodes = ref([])
-  const edges = ref([])
+  const collaborationEdges = ref([])  // Edges from collaboration history
+  const permissionEdges = ref([])     // Edges from permissions
+
+  // Combined edges computed property
+  const edges = computed(() => {
+    // Merge permission edges with collaboration edges
+    // Collaboration edges override permission edges for same source/target pair
+    const edgeMap = new Map()
+
+    // Add permission edges first (will be overridden by collaboration edges)
+    permissionEdges.value.forEach(edge => {
+      edgeMap.set(edge.id, edge)
+    })
+
+    // Add collaboration edges (may override permission edges)
+    collaborationEdges.value.forEach(edge => {
+      const permEdgeId = `perm-${edge.source}-${edge.target}`
+      // If there's an active collaboration edge, remove the permission edge
+      // and just show the collaboration edge
+      if (edge.animated && edgeMap.has(permEdgeId)) {
+        edgeMap.delete(permEdgeId)
+      }
+      edgeMap.set(edge.id, edge)
+    })
+
+    return Array.from(edgeMap.values())
+  })
   const collaborationHistory = ref([])
   const lastEventTime = ref(null)
   const activeCollaborations = ref(0)
   const websocket = ref(null)
   const isConnected = ref(false)
+  const intentionalDisconnect = ref(false) // Prevents reconnection after intentional disconnect
   const nodePositions = ref({}) // Store node positions in localStorage
   const historicalCollaborations = ref([]) // Persistent data from Activity Stream
   const totalCollaborationCount = ref(0)
   const timeRangeHours = ref(24) // Default to last 24 hours
   const isLoadingHistory = ref(false)
   const contextStats = ref({}) // Map of agent name -> context stats
+  const executionStats = ref({}) // Map of agent name -> execution stats
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
-  const planStats = ref({}) // Map of agent name -> plan stats
-  const aggregatePlanStats = ref({
-    total_plans: 0,
-    active_plans: 0,
-    completed_plans: 0,
-    total_tasks: 0,
-    completed_tasks: 0,
-    active_tasks: 0,
-    blocked_tasks: 0,
-    pending_tasks: 0
-  })
 
   // Replay mode state
   const isReplayMode = ref(false)
@@ -235,13 +253,47 @@ export const useNetworkStore = defineStore('network', () => {
     // Load saved positions from localStorage
     const savedPositions = loadNodePositions()
 
-    // Calculate grid layout with better spacing to prevent overlap
-    const gridSize = Math.ceil(Math.sqrt(agentList.length))
-    const spacing = 350 // Increased from 250 to prevent overlap
-    const offsetX = 150
-    const offsetY = 150
+    // Separate system agent from regular agents
+    const systemAgent = agentList.find(a => a.is_system)
+    const regularAgents = agentList.filter(a => !a.is_system)
 
-    nodes.value = agentList.map((agent, index) => {
+    // Calculate grid layout for regular agents
+    const gridSize = Math.ceil(Math.sqrt(regularAgents.length)) || 1
+    const spacing = 350
+    const offsetX = 150
+    const offsetY = systemAgent ? 280 : 150 // Push down if system agent exists
+
+    const result = []
+
+    // Add system agent at top-center (wider position)
+    if (systemAgent) {
+      const systemDefaultPosition = {
+        x: offsetX + (gridSize * spacing) / 2 - 200, // Center it (accounting for wider width)
+        y: 50 // Fixed at top
+      }
+      result.push({
+        id: systemAgent.name,
+        type: 'system-agent', // Special type for wider rendering
+        data: {
+          label: systemAgent.name,
+          status: systemAgent.status,
+          type: systemAgent.type || 'system',
+          owner: systemAgent.owner,
+          runtime: systemAgent.runtime || 'claude-code',
+          githubRepo: systemAgent.github_repo || null,
+          is_system: true,
+          autonomy_enabled: false, // System agent doesn't use autonomy mode
+          activityState: systemAgent.status === 'running' ? 'idle' : 'offline',
+          memoryLimit: systemAgent.memory_limit || null,
+          cpuLimit: systemAgent.cpu_limit || null
+        },
+        position: savedPositions[systemAgent.name] || systemDefaultPosition,
+        draggable: true
+      })
+    }
+
+    // Add regular agents in grid below
+    regularAgents.forEach((agent, index) => {
       const row = Math.floor(index / gridSize)
       const col = index % gridSize
 
@@ -250,7 +302,7 @@ export const useNetworkStore = defineStore('network', () => {
         y: offsetY + row * spacing
       }
 
-      return {
+      result.push({
         id: agent.name,
         type: 'agent',
         data: {
@@ -258,19 +310,33 @@ export const useNetworkStore = defineStore('network', () => {
           status: agent.status,
           type: agent.type || 'business-assistant',
           owner: agent.owner,
+          runtime: agent.runtime || 'claude-code',
           githubRepo: agent.github_repo || null,
-          is_system: agent.is_system || false,
-          // Set initial activityState based on running status to avoid "Offline" flash
-          activityState: agent.status === 'running' ? 'idle' : 'offline'
+          is_system: false,
+          autonomy_enabled: agent.autonomy_enabled || false,
+          activityState: agent.status === 'running' ? 'idle' : 'offline',
+          memoryLimit: agent.memory_limit || null,
+          cpuLimit: agent.cpu_limit || null
         },
         position: savedPositions[agent.name] || defaultPosition,
         draggable: true
-      }
+      })
     })
+
+    nodes.value = result
   }
 
   function connectWebSocket() {
+    // Reset intentional disconnect flag when intentionally connecting
+    intentionalDisconnect.value = false
+
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+
+    // Prevent duplicate connections
+    if (websocket.value?.readyState === WebSocket.OPEN) {
+      console.log('[Collaboration] WebSocket already connected')
+      return
+    }
 
     try {
       websocket.value = new WebSocket(wsUrl)
@@ -305,13 +371,15 @@ export const useNetworkStore = defineStore('network', () => {
         console.log('[Collaboration] WebSocket disconnected')
         isConnected.value = false
 
-        // Attempt reconnection after 5 seconds
-        setTimeout(() => {
-          if (!isConnected.value) {
-            console.log('[Collaboration] Attempting to reconnect...')
-            connectWebSocket()
-          }
-        }, 5000)
+        // Only reconnect if this was NOT an intentional disconnect
+        if (!intentionalDisconnect.value) {
+          setTimeout(() => {
+            if (!isConnected.value && !intentionalDisconnect.value) {
+              console.log('[Collaboration] Attempting to reconnect...')
+              connectWebSocket()
+            }
+          }, 5000)
+        }
       }
     } catch (error) {
       console.error('[Collaboration] Failed to connect WebSocket:', error)
@@ -549,6 +617,9 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function disconnectWebSocket() {
+    // Set flag BEFORE closing to prevent reconnection
+    intentionalDisconnect.value = true
+
     if (websocket.value) {
       websocket.value.close()
       websocket.value = null
@@ -601,75 +672,45 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
-  // Fetch plan stats from backend (aggregate across all agents)
-  async function fetchPlanStats() {
+  // Fetch execution stats from backend
+  async function fetchExecutionStats() {
     try {
-      const response = await axios.get('/api/agents/plans/aggregate')
-      const data = response.data
+      const response = await axios.get('/api/agents/execution-stats')
+      const agentStats = response.data.agents
 
-      // Update aggregate stats
-      aggregatePlanStats.value = {
-        total_plans: data.total_plans || 0,
-        active_plans: data.active_plans || 0,
-        completed_plans: data.completed_plans || 0,
-        total_tasks: data.total_tasks || 0,
-        completed_tasks: data.completed_tasks || 0,
-        active_tasks: data.active_tasks || 0,
-        blocked_tasks: 0, // Not tracked separately yet
-        pending_tasks: 0, // Not tracked separately yet
-        completion_rate: data.completion_rate || 0
-      }
+      // Update execution stats map
+      const newStats = {}
+      agentStats.forEach(stat => {
+        newStats[stat.name] = {
+          taskCount: stat.task_count_24h,
+          successCount: stat.success_count,
+          failedCount: stat.failed_count,
+          runningCount: stat.running_count,
+          successRate: stat.success_rate,
+          totalCost: stat.total_cost,
+          lastExecutionAt: stat.last_execution_at
+        }
+      })
+      executionStats.value = newStats
 
-      // Update per-agent plan stats from agent_summaries
-      const newPlanStats = {}
-      if (data.agent_summaries) {
-        data.agent_summaries.forEach(agentData => {
-          const agentName = agentData.agent_name
-          const currentTaskName = agentData.current_task?.name || null
-          const totalTasks = agentData.total_tasks || 0
-          const completedTasks = agentData.completed_tasks || 0
-
-          newPlanStats[agentName] = {
-            activePlan: agentData.active_plans > 0,
-            totalPlans: agentData.total_plans || 0,
-            activeTasks: agentData.active_tasks || 0,
-            completedTasks: completedTasks,
-            totalTasks: totalTasks,
-            currentTask: currentTaskName,
-            taskProgress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-          }
-        })
-      }
-      planStats.value = newPlanStats
-
-      // Update node data with plan stats
+      // Update node data with execution stats
       nodes.value.forEach(node => {
-        const stats = newPlanStats[node.id]
+        const stats = newStats[node.id]
         if (stats) {
           node.data = {
             ...node.data,
-            activePlan: stats.activePlan,
-            currentTask: stats.currentTask,
-            taskProgress: stats.taskProgress,
-            totalPlans: stats.totalPlans,
-            totalTasks: stats.totalTasks,
-            completedTasks: stats.completedTasks
+            executionStats: stats
           }
         }
       })
 
-      if (data.total_plans > 0) {
-        console.log('[Collaboration] Plan stats updated:', aggregatePlanStats.value)
-      }
+      console.log('[Collaboration] Execution stats updated')
     } catch (error) {
-      // Don't log 404 errors as they're expected when no plans exist
-      if (error.response?.status !== 404) {
-        console.error('Failed to fetch plan stats:', error)
-      }
+      console.error('Failed to fetch execution stats:', error)
     }
   }
 
-  // Start polling context stats every 5 seconds
+  // Start polling context and execution stats every 5 seconds
   function startContextPolling() {
     if (contextPollingInterval.value) {
       clearInterval(contextPollingInterval.value)
@@ -677,15 +718,15 @@ export const useNetworkStore = defineStore('network', () => {
 
     // Fetch immediately
     fetchContextStats()
-    fetchPlanStats()
+    fetchExecutionStats()
 
     // Then poll every 5 seconds
     contextPollingInterval.value = setInterval(() => {
       fetchContextStats()
-      fetchPlanStats()
+      fetchExecutionStats()
     }, 5000)
 
-    console.log('[Collaboration] Started context and plan polling (every 5s)')
+    console.log('[Collaboration] Started context polling (every 5s)')
   }
 
   // Stop polling context stats
@@ -949,6 +990,45 @@ export const useNetworkStore = defineStore('network', () => {
     jumpToTime(new Date(targetTime).toISOString())
   }
 
+  // Toggle autonomy mode for an agent
+  async function toggleAutonomy(agentName) {
+    // Find the node to get current state
+    const node = nodes.value.find(n => n.id === agentName)
+    if (!node) {
+      console.error('[Network] Agent not found:', agentName)
+      return { success: false, error: 'Agent not found' }
+    }
+
+    const currentState = node.data.autonomy_enabled
+    const newState = !currentState
+
+    try {
+      const token = localStorage.getItem('token')
+      const response = await axios.put(
+        `/api/agents/${agentName}/autonomy`,
+        { enabled: newState },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      // Update the node data
+      node.data.autonomy_enabled = newState
+
+      console.log(`[Network] Autonomy ${newState ? 'enabled' : 'disabled'} for ${agentName}`)
+
+      return {
+        success: true,
+        enabled: newState,
+        schedulesUpdated: response.data.schedules_updated
+      }
+    } catch (error) {
+      console.error('[Network] Failed to toggle autonomy:', error)
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to update autonomy mode'
+      }
+    }
+  }
+
   return {
     // State
     agents,
@@ -963,8 +1043,7 @@ export const useNetworkStore = defineStore('network', () => {
     timeRangeHours,
     isLoadingHistory,
     contextStats,
-    planStats,
-    aggregatePlanStats,
+    executionStats,
     // Replay state
     isReplayMode,
     isPlaying,
@@ -1002,7 +1081,7 @@ export const useNetworkStore = defineStore('network', () => {
     resetNodePositions,
     onNodeDragStop,
     fetchContextStats,
-    fetchPlanStats,
+    fetchExecutionStats,
     startContextPolling,
     stopContextPolling,
     startAgentRefresh,
@@ -1018,6 +1097,7 @@ export const useNetworkStore = defineStore('network', () => {
     resetAllEdges,
     getEventPosition,
     handleTimelineClick,
-    jumpToTimelinePosition
+    jumpToTimelinePosition,
+    toggleAutonomy
   }
 })

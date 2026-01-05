@@ -1,1452 +1,2403 @@
-### 2025-12-22 20:00:00
-🚀 **Parallel Headless Execution - Feature Implemented (12.1)**
+### 2026-01-05 10:15:00
+🐛 **Fix: ReplayTimeline infinite loop causing browser hang**
 
-Implemented stateless parallel task execution enabling orchestrators to spawn N concurrent worker tasks without queue blocking.
+Fixed critical bug where switching to Replay mode caused the browser to freeze.
 
-**New Endpoints**:
-- `POST /api/task` (agent-server) - Stateless task execution, no lock, no --continue
-- `POST /api/agents/{name}/task` (backend) - Proxy endpoint bypassing execution queue
+**Root Cause**: The `timeTicks` computed property in ReplayTimeline.vue generates grid lines every 15 minutes. When `timelineStart` is `null` (no historical events), `startTime` computed to 0 (epoch 1970). The for loop then ran from epoch to current time (2026), creating ~2 million tick iterations and hanging the browser.
 
-**MCP Tool Updated**:
-- `chat_with_agent` now supports `parallel: boolean` parameter
-- `parallel=false` (default): Sequential chat mode with execution queue
-- `parallel=true`: Stateless parallel task mode, N concurrent allowed
+**Fix**: Added guards to all computed properties that rely on timeline bounds:
+- `timeTicks`: Early return if `!startTime.value` or `!endTime.value`, plus safety limit of 700 max ticks
+- `agentRows`: Early return if timeline data is missing
+- `communicationArrows`: Early return if timeline data is missing
+- `currentTimeX`: Early return if timeline data is missing
 
-**Key Implementation Details**:
-- `execute_headless_task()` function runs Claude Code without --continue flag
-- No execution lock acquired (parallel allowed)
-- Each task gets unique session_id
-- Supports model override, allowed_tools, system_prompt, timeout_seconds
-- Activity tracking with parallel_mode flag
-- Audit logging for parallel tasks
+**Files Changed**:
+- `src/frontend/src/components/ReplayTimeline.vue`: Lines 411-445, 448-450, 520-522, 557-560
 
-**Modified Files**:
-- `docker/base-image/agent_server/models.py` - Added ParallelTaskRequest, ParallelTaskResponse
-- `docker/base-image/agent_server/services/claude_code.py` - Added execute_headless_task()
-- `docker/base-image/agent_server/routers/chat.py` - Added POST /api/task endpoint
-- `src/backend/models.py` - Added ParallelTaskRequest
-- `src/backend/routers/chat.py` - Added POST /api/agents/{name}/task endpoint
-- `src/mcp-server/src/client.ts` - Added task() method
-- `src/mcp-server/src/tools/chat.ts` - Updated chat_with_agent with parallel parameter
-- `tests/test_parallel_task.py` - New test file with 12 tests
-
-**Use Cases**:
-- Orchestrator spawns N parallel worker tasks
-- Batch processing without context pollution
-- Agent-to-agent delegation at scale
-
-**Feature Flow Doc**: `docs/memory/feature-flows/parallel-headless-execution.md`
+**Behavior Now**:
+- Switching to Replay mode with no historical data shows empty timeline (no hang)
+- Timeline safely handles edge cases with missing data
 
 ---
 
-### 2025-12-22 18:30:00
-📋 **Parallel Headless Execution - Requirements Document Created (12.1)**
+### 2026-01-03 21:45:00
+🎬 **Enhancement: Replay Mode Activity & Context Simulation**
 
-Created comprehensive requirements document for parallel task execution feature based on Claude Code documentation research.
+Enhanced replay mode to simulate agent activity states and context changes during playback.
 
-**Research Findings**:
-- Claude Code headless mode (`claude -p`) runs stateless, independent sessions
-- No `--continue` flag = no conversation memory = can run in parallel
-- Can spawn N instances concurrently
-- Output format: `--output-format stream-json` for structured results
+**What Was Missing**: After the edge animation fix, replay only showed animated arrows but:
+1. Agent activity state (green blinking "Active" indicator) wasn't updating
+2. Context progress bars remained static during replay
 
-**Proposed Architecture**:
-- **Sequential Chat** (existing): `POST /api/agents/{name}/chat` - uses `--continue`, execution queue, maintains context
-- **Parallel Task** (new): `POST /api/agents/{name}/task` - stateless, no queue, N concurrent allowed
+**Solution**: Added simulation functions to `network.js`:
+- `setNodeActivityState()` - Updates agent activity state with Vue reactivity
+- `simulateContextChange()` - Adjusts context percentage with bounds (0-100%)
+- `simulateAgentActivity()` - Orchestrates the full activity simulation:
+  - Source agent becomes active immediately (initiating collaboration)
+  - Target agent becomes active after 300ms (processing request)
+  - Context bars increase: source +1-3%, target +2-5%
+  - Both return to idle after 2-3 seconds
 
-**Key Requirements**:
-1. Agent-server: New `/api/task` endpoint (no lock, no --continue)
-2. Backend: New `/api/agents/{name}/task` endpoint (bypasses execution queue)
-3. MCP: Update `chat_with_agent` with `parallel: boolean` parameter
-4. Concurrency limits: Agent-level (default 5), platform-level (default 50)
-5. Activity tracking: New `parallel_task` activity type
+**Files Changed**:
+- `src/frontend/src/stores/network.js`:
+  - Added `activityTimeouts` ref to track pending timeouts
+  - Added `setNodeActivityState()`, `simulateContextChange()`, `simulateAgentActivity()`
+  - `scheduleNextEvent()` now calls `simulateAgentActivity()` for each event
+  - `startReplay()` initializes context percentages (5-15%) for running agents
+  - `stopReplay()` clears activity timeouts and resets all agents to idle
 
-**Use Cases**:
-- Orchestrator spawns N parallel worker tasks
-- Batch processing without context pollution
-- Agent-to-agent delegation at scale
-
-**Design Doc**: `docs/drafts/PARALLEL_HEADLESS_EXECUTION.md`
-
----
-
-### 2025-12-22 15:30:00
-🐛 **Fixed Template Detail Endpoint for GitHub Templates**
-
-Fixed `GET /api/templates/{id}` returning 404 for GitHub templates like `github:abilityai/agent-ruby`.
-
-**Root Cause**: The `/` in GitHub template IDs (e.g., `github:org/repo`) was interpreted as a URL path separator by FastAPI, causing the route to not match at all.
-
-**Fix**: Changed route from `{template_id}` to `{template_id:path}` to capture the full path including slashes.
-
-**Verified**: `.env Template Endpoint` already works correctly - code at lines 110-130 handles both string credentials (GitHub templates) and dict credentials (local templates).
-
-**Modified Files**:
-- `src/backend/routers/templates.py` - Changed route to use `{template_id:path}` (~5 lines)
+**Behavior Now**:
+- During replay, agents show green pulsing "Active" state when involved in collaboration
+- Context bars grow incrementally as events play back
+- All states reset properly when replay stops
+- Switching to Live mode resumes real context polling
 
 ---
 
-### 2025-12-22 04:55:00
-🐛 **Fixed Port Allocation Race Condition**
+### 2026-01-03 21:15:00
+🐛 **Fix: Dashboard Replay Mode Now Works**
 
-Fixed agent creation failing with "port already allocated" when a port was in use by another process on the host system.
+Fixed critical bug where replay mode visuals weren't updating on the Dashboard.
 
-**Root Cause**: `get_next_available_port()` only checked Trinity container labels, not actual host port availability.
+**Root Cause**: The `edges` variable is a computed property that merges `collaborationEdges` and `permissionEdges`. All edge manipulation functions (`animateEdge`, `createHistoricalEdges`, `resetAllEdges`, etc.) were trying to modify `edges.value` directly. Since computed properties return new arrays each time, modifications were being lost.
 
-**Fix**: Added `is_port_available()` that tests actual TCP socket binding before assigning a port.
+**Fix**: Updated all edge manipulation functions to work with `collaborationEdges.value` instead of `edges.value`. Added Vue reactivity triggers (`collaborationEdges.value = [...collaborationEdges.value]`) after modifications to ensure the computed `edges` recalculates.
 
-**Modified Files**:
-- `src/backend/services/docker_service.py` - Added is_port_available(), enhanced get_next_available_port() (~25 lines)
+**Files Changed**:
+- `src/frontend/src/stores/network.js`:
+  - `createHistoricalEdges()` - Push to `collaborationEdges.value` (line 217)
+  - `animateEdge()` - Find/push in `collaborationEdges.value` (lines 455, 486)
+  - `fadeEdgeAnimation()` - Find in `collaborationEdges.value` (line 554)
+  - `clearEdgeAnimation()` - Find in `collaborationEdges.value` (line 573)
+  - `resetAllEdges()` - Iterate over `collaborationEdges.value` (line 946)
+  - `handleAgentDeleted()` - Filter `collaborationEdges.value` (line 434)
+  - Added reactivity triggers after all edge modifications
+
+**Behavior Now**:
+- Replay mode properly animates edges when playing back historical events
+- Edges turn blue/animated during replay, then fade back to gray
+- Play/Pause/Stop controls work correctly
+- Timeline scrubber and event markers function as expected
 
 ---
 
-### 2025-12-21 16:30:00
-🚀 **Local Agent Deployment via MCP (New Feature)**
+### 2026-01-03 19:30:00
+🎛️ **Dashboard Autonomy Toggle Switch**
 
-Implemented the ability to deploy Trinity-compatible local agents to Trinity platform with a single MCP command. This enables zero-setup deployment from local development to remote platform.
+Added interactive toggle switch to Dashboard agent tiles for quick autonomy mode control.
 
-**New MCP Tool**: `deploy_local_agent`
-- Packages local agent directory as tar.gz
-- Auto-imports credentials from `.env` with conflict resolution
-- Versioned deployment (my-agent → my-agent-2 on repeat deploy)
-- Validates Trinity-compatible structure (template.yaml required)
+**Visual Design**:
+- Toggle switch (36x20px) with smooth sliding animation
+- Label shows "AUTO" (amber) or "Manual" (gray) next to switch
+- Disabled state with opacity during API call
+- Tooltips explain current state and action
 
-**Backend Endpoint**: `POST /api/agents/deploy-local`
-- Accepts base64-encoded archive + credentials
-- Validates template.yaml with `name` and `resources` fields
-- Size limits: 50MB archive, 100 credentials, 1000 files
-- Security: Path traversal protection, temp cleanup
+**Files Changed**:
+- `src/frontend/src/components/AgentNode.vue:62-96` - Toggle switch UI and handler
+- `src/frontend/src/stores/network.js:993-1030` - `toggleAutonomy()` action
 
-**Credential Import with Conflict Resolution**:
-- Same name + same value = reuse existing
-- Same name + different value = create with suffix (_2, _3)
-- New name = create new credential
+**Behavior**:
+- Click toggle to enable/disable all schedules for the agent
+- Node data updates reactively (no page refresh needed)
+- System agents do not show the toggle (autonomy N/A)
 
-**Versioning Logic**:
-- `get_next_version_name()` finds next available version
-- Previous version is stopped (not deleted)
-- Pattern: base-name → base-name-2 → base-name-3
+**Documentation Updated**:
+- `docs/memory/feature-flows/autonomy-mode.md` - Full toggle documentation
+- `docs/memory/feature-flows/agent-network.md` - AgentNode toggle reference
 
-**Modified Files**:
-- `src/backend/models.py` - Added DeployLocalRequest, DeployLocalResponse, VersioningInfo, CredentialImportResult (~40 lines)
-- `src/backend/services/template_service.py` - Added is_trinity_compatible(), get_name_from_template() (~70 lines)
-- `src/backend/credentials.py` - Added import_credential_with_conflict_resolution(), get_credential_by_name() (~100 lines)
-- `src/backend/routers/agents.py` - Added deploy-local endpoint + versioning functions (~250 lines)
-- `src/mcp-server/src/tools/agents.ts` - Added deployLocalAgent tool (~190 lines)
+---
+
+### 2026-01-03 17:55:00
+🐛 **Fix: Scheduler now respects Autonomy Mode**
+
+Fixed bug where scheduled tasks would execute even when agent's Autonomy Mode was disabled (Manual mode).
+
+**Root Cause**: `scheduler_service._execute_schedule()` only checked `schedule.enabled` but not the agent's `autonomy_enabled` flag.
+
+**Fix**: Added autonomy check in `_execute_schedule()` before task execution:
+```python
+if not db.get_autonomy_enabled(schedule.agent_name):
+    logger.info(f"Schedule skipped: agent autonomy is disabled")
+    return
+```
+
+**Files Changed**: `src/backend/services/scheduler_service.py:186-189`
+
+**Behavior Now**:
+- Manual mode (autonomy disabled) = no schedules run
+- AUTO mode (autonomy enabled) = schedules run as configured
+
+---
+
+### 2026-01-03 14:15:00
+🔧 **GitHub Agent Templates - Updated for Trinity Compatibility**
+
+Updated all three GitHub demo agent templates (Cornelius, Corbin, Ruby) to match TRINITY_COMPATIBLE_AGENT_GUIDE.md.
+
+**Changes pushed to GitHub:**
+
+| Repository | Commit | Changes |
+|------------|--------|---------|
+| `abilityai/agent-cornelius` | `043d24a` | +.gitignore updates, +memory/, +outputs/, template.yaml commit_paths |
+| `abilityai/agent-corbin` | `481bf59` | +.gitignore updates, +outputs/, template.yaml commit_paths |
+| `abilityai/agent-ruby` | `b946886` | +.gitignore updates, +memory/, +outputs/ |
+
+**Common .gitignore additions:**
+- `.trinity/` - Platform-managed directory (injected at startup)
+- `.claude/commands/trinity/` - Platform-injected slash commands
+- `content/` - Large generated assets (videos, audio, images)
+
+**Directory structure updates:**
+- Added `memory/` directory with .gitkeep (Cornelius, Ruby)
+- Added `outputs/` directory with .gitkeep (all three)
+- Updated `git.commit_paths` to include new directories
+
+**Note**: These agents already had comprehensive template.yaml files with tagline, use_cases, capabilities, metrics, etc. The updates focused on .gitignore and directory structure per the guide.
+
+---
+
+### 2026-01-03 13:30:00
+📚 **Demo Agent Templates - Updated for Flexibility & Best Practices**
+
+Updated local demo templates (demo-researcher, demo-analyst) to follow TRINITY_COMPATIBLE_AGENT_GUIDE.md and improved `/create-demo-agent-fleet` command.
+
+**Command Updates** (`.claude/commands/create-demo-agent-fleet.md`):
+- Added Option A (Recommended): Local Research Network using system manifest deployment
+- Option B: GitHub Templates (Cornelius, Corbin, Ruby) kept for reference
+- Added complete system manifest example with permissions and shared folders
+- Added test collaboration examples showing inter-agent communication
+
+**Template Improvements** (`config/agent-templates/demo-*`):
+- Added `tagline` and `use_cases` fields to template.yaml files
+- Added `memory/` directories with .gitkeep files
+- Added `outputs/` directory to demo-analyst for generated briefings
+- Updated all slash commands to use dynamic agent/path discovery instead of hardcoded names
+- Added Bash tool to allowed-tools for filesystem discovery
+
+**Key Changes**:
+- demo-analyst CLAUDE.md: Instructions for dynamic shared folder discovery
+- briefing.md: Discovers researcher folder dynamically
+- opportunities.md, ask.md: Dynamic path resolution
+- request-research.md: Lists agents first, then calls researcher
+
+**Files Changed**:
+- `.claude/commands/create-demo-agent-fleet.md` - Complete rewrite with 2 deployment options
+- `config/agent-templates/demo-researcher/template.yaml` - Added tagline, use_cases
+- `config/agent-templates/demo-analyst/template.yaml` - Added tagline, use_cases
+- `config/agent-templates/demo-analyst/CLAUDE.md` - Dynamic agent naming instructions
+- `config/agent-templates/demo-analyst/.claude/commands/*.md` - All updated for dynamic paths
+
+---
+
+### 2026-01-03 11:45:00
+🔧 **MCP Tool: get_agent_info - Agent Template Metadata Access**
+
+New MCP tool allowing agents to discover detailed information about other agents they have permission to access.
+
+**New Tool**: `get_agent_info(name)`
+
+Returns full template.yaml metadata including:
+- Display name, description, tagline, version, author
+- Capabilities (e.g., `["synthesis", "strategic-analysis"]`)
+- Available slash commands with descriptions
+- MCP servers the agent uses
+- Tools, skills, and example use cases
+- Resource allocation (CPU/memory)
+- Current status (running/stopped)
+
+**Access Control**:
+- Agent-scoped keys: Can only access self + permitted agents
+- System agents: Full access to all agents
+- User-scoped keys: Access to all accessible agents
+
+**Use Case**: Enables orchestrator agents to understand worker capabilities before delegating tasks.
+
+**Files Changed**:
+- `src/mcp-server/src/types.ts` - Added `AgentTemplateInfo` and `AgentCommand` types
+- `src/mcp-server/src/client.ts` - Added `getAgentInfo()` method
+- `src/mcp-server/src/tools/agents.ts` - Added `get_agent_info` tool with access control
 - `src/mcp-server/src/server.ts` - Registered new tool
-- `docs/memory/feature-flows/local-agent-deploy.md` - New feature flow doc
-
-**Total**: ~470 lines of new code
 
 ---
 
-### 2025-12-21 14:15:00
-🧪 **Added UI Integration Test Phases for OTel and System Agent**
+### 2026-01-03 10:30:00
+🎨 **Dashboard Agent Cards - Enhanced Styling & Resource Indicators**
 
-Added two new test phases to the modular testing framework:
+Improved agent cards on the Dashboard with a more refined look and resource information display.
 
-**Phase 14: OpenTelemetry Integration**
-- Tests OTel status API, collector health, Prometheus metrics
-- Validates Dashboard header stats (cost/tokens display)
-- Verifies agent OTel environment variable injection
-- Tests resilience to collector downtime
-- 10 test steps covering full OTel integration
+**Visual Changes**:
+- Increased card width from 280px to 320px for better readability
+- Added backdrop-blur and semi-transparent backgrounds for a modern glass effect
+- Softer border styling (removed double border, adjusted opacity)
+- Minimum height increased to 180px for consistent layout
 
-**Phase 15: System Agent & Fleet Operations**
-- Tests system agent auto-deployment and status API
-- Validates deletion protection (403 on DELETE)
-- Tests fleet status and health APIs
-- Validates System Agent UI page (/system-agent)
-- Tests operations console and quick actions
-- Tests reinitialize and ops settings endpoints
-- 18 test steps covering full system agent functionality
+**New Features**:
+- Added resource indicators row showing Memory and CPU limits
+- Displays configured limits (e.g., "4g", "2 cores") or defaults
+- Subtle separator line between execution stats and resources
+- Tooltips show full resource details on hover
 
-**Test Results**: Both phases PASSED (100% success rate)
-
-**Modified Files**:
-- `docs/testing/phases/PHASE_14_OPENTELEMETRY.md` - New file (250 lines)
-- `docs/testing/phases/PHASE_15_SYSTEM_AGENT.md` - New file (400 lines)
-- `docs/testing/phases/INDEX.md` - Added phases 14-15
-- `.claude/agents/ui-integration-tester.md` - Updated phase list and paths
+**Files Changed**:
+- `src/frontend/src/components/AgentNode.vue` - Styling and resource display
+- `src/frontend/src/stores/network.js` - Pass memoryLimit/cpuLimit to node data
+- `src/backend/services/agent_service/helpers.py` - Include resource limits in agent data
 
 ---
 
-### 2025-12-21 13:00:00
-📚 **Authentication & Authorization Architecture Documentation**
+### 2026-01-02 18:15:00
+🐛 **Fix SSH Privilege Separation Directory**
 
-Expanded the architecture document with a comprehensive "Authentication & Authorization Architecture" section that covers all component authentication flows:
+Fixed SSH failing to start due to missing privilege separation directory.
 
-**7 Authentication Layers Documented**:
-1. **User Authentication** - Dev mode (username/password) and Prod mode (Auth0/OAuth)
-2. **MCP API Keys** - User → MCP Server authentication via `trinity_mcp_*` keys
-3. **MCP Server → Backend** - Key passthrough pattern (no admin credentials in prod)
-4. **Agent MCP Keys** - Auto-generated keys with `scope: "agent"` for agent-to-agent collaboration
-5. **Agent-to-Agent Permissions** - Fine-grained permission checks at MCP layer
-6. **System Agent** - `scope: "system"` bypasses all permission checks
-7. **External Credentials** - Redis-backed storage with hot-reload to containers
+**Issue**: `/var/run/sshd` created in Dockerfile, but `/var/run` is often a tmpfs that gets wiped on container restart.
 
-**Added**:
-- ASCII diagram showing authentication flow between all components
-- Tables for each authentication layer with key properties
-- MCP Scope Summary table (user/agent/system)
-- Permission rules matrix for agent-to-agent access
+**Fix**: Added `mkdir -p /var/run/sshd` in startup.sh before starting sshd.
 
-**Modified File**: `docs/memory/architecture.md`
+**Files Changed**:
+- `docker/base-image/startup.sh` - Ensure `/var/run/sshd` exists before sshd start
+
+**Note**: Requires base image rebuild: `./scripts/deploy/build-base-image.sh`
 
 ---
 
-### 2025-12-21 11:45:00
-🐛 **System Agent OTel Access Fix**
+### 2026-01-02 18:00:00
+🐛 **Fix SSH Password Authentication & Host Detection**
 
-Fixed issue where the system agent couldn't access OpenTelemetry metrics via the `/ops/costs` command.
+Fixed two critical bugs in the SSH ephemeral password system:
+
+**Bug 1: Password Not Being Set (sed escaping)**
+- SHA-512 password hashes contain `$` characters (e.g., `$6$salt$hash`)
+- The `$` was not escaped in sed, causing the replacement to fail
+- **Fix**: Use `usermod -p` with single-quoted password instead of sed
+- **Fallback**: If usermod fails, try `chpasswd` with plaintext password
+
+**Bug 2: Host Detection Returns Docker IP**
+- `get_ssh_host()` runs inside the backend container
+- Socket-based detection returned container's Docker network IP (172.28.x.x)
+- **Fix**: Improved detection priority:
+  1. SSH_HOST env var (explicit config)
+  2. Tailscale IP detection
+  3. `host.docker.internal` (Docker Desktop Mac/Windows)
+  4. Default gateway IP (Linux Docker host)
+  5. Fallback to localhost with warning
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py` - `set_container_password()` and `get_ssh_host()`
+
+---
+
+### 2026-01-02 17:15:00
+🔧 **SSH Access Toggle in Settings UI**
+
+Added UI toggle for `ssh_access_enabled` in the Settings page.
+
+**Location**: Settings → SSH Access section → Enable SSH Access toggle
+
+**Files Changed**:
+- `src/frontend/src/views/Settings.vue` - Added SSH Access section with toggle switch
+
+---
+
+### 2026-01-02 16:30:00
+🔐 **MCP SSH Access Tool - Password Auth & System Setting**
+
+Enhanced SSH access with password-based authentication and system-wide enable/disable setting.
+
+**New Features**:
+- Password-based auth: `auth_method: "password"` returns sshpass one-liner command
+- System setting `ssh_access_enabled` (default: false) - must be enabled in Settings → Ops Settings
+- Password set directly in container's `/etc/shadow` (bypasses PAM issues)
+
+**Container Security Updates** (required for SSH):
+- Added capabilities: `SETGID`, `SETUID`, `CHOWN`, `SYS_CHROOT`, `AUDIT_WRITE`
+- Removed `no-new-privileges:true` (blocks SSH privilege separation)
+- **Note**: Existing agents must be deleted and recreated to get new settings
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py` - Password generation, shadow file editing
+- `src/backend/services/settings_service.py` - `ssh_access_enabled` ops setting
+- `src/backend/services/agent_service/crud.py` - Container capabilities
+- `src/backend/services/agent_service/lifecycle.py` - Container capabilities
+
+---
+
+### 2026-01-02 15:48:00
+🔐 **MCP SSH Access Tool - Ephemeral SSH Credentials**
+
+Added new MCP tool `get_agent_ssh_access` to generate ephemeral SSH credentials for direct terminal access to agent containers. Designed for Tailscale/VPN environments.
+
+**Features**:
+- Generate ED25519 key pairs on demand
+- Auto-inject public key into agent's `~/.ssh/authorized_keys`
+- Configurable TTL (0.1-24 hours, default: 4 hours)
+- Keys auto-expire via Redis TTL
+- Returns SSH command, private key, and connection instructions
+- Host auto-detection (SSH_HOST env → Tailscale IP → localhost)
+
+**MCP Tool**:
+- `get_agent_ssh_access(agent_name, ttl_hours, auth_method)` - Returns credentials and connection command
+
+**Backend API**:
+- `POST /api/agents/{name}/ssh-access` - Generate ephemeral SSH credentials
+
+**Security**:
+- Private key shown once, never stored on server
+- Credentials automatically removed from containers on expiry
+- User must have access to agent
+- Agent must be running
+- Controlled by `ssh_access_enabled` system setting (default: disabled)
+
+**Files Created**:
+- `src/backend/services/ssh_service.py` - SSH key generation, password management, injection, cleanup
+
+**Files Changed**:
+- `src/backend/routers/agents.py` - SSH access endpoint
+- `src/mcp-server/src/tools/agents.ts` - `getAgentSshAccess` tool
+- `src/mcp-server/src/client.ts` - `createSshAccess()` method
+- `src/mcp-server/src/types.ts` - `SshAccessResponse` type
+- `src/mcp-server/src/server.ts` - Register new tool
+
+---
+
+### 2026-01-02 15:00:00
+⚙️ **Per-Agent Resource Limits Configuration**
+
+Added ability to configure memory and CPU allocation for individual agents. Changes take effect on agent restart.
+
+**Features**:
+- Memory options: 1g, 2g, 4g, 8g, 16g, 32g, 64g
+- CPU options: 1, 2, 4, 8, 16 cores
+- UI in **Metrics tab** - "Resource Allocation" card with "Configure" button
+- Modal dialog with warning: "Changes require an agent restart to take effect"
+- Works regardless of agent state (running or stopped)
+- Container is automatically recreated with new limits on next start
+
+**Backend**:
+- New columns in `agent_ownership`: `memory_limit`, `cpu_limit`
+- `GET /api/agents/{name}/resources` - Get current and configured limits
+- `PUT /api/agents/{name}/resources` - Set new limits (owner-only)
+- `check_resource_limits_match()` helper triggers container recreation on start
+
+**Files Changed**:
+- `src/backend/database.py` - Migration + delegate methods
+- `src/backend/db/agents.py` - `get_resource_limits()`, `set_resource_limits()`
+- `src/backend/services/agent_service/helpers.py` - `check_resource_limits_match()`
+- `src/backend/services/agent_service/lifecycle.py` - Resource check on start
+- `src/backend/routers/agents.py` - API endpoints
+- `src/frontend/src/composables/useAgentSettings.js` - Resource limits state
+- `src/frontend/src/stores/agents.js` - Store methods
+- `src/frontend/src/views/AgentDetail.vue` - Resource Allocation UI panel
+
+---
+
+### 2026-01-02 13:15:00
+📝 **Fix MCP Config Examples - Add Missing `type: http`**
+
+Fixed MCP configuration examples that were missing the required `"type": "http"` field for HTTP transport.
+
+**Issue**: Claude Code requires explicit `"type": "http"` for URL-based MCP servers. Without it, config validation fails with "Invalid MCP configuration".
+
+**Files Fixed**:
+- `src/frontend/src/views/ApiKeys.vue` - API Keys page example config
+- `src/mcp-server/README.md` - MCP server documentation
+- `docs/memory/architecture.md` - Architecture docs
+- `docs/memory/feature-flows/mcp-orchestration.md` - MCP orchestration flow
+
+**Note**: The agent injection code (`docker/base-image/agent_server/services/trinity_mcp.py`) has been correct since Dec 12, 2025. If agents have incorrect config, rebuild the base image with `./scripts/deploy/build-base-image.sh`.
+
+---
+
+### 2026-01-02 12:45:00
+🐛 **Fix Execution Log Viewer for Scheduled Tasks**
+
+Fixed bug where execution logs from scheduled/triggered tasks wouldn't display in the Tasks panel log viewer.
 
 **Root Cause**:
-1. Environment variable mismatch: Slash command used `$TRINITY_API_KEY` but agent has `$TRINITY_MCP_API_KEY`
-2. System agent missing `/trinity-meta-prompt` mount - not being created with the volume
-3. Reinitialize endpoint deleted `.claude/commands/ops/` from template without re-copying
+- Two different log formats: raw Claude Code stream-json (`/api/task`) vs simplified ExecutionLogEntry (`/api/chat`)
+- Scheduled executions were using `/api/chat` which returns simplified format
+- `parseExecutionLog()` expected raw Claude Code format
 
-**Fixes Applied**:
-- Updated `costs.md` slash command to use correct env var `$TRINITY_MCP_API_KEY`
-- Added Trinity meta-prompt mount to `system_agent_service.py` `_create_system_agent()`
-- Added template copy step to `system_agent.py` reinitialize endpoint (copies `.claude` and `CLAUDE.md` after cleanup)
-- Updated `CLAUDE.md` Cost Monitoring section with explicit API call instructions
+**Fix (Standardization)**:
+- Added `AgentClient.task()` method that calls `/api/task` for stateless execution
+- Changed scheduler to use `client.task()` instead of `client.chat()`
+- All scheduled/triggered executions now return raw Claude Code format
+- No frontend changes needed - format is now consistent
 
-**Modified Files**:
-- `config/agent-templates/trinity-system/.claude/commands/ops/costs.md` - Fixed env var name
-- `config/agent-templates/trinity-system/CLAUDE.md` - Expanded Cost Monitoring section
-- `src/backend/services/system_agent_service.py` - Added `/trinity-meta-prompt` mount
-- `src/backend/routers/system_agent.py` - Added template copy step in reinitialize
-
-**Testing**: Verified system agent can now call `/api/ops/costs` and receive OTel metrics.
+**Files Changed**:
+- `src/backend/services/agent_client.py` - Added `task()` method + `_parse_task_response()`
+- `src/backend/services/scheduler_service.py` - Use `client.task()` for scheduled executions
 
 ---
 
-### 2025-12-21 11:20:00
-🎨 **System Agent Visibility Improvements**
+### 2026-01-02 11:30:00
+📈 **Agent Container Telemetry with Sparkline Charts**
 
-Made the trinity-system agent distinct from user agents across the UI.
+Added sparkline charts for CPU and memory on Agent Detail page, matching Dashboard telemetry style.
+
+**Reusable Component**:
+- Created `SparklineChart.vue` - configurable uPlot-based sparkline (color, yMax, width, height)
+- Used by both `HostTelemetry.vue` (Dashboard) and `AgentDetail.vue` (Agent page)
+
+**Agent Detail Stats**:
+- Replaced progress bars with sparkline charts for CPU and memory
+- 60-sample rolling history (5-minute window at 5s intervals)
+- Color-coded percentage values (green/yellow/red thresholds)
+- Consistent styling with Dashboard telemetry
+
+**Files Created**:
+- `src/frontend/src/components/SparklineChart.vue` - Reusable sparkline component
+
+**Files Changed**:
+- `src/frontend/src/composables/useAgentStats.js` - Added cpuHistory/memoryHistory tracking
+- `src/frontend/src/views/AgentDetail.vue` - Use SparklineChart for stats display
+- `src/frontend/src/components/HostTelemetry.vue` - Refactored to use SparklineChart
+
+---
+
+### 2026-01-02 10:10:00
+📊 **Host & Container Telemetry Dashboard**
+
+Added real-time system metrics display to Dashboard header with sparkline charts.
+
+**Features**:
+- CPU usage with rolling 60-sample sparkline (5-minute history)
+- Memory usage with sparkline and formatted value (used/total GB)
+- Disk usage with progress bar and percentage
+- Container stats: aggregate CPU/memory across all running agents (shown when agents running)
+- 5-second polling interval
+- Color-coded values (green < 50%, yellow 50-75%, orange 75-90%, red > 90%)
+- Dark/light theme support
+
+**Backend Endpoints**:
+- `GET /api/telemetry/host` - Host CPU, memory, disk stats via psutil
+- `GET /api/telemetry/containers` - Aggregate stats across agent containers
+
+**Files Created**:
+- `src/backend/routers/telemetry.py` - New telemetry router
+- `src/frontend/src/components/HostTelemetry.vue` - Sparkline component using uPlot
+
+**Files Changed**:
+- `src/backend/main.py` - Mount telemetry router
+- `docker/backend/Dockerfile` - Add psutil dependency
+- `docker/frontend/Dockerfile` - Use npm ci with lock file
+- `src/frontend/package.json` - Add uplot dependency
+- `src/frontend/src/views/Dashboard.vue` - Import and render HostTelemetry
+
+---
+
+### 2026-01-01 18:45:00
+🔄 **Autonomy Mode Toggle**
+
+Implemented master switch for agent autonomous operation:
+
+**Dashboard**:
+- "AUTO" badge (amber) shown on agents with autonomy enabled
+- Badge excluded for system agent
+
+**Agent Detail Page**:
+- AUTO/Manual toggle button in header (next to Delete button)
+- Owners only can toggle (uses `can_share` permission)
+- Real-time UI update on toggle
+
+**Backend**:
+- `autonomy_enabled` column added to `agent_ownership` table
+- `GET /api/agents/{name}/autonomy` - Get autonomy status with schedule counts
+- `PUT /api/agents/{name}/autonomy` - Enable/disable autonomy (bulk toggles all schedules)
+- `GET /api/agents/autonomy-status` - Dashboard overview for all accessible agents
+- New service module: `services/agent_service/autonomy.py`
+
+**Behavior**:
+- Enabling autonomy enables ALL schedules for the agent
+- Disabling autonomy disables ALL schedules for the agent
+- System agent excluded from autonomy controls
+
+**Files Changed**:
+- `src/backend/database.py` - Migration + delegate methods
+- `src/backend/db/agents.py` - CRUD for autonomy_enabled
+- `src/backend/services/agent_service/autonomy.py` (new)
+- `src/backend/services/agent_service/__init__.py` - Exports
+- `src/backend/routers/agents.py` - API endpoints + agent detail response
+- `src/backend/services/agent_service/helpers.py` - get_accessible_agents
+- `src/frontend/src/components/AgentNode.vue` - AUTO badge
+- `src/frontend/src/stores/network.js` - Pass autonomy_enabled to nodes
+- `src/frontend/src/views/AgentDetail.vue` - Toggle button
+
+---
+
+### 2026-01-01 12:30:00
+🤖 **Implement Research Network Demo**
+
+Created and validated two-agent autonomous research system demo:
+
+**Templates Created**:
+- `demo-researcher` - Autonomous web researcher with `/research` and `/status` commands
+- `demo-analyst` - Strategic analyst with `/briefing`, `/opportunities`, `/ask`, `/request-research` commands
+
+**System Manifest**:
+- `config/manifests/research-network.yaml` - Full system recipe with shared folders, schedules, permissions
+
+**Validation Results**:
+- Both agents deployed and running via system manifest
+- Shared folder collaboration working (researcher exposes, analyst consumes)
+- Schedules configured: researcher every 4h, analyst daily at 9 AM
+- File sharing verified: test findings file written by researcher, readable by analyst
+
+**Files Created**:
+- `config/agent-templates/demo-researcher/` (template.yaml, CLAUDE.md, commands/, .gitignore)
+- `config/agent-templates/demo-analyst/` (template.yaml, CLAUDE.md, commands/, .gitignore)
+- `config/manifests/research-network.yaml`
+
+**Docs Updated**:
+- `docs/memory/autonomous-agent-demos.md` - Added validation log and success criteria
+
+---
+
+### 2026-01-01 08:20:00
+🎨 **Simplify System Agent UI - Terminal-Centric Layout**
+
+Redesigned `/system-agent` page to give the terminal central prominence:
+
+**Layout Changes**:
+- **Terminal**: Now full width (was 2/3), increased height to 600px, central focus on page
+- **Quick Actions**: Moved to compact icon buttons in terminal header bar (was separate card with large buttons)
+- **OpenTelemetry**: Collapsible section, only shown when data available, collapsed by default
+
+**Quick Actions (now in terminal header)**:
+- Emergency Stop (red icon with tooltip)
+- Restart All Agents
+- Pause Schedules
+- Resume Schedules
+- Fullscreen toggle (separated by divider)
+
+**Files Changed**:
+- `src/frontend/src/views/SystemAgent.vue` - Complete layout restructure
+
+---
+
+### 2026-01-01 03:00:00
+📖 **Add Autonomy Section to Main Agent Guide**
+
+Updated `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` with compact autonomy section covering:
+- Three-phase lifecycle: Develop → Package → Schedule
+- Design principles table (self-contained, deterministic, graceful degradation, bounded, idempotent)
+- Quick example showing template.yaml schedule and slash command
+- Reference to detailed AUTONOMOUS_AGENT_DESIGN.md
+
+Maintains single source of truth principle - main guide has overview, detailed guide has depth.
+
+---
+
+### 2026-01-01 02:30:00
+📖 **Add Autonomous Agent Design Guide**
+
+Created `docs/AUTONOMOUS_AGENT_DESIGN.md` - focused guide on designing Trinity agents that run autonomously via scheduled commands.
+
+**Key concepts documented**:
+- **Autonomy lifecycle**: Develop interactively → Package as slash command → Schedule via Trinity
+- **Command design principles**: Self-contained, deterministic output, graceful degradation, bounded scope, idempotent
+- **Template configuration**: `schedules` block in template.yaml with cron expressions
+- **Best practices**: Focused commands, structured output, execution time bounds, error handling
+
+**Example patterns**:
+- Complete autonomous agent template with health checks and cost reports
+- Slash command structure with frontmatter (`description`, `allowed-tools`)
+- Cron expression reference
+
+This guide complements the comprehensive TRINITY_COMPATIBLE_AGENT_GUIDE.md by focusing specifically on the scheduled automation use case.
+
+---
+
+### 2026-01-01 01:00:00
+🗑️ **Remove Auth0 from Frontend and Backend - Fix HTTP Access on LAN**
+
+**Problem**: Auth0 SDK threw errors when accessing Trinity via HTTP on local network IPs (e.g., `http://192.168.1.127:3000`), causing a blank white page. Auth0 SDK requires "secure origins" (HTTPS or localhost).
+
+**Solution**: Since Auth0 login was already disabled and email authentication is the primary method, removed all Auth0 code from both frontend and backend.
+
+**Frontend Files Removed**:
+- `src/frontend/src/config/auth0.js` - Deleted
+
+**Frontend Files Changed**:
+- `src/frontend/src/main.js` - Removed Auth0 import, createAuth0(), app.use(auth0), secure origin checks
+- `src/frontend/src/components/NavBar.vue` - Removed useAuth0 import and usage
+- `src/frontend/src/stores/auth.js` - Removed setAuth0Instance(), handleAuth0Callback(), ALLOWED_DOMAIN import
+- `src/frontend/package.json` - Removed `@auth0/auth0-vue` dependency
+
+**Backend Files Changed**:
+- `src/backend/routers/auth.py` - Removed `/api/auth/exchange` endpoint, Auth0 imports
+- `src/backend/models.py` - Removed `Auth0TokenExchange` model
+- `src/backend/config.py` - Removed `AUTH0_DOMAIN`, `AUTH0_ALLOWED_DOMAIN` config vars
+
+**Kept for backward compatibility** (no DB migration needed):
+- `auth0_sub` column in users table
+- `get_user_by_auth0_sub()`, `get_or_create_auth0_user()` methods in database layer
+
+**Result**: Trinity now works on any HTTP origin. Email authentication and admin password login remain fully functional.
+
+---
+
+### 2026-01-01 00:15:00
+📊 **Dashboard Execution Stats - Agent Cards Show Task Metrics**
+
+Added execution statistics to each agent card on the Dashboard, providing at-a-glance visibility into agent workload and performance.
+
+**Display Format** (on each AgentNode):
+```
+12 tasks · 92% · $0.45 · 2m ago
+```
+
+**Backend Changes**:
+- `db/schedules.py`: Added `get_all_agents_execution_stats(hours=24)` - single query aggregating stats per agent
+- `database.py`: Added delegate method
+- `routers/agents.py`: Added `GET /api/agents/execution-stats` endpoint (returns stats for accessible agents only)
+
+**Frontend Changes**:
+- `stores/network.js`: Added `executionStats` state and `fetchExecutionStats()` (polls every 5s with context stats)
+- `components/AgentNode.vue`: Added compact stats row with task count, success rate (color-coded), cost, and relative time
+
+**Stats Shown**:
+| Metric | Description |
+|--------|-------------|
+| Task count | Executions in last 24h |
+| Success rate | % with status='success' (green >80%, yellow 50-80%, red <50%) |
+| Total cost | Sum of execution costs |
+| Last run | Relative time since last execution |
+
+**Files Changed**:
+- `src/backend/db/schedules.py` - Added aggregation query
+- `src/backend/database.py` - Delegate method
+- `src/backend/routers/agents.py` - New endpoint
+- `src/frontend/src/stores/network.js` - State and polling
+- `src/frontend/src/components/AgentNode.vue` - UI display
+
+---
+
+### 2025-12-31 23:15:00
+🐛 **Test Suite Fixes - 6 Tests Fixed**
+
+Fixed issues identified in test report:
+
+**1. Scheduler Status Endpoint Route Ordering (4 tests)**
+- `schedules.py`: Moved `/scheduler/status` endpoint BEFORE `/{name}/schedules` routes
+- **Root cause**: FastAPI was matching "scheduler" as an agent name due to route ordering
+- **Fix**: Static routes must be defined before dynamic `/{name}/*` routes
+- **Tests fixed**: `test_get_scheduler_status`, `test_scheduler_status_structure`, `test_scheduler_status_includes_jobs`, `test_scheduler_status_requires_auth`
+
+**2. API Client Header Merging Bug (2 tests)**
+- `tests/utils/api_client.py`: Fixed header conflict when caller passes custom headers
+- **Root cause**: `headers` was passed both via `kwargs` and as explicit parameter
+- **Fix**: Pop headers from kwargs and merge with default headers
+- **Tests fixed**: `test_task_with_source_agent_header`, `test_agent_task_has_agent_trigger`
+
+**3. Session List Access (Already Fixed)**
+- Verified `test_agent_chat.py` already handles empty session lists properly
+- Tests skip gracefully when no sessions available
+
+---
+
+### 2025-12-31 22:30:00
+🧪 **Expanded API Test Coverage**
+
+Added 23 new tests to cover previously untested API endpoints:
+
+**test_agent_chat.py** - Chat Session Lifecycle (6 tests)
+- `test_list_chat_sessions_structure` - Verifies session list response structure
+- `test_get_session_details` - GET /api/agents/{name}/chat/sessions/{id}
+- `test_get_session_details_nonexistent_returns_404` - 404 for missing session
+- `test_close_session` - POST /api/agents/{name}/chat/sessions/{id}/close
+- `test_close_session_nonexistent_returns_404` - 404 for closing missing session
+- `test_close_session_requires_auth` - Auth required for close
+
+**test_schedules.py** - Scheduler Status (4 tests)
+- `test_get_scheduler_status` - GET /api/agents/scheduler/status
+- `test_scheduler_status_structure` - Validates running, job_count fields
+- `test_scheduler_status_includes_jobs` - Verifies jobs/job_count present
+- `test_scheduler_status_requires_auth` - Auth required for status
+
+**test_ops.py** - Context Stats (5 tests)
+- `test_get_context_stats` - GET /api/agents/context-stats
+- `test_context_stats_structure` - Validates agent stats structure
+- `test_context_stats_entries_have_valid_structure` - All entries have required fields
+- `test_context_stats_requires_auth` - Auth required
+- `test_context_stats_returns_valid_response` - Valid response structure
+
+**test_executions.py** - Execution Logs & Details (8 tests)
+- `test_get_execution_log_nonexistent_returns_404` - 404 for missing log
+- `test_get_execution_log_nonexistent_agent_returns_404` - 404 for missing agent
+- `test_get_execution_log_requires_auth` - Auth required
+- `test_get_execution_log_returns_log` - GET /api/agents/{name}/executions/{id}/log
+- `test_execution_log_content_structure` - Log content validation
+- `test_get_execution_details` - GET /api/agents/{name}/executions/{id}
+- `test_get_execution_details_nonexistent_returns_404` - 404 handling
+- `test_get_execution_details_requires_auth` - Auth required
+
+**Test Suite Summary**: ~515 tests total (up from ~373), 97.8% pass rate
+
+---
+
+### 2025-12-31 18:45:00
+📝 **Updated Agent Scheduling Feature Flow Documentation**
+
+- Updated `docs/memory/feature-flows/scheduling.md` to reflect Plan 02/03 refactoring
+- **Access Control Dependencies**: Documented `AuthorizedAgent`, `OwnedAgent`, `CurrentUser` usage in schedules router
+  - Added "Access" column to API endpoints table
+  - Added "Access Control Pattern" section showing dependency usage
+  - Updated flow diagrams to show which endpoints use which dependencies
+- **AgentClient Service**: Documented new centralized HTTP client for agent communication
+  - Added "Agent HTTP Client Service" section with full API reference
+  - Documented `AgentChatResponse` and `AgentChatMetrics` dataclasses
+  - Added exception handling patterns: `AgentNotReachableError`, `AgentRequestError`
+  - Updated execution flow diagrams to show `client.chat()` instead of raw `httpx.post()`
+- Updated all line number references for: schedules.py, scheduler_service.py, agent_client.py, dependencies.py
+- Added new files to Related Files table: `agent_client.py`, `dependencies.py`
+
+---
+
+### 2025-12-31 18:15:00
+📝 **Updated Agent Permissions Feature Flow Documentation**
+
+- Updated `docs/memory/feature-flows/agent-permissions.md` to document access control dependencies
+- Added new section on `dependencies.py` type aliases: `AuthorizedAgent`, `OwnedAgent`, `CurrentUser`, etc.
+- Documented dependency pattern benefits: consistent 403 messages, OpenAPI visibility, automatic enforcement
+- Noted that permissions endpoints currently use inline checks but can migrate to dependency pattern
+- Verified and updated all line number references for router (598-638) and service (18-168) files
+- Updated lifecycle integration line numbers: crud.py:474-480, agents.py:239-243
+- Updated database delegation line numbers: database.py:964-986
+
+---
+
+### 2025-12-31 17:30:00
+🐙 **GitHub API Service Extraction - Architecture Refactoring**
+
+**Problem Solved**: `routers/git.py` `initialize_github_sync` endpoint contained ~280 lines of GitHub API business logic that should be in service layer:
+- GitHub PAT validation
+- Repository existence check (GitHub API call)
+- Organization vs user detection (GitHub API call)
+- Repository creation (GitHub API call)
+- Git initialization commands (container exec calls)
+- Working branch creation
+
+This violated separation of concerns, made the logic unreusable, and hard to unit test.
+
+**Solution**: Created `services/github_service.py` with `GitHubService` class:
+- `validate_token()` → Tuple[bool, Optional[str]]
+- `get_owner_type(owner)` → OwnerType (USER or ORGANIZATION)
+- `check_repo_exists(owner, name)` → GitHubRepoInfo
+- `create_repository(owner, name, private, description)` → GitHubCreateResult
+- Structured exceptions: `GitHubError`, `GitHubAuthError`, `GitHubPermissionError`
+- Response models: `GitHubRepoInfo`, `GitHubCreateResult`, `OwnerType`
+
+**Also added to `services/git_service.py`**:
+- `GitInitResult` dataclass for initialization results
+- `initialize_git_in_container(agent_name, repo, pat)` - handles all git init steps
+- `check_git_initialized(agent_name)` - verify git is set up in container
+
+**Files Changed**:
+- **Added**: `services/github_service.py` (~280 lines)
+- **Updated**: `services/git_service.py` - added init helpers (~180 lines)
+- **Updated**: `routers/git.py` - endpoint reduced from ~280 lines to ~115 lines
+
+**Benefits**:
+- Separation of concerns: Router handles HTTP, services handle logic
+- Reusability: `GitHubService` can be used elsewhere
+- Testability: Can unit test GitHub logic without FastAPI
+- Maintainability: ~165 lines removed from router
+- Error handling: Structured exceptions instead of inline checks
+- Type safety: Dataclasses for responses
+
+---
+
+### 2025-12-31 16:20:00
+🔌 **Agent HTTP Client Service - DRY Refactoring**
+
+**Problem Solved**: HTTP client code for agent container communication duplicated across multiple files:
+- `scheduler_service.py` - 2 places with chat execution + response parsing (~70 lines each)
+- `ops.py` - 2 places with context stats fetching
+- `lifecycle.py` - Trinity injection with retry logic
+
+This violated DRY, had inconsistent timeout handling, and duplicated response parsing logic.
+
+**Solution**: Created `services/agent_client.py` with `AgentClient` class:
+- `chat(message, stream)` → `AgentChatResponse` with parsed metrics
+- `get_session()` → `AgentSessionInfo` with context stats
+- `inject_trinity_prompt()` → handles retries internally
+- `health_check()` → simple boolean health check
+- Structured exceptions: `AgentClientError`, `AgentNotReachableError`, `AgentRequestError`
+- Response models: `AgentChatMetrics`, `AgentChatResponse`, `AgentSessionInfo`
+
+**Files Changed**:
+- **Added**: `services/agent_client.py` (~320 lines)
+- **Updated**: `services/scheduler_service.py` - replaced 2 HTTP blocks + parsing (~90 lines removed)
+- **Updated**: `routers/ops.py` - replaced 2 context fetch blocks (~30 lines removed)
+- **Updated**: `services/agent_service/lifecycle.py` - replaced injection (~40 lines removed)
+
+**Benefits**:
+- ~180 lines of duplicated code removed
+- Standardized timeouts (CHAT: 300s, SESSION: 5s, INJECT: 10s)
+- Type-safe response parsing with dataclasses
+- Centralized error handling prevents context% calculation bugs
+- Easy to mock for testing
+
+---
+
+### 2025-12-31 16:05:00
+🔒 **Access Control Dependencies - DRY Refactoring**
+
+**Problem Solved**: Same access control pattern repeated 50+ times across routers:
+```python
+if not db.can_user_access_agent(current_user.username, name):
+    raise HTTPException(status_code=403, detail="Access denied")
+```
+
+This violated DRY principle, caused inconsistent error messages, and was error-prone.
+
+**Solution**: Created FastAPI dependencies in `dependencies.py`:
+- `get_authorized_agent(name)` - validates read access, for `{name}` path param
+- `get_owned_agent(name)` - validates owner access, for `{name}` path param
+- `get_authorized_agent_by_name(agent_name)` - for `{agent_name}` path param
+- `get_owned_agent_by_name(agent_name)` - for `{agent_name}` path param
+- Type aliases: `AuthorizedAgent`, `OwnedAgent`, `AuthorizedAgentByName`, `OwnedAgentByName`, `CurrentUser`
+
+**Usage Example** (before → after):
+```python
+# Before
+@router.get("/{name}/schedules")
+async def list_schedules(name: str, current_user: User = Depends(get_current_user)):
+    if not db.can_user_access_agent(current_user.username, name):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return db.list_schedules(name)
+
+# After
+@router.get("/{name}/schedules")
+async def list_schedules(name: AuthorizedAgent):
+    return db.list_schedules(name)
+```
+
+**Files Changed**:
+- `dependencies.py` - Added 4 dependency functions + 5 type aliases
+- `routers/schedules.py` - Replaced 10 access checks with `AuthorizedAgent`
+- `routers/git.py` - Replaced 6 access checks with `AuthorizedAgentByName`/`OwnedAgentByName`
+- `routers/sharing.py` - Replaced 3 access checks with `OwnedAgentByName`
+- `routers/public_links.py` - Replaced 5 access checks with `OwnedAgentByName`
+- `routers/agents.py` - Replaced 3 access checks with `AuthorizedAgentByName`
+
+**Benefits**:
+- ~50 lines of duplicated access control code removed
+- Consistent 403 error messages across all endpoints
+- New endpoints automatically get proper authorization
+- OpenAPI schema shows authorization requirements
+- Single point of change for access control logic
+
+---
+
+### 2025-12-31 07:40:00
+🏗️ **Settings Service - Architecture Fix**
+
+**Problem Solved**: Services were importing from routers (architectural violation):
+- `services/agent_service/crud.py` → `routers/settings.py`
+- `services/agent_service/lifecycle.py` → `routers/settings.py`
+- `services/agent_service/helpers.py` → `routers/settings.py`
+- `services/system_agent_service.py` → `routers/settings.py`
+- `routers/git.py` → `routers/settings.py`
+
+This inverted the dependency direction (services should never depend on routers) and created circular dependency risk.
+
+**Solution**: Created `services/settings_service.py` with:
+- `get_anthropic_api_key()` - Anthropic API key with env fallback
+- `get_github_pat()` - GitHub PAT with env fallback
+- `get_google_api_key()` - Google API key with env fallback
+- `get_ops_setting()` - Ops settings with type conversion
+- `OPS_SETTINGS_DEFAULTS` / `OPS_SETTINGS_DESCRIPTIONS` - Moved from router
+
+**Files Changed**:
+- **Added**: `src/backend/services/settings_service.py`
+- **Updated**: `services/agent_service/crud.py` - Import from service
+- **Updated**: `services/agent_service/lifecycle.py` - Import from service
+- **Updated**: `services/agent_service/helpers.py` - Import from service
+- **Updated**: `services/system_agent_service.py` - Import from service
+- **Updated**: `routers/git.py` - Import from service
+- **Updated**: `routers/settings.py` - Re-exports from service for backward compatibility
+- **Updated**: `docs/memory/architecture.md` - Added settings_service to services list
+
+**Benefits**:
+- Clean architecture: Services no longer depend on routers
+- Testability: Easy to mock settings in unit tests
+- Single source of truth: All settings logic in one place
+
+---
+
+### 2025-12-31 03:00:00
+🔄 **Vector Log Aggregation Migration**
+
+**Major Change**: Replaced unreliable audit-logger with Vector for centralized, reliable log aggregation.
+
+**Why**:
+- Audit-logger used fire-and-forget HTTP with 2s timeout (silently dropped events)
+- 173+ manual call sites meant incomplete coverage and maintenance burden
+- No retry/fallback meant single failures = events lost forever
+
+**What Changed**:
+- **Added**: Vector service (timberio/vector:0.43.1-alpine) that captures ALL container stdout/stderr via Docker socket
+- **Added**: `config/vector.yaml` - Routes logs to `/data/logs/platform.json` and `/data/logs/agents.json`
+- **Added**: `src/backend/logging_config.py` - Structured JSON logging for Python backend
+- **Removed**: `src/audit-logger/` directory and `docker/audit-logger/` Dockerfile
+- **Removed**: `src/backend/services/audit_service.py` and all 173+ `log_audit_event()` calls across 24 files
+- **Removed**: `/api/audit/logs` endpoint
+- **Updated**: docker-compose.yml and docker-compose.prod.yml
+- **Updated**: CLAUDE.md, DEPLOYMENT.md with new architecture
+- **Added**: `docs/QUERYING_LOGS.md` - Guide for querying logs with jq/grep
+
+**Benefits**:
+- **Reliable**: Never drops logs - captures everything Docker sees
+- **Complete**: ALL containers automatically (no manual call sites)
+- **Zero maintenance**: No application changes needed after migration
+- **Queryable**: JSON files searchable with grep/jq
+
+**Files Removed** (24 files cleaned):
+- All routers: agents.py, credentials.py, settings.py, auth.py, mcp_keys.py, ops.py, chat.py, system_agent.py, schedules.py, public_links.py, public.py, systems.py, sharing.py, git.py, setup.py
+- All services: files.py, permissions.py, crud.py, queue.py, terminal.py, deploy.py, folders.py, api_key.py
+- dependencies.py, main.py, config.py, services/__init__.py
+
+---
+
+### 2025-12-31 01:30:00
+👁️ **Execution Log Viewer in Tasks Tab**
+
+**Feature**: View full execution logs for completed tasks via popup modal.
+
+**Implementation**:
+- "View Log" button (document icon) appears on completed tasks in Tasks tab
+- Clicking opens modal with full Claude Code execution transcript
+- Uses existing `GET /api/agents/{name}/executions/{execution_id}/log` endpoint
+- Log displayed as formatted JSON in monospace font
+- Modal shows status, timestamp, and scrollable log content
+- Graceful handling of tasks without logs
+
+**Files Modified**:
+- `src/frontend/src/components/TasksPanel.vue` - Added log modal, view button, and related state/functions
+
+---
+
+### 2025-12-31 01:05:00
+🔧 **All MCP Chat Calls Now Tracked in Tasks Tab**
+
+**Feature**: ALL MCP `chat_with_agent` calls now create execution records, appearing in the Tasks tab.
+
+**Problem Solved**: Initial fix only tracked agent-to-agent calls (when `X-Source-Agent` header present). User MCP calls (user-scoped keys via Claude Code) were still not tracked.
+
+**Implementation**:
+- MCP client now sends `X-Via-MCP: true` header on all chat calls
+- Backend checks for either `X-Via-MCP` or `X-Source-Agent` header
+- `triggered_by` values: "agent" (agent-to-agent), "mcp" (user MCP calls)
+- All MCP executions now visible in Tasks tab
+
+**Files Modified**:
+- `src/mcp-server/src/client.ts` - Added `X-Via-MCP: true` header to chat method
+- `src/backend/routers/chat.py` - Check for `X-Via-MCP` header in addition to `X-Source-Agent`
+
+---
+
+### 2025-12-31 00:25:00
+🔧 **Agent-to-Agent Chat Tracking in Tasks Tab**
+
+**Feature**: MCP `chat_with_agent` calls (non-parallel mode) now create execution records, appearing in the Tasks tab alongside scheduled and manual tasks.
+
+**Problem Solved**: Previously, only `/task` endpoint created `schedule_executions` records. Agent-to-agent chat via `/chat` endpoint (when `parallel=false`, the default) was not tracked in the Tasks tab. This meant MCP orchestration calls weren't visible in the unified execution history.
+
+**Implementation**:
+- When `/chat` endpoint receives `X-Source-Agent` header (agent-to-agent call):
+  - Creates `schedule_executions` record with `triggered_by="agent"`
+  - Updates record on success with response, cost, context, tool_calls
+  - Updates record on failure with error message
+- All headless executions now visible in Tasks tab: manual, scheduled, and agent-to-agent
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - Added execution record creation for agent-to-agent calls
+- `docs/memory/feature-flows/execution-queue.md` - Updated with agent-to-agent tracking
+- `docs/memory/feature-flows/tasks-tab.md` - Added `/chat` endpoint as entry point
+- `docs/memory/feature-flows/mcp-orchestration.md` - Updated parallel/non-parallel mode docs
+
+---
+
+### 2025-12-30 23:50:00
+🐛 **Bug Fixes: File Credential Injection & Mixed Credential Types**
+
+**Fix 1: File Credential Injection Not Working**
+
+- **Root Cause**: Running agent containers had outdated base image without file-handling code
+- **Solution**: Rebuild base image with `./scripts/deploy/build-base-image.sh` and restart agents
+- **Change**: Added INFO-level logging to `get_assigned_file_credentials()` for production debugging
+
+**Fix 2: TypeError on Mixed Credential Types**
+
+- **Error**: `TypeError: string indices must be integers, not 'str'` at `crud.py:331`
+- **Root Cause**: `get_agent_credentials()` returns mixed dict where explicit assignments have dict values but bulk-imported credentials have string values
+- **Solution**: Added `isinstance()` check in `crud.py` to handle both types
+
+**Files Modified**:
+- `src/backend/credentials.py` - Changed debug logs to info level
+- `src/backend/services/agent_service/crud.py` - Handle string vs dict credentials
+
+---
+
+### 2025-12-30 22:20:00
+🔐 **Agent-Specific Credential Assignment**
+
+**Feature**: Fine-grained control over which credentials are injected into each agent. Credentials must now be explicitly assigned before injection.
+
+**Problem Solved**: Previously all credentials were auto-injected into all agents. Users had no control over credential scope, leading to security concerns and unnecessary credential exposure.
+
+**Key Changes**:
+- No credentials assigned by default (explicit user action required)
+- Redis SET storage: `agent:{name}:credentials` for credential IDs
+- Filter input for searching credentials by name or service
+- Scrollable credential lists with max-height
+- "Apply to Agent" button to inject assigned credentials into running agent
+- Credential count badge on Credentials tab
+
+**Backend API**:
+- `GET /api/agents/{name}/credentials/assignments` - List assigned credential IDs
+- `POST /api/agents/{name}/credentials/assign` - Assign a credential
+- `DELETE /api/agents/{name}/credentials/assign/{cred_id}` - Unassign
+- `POST /api/agents/{name}/credentials/assign/bulk` - Bulk assign
+- `POST /api/agents/{name}/credentials/apply` - Inject into running agent
+
+**Files Modified**:
+- `src/backend/credentials.py` - 7 new methods for assignment management
+- `src/backend/models.py` - CredentialAssignRequest, CredentialBulkAssignRequest
+- `src/backend/routers/credentials.py` - 5 new endpoints, route ordering fix
+- `src/backend/services/agent_service/crud.py` - Use assigned credentials only
+- `src/backend/routers/agents.py` - Cleanup assignments on agent deletion
+- `src/frontend/src/stores/agents.js` - 4 new store actions
+- `src/frontend/src/composables/useAgentCredentials.js` - Complete rewrite
+- `src/frontend/src/views/AgentDetail.vue` - Filter input, scroll, filtered lists
+
+---
+
+### 2025-12-30 18:30:00
+🔀 **Git Conflict Resolution**
+
+**Feature**: Basic GitHub workflow with conflict detection and resolution strategies for pull and sync operations.
+
+**Problem Solved**: Pull/sync operations would fail silently on conflicts. Users had no way to choose how to resolve conflicts (stash changes, force replace, etc.).
+
+**Pull Strategies**:
+- `clean` (default): Simple pull with rebase, fails on conflicts
+- `stash_reapply`: Stash local changes, pull, reapply stash
+- `force_reset`: Hard reset to remote, discard local changes
+
+**Sync Strategies**:
+- `normal` (default): Stage, commit, push - fails if remote has changes
+- `pull_first`: Pull latest, then stage, commit, push
+- `force_push`: Force push, overwriting remote
+
+**UI**: GitConflictModal shows resolution options when 409 conflict detected. Destructive options shown in red with warnings.
+
+**API Changes**:
+- `POST /api/agents/{name}/git/pull` accepts `{strategy: "clean"|"stash_reapply"|"force_reset"}`
+- `POST /api/agents/{name}/git/sync` accepts `{strategy: "normal"|"pull_first"|"force_push"}`
+- Conflict responses return HTTP 409 with `X-Conflict-Type` header
+
+**Files Modified**:
+- `docker/base-image/agent_server/routers/git.py` - Pull/sync strategies
+- `docker/base-image/agent_server/models.py` - Added GitPullRequest model
+- `src/backend/routers/git.py` - Strategy parameters, conflict handling
+- `src/backend/services/git_service.py` - Proxy with conflict detection
+- `src/backend/db_models.py` - Added conflict_type to GitSyncResult
+- `src/frontend/src/stores/agents.js` - Strategy parameters
+- `src/frontend/src/composables/useGitSync.js` - Conflict state management
+- `src/frontend/src/components/GitConflictModal.vue` - New conflict resolution UI
+- `src/frontend/src/views/AgentDetail.vue` - Modal integration
+
+---
+
+### 2025-12-30 15:00:00
+📁 **File-Type Credentials**
+
+**Feature**: Inject entire credential files (JSON, YAML, PEM, etc.) into agents at specified paths.
+
+**Problem Solved**: Service account JSON files and other file-based credentials couldn't be injected directly. Users had to break them into individual environment variables.
+
+**Implementation**:
+- New credential type: `file` with `file_path` field
+- Files stored in Redis: `{content: "...file content..."}`
+- Injected at agent creation via `/generated-creds/credential-files/`
+- Hot-reload support via agent-server endpoint
+- Frontend UI with file upload or paste
+
+**Example - Google Service Account**:
+```
+Name: GCP Service Account
+Type: File (JSON, etc.)
+Service: google
+File Path: .config/gcloud/application_default_credentials.json
+Content: {"type": "service_account", "project_id": "...", ...}
+```
+
+**Agent Usage**:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/home/developer/.config/gcloud/application_default_credentials.json"
+```
+
+**Files Modified**:
+- `src/backend/credentials.py` - Added `file` type, `file_path` field, `get_file_credentials()`
+- `src/backend/services/agent_service/crud.py` - Write file credentials at agent creation
+- `src/backend/routers/credentials.py` - Include files in hot-reload
+- `docker/base-image/startup.sh` - Copy credential files to target paths
+- `docker/base-image/agent_server/models.py` - Added `files` field to request model
+- `docker/base-image/agent_server/routers/credentials.py` - Write files on hot-reload
+- `src/frontend/src/views/Credentials.vue` - UI for file-type credentials
+- `docs/memory/feature-flows/credential-injection.md` - Flow 7 documentation
+
+---
+
+### 2025-12-30 13:30:00
+🔗 **Dynamic GitHub Templates via MCP**
+
+**Feature**: Create agents from ANY GitHub repository via MCP - not just pre-defined templates.
+
+**Problem Solved**: Previously, MCP `create_agent` only worked with templates pre-defined in `config.py`. Users wanted to create agents from arbitrary GitHub repos on the fly.
+
+**Implementation**:
+- `create_agent` tool now accepts `template: "github:owner/repo"` for any repository
+- If template is not in pre-defined list, uses system GITHUB_PAT for access
+- Repository must be accessible by the configured PAT (public or private with access)
+
+**Example**:
+```typescript
+create_agent({
+  name: "my-custom-agent",
+  template: "github:myorg/my-private-agent"
+})
+```
+
+**Requirements**:
+- System GitHub PAT configured in Settings or via GITHUB_PAT env var
+- PAT must have `repo` scope and access to target repository
+
+**Files Modified**:
+- `src/backend/services/agent_service/crud.py` - Support dynamic GitHub repos
+- `src/mcp-server/src/tools/agents.ts` - Updated tool description
+- `docs/memory/feature-flows/mcp-orchestration.md` - Added documentation
+
+---
+
+### 2025-12-30 12:00:00
+🔄 **GitHub Source Mode - Unidirectional Pull Flow**
+
+**Feature**: Agents can now track a GitHub source branch directly and pull updates on demand.
+
+**Problem Solved**: Users developing agents locally wanted to push to GitHub and have Trinity pull updates, without dealing with bidirectional sync conflicts.
+
+**Implementation**:
+- **New Fields**: `source_branch` (default: "main") and `source_mode` (default: true) in agent git config
+- **Source Mode**: Agent stays on source branch, pulls only (no working branch created)
+- **Pull Button**: Added "Pull" button next to "Sync" in Agent Detail UI
+
+**Flow**:
+1. Develop locally → push to GitHub (main branch)
+2. Create agent in Trinity from GitHub template
+3. Click "Pull" button to fetch latest changes
+4. Agent's `content/` folder (gitignored) stores large files separately
+
+**Files Modified**:
+- `src/backend/db_models.py` - Added `source_branch`, `source_mode` to AgentGitConfig
+- `src/backend/database.py` - Migration and schema update
+- `src/backend/db/schedules.py` - Updated create_git_config with new params
+- `src/backend/models.py` - Added source_branch/source_mode to AgentConfig
+- `src/backend/services/agent_service/crud.py` - Pass env vars to container
+- `src/backend/routers/git.py` - Include new fields in /git/config response
+- `docker/base-image/startup.sh` - Support GIT_SOURCE_MODE and GIT_SOURCE_BRANCH
+- `src/frontend/src/composables/useGitSync.js` - Added pullFromGithub function
+- `src/frontend/src/views/AgentDetail.vue` - Added Pull button
+
+**API**:
+- `POST /api/agents/{name}/git/pull` - Pull latest from source branch
+
+---
+
+### 2025-12-30 10:30:00
+🔗 **Dashboard Permissions Integration**
+
+**Feature**: Visual permission management on Dashboard via edge connections.
+
+**Two Edge Types**:
+- **Permission edges** (dashed blue): Show which agents CAN communicate - created by dragging between nodes
+- **Collaboration edges** (solid animated): Show actual message flow - created automatically from agent activity
+
+**Edge Creation**:
+- Drag from source agent handle → target agent handle
+- Immediately calls `POST /api/agents/{source}/permissions/{target}`
+- Toast notification: "Permission granted: A → B"
+
+**Edge Deletion**:
+- Click to select edge → Press Delete/Backspace key
+- Immediately calls `DELETE /api/agents/{source}/permissions/{target}`
+- Toast notification: "Permission revoked: A → B"
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Added `permissionEdges`, `fetchPermissions()`, `createPermissionEdge()`, `deletePermissionEdge()`
+- `src/frontend/src/stores/agents.js` - Added `addAgentPermission()`, `removeAgentPermission()` API methods
+- `src/frontend/src/views/Dashboard.vue` - Added `@connect`, `@edges-change` handlers, toast notifications
+- `src/frontend/src/components/AgentNode.vue` - Styled handles (blue, hover effects, glow)
+
+**UX**:
+- No confirmation dialogs - direct manipulation for fast workflow
+- Permission edges show as dashed blue lines with arrow
+- Node handles highlight blue on hover with glow effect
+- Toast notifications for all permission operations
+
+---
+
+### 2025-12-29 16:45:00
+🧹 **Removed DEV_MODE_ENABLED from Codebase**
+
+**Complete Removal**:
+- Removed `DEV_MODE_ENABLED` environment variable and all references
+- Removed `devModeEnabled` state from frontend auth store
+- Removed `dev_mode_enabled` from API response (`/api/auth/mode`)
+- Updated all documentation, tests, and config files
+
+**Simplified Auth API**:
+- `GET /api/auth/mode` now returns `{email_auth_enabled, setup_completed}`
+- `POST /api/token` always available for admin login (no mode gating)
+- Token mode: `admin` for password login, `email` for email login
+
+---
+
+### 2025-12-29 16:30:00
+🔐 **Login Page Simplification**
 
 **Changes**:
-- **Agents Page**: System agent hidden from list (users only see their agents)
-- **Dashboard**: System agent has distinct purple styling:
-  - Purple background and border (vs white for user agents)
-  - "System Dashboard" link instead of "View Details" button
-  - Links directly to `/system-agent` page
+- Removed Google OAuth and Developer Mode options from login page
+- Login now offers two methods only:
+  1. **Email with code** (primary) - For whitelisted users
+  2. **Admin Login** (secondary) - Fixed username 'admin', password only
+- Token mode changed from `dev` to `admin` for password-based login
+- Audit log action changed from `dev_login` to `admin_login`
 
-**Modified Files**:
-- `src/frontend/src/stores/agents.js` - Added `userAgents` getter, updated `sortedAgents` to exclude system
-- `src/frontend/src/components/AgentNode.vue` - Added purple styling for system agents, replaced button with link
+**Files Modified**:
+- `src/frontend/src/views/Login.vue` - Simplified to email + admin login only
+- `src/backend/routers/auth.py` - Updated token mode
+- `src/frontend/src/stores/auth.js` - Simplified auth methods
 
 ---
 
-### 2025-12-21 11:10:00
-📊 **System Agent UI: Compact Header with OTel Visualization (Req 11.3)**
+### 2025-12-29 15:30:00
+🗂️ **File Manager: Hidden Files Toggle + Inline Editing**
 
-Redesigned the System Agent page (`/system-agent`) with a compact header and integrated OpenTelemetry metrics visualization.
+**New Features**:
+1. **Show Hidden Files Toggle**: Checkbox in header to show/hide dotfiles (persisted to localStorage)
+2. **Inline Text File Editing**: Edit button for text files, textarea editor, Save/Cancel buttons
+3. **Unsaved Changes Warning**: Confirmation prompt when switching files or canceling with changes
 
-**UI Changes**:
-- **Compact Header**: Agent info, status, and actions on single line
-- **Fleet Stats Bar**: Inline horizontal display (Fleet: X agents | Y running | Z stopped)
-- **OTel Metrics Grid**: 6 metric cards with mini progress bars and icons
-  - Total Cost ($) with progress bar scaled to $10 max
-  - Tokens with colored breakdown (blue=input, purple=output, teal=cache)
-  - Sessions, Active Time, Commits, Lines of Code
+**Backend Changes**:
+- `docker/base-image/agent_server/routers/files.py`: Added `show_hidden` query param, `PUT /api/files` endpoint
+- `src/backend/services/agent_service/files.py`: Updated `list_agent_files_logic` with `show_hidden`, added `update_agent_file_logic`
+- `src/backend/routers/agents.py`: Added `show_hidden` param, `PUT /{agent_name}/files` endpoint
+
+**Frontend Changes**:
+- `FileManager.vue`: Hidden toggle, edit state, startEdit/cancelEdit/saveFile methods
+- `FilePreview.vue`: Edit mode with textarea, `isEditing` and `editContent` props
+- `stores/agents.js`: `listAgentFiles` accepts `showHidden`, new `updateAgentFile` action
+
+**Protection Policy**:
+- **Cannot delete**: CLAUDE.md, .trinity, .git, .gitignore, .env, .mcp.json, .mcp.json.template
+- **Cannot edit**: .trinity, .git, .gitignore, .env, .mcp.json.template
+- **CAN edit**: CLAUDE.md, .mcp.json (users need to modify agent instructions and MCP config)
+
+---
+
+### 2025-12-29 14:15:00
+📚 **Feature Flows Audit and Update**
+
+**Verified and Updated**:
+- `tasks-tab.md` - Updated line numbers for TasksPanel.vue (264-475, 329-433), AgentDetail.vue (201, 884-885), and added service layer references for queue.py
+- `scheduling.md` - Updated API endpoint line numbers to match current schedules.py after refactoring (GET/PUT/DELETE endpoints shifted)
+- `execution-queue.md` - Updated chat.py line numbers (106-356) to reflect retry helper addition
+
+**No Changes Needed** (already accurate):
+- `agent-lifecycle.md` - Service layer references correct (updated 2025-12-27)
+- `agent-terminal.md` - Service layer references correct (updated 2025-12-27)
+- `agent-network.md` - Workplan removal noted in revision history
+- `testing-agents.md` - Plans router removal noted in revision history
+
+**Index Updated**: `feature-flows.md` now reflects 2025-12-29 audit with summary of changes.
+
+---
+
+### 2025-12-29 13:30:00
+🧪 **Add Missing Execution and Queue Tests**
+
+**New Tests Added**: Comprehensive test coverage for task executions and queue management.
+
+**test_executions.py** (new file - 15 tests):
+- `TestExecutionsEndpoint` - GET /api/agents/{name}/executions endpoint tests
+- `TestExecutionFields` - Verify execution records have required fields
+- `TestTaskPersistence` - Tasks saved to DB, manual trigger, duration, cost tracking
+- `TestAgentToAgentTask` - X-Source-Agent header and triggered_by='agent'
+- `TestExecutionOrdering` - Executions returned in descending time order
+- `TestExecutionFiltering` - Filter by status and triggered_by
+
+**test_execution_queue.py** (expanded from 6 to 24 tests):
+- `TestQueueStatus` - Queue status fields, agent name, busy state, queued executions
+- `TestQueueStatusDuringExecution` - Queue busy during chat execution
+- `TestClearQueue` - Clear queue, cleared count, auth, 404 handling
+- `TestForceRelease` - Release, was_running, warning message, auth
+- `TestQueueAfterOperations` - Queue state after clear/release
+- `TestQueueWithParallelTasks` - Verify /task bypasses queue
+
+**Coverage Gaps Addressed**:
+1. GET /api/agents/{name}/executions endpoint (was untested)
+2. Task persistence to database
+3. Agent-to-agent execution via X-Source-Agent header
+4. Queue endpoint authentication tests
+5. Queue state verification after operations
+
+---
+
+### 2025-12-29 13:00:00
+🔧 **Fix Agent Server Connectivity Race Condition**
+
+**Problem**: Test suite showed 7/441 failures due to agent file server connectivity issues. When an agent container starts, the internal HTTP server takes a moment to initialize. Requests made during this window would fail with "All connection attempts failed".
+
+**Root Cause**: No retry logic when communicating with agent containers - single connection failure caused immediate HTTP 500 error.
+
+**Solution**: Added retry logic with exponential backoff for all agent communication:
+- File operations (list, download, preview, delete)
+- Chat endpoint
+- Parallel task endpoint
+
+**Changes**:
+- `src/backend/services/agent_service/helpers.py` - Added `agent_http_request()` helper with retry logic
+- `src/backend/services/agent_service/files.py` - Uses retry helper, returns 503 for connection failures
+- `src/backend/routers/chat.py` - Added `agent_post_with_retry()` for chat/task endpoints
+
+**Retry Logic**:
+- 3 attempts with exponential backoff (1s, 2s, 4s)
+- Returns 503 "Agent server not ready" for connection failures
+- Tests can skip on 503 vs failing on 500
+
+**Impact**: Fixes test_agent_files.py failures (7 tests), improves stability for test_activities.py chat tests.
+
+---
+
+### 2025-12-28 23:15:00
+🔧 **Manual Tasks Now Persisted to Database**
+
+**Fix**: Manual tasks triggered via Tasks tab are now saved to database and persist across page reloads.
+
+**Backend Changes**:
+- Added `create_task_execution()` method to `db/schedules.py` for manual task creation
+- Uses `schedule_id = "__manual__"` as marker for non-scheduled tasks
+- Updated `/api/agents/{name}/task` endpoint to save execution records
+- Execution status (success/failed), response, cost, context, tool_calls all saved
+
+**Modified Files**:
+- `src/backend/db/schedules.py` - Added `create_task_execution()` method
+- `src/backend/database.py` - Exposed `create_task_execution()` on Database class
+- `src/backend/routers/chat.py` - Updated `/task` endpoint to persist executions
+
+**Flow**:
+1. Task submitted → execution record created with status "running"
+2. Task completes → execution updated with status "success"/"failed" + metadata
+3. Page reload → task appears in history from database
+
+---
+
+### 2025-12-28 22:45:00
+✨ **Added Tasks Tab to Agent Detail Page (v2)**
+
+**New Feature**: Tasks tab provides a unified view for all headless agent executions with inline task execution and monitoring.
+
+**Key Capabilities**:
+1. **Inline Task Execution**: Submit task → immediately appears as "running" in list → updates in place when done
+2. **Lightweight UI**: No modals or notifications - everything happens on the task row itself
+3. **Expandable Details**: Click task to expand and see response/error inline
+4. **Re-run Tasks**: One-click to re-run any previous task
+5. **Queue Status**: Shows busy/idle indicator and queue management options
+
+**UX Flow**:
+1. Enter task message in input field
+2. Click "Run" or Cmd+Enter
+3. Task immediately appears at top of list with yellow "running" status
+4. When complete, status changes to green "success" or red "failed"
+5. Click to expand and see response, click again to collapse
+
+**New Files**:
+- `src/frontend/src/components/TasksPanel.vue` - Lightweight task management panel
+
+**Modified Files**:
+- `src/frontend/src/views/AgentDetail.vue` - Added Tasks tab
 
 **Technical Details**:
-- Fetches from `/api/observability/metrics` directly (no store dependency)
-- OTel metrics poll every 30 seconds (fleet status every 10s)
-- Graceful handling: disabled, unavailable, no-data states
-- Added `/ops/costs` quick command button in Operations Console
-
-**Modified Files**:
-- `src/frontend/src/views/SystemAgent.vue` - Complete rewrite (~830 lines)
-
-**Verified**: OTel metrics display live data ($0.07 cost, 19.9K tokens after test chat)
+- Uses `/api/agents/{name}/task` endpoint (parallel mode, no queue blocking)
+- Local state for pending tasks merged with server executions
+- Real-time queue status polling every 5s
+- Cmd+Enter / Ctrl+Enter keyboard shortcut to submit
 
 ---
 
-### 2025-12-21 00:15:00
-📊 **System Agent OTel Integration (Req 11.2 Enhancement)**
+### 2025-12-28 21:50:00
+🧪 **Tested Scheduling and Execution Queue Functionality**
 
-Added `/api/ops/costs` endpoint to give the system agent access to OpenTelemetry metrics in an ops-focused format. This keeps OTel (data collection) and Ops (interpretation) decoupled.
+**Tested Features**:
+- Schedule CRUD operations (create, list, get, update, delete)
+- Schedule enable/disable with APScheduler sync
+- Manual schedule trigger with execution tracking
+- Execution queue status, clear, and force release
+- WebSocket broadcast implementation verification
 
-**New Endpoint**: `GET /api/ops/costs`
-- Fetches raw metrics from OTel Collector's Prometheus endpoint
-- Reuses parsing from `observability.py` (no code duplication)
-- Adds ops-specific analysis: threshold checks, cost alerts, formatted output
-- Returns structured JSON the system agent can interpret
+**Results**: All tests PASS
 
-**Features**:
-- Cost summary with daily limit tracking (`ops_cost_limit_daily_usd` setting)
-- Alerts when approaching (80%) or exceeding daily limit
-- Cost breakdown by model with token counts
-- Productivity metrics (sessions, commits, PRs, lines added/removed)
-- Graceful handling when OTel is disabled or collector is unreachable
+**Key Findings**:
+1. **Session State Issue**: Scheduled executions fail with exit code 1 if agent's Claude Code session state is corrupted (e.g., from direct testing in container). Fix: restart agent.
+2. **MCP Integration Works**: Scheduled tasks can use Trinity MCP tools (agent-to-agent communication)
+3. **Observability Captured**: Executions record cost, context tokens, tool calls
 
-**Modified Files**:
-- `src/backend/routers/ops.py` - Added `get_ops_costs()` endpoint (~170 lines)
-- `config/agent-templates/trinity-system/.claude/commands/ops/costs.md` - Updated slash command with API details
-- `docs/memory/feature-flows/internal-system-agent.md` - Documented Cost & Observability section
+**Execution Test Data**:
+- Duration: ~25s
+- Cost: ~$0.055
+- Context: 3,702 / 200,000 tokens
+- Tools used: Bash, Read, mcp__trinity__list_agents
 
-**Architecture Decision**: System agent calls the ops API to get interpreted metrics rather than accessing OTel directly. This keeps the two features independent:
-- **OTel Integration** = Raw data collection + Prometheus endpoint + Dashboard UI
-- **Ops Module** = Threshold analysis + alerts + system agent commands
+**Note**: Feature flow docs (`scheduling.md`, `execution-queue.md`) have outdated line numbers but architecture is accurate.
 
 ---
 
-### 2025-12-20 23:30:00
-🐛 **Critical: Fleet Status API Fix**
+### 2025-12-28 18:30:00
+📚 **Documentation - Delegation Best Practices**
 
-Fixed critical bug in `/api/ops/fleet/status` and related endpoints where agent data was not being read correctly.
+Added comprehensive delegation best practices to the Multi-Agent System Guide, covering the hybrid delegation strategy for Trinity.
 
-**Root Cause**: `list_all_agents()` returns `AgentStatus` Pydantic objects, but the ops.py code was using `.get("name")` dictionary syntax instead of attribute access (`.name`). This caused all agent lookups to fail silently, returning 0 counts.
+**New Documentation** (`docs/MULTI_AGENT_SYSTEM_GUIDE.md`):
+- **MCP vs Runtime Sub-Agents**: When to use each delegation type
+- **Decision Matrix**: Clear guidance for choosing delegation method
+- **Anti-Patterns**: Common mistakes to avoid
+- **Architecture Diagram**: Visual overview of delegation layers
 
-**Fixed Files**:
-- `src/backend/routers/ops.py` - Changed all `agent.get("field")` to `agent.field` attribute access
-
-**Affected Endpoints**:
-- `GET /api/ops/fleet/status` - Now returns correct agent list and summary counts
-- `GET /api/ops/fleet/health` - Now correctly iterates over agents
-- `POST /api/ops/fleet/restart` - Now correctly identifies agents to restart
-- `POST /api/ops/fleet/stop` - Now correctly identifies agents to stop
-- `POST /api/ops/emergency-stop` - Now correctly stops non-system agents
-
-**Restart Required**: Backend must be restarted for fix to take effect.
+**Key Concepts Documented**:
+- MCP delegation for cross-agent, audited, persistent work
+- Runtime sub-agents (Gemini's `codebase_investigator`, Claude's `--agents`) for ephemeral parallelism
+- Don't reinvent Trinity's orchestration inside containers
 
 ---
 
-### 2025-12-20 23:15:00
-🐛 **System Agent UI Fixes**
+### 2025-12-28 18:15:00
+🐛 **Fixed Credential Hot-Reload Not Saving to Redis**
 
-Fixed two issues with the System Agent page:
+**Problem**: When using the "Hot Reload Credentials" feature in AgentDetail, credentials were pushed to the running agent's `.env` file but were NOT persisted to Redis. This meant:
+- Credentials were lost when the agent restarted
+- "Reload from Redis" wouldn't include hot-reloaded credentials
+- No permanent storage of credentials added via hot-reload
 
-**Bug Fixes**:
-- Fleet status cards now show correct agent counts (was showing 0s due to incorrect API response parsing)
-- Changed from manual filtering to using `response.data.summary` from fleet API
+**Root Cause**: The `/api/agents/{name}/credentials/hot-reload` endpoint only pushed credentials to the agent container, skipping Redis storage entirely.
 
-**UI Improvements**:
-- Removed aggressive purple gradient header - now uses clean white/gray design matching rest of system
-- Toned down Quick Action buttons from bright solid colors to muted bordered style
-- Emergency Stop now uses subtle red border instead of solid red background
-- Restart/Pause/Resume buttons now use gray borders, consistent with Dashboard
-- Quick command buttons (/ops/status etc.) now use gray instead of purple
-- Chat bubbles changed from purple to blue (matching system color scheme)
-- NavBar System link icon changed from purple to gray (consistent with other nav items)
+**Solution**: Modified the hot-reload endpoint to:
+1. Parse credentials from the text input (unchanged)
+2. **NEW**: Save each credential to Redis using `import_credential_with_conflict_resolution()`
+3. Push credentials to the running agent (unchanged)
 
-**Design Principle**: Consistent muted color palette across all pages - no more aggressive bright colors.
+The conflict resolution handles duplicates intelligently:
+- Same name + same value → reuse existing credential
+- Same name + different value → create with suffix (e.g., `API_KEY_2`)
+- New name → create new credential
+
+**API Response Enhancement**: Now includes `saved_to_redis` array showing each credential's status:
+```json
+{
+  "saved_to_redis": [
+    {"name": "MY_API_KEY", "status": "created", "original": null},
+    {"name": "EXISTING_KEY", "status": "reused", "original": null},
+    {"name": "CONFLICT_KEY_2", "status": "renamed", "original": "CONFLICT_KEY"}
+  ]
+}
+```
+
+**Files Changed**:
+- `src/backend/routers/credentials.py:617-727` - Added Redis persistence to hot-reload endpoint
+- `docs/memory/feature-flows/credential-injection.md` - Updated Flow 3 documentation
+
+**Testing**: Verified hot-reload → Redis → agent restart → reload from Redis works end-to-end.
 
 ---
 
-### 2025-12-20 22:30:00
-🖥️ **System Agent UI (Req 11.3) - IMPLEMENTED**
+### 2025-12-28 15:30:00
+🐛 **Fixed File Manager Page Issues**
 
-Added dedicated operations dashboard for the system agent at `/system-agent` route.
+**Bug #1: Missing Navigation Menu**
+- **Problem**: File Manager page (`/files`) didn't show the top navigation bar
+- **Fix**: Added `<NavBar />` component to `FileManager.vue`
+
+**Bug #2: Vue Runtime Compiler Warning**
+- **Problem**: Console warning "Component provided template option but runtime compilation is not supported"
+- **Cause**: `FileTreeNode.vue` used template strings for icon components which require Vue's runtime compiler
+- **Fix**: Converted all icon components to use `h()` render functions instead of template strings
+
+**Files Changed**:
+- `src/frontend/src/views/FileManager.vue` - Added NavBar import and usage
+- `src/frontend/src/components/file-manager/FileTreeNode.vue` - Render functions for icons
+
+**Note on 404 Preview Errors**: Agents created before 2025-12-27 don't have the `/api/files/preview` endpoint. To fix, **recreate** the agent (not just restart). This applies to all agents created before the File Manager feature was implemented.
+
+---
+
+### 2025-12-28 15:00:00
+🚀 **Multi-Runtime Support - Gemini CLI Integration**
+
+Added support for Google's Gemini CLI as an alternative agent runtime, enabling cost optimization and 1M token context windows.
+
+**New Features**:
+- **Runtime Adapter Pattern**: Abstract interface for swapping execution engines
+- **Gemini CLI Support**: Full integration with Google's free-tier AI
+- **Per-Agent Runtime Selection**: Choose Claude Code or Gemini CLI per agent
+- **Template Configuration**: New `runtime:` field in template.yaml
+
+**Key Benefits**:
+- **Cost Savings**: Gemini free tier (60 req/min, 1K/day)
+- **5x Context Window**: 1M tokens vs 200K for Claude
+- **Provider Flexibility**: Mix runtimes based on task complexity
+
+**Files Added**:
+- `docker/base-image/agent_server/services/runtime_adapter.py` - Abstract interface
+- `docker/base-image/agent_server/services/gemini_runtime.py` - Gemini implementation
+- `config/agent-templates/test-gemini/` - Test template
+- `docs/GEMINI_SUPPORT.md` - User guide
+
+**Files Modified**:
+- `docker/base-image/Dockerfile` - Added Gemini CLI installation
+- `docker/base-image/agent_server/services/claude_code.py` - Wrapped in ClaudeCodeRuntime
+- `docker/base-image/agent_server/state.py` - Runtime-aware availability checks
+- `docker/base-image/agent_server/routers/chat.py` - Uses runtime adapter
+- `src/backend/models.py` - Added runtime fields to AgentConfig
+- `src/backend/routers/agents.py` - Runtime env var injection
+- `docker-compose.yml` - GOOGLE_API_KEY support
+
+**Documentation Updated**:
+- `README.md` - Multi-runtime feature mention
+- `docs/DEPLOYMENT.md` - GOOGLE_API_KEY instructions
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Runtime Options section
+
+**Backward Compatibility**: ✅ All existing agents continue using Claude Code by default.
+
+---
+
+### 2025-12-28 12:28:00
+⚡ **Fixed Terminal Thread Pool Exhaustion (v2)**
+
+**Problem**: App became unresponsive after opening multiple web terminals. Navigation would hang, API calls would timeout, and audit logging would fail.
+
+**Root Cause**: Terminal implementation used a tight polling loop with `run_in_executor`:
+- 5ms `select()` timeout → 200 thread pool calls/second per terminal
+- Default thread pool has only 18 workers
+- Multiple terminals saturated the pool, blocking all async operations
+
+**Solution (Final)**: Use proper asyncio socket coroutines:
+```python
+# Correct approach - proper async coroutines
+data = await loop.sock_recv(docker_socket, 16384)
+await loop.sock_sendall(docker_socket, message.encode())
+```
+
+**Why not `add_reader`?** First attempt used `loop.add_reader()` with callback + Event signaling. This was overly complex and caused slow terminal response. The `sock_recv()`/`sock_sendall()` approach is simpler and faster - they are true coroutines that integrate naturally with async/await.
+
+**Files Changed**:
+- `src/backend/services/agent_service/terminal.py:221-280` - asyncio socket coroutines
+- `src/backend/routers/system_agent.py:491-550` - Same for System Agent
+
+**Investigation**: `docs/investigations/terminal-hanging-investigation.md`
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Thread pool calls/sec | 200+ per terminal | 0 |
+| Max concurrent terminals | ~2-3 | Unlimited |
+| Latency | 5ms polling | Near-instant |
+
+---
+
+### 2025-12-27 22:45:00
+🐛 **Fixed Two Critical Bugs**
+
+**Bug #1: Terminal Session Loss on Tab Switch**
+- **Problem**: When switching from Terminal tab to another tab, the WebSocket connection was destroyed (using `v-if`), causing session loss and "session limit reached" errors when returning
+- **Fix**: Changed `v-if="activeTab === 'terminal'"` to `v-show` in `AgentDetail.vue` (line 357) to keep the terminal component mounted
+- **Result**: Terminal session persists when switching between tabs
+
+**Bug #2: MCP Agent Import Only Copied CLAUDE.md**
+- **Problem**: When deploying a local agent via MCP `deploy_local_agent` tool, only hardcoded files (CLAUDE.md, .claude/, README.md, resources/, scripts/, memory/) were copied
+- **Root cause**: `startup.sh` had an explicit list of files instead of copying all template files
+- **Fix**: Updated `startup.sh` to copy ALL files from `/template` (including `template.yaml` - required Trinity file)
+- **Also added**: `.trinity-initialized` marker to prevent re-copying on container restart
+
+**Files Changed**:
+- `src/frontend/src/views/AgentDetail.vue` - Line 357: `v-if` → `v-show` for terminal tab
+- `docker/base-image/startup.sh` - Lines 113-142: Replaced hardcoded file list with generic copy
+
+**Note**: Base image rebuilt. New agents will get all files from templates. Existing agents unaffected.
+
+---
+
+### 2025-12-27 21:30:00
+✅ **Implemented File Manager Page (Req 12.2)**
+
+Added a dedicated File Manager page with two-panel layout for browsing and managing agent workspace files.
 
 **New Files**:
-- `src/frontend/src/views/SystemAgent.vue` - Ops-focused UI with fleet overview, quick actions, and chat
-
-**Modified Files**:
-- `src/frontend/src/router/index.js` - Added `/system-agent` route (admin-only)
-- `src/frontend/src/components/NavBar.vue` - Added purple "System" link with CPU icon (admin-only)
-- `docs/memory/feature-flows/internal-system-agent.md` - Added Frontend UI section
-
-**Features**:
-- Purple gradient header with system agent branding
-- Fleet overview cards (Total, Running, Stopped, Issues)
-- Quick action buttons (Emergency Stop, Restart All, Pause/Resume Schedules)
-- Operations console with quick command buttons (/ops/status, /ops/health, /ops/schedules)
-- Chat interface for sending commands to the system agent
-- Auto-refresh every 10 seconds
-
-**Design**: Simplified single-page layout unlike complex AgentDetail.vue - focused purely on operations.
-
----
-
-### 2025-12-20 21:00:00
-🛠️ **System Agent Operations Scope (Req 11.2) - IMPLEMENTED**
-
-Enhanced the system agent to focus exclusively on platform operations (health, lifecycle, resource governance) rather than workflow orchestration. Implemented comprehensive fleet operations API and ops settings.
-
-**Guiding Principle**: "The system agent manages the orchestra, not the music."
-
-**New Files**:
-- `src/backend/routers/ops.py` - Fleet operations endpoints (status, health, restart, stop, emergency)
-- `config/agent-templates/trinity-system/commands/ops/status.md` - Fleet status report command
-- `config/agent-templates/trinity-system/commands/ops/health.md` - Health check command
-- `config/agent-templates/trinity-system/commands/ops/restart.md` - Restart specific agent command
-- `config/agent-templates/trinity-system/commands/ops/restart-all.md` - Restart fleet command
-- `config/agent-templates/trinity-system/commands/ops/stop.md` - Stop agent command
-- `config/agent-templates/trinity-system/commands/ops/schedules.md` - Schedule overview command
-- `config/agent-templates/trinity-system/commands/ops/costs.md` - Cost report command
-
-**Modified Files**:
-- `config/agent-templates/trinity-system/CLAUDE.md` - Rewrote with ops-only scope
-- `config/agent-templates/trinity-system/template.yaml` - Updated capabilities and slash commands
-- `src/backend/main.py` - Added ops_router import and registration
-- `src/backend/routers/settings.py` - Added ops settings with defaults
-- `src/backend/database.py` - Added `list_all_disabled_schedules` method
-- `src/backend/db/schedules.py` - Added `list_all_disabled_schedules` query
-
-**New API Endpoints**:
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/ops/fleet/status` | GET | All agents with status, context, activity |
-| `/api/ops/fleet/health` | GET | Health summary with critical/warning issues |
-| `/api/ops/fleet/restart` | POST | Restart all/filtered agents |
-| `/api/ops/fleet/stop` | POST | Stop all/filtered agents |
-| `/api/ops/schedules/pause` | POST | Pause all schedules |
-| `/api/ops/schedules/resume` | POST | Resume all schedules |
-| `/api/ops/emergency-stop` | POST | Halt all executions immediately |
-| `/api/settings/ops/config` | GET/PUT | Get/update ops settings |
-| `/api/settings/ops/reset` | POST | Reset ops settings to defaults |
-
-**Ops Settings**:
-- `ops_context_warning_threshold` (75) - Context % to trigger warning
-- `ops_context_critical_threshold` (90) - Context % to trigger critical
-- `ops_idle_timeout_minutes` (30) - Minutes before stuck detection
-- `ops_cost_limit_daily_usd` (50.0) - Daily cost limit
-- `ops_max_execution_minutes` (10) - Max chat execution time
-- `ops_alert_suppression_minutes` (15) - Suppress duplicate alerts
-- `ops_log_retention_days` (7) - Days to keep container logs
-- `ops_health_check_interval` (60) - Seconds between health checks
-
-**Slash Commands** (system agent only):
-- `/ops/status` - Fleet status report
-- `/ops/health` - Health check with recommendations
-- `/ops/restart <agent>` - Restart specific agent
-- `/ops/restart-all` - Restart entire fleet
-- `/ops/stop <agent>` - Stop specific agent
-- `/ops/schedules` - Schedule overview
-- `/ops/costs` - Cost report from OTel
-
----
-
-### 2025-12-20 19:30:00
-🤖 **Internal System Agent (Req 11.1) - IMPLEMENTED**
-
-Implemented the privileged, auto-deployed platform orchestrator agent "trinity-system".
-
-**New Files**:
-- `config/agent-templates/trinity-system/template.yaml` - System agent template with orchestration capabilities
-- `config/agent-templates/trinity-system/CLAUDE.md` - Platform orchestrator instructions
-- `src/backend/services/system_agent_service.py` - Auto-deployment service
-- `src/backend/routers/system_agent.py` - Status, restart, reinitialize endpoints
+- `src/frontend/src/views/FileManager.vue` - Main page with agent selector, file tree, preview panel
+- `src/frontend/src/components/file-manager/FileTreeNode.vue` - Recursive tree component with icons
+- `src/frontend/src/components/file-manager/FilePreview.vue` - Multi-format preview (image, video, audio, text, PDF)
 
 **Backend Changes**:
-- `src/backend/database.py` - Added `is_system` column migration for agent_ownership
-- `src/backend/db/agents.py` - Added system agent checks, SYSTEM_AGENT_NAME constant
-- `src/backend/routers/agents.py` - Deletion protection with specific error message for system agents
-- `src/backend/main.py` - Auto-deploy system agent on startup, registered system_agent router
+- `docker/base-image/agent_server/routers/files.py` - DELETE endpoint, preview endpoint with MIME detection
+- `src/backend/services/agent_service/files.py` - Proxy functions for delete and preview
+- `src/backend/routers/agents.py` - New routes: DELETE `/{name}/files`, GET `/{name}/files/preview`
+
+**Frontend Changes**:
+- `src/frontend/src/stores/agents.js` - `deleteAgentFile()`, `getFilePreviewBlob()` methods
+- `src/frontend/src/router/index.js` - `/files` route
+- `src/frontend/src/components/NavBar.vue` - "Files" navigation link
+
+**Features**:
+- Agent selector dropdown with localStorage persistence
+- Collapsible file tree with search/filter
+- File preview: images, video, audio, text/code, PDF
+- Delete with confirmation modal
+- Protected file warnings (CLAUDE.md, .trinity/, .git/, .env, etc.)
+- Inline notification system
+
+**Note**: Existing agents need recreation (not restart) to get new preview/delete endpoints.
+
+---
+
+### 2025-12-27 18:00:00
+✅ **Implemented Content Folder Convention (Req 12.1)**
+
+Implemented the content folder convention for managing large generated assets (videos, audio, images, exports) that should NOT be synced to GitHub.
+
+**Changes**:
+- `docker/base-image/startup.sh` - Creates `content/{videos,audio,images,exports}` directories on startup
+- `docker/base-image/startup.sh` - Adds `content/` to `.gitignore` automatically
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Added Content Folder Convention section with usage examples
+
+**How it works**:
+- All agents now get a `content/` directory at `/home/developer/content/`
+- Files in `content/` persist across container restarts (same Docker volume)
+- Files in `content/` are NOT synced to GitHub (added to `.gitignore`)
+- Standard subdirectories: `videos/`, `audio/`, `images/`, `exports/`
+
+**Testing**:
+1. Rebuild base image: `./scripts/deploy/build-base-image.sh`
+2. Restart any agent
+3. Verify `content/` directory exists
+4. Verify `.gitignore` contains `content/`
+
+---
+
+### 2025-12-27 17:30:00
+📋 **Added Content Management & File Operations Requirements (Phase 11.5)**
+
+Added comprehensive requirements for managing large generated assets (videos, audio, exports) in agent workspaces.
+
+**Requirement 12.1: Content Folder Convention**
+- `content/` directory auto-created and gitignored by default
+- Prevents large files from bloating Git repositories
+- Same persistent volume - survives container restarts
+- Convention documented for template authors
+
+**Requirement 12.2: File Manager Page**
+- Dedicated `/files` route with agent selector dropdown
+- Two-panel layout: tree (left) + preview (right)
+- Preview support: images, video, audio, text/code, PDF
+- Delete file/folder with confirmation
+- Create new folders
+- Protected file warnings (CLAUDE.md, .trinity/, etc.)
+
+**Files Changed**:
+- `docs/memory/requirements.md` - Added Section 12 (Content Management)
+- `docs/memory/roadmap.md` - Added Phase 11.5
+
+---
+
+### 2025-12-27 15:45:00
+🔧 **Refactored AgentDetail.vue (2,193 → 1,386 lines)**
+
+Major refactoring of `views/AgentDetail.vue` using Vue 3 Composition API composables. Extracted 12 domain-specific composables to improve maintainability and reusability.
+
+**Before**: Single 2,193-line component with all business logic inline
+**After**: 1,386-line component + 12 composables (~1,000 lines total)
+
+**New Composables Structure** (`composables/`):
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| useNotification.js | 20 | Toast notification management |
+| useFormatters.js | 110 | Shared formatting utilities |
+| useAgentLifecycle.js | 65 | Start/stop/delete operations |
+| useAgentStats.js | 55 | Container stats polling |
+| useAgentLogs.js | 65 | Log fetching with auto-refresh |
+| useAgentTerminal.js | 45 | Terminal fullscreen/keyboard |
+| useAgentCredentials.js | 70 | Credential loading & hot reload |
+| useAgentSharing.js | 60 | Agent sharing with users |
+| useAgentPermissions.js | 80 | Agent-to-agent permissions |
+| useGitSync.js | 90 | Git status and sync operations |
+| useFileBrowser.js | 95 | File tree loading/download |
+| useAgentSettings.js | 70 | API key and model settings |
+| useSessionActivity.js | 100 | Session info and activity polling |
+
+**Benefits**:
+- Each composable handles single concern with proper cleanup
+- Composables can be reused in other components
+- Better testability with isolated logic
+- ~37% reduction in main component size
+
+---
+
+### 2025-12-27 12:15:00
+📝 **Updated Feature Flow Documentation for Service Layer Refactoring**
+
+Updated all feature flows affected by the agents.py refactoring to reflect new file paths and module locations.
+
+**Updated Flows** (8 documents):
+- `agent-lifecycle.md` - References to lifecycle.py, crud.py, helpers.py
+- `agent-terminal.md` - References to terminal.py, api_key.py
+- `agent-permissions.md` - References to permissions.py
+- `agent-shared-folders.md` - References to folders.py, helpers.py
+- `file-browser.md` - References to files.py
+- `agent-custom-metrics.md` - References to metrics.py
+- `execution-queue.md` - References to queue.py
+- `local-agent-deploy.md` - References to deploy.py
+
+**Each Updated Flow Includes**:
+- "Updated 2025-12-27" note at top explaining refactoring
+- Architecture table showing Router vs Service layer split
+- Correct file paths and line numbers
+- Revision history entry
+
+**Index Updated**:
+- `feature-flows.md` - Added refactoring summary and updated all affected flow entries
+
+---
+
+### 2025-12-27 10:30:00
+🔧 **Refactored agents.py Router (2928 → 785 lines)**
+
+Major non-breaking refactoring of `routers/agents.py` to improve maintainability. Business logic extracted to dedicated service modules while preserving all API signatures and external interfaces.
+
+**Before**: Single 2,928-line file handling 25+ endpoints and 15 distinct concerns
+**After**: 785-line thin router + 12 focused service modules (~2,735 lines total)
+
+**New Service Module Structure** (`services/agent_service/`):
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| helpers.py | 233 | Shared utilities (get_accessible_agents, versioning) |
+| lifecycle.py | 251 | Agent start/stop, Trinity injection |
+| crud.py | 447 | Agent creation logic |
+| deploy.py | 306 | Local agent deployment via MCP |
+| terminal.py | 345 | WebSocket PTY terminal handling |
+| permissions.py | 197 | Agent-to-agent permissions |
+| folders.py | 231 | Shared folder configuration |
+| files.py | 137 | File browser proxy |
+| queue.py | 124 | Execution queue operations |
+| metrics.py | 92 | Custom metrics proxy |
+| stats.py | 162 | Container/context statistics |
+| api_key.py | 97 | API key settings |
+
+**Preserved Interfaces** (no changes needed in consuming modules):
+- `main.py`: `router`, `set_websocket_manager`, `inject_trinity_meta_prompt`
+- `systems.py`: `create_agent_internal`, `get_accessible_agents`, `start_agent_internal`
+- `activities.py`: `get_accessible_agents`
+- `system_service.py`: `start_agent_internal`
+
+**Testing**:
+- All 24 agent lifecycle tests pass
+- All 56 permissions/folders/api_key tests pass
+- All systems integration tests pass
+
+**Files Changed**:
+- Backend: `routers/agents.py` - Refactored to thin wrapper (2928 → 785 lines)
+- Backend: `services/agent_service/__init__.py` - New module exports
+- Backend: `services/agent_service/*.py` - 12 new focused modules
+
+---
+
+### 2025-12-26 18:30:00
+🐛 **Fixed Email Whitelist 404 Error**
+
+Fixed email whitelist endpoints returning 404 due to FastAPI route matching order issue.
+
+**Root Cause**: The generic `GET /api/settings/{key}` catch-all route was defined BEFORE the specific `GET /api/settings/email-whitelist` route in settings.py. FastAPI matches routes in order, so it was hitting the generic route and treating "email-whitelist" as a setting key, returning "Setting 'email-whitelist' not found" instead of the actual whitelist data.
+
+**Solution**:
+- Reordered routes in `settings.py` - moved email-whitelist routes (lines 544-658) BEFORE the generic `/{key}` catch-all route (line 660+)
+- Now FastAPI correctly matches the specific route first
+- Email whitelist table now loads and displays whitelisted emails
+
+**Files Changed**:
+- Backend: `routers/settings.py` - Reordered routes (email-whitelist section moved from line 823 to line 544)
+
+**Testing**:
+1. Navigate to Settings page
+2. Scroll to Email Whitelist section
+3. Verify table loads and shows any whitelisted emails
+4. Add a new email - should show "already whitelisted" if duplicate or add successfully
+5. Remove button should work
+
+---
+
+### 2025-12-26 18:15:00
+🐛 **Fixed Agents Page Render Error**
+
+Fixed critical bug preventing Agents page from loading. Agents were not displaying due to missing function references from deleted Task DAG system.
+
+**Root Cause**: Task DAG system (Req 9.8) was removed on 2025-12-23, but Agents.vue template still referenced deleted functions `hasActivePlan()`, `getTaskProgress()`, and `getCurrentTask()` at lines 93-101. This caused Vue render error: "Property 'hasActivePlan' was accessed during render but is not defined on instance."
+
+**Solution**:
+- Removed obsolete task progress section from Agents.vue template (lines 92-101)
+- Removed unused `ClipboardDocumentCheckIcon` import
+- Agents page now renders correctly without task progress display
+
+**Files Changed**:
+- Frontend: `views/Agents.vue:92-101` - Removed task progress section
+- Frontend: `views/Agents.vue:160` - Removed unused icon import
+
+**Testing**:
+1. Navigate to /agents page
+2. Verify agents list displays correctly
+3. Verify no console errors
+4. Verify agent cards show name, status, activity state, and context progress (but not task progress)
+
+---
+
+### 2025-12-26 18:00:00
+🐛 **Fixed GitHub Initialization UI Timeout**
+
+Fixed UI stuck in "Initializing..." state even after successful repository creation.
+
+**Root Cause**: Git initialization can take 30-60 seconds for agents with large `.claude/` directories, but the frontend axios request had no explicit timeout (defaulted to browser's 60s limit). In some cases, the request would timeout before backend completed, leaving modal stuck.
+
+**Solution**:
+- Added explicit 120-second timeout to `initializeGitHub()` axios request
+- Added user feedback in modal: "This may take 10-60 seconds depending on the size of your agent's files"
+- Added console logging for debugging initialization flow
+- Logs now show: Starting → Success → Reloading status → Closing modal
+
+**Files Changed**:
+- Frontend: `stores/agents.js:366` - Added `timeout: 120000`
+- Frontend: `components/GitPanel.vue:132-134` - Added timing note
+- Frontend: `components/GitPanel.vue:356-383` - Added console logging
+
+**Testing**:
+1. Initialize git for agent with large `.claude/` directory (100+ MB)
+2. Modal should show "Initializing..." with spinner
+3. Wait up to 60 seconds
+4. Modal should close automatically after success
+5. Git tab should display repository info
+6. Check browser console for initialization logs
+
+---
+
+### 2025-12-26 17:45:00
+🐛 **Fixed GitHub Repository Initialization - Four Issues**
+
+Fixed four critical issues preventing GitHub repository initialization from working correctly:
+
+**Issue 1: ImportError causing 500 status**
+- **Root Cause**: The git router was importing `execute_command_in_container` from `services.docker_service`, but this function didn't exist
+- **Solution**: Added the missing function to `docker_service.py` (lines 122-155)
+- **Files**: `services/docker_service.py`
+
+**Issue 2: Workspace directory not found**
+- **Root Cause**: Git commands assumed `/home/developer/workspace` always exists, but some agents (test agents, agents created without templates) don't have this directory
+- **Solution**: Added workspace detection and automatic creation:
+  - Check if workspace directory exists before git operations
+  - Create directory if missing
+  - Use detected directory path for all git commands
+  - Log which directory is being used for debugging
+- **Files**: `routers/git.py:428-454` (workspace detection), `482, 505` (use detected path)
+
+**Issue 3: Orphaned database records**
+- **Root Cause**: If initialization partially failed (repo created but git init failed), database record was created but agent had no `.git` directory, causing "already configured" error but UI showing nothing
+- **Solution**: Added verification and cleanup:
+  - Before rejecting re-initialization, verify `.git` directory actually exists in container
+  - If database record exists but git not initialized, auto-cleanup orphaned record
+  - Verify git initialization succeeded before creating database record
+  - Added `git rev-parse --git-dir` check before database insert
+- **Files**: `routers/git.py:322-342` (orphaned record cleanup), `512-525` (verification before DB insert)
+
+**Issue 4: Empty repository - no agent files pushed** ⚠️ **CRITICAL**
+- **Root Cause**: Git was initialized in empty `/home/developer/workspace/` directory, but agent's actual files (CLAUDE.md, .claude/, .trinity/, .mcp.json, etc.) live in `/home/developer/`. Result: Empty GitHub repository with no agent content!
+- **Solution**: Intelligent directory detection:
+  - Check if `/home/developer/workspace/` exists AND has content → use workspace
+  - Otherwise → use `/home/developer/` (where agent files actually are)
+  - Create `.gitignore` to exclude system files (.bash_logout, .bashrc, .cache/, .ssh/, etc.)
+  - Keep important agent files (CLAUDE.md, .claude/, .trinity/, .mcp.json, .claude.json)
+  - Check both locations when verifying existing git configuration
+- **Files**: `routers/git.py:442-476` (smart directory detection + .gitignore), `326-330` (check both locations)
+- **Impact**: Agent files now correctly pushed to GitHub! Repository will contain the agent's configuration, prompts, and working files.
+
+**Result**:
+- Repository creation now works for both personal and organization accounts ✅
+- Supports both fine-grained and classic PATs ✅
+- Works with agents that have or don't have workspace directories ✅
+- Handles partial failures gracefully with automatic cleanup ✅
+- UI correctly displays git status after successful initialization ✅
+- **Agent files are pushed to GitHub repository** ✅ (CRITICAL FIX!)
+
+**Testing**:
+1. Navigate to agent detail → Git tab
+2. Click "Initialize GitHub Sync"
+3. Enter repository owner (personal or organization) and name
+4. Wait for initialization to complete (~10-30 seconds)
+5. **Verify repository on GitHub has agent files:**
+   - Visit `https://github.com/{owner}/{repo}`
+   - Check files exist: CLAUDE.md, .claude/, .trinity/, .mcp.json, etc.
+   - Verify `main` branch has initial commit
+   - Verify `trinity/{agent}/{id}` working branch exists
+6. Verify UI shows git sync status with remote URL and branch
+7. Check logs show: "Using home directory (agent's files are here): /home/developer" or "Using workspace directory with existing content"
+8. Check logs show: "Git initialization verified successfully"
+
+---
+
+### 2025-12-26 17:00:00
+🔧 **Fixed GitPanel Vue Render Error**
+
+Fixed "Cannot read properties of null (reading 'remote_url')" error when navigating to the Git tab on agent detail pages.
+
+**Root Cause**: GitPanel template at line 182 had `<div v-else>` which would show the Git Status Display section when git was enabled and agent was running, BUT it didn't check if `gitStatus` object had complete data. When the API call returned, `gitStatus` could be temporarily set to an incomplete object, causing Vue to try rendering `gitStatus.remote_url` on line 191 before the property existed.
+
+**Solution**: Changed line 182 from `<div v-else>` to `<div v-else-if="gitStatus?.remote_url && gitStatus?.branch">` to ensure the Git Status Display only renders when `gitStatus` has complete data.
+
+**Files Changed**:
+- Frontend: `components/GitPanel.vue:182` - Added guard for gitStatus properties
+
+**Testing**:
+1. Navigate to agent detail page
+2. Click Git tab
+3. Verify no console errors
+4. Verify git status displays correctly (or "not enabled" message)
+
+---
+
+### 2025-12-26 16:30:00
+🔧 **Fixed Fine-Grained PAT Support**
+
+Fixed GitHub Personal Access Token validation to properly support fine-grained PATs (starting with `github_pat_`).
+
+**Issue**: Fine-grained PATs were incorrectly showing "Missing repo scope" because they don't expose scopes via `X-OAuth-Scopes` header like classic PATs.
+
+**Solution**:
+- Backend now detects token type (fine-grained vs classic)
+- Fine-grained PATs: Tests actual permissions by calling `GET /user/repos`
+- Classic PATs: Checks `X-OAuth-Scopes` header for `repo` or `public_repo`
+- Returns `token_type` and `has_repo_access` fields
+- Frontend displays appropriate messages:
+  - Fine-grained: "✓ Fine-grained PAT with repository permissions" or "⚠️ Missing repository permissions (need Administration + Contents)"
+  - Classic: "✓ Has repo scope" or "⚠️ Missing repo scope"
+
+**Files Changed**:
+- Backend: `routers/settings.py` - Updated `test_github_pat` endpoint
+- Frontend: `views/Settings.vue` - Updated test result display logic
+
+---
+
+### 2025-12-26 16:00:00
+🔀 **GitHub Repository Initialization**
+
+Added ability to initialize GitHub synchronization for any agent, pushing it to a new or existing GitHub repository with one click.
+
+**Features**:
+- **Settings Configuration**: GitHub Personal Access Token (PAT) management
+  - Admin can configure GitHub PAT in Settings page
+  - Test button validates token and checks scopes
+  - Stored securely in system settings
+- **One-Click Initialization**: Initialize GitHub sync from Agent Git tab
+  - Modal form for repository owner and name
+  - Option to create repository automatically
+  - Private/public repository selection
+  - Repository description (optional)
+- **Automated Setup**: Backend handles complete initialization
+  - Creates GitHub repository via GitHub API (if requested)
+  - Initializes git in agent workspace
+  - Commits current agent state
+  - Pushes to main branch
+  - Creates working branch (trinity/{agent-name}/{instance-id})
+  - Stores configuration in database
+- **MCP Tool**: `initialize_github_sync` for programmatic access
+
+**Backend Changes**:
+- **API Endpoints**:
+  - `GET /api/settings/api-keys` - Returns both Anthropic and GitHub PAT status
+  - `PUT /api/settings/api-keys/github` - Save GitHub PAT
+  - `DELETE /api/settings/api-keys/github` - Delete GitHub PAT
+  - `POST /api/settings/api-keys/github/test` - Test GitHub PAT validity
+  - `POST /api/agents/{name}/git/initialize` - Initialize GitHub sync for agent
+- **Helper Functions**:
+  - `get_github_pat()` in `routers/settings.py` - Get GitHub PAT from settings or env
+- **GitHub Integration**:
+  - Repository creation via GitHub REST API
+  - Git commands executed in agent container via Docker exec
+  - PAT embedded in git remote URL for authentication
+
+**Frontend Changes**:
+- **Settings Page** (`src/frontend/src/views/Settings.vue`):
+  - GitHub PAT input field with show/hide toggle
+  - Test and Save buttons
+  - Status indicators (configured/not configured, source)
+  - Scope validation (checks for repo access)
+  - Link to GitHub token settings
+- **Git Tab** (`src/frontend/src/components/GitPanel.vue`):
+  - "Initialize GitHub Sync" button when git not enabled
+  - Modal form with repository configuration
+  - Real-time feedback and error handling
+  - Success triggers git status reload
+- **Agents Store** (`src/frontend/src/stores/agents.js`):
+  - `initializeGitHub(name, config)` method
 
 **MCP Server Changes**:
-- `src/mcp-server/src/types.ts` - Added "system" scope to McpAuthContext
-- `src/mcp-server/src/server.ts` - Handle system scope in authentication
-- `src/mcp-server/src/tools/agents.ts` - System agents see all agents, cannot delete themselves
-- `src/mcp-server/src/tools/chat.ts` - System-scoped keys bypass all permission checks
+- **New Tool**: `initialize_github_sync` (`src/mcp-server/src/tools/agents.ts`)
+  - Parameters: agent_name, repo_owner, repo_name, create_repo, private, description
+  - Enables agents to programmatically initialize GitHub sync
 
-**Frontend Changes**:
-- `src/frontend/src/components/AgentNode.vue` - Purple "SYSTEM" badge for system agents
-- `src/frontend/src/views/AgentDetail.vue` - System badge in agent header
+**Required Permissions**:
+- GitHub PAT must have `repo` scope (full control of private repositories)
+- Or `public_repo` scope (for public repositories only)
 
-**Key Features**:
-- Auto-deploys on backend startup if not exists
-- Cannot be deleted (403 error with helpful message)
-- System-scoped MCP key bypasses all permission checks
-- Can communicate with any agent regardless of owner
-- Can list all agents without filtering
-- Purple SYSTEM badge in UI
+**User Workflow**:
+1. Admin configures GitHub PAT in Settings → API Keys
+2. User opens agent → Git tab
+3. Clicks "Initialize GitHub Sync"
+4. Enters repository owner and name
+5. Selects options (create repo, private/public)
+6. Click Initialize
+7. Agent workspace is pushed to GitHub and sync is enabled
 
-**API Endpoints**:
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/system-agent/status` | GET | Get system agent status |
-| `/api/system-agent/restart` | POST | Restart system agent (admin) |
-| `/api/system-agent/reinitialize` | POST | Reset to clean state (admin) |
+**Files Changed**:
+- Backend: `routers/settings.py`, `routers/git.py` (new initialize endpoint)
+- Frontend: `views/Settings.vue`, `components/GitPanel.vue`, `stores/agents.js`
+- MCP Server: `src/tools/agents.ts`, `server.ts`
 
 ---
 
-### 2025-12-20 17:30:00
-📋 **Internal System Agent Requirements (Req 11.1) - DRAFTED**
+### 2025-12-26 14:00:00
+📧 **Email-Based Authentication** (Phase 12.4)
 
-Created requirements document for a privileged, auto-deployed platform orchestrator agent.
-
-**Document**: `docs/drafts/INTERNAL_SYSTEM_AGENT.md`
-
-**Key Features**:
-- **Auto-Deployment**: System agent created on platform startup if not exists
-- **Deletion Protection**: Cannot be deleted via API, MCP, or UI (only re-initialized)
-- **Re-Initialization**: Admins can reset to clean state without losing identity
-- **Local Template**: `config/agent-templates/trinity-system/` with platform-specific CLAUDE.md
-- **MCP Integration**: Full access to all Trinity MCP tools, bypasses permission checks
-- **System-Scoped Key**: Special MCP API key with `scope: "system"`
-- **UI Visibility**: System badge, special styling, hidden delete button
-
-**Implementation Phases**:
-1. Core Infrastructure (template, deletion protection, auto-deploy)
-2. MCP Integration (system-scoped key, permission bypass)
-3. Re-Initialization (endpoint, MCP tool, audit logging)
-4. UI Integration (badges, styling, admin controls)
-5. Observability (metrics, health check, activity tracking)
-
-**Database Change**: Add `is_system` flag to `agent_ownership` table
-
-**Roadmap**: Added as Phase 11 priority item (11.1)
-
----
-
-### 2025-12-20 16:00:00
-📊 **OpenTelemetry UI Integration (Req 10.8) - IMPLEMENTED**
-
-Added UI components to display OTel metrics in the Trinity Dashboard.
-
-**Backend Changes**:
-- `src/backend/routers/observability.py` - New router with `/api/observability/metrics` and `/api/observability/status` endpoints
-- `src/backend/main.py` - Registered observability router
-
-**Frontend Changes**:
-- `src/frontend/src/stores/observability.js` - New Pinia store for OTel metrics with polling
-- `src/frontend/src/components/ObservabilityPanel.vue` - Collapsible panel showing full metric breakdown
-- `src/frontend/src/views/Dashboard.vue` - Added OTel stats to header (cost, tokens, status indicator)
+Implemented passwordless email authentication as the new default login method. Users enter email → receive 6-digit code → login. Includes admin-managed whitelist and automatic whitelist addition when agents are shared.
 
 **Features**:
-- Dashboard header shows total cost and token count when OTel is active
-- Observability panel (bottom-left) with expand/collapse:
-  - Cost breakdown by model
-  - Token usage by type (input, output, cacheCreation, cacheRead)
-  - Productivity metrics (sessions, active time, commits, PRs)
-  - Lines of code (added/removed)
-- Auto-refresh every 60 seconds
-- Graceful handling when OTel disabled or collector unavailable
-- Full dark mode support
-
-**API Response Format**:
-```json
-{
-  "enabled": true,
-  "available": true,
-  "metrics": { "cost_by_model": {}, "tokens_by_model": {}, ... },
-  "totals": { "total_cost": 0.0246, "total_tokens": 48093, ... }
-}
-```
-
----
-
-### 2025-12-20 14:30:00
-📋 **Requirements Update: OpenTelemetry UI Integration (10.8)**
-
-Added new requirement 10.8 for displaying OTel metrics in Trinity UI as next priority.
-
-**Requirement Summary**:
-- Backend API: `GET /api/observability/metrics` endpoint to query Prometheus
-- Dashboard Header: Quick stats (total cost, total tokens, OTel status)
-- Dashboard Panel: "Observability" tab with full metric breakdown
-- Opt-in visibility: Only shows when `OTEL_ENABLED=1` and collector reachable
-
-**UI Placement Decided**:
-| Location | What to Show |
-|----------|--------------|
-| Dashboard Header | Total cost, total tokens, OTel status indicator |
-| Dashboard Panel | Full breakdown by model/type in "Observability" tab |
-| AgentDetail | *Future* - Per-agent cost (requires agent_name label) |
-
-**Files Updated**:
-- `docs/memory/requirements.md` - Added 10.8 OpenTelemetry UI Integration
-- `docs/memory/roadmap.md` - Added to Phase 11 as next priority
-
----
-
-### 2025-12-20 12:00:00
-📊 **OpenTelemetry Integration (Phase 2) - OTEL Collector Service**
-
-Added OTEL Collector service for receiving metrics from Claude Code agents and exposing them in Prometheus format.
-
-**Changes**:
-1. `docker-compose.yml` (lines 132-151)
-   - Added `otel-collector` service using `otel/opentelemetry-collector:0.91.0`
-   - Exposes ports 4317 (gRPC), 4318 (HTTP), 8889 (Prometheus)
-   - Connected to trinity-network for agent access
-
-2. `config/otel-collector.yaml` (new file)
-   - OTLP receiver on gRPC and HTTP
-   - Batch processor for efficiency
-   - Prometheus exporter with `trinity` namespace
-   - Debug exporter for troubleshooting
-
-**Metrics Collected** (verified with test agent):
-- `trinity_claude_code_cost_usage_USD_total` - Cost per model (Haiku, Sonnet)
-- `trinity_claude_code_token_usage_tokens_total` - Token usage by type (input, output, cacheCreation, cacheRead)
-
-**Labels Available**:
-- `model` - Model name (claude-haiku-4-5-20251001, claude-sonnet-4-5-20250929)
-- `session_id` - Unique session identifier
-- `terminal_type` - non-interactive
-- `platform` - trinity
-
-**Testing**:
-- ✅ Collector starts with `docker-compose up`
-- ✅ Agent sends metrics via OTLP gRPC
-- ✅ Prometheus endpoint returns metrics at :8889/metrics
-- ✅ Metrics update after chat activity
-
----
-
-### 2025-12-20 11:50:00
-📊 **OpenTelemetry Integration (Phase 1) - Environment Variable Injection**
-
-Implemented opt-in OpenTelemetry metrics export for Trinity agents, leveraging Claude Code's built-in OTel support.
-
-**Changes**:
-1. `src/backend/routers/agents.py` (lines 514-522)
-   - Added conditional OTel env var injection during agent container creation
-   - Only injects when `OTEL_ENABLED=1` (default: disabled)
-   - Sets: `CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_METRIC_EXPORT_INTERVAL`
-
-2. `docker-compose.yml` (lines 21-27)
-   - Added OTel configuration environment variables to backend service
-   - All with sensible defaults (`OTEL_ENABLED=0` by default)
-
-3. `.env.example` (lines 76-94)
-   - Documented all OTel configuration options with comments
-
-4. `docs/DEPLOYMENT.md` (lines 336-394)
-   - Added "OpenTelemetry Metrics (Optional)" section
-   - Documents metrics available, quick start, collector setup, verification
-
-**Testing**:
-- ✅ With `OTEL_ENABLED=1`: Agent gets all OTel env vars
-- ✅ With `OTEL_ENABLED=0` (default): No OTel vars injected
-- ✅ Existing agents unaffected
-
-**Draft Doc**: `docs/drafts/OTEL_INTEGRATION.md` - Phase 2 (Collector) and Phase 3 (Prometheus/Grafana) available for future implementation.
-
----
-
-### 2025-12-19 16:45:00
-🎨 **Dark Mode: Fixed GitPanel, SchedulesPanel, and ExecutionsPanel Components**
-
-Fixed dark mode styling for three additional components in AgentDetail that were displaying white backgrounds in dark mode.
-
-**Files Modified**:
-1. `src/frontend/src/components/GitPanel.vue` - Git tab in AgentDetail
-   - Fixed loading/disabled/error states with dark variants
-   - Fixed repository info header card
-   - Fixed branch and sync status badges
-   - Fixed pending changes and commit sections
-   - Updated `getChangeStatusClass()` function with dark variants
-
-2. `src/frontend/src/components/SchedulesPanel.vue` - Schedules tab in AgentDetail
-   - Fixed header text colors
-   - Fixed create/edit form modal with dark inputs, labels, buttons
-   - Fixed cron preset buttons with dark hover states
-   - Fixed schedule cards and status badges
-   - Fixed execution history rows and modal
-   - Fixed stats row and tool call displays
-
-3. `src/frontend/src/components/ExecutionsPanel.vue` - Executions tab in AgentDetail
-   - Fixed summary stats cards
-   - Fixed executions table header, body, and row hover states
-   - Fixed status and trigger badges with dark variants
-   - Fixed execution detail modal with dark styling
-   - Fixed context bar, tool calls, and response sections
-
-**Pattern Applied**: Consistent with existing dark mode - `dark:bg-gray-800` for cards, `dark:bg-gray-900/30` for colored badges, `dark:text-gray-400` for secondary text.
-
----
-
-### 2025-12-19 16:15:00
-🎨 **Dark Mode: Fixed FoldersPanel and AgentNode Components**
-
-Fixed dark mode styling for two components that were displaying white backgrounds in dark mode.
-
-**Files Modified**:
-1. `src/frontend/src/components/FoldersPanel.vue` - Folders tab in AgentDetail
-   - Added `dark:bg-gray-800` to all white card sections
-   - Added `dark:border-gray-700` to all borders
-   - Added `dark:text-white/gray-400` to text elements
-   - Fixed toggle switch backgrounds (`dark:bg-gray-600`)
-   - Fixed code element backgrounds (`dark:bg-gray-700`)
-   - Fixed status badges (mounted/pending) with dark variants
-
-2. `src/frontend/src/components/AgentNode.vue` - Agent tiles on Dashboard
-   - Added `dark:bg-gray-800` to main card container
-   - Added `dark:border-gray-700` to card border
-   - Fixed all text colors with dark variants
-   - Fixed progress bar backgrounds (`dark:bg-gray-700`)
-   - Fixed View Details button with dark hover states
-   - Fixed connection handle colors for dark mode
-   - Updated computed `activityStateColor` with dark variants
-
-**Pattern Applied**: Consistent with existing dark mode in NavBar, Dashboard, other panels.
-
----
-
-### 2025-12-19 15:30:00
-🐛 **Bug Fix: Context Tracking Reset After First Message (P0)**
-
-Fixed critical bug where context window usage would reset to ~4 tokens on subsequent chat messages.
-
-**Root Cause**:
-- Claude Code with `--continue` flag may report only new input tokens, not cumulative context
-- Agent server was overwriting `session_context_tokens` with each response, causing resets
-
-**Fix Applied** (`docker/base-image/agent_server/routers/chat.py`):
-- Context tokens now only increase within a session (monotonic growth)
-- If new value is lower than previous, keep the maximum (with warning logged)
-- Session reset still clears context to 0 as expected
-
-**Testing**: Verified with 3 consecutive messages - context stays at 660 tokens (not resetting to ~4)
-
-**Related Issues Clarified**:
-- P1 Permissions Auth Error: NOT a bug - caused by JWT token invalidation after backend restart (documented behavior)
-- P1 Agent Name Validation: NOT a bug - API sanitizes invalid names by design (converts `@#! ` to `-`)
-
----
-
-### 2025-12-19 12:30:00
-✅ **Test Suite: Fixed 4 Failing Tests - Now 179/179 Pass**
-
-Fixed all failing test assertions to match actual API response formats.
-
-**Fixes Applied**:
-1. `test_agent_lifecycle.py:128` - Updated `test_invalid_name_returns_400` to `test_invalid_name_is_sanitized`
-   - API sanitizes invalid names (by design) rather than rejecting them
-   - Test now verifies sanitization behavior: `"invalid name with spaces!"` → `"invalid-name-with-spaces"`
-
-2. `test_systems.py:497,935` - Fixed permitted_agents assertion
-   - API returns list of objects `[{name, status, type, permitted}]`, not strings
-   - Extract names: `[p["name"] for p in permitted]` before checking membership
-
-3. `test_systems.py:640,953` - Fixed schedules response assertion
-   - API returns list directly `[{...}]`, not wrapped `{"schedules": [...]}`
-   - Handle both formats: `schedules = data if isinstance(data, list) else data.get("schedules", [])`
-
-**Test Results**: 179 passed, 28 skipped, 0 failed (20:36 duration)
-
----
-
-### 2025-12-19 10:55:00
-🐛 **Bug Fix: MCP Client YAML Response Handling**
-
-Fixed `get_system_manifest` MCP tool failing with "Unexpected token" JSON parse error.
-
-**Root Cause**:
-- `TrinityClient.request()` always parsed responses as JSON
-- `/api/systems/{name}/manifest` endpoint returns YAML (text/plain)
-- Attempting to JSON.parse() YAML content caused the error
-
-**Fix**:
-- Modified `src/mcp-server/src/client.ts` line 130-134
-- Added content-type check before parsing response
-- Returns raw text for `text/plain`, `text/yaml`, `application/x-yaml` content types
-
-**Also Fixed**:
-- `agents/Ruby/ruby-cms.yaml`: Changed template names from `github:Abilityai/ruby-*` to `github:abilityai/ruby-*` (lowercase) to match registered templates
-
-**Testing**:
-- Successfully deployed Ruby CMS system via MCP `deploy_system` tool
-- All 16 MCP tools verified working (9 agent, 3 chat, 4 system)
-- Full verification: 3 agents, 6 permissions, 3 shared folder volumes, 6 schedules
-
----
-
-### 2025-12-18 05:15:00
-📝 **Documentation: Updated Ruby CMS System Definition**
-
-Updated Ruby Content Management System operational definition to reflect System Manifest deployment (Req 10.7).
-
-**Files Updated/Created**:
-- `agents/Ruby/ruby-content-system-definition.md` (updated)
-- `agents/Ruby/ruby-cms.yaml` (new)
-- `agents/Ruby/README.md` (new)
-
-**Changes**:
-1. **New Section: "System Manifest Deployment (Recommended)"**:
-   - Complete YAML manifest for Ruby CMS with all 3 agents
-   - Includes global prompt for demo/test mode
-   - All 6 schedules defined in YAML
-   - Full-mesh permissions preset
-   - Deployment instructions via API and MCP tools
-   - System management endpoints (list, get, restart, export)
-
-2. **Updated Agent Repositories Table**:
-   - Added "Trinity Template" column with correct template IDs
-   - Added deployment method reference
-
-3. **Renamed Section: "Manual Deployment (Alternative)"**:
-   - Original deployment section now marked as alternative approach
-   - Cross-references Multi-Agent System Guide for manual steps
-
-4. **Updated Operations Guide**:
-   - Initial deployment now shows System Manifest method
-   - Added system-level management commands
-   - Updated container names to use `ruby-cms-` prefix (from manifest naming convention)
-
-5. **Version Bump**: 1.0.0 → 1.1.0
-   - Updated header and version history
-   - Last updated date: 2025-12-18
-
-6. **New File: ruby-cms.yaml**:
-   - Ready-to-deploy System Manifest file
-   - Complete YAML with all 3 agents, schedules, permissions
-   - Users can deploy directly: `curl ... -d "$(cat ruby-cms.yaml)"`
-
-7. **New File: README.md**:
-   - Quick start guide for Ruby CMS
-   - Directory structure explanation
-   - Deployment options (manifest, MCP, manual)
-   - System management commands
-   - Links to detailed documentation
-
-**Impact**:
-- Ruby CMS now serves as complete reference example for System Manifest deployment
-- Users can copy YAML manifest directly and deploy entire system
-- Demonstrates all System Manifest features: permissions, folders, schedules, global prompt
-- Original manual deployment docs preserved as alternative
-
----
-
-### 2025-12-18 05:00:00
-📝 **Documentation: System Manifest Deployment Guide**
-
-Updated multi-agent system documentation to include System Manifest (YAML-based deployment) as the recommended deployment method.
-
-**Files Updated**:
-
-1. **MULTI_AGENT_SYSTEM_GUIDE.md**:
-   - Added new section: "System Manifest Deployment (Recommended)"
-   - Comprehensive YAML manifest examples (minimal and complete)
-   - Permission preset documentation (full-mesh, orchestrator-workers, none, explicit)
-   - Deployment options: API and MCP tools
-   - Agent naming convention and conflict resolution
-   - System management endpoints (list, get, restart, export)
-   - Recipe vs. declarative model explanation
-   - Best practices for manifest deployment
-   - Renamed old section to "Manual Deployment Workflow (Alternative)"
-
-2. **TRINITY_COMPATIBLE_AGENT_GUIDE.md**:
-   - Added new section: "Multi-Agent Systems"
-   - Deployment options (System Manifest vs. Manual)
-   - Design considerations for multi-agent templates
-   - Cross-references to MULTI_AGENT_SYSTEM_GUIDE.md
-
-**Impact**:
-- Users now have clear guidance on deploying multi-agent systems via YAML manifests
-- System Manifest positioned as recommended approach (faster, more consistent, less error-prone)
-- Manual deployment still documented as alternative for fine-grained control
-- Single-agent guide now cross-references multi-agent guide
-
-**Documentation Links**:
-- Feature Flow: `docs/memory/feature-flows/system-manifest.md` (complete implementation details)
-- Design Doc: `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md` (design rationale)
-- Requirements: `docs/memory/requirements.md` (Req 10.7)
-
----
-
-### 2025-12-18 04:30:00
-🔧 **Bug Fixes: Critical System Manifest Test Failures (P0-P2)**
-
-Fixed all critical bugs identified in system manifest test report 2025-12-17.
-
-**P0 - CRITICAL: YAML Export Serialization Bug (SECURITY RISK)** ✅
-- **Issue**: Python object tags in exported YAML (RCE vector, can't re-import)
-- **Root Cause**: `db.get_setting("trinity_prompt")` returned ORM object, not string
-- **Fix**: Changed to `db.get_setting_value()` which returns just the value
-- **Also Fixed**: Changed `db.get_agent_schedules()` → `db.list_agent_schedules()` and converted Schedule objects to dicts
-- **Modified Files**:
-  - `src/backend/services/system_service.py`:
-    - Line 454: Fixed function call and dict conversion for schedules
-    - Line 542: Fixed trinity_prompt to use get_setting_value()
-- **Security Impact**: Eliminated Python object serialization in YAML exports
-- **Test Impact**: `test_export_manifest_endpoint` and `test_export_and_redeploy` should now pass
-
-**P1 - HIGH: List Systems Endpoint Bug** ✅
-- **Issue**: System names with hyphens (e.g., `test-list-abc123`) not grouped correctly
-- **Root Cause**: Code split on `-` and took first part, but system names can have multiple hyphens
-- **Example**: `test-list-abc123-worker1` → extracted `test` instead of `test-list-abc123`
-- **Fix**: Split on `-` and take all parts except last: `'-'.join(parts[:-1])`
-- **Modified Files**:
-  - `src/backend/routers/systems.py`:
-    - Lines 264-268: Fixed prefix extraction logic with comment explaining the fix
-- **Test Impact**: `test_list_systems_endpoint` should now pass
-
-**P2 - MEDIUM: Test Configuration Issues** ✅
-1. **Wrong Default Password**:
-   - Changed `tests/utils/api_client.py` line 28: `"changeme"` → `"password"`
-   - Eliminates 401 Unauthorized errors when env var not set
-
-2. **Deployment Timeouts**:
-   - Added `timeout=120.0` to slow deployment tests in `test_systems.py`:
-     - `test_shared_folders_configuration` (line 576)
-     - `test_complete_system_deployment` (line 899)
-   - Default 30s timeout insufficient for multi-agent deployments with folders/schedules
-
-**P3 - LOW: Schedules Endpoint** (No Fix Needed)
-- **Issue**: Test calls `.get("schedules")` on array, expects dict
-- **Analysis**: API returns `List[ScheduleResponse]` (bare array) - this is correct
-- **Frontend**: Consumes `response.data` directly as array - working as designed
-- **Conclusion**: Test bug, not API bug - test should use array directly
-
-**Files Modified** (5 total):
-- `src/backend/services/system_service.py` - YAML export fixes
-- `src/backend/routers/systems.py` - List systems prefix extraction
-- `tests/utils/api_client.py` - Default password fix
-- `tests/test_systems.py` - Timeout increases (2 tests)
-
-**Expected Test Improvements**:
-- ✅ `test_export_manifest_endpoint` - PASS (was failing with YAML constructor error)
-- ✅ `test_export_and_redeploy` - PASS (was failing with YAML constructor error)
-- ✅ `test_list_systems_endpoint` - PASS (was failing with None assertion)
-- ✅ `test_shared_folders_configuration` - PASS (was timing out)
-- ✅ `test_complete_system_deployment` - PASS (was timing out)
-
-**Test Suite Status Prediction**:
-- Before: 23/30 passed (76.7%)
-- After: 28/30 passed (93.3%)
-- Remaining failures: `test_explicit_permissions` (test assertion bug), `test_schedules_created` (test API misuse)
-
----
-
-### 2025-12-18 03:00:00
-🔧 **Bug Fixes: System Manifest Import Errors & Template Endpoints (HIGH PRIORITY)**
-
-Fixed critical import errors blocking System Manifest endpoints and template retrieval errors.
-
-**Issues Fixed (from Test Report 2025-12-17 21:02:04):**
-
-1. **Missing Import: `list_agents_for_user` (7 test failures)** ✅
-   - **Root Cause**: systems.py attempted to import non-existent function from docker_service
-   - **Fix**: Changed all imports to use `get_accessible_agents()` from routers.agents
-   - **Modified Files**:
-     - `src/backend/routers/systems.py` - 4 import corrections
-       - list_systems: line 256
-       - get_system: line 304
-       - restart_system: line 380
-       - get_system_manifest: line 458
-
-2. **Template Endpoint 500 Errors (2 test failures)** ✅
-   - **Root Cause**: Type mismatch - code expected dict but got string in required_credentials
-   - **Fix**: Added type checking for both dict and string credentials
-   - **Modified Files**:
-     - `src/backend/routers/templates.py`:
-       - get_template_env_template: Added isinstance() checks (lines 107-125)
-       - get_template: Added try/except wrapper and "local:" prefix handling (lines 161-199)
-       - get_template_env_template: Added error handling (lines 161-167)
-
-**Technical Details:**
-- Replaced `list_agents_for_user(username)` with `get_accessible_agents(current_user)` pattern
-- Fixed restart_system to use container.stop() directly instead of non-existent stop_agent()
-- Added template_id prefix stripping for "local:" templates
-- Added comprehensive error logging for template operations
-
-**Expected Impact:**
-- **CRITICAL**: All 7 System Manifest backend endpoint tests should now pass
-- **MEDIUM**: Template detail and env template endpoints should work correctly
-- Estimated fix: **9 of 13 failing tests** (remaining 4 are timeout and test logic issues)
-
-**Next Steps:**
-1. Re-run test suite to verify fixes
-2. Address timeout issues (increase timeout for system deployment tests)
-3. Fix test assertion errors (test_explicit_permissions, test_schedules_created)
-
----
-
-# Changelog
-
-> **Purpose**: Document all changes with progressive condensation.
-> Update after EVERY task completion. Keep ~500 lines through consolidation.
-
-## Emoji Prefixes
-- 🎉 Major milestones
-- ✨ New features
-- 🔧 Bug fixes
-- 🔄 Refactoring
-- 📝 Documentation
-- 🔒 Security updates
-- 🚀 Performance improvements
-- 💾 Data/persistence changes
-- 🐳 Docker/infrastructure
-
----
-
-## Recent Changes (Full Detail)
-
-### 2025-12-18 02:30:00
-🧪 **Testing: System Manifest Integration Test Suite**
-
-Created comprehensive integration tests for System Manifest deployment (Req 10.7).
-
-**New Files:**
-- `tests/test_systems.py` - 35 tests covering all phases of System Manifest
-
-**Test Coverage:**
-1. **Phase 1 - YAML Parsing & Validation** (8 smoke tests)
-   - Dry run validation with minimal and full manifests
-   - Invalid YAML syntax handling
-   - Missing required fields (name, agents)
-   - Invalid system/agent name formats
-   - Invalid template prefixes
-   - Invalid permission presets
-   - Conflicting permission configurations
-
-2. **Phase 1 - Deployment** (3 core tests)
-   - Deploy minimal system with correct agent naming
-   - Conflict resolution with `_N` suffix
-   - Trinity prompt update verification
-
-3. **Phase 2 - Permissions** (4 core tests)
-   - Full-mesh preset (each agent ↔ all others)
-   - Orchestrator-workers preset (orchestrator → workers only)
-   - Explicit permission matrix
-   - None preset (clear all permissions)
-
-4. **Phase 2 - Configuration** (3 core tests)
-   - Shared folders (expose/consume flags)
-   - Schedule creation and verification
-   - Agent auto-start after deployment
-
-5. **Phase 3 - Backend Endpoints** (5 core tests)
-   - List systems with grouping
-   - Get system details with enriched data
-   - Nonexistent system returns 404
-   - Restart system agents
-   - Export manifest as YAML
-
-6. **Integration Tests** (2 slow tests)
-   - Complete system with all features (prompt, folders, schedules, permissions)
-   - Export and redeploy workflow
-
-7. **Edge Cases** (6 tests)
-   - Authentication requirements
-   - Empty manifest handling
-   - Unknown agents in permissions
-   - Nonexistent system operations
-
-**Test Organization:**
-- Smoke tests: No agent creation (YAML validation only)
-- Core tests: Agent creation with cleanup (module-scoped)
-- Slow tests: Full multi-agent systems with all features
-- Edge cases: Error handling and authentication
-
-**Updated Files:**
-- `.claude/agents/test-runner.md` - Added System Manifest to test categories
-
-**Expected Results:**
-- ~8 smoke tests (30 seconds)
-- ~18 core tests (3-5 minutes)
-- ~2 slow tests (2-3 minutes)
-- ~7 edge case tests (1 minute)
-- **Total: 35 tests** covering all 3 phases
-
----
-
-### 2025-12-18 01:45:00
-✨ **Feature: System Manifest Phase 2 - Configuration & Startup (Req 10.7)**
-
-Completed Phase 2 of System Manifest deployment - now supports permissions, folders, schedules, and auto-starts agents.
-
-**Modified Files:**
-- `src/backend/services/system_service.py` - Added 4 configuration functions
-- `src/backend/routers/systems.py` - Extended deploy endpoint with Phase 2 steps
-- `src/backend/routers/agents.py` - Extracted `start_agent_internal()` for reuse
-
-**New Configuration Functions:**
-1. `configure_permissions()` - Apply permission presets or explicit rules
-2. `configure_folders()` - Set expose/consume for shared folders
-3. `create_schedules()` - Create agent schedules from manifest
-4. `start_all_agents()` - Start all created agents (triggers Trinity injection)
-
-**Permission Presets:**
-- `full-mesh` - Every agent can call every other agent
-- `orchestrator-workers` - Only orchestrator can call workers, workers isolated
-- `none` - Clear all default permissions, agents cannot communicate
-- `explicit` - Custom permission matrix from manifest
-
-**Tests Passed (6/6):**
-1. Full-mesh permissions (each agent can call all others)
-2. Orchestrator-workers (orchestrator→workers, workers→[])
-3. Explicit permissions (custom matrix)
-4. None preset (all permissions cleared)
-5. Shared folders (expose/consume flags applied)
-6. Complete system (prompt + agents + folders + schedules + permissions + start)
-
----
-
-### 2025-12-17 22:52:00
-✨ **Feature: System Manifest Phase 1 - Core Deployment Engine (Req 10.7)**
-
-Implemented `POST /api/systems/deploy` endpoint for recipe-based multi-agent deployment from YAML manifests.
-
-**New Files:**
-- `src/backend/models.py` - Added 5 new models: SystemAgentConfig, SystemPermissions, SystemManifest, SystemDeployRequest, SystemDeployResponse
-- `src/backend/services/system_service.py` - YAML parsing, validation, agent name resolution
-- `src/backend/routers/systems.py` - Deploy endpoint with dry_run support
-
-**Modified Files:**
-- `src/backend/routers/agents.py` - Extracted `create_agent_internal()` for reuse
-- `src/backend/main.py` - Registered systems router
-
-**Features:**
-- Parse and validate YAML manifests
-- Agent naming: `{system}-{agent}` format
-- Conflict resolution with `_N` suffix (e.g., `my-agent_2`)
-- Dry run mode for validation without deployment
-- Updates `trinity_prompt` setting from manifest
-- Full audit logging
-
-**Tests:** 6/6 passed
-1. Dry run validation
-2. Invalid YAML error handling
-3. Missing required fields validation
-4. Actual deployment with agent creation
-5. Conflict resolution with suffix
-6. Trinity prompt update
-
----
-
-### 2025-12-17 11:45:00
-📝 **Design: System Manifest (Multi-Agent Deployment)**
-
-Finalized design for recipe-based multi-agent deployment via YAML manifest (Req 10.7).
-
-**Key Decisions:**
-- Agent naming: `{system}-{agent}` format (e.g., `content-production-orchestrator`)
-- Re-deploy creates new agents with `_N` suffix (`ruby` → `ruby_2` → `ruby_3`)
-- Updates global `trinity_prompt` setting (reuses existing 10.6)
-- No `systems` table - agents are independent after creation (recipe, not declarative)
-
-**YAML Format:**
-```yaml
-name: content-production
-prompt: "System-wide instructions..."
-agents:
-  orchestrator:
-    template: github:YourOrg/repo
-    folders: {expose: true, consume: true}
-    schedules: [{name: daily, cron: "0 9 * * *", message: "..."}]
-permissions:
-  preset: full-mesh  # or orchestrator-workers, none, explicit
-```
-
-**Maps to Existing APIs:**
-- `prompt` → `PUT /api/settings/trinity_prompt`
-- `agents.*` → `POST /api/agents`
-- `folders` → `PUT /api/agents/{name}/folders`
-- `schedules` → `POST /api/agents/{name}/schedules`
-- `permissions` → `PUT /api/agents/{name}/permissions`
-
-**Files:**
-- Design: `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md`
-- Requirement: `docs/memory/requirements.md` (10.7)
-- Roadmap: Phase 11 priority item
-
----
-
-### 2025-12-17 10:35:02
-🔧 **Dark Mode: Fix Agent Detail Panel Components**
-
-Added dark mode support to 4 components on the Agent Detail page that were displaying with light mode styles:
-
-**Files updated:**
-- `UnifiedActivityPanel.vue` - Session activity panel (header, timeline, tool chips, modal)
-- `InfoPanel.vue` - Agent info tab (template info, use cases, resources, capabilities sections)
-- `MetricsPanel.vue` - Custom metrics tab (empty states, metrics grid, progress bars)
-- `WorkplanPanel.vue` - Workplan tab (summary stats, current task banner, plans list, modal)
-
-**Changes:**
-- Added `dark:` variants to all background, border, and text color classes
-- Updated gradients (e.g., `from-indigo-50 to-purple-50` → `dark:from-indigo-900/30 dark:to-purple-900/30`)
-- Fixed modal overlays, buttons, and interactive states for dark mode
-- Updated status badge helper functions with dark mode color variants
-
-### 2025-12-17 10:05:28
-🔒 **Security: Pre-Commit Security Check Command**
-
-Created `/security-check` command to validate staged changes don't contain sensitive information.
-
-**Checks for:**
-- API keys/tokens (Anthropic, OpenAI, GitHub, Slack, Google, AWS patterns)
-- Real email addresses (excluding example.com placeholders)
-- IP addresses (internal and public)
-- .env files with actual values
-- Hardcoded secrets in code
-- Internal URLs/domains
-- Credential files (.pem, .key, credentials.json, etc.)
-
-**Features:**
-- Severity levels (CRITICAL/HIGH/MEDIUM/LOW)
-- Quick fix instructions for each issue type
-- False positive guidance
-- Report format with actionable findings
-
-**Key file**: `.claude/commands/security-check.md`
-
----
-
-### 2025-12-17 10:02:11
-📝 **Documentation: Development Workflow Guide**
-
-Created `docs/DEVELOPMENT_WORKFLOW.md` - comprehensive guide for developers and AI assistants working on Trinity.
-
-**Documents the optimal workflow:**
-1. **Context Loading** - Start with `/read-docs` or read relevant feature flows
-2. **Development** - Reference feature flows while implementing
-3. **Testing** - Run API tests (required) and UI tests (recommended)
-4. **Documentation** - Update feature flows via analyzer, then `/update-docs`
-
-**Includes:**
-- Complete development cycle diagram
-- Sub-agents reference (when to use each)
-- Slash commands reference
-- Memory files explanation and relationships
-- Example development sessions
-- Best practices checklist
-
-**Key files**: `docs/DEVELOPMENT_WORKFLOW.md`
-
----
-
-### 2025-12-15 00:15:00
-📝 **Documentation: Multi-Agent System Guide - Runtime Injection & Credentials**
-
-Enhanced the multi-agent guide with clear documentation about what Trinity injects at runtime vs. what system designers should provide in templates.
-
-**Key Additions:**
-- **Runtime Injection System** section explaining `POST /api/trinity/inject` flow
-- **⚡ RUNTIME INJECTION** markers on auto-injected features (Vector DB, Workplan, Trinity MCP, Chroma MCP)
-- **"What NOT to Include"** table - Lists all files/sections that Trinity injects automatically
-- **"What TO Include"** table - Clarifies template designer responsibilities
-- **Credential System** comprehensive documentation with flow diagram
-- **Required .gitignore** section showing what to exclude from repos
-- Updated Repository Contents section with clearer annotations
-
-**Impact**: System designers now have clear guidance on avoiding duplication of platform-injected content in their agent templates.
-
----
-
-### 2025-12-14 23:45:00
-📝 **Documentation: Multi-Agent System Guide - Platform Capabilities Section**
-
-Added comprehensive "Trinity Platform Capabilities" section to the multi-agent guide, documenting all platform features available to agent designers.
-
-**New Section Contents:**
-- Vector Database (Chroma) - Python API + 12 MCP tools with examples
-- Scheduling System - Cron patterns, API endpoints, coordination patterns
-- Workplan System (Task DAGs) - Format, states, cross-agent coordination
-- Trinity MCP Tools - All 12 agent-to-agent tools
-- Shared Folders - Paths, configuration, permission gating
-- Credential Hot-Reload - API for live updates
-- Collaboration Dashboard - Real-time visualization features
-- Activity Stream - Unified audit trail API
-- Context Tracking - Monitoring and warnings
-- Custom Metrics - template.yaml schema and examples
-- Git Sync - Bidirectional GitHub synchronization
-- Capability Summary Table with scope, access method, multi-agent benefit
-- Design Implications section with 7 key considerations
-
----
-
-### 2025-12-14 23:30:00
-📝 **Documentation: Multi-Agent System Guide**
-
-Created comprehensive guide for building multi-agent systems on Trinity platform.
-
-**New File**:
-- `docs/MULTI_AGENT_SYSTEM_GUIDE.md` - Complete guide for multi-agent architecture
-
-**Guide Contents (19 sections)**:
-- When to use multi-agent systems vs single agents
-- Architecture patterns: Orchestrator-Workers, Pipeline, Mesh, Hierarchical
-- System design process (5 steps)
-- Agent boundaries and responsibilities
-- Communication strategies (shared folders vs MCP)
-- Shared folder architecture with file contracts
-- Scheduling coordination and collision avoidance
-- Permissions and access control patterns
-- State management with ownership tables
-- Repository structure (one repo per agent)
-- Deployment workflow with step-by-step scripts
-- Observability and monitoring patterns
-- Testing multi-agent systems (unit, integration, system)
-- Best practices for design, communication, operations
-- System definition template
-- Example: Ruby Content Management System reference
-- Troubleshooting common issues
-
-**Updated Files**:
-- `README.md` - Added link to new guide in Documentation section
-- `docs/memory/feature-flows.md` - Added to Core Specifications table
-
-**Based On**: Ruby Content Management System (`ruby-content-system-definition.md`) as reference architecture
-
----
-
-### 2025-12-14 22:15:00
-📝 **Documentation: Consolidated Agent Compatibility Guides**
-
-Merged two overlapping documentation files into a single comprehensive guide.
-
-**New File**:
-- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Single source of truth for agent compatibility
-
-**Deleted Files**:
-- `docs/AGENT_TEMPLATE_SPEC.md` - Merged into new guide
-- `docs/memory/trinity-compatible-agent.md` - Merged into new guide
-
-**Updated Files**:
-- `README.md` - Updated references to new guide (lines 130, 223)
-- `docs/memory/feature-flows.md` - Updated Core Specifications reference
-
-**Guide Contents**:
-- Overview and Four Pillars of Deep Agency
-- Required files (template.yaml, CLAUDE.md, .mcp.json.template, .gitignore)
-- Complete directory structure
-- Full template.yaml schema with all fields
-- CLAUDE.md requirements
-- Credential management and hot-reload
-- Platform injection (meta-prompt, commands, MCP)
-- Task planning system (DAG format, state machine)
-- Inter-agent collaboration (MCP tools, access control)
-- Shared folders and custom metrics
-- Memory management patterns
-- Testing locally guide
-- Compatibility checklist
-- Migration guide and troubleshooting
-
----
-
-### 2025-12-14 21:30:00
-📝 **Testing: Added UI Test Phase 13 for System Settings**
-
-Created comprehensive UI test phase for the System Settings feature (Trinity Prompt).
-
-**New Files**:
-- `docs/testing/phases/PHASE_13_SETTINGS.md` - Full UI test phase with 8 test steps
-
-**Updated Files**:
-- `docs/testing/phases/INDEX.md` - Added Phase 13 to phase overview table, file list, and version history
-
-**Test Phase Coverage**:
-1. Admin access verification (navbar + page)
-2. Non-admin access denial
-3. Trinity Prompt creation
-4. Persistence verification via API
-5. Prompt injection into new agent
-6. Prompt update on agent restart
-7. Prompt removal when cleared
-8. Markdown content support
-
-**API Tests Verified**: `tests/test_settings.py` - All 19 tests passing
-
-**UI Test Results**: PARTIAL - Core functionality verified via API, auth issue in long-running backend detected during UI testing (to be investigated separately)
-
----
-
-### 2025-12-14 19:45:00
-🔧 **Bug Fix: Custom Instructions Removal + Integration Tests**
-
-Fixed bug where clearing the `trinity_prompt` setting didn't remove the "## Custom Instructions" section from CLAUDE.md on agent restart. Also added comprehensive integration tests.
-
-**Bug Fix**:
-- `docker/base-image/agent_server/routers/trinity.py`:
-  - Added `had_custom_instructions` flag tracking
-  - Modified condition at line 271 to `elif custom_section or had_custom_instructions:`
-  - Now properly writes updated content without Custom Instructions when prompt is cleared
-  - Added log message "Removed Custom Instructions from CLAUDE.md"
-
-**New Tests** (`tests/test_settings.py`):
-- `TestSettingsEndpointsAuthentication` (4 tests) - Auth requirements
-- `TestSettingsEndpointsAdmin` (6 tests) - CRUD operations
-- `TestTrinityPromptSetting` (3 tests) - Prompt-specific operations
-- `TestTrinityPromptInjection` (3 tests) - Agent injection verification
-- `TestSettingsValidation` (3 tests) - Input validation
-- **Total: 19 tests, all passing**
-
-**Documentation Updates**:
-- `feature-flows/system-wide-trinity-prompt.md` - Updated test status
-- `docs/TESTING_GUIDE.md` - Added System Settings to test coverage
-
----
-
-### 2025-12-14 02:30:00
-✨ **Feature: System-Wide Trinity Prompt (Settings Page)**
-
-Added ability to set a custom system prompt that gets injected into all agents' CLAUDE.md at startup. Accessible via new admin-only Settings page.
-
-**Architecture**:
-- System setting stored in SQLite `system_settings` table
-- Retrieved during agent start and passed to agent-server injection API
-- Injected as "## Custom Instructions" section in CLAUDE.md after Trinity section
+- **Passwordless Login**: 2-step email verification (request code → verify code)
+- **Email Whitelist**: Admin-managed whitelist controls who can login
+- **Auto-Whitelist**: Sharing an agent automatically adds recipient to whitelist
+- **Security**: Rate limiting (3 requests/10 min), email enumeration prevention, audit logging
+- **Email Providers**: Support for console, SMTP, SendGrid, Resend
 
 **Backend Changes**:
-- `src/backend/db/settings.py` - New SettingsOperations class (CRUD for system settings)
-- `src/backend/db/__init__.py` - Export SettingsOperations
-- `src/backend/db_models.py` - Added SystemSetting, SystemSettingUpdate models
-- `src/backend/database.py` - Added system_settings table, integrated operations
-- `src/backend/routers/settings.py` - New router with GET/PUT/DELETE endpoints (admin-only)
-- `src/backend/main.py` - Mounted settings router
-- `src/backend/routers/agents.py` - `inject_trinity_meta_prompt()` now fetches `trinity_prompt` setting and passes to agent-server
-
-**Agent-Server Changes**:
-- `docker/base-image/agent_server/models.py` - Added `custom_prompt` field to TrinityInjectRequest
-- `docker/base-image/agent_server/routers/trinity.py` - Inject custom prompt as "## Custom Instructions" section
+- **Database**: New tables `email_whitelist` and `email_login_codes`
+- **API Endpoints**:
+  - `POST /api/auth/email/request` - Request verification code
+  - `POST /api/auth/email/verify` - Verify code and login
+  - `GET /api/settings/email-whitelist` - List whitelist (admin)
+  - `POST /api/settings/email-whitelist` - Add email (admin)
+  - `DELETE /api/settings/email-whitelist/{email}` - Remove email (admin)
+- **Operations**: `src/backend/db/email_auth.py` - EmailAuthOperations class
+- **Models**: `src/backend/db_models.py` - EmailWhitelistEntry, EmailLoginRequest, etc.
+- **Config**: `EMAIL_AUTH_ENABLED=true` by default, can override via system_settings
+- **Integration**: `src/backend/routers/sharing.py` - Auto-whitelist on agent sharing
 
 **Frontend Changes**:
-- `src/frontend/src/views/Settings.vue` - New Settings page with Trinity Prompt editor
-- `src/frontend/src/stores/settings.js` - New Pinia store for settings API
-- `src/frontend/src/router/index.js` - Added `/settings` route
-- `src/frontend/src/components/NavBar.vue` - Added Settings link (admin-only via role check)
+- **Login Page**: `src/frontend/src/views/Login.vue` - Email auth shown by default
+  - Step 1: Enter email, request code
+  - Step 2: Enter 6-digit code with countdown timer
+  - Fallback buttons for Dev mode and Auth0 if enabled
+- **Auth Store**: `src/frontend/src/stores/auth.js` - Added email auth methods
+  - `requestEmailCode(email)` - Request verification code
+  - `verifyEmailCode(email, code)` - Verify and login
+  - `emailAuthEnabled` state tracking
+- **Settings Page**: `src/frontend/src/views/Settings.vue` - Email Whitelist section
+  - Table view with email, source, added date
+  - Add/remove emails
+  - Source badges: "Manual" vs "Auto (Agent Sharing)"
 
-**API Endpoints**:
-- `GET /api/settings` - List all settings (admin only)
-- `GET /api/settings/{key}` - Get specific setting (admin only)
-- `PUT /api/settings/{key}` - Create/update setting (admin only)
-- `DELETE /api/settings/{key}` - Delete setting (admin only)
+**Security Features**:
+- Rate limiting: 3 code requests per 10 minutes per email
+- Code expiration: 10-minute lifetime
+- Single-use codes: Marked as verified after use
+- Email enumeration prevention: Generic success messages
+- Audit logging: Complete event trail for all auth operations
 
-**Setting Key**: `trinity_prompt` - The custom instructions text
+**Configuration**:
+- Environment variable: `EMAIL_AUTH_ENABLED=true` (default)
+- Runtime toggle: System settings key `email_auth_enabled`
+- Detection endpoint: `GET /api/auth/mode` includes `email_auth_enabled` flag
 
-**Usage**:
-1. Login as admin
-2. Navigate to Settings page
-3. Enter custom prompt text (supports Markdown)
-4. Save changes
-5. Start/restart agents - they will receive the custom instructions
+**Documentation**:
+- Feature flow: `docs/memory/feature-flows/email-authentication.md` (1200+ lines)
+- Comprehensive documentation of architecture, security, testing
+
+**User Experience**:
+- Default login: Email with verification code
+- Seamless onboarding: Sharing agent auto-whitelists recipient
+- Alternative methods: Dev mode and Auth0 still available if configured
+
+**Use Cases**:
+- Share agents with external collaborators via email
+- No need to pre-configure Auth0 or manage OAuth
+- Simple onboarding for new users
+- Admin controls access via whitelist
+
+**Files Changed**:
+- Backend: 11 files (database, routers, config, models, operations)
+- Frontend: 3 files (Login.vue, Settings.vue, auth.js)
+- Documentation: 1 feature flow (1200+ lines)
 
 ---
 
-### 2025-12-14 00:15:00
-✨ **Feature: Chroma MCP Server Integration (Req 10.5)**
+### 2025-12-26 12:15:00
+🔐 **Automatic Logout on Session Expiration**
 
-Added auto-configuration of official chroma-mcp server in agent containers, enabling agents to use vector memory via MCP tools instead of Python code.
+Fixed UX issue where expired JWT tokens resulted in empty interface instead of redirecting to login.
+
+**Problem**:
+- When JWT token expired, API calls failed with 401
+- Frontend showed empty interface (no agents, no data)
+- User remained on dashboard with broken state
+- Had to manually navigate to /login
+
+**Solution**:
+- Added axios response interceptor in `main.js`
+- Automatically detects 401 responses (expired/invalid token)
+- Clears auth state and redirects to login page
+- Console logs: "🔐 Session expired - redirecting to login"
 
 **Changes**:
-- `docker/base-image/Dockerfile` - Added `chroma-mcp` package
-- `docker/base-image/agent_server/routers/trinity.py`:
-  - Added CHROMA_MCP_CONFIG constant with MCP server configuration
-  - inject_trinity() now injects chroma server into `.mcp.json`
-  - check_trinity_injection_status() includes `chroma_mcp_configured` field
-  - Simplified CLAUDE.md vector memory section (MCP tools auto-discovered)
-- `config/trinity-meta-prompt/vector-memory.md` - Updated with MCP tool examples
+- `src/frontend/src/main.js`: Added axios interceptor for 401 handling
 
-**MCP Config Injected**:
-```json
+**User Experience**:
+- Token expires → automatic redirect to login screen
+- Clear indication session has ended
+- No more confusing empty interface
+
+**Combined with previous fix**: 7-day token lifetime + automatic logout = smooth auth experience.
+
+---
+
+### 2025-12-26 12:00:00
+⏱️ **Extended JWT Token Lifetime**
+
+Increased JWT token expiration from 30 minutes to 7 days to reduce re-login frequency.
+
+**Changes**:
+- `src/backend/config.py`: Changed `ACCESS_TOKEN_EXPIRE_MINUTES` from 30 to 10080 (7 days)
+
+**Impact**:
+- Users stay logged in for 7 days instead of 30 minutes
+- No more frequent re-logins when walking away from browser
+- Still need to re-login after backend redeployments (expected behavior)
+
+**Note**: For even longer sessions, increase `ACCESS_TOKEN_EXPIRE_MINUTES` in config.py (e.g., 43200 = 30 days).
+
+---
+
+### 2025-12-26 11:30:00
+📊 **OpenTelemetry Enabled by Default**
+
+Changed OTEL_ENABLED default from `0` (disabled) to `1` (enabled). New Trinity installations will now have metrics export enabled out of the box.
+
+**Changes**:
+- `.env.example`: Default `OTEL_ENABLED=1`
+- `src/backend/routers/agents.py`: Default to enabled
+- `src/backend/routers/observability.py`: Default to enabled
+- `src/backend/routers/ops.py`: Default to enabled
+- `src/backend/services/system_agent_service.py`: Default to enabled
+- `docs/memory/feature-flows/opentelemetry-integration.md`: Updated documentation
+
+**Rationale**: OTel provides valuable cost and productivity insights. Having it on by default ensures users get observability from the start. Set `OTEL_ENABLED=0` to disable.
+
+---
+
+### 2025-12-26 10:00:00
+🔐 **Per-Agent API Key Control**
+
+Added ability for agents to use either platform API key or user's own Claude subscription via terminal authentication.
+
+**Changes**:
+- Database: Added `use_platform_api_key` column to `agent_ownership` table (default: true)
+- Backend: Container recreation on start if API key setting changed
+- Backend: API endpoints `GET/PUT /api/agents/{name}/api-key-setting`
+- Frontend: Radio toggle in Terminal tab when agent is stopped
+- Agents can now run `claude login` in terminal to use personal subscription
+
+**User Flow**:
+1. Create agent (uses platform key by default)
+2. Go to Terminal tab when agent is stopped
+3. Select "Authenticate in Terminal" option
+4. Start agent → run `claude login` to authenticate
+5. Agent now uses user's subscription instead of platform key
+
+**Files changed**:
+- `src/backend/database.py` - Migration for new column
+- `src/backend/db/agents.py` - get/set methods for setting
+- `src/backend/routers/agents.py` - API endpoints, container recreation logic
+- `src/frontend/src/stores/agents.js` - Store methods
+- `src/frontend/src/views/AgentDetail.vue` - UI toggle
+
+---
+
+### 2025-12-25 19:30:00
+✨ **Agent Terminal: Replaced Chat with Terminal**
+
+Replaced the Chat tab on Agent Detail page with a full Web Terminal (xterm.js), matching System Agent functionality.
+
+**Changes**:
+- Created `AgentTerminal.vue` component (generalized from SystemAgentTerminal)
+- Added WebSocket terminal endpoint at `/api/agents/{name}/terminal`
+- Replaced Chat tab with Terminal tab on Agent Detail page
+- Terminal auto-connects when agent is running
+- Fullscreen support with ESC key to exit
+- Mode toggle: Claude Code (default) or Bash shell
+- Access control: User must have access to agent (owner, shared, or admin)
+- Session limit: 1 terminal per user per agent (prevents resource exhaustion)
+- Audit logging for terminal sessions with duration tracking
+
+**Files changed**:
+- `src/frontend/src/components/AgentTerminal.vue` - New terminal component
+- `src/frontend/src/views/AgentDetail.vue` - Terminal tab replaces Chat tab
+- `src/backend/routers/agents.py` - WebSocket terminal endpoint
+- `docs/memory/feature-flows/agent-terminal.md` - New feature flow
+- `docs/memory/feature-flows.md` - Updated index, deprecated agent-chat
+
+**Deprecation**: Agent Chat feature (`agent-chat.md`) is deprecated in favor of direct terminal access.
+
+---
+
+### 2025-12-25 18:00:00
+✨ **Web Terminal: Embedded with Fullscreen**
+
+Refactored Web Terminal from modal to embedded panel on System Agent page with fullscreen support.
+
+**Changes**:
+- Terminal now embedded directly on System Agent page (replaces Operations Console chat)
+- Auto-connects when page loads (if agent running and user is admin)
+- Added fullscreen toggle button in terminal header
+- ESC key exits fullscreen mode
+- Terminal refits automatically on fullscreen toggle
+- Removed Terminal button from header (no longer modal-based)
+- Cleaned up all unused chat-related code (marked library, sendMessage, etc.)
+
+**Files changed**:
+- `src/frontend/src/views/SystemAgent.vue` - Embedded terminal, fullscreen, removed chat code
+- `docs/memory/feature-flows/web-terminal.md` - Updated documentation
+
+---
+
+### 2025-12-25 17:30:00
+🐛 **Web Terminal Bug Fixes**
+
+Fixed several issues discovered during local testing of the Web Terminal feature.
+
+**Fixes**:
+- Fixed localStorage key mismatch: Changed `trinity_token` to `token` to match auth store
+- Fixed user_email extraction: Handle `None` database values with `or` fallback chain
+- Added session timeout (5 min) to auto-cleanup stale sessions from failed connections
+- Added WebSocket support (`ws: true`) to Vite proxy for `/api` endpoint
+- Made `connectionStatusText` reactive using Vue `computed()` instead of static object
+
+**Files changed**:
+- `src/frontend/src/components/SystemAgentTerminal.vue` - localStorage key, computed status
+- `src/frontend/vite.config.js` - Added `ws: true` to `/api` proxy
+- `src/backend/routers/system_agent.py` - Session timeout, user_email fallback
+
+---
+
+### 2025-12-25 10:30:00
+✨ **Web Terminal for System Agent (11.5)**
+
+Implemented browser-based interactive terminal for System Agent with full Claude Code TUI support.
+
+**Features**:
+- xterm.js terminal emulator in modal (v5.5.0)
+- WebSocket PTY forwarding via Docker exec
+- Mode toggle: Claude Code or Bash shell
+- Terminal resize follows browser window
+- Admin-only access (button hidden for non-admins)
+- Session limit: 1 terminal per user
+- Audit logging for session start/end with duration
+
+**Architecture**:
+- Frontend: `SystemAgentTerminal.vue` with xterm.js + addons (fit, web-links)
+- Backend: WebSocket endpoint at `WS /api/system-agent/terminal?mode=claude|bash`
+- PTY allocation via Docker SDK `exec_create(tty=True)` + `exec_start(socket=True)`
+- Bidirectional socket forwarding with `select()` for non-blocking I/O
+- `decode_token()` helper for WebSocket authentication
+
+**Files changed**:
+- `src/frontend/package.json` - Added @xterm/xterm, @xterm/addon-fit, @xterm/addon-web-links
+- `src/frontend/src/components/SystemAgentTerminal.vue` - New terminal component
+- `src/frontend/src/views/SystemAgent.vue` - Added Terminal button and modal
+- `src/backend/routers/system_agent.py` - Added WebSocket terminal endpoint
+- `src/backend/dependencies.py` - Added `decode_token()` helper function
+
+---
+
+### 2025-12-24 12:30:00
+❌ **Removed Platform Chroma Vector Store Injection**
+
+Removed all platform-level vector memory injection for development workflow parity.
+
+**Reason**: Local dev should equal production. Platform-injected capabilities create mismatches between local Claude Code development and Trinity deployment. Templates should be self-contained.
+
+**What was removed**:
+- `chromadb`, `sentence-transformers`, `chroma-mcp` from base image (~800MB savings)
+- Vector store directory creation during Trinity injection
+- Chroma MCP config injection into agent .mcp.json
+- `vector-memory.md` documentation file from trinity-meta-prompt
+- Vector memory section in injected CLAUDE.md
+- `vector_memory` status field from Trinity status API
+- `VECTOR_STORE_DIR` constant from agent server config
+
+**Alternative**: Templates that need vector memory should include dependencies and configuration themselves. This ensures local development matches production exactly.
+
+**Files changed**:
+- `docker/base-image/Dockerfile` - Removed packages and model download
+- `docker/base-image/agent_server/config.py` - Removed VECTOR_STORE_DIR
+- `docker/base-image/agent_server/models.py` - Removed vector_memory field
+- `docker/base-image/agent_server/routers/trinity.py` - Removed injection logic
+- `config/trinity-meta-prompt/vector-memory.md` - Deleted
+- `config/trinity-meta-prompt/prompt.md` - Removed vector memory references
+- `docs/memory/requirements.md` - Updated 10.4, 10.5 to REMOVED
+- `docs/memory/feature-flows/vector-memory.md` - Marked as removed
+- `docs/memory/roadmap.md` - Updated Phase 10
+- `docs/MULTI_AGENT_SYSTEM_GUIDE.md` - Removed vector memory sections
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Removed vector memory sections
+- `docs/requirements/CHROMA_MCP_SERVER.md` - Deleted
+
+---
+
+### 2025-12-24 11:30:00
+🔧 **deploy_local_agent MCP Tool - Architecture Fix**
+
+Fixed fundamental architecture issue where MCP tool tried to access local filesystem (impossible since MCP server runs remotely).
+
+**Problem**: The `deploy_local_agent` MCP tool was using `fs.existsSync()` and `tar` commands to package a local directory. Since the MCP server runs on the remote Trinity server, it cannot access the calling agent's local filesystem.
+
+**Solution**: Changed the tool to accept a pre-packaged base64 archive from the calling agent.
+
+**New Parameters**:
+```typescript
 {
-  "mcpServers": {
-    "chroma": {
-      "command": "python3",
-      "args": ["-m", "chroma_mcp", "--client-type", "persistent", "--data-dir", "/home/developer/vector-store"]
-    }
-  }
+  archive: string,                    // Base64-encoded tar.gz (REQUIRED)
+  credentials?: Record<string, string>, // Key-value pairs from .env
+  name?: string                       // Override agent name
 }
 ```
 
-**Agent Usage**: `mcp__chroma__chroma_add_documents()`, `mcp__chroma__chroma_query_documents()`, etc.
+**Calling Agent Responsibility**:
+1. Create tar.gz archive locally: `tar -czf agent.tar.gz --exclude='.git' ...`
+2. Base64 encode: `base64 -i agent.tar.gz`
+3. Parse .env file for credentials
+4. Call `deploy_local_agent` with archive and credentials
 
-**Rollout**: Requires base image rebuild with `./scripts/deploy/build-base-image.sh`
+**Files Changed**:
+- `src/mcp-server/src/tools/agents.ts` - Replaced path-based logic with archive-based
+- `docs/memory/feature-flows/local-agent-deploy.md` - Updated architecture and usage docs
 
----
-
-### 2025-12-13 23:30:00
-✨ **Feature: Agent Vector Memory with Chroma (Req 10.4)**
-
-Added per-agent Chroma vector database with pre-configured all-MiniLM-L6-v2 embedding model for semantic memory storage and retrieval.
-
+**Backend API Unchanged**: `POST /api/agents/deploy-local` still accepts same parameters.

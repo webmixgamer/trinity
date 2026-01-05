@@ -54,6 +54,23 @@ from db_models import (
     SharedFolderInfo,
     SystemSetting,
     SystemSettingUpdate,
+    # Public Agent Links (Phase 12.2)
+    PublicLinkCreate,
+    PublicLink,
+    PublicLinkUpdate,
+    PublicLinkWithUrl,
+    PublicLinkInfo,
+    VerificationRequest,
+    VerificationConfirm,
+    VerificationResponse,
+    PublicChatRequest,
+    PublicChatResponse,
+    # Email Authentication (Phase 12.4)
+    EmailWhitelistEntry,
+    EmailWhitelistAdd,
+    EmailLoginRequest,
+    EmailLoginVerify,
+    EmailLoginResponse,
 )
 
 # Re-export connection utilities
@@ -69,6 +86,8 @@ from db.activities import ActivityOperations
 from db.permissions import PermissionOperations
 from db.shared_folders import SharedFolderOperations
 from db.settings import SettingsOperations
+from db.public_links import PublicLinkOperations
+from db.email_auth import EmailAuthOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -126,7 +145,8 @@ def _migrate_schedule_executions_observability(cursor, conn):
         ("context_used", "INTEGER"),
         ("context_max", "INTEGER"),
         ("cost", "REAL"),
-        ("tool_calls", "TEXT")
+        ("tool_calls", "TEXT"),
+        ("execution_log", "TEXT")  # Full Claude Code execution transcript (JSON)
     ]
 
     for col_name, col_type in new_columns:
@@ -167,6 +187,64 @@ def _migrate_agent_ownership_system_flag(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_ownership_platform_key(cursor, conn):
+    """Add use_platform_api_key column to agent_ownership table for per-agent API key control."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "use_platform_api_key" not in columns:
+        print("Adding use_platform_api_key column to agent_ownership for per-agent API key control...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN use_platform_api_key INTEGER DEFAULT 1")
+        conn.commit()
+
+
+def _migrate_agent_git_config_source_branch(cursor, conn):
+    """Add source_branch and source_mode columns to agent_git_config for GitHub source tracking."""
+    cursor.execute("PRAGMA table_info(agent_git_config)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("source_branch", "TEXT DEFAULT 'main'"),  # Branch to pull from
+        ("source_mode", "INTEGER DEFAULT 0")  # 1 = track source branch directly, 0 = legacy working branch
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_git_config for GitHub source tracking...")
+            cursor.execute(f"ALTER TABLE agent_git_config ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
+def _migrate_agent_ownership_autonomy(cursor, conn):
+    """Add autonomy_enabled column to agent_ownership table for autonomous scheduling control."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "autonomy_enabled" not in columns:
+        print("Adding autonomy_enabled column to agent_ownership for autonomous scheduling...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN autonomy_enabled INTEGER DEFAULT 0")
+        conn.commit()
+
+
+def _migrate_agent_ownership_resource_limits(cursor, conn):
+    """Add memory_limit and cpu_limit columns to agent_ownership table for per-agent resource configuration."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("memory_limit", "TEXT"),  # e.g., "4g", "8g", "16g"
+        ("cpu_limit", "TEXT")  # e.g., "2", "4", "8"
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_ownership for resource configuration...")
+            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -196,6 +274,26 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_ownership is_system): {e}")
 
+        try:
+            _migrate_agent_ownership_platform_key(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership use_platform_api_key): {e}")
+
+        try:
+            _migrate_agent_git_config_source_branch(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_git_config source_branch): {e}")
+
+        try:
+            _migrate_agent_ownership_autonomy(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership autonomy_enabled): {e}")
+
+        try:
+            _migrate_agent_ownership_resource_limits(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership resource_limits): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -221,6 +319,10 @@ def init_database():
                 owner_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
                 is_system INTEGER DEFAULT 0,
+                use_platform_api_key INTEGER DEFAULT 1,
+                autonomy_enabled INTEGER DEFAULT 0,
+                memory_limit TEXT,
+                cpu_limit TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -295,6 +397,7 @@ def init_database():
                 context_max INTEGER,
                 cost REAL,
                 tool_calls TEXT,
+                execution_log TEXT,
                 FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
             )
         """)
@@ -307,6 +410,8 @@ def init_database():
                 github_repo TEXT NOT NULL,
                 working_branch TEXT NOT NULL,
                 instance_id TEXT NOT NULL,
+                source_branch TEXT DEFAULT 'main',
+                source_mode INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 last_sync_at TEXT,
                 last_commit_sha TEXT,
@@ -412,6 +517,78 @@ def init_database():
             )
         """)
 
+        # Public agent links table (Phase 12.2: Public Agent Links)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_public_links (
+                id TEXT PRIMARY KEY,
+                agent_name TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                enabled INTEGER DEFAULT 1,
+                name TEXT,
+                require_email INTEGER DEFAULT 0,
+                FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # Public link email verifications table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_link_verifications (
+                id TEXT PRIMARY KEY,
+                link_id TEXT NOT NULL,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                verified INTEGER DEFAULT 0,
+                session_token TEXT,
+                session_expires_at TEXT,
+                FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Public link usage tracking table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_link_usage (
+                id TEXT PRIMARY KEY,
+                link_id TEXT NOT NULL,
+                email TEXT,
+                ip_address TEXT,
+                message_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Email whitelist table (Phase 12.4: Email-Based Authentication)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_whitelist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                added_by TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                FOREIGN KEY (added_by) REFERENCES users(id)
+            )
+        """)
+
+        # Email login codes table (Phase 12.4: Email-Based Authentication)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_login_codes (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                verified INTEGER DEFAULT 0,
+                used_at TEXT
+            )
+        """)
+
         # Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub)")
@@ -451,6 +628,18 @@ def init_database():
         # Shared folder indexes (Phase 9.11)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_folders_expose ON agent_shared_folder_config(expose_enabled)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_folders_consume ON agent_shared_folder_config(consume_enabled)")
+        # Public links indexes (Phase 12.2)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_links_token ON agent_public_links(token)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_links_agent ON agent_public_links(agent_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_verifications_link ON public_link_verifications(link_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_verifications_email ON public_link_verifications(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_verifications_code ON public_link_verifications(code)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_link ON public_link_usage(link_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_ip ON public_link_usage(ip_address)")
+        # Email auth indexes (Phase 12.4)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_whitelist_email ON email_whitelist(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_email ON email_login_codes(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_code ON email_login_codes(code)")
 
         conn.commit()
 
@@ -459,20 +648,48 @@ def init_database():
 
 
 def _ensure_admin_user(cursor, conn):
-    """Ensure the admin user exists."""
-    admin_password = os.getenv("ADMIN_PASSWORD", "changeme")
+    """Ensure the admin user exists with properly hashed password."""
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
 
-    cursor.execute("SELECT id FROM users WHERE username = ?", ("admin",))
-    if cursor.fetchone() is None:
+    cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (admin_username,))
+    existing = cursor.fetchone()
+
+    if existing is None:
+        # Create admin user
+        if not admin_password:
+            print("WARNING: ADMIN_PASSWORD not set - skipping admin user creation")
+            print("         Set ADMIN_PASSWORD environment variable to create admin user")
+            return
+
         now = datetime.utcnow().isoformat()
-        # Store password as plaintext for now (consistent with current implementation)
-        # In production, use proper hashing
+        # Hash password using bcrypt
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        hashed = pwd_context.hash(admin_password)
+
         cursor.execute("""
             INSERT INTO users (username, password_hash, role, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
-        """, ("admin", admin_password, "admin", now, now))
+        """, (admin_username, hashed, "admin", now, now))
         conn.commit()
-        print("Created default admin user")
+        print(f"Created admin user '{admin_username}' with hashed password")
+    else:
+        # Check if existing password needs migration from plaintext to bcrypt
+        existing_hash = existing[1]
+        if existing_hash and not existing_hash.startswith("$2"):
+            # Password is likely plaintext (bcrypt hashes start with $2)
+            if admin_password and existing_hash == admin_password:
+                # Migrate to bcrypt
+                from passlib.context import CryptContext
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                hashed = pwd_context.hash(admin_password)
+                cursor.execute("""
+                    UPDATE users SET password_hash = ?, updated_at = ?
+                    WHERE username = ?
+                """, (hashed, datetime.utcnow().isoformat(), admin_username))
+                conn.commit()
+                print(f"Migrated admin user '{admin_username}' password from plaintext to bcrypt")
 
 
 class DatabaseManager:
@@ -504,6 +721,8 @@ class DatabaseManager:
         self._permission_ops = PermissionOperations(self._user_ops, self._agent_ops)
         self._shared_folder_ops = SharedFolderOperations(self._permission_ops)
         self._settings_ops = SettingsOperations()
+        self._public_link_ops = PublicLinkOperations(self._user_ops, self._agent_ops)
+        self._email_auth_ops = EmailAuthOperations(self._user_ops)
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -529,6 +748,9 @@ class DatabaseManager:
 
     def update_last_login(self, username: str):
         return self._user_ops.update_last_login(username)
+
+    def update_user_password(self, username: str, hashed_password: str):
+        return self._user_ops.update_user_password(username, hashed_password)
 
     def get_or_create_auth0_user(self, auth0_sub: str, email: str, name: str = None, picture: str = None):
         return self._user_ops.get_or_create_auth0_user(auth0_sub, email, name, picture)
@@ -585,6 +807,39 @@ class DatabaseManager:
 
     def delete_agent_shares(self, agent_name: str):
         return self._agent_ops.delete_agent_shares(agent_name)
+
+    # =========================================================================
+    # Agent API Key Settings (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_use_platform_api_key(self, agent_name: str):
+        return self._agent_ops.get_use_platform_api_key(agent_name)
+
+    def set_use_platform_api_key(self, agent_name: str, use_platform_key: bool):
+        return self._agent_ops.set_use_platform_api_key(agent_name, use_platform_key)
+
+    # =========================================================================
+    # Agent Autonomy Mode (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_autonomy_enabled(self, agent_name: str):
+        return self._agent_ops.get_autonomy_enabled(agent_name)
+
+    def set_autonomy_enabled(self, agent_name: str, enabled: bool):
+        return self._agent_ops.set_autonomy_enabled(agent_name, enabled)
+
+    def get_all_agents_autonomy_status(self):
+        return self._agent_ops.get_all_agents_autonomy_status()
+
+    # =========================================================================
+    # Agent Resource Limits (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_resource_limits(self, agent_name: str):
+        return self._agent_ops.get_resource_limits(agent_name)
+
+    def set_resource_limits(self, agent_name: str, memory: str = None, cpu: str = None):
+        return self._agent_ops.set_resource_limits(agent_name, memory, cpu)
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
@@ -658,13 +913,17 @@ class DatabaseManager:
     # Schedule Execution Management (delegated to db/schedules.py)
     # =========================================================================
 
+    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual"):
+        """Create an execution record for a manual/API-triggered task (no schedule)."""
+        return self._schedule_ops.create_task_execution(agent_name, message, triggered_by)
+
     def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule"):
         return self._schedule_ops.create_schedule_execution(schedule_id, agent_name, message, triggered_by)
 
     def update_execution_status(self, execution_id: str, status: str, response: str = None, error: str = None,
-                                context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None):
+                                context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None, execution_log: str = None):
         return self._schedule_ops.update_execution_status(execution_id, status, response, error,
-                                                          context_used, context_max, cost, tool_calls)
+                                                          context_used, context_max, cost, tool_calls, execution_log)
 
     def get_schedule_executions(self, schedule_id: str, limit: int = 50):
         return self._schedule_ops.get_schedule_executions(schedule_id, limit)
@@ -675,12 +934,28 @@ class DatabaseManager:
     def get_execution(self, execution_id: str):
         return self._schedule_ops.get_execution(execution_id)
 
+    def get_all_agents_execution_stats(self, hours: int = 24):
+        """Get execution statistics for all agents."""
+        return self._schedule_ops.get_all_agents_execution_stats(hours)
+
     # =========================================================================
     # Git Configuration Management (delegated to db/schedules.py)
     # =========================================================================
 
-    def create_git_config(self, agent_name: str, github_repo: str, working_branch: str, instance_id: str, sync_paths=None):
-        return self._schedule_ops.create_git_config(agent_name, github_repo, working_branch, instance_id, sync_paths)
+    def create_git_config(
+        self,
+        agent_name: str,
+        github_repo: str,
+        working_branch: str,
+        instance_id: str,
+        sync_paths=None,
+        source_branch: str = "main",
+        source_mode: bool = False
+    ):
+        return self._schedule_ops.create_git_config(
+            agent_name, github_repo, working_branch, instance_id, sync_paths,
+            source_branch=source_branch, source_mode=source_mode
+        )
 
     def get_git_config(self, agent_name: str):
         return self._schedule_ops.get_git_config(agent_name)
@@ -830,6 +1105,90 @@ class DatabaseManager:
 
     def get_settings_dict(self):
         return self._settings_ops.get_settings_dict()
+
+    # =========================================================================
+    # Public Agent Links (delegated to db/public_links.py) - Phase 12.2
+    # =========================================================================
+
+    def create_public_link(self, agent_name: str, created_by: str, name: str = None,
+                           require_email: bool = False, expires_at: str = None):
+        return self._public_link_ops.create_public_link(agent_name, created_by, name, require_email, expires_at)
+
+    def get_public_link(self, link_id: str):
+        return self._public_link_ops.get_public_link(link_id)
+
+    def get_public_link_by_token(self, token: str):
+        return self._public_link_ops.get_public_link_by_token(token)
+
+    def list_agent_public_links(self, agent_name: str):
+        return self._public_link_ops.list_agent_public_links(agent_name)
+
+    def update_public_link(self, link_id: str, name: str = None, enabled: bool = None,
+                           require_email: bool = None, expires_at: str = None):
+        return self._public_link_ops.update_public_link(link_id, name, enabled, require_email, expires_at)
+
+    def delete_public_link(self, link_id: str):
+        return self._public_link_ops.delete_public_link(link_id)
+
+    def delete_agent_public_links(self, agent_name: str):
+        return self._public_link_ops.delete_agent_public_links(agent_name)
+
+    def is_public_link_valid(self, token: str):
+        return self._public_link_ops.is_link_valid(token)
+
+    # Email verification methods
+    def create_verification(self, link_id: str, email: str, expiry_minutes: int = 10):
+        return self._public_link_ops.create_verification(link_id, email, expiry_minutes)
+
+    def verify_code(self, link_id: str, email: str, code: str, session_hours: int = 24):
+        return self._public_link_ops.verify_code(link_id, email, code, session_hours)
+
+    def validate_session(self, link_id: str, session_token: str):
+        return self._public_link_ops.validate_session(link_id, session_token)
+
+    def count_recent_verification_requests(self, email: str, minutes: int = 10):
+        return self._public_link_ops.count_recent_verification_requests(email, minutes)
+
+    # Usage tracking methods
+    def record_public_link_usage(self, link_id: str, email: str = None, ip_address: str = None):
+        return self._public_link_ops.record_usage(link_id, email, ip_address)
+
+    def get_public_link_usage_stats(self, link_id: str):
+        return self._public_link_ops.get_link_usage_stats(link_id)
+
+    def count_recent_messages_by_ip(self, ip_address: str, minutes: int = 1):
+        return self._public_link_ops.count_recent_messages_by_ip(ip_address, minutes)
+
+    # =========================================================================
+    # Email Authentication (delegated to db/email_auth.py) - Phase 12.4
+    # =========================================================================
+
+    def is_email_whitelisted(self, email: str):
+        return self._email_auth_ops.is_email_whitelisted(email)
+
+    def add_to_whitelist(self, email: str, added_by: str, source: str = "manual"):
+        return self._email_auth_ops.add_to_whitelist(email, added_by, source)
+
+    def remove_from_whitelist(self, email: str):
+        return self._email_auth_ops.remove_from_whitelist(email)
+
+    def list_whitelist(self, limit: int = 100):
+        return self._email_auth_ops.list_whitelist(limit)
+
+    def create_login_code(self, email: str, expiry_minutes: int = 10):
+        return self._email_auth_ops.create_login_code(email, expiry_minutes)
+
+    def verify_login_code(self, email: str, code: str):
+        return self._email_auth_ops.verify_login_code(email, code)
+
+    def count_recent_code_requests(self, email: str, minutes: int = 10):
+        return self._email_auth_ops.count_recent_code_requests(email, minutes)
+
+    def cleanup_old_codes(self, days: int = 1):
+        return self._email_auth_ops.cleanup_old_codes(days)
+
+    def get_or_create_email_user(self, email: str):
+        return self._email_auth_ops.get_or_create_email_user(email)
 
 
 # Global database manager instance

@@ -1,5 +1,7 @@
 """
 Chat endpoints for the agent server.
+
+Now supports multiple runtimes (Claude Code, Gemini CLI) via runtime adapter.
 """
 import json
 import logging
@@ -9,7 +11,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..models import ChatRequest, ModelRequest, ParallelTaskRequest
 from ..state import agent_state
-from ..services.claude_code import execute_claude_code, execute_headless_task, get_execution_lock
+from ..services.claude_code import get_execution_lock
+from ..services.runtime_adapter import get_runtime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,11 +35,15 @@ async def chat(request: ChatRequest):
         # Add user message to history
         agent_state.add_message("user", request.message)
 
-        # Execute Claude Code - now returns (response, execution_log, metadata)
-        response_text, execution_log, metadata = await execute_claude_code(
-            request.message,
-            stream=request.stream,
-            model=request.model
+        # Execute via runtime adapter (supports Claude Code or Gemini CLI)
+        runtime = get_runtime()
+        # Use request.model if provided, otherwise use the model set via /api/model endpoint
+        effective_model = request.model or agent_state.current_model
+        response_text, execution_log, metadata = await runtime.execute(
+            prompt=request.message,
+            model=effective_model,
+            continue_session=True,
+            stream=request.stream
         )
 
         # Add assistant response to history
@@ -99,8 +106,9 @@ async def execute_task(request: ParallelTaskRequest):
     """
     logger.info(f"[Task] Executing parallel task: {request.message[:50]}...")
 
-    # Execute in headless mode (no lock, no --continue)
-    response_text, execution_log, metadata, session_id = await execute_headless_task(
+    # Execute via runtime adapter in headless mode (no lock, no --continue)
+    runtime = get_runtime()
+    response_text, raw_messages, metadata, session_id = await runtime.execute_headless(
         prompt=request.message,
         model=request.model,
         allowed_tools=request.allowed_tools,
@@ -110,9 +118,11 @@ async def execute_task(request: ParallelTaskRequest):
 
     logger.info(f"[Task] Task {session_id} completed successfully")
 
+    # raw_messages contains the full Claude Code JSON stream (init, assistant, user, result)
+    # This is the complete execution transcript showing thinking, tool calls, and results
     return {
         "response": response_text,
-        "execution_log": [entry.model_dump() for entry in execution_log],
+        "execution_log": raw_messages,  # Full JSON transcript from Claude Code
         "metadata": metadata.model_dump(),
         "session_id": session_id,
         "timestamp": datetime.now().isoformat()
@@ -144,11 +154,22 @@ async def get_session_info():
 @router.get("/api/model")
 async def get_model():
     """Get the current model being used"""
-    return {
-        "model": agent_state.current_model,
-        "available_models": ["sonnet", "opus", "haiku"],
-        "note": "Model aliases: sonnet (Sonnet 4.5), opus (Opus 4.5), haiku. Add [1m] suffix for 1M context (e.g., sonnet[1m])"
-    }
+    runtime = agent_state.agent_runtime
+
+    if runtime == "gemini-cli" or runtime == "gemini":
+        return {
+            "model": agent_state.current_model,
+            "runtime": runtime,
+            "available_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+            "note": "Gemini models. 2.5-pro has 1M context window."
+        }
+    else:
+        return {
+            "model": agent_state.current_model,
+            "runtime": runtime,
+            "available_models": ["sonnet", "opus", "haiku"],
+            "note": "Claude model aliases: sonnet (Sonnet 4.5), opus (Opus 4.5), haiku. Add [1m] suffix for 1M context."
+        }
 
 
 @router.put("/api/model")
@@ -156,22 +177,40 @@ async def set_model(request: ModelRequest):
     """Set the model to use for subsequent messages"""
     from fastapi import HTTPException
 
-    valid_aliases = ["sonnet", "opus", "haiku", "sonnet[1m]", "opus[1m]", "haiku[1m]"]
+    runtime = agent_state.agent_runtime
 
-    # Accept aliases or full model names (e.g., claude-sonnet-4-5-20250929)
-    if request.model in valid_aliases or request.model.startswith("claude-"):
-        agent_state.current_model = request.model
-        logger.info(f"Model changed to: {request.model}")
-        return {
-            "status": "success",
-            "model": agent_state.current_model,
-            "note": "Model will be used for subsequent messages"
-        }
+    # Validate based on runtime
+    if runtime == "gemini-cli" or runtime == "gemini":
+        valid_models = ["gemini-3-pro", "gemini-3-flash", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+        if request.model in valid_models or request.model.startswith("gemini-"):
+            agent_state.current_model = request.model
+            logger.info(f"Model changed to: {request.model}")
+            return {
+                "status": "success",
+                "model": agent_state.current_model,
+                "note": "Model will be used for subsequent messages"
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid Gemini model: {request.model}. Use: gemini-2.5-pro, gemini-2.5-flash, etc."
+            )
     else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid model: {request.model}. Use aliases (sonnet, opus, haiku) or full model names."
-        )
+        # Claude Code validation
+        valid_aliases = ["sonnet", "opus", "haiku", "sonnet[1m]", "opus[1m]", "haiku[1m]"]
+        if request.model in valid_aliases or request.model.startswith("claude-"):
+            agent_state.current_model = request.model
+            logger.info(f"Model changed to: {request.model}")
+            return {
+                "status": "success",
+                "model": agent_state.current_model,
+                "note": "Model will be used for subsequent messages"
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid Claude model: {request.model}. Use aliases (sonnet, opus, haiku) or full model names."
+            )
 
 
 @router.delete("/api/chat/history")
@@ -202,8 +241,16 @@ async def websocket_chat(websocket: WebSocket):
             # Add user message
             agent_state.add_message("user", message["content"])
 
-            # Send response with execution log
-            response_text, execution_log, metadata = await execute_claude_code(message["content"], stream=True)
+            # Send response via runtime adapter
+            runtime = get_runtime()
+            # Use model from message if provided, otherwise use current_model from state
+            effective_model = message.get("model") or agent_state.current_model
+            response_text, execution_log, metadata = await runtime.execute(
+                prompt=message["content"],
+                model=effective_model,
+                continue_session=True,
+                stream=True
+            )
             agent_state.add_message("assistant", response_text)
 
             await websocket.send_json({

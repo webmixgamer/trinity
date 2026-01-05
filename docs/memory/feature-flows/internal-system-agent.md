@@ -2,7 +2,7 @@
 
 > **Phase 11.1 & 11.2** - Platform operations manager with privileged access
 >
-> **Updated 2025-12-21**: Added Cost Monitoring data flow, 5-step reinitialize process, OTel access fix documentation
+> **Updated 2025-12-31**: Added AgentClient service pattern for HTTP communication
 
 ## Overview
 
@@ -22,7 +22,7 @@ The Internal System Agent (`trinity-system`) is an auto-deployed, deletion-prote
 | **Schedule Control** | Enable/disable schedules, trigger manual runs, pause automation |
 | **Validation** | Pre-flight checks before agent operations |
 | **Alerting** | Notify on anomalies, failures, threshold breaches |
-| **Cleanup** | Reset stuck sessions, archive old plans |
+| **Cleanup** | Reset stuck sessions, clear stale context |
 | **Reporting** | Fleet status, cost summaries, health reports |
 
 ### Out of Scope (Not Ops)
@@ -88,6 +88,7 @@ The Internal System Agent (`trinity-system`) is an auto-deployed, deletion-prote
 | `src/backend/services/system_agent_service.py` | Auto-deployment logic |
 | `src/backend/routers/system_agent.py` | Admin management endpoints |
 | `src/backend/routers/ops.py` | Fleet operations endpoints |
+| `src/backend/services/agent_client.py` | Centralized agent HTTP client |
 | `src/backend/routers/settings.py` | Ops settings (OPS_SETTINGS_DEFAULTS) |
 | `src/backend/db/agents.py` | SYSTEM_AGENT_NAME constant, is_system checks |
 | `src/frontend/src/views/SystemAgent.vue` | **System Agent UI** - dedicated ops interface |
@@ -351,6 +352,71 @@ User: /ops/health
 └──────────────────────────────────┘
 ```
 
+### 2a. Fleet Status/Health Context Polling (AgentClient Pattern)
+
+Both fleet status and health endpoints use `AgentClient` to poll context stats from running agents:
+
+```
+GET /api/ops/fleet/status
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ routers/ops.py:40-116                │
+│ get_fleet_status()                   │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ list_all_agents()                    │
+│ Get all agent containers             │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────┐
+│ For each running agent (lines 60-73):                        │
+│                                                              │
+│   client = get_agent_client(agent_name)                      │
+│   session_info = await client.get_session()                  │
+│                                                              │
+│   context_stats[agent_name] = {                              │
+│       "context_tokens": session_info.context_tokens,         │
+│       "context_window": session_info.context_window,         │
+│       "context_percent": session_info.context_percent        │
+│   }                                                          │
+└────────┬─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Build fleet_status response          │
+│ with agent context stats             │
+└──────────────────────────────────────┘
+```
+
+**AgentClient.get_session()** (lines 247-272 in `services/agent_client.py`):
+- Calls `GET http://agent-{name}:8000/api/chat/session`
+- Timeout: 5 seconds (SESSION_TIMEOUT)
+- Returns `AgentSessionInfo` dataclass:
+
+```python
+@dataclass
+class AgentSessionInfo:
+    context_tokens: int       # Current token count in context
+    context_window: int       # Max context window size
+    context_percent: float    # Usage percentage (0-100)
+    total_cost_usd: Optional[float] = None  # Session cost
+```
+
+**Key Implementation Details**:
+- Uses centralized `AgentClient` instead of raw `httpx` calls
+- Silent error handling - if agent not responding, context stats are omitted
+- Factory function: `get_agent_client(agent_name)` returns client instance
+- URL pattern: `http://agent-{agent_name}:8000` (Docker network naming)
+
+**Fleet Health Endpoint** (`GET /api/ops/fleet/health`, lines 119-218):
+- Same pattern as fleet status but with health classification
+- Uses `client.get_session()` at lines 167-169
+- Classifies context usage: critical (>90%), warning (>75%), healthy
+
 ### 3. Emergency Stop Flow
 
 ```
@@ -444,7 +510,7 @@ User: /ops/costs (or "show me platform costs")
 
 **Files Modified:**
 - `config/agent-templates/trinity-system/.claude/commands/ops/costs.md:11` - Fixed env var
-- `config/agent-templates/trinity-system/CLAUDE.md:128-147` - Added Cost Monitoring section
+- `config/agent-templates/trinity-system/CLAUDE.md:123-147` - Added Cost Monitoring section
 
 ### 5. Reinitialize Flow (5-Step Process)
 
@@ -509,7 +575,7 @@ The previous reinitialize flow had 4 steps but was missing template re-copy:
 
 Fix: Added explicit template copy step between workspace clear and Trinity injection.
 
-**File:** `src/backend/routers/system_agent.py:163-174`
+**File:** `src/backend/routers/system_agent.py:167-178`
 
 ```python
 # Step 4: Re-copy template files (.claude and CLAUDE.md)
@@ -622,7 +688,7 @@ curl -X PUT http://localhost:8000/api/settings/ops/config \
 
 2. **Missing /trinity-meta-prompt mount on creation**
    - Problem: System agent created without Trinity meta-prompt mount
-   - Fix: Added mount in `_create_system_agent()` (line 216-220)
+   - Fix: Added mount in `_create_system_agent()` (lines 215-221)
    - File: `src/backend/services/system_agent_service.py`
 
 3. **Reinitialize deleted slash commands without restoring them**

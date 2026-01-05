@@ -2,7 +2,9 @@
 Schedules Tests (test_schedules.py)
 
 Tests for agent scheduling functionality.
-Covers REQ-SCHED-001 through REQ-SCHED-004.
+Covers REQ-SCHED-001 through REQ-SCHED-005.
+
+Feature Flow: scheduling.md
 """
 
 import pytest
@@ -15,6 +17,55 @@ from utils.assertions import (
     assert_has_fields,
     assert_list_response,
 )
+
+
+class TestSchedulerStatus:
+    """REQ-SCHED-005: Scheduler status endpoint tests."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_get_scheduler_status(self, api_client: TrinityApiClient):
+        """GET /api/agents/scheduler/status returns scheduler status."""
+        response = api_client.get("/api/agents/scheduler/status")
+
+        assert_status(response, 200)
+        data = assert_json_response(response)
+
+        # Should have scheduler state info
+        assert_has_fields(data, ["running"])
+
+    def test_scheduler_status_structure(self, api_client: TrinityApiClient):
+        """Scheduler status returns expected structure."""
+        response = api_client.get("/api/agents/scheduler/status")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Scheduler should be running
+        assert isinstance(data.get("running"), bool)
+
+        # May include job count
+        if "job_count" in data:
+            assert isinstance(data["job_count"], int)
+            assert data["job_count"] >= 0
+
+    def test_scheduler_status_includes_jobs(self, api_client: TrinityApiClient):
+        """Scheduler status includes information about scheduled jobs."""
+        response = api_client.get("/api/agents/scheduler/status")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should have jobs or job_count field
+        assert "jobs" in data or "job_count" in data or "scheduled_jobs" in data
+
+    def test_scheduler_status_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """GET /api/agents/scheduler/status requires authentication."""
+        response = unauthenticated_client.get(
+            "/api/agents/scheduler/status",
+            auth=False
+        )
+        assert_status(response, 401)
 
 
 class TestCreateSchedule:

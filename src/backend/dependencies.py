@@ -2,23 +2,38 @@
 FastAPI dependencies for the Trinity backend.
 """
 from datetime import datetime, timedelta
-from typing import Optional
-from fastapi import Depends, HTTPException, status, Request
+from typing import Optional, Annotated
+from fastapi import Depends, HTTPException, status, Request, Path
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from models import User
 from config import SECRET_KEY, ALGORITHM
 from database import db
-from services.audit_service import log_audit_event
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
+
+
 def verify_password(plain_password: str, stored_password: str) -> bool:
-    """Verify password (simple plaintext comparison)."""
+    """Verify password against stored hash.
+
+    For backward compatibility, also checks plaintext passwords.
+    """
+    # First try bcrypt verification
+    try:
+        if pwd_context.verify(plain_password, stored_password):
+            return True
+    except Exception:
+        pass
+
+    # Fall back to plaintext comparison for legacy passwords
     return plain_password == stored_password
 
 
@@ -53,6 +68,39 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, m
     return encoded_jwt
 
 
+def decode_token(token: str) -> Optional[dict]:
+    """
+    Decode a JWT token without FastAPI dependency.
+
+    Returns the token payload with user info if valid, None if invalid.
+    Useful for WebSocket authentication where Depends() doesn't work.
+
+    Returns:
+        dict with keys: sub, email, role, exp, mode (if valid)
+        None if token is invalid or expired
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            return None
+
+        # Get full user record from database
+        user = db.get_user_by_username(username)
+        if not user:
+            return None
+
+        return {
+            "sub": username,
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "exp": payload.get("exp"),
+            "mode": payload.get("mode")
+        }
+    except JWTError:
+        return None
+
+
 async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> User:
     """
     FastAPI dependency to get the current authenticated user.
@@ -76,15 +124,6 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         if user is None:
             raise credentials_exception
 
-        await log_audit_event(
-            event_type="authentication",
-            action="token_validation",
-            user_id=username,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            result="success"
-        )
-
         return User(
             id=user["id"],
             username=user["username"],
@@ -105,16 +144,6 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         # Note: user_id from MCP key is the username string, not the database id
         user = db.get_user_by_email(user_email) if user_email else db.get_user_by_username(user_id)
         if user:
-            await log_audit_event(
-                event_type="authentication",
-                action="mcp_key_validation",
-                user_id=user.get("username"),
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-                result="success",
-                details=f"MCP API key: {mcp_key_info.get('key_name')}"
-            )
-
             return User(
                 id=user["id"],
                 username=user["username"],
@@ -124,3 +153,114 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
 
     # Both JWT and MCP key failed
     raise credentials_exception
+
+
+# ============================================================================
+# Agent Access Control Dependencies
+# ============================================================================
+# These dependencies validate user access to agents via path parameters.
+# Two sets exist to support different path parameter naming conventions:
+#   - {name}: Used by schedules, credentials, chat routers
+#   - {agent_name}: Used by agents, git, sharing, public_links routers
+# ============================================================================
+
+
+def get_authorized_agent(
+    name: str = Path(..., description="Agent name from path"),
+    current_user: User = Depends(get_current_user)
+) -> str:
+    """
+    Dependency that validates user has access to an agent.
+    For routes using {name} path parameter.
+
+    Used for endpoints that require read access to an agent.
+    Returns the agent name if authorized.
+
+    Raises:
+        HTTPException(403): If user cannot access the agent
+    """
+    if not db.can_user_access_agent(current_user.username, name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to agent"
+        )
+    return name
+
+
+def get_owned_agent(
+    name: str = Path(..., description="Agent name from path"),
+    current_user: User = Depends(get_current_user)
+) -> str:
+    """
+    Dependency that validates user owns or can share an agent.
+    For routes using {name} path parameter.
+
+    Used for endpoints that require owner-level access (delete, share, configure).
+    Returns the agent name if authorized.
+
+    Raises:
+        HTTPException(403): If user is not owner/admin
+    """
+    if not db.can_user_share_agent(current_user.username, name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner access required"
+        )
+    return name
+
+
+def get_authorized_agent_by_name(
+    agent_name: str = Path(..., description="Agent name from path"),
+    current_user: User = Depends(get_current_user)
+) -> str:
+    """
+    Dependency that validates user has access to an agent.
+    For routes using {agent_name} path parameter.
+
+    Used for endpoints that require read access to an agent.
+    Returns the agent name if authorized.
+
+    Raises:
+        HTTPException(403): If user cannot access the agent
+    """
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to agent"
+        )
+    return agent_name
+
+
+def get_owned_agent_by_name(
+    agent_name: str = Path(..., description="Agent name from path"),
+    current_user: User = Depends(get_current_user)
+) -> str:
+    """
+    Dependency that validates user owns or can share an agent.
+    For routes using {agent_name} path parameter.
+
+    Used for endpoints that require owner-level access (delete, share, configure).
+    Returns the agent name if authorized.
+
+    Raises:
+        HTTPException(403): If user is not owner/admin
+    """
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner access required"
+        )
+    return agent_name
+
+
+# Type aliases for cleaner signatures
+# For routes using {name} path parameter (schedules, credentials, chat)
+AuthorizedAgent = Annotated[str, Depends(get_authorized_agent)]
+OwnedAgent = Annotated[str, Depends(get_owned_agent)]
+
+# For routes using {agent_name} path parameter (agents, git, sharing, public_links)
+AuthorizedAgentByName = Annotated[str, Depends(get_authorized_agent_by_name)]
+OwnedAgentByName = Annotated[str, Depends(get_owned_agent_by_name)]
+
+# Current user type alias
+CurrentUser = Annotated[User, Depends(get_current_user)]

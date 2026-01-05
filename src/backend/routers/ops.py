@@ -19,8 +19,8 @@ import httpx
 from models import User
 from database import db
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container, docker_client, list_all_agents
+from services.agent_client import get_agent_client
 from db.agents import SYSTEM_AGENT_NAME
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
@@ -56,30 +56,21 @@ async def get_fleet_status(
     fleet_status = []
     context_stats = {}
 
-    # Try to get context stats for running agents
-    try:
-        # Get context stats from backend endpoint
-        running_agents = [a for a in agents if a.status == "running"]
-        for agent in running_agents:
-            agent_name = agent.name
-            try:
-                agent_url = f"http://agent-{agent_name}:8000/api/chat/session"
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(agent_url)
-                    if response.status_code == 200:
-                        session = response.json()
-                        context_stats[agent_name] = {
-                            "context_tokens": session.get("context_tokens", 0),
-                            "context_window": session.get("context_window", 200000),
-                            "context_percent": round(
-                                session.get("context_tokens", 0) /
-                                max(session.get("context_window", 200000), 1) * 100, 1
-                            )
-                        }
-            except Exception:
-                pass  # Agent not responding, skip context
-    except Exception as e:
-        logger.warning(f"Failed to get context stats: {e}")
+    # Try to get context stats for running agents using AgentClient
+    running_agents = [a for a in agents if a.status == "running"]
+    for agent in running_agents:
+        agent_name = agent.name
+        try:
+            client = get_agent_client(agent_name)
+            session_info = await client.get_session()
+            if session_info:
+                context_stats[agent_name] = {
+                    "context_tokens": session_info.context_tokens,
+                    "context_window": session_info.context_window,
+                    "context_percent": session_info.context_percent
+                }
+        except Exception:
+            pass  # Agent not responding, skip context
 
     # Get last activity for each agent
     for agent in agents:
@@ -111,15 +102,6 @@ async def get_fleet_status(
     high_context = sum(
         1 for name, stats in context_stats.items()
         if stats.get("context_percent", 0) > 75
-    )
-
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_status",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"total_agents": total, "running": running}
     )
 
     return {
@@ -181,37 +163,33 @@ async def get_fleet_health(
             continue
 
         if status == "running":
-            # Check context usage
+            # Check context usage using AgentClient
             try:
-                agent_url = f"http://agent-{agent_name}:8000/api/chat/session"
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(agent_url)
-                    if response.status_code == 200:
-                        session = response.json()
-                        context_tokens = session.get("context_tokens", 0)
-                        context_window = session.get("context_window", 200000)
-                        context_percent = round(context_tokens / max(context_window, 1) * 100, 1)
+                client = get_agent_client(agent_name)
+                session_info = await client.get_session()
+                if session_info:
+                    context_percent = session_info.context_percent
 
-                        if context_percent > context_critical:
-                            critical_issues.append({
-                                "agent": agent_name,
-                                "issue": f"Critical context usage: {context_percent}%",
-                                "recommendation": "Reset session to clear context"
-                            })
-                        elif context_percent > context_warning:
-                            warnings.append({
-                                "agent": agent_name,
-                                "issue": f"High context usage: {context_percent}%",
-                                "recommendation": "Consider resetting session soon"
-                            })
-                        else:
-                            healthy_agents.append(agent_name)
-                    else:
+                    if context_percent > context_critical:
+                        critical_issues.append({
+                            "agent": agent_name,
+                            "issue": f"Critical context usage: {context_percent}%",
+                            "recommendation": "Reset session to clear context"
+                        })
+                    elif context_percent > context_warning:
                         warnings.append({
                             "agent": agent_name,
-                            "issue": "Unable to get context info",
-                            "recommendation": "Check agent server"
+                            "issue": f"High context usage: {context_percent}%",
+                            "recommendation": "Consider resetting session soon"
                         })
+                    else:
+                        healthy_agents.append(agent_name)
+                else:
+                    warnings.append({
+                        "agent": agent_name,
+                        "issue": "Unable to get context info",
+                        "recommendation": "Check agent server"
+                    })
             except Exception as e:
                 warnings.append({
                     "agent": agent_name,
@@ -229,19 +207,6 @@ async def get_fleet_health(
         overall = "degraded"
     else:
         overall = "healthy"
-
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_health",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={
-            "overall": overall,
-            "critical_count": len(critical_issues),
-            "warning_count": len(warnings)
-        }
-    )
 
     return {
         "timestamp": datetime.utcnow().isoformat(),
@@ -350,19 +315,6 @@ async def restart_fleet(
             })
             failures += 1
 
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_restart",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if failures == 0 else "partial",
-        details={
-            "successes": successes,
-            "failures": failures,
-            "skipped": skipped
-        }
-    )
-
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "summary": {
@@ -456,19 +408,6 @@ async def stop_fleet(
             })
             failures += 1
 
-    await log_audit_event(
-        event_type="ops",
-        action="fleet_stop",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success" if failures == 0 else "partial",
-        details={
-            "successes": successes,
-            "failures": failures,
-            "skipped": skipped
-        }
-    )
-
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "summary": {
@@ -518,15 +457,6 @@ async def pause_all_schedules(
         except Exception as e:
             logger.error(f"Failed to pause schedule {schedule.id}: {e}")
 
-    await log_audit_event(
-        event_type="ops",
-        action="schedules_pause",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"paused": paused, "agent_name": agent_name}
-    )
-
     return {
         "success": True,
         "message": f"Paused {paused} schedule(s)",
@@ -556,7 +486,7 @@ async def resume_all_schedules(
         all_schedules = []
         agents = list_all_agents()
         for agent in agents:
-            agent_schedules = db.list_schedules(agent.get("name"))
+            agent_schedules = db.list_agent_schedules(agent.name)
             all_schedules.extend([s for s in agent_schedules if not s.enabled])
         schedules = all_schedules
 
@@ -577,15 +507,6 @@ async def resume_all_schedules(
             resumed += 1
         except Exception as e:
             logger.error(f"Failed to resume schedule {schedule.id}: {e}")
-
-    await log_audit_event(
-        event_type="ops",
-        action="schedules_resume",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"resumed": resumed, "agent_name": agent_name}
-    )
 
     return {
         "success": True,
@@ -645,16 +566,6 @@ async def emergency_stop(
             except Exception as e:
                 results["errors"].append(f"Agent {agent_name}: {e}")
 
-    await log_audit_event(
-        event_type="ops",
-        action="emergency_stop",
-        user_id=current_user.username,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        severity="warning",
-        details=results
-    )
-
     return {
         "success": True,
         "message": "Emergency stop completed",
@@ -678,11 +589,10 @@ async def list_alerts(
     """
     List recent operational alerts.
 
-    Alerts are derived from audit logs with ops-related events.
+    Alerts are derived from platform events (errors, health checks, etc.).
     """
-    # Get ops-related audit events
-    # This would ideally be a dedicated alerts table, but for now use audit logs
-    # TODO: Implement dedicated alerts table in future
+    # TODO: Implement dedicated alerts table
+    # For now, return placeholder - check fleet health for issues
 
     return {
         "timestamp": datetime.utcnow().isoformat(),
@@ -711,8 +621,8 @@ async def acknowledge_alert(
 # Cost & Observability (powered by OTel)
 # ============================================================================
 
-# Import OTel configuration from observability module
-OTEL_ENABLED = os.getenv("OTEL_ENABLED", "0") == "1"
+# Import OTel configuration from observability module (enabled by default)
+OTEL_ENABLED = os.getenv("OTEL_ENABLED", "1") == "1"
 OTEL_PROMETHEUS_ENDPOINT = os.getenv("OTEL_PROMETHEUS_ENDPOINT", "http://trinity-otel-collector:8889/metrics")
 
 
@@ -835,15 +745,6 @@ async def get_ops_costs(
                     "lines_removed": metrics.get("lines", {}).get("removed", 0)
                 }
             }
-
-            await log_audit_event(
-                event_type="ops",
-                action="costs_report",
-                user_id=current_user.username,
-                ip_address=request.client.host if request.client else None,
-                result="success",
-                details={"total_cost": total_cost, "alerts_count": len(alerts)}
-            )
 
             return result
 

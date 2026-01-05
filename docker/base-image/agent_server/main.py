@@ -20,7 +20,6 @@ from .routers import (
     git_router,
     files_router,
     trinity_router,
-    plans_router,
     info_router,
 )
 from .state import agent_state
@@ -54,7 +53,6 @@ app.include_router(credentials_router)  # Credential management
 app.include_router(git_router)  # Git sync endpoints
 app.include_router(files_router)  # File browser endpoints
 app.include_router(trinity_router)  # Trinity injection API
-app.include_router(plans_router)  # Task DAG / Plan endpoints
 
 
 def run_server():
@@ -65,7 +63,8 @@ def run_server():
 
     logger.info(f"Starting Agent API Server on port {port}")
     logger.info(f"Agent Name: {agent_state.agent_name}")
-    logger.info(f"Claude Code Available: {agent_state.claude_code_available}")
+    logger.info(f"Runtime: {agent_state.agent_runtime} (available: {agent_state.runtime_available})")
+    logger.info(f"Context Window: {agent_state.session_context_window:,} tokens")
     logger.info("SECURITY: This server is internal-only, accessed via Trinity backend proxy")
 
     # Phase: Agent-to-Agent Collaboration - Inject Trinity MCP if configured

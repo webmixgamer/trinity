@@ -16,11 +16,11 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.memory import MemoryJobStore
 from croniter import croniter
 import pytz
-import httpx
 
 from database import db, Schedule
 from models import ActivityType, ExecutionSource
 from services.execution_queue import get_execution_queue, QueueFullError
+from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -183,6 +183,11 @@ class SchedulerService:
             logger.info(f"Schedule {schedule_id} is disabled, skipping")
             return
 
+        # Check if agent has autonomy enabled (master switch for all schedules)
+        if not db.get_autonomy_enabled(schedule.agent_name):
+            logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
+            return
+
         logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name}")
 
         # Import activity service (avoid circular import)
@@ -261,50 +266,21 @@ class SchedulerService:
             return
 
         try:
-            # Send message to agent
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://agent-{schedule.agent_name}:8000/api/chat",
-                    json={"message": schedule.message, "stream": False},
-                    timeout=300.0  # 5 minute timeout for scheduled tasks
-                )
-                response.raise_for_status()
-                result = response.json()
+            # Send task to agent using AgentClient (stateless execution)
+            # Uses /api/task for raw Claude Code execution log format
+            client = get_agent_client(schedule.agent_name)
+            task_response = await client.task(schedule.message)
 
-            # Extract response text
-            response_text = result.get("response", str(result))
-            if len(response_text) > 10000:
-                response_text = response_text[:10000] + "... (truncated)"
-
-            # Extract observability data from agent response
-            session_data = result.get("session", {})
-            metadata = result.get("metadata", {})
-            execution_log = result.get("execution_log", [])
-
-            # Context usage - use session_data.context_tokens (preferred) or metadata.input_tokens
-            # NOTE: cache_creation_tokens and cache_read_tokens are SUBSETS of input_tokens
-            # for billing purposes, NOT additional tokens. Do NOT sum them.
-            context_used = session_data.get("context_tokens") or metadata.get("input_tokens", 0)
-            context_max = session_data.get("context_window") or metadata.get("context_window", 200000)
-
-            # Cost
-            cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
-
-            # Tool calls summary
-            tool_calls_json = None
-            if execution_log:
-                import json
-                tool_calls_json = json.dumps(execution_log)
-
-            # Update execution status
+            # Update execution status with parsed response
             db.update_execution_status(
                 execution_id=execution.id,
                 status="success",
-                response=response_text,
-                context_used=context_used,
-                context_max=context_max,
-                cost=cost,
-                tool_calls=tool_calls_json
+                response=task_response.response_text,
+                context_used=task_response.metrics.context_used,
+                context_max=task_response.metrics.context_max,
+                cost=task_response.metrics.cost_usd,
+                tool_calls=task_response.metrics.tool_calls_json,
+                execution_log=task_response.metrics.execution_log_json
             )
 
             # Update schedule last run time
@@ -315,15 +291,18 @@ class SchedulerService:
             logger.info(f"Schedule {schedule.name} executed successfully")
             execution_success = True
 
+            # Get execution log for tool count
+            execution_log = task_response.raw_response.get("execution_log")
+
             # Track schedule completion
             await activity_service.complete_activity(
                 activity_id=schedule_activity_id,
                 status="completed",
                 details={
                     "related_execution_id": execution.id,
-                    "context_used": context_used,
-                    "context_max": context_max,
-                    "cost_usd": cost,
+                    "context_used": task_response.metrics.context_used,
+                    "context_max": task_response.metrics.context_max,
+                    "cost_usd": task_response.metrics.cost_usd,
                     "tool_count": len(execution_log) if execution_log else 0,
                     "queue_execution_id": queue_execution.id
                 }
@@ -338,8 +317,8 @@ class SchedulerService:
                 "status": "success"
             })
 
-        except httpx.HTTPError as e:
-            error_msg = f"HTTP error: {str(e)}"
+        except AgentNotReachableError as e:
+            error_msg = f"Agent not reachable: {str(e)}"
             logger.error(f"Schedule {schedule.name} execution failed: {error_msg}")
 
             # Track schedule failure
@@ -471,47 +450,20 @@ class SchedulerService:
             return
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://agent-{schedule.agent_name}:8000/api/chat",
-                    json={"message": schedule.message, "stream": False},
-                    timeout=300.0
-                )
-                response.raise_for_status()
-                result = response.json()
-
-            response_text = result.get("response", str(result))
-            if len(response_text) > 10000:
-                response_text = response_text[:10000] + "... (truncated)"
-
-            # Extract observability data from agent response
-            session_data = result.get("session", {})
-            metadata = result.get("metadata", {})
-            execution_log = result.get("execution_log", [])
-
-            # Context usage - use session_data.context_tokens (preferred) or metadata.input_tokens
-            # NOTE: cache_creation_tokens and cache_read_tokens are SUBSETS of input_tokens
-            # for billing purposes, NOT additional tokens. Do NOT sum them.
-            context_used = session_data.get("context_tokens") or metadata.get("input_tokens", 0)
-            context_max = session_data.get("context_window") or metadata.get("context_window", 200000)
-
-            # Cost
-            cost = metadata.get("cost_usd") or session_data.get("total_cost_usd")
-
-            # Tool calls summary
-            tool_calls_json = None
-            if execution_log:
-                import json
-                tool_calls_json = json.dumps(execution_log)
+            # Send task to agent using AgentClient (stateless execution)
+            # Uses /api/task for raw Claude Code execution log format
+            client = get_agent_client(schedule.agent_name)
+            task_response = await client.task(schedule.message)
 
             db.update_execution_status(
                 execution_id=execution_id,
                 status="success",
-                response=response_text,
-                context_used=context_used,
-                context_max=context_max,
-                cost=cost,
-                tool_calls=tool_calls_json
+                response=task_response.response_text,
+                context_used=task_response.metrics.context_used,
+                context_max=task_response.metrics.context_max,
+                cost=task_response.metrics.cost_usd,
+                tool_calls=task_response.metrics.tool_calls_json,
+                execution_log=task_response.metrics.execution_log_json
             )
 
             execution_success = True
@@ -522,6 +474,23 @@ class SchedulerService:
                 "schedule_id": schedule.id,
                 "execution_id": execution_id,
                 "status": "success"
+            })
+
+        except AgentNotReachableError as e:
+            error_msg = f"Agent not reachable: {str(e)}"
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="failed",
+                error=error_msg
+            )
+
+            await self._broadcast({
+                "type": "schedule_execution_completed",
+                "agent": schedule.agent_name,
+                "schedule_id": schedule.id,
+                "execution_id": execution_id,
+                "status": "failed",
+                "error": error_msg
             })
 
         except Exception as e:

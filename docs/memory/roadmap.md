@@ -13,6 +13,9 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
+| ⏳ | Executions 404 for Non-Existent Agent | `GET /api/agents/{name}/executions` returns `200 + []` instead of `404` for non-existent agents. Should add agent existence check before returning empty list. | LOW |
+| ⏳ | Test Client Headers Bug | `TrinityApiClient.post()` in `tests/utils/api_client.py` passes `headers` param twice to httpx when caller also provides headers. Fix: merge headers instead of passing separately. | LOW |
+| ⏳ | Emergency Stop Test Timeout | `test_emergency_stop_returns_structure` times out (>2 min) with multiple agents. Increase test timeout to 180s or mock the operation. | LOW |
 | ✅ | Context % Calculation Bug | **Fixed 2025-12-12**: Main bug was in agent_server/routers/chat.py incorrectly summing input_tokens + cache_creation_tokens + cache_read_tokens, causing >100% display (130%, 289%). cache_creation and cache_read are billing SUBSETS, not additional tokens. Now uses metadata.input_tokens directly (authoritative total from modelUsage). Also fixed in scheduler_service.py (2 locations, 2025-12-06) and claude_code.py logging. | HIGH |
 | ✅ | Template Detail Endpoint 404 | **Fixed 2025-12-22**: `GET /api/templates/{id}` returned 404 for GitHub templates like `github:org/repo`. Root cause: The `/` in the template ID was interpreted as path separator. Fix: Changed route from `{template_id}` to `{template_id:path}` to capture full path including slashes. | MEDIUM |
 | ✅ | .env Template Endpoint Bug | **Verified 2025-12-22**: Endpoint works correctly. Code at lines 110-130 already handles both string credentials (GitHub templates) and dict credentials (local templates). Tested all GitHub templates + local templates - all pass. | MEDIUM |
@@ -42,8 +45,8 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
-| ✅ | **Agent Vector Memory (Chroma)** | Chroma DB + all-MiniLM-L6-v2 per agent (2025-12-13) | MEDIUM |
-| ✅ | **Chroma MCP Server** | Auto-inject chroma-mcp into agents for MCP-based vector ops (2025-12-13) | HIGH |
+| ❌ | ~~Agent Vector Memory (Chroma)~~ | REMOVED (2025-12-24) - Templates should define their own memory | ~~MEDIUM~~ |
+| ❌ | ~~Chroma MCP Server~~ | REMOVED (2025-12-24) - Platform should not inject agent capabilities | ~~HIGH~~ |
 | ⏳ | Memory Folding | Periodic context compression to summary files | HIGH |
 | ⏳ | Reasoning Chain Logs | Capture "why" decisions, not just tool calls | MEDIUM |
 | ⏳ | Cognitive Rollback | Git-based agent state restoration | MEDIUM |
@@ -59,11 +62,35 @@
 | ✅ | **OpenTelemetry UI (10.8)** | Display OTel metrics in Dashboard - cost, tokens, productivity. Backend API + header summary + panel detail. Completed 2025-12-20. | HIGH |
 | ✅ | **Internal System Agent (11.1)** | Auto-deployed platform orchestrator (`trinity-system`) with deletion protection, system-scoped MCP key, permission bypass. Completed 2025-12-20. | HIGH |
 | ✅ | **Parallel Headless Execution (12.1)** | Stateless parallel task execution - enables orchestrator to spawn N worker tasks simultaneously. `POST /api/agents/{name}/task` bypasses queue. MCP `chat_with_agent(parallel=true)`. Completed 2025-12-22. | **HIGH** |
+| ✅ | **OWASP Security Hardening** | Fixed 7/14 OWASP Top 10:2025 issues - SECRET_KEY, password hashing, Redis auth, WebSocket auth, CORS, error sanitization. Completed 2025-12-23. | **HIGH** |
+| ✅ | **Web Terminal for System Agent (11.5)** | Browser-based xterm.js terminal with PTY forwarding via Docker exec. Full Claude Code TUI. Admin-only, no SSH exposure. Completed 2025-12-25. | **HIGH** |
 | ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |
 | ⏳ | Automated sync modes (scheduled, on-stop) | GitOps enhancement | LOW |
 | ⏳ | Automated secret rotation | Security enhancement | LOW |
+
+### Phase 11.5: Content Management & File Operations
+🚧 **In Progress** — *Essential for agents generating large assets (video, audio, exports)*
+
+| Status | Item | Description | Priority |
+|--------|------|-------------|----------|
+| ✅ | **Content Folder Convention (12.1)** | `content/` directory gitignored by default, persists across restarts. Implemented 2025-12-27. | **HIGH** |
+| ✅ | **File Manager Page (12.2)** | Dedicated `/files` page with agent selector, two-panel layout (tree + preview), delete operations. Implemented 2025-12-27. | **HIGH** |
+| ✅ | File Preview Support | Preview images, video, audio, text/code, PDF in right panel. Implemented 2025-12-27. | HIGH |
+| ✅ | Delete Operations | Delete file/folder with confirmation, protected file warnings. Implemented 2025-12-27. | HIGH |
+| ⏳ | Create Folder | Create new directories in agent workspace | MEDIUM |
+
+**Content Convention**:
+```
+/home/developer/
+├── [workspace files]     # Synced to Git
+├── content/              # NOT synced - videos, audio, exports
+│   ├── videos/
+│   ├── audio/
+│   └── exports/
+└── .gitignore            # Includes: content/
+```
 
 ### Phase 12: Agent Perception & Attention (Cognitive Patterns)
 ⏳ **Pending** — *Emergent coordination via event-driven cognition*
@@ -100,23 +127,28 @@
 
 ## Completed Phases
 
-### Phase 7: GitHub Bidirectional Sync
-✅ **Completed: 2025-11-29**
+### Phase 7: GitHub Sync (Source Mode + Working Branch Mode)
+✅ **Completed: 2025-11-29, Updated: 2025-12-30**
 
 **Architecture Document**: `docs/GITHUB_NATIVE_AGENTS.md`
 
 | Status | Item | Completed |
 |--------|------|-----------|
 | ✅ | Database schema: `agent_git_config` table | 2025-11-29 |
-| ✅ | Create working branch on GitHub-template agent creation | 2025-11-29 |
+| ✅ | Working branch mode: Create branch on GitHub-template creation | 2025-11-29 |
 | ✅ | Store repo URL, branch name, instance ID in database | 2025-11-29 |
-| ✅ | POST `/api/agents/{name}/git/sync` endpoint | 2025-11-29 |
+| ✅ | POST `/api/agents/{name}/git/sync` endpoint (push) | 2025-11-29 |
+| ✅ | POST `/api/agents/{name}/git/pull` endpoint | 2025-11-29 |
 | ✅ | Git operations: stage, commit, force push | 2025-11-29 |
 | ✅ | "Sync to GitHub" button in agent detail UI | 2025-11-29 |
 | ✅ | Track last commit SHA and push timestamp | 2025-11-29 |
 | ✅ | "Git" tab in agent detail page | 2025-11-29 |
 | ✅ | Show repo, branch, last sync, commit history | 2025-11-29 |
 | ✅ | Sync status indicator | 2025-11-29 |
+| ✅ | **Source mode (default)**: Track source branch, pull-only | 2025-12-30 |
+| ✅ | **Pull button**: Blue "Pull" button in agent header | 2025-12-30 |
+| ✅ | **source_branch/source_mode fields**: DB schema update | 2025-12-30 |
+| ✅ | **Content folder convention**: `content/` gitignored for large files | 2025-12-30 |
 
 ### Phase 6: Agent Scheduling & Autonomy
 ✅ **Completed: 2025-11-28**

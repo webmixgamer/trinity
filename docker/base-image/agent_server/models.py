@@ -41,6 +41,7 @@ class ModelRequest(BaseModel):
 class CredentialUpdateRequest(BaseModel):
     credentials: dict  # {"VAR_NAME": "value", ...}
     mcp_config: Optional[str] = None  # Pre-generated .mcp.json content (if provided)
+    files: Optional[Dict[str, str]] = None  # File-type credentials: {"path": "content", ...}
 
 
 # ============================================================================
@@ -65,6 +66,7 @@ class ExecutionLogEntry(BaseModel):
     type: str  # "tool_use" or "tool_result"
     tool: str
     input: Optional[Dict[str, Any]] = None
+    output: Optional[str] = None  # Tool output for tool_result entries
     success: Optional[bool] = None
     duration_ms: Optional[int] = None
     timestamp: str
@@ -146,6 +148,12 @@ class GitSyncRequest(BaseModel):
     """Request for git sync operation"""
     message: Optional[str] = None  # Custom commit message
     paths: Optional[List[str]] = None  # Specific paths to sync (default: all)
+    strategy: Optional[str] = "normal"  # "normal", "pull_first", "force_push"
+
+
+class GitPullRequest(BaseModel):
+    """Request for git pull operation"""
+    strategy: Optional[str] = "clean"  # "clean", "stash_reapply", "force_reset"
 
 
 class GitCommitInfo(BaseModel):
@@ -196,48 +204,7 @@ class TrinityStatusResponse(BaseModel):
     meta_prompt_mounted: bool
     files: Dict[str, bool]
     directories: Dict[str, bool]
-    vector_memory: Dict[str, bool] = {}  # Vector memory injection status
     claude_md_has_trinity_section: bool
-
-
-# ============================================================================
-# Task DAG / Plan Models
-# ============================================================================
-
-class TaskModel(BaseModel):
-    """A single task in a plan"""
-    id: str
-    name: str
-    description: Optional[str] = None
-    status: str = "pending"  # pending, active, completed, failed, blocked
-    dependencies: List[str] = []
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    result: Optional[str] = None
-
-
-class PlanModel(BaseModel):
-    """A task plan/DAG"""
-    id: str
-    name: str
-    description: Optional[str] = None
-    created: str
-    updated: Optional[str] = None
-    status: str = "active"  # active, completed, failed, paused
-    tasks: List[TaskModel] = []
-
-
-class PlanCreateRequest(BaseModel):
-    """Request to create a new plan"""
-    name: str
-    description: Optional[str] = None
-    tasks: List[dict] = []  # List of task definitions
-
-
-class TaskUpdateRequest(BaseModel):
-    """Request to update a task"""
-    status: str  # pending, active, completed, failed
-    result: Optional[str] = None
 
 
 # ============================================================================
@@ -250,7 +217,7 @@ class ParallelTaskRequest(BaseModel):
     model: Optional[str] = None  # Model override: sonnet, opus, haiku, or full model name
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
-    timeout_seconds: Optional[int] = 300  # Execution timeout (5 minutes default)
+    timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
 
 
 class ParallelTaskResponse(BaseModel):

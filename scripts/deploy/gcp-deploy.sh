@@ -133,14 +133,13 @@ create_remote_env() {
     ENV_CONTENT="# Trinity Production Environment
 SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}
 ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
-DEV_MODE_ENABLED=false
 BACKEND_URL=${BACKEND_URL:-https://${DOMAIN}/api}
 VITE_API_URL=${BACKEND_URL:-https://${DOMAIN}/api}
 
-# Auth0 (defaults match docker-compose.prod.yml)
-AUTH0_DOMAIN=${AUTH0_DOMAIN:-dev-10tz4lo7hcoijxav.us.auth0.com}
-AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
-VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID:-bFeIEm4WAwaalgSnxsfS1V6vd4gOk0li}
+# Email Authentication
+EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+RESEND_API_KEY=${RESEND_API_KEY:-}
+SMTP_FROM=${SMTP_FROM:-noreply@${DOMAIN}}
 
 # GitHub PAT for template cloning
 GITHUB_PAT=${GITHUB_PAT:-}

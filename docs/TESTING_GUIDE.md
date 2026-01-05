@@ -70,10 +70,9 @@ All feature flows are indexed in `docs/memory/feature-flows.md`. Key flows:
 | Flow | Document | Status |
 |------|----------|--------|
 | Agent Lifecycle | `agent-lifecycle.md` | ✅ Tested 2025-12-07 |
-| Agent Chat | `agent-chat.md` | ✅ Working |
-| Authentication | `auth0-authentication.md` | ✅ Working |
+| Agent Terminal | `agent-terminal.md` | ✅ Working |
+| Authentication | `email-authentication.md` | ✅ Working |
 | Agent Network | `agent-network.md` | ✅ Tested 2025-12-07 |
-| Workplan System | `workplan-system.md` | ✅ Comprehensive (20/20 tests) |
 | Execution Queue | `execution-queue.md` | ✅ Ready for testing |
 
 ### Supporting Features
@@ -85,7 +84,6 @@ All feature flows are indexed in `docs/memory/feature-flows.md`. Key flows:
 | Agent Sharing | `agent-sharing.md` | ✅ Working |
 | MCP Orchestration | `mcp-orchestration.md` | ✅ Working |
 | Activity Stream | `activity-stream.md` | ✅ Working |
-| Workplan UI | `workplan-ui.md` | ✅ Working |
 
 ---
 
@@ -101,7 +99,7 @@ Copy this into each feature flow:
 - [ ] Frontend running at http://localhost:3000
 - [ ] Docker daemon running
 - [ ] Redis running (for queue/credential features)
-- [ ] Logged in as test@ability.ai (or dev mode enabled)
+- [ ] Logged in (via email auth or admin login)
 - [ ] Test agent created and running
 
 ### Test Steps
@@ -140,51 +138,6 @@ Copy this into each feature flow:
 **Tested By**: claude / human
 **Status**: ✅ All tests passed
 **Issues**: None (or list issues found)
-```
-
----
-
-## Example: Workplan System Testing
-
-The Workplan System (`workplan-system.md`) is a model for comprehensive testing:
-
-```markdown
-## Testing
-
-### Prerequisites
-- [x] Services running (backend, agent)
-- [x] Test agent created and started
-- [x] `/trinity-meta-prompt` mounted in agent
-
-### Test: Injection API (VERIFIED 2025-12-06)
-1. **POST /api/trinity/inject**
-   - [x] Returns 200 with files_created list
-   - [x] `.trinity/prompt.md` exists
-   - [x] `.claude/commands/trinity/` has 4 command files
-   - [x] `plans/active/` and `plans/archive/` directories exist
-   - [x] CLAUDE.md updated with Trinity Planning System section
-
-### Test: Plan API (VERIFIED 2025-12-06)
-1. **Create plan with dependencies**
-   - [x] task-1 starts as `pending`
-   - [x] task-2 starts as `blocked` (depends on task-1)
-
-2. **Complete task-1**
-   - [x] task-2 auto-changes from `blocked` to `pending`
-
-3. **Complete all tasks**
-   - [x] Plan auto-completes
-   - [x] Plan file moves to `plans/archive/`
-
-### Production Verification
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `GET /api/trinity/status` | Pass | All files present |
-| `POST /api/trinity/inject` | Pass | Idempotent |
-| `GET /api/plans/summary` | Pass | Returns aggregate stats |
-
-**Test Summary**: 20/20 tests passed
-**Last Tested**: 2025-12-06
 ```
 
 ---
@@ -484,10 +437,8 @@ SELECT * FROM chat_sessions WHERE agent_name = 'test-agent';
 | Feature | Flow Doc | Last Tested | Status |
 |---------|----------|-------------|--------|
 | Agent Create/Start/Stop/Delete | agent-lifecycle.md | 2025-12-07 | ✅ |
-| Agent Chat | agent-chat.md | 2025-12-02 | ✅ |
+| Agent Terminal | agent-terminal.md | 2025-12-25 | ✅ |
 | Agent Network Dashboard | agent-network.md | 2025-12-07 | ✅ |
-| Workplan System (Backend) | workplan-system.md | 2025-12-06 | ✅ 20/20 |
-| Workplan UI | workplan-ui.md | 2025-12-06 | ✅ |
 | Execution Queue | execution-queue.md | 2025-12-06 | ✅ |
 | Activity Stream | activity-stream.md | 2025-12-02 | ✅ |
 | Agent Sharing | agent-sharing.md | 2025-11-28 | ✅ |
@@ -495,7 +446,7 @@ SELECT * FROM chat_sessions WHERE agent_name = 'test-agent';
 | File Browser | file-browser.md | 2025-12-01 | ✅ |
 | Credential Injection | credential-injection.md | 2025-12-01 | ✅ |
 | MCP Orchestration | mcp-orchestration.md | 2025-11-27 | ✅ |
-| Auth0 Authentication | auth0-authentication.md | 2025-12-05 | ✅ |
+| Email Authentication | email-authentication.md | 2025-12-26 | ✅ |
 | GitHub Sync | github-sync.md | 2025-11-29 | ✅ |
 | Agent Replay Mode | agent-network-replay-mode.md | 2025-12-02 | ✅ |
 | Agents Page UI | agents-page-ui-improvements.md | 2025-12-07 | ✅ |
@@ -535,7 +486,6 @@ python -m pytest -v --tb=short
 | Agent Lifecycle | 21 | ✅ All pass |
 | Agent Chat | 11 | ✅ All pass |
 | Agent Files | 8 | ✅ All pass |
-| Agent Plans | 10 | ✅ All pass |
 | Agent Sharing | 7 | ✅ All pass |
 | Credentials | 11 | ✅ All pass |
 | Execution Queue | 6 | ✅ All pass |

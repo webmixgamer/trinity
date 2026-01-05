@@ -30,16 +30,16 @@ class TestAuthenticationMode:
 
         assert_status(response, 200)
         data = assert_json_response(response)
-        assert_has_fields(data, ["dev_mode_enabled"])
+        assert_has_fields(data, ["email_auth_enabled", "setup_completed"])
 
-    def test_auth_mode_returns_dev_or_auth0(self, unauthenticated_client: TrinityApiClient):
-        """Auth mode should indicate dev_mode_enabled status."""
+    def test_auth_mode_returns_email_auth_status(self, unauthenticated_client: TrinityApiClient):
+        """Auth mode should indicate email_auth_enabled status."""
         response = unauthenticated_client.get("/api/auth/mode", auth=False)
 
         assert_status(response, 200)
         data = response.json()
-        assert "dev_mode_enabled" in data
-        assert isinstance(data["dev_mode_enabled"], bool)
+        assert "email_auth_enabled" in data
+        assert isinstance(data["email_auth_enabled"], bool)
 
     def test_auth_mode_accessible_without_auth(self, unauthenticated_client: TrinityApiClient):
         """Auth mode endpoint should be accessible without authentication."""
@@ -48,7 +48,7 @@ class TestAuthenticationMode:
 
 
 class TestLogin:
-    """REQ-AUTH-002: Login (dev mode) endpoint tests."""
+    """REQ-AUTH-002: Admin login endpoint tests."""
 
     @pytest.mark.smoke
     def test_valid_credentials_returns_token(self, api_config, unauthenticated_client: TrinityApiClient):
@@ -60,10 +60,6 @@ class TestLogin:
                 "password": api_config.password,
             },
         )
-
-        # In dev mode, should return 200; in prod mode (auth0), returns 403
-        if response.status_code == 403:
-            pytest.skip("Dev mode login disabled (auth0 mode)")
 
         assert_status(response, 200)
         data = assert_json_response(response)
@@ -81,19 +77,11 @@ class TestLogin:
             },
         )
 
-        # Skip if auth0 mode
-        if response.status_code == 403:
-            pytest.skip("Dev mode login disabled (auth0 mode)")
-
         assert_status(response, 401)
 
     def test_missing_credentials_returns_422(self, unauthenticated_client: TrinityApiClient):
         """POST /token with missing credentials returns 422."""
         response = unauthenticated_client._client.post("/token", data={})
-
-        # Skip if auth0 mode
-        if response.status_code == 403:
-            pytest.skip("Dev mode login disabled (auth0 mode)")
 
         assert_status(response, 422)
 
@@ -107,9 +95,6 @@ class TestLogin:
                 "password": api_config.password,
             },
         )
-
-        if response.status_code == 403:
-            pytest.skip("Dev mode login disabled (auth0 mode)")
 
         token = response.json()["access_token"]
 

@@ -74,8 +74,8 @@
             </div>
           </div>
 
-          <!-- Middle Row: Fleet Stats (compact) -->
-          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
+          <!-- Bottom Row: Fleet Stats (compact) -->
+          <div class="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50">
             <div class="flex items-center space-x-6">
               <div class="flex items-center space-x-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400">Fleet:</span>
@@ -110,34 +110,29 @@
               </button>
             </div>
           </div>
+        </div>
 
-          <!-- Bottom Row: OpenTelemetry Metrics -->
-          <div class="px-4 py-3">
-            <!-- OTel Status Indicator -->
-            <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center space-x-2">
-                <div :class="[
-                  'w-2 h-2 rounded-full',
-                  otelMetrics.available ? 'bg-green-500' : otelMetrics.enabled ? 'bg-yellow-500' : 'bg-gray-400'
-                ]"></div>
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">OpenTelemetry</span>
-                <span v-if="!otelMetrics.enabled" class="text-xs text-gray-400 dark:text-gray-500">(disabled)</span>
-                <span v-else-if="!otelMetrics.available" class="text-xs text-yellow-600 dark:text-yellow-400">(unavailable)</span>
-              </div>
-              <button
-                @click="refreshOtelMetrics"
-                :disabled="otelLoading"
-                class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center space-x-1"
-              >
-                <svg :class="['w-3 h-3', otelLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
-              </button>
+        <!-- Collapsible OpenTelemetry Section -->
+        <div v-if="otelMetrics.available && otelMetrics.hasData" class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 mb-6">
+          <button
+            @click="otelExpanded = !otelExpanded"
+            class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            <div class="flex items-center space-x-2">
+              <div class="w-2 h-2 rounded-full bg-green-500"></div>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">OpenTelemetry</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                ${{ otelMetrics.totals.total_cost.toFixed(2) }} · {{ formatTokens(otelMetrics.totals.total_tokens) }} tokens
+              </span>
             </div>
+            <svg :class="['w-4 h-4 text-gray-400 transition-transform', otelExpanded ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
+          <div v-show="otelExpanded" class="px-4 pb-4">
             <!-- OTel Metrics Grid -->
-            <div v-if="otelMetrics.available && otelMetrics.hasData" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               <!-- Total Cost -->
               <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
                 <div class="flex items-center justify-between mb-1">
@@ -220,191 +215,133 @@
                 <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">changed</div>
               </div>
             </div>
-
-            <!-- OTel Not Available State -->
-            <div v-else-if="otelMetrics.enabled && !otelMetrics.available" class="text-center py-4">
-              <p class="text-sm text-yellow-600 dark:text-yellow-400">{{ otelMetrics.error || 'Collector not reachable' }}</p>
-            </div>
-
-            <!-- OTel Not Enabled State -->
-            <div v-else-if="!otelMetrics.enabled" class="text-center py-4">
-              <p class="text-sm text-gray-500 dark:text-gray-400">Set <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">OTEL_ENABLED=1</code> to enable metrics</p>
-            </div>
-
-            <!-- No Data Yet -->
-            <div v-else class="text-center py-4">
-              <p class="text-sm text-gray-500 dark:text-gray-400">No metrics data yet. Chat with agents to generate data.</p>
-            </div>
           </div>
         </div>
 
-        <!-- Quick Actions and Chat -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Quick Actions -->
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
+        <!-- System Terminal (Full Width, Central Focus) -->
+        <div
+          :class="[
+            'bg-gray-900 rounded-lg shadow overflow-hidden flex flex-col transition-all duration-300',
+            isFullscreen ? 'fixed inset-0 z-50 rounded-none' : ''
+          ]"
+          :style="isFullscreen ? {} : { height: '600px' }"
+        >
+          <!-- Terminal Header with Quick Actions -->
+          <div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span class="text-sm font-medium text-gray-300">System Terminal</span>
             </div>
-            <div class="p-4 space-y-3">
+
+            <!-- Quick Actions (Compact Icon Buttons) -->
+            <div class="flex items-center space-x-1">
               <!-- Emergency Stop -->
               <button
                 @click="emergencyStop"
                 :disabled="emergencyLoading"
-                class="w-full flex items-center justify-center space-x-2 border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 text-red-700 dark:text-red-400 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
+                title="Emergency Stop - Stop all agents"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', emergencyLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                 </svg>
-                <span class="text-sm">{{ emergencyLoading ? 'Stopping...' : 'Emergency Stop' }}</span>
               </button>
 
               <!-- Restart All -->
               <button
                 @click="restartAllAgents"
                 :disabled="restartAllLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Restart All Agents"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', restartAllLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span class="text-sm">{{ restartAllLoading ? 'Restarting...' : 'Restart All Agents' }}</span>
               </button>
 
               <!-- Pause Schedules -->
               <button
                 @click="pauseAllSchedules"
                 :disabled="pauseLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Pause All Schedules"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', pauseLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-sm">{{ pauseLoading ? 'Pausing...' : 'Pause Schedules' }}</span>
               </button>
 
               <!-- Resume Schedules -->
               <button
                 @click="resumeAllSchedules"
                 :disabled="resumeLoading"
-                class="w-full flex items-center justify-center space-x-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 rounded-lg transition-colors"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+                title="Resume All Schedules"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg :class="['w-4 h-4', resumeLoading ? 'animate-pulse' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-sm">{{ resumeLoading ? 'Resuming...' : 'Resume Schedules' }}</span>
+              </button>
+
+              <div class="w-px h-4 bg-gray-600 mx-1"></div>
+
+              <!-- Fullscreen Toggle -->
+              <button
+                @click="toggleFullscreen"
+                class="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+                :title="isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'"
+              >
+                <!-- Expand icon -->
+                <svg v-if="!isFullscreen" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                <!-- Collapse icon -->
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                </svg>
               </button>
             </div>
           </div>
-
-          <!-- Chat Panel -->
-          <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow flex flex-col" style="height: 450px;">
-            <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Operations Console</h2>
-              <div class="flex items-center space-x-2">
-                <!-- Quick Commands -->
-                <div class="flex space-x-1">
-                  <button
-                    @click="sendQuickCommand('/ops/status')"
-                    class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
-                  >
-                    /ops/status
-                  </button>
-                  <button
-                    @click="sendQuickCommand('/ops/health')"
-                    class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
-                  >
-                    /ops/health
-                  </button>
-                  <button
-                    @click="sendQuickCommand('/ops/costs')"
-                    class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
-                  >
-                    /ops/costs
-                  </button>
-                </div>
-                <button
-                  @click="clearChat"
-                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
-                  title="Clear chat"
-                >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <!-- Terminal Content -->
+            <div class="flex-1 min-h-0">
+              <SystemAgentTerminal
+                v-if="systemAgent?.status === 'running' && isAdmin"
+                ref="terminalRef"
+                :auto-connect="true"
+                @connected="onTerminalConnected"
+                @disconnected="onTerminalDisconnected"
+                @error="onTerminalError"
+              />
+              <!-- Not Running State -->
+              <div v-else-if="systemAgent?.status !== 'running'" class="h-full flex items-center justify-center bg-gray-800">
+                <div class="text-center">
+                  <svg class="w-12 h-12 text-gray-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- Messages Area -->
-            <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
-              <div v-if="messages.length === 0" class="text-center py-8">
-                <svg class="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <p class="text-gray-500 dark:text-gray-400">Send a command to the System Agent</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Try: /ops/status, /ops/health, /ops/costs</p>
-              </div>
-
-              <div
-                v-for="msg in messages"
-                :key="msg.id"
-                :class="[
-                  'flex',
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                ]"
-              >
-                <div :class="[
-                  'max-w-[85%] rounded-lg px-4 py-2',
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
-                ]">
-                  <div class="whitespace-pre-wrap text-sm" v-html="formatMessage(msg.content)"></div>
-                  <div :class="[
-                    'text-xs mt-1',
-                    msg.role === 'user' ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'
-                  ]">
-                    {{ formatTime(msg.timestamp) }}
-                  </div>
+                  <p class="text-gray-400">System agent must be running</p>
+                  <button
+                    @click="startSystemAgent"
+                    :disabled="actionLoading"
+                    class="mt-3 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    {{ actionLoading ? 'Starting...' : 'Start Agent' }}
+                  </button>
                 </div>
               </div>
-
-              <!-- Typing indicator -->
-              <div v-if="isTyping" class="flex justify-start">
-                <div class="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2">
-                  <div class="flex space-x-1">
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms;"></div>
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms;"></div>
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms;"></div>
-                  </div>
+              <!-- Not Admin State -->
+              <div v-else-if="!isAdmin" class="h-full flex items-center justify-center bg-gray-800">
+                <div class="text-center">
+                  <svg class="w-12 h-12 text-gray-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <p class="text-gray-400">Admin access required</p>
                 </div>
               </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="p-4 border-t border-gray-200 dark:border-gray-700">
-              <form @submit.prevent="sendMessage" class="flex space-x-2">
-                <input
-                  v-model="inputMessage"
-                  type="text"
-                  placeholder="Enter command or message..."
-                  :disabled="isTyping || systemAgent?.status !== 'running'"
-                  class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  :disabled="!inputMessage.trim() || isTyping || systemAgent?.status !== 'running'"
-                  class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Send
-                </button>
-              </form>
-              <p v-if="systemAgent?.status !== 'running'" class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                System agent must be running to send commands
-              </p>
             </div>
           </div>
-        </div>
 
         <!-- Notification Toast -->
         <div
@@ -418,27 +355,24 @@
         >
           {{ notification.message }}
         </div>
+
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import axios from 'axios'
 import NavBar from '../components/NavBar.vue'
+import SystemAgentTerminal from '../components/SystemAgentTerminal.vue'
 import { useAuthStore } from '../stores/auth'
-import { marked } from 'marked'
-
-// Configure marked for safe rendering
-marked.setOptions({
-  breaks: true,
-  gfm: true
-})
-
-const router = useRouter()
 const authStore = useAuthStore()
+
+// Component name for KeepAlive matching
+defineOptions({
+  name: 'SystemAgent'
+})
 
 // State
 const loading = ref(true)
@@ -488,14 +422,21 @@ const restartAllLoading = ref(false)
 const pauseLoading = ref(false)
 const resumeLoading = ref(false)
 
-// Chat state
-const messages = ref([])
-const inputMessage = ref('')
-const isTyping = ref(false)
-const messagesContainer = ref(null)
-
 // Notifications
 const notification = ref(null)
+
+// Terminal ref
+const terminalRef = ref(null)
+
+// Fullscreen state
+const isFullscreen = ref(false)
+
+// OTel section expanded state (default collapsed)
+const otelExpanded = ref(false)
+
+// User role for admin checks
+const userRole = ref(null)
+const isAdmin = computed(() => userRole.value === 'admin')
 
 // Polling intervals
 let pollingInterval = null
@@ -721,76 +662,6 @@ async function resumeAllSchedules() {
   }
 }
 
-// Chat functions
-async function sendMessage() {
-  const message = inputMessage.value.trim()
-  if (!message || isTyping.value) return
-
-  // Add user message
-  messages.value.push({
-    id: Date.now(),
-    role: 'user',
-    content: message,
-    timestamp: new Date()
-  })
-  inputMessage.value = ''
-  scrollToBottom()
-
-  isTyping.value = true
-  try {
-    const response = await axios.post('/api/agents/trinity-system/chat',
-      { message },
-      { headers: authStore.authHeader }
-    )
-
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: response.data.response || response.data.message || 'No response',
-      timestamp: new Date()
-    })
-  } catch (error) {
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: `Error: ${error.response?.data?.detail || error.message}`,
-      timestamp: new Date()
-    })
-  } finally {
-    isTyping.value = false
-    scrollToBottom()
-  }
-}
-
-function sendQuickCommand(command) {
-  inputMessage.value = command
-  sendMessage()
-}
-
-function clearChat() {
-  messages.value = []
-}
-
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
-function formatMessage(content) {
-  try {
-    return marked(content)
-  } catch {
-    return content
-  }
-}
-
-function formatTime(date) {
-  return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
 // Notifications
 function showNotification(message, type = 'info') {
   notification.value = { message, type }
@@ -799,30 +670,112 @@ function showNotification(message, type = 'info') {
   }, 3000)
 }
 
-// Lifecycle
+// Terminal event handlers
+function onTerminalConnected() {
+  showNotification('Terminal connected', 'success')
+}
+
+function onTerminalDisconnected() {
+  showNotification('Terminal disconnected', 'info')
+}
+
+function onTerminalError(error) {
+  showNotification(`Terminal error: ${error}`, 'error')
+}
+
+// Fullscreen toggle
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+  // Refit terminal after layout change
+  nextTick(() => {
+    if (terminalRef.value?.fit) {
+      terminalRef.value.fit()
+    }
+  })
+}
+
+// ESC key handler for fullscreen
+function handleKeydown(event) {
+  if (event.key === 'Escape' && isFullscreen.value) {
+    toggleFullscreen()
+  }
+}
+
+// Start polling intervals
+function startPolling() {
+  // Start polling for fleet status
+  if (!pollingInterval) {
+    pollingInterval = setInterval(() => {
+      loadSystemAgent()
+      refreshFleetStatus()
+    }, 10000)
+  }
+
+  // Poll OTel metrics less frequently (every 30 seconds)
+  if (!otelPollingInterval) {
+    otelPollingInterval = setInterval(() => {
+      refreshOtelMetrics()
+    }, 30000)
+  }
+}
+
+// Stop polling intervals
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval)
+    pollingInterval = null
+  }
+  if (otelPollingInterval) {
+    clearInterval(otelPollingInterval)
+    otelPollingInterval = null
+  }
+}
+
+// Lifecycle - onMounted fires once when first created
 onMounted(async () => {
+  // Add ESC key listener for fullscreen
+  window.addEventListener('keydown', handleKeydown)
+
+  // Fetch user role for admin checks
+  try {
+    const response = await axios.get('/api/users/me')
+    userRole.value = response.data.role
+  } catch (e) {
+    console.warn('Failed to fetch user role:', e)
+  }
+
   await loadSystemAgent()
   await refreshFleetStatus()
   await refreshOtelMetrics()
 
-  // Start polling for fleet status
-  pollingInterval = setInterval(() => {
-    loadSystemAgent()
-    refreshFleetStatus()
-  }, 10000)
-
-  // Poll OTel metrics less frequently (every 30 seconds)
-  otelPollingInterval = setInterval(() => {
-    refreshOtelMetrics()
-  }, 30000)
+  startPolling()
 })
 
+// onActivated fires when component is shown (after being cached by KeepAlive)
+onActivated(() => {
+  // Restart polling when returning to this view
+  startPolling()
+  // Refresh data when returning
+  loadSystemAgent()
+  refreshFleetStatus()
+  // Refit terminal if visible
+  nextTick(() => {
+    if (terminalRef.value?.fit) {
+      terminalRef.value.fit()
+    }
+  })
+})
+
+// onDeactivated fires when navigating away (component is cached, not destroyed)
+onDeactivated(() => {
+  // Stop polling when navigating away (but keep WebSocket connection alive)
+  stopPolling()
+})
+
+// onUnmounted fires when component is actually destroyed (e.g., logout)
 onUnmounted(() => {
-  if (pollingInterval) {
-    clearInterval(pollingInterval)
-  }
-  if (otelPollingInterval) {
-    clearInterval(otelPollingInterval)
-  }
+  // Remove ESC key listener
+  window.removeEventListener('keydown', handleKeydown)
+  stopPolling()
 })
 </script>

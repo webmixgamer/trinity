@@ -49,12 +49,12 @@ As a platform operator, I want agents to export standardized metrics so that I c
 
 ### Environment Variables
 
-**File**: `.env.example` (lines 80-94)
+**File**: `.env.example` (lines 98-112)
 
 ```bash
 # Enable OpenTelemetry metrics export from Claude Code agents
-# Set to 1 to enable, 0 to disable (default: disabled)
-OTEL_ENABLED=0
+# Set to 1 to enable, 0 to disable (default: enabled)
+OTEL_ENABLED=1
 
 # OTEL Collector endpoint (only used when OTEL_ENABLED=1)
 # Default points to Docker service name for in-network access
@@ -73,7 +73,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 | Backend Env Var | Agent Container Env Var | Default Value |
 |-----------------|------------------------|---------------|
-| `OTEL_ENABLED` | `CLAUDE_CODE_ENABLE_TELEMETRY` | `0` (disabled) |
+| `OTEL_ENABLED` | `CLAUDE_CODE_ENABLE_TELEMETRY` | `1` (enabled) |
 | `OTEL_METRICS_EXPORTER` | `OTEL_METRICS_EXPORTER` | `otlp` |
 | `OTEL_LOGS_EXPORTER` | `OTEL_LOGS_EXPORTER` | `otlp` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
@@ -86,12 +86,12 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 ### Agent Creation - Environment Injection
 
-**File**: `src/backend/routers/agents.py` (lines 514-522)
+**File**: `src/backend/services/agent_service/crud.py` (lines 247-254)
 
 ```python
-# OpenTelemetry Configuration (opt-in via OTEL_ENABLED)
+# OpenTelemetry Configuration (enabled by default)
 # Claude Code has built-in OTel support - these vars enable metrics export
-if os.getenv('OTEL_ENABLED', '0') == '1':
+if os.getenv('OTEL_ENABLED', '1') == '1':
     env_vars['CLAUDE_CODE_ENABLE_TELEMETRY'] = '1'
     env_vars['OTEL_METRICS_EXPORTER'] = os.getenv('OTEL_METRICS_EXPORTER', 'otlp')
     env_vars['OTEL_LOGS_EXPORTER'] = os.getenv('OTEL_LOGS_EXPORTER', 'otlp')
@@ -113,7 +113,7 @@ if os.getenv('OTEL_ENABLED', '0') == '1':
 
 ### OTEL Collector Service
 
-**File**: `docker-compose.yml` (lines 132-151)
+**File**: `docker-compose.yml` (lines 150-169)
 
 ```yaml
 # OpenTelemetry Collector - receives metrics from Claude Code agents
@@ -428,12 +428,12 @@ Existing agents keep their OTel config until restarted.
 
 | File | Change |
 |------|--------|
-| `src/backend/routers/agents.py` | Added OTel env var injection (lines 514-522) |
+| `src/backend/services/agent_service/crud.py` | OTel env var injection (lines 247-254) |
 | `src/backend/routers/observability.py` | New file - metrics API endpoints (257 lines) |
-| `src/backend/main.py` | Added observability router import (line 41) and registration (line 209) |
-| `docker-compose.yml` | Added otel-collector service (lines 132-151) |
+| `src/backend/main.py` | Added observability router import (line 41) and registration (line 231) |
+| `docker-compose.yml` | Added otel-collector service (lines 150-169) |
 | `config/otel-collector.yaml` | New file - collector configuration |
-| `.env.example` | Added OTel environment variables (lines 80-94) |
+| `.env.example` | Added OTel environment variables (lines 98-112) |
 | `docs/DEPLOYMENT.md` | Added OpenTelemetry section |
 | `src/frontend/src/stores/observability.js` | New file - Pinia store for observability state (269 lines) |
 | `src/frontend/src/components/ObservabilityPanel.vue` | New file - collapsible metrics panel (186 lines) |
@@ -522,7 +522,7 @@ async def get_observability_status(
 
 **File**: `src/backend/main.py`
 - Import: line 41
-- Registration: line 209
+- Registration: line 231
 
 ```python
 from routers.observability import router as observability_router
@@ -722,7 +722,7 @@ onUnmounted(() => {
 
 ### Test 1: OTel Disabled State
 
-**Action**: Start with `OTEL_ENABLED=0` (default)
+**Action**: Start with `OTEL_ENABLED=0` (explicitly disabled)
 
 **Expected**:
 - No OTel stats in Dashboard header
@@ -797,3 +797,7 @@ curl http://localhost:8889/metrics | grep trinity_claude_code
 | Phase 2.5: UI Integration | 2 hours | Completed 2025-12-20 |
 | Phase 3: Prometheus/Grafana | 4 hours | Not started |
 | Phase 4: Hooks Integration | 1-2 days | Not started |
+
+---
+
+**Last Updated**: 2025-12-30 (Line numbers verified)

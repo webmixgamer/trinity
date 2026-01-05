@@ -7,18 +7,73 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 import httpx
 import json
 import logging
+import asyncio
 from datetime import datetime
 from typing import Optional
 
 from models import User, ChatMessageRequest, ModelChangeRequest, ParallelTaskRequest, ActivityType, ExecutionSource
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.docker_service import get_agent_container
 from services.activity_service import activity_service
 from services.execution_queue import get_execution_queue, QueueFullError, AgentBusyError
 from database import db
 
 logger = logging.getLogger(__name__)
+
+
+async def agent_post_with_retry(
+    agent_name: str,
+    endpoint: str,
+    payload: dict,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+    timeout: float = 300.0
+) -> httpx.Response:
+    """
+    Make a POST request to an agent with retry logic.
+
+    This handles the case where an agent container is running but
+    its internal HTTP server is not yet ready.
+
+    Args:
+        agent_name: Name of the agent
+        endpoint: API endpoint path (e.g., "/api/chat", "/api/task")
+        payload: Request payload
+        max_retries: Number of retry attempts for connection errors
+        retry_delay: Initial delay between retries (doubles each retry)
+        timeout: Request timeout in seconds
+
+    Returns:
+        httpx.Response object
+
+    Raises:
+        httpx.ConnectError: If all connection attempts fail
+        httpx.TimeoutException: If request times out
+    """
+    agent_url = f"http://agent-{agent_name}:8000{endpoint}"
+
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(agent_url, json=payload)
+                return response
+        except httpx.ConnectError as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                delay = retry_delay * (2 ** attempt)  # Exponential backoff
+                logger.debug(
+                    f"Agent {agent_name} connection failed (attempt {attempt + 1}/{max_retries}), "
+                    f"retrying in {delay}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(
+                    f"Agent {agent_name} connection failed after {max_retries} attempts: {e}"
+                )
+
+    # All retries exhausted
+    raise last_error or httpx.ConnectError(f"Failed to connect to agent {agent_name}")
 
 router = APIRouter(prefix="/api/agents", tags=["chat"])
 
@@ -52,7 +107,8 @@ async def chat_with_agent(
     name: str,
     request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
-    x_source_agent: Optional[str] = Header(None)
+    x_source_agent: Optional[str] = Header(None),
+    x_via_mcp: Optional[str] = Header(None)
 ):
     """
     Proxy chat messages to agent's internal web server and persist to database.
@@ -60,6 +116,10 @@ async def chat_with_agent(
     This endpoint enforces single-execution-at-a-time via the execution queue.
     If the agent is busy, the request is queued (up to 3 waiting).
     If the queue is full, returns 429 Too Many Requests.
+
+    Headers:
+    - X-Source-Agent: Set when one agent calls another (agent-to-agent)
+    - X-Via-MCP: Set for all MCP calls (both user and agent-scoped)
     """
     container = get_agent_container(name)
     if not container:
@@ -103,6 +163,24 @@ async def chat_with_agent(
 
     # Track queue position for observability
     is_queued = queue_result.startswith("queued:")
+
+    # Create execution record for all MCP calls (both agent-to-agent and user MCP)
+    # This ensures they appear in the Tasks tab alongside scheduled and manual tasks
+    task_execution_id = None
+    is_mcp_call = x_source_agent or x_via_mcp
+    if is_mcp_call:
+        # Determine triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls
+        triggered_by = "agent" if x_source_agent else "mcp"
+        task_execution = db.create_task_execution(
+            agent_name=name,
+            message=request.message,
+            triggered_by=triggered_by
+        )
+        task_execution_id = task_execution.id if task_execution else None
+        if x_source_agent:
+            logger.info(f"[Chat] Created task execution {task_execution_id} for agent-to-agent call from {x_source_agent}")
+        else:
+            logger.info(f"[Chat] Created task execution {task_execution_id} for MCP call from user {current_user.username}")
 
     # Broadcast collaboration event if this is agent-to-agent communication
     collaboration_activity_id = None
@@ -169,124 +247,145 @@ async def chat_with_agent(
 
         start_time = datetime.utcnow()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://agent-{name}:8000/api/chat",
-                json=payload,
-                timeout=300.0  # Increased timeout for queued execution
-            )
-            response.raise_for_status()
+        # Use retry helper to handle agent server startup delays
+        response = await agent_post_with_retry(
+            name,
+            "/api/chat",
+            payload,
+            max_retries=3,
+            retry_delay=1.0,
+            timeout=300.0
+        )
+        response.raise_for_status()
 
-            response_data = response.json()
+        response_data = response.json()
 
-            # Extract metadata for persistence
-            execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            metadata = response_data.get("metadata", {})
-            session_data = response_data.get("session", {})
+        # Extract metadata for persistence
+        execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        metadata = response_data.get("metadata", {})
+        session_data = response_data.get("session", {})
 
-            # Serialize tool calls if present
-            execution_log = response_data.get("execution_log", [])
-            tool_calls_json = json.dumps(execution_log) if execution_log else None
+        # Serialize tool calls if present
+        # Note: Check is not None, not truthiness - empty list [] is valid log
+        execution_log = response_data.get("execution_log", [])
+        tool_calls_json = json.dumps(execution_log) if execution_log is not None else None
 
-            # Log assistant response to database with observability data
-            assistant_message = db.add_chat_message(
-                session_id=session.id,
+        # Log assistant response to database with observability data
+        assistant_message = db.add_chat_message(
+            session_id=session.id,
+            agent_name=name,
+            user_id=current_user.id,
+            user_email=current_user.email or current_user.username,
+            role="assistant",
+            content=response_data.get("response", ""),
+            cost=metadata.get("cost_usd"),
+            context_used=session_data.get("context_tokens"),
+            context_max=session_data.get("context_window"),
+            tool_calls=tool_calls_json,
+            execution_time_ms=execution_time_ms
+        )
+
+        # Track tool calls (granular tracking in agent_activities)
+        for tool_call in execution_log:
+            await activity_service.track_activity(
                 agent_name=name,
+                activity_type=ActivityType.TOOL_CALL,
                 user_id=current_user.id,
-                user_email=current_user.email or current_user.username,
-                role="assistant",
-                content=response_data.get("response", ""),
-                cost=metadata.get("cost_usd"),
-                context_used=session_data.get("context_tokens"),
-                context_max=session_data.get("context_window"),
-                tool_calls=tool_calls_json,
-                execution_time_ms=execution_time_ms
+                triggered_by="agent" if x_source_agent else "user",
+                parent_activity_id=chat_activity_id,
+                related_chat_message_id=assistant_message.id,
+                details={
+                    "tool_name": tool_call.get("tool", "unknown"),
+                    "duration_ms": tool_call.get("duration_ms"),
+                    "success": tool_call.get("success", True)
+                }
             )
 
-            # Track tool calls (granular tracking in agent_activities)
-            for tool_call in execution_log:
-                await activity_service.track_activity(
-                    agent_name=name,
-                    activity_type=ActivityType.TOOL_CALL,
-                    user_id=current_user.id,
-                    triggered_by="agent" if x_source_agent else "user",
-                    parent_activity_id=chat_activity_id,
-                    related_chat_message_id=assistant_message.id,
-                    details={
-                        "tool_name": tool_call.get("tool", "unknown"),
-                        "duration_ms": tool_call.get("duration_ms"),
-                        "success": tool_call.get("success", True)
-                    }
-                )
+        # Track chat completion
+        await activity_service.complete_activity(
+            activity_id=chat_activity_id,
+            status="completed",
+            details={
+                "related_chat_message_id": assistant_message.id,
+                "context_used": session_data.get("context_tokens"),
+                "context_max": session_data.get("context_window"),
+                "cost_usd": metadata.get("cost_usd"),
+                "execution_time_ms": execution_time_ms,
+                "tool_count": len(execution_log),
+                "execution_id": execution.id
+            }
+        )
 
-            # Track chat completion
+        # Complete collaboration activity if this was agent-to-agent
+        if collaboration_activity_id:
             await activity_service.complete_activity(
-                activity_id=chat_activity_id,
+                activity_id=collaboration_activity_id,
                 status="completed",
                 details={
                     "related_chat_message_id": assistant_message.id,
-                    "context_used": session_data.get("context_tokens"),
-                    "context_max": session_data.get("context_window"),
-                    "cost_usd": metadata.get("cost_usd"),
+                    "response_length": len(response_data.get("response", "")),
                     "execution_time_ms": execution_time_ms,
-                    "tool_count": len(execution_log),
                     "execution_id": execution.id
                 }
             )
 
-            # Complete collaboration activity if this was agent-to-agent
-            if collaboration_activity_id:
-                await activity_service.complete_activity(
-                    activity_id=collaboration_activity_id,
-                    status="completed",
-                    details={
-                        "related_chat_message_id": assistant_message.id,
-                        "response_length": len(response_data.get("response", "")),
-                        "execution_time_ms": execution_time_ms,
-                        "execution_id": execution.id
-                    }
-                )
-
-            await log_audit_event(
-                event_type="agent_interaction",
-                action="chat",
-                user_id=current_user.username,
-                agent_name=name,
-                resource=f"agent-{name}",
-                result="success"
+        # Update task execution record for MCP calls (agent-to-agent or user MCP)
+        if task_execution_id:
+            context_used = session_data.get("context_tokens", 0)
+            db.update_execution_status(
+                execution_id=task_execution_id,
+                status="success",
+                response=response_data.get("response"),
+                context_used=context_used if context_used > 0 else None,
+                context_max=session_data.get("context_window") or 200000,
+                cost=metadata.get("cost_usd"),
+                tool_calls=tool_calls_json,
+                execution_log=tool_calls_json  # execution_log same as tool_calls for chat
             )
 
-            execution_success = True
+        execution_success = True
 
-            # Add execution metadata to response
-            response_data["execution"] = {
-                "id": execution.id,
-                "queue_status": queue_result,
-                "was_queued": is_queued
-            }
+        # Add execution metadata to response
+        response_data["execution"] = {
+            "id": execution.id,
+            "queue_status": queue_result,
+            "was_queued": is_queued
+        }
 
-            return response_data
+        return response_data
     except httpx.HTTPError as e:
+        import logging
+        # Extract detailed error message from agent response if available
+        error_msg = f"HTTP error: {type(e).__name__}"
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                if "detail" in error_data:
+                    error_msg = error_data["detail"]
+            except Exception:
+                # Try raw text if JSON parsing fails
+                if e.response.text:
+                    error_msg = e.response.text[:500]
+        logging.getLogger("trinity.errors").error(f"Failed to communicate with agent {name}: {error_msg}")
+
         # Track chat failure
         await activity_service.complete_activity(
             activity_id=chat_activity_id,
             status="failed",
-            error=str(e)
+            error=error_msg
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="chat",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error": str(e), "execution_id": execution.id}
-        )
+        # Update task execution record for agent-to-agent calls on failure
+        if task_execution_id:
+            db.update_execution_status(
+                execution_id=task_execution_id,
+                status="failed",
+                error=error_msg
+            )
+
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to communicate with agent: {str(e)}"
+            detail=f"Failed to communicate with agent: {error_msg}"
         )
     finally:
         # Always release the queue slot when done
@@ -314,6 +413,7 @@ async def execute_parallel_task(
     - Parallel task execution
 
     Note: Does NOT update conversation history or session state.
+    Executions are saved to the database for history tracking.
     """
     container = get_agent_container(name)
     if not container:
@@ -325,21 +425,32 @@ async def execute_parallel_task(
     # Determine execution source for logging
     if x_source_agent:
         source = ExecutionSource.AGENT
+        triggered_by = "agent"
     else:
         source = ExecutionSource.USER
+        triggered_by = "manual"
+
+    # Create execution record in database (persisted task history)
+    execution = db.create_task_execution(
+        agent_name=name,
+        message=request.message,
+        triggered_by=triggered_by
+    )
+    execution_id = execution.id if execution else None
 
     # Track parallel task activity
     task_activity_id = await activity_service.track_activity(
         agent_name=name,
         activity_type=ActivityType.CHAT_START,  # Reusing CHAT_START for now
         user_id=current_user.id,
-        triggered_by="agent" if x_source_agent else "user",
+        triggered_by=triggered_by,
         details={
             "message_preview": request.message[:100],
             "source_agent": x_source_agent,
             "parallel_mode": True,
             "model": request.model,
-            "timeout_seconds": request.timeout_seconds
+            "timeout_seconds": request.timeout_seconds,
+            "execution_id": execution_id
         }
     )
 
@@ -363,91 +474,114 @@ async def execute_parallel_task(
 
         start_time = datetime.utcnow()
 
-        # Call agent's /api/task endpoint directly (no execution queue)
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://agent-{name}:8000/api/task",
-                json=payload,
-                timeout=float(request.timeout_seconds or 300) + 10  # Add buffer to agent timeout
+        # Call agent's /api/task endpoint with retry logic
+        response = await agent_post_with_retry(
+            name,
+            "/api/task",
+            payload,
+            max_retries=3,
+            retry_delay=1.0,
+            timeout=float(request.timeout_seconds or 300) + 10  # Add buffer to agent timeout
+        )
+        response.raise_for_status()
+
+        response_data = response.json()
+
+        execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        metadata = response_data.get("metadata", {})
+
+        # Update execution record with success
+        if execution_id:
+            tool_calls_json = None
+            execution_log_json = None
+            # Note: Check for key existence, not truthiness - empty list [] is valid log
+            if "execution_log" in response_data and response_data["execution_log"] is not None:
+                try:
+                    execution_log_json = json.dumps(response_data["execution_log"])
+                    tool_calls_json = execution_log_json  # Keep for backwards compatibility
+                except Exception:
+                    pass
+
+            # Agent returns metadata with input_tokens, output_tokens, context_window
+            context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
+
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="success",
+                response=response_data.get("response"),
+                context_used=context_used if context_used > 0 else None,
+                context_max=metadata.get("context_window") or 200000,
+                cost=metadata.get("cost_usd"),
+                tool_calls=tool_calls_json,
+                execution_log=execution_log_json
             )
-            response.raise_for_status()
 
-            response_data = response.json()
+        # Track task completion
+        await activity_service.complete_activity(
+            activity_id=task_activity_id,
+            status="completed",
+            details={
+                "session_id": response_data.get("session_id"),
+                "cost_usd": metadata.get("cost_usd"),
+                "execution_time_ms": execution_time_ms,
+                "tool_count": len(response_data.get("execution_log", [])),
+                "parallel_mode": True
+            }
+        )
 
-            execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            metadata = response_data.get("metadata", {})
-
-            # Track task completion
-            await activity_service.complete_activity(
-                activity_id=task_activity_id,
-                status="completed",
-                details={
-                    "session_id": response_data.get("session_id"),
-                    "cost_usd": metadata.get("cost_usd"),
-                    "execution_time_ms": execution_time_ms,
-                    "tool_count": len(response_data.get("execution_log", [])),
-                    "parallel_mode": True
-                }
-            )
-
-            await log_audit_event(
-                event_type="agent_interaction",
-                action="parallel_task",
-                user_id=current_user.username,
-                agent_name=name,
-                resource=f"agent-{name}",
-                result="success",
-                details={
-                    "source": source.value,
-                    "source_agent": x_source_agent,
-                    "session_id": response_data.get("session_id")
-                }
-            )
-
-            return response_data
+        return response_data
 
     except httpx.TimeoutException:
+        # Update execution record with timeout failure
+        if execution_id:
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="failed",
+                error=f"Task execution timed out after {request.timeout_seconds} seconds"
+            )
+
         await activity_service.complete_activity(
             activity_id=task_activity_id,
             status="failed",
             error="Task execution timed out"
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="parallel_task",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error": "timeout", "source_agent": x_source_agent}
-        )
         raise HTTPException(
             status_code=504,
             detail=f"Task execution timed out after {request.timeout_seconds} seconds"
         )
 
     except httpx.HTTPError as e:
+        # Extract detailed error message from agent response if available
+        error_msg = f"HTTP error: {type(e).__name__}"
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                if "detail" in error_data:
+                    error_msg = error_data["detail"]
+            except Exception:
+                # Try raw text if JSON parsing fails
+                if e.response.text:
+                    error_msg = e.response.text[:500]
+        logger.error(f"Failed to execute parallel task on {name}: {error_msg}")
+
+        # Update execution record with failure
+        if execution_id:
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="failed",
+                error=error_msg
+            )
+
         await activity_service.complete_activity(
             activity_id=task_activity_id,
             status="failed",
-            error=str(e)
+            error=type(e).__name__
         )
 
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="parallel_task",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"agent-{name}",
-            result="failed",
-            severity="error",
-            details={"error": str(e), "source_agent": x_source_agent}
-        )
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to execute task: {str(e)}"
+            detail="Failed to execute task. The agent may be unavailable."
         )
 
 
@@ -476,9 +610,11 @@ async def get_agent_chat_history(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to get chat history for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to get chat history: {str(e)}"
+            detail="Failed to get chat history"
         )
 
 
@@ -515,9 +651,11 @@ async def reset_agent_chat_history(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to reset chat history for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to reset chat history: {str(e)}"
+            detail="Failed to reset chat history"
         )
 
 
@@ -546,9 +684,11 @@ async def get_agent_chat_session(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to get session info for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to get session info: {str(e)}"
+            detail="Failed to get session info"
         )
 
 
@@ -625,9 +765,11 @@ async def get_agent_activity_detail(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to get activity detail for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to get activity detail: {str(e)}"
+            detail="Failed to get activity detail"
         )
 
 
@@ -656,9 +798,11 @@ async def clear_agent_activity(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to clear activity for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to clear activity: {str(e)}"
+            detail="Failed to clear activity"
         )
 
 
@@ -689,9 +833,11 @@ async def get_agent_model(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to get model info for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to get model info: {str(e)}"
+            detail="Failed to get model info"
         )
 
 
@@ -721,21 +867,13 @@ async def set_agent_model(
             )
             response.raise_for_status()
 
-            await log_audit_event(
-                event_type="agent_interaction",
-                action="model_change",
-                user_id=current_user.username,
-                agent_name=name,
-                resource=f"agent-{name}",
-                result="success",
-                details={"model": request.model}
-            )
-
             return response.json()
     except httpx.HTTPError as e:
+        import logging
+        logging.getLogger("trinity.errors").error(f"Failed to set model for {name}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to set model: {str(e)}"
+            detail="Failed to set model"
         )
 
 
@@ -881,14 +1019,6 @@ async def close_chat_session(
     success = db.close_chat_session(session_id)
 
     if success:
-        await log_audit_event(
-            event_type="agent_interaction",
-            action="close_chat_session",
-            user_id=current_user.username,
-            agent_name=name,
-            resource=f"session-{session_id}",
-            result="success"
-        )
         return {"status": "closed", "session_id": session_id}
     else:
         raise HTTPException(status_code=500, detail="Failed to close session")

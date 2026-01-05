@@ -1,0 +1,34 @@
+name: demo-analyst
+display_name: Analysis Agent
+description: Synthesizes research findings and answers strategic questions
+version: "1.0.0"
+author: Trinity Demo
+
+resources:
+  cpu: "1"
+  memory: "2g"
+
+capabilities:
+  - synthesis
+  - strategic-analysis
+  - report-generation
+
+shared_folders:
+  expose: false
+  consume: true
+
+commands:
+  - name: briefing
+    description: Generate daily briefing from research findings
+  - name: opportunities
+    description: List and rank all identified opportunities
+  - name: ask
+    description: Answer a strategic question using accumulated research
+  - name: request-research
+    description: Ask the researcher to investigate a specific topic
+
+schedules:
+  - name: daily-briefing
+    cron: "0 9 * * *"
+    message: "/briefing"
+    description: Daily synthesis of research findings

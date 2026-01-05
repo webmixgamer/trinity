@@ -21,6 +21,12 @@ class AgentConfig(BaseModel):
     # GitHub-native agent support
     github_repo: Optional[str] = None  # GitHub repo (e.g., "Abilityai/agent-ruby")
     github_credential_id: Optional[str] = None  # Credential ID for GitHub PAT
+    # GitHub source mode (unidirectional pull from a branch)
+    source_branch: Optional[str] = "main"  # Branch to pull updates from
+    source_mode: Optional[bool] = True  # True = track source branch (pull only), False = create working branch
+    # Multi-runtime support
+    runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
+    runtime_model: Optional[str] = None  # Model override (e.g., "sonnet-4.5", "gemini-2.5-pro")
 
 
 class AgentStatus(BaseModel):
@@ -33,6 +39,7 @@ class AgentStatus(BaseModel):
     resources: dict
     container_id: Optional[str] = None
     template: Optional[str] = None
+    runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
 
     class Config:
         json_encoders = {
@@ -54,11 +61,6 @@ class Token(BaseModel):
     token_type: str
 
 
-class Auth0TokenExchange(BaseModel):
-    """Request model for Auth0 token exchange."""
-    auth0_token: str
-
-
 class BulkCredentialImport(BaseModel):
     """Request model for bulk credential import."""
     content: str  # .env-style content: KEY=VALUE pairs
@@ -75,6 +77,16 @@ class BulkCredentialResult(BaseModel):
 class HotReloadCredentialsRequest(BaseModel):
     """Request model for hot-reloading credentials."""
     credentials_text: str  # .env-style KEY=VALUE text
+
+
+class CredentialAssignRequest(BaseModel):
+    """Request model for assigning a credential to an agent."""
+    credential_id: str
+
+
+class CredentialBulkAssignRequest(BaseModel):
+    """Request model for bulk assigning credentials to an agent."""
+    credential_ids: List[str]
 
 
 class ChatMessageRequest(BaseModel):
@@ -94,7 +106,7 @@ class ParallelTaskRequest(BaseModel):
     model: Optional[str] = None  # Model override: sonnet, opus, haiku, or full model name
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
-    timeout_seconds: Optional[int] = 300  # Execution timeout (5 minutes default)
+    timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
 
 
 # ============================================================================

@@ -74,10 +74,35 @@ async def update_credentials(request: CredentialUpdateRequest):
         for var_name, value in request.credentials.items():
             os.environ[var_name] = str(value)
 
+        # 4. Write file-type credentials (e.g., service account JSON files)
+        files_written = []
+        if request.files:
+            for file_path, content in request.files.items():
+                try:
+                    # Resolve path relative to home directory
+                    # Strip leading slash if present to make it relative
+                    clean_path = file_path.lstrip("/")
+                    target_path = home_dir / clean_path
+
+                    # Create parent directories if needed
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Write the file
+                    target_path.write_text(content)
+
+                    # Set restrictive permissions (600 = owner read/write only)
+                    target_path.chmod(0o600)
+
+                    files_written.append(str(target_path))
+                    logger.info(f"Wrote credential file: {target_path}")
+                except Exception as e:
+                    logger.error(f"Failed to write credential file {file_path}: {e}")
+
         return {
             "status": "success",
-            "updated_files": updated_files,
+            "updated_files": updated_files + files_written,
             "credential_count": len(request.credentials),
+            "files_written": files_written,
             "note": "MCP servers may need to be restarted to pick up new credentials"
         }
 

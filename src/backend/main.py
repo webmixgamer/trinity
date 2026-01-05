@@ -8,7 +8,7 @@ Refactored for better concern separation:
 - config.py: Configuration constants
 - models.py: Pydantic models
 - dependencies.py: FastAPI dependencies (auth)
-- services/: Business logic (audit, docker, template)
+- services/: Business logic (docker, template)
 - routers/: API endpoints organized by domain
 - utils/: Helper functions
 """
@@ -20,7 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
-from config import CORS_ORIGINS, AUDIT_URL, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
+from config import CORS_ORIGINS, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
 from models import User
 from dependencies import get_current_user
 from services.docker_service import docker_client, list_all_agents
@@ -41,6 +41,10 @@ from routers.systems import router as systems_router
 from routers.observability import router as observability_router
 from routers.system_agent import router as system_agent_router, set_inject_trinity_meta_prompt
 from routers.ops import router as ops_router
+from routers.public_links import router as public_links_router, set_websocket_manager as set_public_links_ws_manager
+from routers.public import router as public_router
+from routers.setup import router as setup_router
+from routers.telemetry import router as telemetry_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -53,6 +57,9 @@ from services.system_agent_service import system_agent_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
+
+# Import logging configuration
+from logging_config import setup_logging
 
 
 class ConnectionManager:
@@ -83,6 +90,7 @@ manager = ConnectionManager()
 set_agents_ws_manager(manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
+set_public_links_ws_manager(manager)
 
 # Inject trinity meta-prompt function into system agent router
 set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
@@ -153,6 +161,9 @@ def initialize_github_pat():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    # Set up structured JSON logging (captured by Vector)
+    setup_logging()
+
     # Initialize GitHub PAT from environment to Redis
     initialize_github_pat()
 
@@ -207,8 +218,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Source-Agent", "Accept"],
 )
 
 # Include all routers
@@ -227,16 +238,58 @@ app.include_router(systems_router)
 app.include_router(observability_router)
 app.include_router(system_agent_router)
 app.include_router(ops_router)
+app.include_router(public_links_router)
+app.include_router(public_router)
+app.include_router(setup_router)
+app.include_router(telemetry_router)
 
 
 # WebSocket endpoint
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time updates."""
+async def websocket_endpoint(websocket: WebSocket, token: str = None):
+    """
+    WebSocket endpoint for real-time updates.
+
+    Accepts authentication via:
+    - Query parameter: /ws?token=<jwt_token>
+    - First message after connection (for backward compatibility)
+
+    SECURITY: Authentication is optional for read-only updates,
+    but should be enforced in production for sensitive data.
+    """
+    from jose import JWTError, jwt as jose_jwt
+    from config import SECRET_KEY, ALGORITHM
+
+    # Validate token if provided
+    authenticated = False
+    username = None
+
+    if token:
+        try:
+            payload = jose_jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if username:
+                authenticated = True
+        except JWTError:
+            # Invalid token - allow connection but mark as unauthenticated
+            # In production, you may want to reject the connection
+            pass
+
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            data = await websocket.receive_text()
+            # Could authenticate via first message if not done via query param
+            if not authenticated and data.startswith("Bearer "):
+                try:
+                    msg_token = data[7:]
+                    payload = jose_jwt.decode(msg_token, SECRET_KEY, algorithms=[ALGORITHM])
+                    username = payload.get("sub")
+                    if username:
+                        authenticated = True
+                        await websocket.send_text(json.dumps({"type": "authenticated", "user": username}))
+                except JWTError:
+                    pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -248,37 +301,30 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
 
-# Audit logs endpoint (admin only)
-@app.get("/api/audit/logs")
-async def get_audit_logs(
-    request: Request,
-    event_type: str = None,
-    agent_name: str = None,
-    limit: int = 100,
-    current_user: User = Depends(get_current_user)
-):
-    """Get audit logs (admin only)."""
-    if current_user.role != "admin":
-        from fastapi import HTTPException, status
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+# Version endpoint
+@app.get("/api/version")
+async def get_version():
+    """Get Trinity platform version information."""
+    import os
+    from pathlib import Path
 
-    try:
-        async with httpx.AsyncClient() as client:
-            params = {"limit": limit}
-            if event_type:
-                params["event_type"] = event_type
-            if agent_name:
-                params["agent_name"] = agent_name
+    # Read version from VERSION file
+    version_file = Path(__file__).parent.parent.parent / "VERSION"
+    version = "unknown"
+    if version_file.exists():
+        version = version_file.read_text().strip()
 
-            response = await client.get(
-                f"{AUDIT_URL}/api/audit/logs",
-                params=params,
-                timeout=5.0
-            )
-            return response.json()
-    except Exception as e:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"Failed to get audit logs: {str(e)}")
+    return {
+        "version": version,
+        "platform": "trinity",
+        "components": {
+            "backend": version,
+            "agent_server": version,
+            "base_image": f"trinity-agent-base:{version}"
+        },
+        "runtimes": ["claude-code", "gemini-cli"],
+        "build_date": os.getenv("BUILD_DATE", "unknown")
+    }
 
 
 # User info endpoint

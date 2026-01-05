@@ -10,7 +10,6 @@ export const useAgentsStore = defineStore('agents', {
     error: null,
     // Context stats for agents list page
     contextStats: {},  // Map of agent name -> stats
-    planStats: {},     // Map of agent name -> plan stats
     contextPollingInterval: null,
     sortBy: 'created_desc'  // Default sort order
   }),
@@ -96,7 +95,8 @@ export const useAgentsStore = defineStore('agents', {
         const response = await axios.post('/api/agents', config, {
           headers: authStore.authHeader
         })
-        this.agents.push(response.data)
+        // Don't push here - WebSocket 'agent_created' event handles adding to list
+        // This prevents duplicate entries from race conditions
         return response.data
       } catch (error) {
         this.error = error.response?.data?.detail || error.message
@@ -213,6 +213,41 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    // Credential Assignment Actions
+    async getCredentialAssignments(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/credentials/assignments`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async assignCredential(name, credentialId) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/credentials/assign`,
+        { credential_id: credentialId },
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
+    async unassignCredential(name, credentialId) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(`/api/agents/${name}/credentials/assign/${credentialId}`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async applyCredentials(name) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/credentials/apply`,
+        {},
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
     async getAgentStats(name) {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/stats`, {
@@ -289,6 +324,25 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    async addAgentPermission(sourceAgent, targetAgent) {
+      const authStore = useAuthStore()
+      const response = await axios.post(
+        `/api/agents/${sourceAgent}/permissions/${targetAgent}`,
+        {},
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
+    async removeAgentPermission(sourceAgent, targetAgent) {
+      const authStore = useAuthStore()
+      const response = await axios.delete(
+        `/api/agents/${sourceAgent}/permissions/${targetAgent}`,
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
     // Session Activity Actions
     async getSessionActivity(name) {
       const authStore = useAuthStore()
@@ -331,9 +385,9 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async syncToGithub(name, message = null, paths = null) {
+    async syncToGithub(name, { message = null, paths = null, strategy = 'normal' } = {}) {
       const authStore = useAuthStore()
-      const payload = {}
+      const payload = { strategy }
       if (message) payload.message = message
       if (paths) payload.paths = paths
       const response = await axios.post(`/api/agents/${name}/git/sync`,
@@ -343,11 +397,12 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async pullFromGithub(name) {
+    async pullFromGithub(name, { strategy = 'clean' } = {}) {
       const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/git/pull`, {}, {
-        headers: authStore.authHeader
-      })
+      const response = await axios.post(`/api/agents/${name}/git/pull`,
+        { strategy },
+        { headers: authStore.authHeader }
+      )
       return response.data
     },
 
@@ -360,10 +415,19 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async listAgentFiles(name, path = '/home/developer') {
+    async initializeGitHub(name, config) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/git/initialize`, config, {
+        headers: authStore.authHeader,
+        timeout: 120000 // 120 seconds (2 minutes) for git operations
+      })
+      return response.data
+    },
+
+    async listAgentFiles(name, path = '/home/developer', showHidden = false) {
       const authStore = useAuthStore()
       const response = await axios.get(`/api/agents/${name}/files`, {
-        params: { path },
+        params: { path, show_hidden: showHidden },
         headers: authStore.authHeader
       })
       return response.data
@@ -379,65 +443,39 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    // Plans / Task DAG Actions (Phase 9 - Pillar I: Explicit Planning)
-    async getAgentPlans(name, status = null) {
+    async deleteAgentFile(name, filePath) {
       const authStore = useAuthStore()
-      const params = status ? { status } : {}
-      const response = await axios.get(`/api/agents/${name}/plans`, {
-        params,
+      const response = await axios.delete(`/api/agents/${name}/files`, {
+        params: { path: filePath },
         headers: authStore.authHeader
       })
       return response.data
     },
 
-    async getAgentPlansSummary(name) {
+    async updateAgentFile(name, filePath, content) {
       const authStore = useAuthStore()
-      const response = await axios.get(`/api/agents/${name}/plans/summary`, {
+      const response = await axios.put(`/api/agents/${name}/files`, {
+        content
+      }, {
+        params: { path: filePath },
         headers: authStore.authHeader
       })
       return response.data
     },
 
-    async getAgentPlan(name, planId) {
+    async getFilePreviewBlob(name, filePath) {
       const authStore = useAuthStore()
-      const response = await axios.get(`/api/agents/${name}/plans/${planId}`, {
-        headers: authStore.authHeader
+      const response = await axios.get(`/api/agents/${name}/files/preview`, {
+        params: { path: filePath },
+        headers: authStore.authHeader,
+        responseType: 'blob'
       })
-      return response.data
-    },
-
-    async createAgentPlan(name, planData) {
-      const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/plans`, planData, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async updateAgentPlan(name, planId, updates) {
-      const authStore = useAuthStore()
-      const response = await axios.put(`/api/agents/${name}/plans/${planId}`, updates, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async deleteAgentPlan(name, planId) {
-      const authStore = useAuthStore()
-      const response = await axios.delete(`/api/agents/${name}/plans/${planId}`, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async updateAgentTask(name, planId, taskId, taskUpdate) {
-      const authStore = useAuthStore()
-      const response = await axios.put(
-        `/api/agents/${name}/plans/${planId}/tasks/${taskId}`,
-        taskUpdate,
-        { headers: authStore.authHeader }
-      )
-      return response.data
+      // Return blob URL for media elements
+      return {
+        url: URL.createObjectURL(response.data),
+        type: response.data.type,
+        size: response.data.size
+      }
     },
 
     // Custom Metrics Actions (Phase 9.9)
@@ -479,42 +517,6 @@ export const useAgentsStore = defineStore('agents', {
       }
     },
 
-    async fetchPlanStats() {
-      try {
-        const authStore = useAuthStore()
-        const response = await axios.get('/api/agents/plans/aggregate', {
-          headers: authStore.authHeader
-        })
-        const data = response.data
-
-        // Update per-agent plan stats from agent_summaries
-        const newPlanStats = {}
-        if (data.agent_summaries) {
-          data.agent_summaries.forEach(agentData => {
-            const agentName = agentData.agent_name
-            const totalTasks = agentData.total_tasks || 0
-            const completedTasks = agentData.completed_tasks || 0
-
-            newPlanStats[agentName] = {
-              activePlan: agentData.active_plans > 0,
-              totalPlans: agentData.total_plans || 0,
-              activeTasks: agentData.active_tasks || 0,
-              completedTasks: completedTasks,
-              totalTasks: totalTasks,
-              currentTask: agentData.current_task?.name || null,
-              taskProgress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-            }
-          })
-        }
-        this.planStats = newPlanStats
-      } catch (error) {
-        // Don't log 404 errors as they're expected when no plans exist
-        if (error.response?.status !== 404) {
-          console.error('Failed to fetch plan stats:', error)
-        }
-      }
-    },
-
     startContextPolling() {
       if (this.contextPollingInterval) {
         clearInterval(this.contextPollingInterval)
@@ -522,15 +524,13 @@ export const useAgentsStore = defineStore('agents', {
 
       // Fetch immediately
       this.fetchContextStats()
-      this.fetchPlanStats()
 
       // Then poll every 5 seconds
       this.contextPollingInterval = setInterval(() => {
         this.fetchContextStats()
-        this.fetchPlanStats()
       }, 5000)
 
-      console.log('[Agents] Started context and plan polling (every 5s)')
+      console.log('[Agents] Started context polling (every 5s)')
     },
 
     stopContextPolling() {
@@ -576,6 +576,45 @@ export const useAgentsStore = defineStore('agents', {
         headers: authStore.authHeader
       })
       return response.data.consumers || []
+    },
+
+    // API Key Settings (Per-agent authentication control)
+    async getAgentApiKeySetting(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/api-key-setting`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async updateAgentApiKeySetting(name, usePlatformKey) {
+      const authStore = useAuthStore()
+      const response = await axios.put(`/api/agents/${name}/api-key-setting`, {
+        use_platform_api_key: usePlatformKey
+      }, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    // Resource Limits (Per-agent memory and CPU allocation)
+    async getResourceLimits(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/resources`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
+    async setResourceLimits(name, memory, cpu) {
+      const authStore = useAuthStore()
+      const response = await axios.put(`/api/agents/${name}/resources`, {
+        memory: memory,
+        cpu: cpu
+      }, {
+        headers: authStore.authHeader
+      })
+      return response.data
     }
   }
 })

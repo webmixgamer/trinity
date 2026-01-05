@@ -1,5 +1,7 @@
 """
 Claude Code execution service.
+
+Now implements AgentRuntime interface for multi-provider support.
 """
 import os
 import json
@@ -7,7 +9,7 @@ import uuid
 import asyncio
 import subprocess
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +19,7 @@ from fastapi import HTTPException
 from ..models import ExecutionLogEntry, ExecutionMetadata
 from ..state import agent_state
 from .activity_tracking import start_tool_execution, complete_tool_execution
+from .runtime_adapter import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,72 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # Asyncio lock for execution serialization (safety net for parallel request prevention)
 # The platform-level execution queue is the primary protection, but this is defense-in-depth
 _execution_lock = asyncio.Lock()
+
+
+class ClaudeCodeRuntime(AgentRuntime):
+    """Claude Code implementation of AgentRuntime interface."""
+
+    def is_available(self) -> bool:
+        """Check if Claude Code CLI is installed."""
+        try:
+            result = subprocess.run(
+                ["claude", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def get_default_model(self) -> str:
+        """Get default Claude model."""
+        return "sonnet"  # Claude Sonnet 4.5
+
+    def get_context_window(self, model: Optional[str] = None) -> int:
+        """Get context window for Claude models."""
+        # Check for 1M context models
+        if model and "[1m]" in model.lower():
+            return 1000000
+        return 200000  # Standard 200K context
+
+    def configure_mcp(self, mcp_servers: Dict) -> bool:
+        """
+        Configure MCP servers via .mcp.json file.
+        Claude Code reads from ~/.mcp.json automatically.
+        """
+        try:
+            mcp_config_path = Path.home() / ".mcp.json"
+            config = {"mcpServers": mcp_servers}
+            mcp_config_path.write_text(json.dumps(config, indent=2))
+            logger.info(f"Configured {len(mcp_servers)} MCP servers for Claude Code")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to configure MCP: {e}")
+            return False
+
+    async def execute(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        continue_session: bool = False,
+        stream: bool = False
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+        """Execute Claude Code with the given prompt."""
+        # Note: continue_session is handled internally by agent_state.session_started
+        # The execute_claude_code function checks agent_state and uses --continue automatically
+        return await execute_claude_code(prompt, stream, model)
+
+    async def execute_headless(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        timeout_seconds: int = 900
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
+        """Execute Claude Code in headless mode for parallel tasks."""
+        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds)
 
 
 def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
@@ -454,7 +523,7 @@ async def execute_headless_task(
     model: Optional[str] = None,
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
-    timeout_seconds: int = 300
+    timeout_seconds: int = 900
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     """
     Execute Claude Code in headless mode for parallel task execution.
@@ -516,6 +585,8 @@ async def execute_headless_task(
 
         # Initialize tracking structures
         execution_log: List[ExecutionLogEntry] = []
+        raw_messages: List[Dict] = []  # Capture ALL raw JSON messages from Claude Code
+        verbose_output_lines: List[str] = []  # Capture verbose text output (stderr)
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
@@ -540,24 +611,46 @@ async def execute_headless_task(
         # Helper function that reads subprocess output (runs in thread pool)
         def read_subprocess_output_with_timeout():
             """Blocking function to read subprocess output line by line with timeout"""
+            import threading
+
+            # Read stderr in separate thread (verbose output with thinking/tool calls)
+            def read_stderr():
+                try:
+                    for line in iter(process.stderr.readline, ''):
+                        if not line:
+                            break
+                        verbose_output_lines.append(line.rstrip('\n'))
+                except Exception as e:
+                    logger.error(f"[Headless Task] Error reading stderr: {e}")
+
+            stderr_thread = threading.Thread(target=read_stderr)
+            stderr_thread.start()
+
+            # Read stdout (stream-json for metadata)
             try:
                 for line in iter(process.stdout.readline, ''):
                     if not line:
                         break
-                    # Process each line immediately
+                    # Capture raw JSON for full execution log
+                    try:
+                        raw_msg = json.loads(line.strip())
+                        raw_messages.append(raw_msg)
+                    except json.JSONDecodeError:
+                        pass
+                    # Process each line for metadata/tool tracking
                     process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
             except Exception as e:
-                logger.error(f"[Headless Task] Error reading output: {e}")
+                logger.error(f"[Headless Task] Error reading stdout: {e}")
 
-            # Wait for process to complete and get stderr
-            stderr = process.stderr.read()
+            # Wait for stderr thread and process to complete
+            stderr_thread.join(timeout=5)
             return_code = process.wait()
-            return stderr, return_code
+            return return_code
 
         # Run with timeout using asyncio
         loop = asyncio.get_event_loop()
         try:
-            stderr_output, return_code = await asyncio.wait_for(
+            return_code = await asyncio.wait_for(
                 loop.run_in_executor(None, read_subprocess_output_with_timeout),
                 timeout=timeout_seconds
             )
@@ -571,12 +664,16 @@ async def execute_headless_task(
                 detail=f"Task execution timed out after {timeout_seconds} seconds"
             )
 
+        # Build verbose transcript from stderr (the human-readable execution log)
+        verbose_transcript = "\n".join(verbose_output_lines)
+
         # Check for errors
         if return_code != 0:
-            logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {stderr_output[:500]}")
+            error_preview = verbose_transcript[:500] if verbose_transcript else "Unknown error"
+            logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {error_preview}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Task execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                detail=f"Task execution failed: {error_preview[:200]}"
             )
 
         # Build final response text
@@ -595,12 +692,25 @@ async def execute_headless_task(
         # Use session_id from Claude if available, otherwise use our generated one
         final_session_id = metadata.session_id or task_session_id
 
-        logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}")
+        logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
 
-        return response_text, execution_log, metadata, final_session_id
+        # Return raw_messages as the execution log (full JSON transcript from Claude Code)
+        # Contains: init, assistant (thinking/tool_use), user (tool_result), result
+        return response_text, raw_messages, metadata, final_session_id
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[Headless Task] Execution error: {e}")
         raise HTTPException(status_code=500, detail=f"Task execution error: {str(e)}")
+
+
+# Global Claude Code runtime instance
+_claude_runtime = None
+
+def get_claude_runtime() -> ClaudeCodeRuntime:
+    """Get or create the global Claude Code runtime instance."""
+    global _claude_runtime
+    if _claude_runtime is None:
+        _claude_runtime = ClaudeCodeRuntime()
+    return _claude_runtime

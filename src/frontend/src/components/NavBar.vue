@@ -23,6 +23,13 @@
               Agents
             </router-link>
             <router-link
+              to="/files"
+              class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/files' }"
+            >
+              Files
+            </router-link>
+            <router-link
               to="/credentials"
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/credentials' }"
@@ -41,7 +48,7 @@
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/api-keys' }"
             >
-              MCP Keys
+              Keys
             </router-link>
             <router-link
               v-if="isAdmin"
@@ -49,9 +56,6 @@
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/system-agent' }"
             >
-              <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-              </svg>
               System
             </router-link>
             <router-link
@@ -181,7 +185,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth0 } from '@auth0/auth0-vue'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import { useWebSocket } from '../utils/websocket'
@@ -213,9 +216,6 @@ const cycleTheme = () => {
 const setTheme = (theme) => {
   themeStore.setTheme(theme)
 }
-
-// Auth0 is always available (plugin always loaded)
-const auth0 = useAuth0()
 
 // User menu state
 const showUserMenu = ref(false)
@@ -253,9 +253,8 @@ const handleClickOutside = (event) => {
 const handleLogout = () => {
   showUserMenu.value = false
 
-  // Clear local auth state and handle Auth0 logout if in prod mode
-  // The authStore.logout() will call auth0.logout() if not in dev mode
-  authStore.logout(auth0.logout)
+  // Clear local auth state
+  authStore.logout()
 
   // Redirect to login
   router.push('/login')

@@ -148,6 +148,7 @@ class ScheduleExecution(BaseModel):
     context_max: Optional[int] = None   # Max context window
     cost: Optional[float] = None        # Cost in USD
     tool_calls: Optional[str] = None    # JSON array of tool calls
+    execution_log: Optional[str] = None # Full Claude Code execution transcript (JSON)
 
 
 # =========================================================================
@@ -159,8 +160,10 @@ class AgentGitConfig(BaseModel):
     id: str
     agent_name: str
     github_repo: str  # e.g., "Abilityai/agent-ruby"
-    working_branch: str  # e.g., "trinity/my-agent/abc123"
+    working_branch: str  # e.g., "trinity/my-agent/abc123" (legacy) or "main" (source mode)
     instance_id: str  # Unique instance identifier
+    source_branch: str = "main"  # Branch to pull from (default: main)
+    source_mode: bool = False  # If True, track source_branch directly (no working branch)
     created_at: datetime
     last_sync_at: Optional[datetime] = None
     last_commit_sha: Optional[str] = None
@@ -176,6 +179,7 @@ class GitSyncResult(BaseModel):
     files_changed: int = 0
     branch: Optional[str] = None
     sync_time: Optional[datetime] = None
+    conflict_type: Optional[str] = None  # "push_rejected", "merge_conflict", etc.
 
 
 # =========================================================================
@@ -288,3 +292,120 @@ class SystemSetting(BaseModel):
 class SystemSettingUpdate(BaseModel):
     """Request model for updating a system setting."""
     value: str
+
+
+# =========================================================================
+# Public Agent Link Models (Phase 12.2: Public Agent Links)
+# =========================================================================
+
+class PublicLinkCreate(BaseModel):
+    """Request model for creating a public link."""
+    name: Optional[str] = None  # Friendly name for the link
+    require_email: bool = False  # Whether email verification is required
+    expires_at: Optional[str] = None  # ISO timestamp for expiration
+
+
+class PublicLinkUpdate(BaseModel):
+    """Request model for updating a public link."""
+    name: Optional[str] = None
+    enabled: Optional[bool] = None
+    require_email: Optional[bool] = None
+    expires_at: Optional[str] = None
+
+
+class PublicLink(BaseModel):
+    """A public shareable link for an agent."""
+    id: str
+    agent_name: str
+    token: str
+    created_by: str  # User ID who created the link
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+    enabled: bool = True
+    name: Optional[str] = None
+    require_email: bool = False
+
+
+class PublicLinkWithUrl(PublicLink):
+    """Public link with generated URL."""
+    url: str
+    usage_stats: Optional[dict] = None
+
+
+class PublicLinkInfo(BaseModel):
+    """Public-facing link information (no sensitive data)."""
+    valid: bool
+    require_email: bool = False
+    agent_available: bool = True
+    reason: Optional[str] = None  # "expired", "disabled", "not_found"
+
+
+class VerificationRequest(BaseModel):
+    """Request to send a verification code."""
+    token: str  # The public link token
+    email: str  # Email to verify
+
+
+class VerificationConfirm(BaseModel):
+    """Request to confirm a verification code."""
+    token: str  # The public link token
+    email: str
+    code: str  # 6-digit code
+
+
+class VerificationResponse(BaseModel):
+    """Response after verification confirmation."""
+    verified: bool
+    session_token: Optional[str] = None
+    expires_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class PublicChatRequest(BaseModel):
+    """Request to chat via a public link."""
+    message: str
+    session_token: Optional[str] = None  # Required if link requires email verification
+
+
+class PublicChatResponse(BaseModel):
+    """Response from a public chat."""
+    response: str
+    usage: Optional[dict] = None  # {"input_tokens": N, "output_tokens": N}
+
+
+# =========================================================================
+# Email Authentication Models (Phase 12.4)
+# =========================================================================
+
+class EmailWhitelistEntry(BaseModel):
+    """An email address in the whitelist."""
+    id: int
+    email: str
+    added_by: str  # User ID
+    added_by_username: Optional[str] = None
+    added_at: datetime
+    source: str  # "manual", "agent_sharing"
+
+
+class EmailWhitelistAdd(BaseModel):
+    """Request to add an email to the whitelist."""
+    email: str
+    source: str = "manual"
+
+
+class EmailLoginRequest(BaseModel):
+    """Request a login code via email."""
+    email: str
+
+
+class EmailLoginVerify(BaseModel):
+    """Verify a login code."""
+    email: str
+    code: str  # 6-digit code
+
+
+class EmailLoginResponse(BaseModel):
+    """Response after successful login."""
+    access_token: str
+    token_type: str = "bearer"
+    user: dict  # User profile

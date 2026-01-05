@@ -14,18 +14,18 @@ As an admin, I want to define custom instructions that apply to all agents so th
 
 ### Components
 - `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Settings.vue` - Full Settings page with:
-  - Textarea for editing Trinity Prompt (lines 39-51)
-  - Save/Clear buttons (lines 66-85)
-  - Character count display (line 61)
-  - Unsaved changes indicator (line 62)
+  - Textarea for editing Trinity Prompt (lines 240-252)
+  - Save/Clear buttons (lines 267-286)
+  - Character count display (line 262)
+  - Unsaved changes indicator (line 263)
   - Error message display (lines 114-126)
   - Success message display (lines 128-140)
 
 ### State Management
 - `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/settings.js`
-  - `fetchSettings()` - Fetches all settings from backend (lines 23-43)
-  - `updateSetting(key, value)` - Updates a setting via PUT (lines 66-81)
-  - `deleteSetting(key)` - Deletes a setting via DELETE (lines 87-102)
+  - `fetchSettings()` - Fetches all settings from backend (lines 23-42)
+  - `updateSetting(key, value)` - Updates a setting via PUT (lines 66-80)
+  - `deleteSetting(key)` - Deletes a setting via DELETE (lines 87-101)
   - `trinityPrompt` getter - Returns settings['trinity_prompt'] (lines 13-15)
 
 ### API Calls
@@ -54,13 +54,13 @@ await axios.delete('/api/settings/trinity_prompt')
 
 ### Endpoints
 - `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/settings.py`
-  - `GET /api/settings` (line 24) - List all settings (admin-only)
-  - `GET /api/settings/{key}` (line 52) - Get specific setting (admin-only)
-  - `PUT /api/settings/{key}` (line 88) - Create/update setting (admin-only)
-  - `DELETE /api/settings/{key}` (line 130) - Delete setting (admin-only)
+  - `GET /api/settings` (line 98) - List all settings (admin-only)
+  - `GET /api/settings/{key}` (line 660) - Get specific setting (admin-only)
+  - `PUT /api/settings/{key}` (line 696) - Create/update setting (admin-only)
+  - `DELETE /api/settings/{key}` (line 738) - Delete setting (admin-only)
 
 ### Business Logic
-1. **Admin Check** (lines 18-21):
+1. **Admin Check** (lines 92-95):
    ```python
    def require_admin(current_user: User):
        if current_user.role != "admin":
@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS system_settings (
 ## Agent Injection Flow
 
 ### Backend Agent Startup
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py:50-111`
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/lifecycle.py:23-81`
   - `inject_trinity_meta_prompt(agent_name)` function
-  - Called during `start_agent_internal()` (line 147)
+  - Called during `start_agent_internal()` (line 120)
 
-**Injection Logic** (lines 72-80):
+**Injection Logic** (lines 42-50):
 ```python
 # Fetch system-wide custom prompt setting
 custom_prompt = db.get_setting_value("trinity_prompt", default=None)
@@ -122,11 +122,11 @@ if custom_prompt:
 ```
 
 ### Agent-Server Injection
-- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/trinity.py:86-304`
-  - `POST /api/trinity/inject` endpoint (line 86)
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/trinity.py:54-187`
+  - `POST /api/trinity/inject` endpoint (line 54)
   - Handles `TrinityInjectRequest.custom_prompt` field
 
-**Custom Instructions Injection** (lines 239-248):
+**Custom Instructions Injection** (lines 122-131):
 ```python
 # Build the custom instructions section if provided
 custom_section = ""
@@ -139,15 +139,15 @@ if request.custom_prompt and request.custom_prompt.strip():
 """
 ```
 
-**CLAUDE.md Update** (lines 250-289):
+**CLAUDE.md Update** (lines 133-172):
 - If CLAUDE.md exists and has Trinity section: Append/update Custom Instructions
 - If CLAUDE.md exists without Trinity: Add both sections
 - If CLAUDE.md doesn't exist: Create with Trinity + Custom sections
-- Removes existing "## Custom Instructions" before updating (lines 254-263)
-- Tracks `had_custom_instructions` flag to ensure removal when prompt is cleared (lines 255-262)
+- Removes existing "## Custom Instructions" before updating (lines 137-146)
+- Tracks `had_custom_instructions` flag to ensure removal when prompt is cleared (lines 138-145)
 
 ### Models
-- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/models.py:177-180`
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/models.py:178-181`
   ```python
   class TrinityInjectRequest(BaseModel):
       force: bool = False
@@ -341,10 +341,9 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
 ## Related Flows
 - **Upstream**: Admin authentication (auth0-authentication.md)
 - **Downstream**: Agent Lifecycle (agent-lifecycle.md) - Trinity injection at startup
-- **Related**: Workplan System (workplan-system.md) - Other Trinity injections
 
 ---
 
 *Document created: 2025-12-13*
 *Feature implemented: 2025-12-13*
-*Last updated: 2025-12-19* (verified line numbers against modular codebase structure)
+*Last updated: 2025-12-30* (verified line numbers against current codebase)

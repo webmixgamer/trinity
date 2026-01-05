@@ -21,11 +21,12 @@
 11. [Shared Folders](#shared-folders)
 12. [Custom Metrics](#custom-metrics)
 13. [Memory Management](#memory-management)
-14. [Testing Locally](#testing-locally)
-15. [Compatibility Checklist](#compatibility-checklist)
-16. [Migration Guide](#migration-guide)
-17. [Troubleshooting](#troubleshooting)
-18. [Best Practices](#best-practices)
+14. [Content Folder Convention](#content-folder-convention)
+15. [Testing Locally](#testing-locally)
+16. [Compatibility Checklist](#compatibility-checklist)
+17. [Migration Guide](#migration-guide)
+18. [Troubleshooting](#troubleshooting)
+19. [Best Practices](#best-practices)
 
 ---
 
@@ -48,10 +49,10 @@ Trinity implements infrastructure for **System 2 AI** — Deep Agents that plan,
 
 | Pillar | Description | Agent Responsibility | Platform Responsibility |
 |--------|-------------|---------------------|------------------------|
-| **I. Explicit Planning** | Task DAGs persisting outside context window | Execute plans following injected instructions | **Inject planning prompt**, store DAGs, visualize |
+| **I. Explicit Planning** | Scheduling and activity tracking | Respond to scheduled triggers | Cron scheduling, activity timeline |
 | **II. Hierarchical Delegation** | Orchestrator-Worker with context quarantine | Call other agents via MCP | Route messages, enforce access control |
 | **III. Persistent Memory** | Virtual filesystems, memory management | Manage own memory files | GitHub sync, file browser, storage |
-| **IV. Extreme Context Engineering** | High-Order Prompts defining reasoning | Domain-specific CLAUDE.md | **Inject Trinity Meta-Prompt**, credential injection |
+| **IV. Extreme Context Engineering** | High-Order Prompts defining reasoning | Domain-specific CLAUDE.md | Credential injection, MCP config |
 
 **Key Insight**: Agents focus on **domain expertise**. Trinity handles **orchestration infrastructure**.
 
@@ -139,7 +140,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets and platform-managed directories:
+Must exclude secrets, platform-managed directories, and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -152,6 +153,9 @@ credentials.json
 # Platform-managed directories - DO NOT COMMIT
 .trinity/
 .claude/commands/trinity/
+
+# Large generated content - DO NOT COMMIT
+content/
 
 # Claude Code session data
 .claude/projects/
@@ -186,7 +190,6 @@ my-agent/
 │
 ├── .trinity/                      # PLATFORM-MANAGED (injected at startup)
 │   ├── prompt.md                  # Trinity Meta-Prompt (injected)
-│   ├── vector-memory.md           # Chroma usage documentation
 │   └── version.json               # Injection version tracking
 │
 ├── .claude/
@@ -209,15 +212,15 @@ my-agent/
 │   ├── preferences.json           # User preferences
 │   └── session_notes/             # Per-session notes
 │
-├── plans/                         # Task DAGs (managed via platform commands)
-│   ├── active/                    # Currently executing plans
-│   │   └── {plan-id}.yaml         # Active plan with task states
-│   └── archive/                   # Finished plans
-│
 ├── outputs/                       # Generated content (COMMITTED)
 │   ├── reports/
-│   ├── content/
-│   └── exports/
+│   └── data/
+│
+├── content/                       # Large generated assets (NOT COMMITTED)
+│   ├── videos/                    # Generated video files
+│   ├── audio/                     # Generated audio files
+│   ├── images/                    # Generated images
+│   └── exports/                   # Data exports, large files
 │
 ├── scripts/                       # Helper scripts
 └── resources/                     # Static resources
@@ -244,6 +247,12 @@ description: |
 resources:
   cpu: "2"                        # CPU cores (string)
   memory: "4g"                    # Memory limit (e.g., "2g", "4g", "8g")
+
+# === RUNTIME CONFIGURATION (Optional) ===
+# Defaults to Claude Code if not specified
+runtime:
+  type: claude-code               # "claude-code" or "gemini-cli"
+  model: sonnet                   # Optional model override (e.g., "gemini-2.5-pro")
 
 # === CREDENTIAL SCHEMA ===
 # Trinity uses this to inject secrets
@@ -308,24 +317,29 @@ platforms:
   - local
 
 # === GIT CONFIGURATION ===
+# Two sync modes are available:
+#
+# SOURCE MODE (default): Pull-only from GitHub
+#   - Agent tracks the source branch (main) directly
+#   - Changes are pulled from GitHub, never pushed back
+#   - Use when developing locally and pushing to GitHub
+#   - git.push_enabled is ignored in this mode
+#
+# WORKING BRANCH MODE (legacy): Bidirectional sync
+#   - Agent creates unique branch: trinity/{agent}/{instance-id}
+#   - Changes can be pushed back to GitHub
+#   - Set source_mode=false when creating agent to enable
+#
 git:
-  push_enabled: true
-  commit_paths:
+  push_enabled: true              # Only applies to Working Branch Mode
+  commit_paths:                   # Paths auto-committed on sync (Working Branch Mode only)
     - memory/
-    - plans/
     - outputs/
     - CLAUDE.md
   ignore_paths:
     - .mcp.json
     - .env
     - "*.log"
-
-# === TASK PLANNING ===
-planning:
-  enabled: true
-  max_active_plans: 5
-  default_task_timeout_minutes: 30
-  auto_checkpoint: true           # Auto-commit on plan completion
 
 # === SHARED FOLDERS ===
 # File-based collaboration between agents
@@ -402,6 +416,50 @@ These are injected by the platform - don't add them to your CLAUDE.md:
 
 ---
 
+## Runtime Options
+
+Trinity supports multiple AI runtimes, allowing you to choose the best provider for each agent's use case.
+
+### Available Runtimes
+
+| Runtime | Provider | Context Window | Pricing | Best For |
+|---------|----------|----------------|---------|----------|
+| `claude-code` | Anthropic | 200K tokens | Pay-per-use | Complex reasoning, code quality |
+| `gemini-cli` | Google | 1M tokens | Free tier | Large codebases, data processing |
+
+### Configuring Runtime in template.yaml
+
+```yaml
+# Option 1: Simple runtime selection
+runtime:
+  type: gemini-cli
+
+# Option 2: With model override
+runtime:
+  type: gemini-cli
+  model: gemini-2.5-pro
+
+# Option 3: Claude with specific model
+runtime:
+  type: claude-code
+  model: opus  # or sonnet, haiku
+```
+
+### Default Behavior
+
+If `runtime:` is not specified, agents default to `claude-code` for backward compatibility.
+
+### Environment Requirements
+
+| Runtime | Required Environment Variable |
+|---------|------------------------------|
+| `claude-code` | `ANTHROPIC_API_KEY` |
+| `gemini-cli` | `GOOGLE_API_KEY` |
+
+See [Gemini Support Guide](GEMINI_SUPPORT.md) for detailed setup instructions and cost comparisons.
+
+---
+
 ## Credential Management
 
 ### Credential Injection Flow
@@ -441,21 +499,16 @@ Trinity controls agent behavior through **runtime injection**. This ensures:
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **Trinity Meta-Prompt** | `.trinity/prompt.md` + CLAUDE.md section | Planning instructions, collaboration protocols |
-| **Platform Commands** | `.claude/commands/trinity/` | `/trinity-plan-*` commands |
+| **Trinity Meta-Prompt** | `.trinity/prompt.md` + CLAUDE.md section | Collaboration protocols |
 | **Trinity MCP Config** | `.mcp.json` (merged) | Agent-to-agent collaboration tools |
-| **Chroma MCP Config** | `.mcp.json` (merged) | Vector memory tools |
 | **Credentials** | `.env`, `.mcp.json` | API keys, tokens |
-| **Vector Memory Docs** | `.trinity/vector-memory.md` | Chroma usage documentation |
 
 ### Injection Timing
 
 **On Agent Start:**
 1. Trinity Meta-Prompt injected/updated in `.trinity/` and CLAUDE.md
-2. Platform commands created in `.claude/commands/trinity/`
-3. MCP servers (Trinity, Chroma) injected into `.mcp.json`
-4. Credentials injected into `.env` and `.mcp.json`
-5. `plans/active/` and `plans/archive/` directories created
+2. Trinity MCP server injected into `.mcp.json`
+3. Credentials injected into `.env` and `.mcp.json`
 
 ### CLAUDE.md After Injection
 
@@ -475,95 +528,6 @@ You are running on the **Trinity Deep Agent Platform**...
 # Agent Name
 [Your agent's own content starts here...]
 ```
-
----
-
-## Task Planning System
-
-Deep Agents need plans that persist **outside the context window**:
-
-- Context resets don't lose progress
-- Multiple agents can collaborate on same plan
-- Human oversight of agent reasoning
-- Recovery from failures with plan state intact
-
-### Plan File Format
-
-Plans are stored as YAML in `plans/active/{plan-id}.yaml`:
-
-```yaml
-id: "plan-abc123"
-name: "Research and write blog post"
-created_at: "2025-12-05T10:00:00Z"
-created_by: "agent-ruby"
-status: "active"  # active | completed | failed | paused
-
-goal: |
-  Research the topic of AI agents and produce a 1500-word blog post.
-
-tasks:
-  - id: "task-001"
-    name: "Research topic"
-    status: "completed"
-    started_at: "2025-12-05T10:01:00Z"
-    completed_at: "2025-12-05T10:15:00Z"
-    result_summary: "Found 12 relevant sources"
-    depends_on: []
-
-  - id: "task-002"
-    name: "Create outline"
-    status: "completed"
-    depends_on: ["task-001"]
-
-  - id: "task-003"
-    name: "Write draft"
-    status: "active"
-    depends_on: ["task-002"]
-    assigned_to: "agent-ruby"
-
-  - id: "task-004"
-    name: "Generate social snippets"
-    status: "pending"
-    depends_on: ["task-003"]
-
-  - id: "task-005"
-    name: "Review and publish"
-    status: "blocked"
-    depends_on: ["task-003", "task-004"]
-    blocked_reason: "Waiting for draft completion"
-
-metadata:
-  total_tasks: 5
-  completed_tasks: 2
-```
-
-### Task State Machine
-
-```
-                    ┌──────────────────────────────────────┐
-                    │                                      │
-                    ▼                                      │
-┌─────────┐    ┌─────────┐    ┌───────────┐    ┌─────────┴─┐
-│ pending │───►│ active  │───►│ completed │    │  failed   │
-└─────────┘    └─────────┘    └───────────┘    └───────────┘
-     │              │                               ▲
-     │              │                               │
-     ▼              └───────────────────────────────┘
-┌─────────┐
-│ blocked │  (waiting on dependencies)
-└─────────┘
-```
-
-### Platform-Injected Commands
-
-These commands are automatically available after Trinity injection:
-
-| Command | Purpose |
-|---------|---------|
-| `/trinity-plan-create` | Create a new task plan |
-| `/trinity-plan-status` | View all active plans |
-| `/trinity-plan-update` | Update task status |
-| `/trinity-plan-list` | List all plans |
 
 ---
 
@@ -709,15 +673,59 @@ Agents should periodically compress old context:
 1. At session end, review `session_notes/`
 2. Extract key learnings → append to `context.md`
 3. Archive verbose notes to `summaries/`
-4. Commit via `/trinity-commit` or Git sync
+4. Commit via Git sync
 
-### Vector Memory (Chroma)
+---
 
-Each agent has access to a Chroma vector database for semantic memory:
+## Content Folder Convention
 
-- **Location**: `/home/developer/vector-store/`
-- **Access**: Via `mcp__chroma__*` tools (auto-injected)
-- **Persistence**: Survives agent restarts
+For agents that generate large files (videos, audio, images, exports), Trinity provides a standard convention to prevent Git repository bloat.
+
+### The Problem
+
+Large generated files:
+- Bloat Git repositories (video files can be 100s of MB)
+- Slow down GitHub sync operations
+- Risk accidental commits
+
+### The Solution
+
+Trinity automatically creates a `content/` directory structure:
+
+```
+/home/developer/content/
+├── videos/      # Generated video files
+├── audio/       # Generated audio files
+├── images/      # Generated images
+└── exports/     # Data exports, large files
+```
+
+**Key Properties:**
+- ✅ **Persists** - Files survive container restarts (same Docker volume as workspace)
+- ✅ **Excluded from Git** - Automatically added to `.gitignore`
+- ✅ **Not synced** - Git sync ignores `content/` directory
+
+### Usage in Your Agent
+
+When generating large assets, save them to `content/`:
+
+```python
+# In your agent's scripts
+output_path = "/home/developer/content/videos/my-video.mp4"
+```
+
+```markdown
+# In your CLAUDE.md
+When generating videos, save them to `content/videos/`.
+When exporting data, save to `content/exports/`.
+```
+
+### outputs/ vs content/
+
+| Directory | Synced to Git? | Use For |
+|-----------|---------------|---------|
+| `outputs/` | ✅ Yes | Small files you want versioned (reports, summaries) |
+| `content/` | ❌ No | Large files that shouldn't be in Git (videos, audio) |
 
 ---
 
@@ -755,7 +763,7 @@ fi
 cat .mcp.json.template | envsubst > .mcp.json
 
 # Create directories
-mkdir -p memory plans/active plans/archive outputs
+mkdir -p memory outputs
 
 echo "Agent ready for local development"
 ```
@@ -775,9 +783,7 @@ An agent is Trinity-compatible if:
 
 ### Directory Structure
 - [ ] Has `memory/` directory for persistent state
-- [ ] Has `plans/` directory (created by platform if missing)
 - [ ] Does NOT have `.trinity/` in repo (platform creates this)
-- [ ] Does NOT have `.claude/commands/trinity/` in repo (platform injects this)
 
 ### Security
 - [ ] No credentials stored in repository
@@ -785,8 +791,7 @@ An agent is Trinity-compatible if:
 - [ ] Sensitive files excluded from git sync paths
 
 ### Behavior
-- [ ] Agent CLAUDE.md does NOT include planning instructions (platform injects them)
-- [ ] Agent does NOT define `/trinity-*` commands (platform injects them)
+- [ ] Agent CLAUDE.md focuses on domain-specific instructions
 - [ ] Can run both locally (with init.sh) and on Trinity platform
 
 ---
@@ -960,15 +965,69 @@ See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensiv
 
 ---
 
+## Autonomous Agent Design
+
+Trinity agents achieve autonomy through a three-phase lifecycle:
+
+```
+DEVELOP → PACKAGE → SCHEDULE
+```
+
+1. **Develop** — Refine procedures interactively until they consistently produce good results
+2. **Package** — Codify proven procedures as slash commands in `.claude/commands/`
+3. **Schedule** — Run commands on cron via `schedules:` in template.yaml or the UI
+
+### Autonomy Design Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **Self-contained** | No user input during execution |
+| **Deterministic output** | Consistent format for parsing/alerts |
+| **Graceful degradation** | Partial results better than failure |
+| **Bounded scope** | Predictable runtime and cost |
+| **Idempotent** | Safe to run multiple times |
+
+### Quick Example
+
+```yaml
+# template.yaml
+schedules:
+  - name: Morning Health Check
+    cron: "0 8 * * *"
+    message: "/health-check"
+    timezone: "UTC"
+    enabled: true
+```
+
+```markdown
+# .claude/commands/health-check.md
+---
+description: Automated fleet health check
+allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
+---
+
+# Health Check
+1. List all agents using `mcp__trinity__list_agents`
+2. Evaluate context usage and last activity
+3. Generate structured report
+```
+
+→ **Full guide**: [Autonomous Agent Design Guide](AUTONOMOUS_AGENT_DESIGN.md)
+
+---
+
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
+| 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |
+| 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |
+| 2025-12-24 | Removed Chroma MCP integration - templates should include their own vector memory if needed |
 | 2025-12-18 | Added Multi-Agent Systems section with System Manifest deployment reference |
 | 2025-12-14 | Consolidated from AGENT_TEMPLATE_SPEC.md and trinity-compatible-agent.md |
-| 2025-12-13 | Added shared folders and Chroma MCP integration |
+| 2025-12-13 | Added shared folders |
 | 2025-12-10 | Added custom metrics specification |
-| 2025-12-05 | Added Task DAG system (Pillar I) |
 
 ---
 

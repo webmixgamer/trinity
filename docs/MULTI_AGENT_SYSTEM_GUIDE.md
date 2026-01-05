@@ -70,71 +70,16 @@ Before designing your multi-agent system, understand what Trinity provides **aut
 
 When an agent starts, Trinity calls `POST /api/trinity/inject` on the agent container. This:
 
-1. **Creates directories**: `.trinity/`, `.claude/commands/trinity/`, `plans/active/`, `plans/archive/`, `vector-store/`
+1. **Creates directories**: `.trinity/`
 2. **Copies documentation**: Platform docs to `.trinity/` directory
-3. **Injects MCP servers**: Adds Trinity and Chroma MCP to `.mcp.json`
-4. **Updates CLAUDE.md**: Appends planning commands, collaboration tools, and vector memory sections
+3. **Injects MCP servers**: Adds Trinity MCP to `.mcp.json`
+4. **Updates CLAUDE.md**: Appends collaboration tools section
 
 **What this means for you**: Don't document these features in your agent's CLAUDE.md. Trinity will inject them automatically. Focus your CLAUDE.md on domain-specific instructions.
 
 ### Per-Agent Infrastructure
 
-#### 1. Vector Database (Chroma) ⚡ RUNTIME INJECTION
-
-Every agent has a dedicated **Chroma vector database** for semantic memory storage.
-
-> **DO NOT** add vector memory documentation to your CLAUDE.md. Trinity injects this automatically including:
-> - `.trinity/vector-memory.md` (usage examples)
-> - Chroma MCP server config in `.mcp.json`
-> - Vector memory section appended to CLAUDE.md
-
-| Aspect | Details |
-|--------|---------|
-| **Location** | `/home/developer/vector-store/` |
-| **Embedding Model** | `all-MiniLM-L6-v2` (384 dimensions, pre-loaded) |
-| **Persistence** | Survives agent restarts |
-| **Isolation** | Each agent has its own database |
-
-**Access Methods:**
-- **Python API** (direct):
-  ```python
-  import chromadb
-  from chromadb.utils import embedding_functions
-
-  client = chromadb.PersistentClient(path="/home/developer/vector-store")
-  ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-  collection = client.get_or_create_collection("memory", embedding_function=ef)
-
-  # Store
-  collection.add(documents=["Important context"], ids=["doc1"], metadatas=[{"type": "context"}])
-
-  # Query
-  results = collection.query(query_texts=["What do I know about X?"], n_results=5)
-  ```
-
-- **MCP Tools** (auto-injected):
-  ```
-  mcp__chroma__list_collections()
-  mcp__chroma__create_collection(name, metadata)
-  mcp__chroma__add_documents(collection, documents, ids, metadatas)
-  mcp__chroma__query_collection(collection, query_texts, n_results)
-  mcp__chroma__get_documents(collection, ids)
-  mcp__chroma__delete_documents(collection, ids)
-  mcp__chroma__update_documents(collection, ids, documents, metadatas)
-  mcp__chroma__peek_collection(collection, limit)
-  mcp__chroma__count_collection(collection)
-  mcp__chroma__delete_collection(name)
-  mcp__chroma__get_collection_info(name)
-  mcp__chroma__modify_collection(name, metadata)
-  ```
-
-**Multi-Agent Use Cases:**
-- Each agent builds domain-specific memory
-- Agents can query their own history ("Have I solved this before?")
-- Long-term learning across sessions
-- Semantic search over past interactions
-
-#### 2. Scheduling System (Autonomy)
+#### 1. Scheduling System (Autonomy)
 
 Trinity provides **platform-managed scheduling** for autonomous agent execution.
 
@@ -182,57 +127,7 @@ Worker B:     "10,40 * * * *"  (at :10 and :40)
 Worker C:     "15,45 * * * *"  (at :15 and :45)
 ```
 
-#### 3. Workplan System (Task DAGs) ⚡ RUNTIME INJECTION
-
-Trinity injects a **planning system** for persistent task tracking outside the context window.
-
-> **DO NOT** document planning commands in your CLAUDE.md. Trinity injects:
-> - `.trinity/prompt.md` (system prompt)
-> - `.claude/commands/trinity/trinity-plan-*.md` (4 planning commands)
-> - `plans/active/` and `plans/archive/` directories
-> - Planning instructions appended to CLAUDE.md
-
-| Aspect | Details |
-|--------|---------|
-| **Storage** | YAML files in `plans/active/` and `plans/archive/` |
-| **Commands** | `/trinity-plan-create`, `/trinity-plan-status`, `/trinity-plan-update`, `/trinity-plan-list` |
-| **States** | pending → active → completed/failed, blocked (for dependencies) |
-| **Visibility** | Plans tab in UI, aggregate API |
-
-**Why It Matters for Multi-Agent Systems:**
-- Plans persist across context resets
-- Multiple agents can reference the same plan
-- Human oversight of agent reasoning
-- Recovery from failures with plan state intact
-- Cross-agent task coordination
-
-**Plan File Format:**
-```yaml
-id: "plan-abc123"
-name: "Multi-agent research project"
-status: "active"
-goal: "Research and synthesize information on topic X"
-
-tasks:
-  - id: "task-001"
-    name: "Gather sources"
-    status: "completed"
-    assigned_to: "researcher-agent"
-
-  - id: "task-002"
-    name: "Analyze findings"
-    status: "active"
-    assigned_to: "analyst-agent"
-    depends_on: ["task-001"]
-
-  - id: "task-003"
-    name: "Write synthesis"
-    status: "blocked"
-    assigned_to: "writer-agent"
-    depends_on: ["task-002"]
-```
-
-#### 4. Trinity MCP Tools (Agent-to-Agent) ⚡ RUNTIME INJECTION
+#### 2. Trinity MCP Tools (Agent-to-Agent) ⚡ RUNTIME INJECTION
 
 Every agent gets **Trinity MCP tools** auto-injected for inter-agent communication.
 
@@ -262,7 +157,7 @@ response = mcp__trinity__chat_with_agent(
 )
 ```
 
-#### 5. Shared Folders
+#### 3. Shared Folders
 
 File-based collaboration via **Docker volumes**.
 
@@ -278,7 +173,7 @@ File-based collaboration via **Docker volumes**.
 
 > **Note**: Shared folder paths are NOT injected into CLAUDE.md. If your agent uses shared folders, document the paths and expected file formats in your agent's CLAUDE.md.
 
-#### 6. Credential System
+#### 4. Credential System
 
 Trinity provides a comprehensive credential management system. Understanding how it works is essential for multi-agent systems.
 
@@ -390,7 +285,7 @@ POST /api/agents/{name}/credentials/reload
 
 ### Platform-Level Features
 
-#### 7. Collaboration Dashboard
+#### 5. Collaboration Dashboard
 
 Real-time visualization at `/` showing:
 - All agents as draggable nodes
@@ -399,7 +294,7 @@ Real-time visualization at `/` showing:
 - Activity state (Active/Idle/Offline)
 - Replay mode for historical analysis
 
-#### 8. Activity Stream
+#### 6. Activity Stream
 
 Unified audit trail across all agents:
 - Tool calls with timing
@@ -412,14 +307,14 @@ Unified audit trail across all agents:
 GET /api/activities/timeline?activity_types=agent_collaboration&limit=100
 ```
 
-#### 9. Context Tracking
+#### 7. Context Tracking
 
 Monitor context window usage per agent:
 - Visual progress bars in dashboard
 - Color-coded warnings (green → yellow → orange → red)
 - API endpoint: `GET /api/agents/context-stats`
 
-#### 10. Custom Metrics
+#### 8. Custom Metrics
 
 Define agent-specific KPIs in `template.yaml`:
 
@@ -443,20 +338,25 @@ metrics:
 
 Agent writes to `workspace/metrics.json`, Trinity displays in UI.
 
-#### 11. Git Sync
+#### 9. Git Sync
 
-Bidirectional GitHub synchronization for agents from GitHub templates:
-- Push workspace changes to working branch
-- Pull updates from template
-- Track sync status in UI
+GitHub synchronization for agents created from GitHub templates:
+
+**Source Mode (Default)**:
+- Agent tracks source branch (`main` by default)
+- Pull updates on demand via "Pull" button
+- Ideal for local development → GitHub → Trinity workflow
+- Large files go in `content/` folder (auto-gitignored)
+
+**Working Branch Mode (Legacy)**:
+- Push workspace changes to unique working branch (`trinity/{agent}/{id}`)
+- Bidirectional sync via "Sync" button
 
 ### Capability Summary Table
 
 | Capability | Scope | Access | Multi-Agent Benefit |
 |------------|-------|--------|---------------------|
-| **Vector DB** | Per-agent | Python API or MCP | Each agent has semantic memory |
 | **Scheduling** | Per-agent | UI or API | Coordinated autonomous execution |
-| **Workplans** | Per-agent | Slash commands | Persistent task tracking across context resets |
 | **Trinity MCP** | Cross-agent | MCP tools | Agent delegation and collaboration |
 | **Shared Folders** | Cross-agent | File system | Large data exchange, state sharing |
 | **Credentials** | Per-agent | Hot-reload API | Update secrets without restart |
@@ -472,14 +372,8 @@ Because Trinity automatically injects platform infrastructure, your agent templa
 
 | DO NOT Include | Reason |
 |----------------|--------|
-| Vector memory documentation in CLAUDE.md | Trinity injects `.trinity/vector-memory.md` and CLAUDE.md section |
-| Planning commands documentation in CLAUDE.md | Trinity injects `.claude/commands/trinity/` and CLAUDE.md section |
 | Trinity MCP server in `.mcp.json.template` | Trinity injects this with agent-scoped API key |
-| Chroma MCP server in `.mcp.json.template` | Trinity injects this pointing to `vector-store/` |
-| `plans/` directory | Trinity creates `plans/active/` and `plans/archive/` |
-| `vector-store/` directory | Trinity creates this |
 | `.trinity/` directory | Trinity creates and populates this |
-| `.claude/commands/trinity/` directory | Trinity creates and populates this |
 | Agent collaboration instructions | Trinity injects section about `mcp__trinity__*` tools |
 
 ### What TO Include in Your Agent Templates
@@ -500,13 +394,12 @@ Your templates should focus on **domain-specific content**:
 
 When designing your multi-agent system, consider:
 
-1. **Use Vector Memory for Learning** — Each agent can build up domain knowledge that persists
-2. **Use Scheduling for Autonomy** — Agents can run without human triggers
-3. **Use Workplans for Complex Tasks** — Don't rely on context window for multi-step work
-4. **Use Shared Folders for Data** — Large files, state, inventories
-5. **Use MCP Chat for Urgency** — Time-sensitive coordination, questions
-6. **Use Custom Metrics for Visibility** — Track domain-specific KPIs
-7. **Use Context Tracking** — Know when agents need session resets
+1. **Use Scheduling for Autonomy** — Agents can run without human triggers
+2. **Use Shared Folders for Data** — Large files, state, inventories
+3. **Use MCP Chat for Urgency** — Time-sensitive coordination, questions
+4. **Use Custom Metrics for Visibility** — Track domain-specific KPIs
+5. **Use Context Tracking** — Know when agents need session resets
+6. **Include Vector Memory in Templates** — If agents need semantic memory, include chromadb in your template
 
 ---
 
@@ -1258,9 +1151,6 @@ Every agent repository MUST include a `.gitignore` that excludes platform-inject
 ```gitignore
 # Trinity platform injection (DO NOT COMMIT)
 .trinity/
-.claude/commands/trinity/
-plans/
-vector-store/
 
 # Generated files (DO NOT COMMIT)
 .mcp.json
@@ -1274,8 +1164,7 @@ vector-store/
 **Why this matters:**
 - `.mcp.json` contains actual credentials (generated from template)
 - `.env` contains actual credentials
-- `.trinity/`, `plans/`, `vector-store/` are created by Trinity injection
-- `.claude/commands/trinity/` contains platform commands (not your custom commands)
+- `.trinity/` is created by Trinity injection
 - Committing these would either expose secrets or cause conflicts on next deploy
 
 ### System Documentation Repository (Optional)
@@ -1902,6 +1791,83 @@ test_mode: true
 2. **Credential Isolation**: Each agent has only its own credentials
 3. **Audit Inter-Agent Calls**: Trinity logs all MCP communications
 4. **Review Shared Data**: Don't put secrets in shared folders
+
+### Delegation Best Practices
+
+Trinity supports **two types of delegation** that serve different purposes:
+
+#### MCP-Based Delegation (Trinity Platform)
+Cross-agent communication via the Trinity MCP server (`chat_with_agent` tool).
+
+```
+Agent A ──[MCP]──► Trinity MCP Server ──► Agent B
+                         │
+                    Audit Log
+```
+
+**Use MCP delegation for:**
+- Cross-agent communication (Claude agent ↔ Gemini agent)
+- Persistent tasks that need tracking
+- Work requiring audit trails and cost tracking
+- Specialized agents with their own credentials/tooling
+- Long-running tasks that may outlive a conversation
+
+#### Runtime Sub-Agents (Built-in)
+Both Claude Code and Gemini CLI have built-in sub-agent capabilities:
+
+| Runtime | Built-in Sub-Agent | Use Case |
+|---------|-------------------|----------|
+| **Gemini CLI** | `codebase_investigator` | Deep codebase analysis, architecture mapping |
+| **Claude Code** | Custom agents via `--agents` | User-defined specialized tasks |
+
+**Use runtime sub-agents for:**
+- Quick parallel file operations (read 10 files simultaneously)
+- Ephemeral investigation tasks
+- Performance optimization (no network round-trips)
+- Fast codebase exploration within a single context
+
+#### Decision Matrix
+
+```
+Is the task...
+├─ Talking to ANOTHER Trinity agent? → MCP Delegation
+├─ Needs audit trail/cost tracking? → MCP Delegation
+├─ Cross-runtime (Claude ↔ Gemini)? → MCP Delegation
+├─ Quick parallel file ops? → Runtime Sub-agent OK
+├─ Deep codebase investigation? → Runtime Sub-agent OK
+└─ Uncertain? → Default to MCP Delegation
+```
+
+#### Anti-Patterns to Avoid
+
+| ❌ Don't | Why |
+|----------|-----|
+| Define custom agents inside containers that duplicate Trinity agents | Confusing, duplicate costs, no platform visibility |
+| Use runtime sub-agents for persistent/important work | No audit trail, lost on container restart |
+| Use runtime sub-agents for cross-runtime tasks | Gemini sub-agent can't call Claude agent |
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Trinity Platform                    │
+│  ┌─────────────┐    MCP     ┌─────────────┐        │
+│  │ Claude Agent│◄──────────►│ Gemini Agent│        │
+│  │  ┌───────┐  │            │  ┌────────┐ │        │
+│  │  │custom │  │            │  │codebase│ │        │
+│  │  │agents │  │            │  │invest. │ │        │
+│  │  └───────┘  │            │  └────────┘ │        │
+│  └─────────────┘            └─────────────┘        │
+│         ▲                          ▲               │
+│         └──────── Audit Log ───────┘               │
+└─────────────────────────────────────────────────────┘
+
+Legend:
+  ◄────────► = MCP Delegation (audited, cross-runtime)
+  ┌───────┐  = Runtime Sub-agents (ephemeral, fast)
+```
+
+**Bottom line**: Use MCP for orchestration and cross-agent work. Use runtime sub-agents for optimization and ephemeral parallelism. Don't reinvent Trinity's delegation inside containers.
 
 ---
 

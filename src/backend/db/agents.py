@@ -289,3 +289,121 @@ class AgentOperations:
             cursor.execute("DELETE FROM agent_sharing WHERE agent_name = ?", (agent_name,))
             conn.commit()
             return cursor.rowcount
+
+    # =========================================================================
+    # Agent API Key Settings
+    # =========================================================================
+
+    def get_use_platform_api_key(self, agent_name: str) -> bool:
+        """Check if agent should use platform API key (default: True)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(use_platform_api_key, 1) as use_platform_api_key
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                return bool(row["use_platform_api_key"])
+            return True  # Default to using platform key
+
+    def set_use_platform_api_key(self, agent_name: str, use_platform_key: bool) -> bool:
+        """Set whether agent should use platform API key."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET use_platform_api_key = ?
+                WHERE agent_name = ?
+            """, (1 if use_platform_key else 0, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # =========================================================================
+    # Autonomy Mode
+    # =========================================================================
+
+    def get_autonomy_enabled(self, agent_name: str) -> bool:
+        """Check if autonomy mode is enabled for agent (scheduled tasks run automatically)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(autonomy_enabled, 0) as autonomy_enabled
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                return bool(row["autonomy_enabled"])
+            return False  # Default to disabled
+
+    def set_autonomy_enabled(self, agent_name: str, enabled: bool) -> bool:
+        """Set whether autonomy mode is enabled for agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET autonomy_enabled = ?
+                WHERE agent_name = ?
+            """, (1 if enabled else 0, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_all_agents_autonomy_status(self) -> Dict[str, bool]:
+        """Get autonomy status for all agents (for dashboard display)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT agent_name, COALESCE(autonomy_enabled, 0) as autonomy_enabled
+                FROM agent_ownership
+            """)
+            return {row["agent_name"]: bool(row["autonomy_enabled"]) for row in cursor.fetchall()}
+
+    # =========================================================================
+    # Resource Limits
+    # =========================================================================
+
+    def get_resource_limits(self, agent_name: str) -> Optional[Dict[str, str]]:
+        """
+        Get per-agent resource limits (memory and CPU).
+
+        Returns None if no custom limits are set, otherwise returns dict with:
+        - memory: Memory limit (e.g., "8g", "16g")
+        - cpu: CPU limit (e.g., "4", "8")
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT memory_limit, cpu_limit
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                memory = row["memory_limit"]
+                cpu = row["cpu_limit"]
+                # Return None if no custom limits set
+                if memory is None and cpu is None:
+                    return None
+                return {
+                    "memory": memory,
+                    "cpu": cpu
+                }
+            return None
+
+    def set_resource_limits(self, agent_name: str, memory: Optional[str] = None, cpu: Optional[str] = None) -> bool:
+        """
+        Set per-agent resource limits.
+
+        Args:
+            agent_name: Name of the agent
+            memory: Memory limit (e.g., "4g", "8g", "16g") or None to clear
+            cpu: CPU limit (e.g., "2", "4", "8") or None to clear
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET memory_limit = ?, cpu_limit = ?
+                WHERE agent_name = ?
+            """, (memory, cpu, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0

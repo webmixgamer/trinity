@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from models import User
 from database import db, AgentShare, AgentShareRequest
-from dependencies import get_current_user
-from services.audit_service import log_audit_event
+from dependencies import get_current_user, OwnedAgentByName, CurrentUser
 from services.docker_service import get_agent_container
 
 router = APIRouter(prefix="/api/agents", tags=["sharing"])
@@ -23,28 +22,15 @@ def set_websocket_manager(ws_manager):
 
 @router.post("/{agent_name}/share", response_model=AgentShare)
 async def share_agent_endpoint(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     share_request: AgentShareRequest,
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """Share an agent with another user by email."""
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="agent_sharing",
-            action="share",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning",
-            details={"target_email": share_request.email}
-        )
-        raise HTTPException(status_code=403, detail="You don't have permission to share this agent")
 
     current_user_data = db.get_user_by_username(current_user.username)
     current_user_email = (current_user_data.get("email") or "") if current_user_data else ""
@@ -55,15 +41,19 @@ async def share_agent_endpoint(
     if not share:
         raise HTTPException(status_code=409, detail=f"Agent is already shared with {share_request.email}")
 
-    await log_audit_event(
-        event_type="agent_sharing",
-        action="share",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"shared_with": share_request.email}
-    )
+    # Auto-add email to whitelist if email auth is enabled (Phase 12.4)
+    from config import EMAIL_AUTH_ENABLED
+    email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
+    if email_auth_setting.lower() == "true":
+        try:
+            db.add_to_whitelist(
+                share_request.email,
+                current_user.username,
+                source="agent_sharing"
+            )
+        except Exception:
+            # Already whitelisted or error - continue anyway
+            pass
 
     if manager:
         await manager.broadcast(json.dumps({
@@ -76,42 +66,19 @@ async def share_agent_endpoint(
 
 @router.delete("/{agent_name}/share/{email}")
 async def unshare_agent_endpoint(
-    agent_name: str,
+    agent_name: OwnedAgentByName,
     email: str,
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """Remove sharing access for a user."""
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        await log_audit_event(
-            event_type="agent_sharing",
-            action="unshare",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="unauthorized",
-            severity="warning",
-            details={"target_email": email}
-        )
-        raise HTTPException(status_code=403, detail="You don't have permission to modify sharing for this agent")
-
     success = db.unshare_agent(agent_name, current_user.username, email)
     if not success:
         raise HTTPException(status_code=404, detail=f"No sharing found for {email}")
-
-    await log_audit_event(
-        event_type="agent_sharing",
-        action="unshare",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        ip_address=request.client.host if request.client else None,
-        result="success",
-        details={"removed_user": email}
-    )
 
     if manager:
         await manager.broadcast(json.dumps({
@@ -124,17 +91,13 @@ async def unshare_agent_endpoint(
 
 @router.get("/{agent_name}/shares", response_model=list[AgentShare])
 async def get_agent_shares_endpoint(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: OwnedAgentByName,
+    request: Request
 ):
     """Get all users an agent is shared with."""
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not db.can_user_share_agent(current_user.username, agent_name):
-        raise HTTPException(status_code=403, detail="You don't have permission to view sharing for this agent")
 
     shares = db.get_agent_shares(agent_name)
     return shares

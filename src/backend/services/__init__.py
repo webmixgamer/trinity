@@ -1,7 +1,6 @@
 """
 Trinity backend services.
 """
-from .audit_service import log_audit_event
 from .docker_service import (
     docker_client,
     get_agent_container,
@@ -18,7 +17,6 @@ from .template_service import (
 )
 
 __all__ = [
-    "log_audit_event",
     "docker_client",
     "get_agent_container",
     "get_agent_status_from_container",

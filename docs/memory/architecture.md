@@ -10,7 +10,7 @@
 
 | Pillar | Trinity Implementation |
 |--------|----------------------|
-| **I. Explicit Planning** | Task DAG engine, plan persistence, Trinity meta-prompt injection, scheduling, activity timeline |
+| **I. Explicit Planning** | Scheduling, activity timeline, Trinity meta-prompt injection (Task DAGs removed 2025-12-23) |
 | **II. Hierarchical Delegation** | Agent-to-Agent via MCP, access control, collaboration dashboard |
 | **III. Persistent Memory** | SQLite chat persistence, virtual filesystems, file browser |
 | **IV. Extreme Context Engineering** | Template system with CLAUDE.md, credential injection, Trinity commands |
@@ -22,9 +22,9 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 │                           Trinity Agent Platform                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │   Frontend   │  │   Backend    │  │  MCP Server  │  │ Audit Logger │    │
-│  │   (Vue.js)   │  │  (FastAPI)   │  │  (FastMCP)   │  │  (FastAPI)   │    │
-│  │   :3000      │  │   :8000      │  │   :8080      │  │   :8001      │    │
+│  │   Frontend   │  │   Backend    │  │  MCP Server  │  │    Vector    │    │
+│  │   (Vue.js)   │  │  (FastAPI)   │  │  (FastMCP)   │  │   (Logs)     │    │
+│  │   :3000      │  │   :8000      │  │   :8080      │  │   :8686      │    │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │
 │         │                 │                 │                 │             │
 │         └─────────────────┼─────────────────┼─────────────────┘             │
@@ -54,7 +54,6 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | Tailwind CSS | 3.x | Styling |
 | Pinia | 2.x | State management |
 | Vite | 5.x | Build system |
-| Auth0 Vue | 2.x | Authentication |
 
 ### Backend
 | Technology | Version | Purpose |
@@ -95,12 +94,12 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | `main.py` | FastAPI app initialization, WebSocket manager, router mounting (182 lines) |
 | `config.py` | Centralized configuration constants |
 | `models.py` | All Pydantic request/response models |
-| `dependencies.py` | FastAPI dependencies (auth, token validation) |
+| `dependencies.py` | FastAPI dependencies (auth, token validation, agent access control) |
 | `database.py` | SQLite persistence (users, agent ownership, MCP API keys) |
 | `credentials.py` | Redis-backed credential manager with OAuth2 flows |
 
 **Routers (`routers/`):**
-- `auth.py` - Authentication endpoints (login, Auth0 exchange, token validation)
+- `auth.py` - Authentication endpoints (admin login, email auth, token validation)
 - `agents.py` - Agent CRUD, start/stop, logs, stats
 - `credentials.py` - Credential management (env files, MCP configs)
 - `templates.py` - Template listing and GitHub repo fetching
@@ -111,11 +110,17 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `git.py` - Git sync endpoints (status, sync, log, pull)
 
 **Services (`services/`):**
-- `audit_service.py` - Async audit event logging
 - `docker_service.py` - Docker container management
 - `template_service.py` - GitHub template cloning and processing
 - `scheduler_service.py` - APScheduler-based scheduling service
 - `git_service.py` - Git sync operations for GitHub-native agents
+- `github_service.py` - GitHub API client (repo creation, validation, org detection)
+- `settings_service.py` - Centralized settings retrieval (API keys, ops config)
+- `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
+
+**Logging (`logging_config.py`):**
+- Structured JSON logging for production
+- Captured by Vector via Docker stdout/stderr
 
 **Utilities (`utils/`):**
 - `helpers.py` - Shared helper functions
@@ -135,7 +140,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 
 **State Management:**
 - `stores/agents.js` - Agent CRUD, chat, activity
-- `stores/auth.js` - Auth0 + JWT authentication
+- `stores/auth.js` - Email/admin authentication + JWT
 - `stores/collaborations.js` - Collaboration graph state, WebSocket integration
 
 **Real-time:**
@@ -172,7 +177,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - Tools access auth context via `context.session` parameter
 - Agent-to-agent collaboration uses agent-scoped keys for access control
 
-**12 Tools:**
+**13 Tools:**
 1. `list_agents` - List all agents
 2. `get_agent` - Get agent details
 3. `create_agent` - Create new agent
@@ -185,18 +190,29 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 10. `get_agent_logs` - Get container logs
 11. `reload_credentials` - Hot-reload credentials
 12. `get_credential_status` - Check credential files
+13. `get_agent_ssh_access` - Generate ephemeral SSH credentials (NEW: 2026-01-02)
 
-### Audit Logger (`src/audit-logger/`)
+### Vector Log Aggregator (`config/vector.yaml`)
 
-**File:** `audit_logger.py` (174 lines)
+**Technology:** Vector 0.43.1 (timberio/vector:0.43.1-alpine)
 
-**Event Types:**
-- `authentication` - Login/logout events
-- `agent_management` - Create/delete/start/stop
-- `agent_access` - Chat, logs access
-- `credential_access` - Credential operations
+**Features:**
+- Captures ALL container stdout/stderr via Docker socket
+- Routes platform logs to `/data/logs/platform.json`
+- Routes agent logs to `/data/logs/agents.json`
+- Enriches with container metadata (name, labels)
+- Parses JSON logs for structured querying
 
-**Storage:** SQLite database with query API
+**Health Check:** `http://localhost:8686/health`
+
+**Query Logs:**
+```bash
+# Platform logs
+docker exec trinity-vector sh -c "tail -50 /data/logs/platform.json" | jq .
+
+# Agent logs
+docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
+```
 
 ### Agent Containers
 
@@ -292,11 +308,12 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 
 ## API Endpoints
 
-### Agents (26 endpoints)
+### Agents (30 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/agents` | List all agents |
 | GET | `/api/agents/context-stats` | Get context & activity state for all agents (NEW: 2025-12-02) |
+| GET | `/api/agents/autonomy-status` | Get autonomy status for all accessible agents (NEW: 2026-01-01) |
 | POST | `/api/agents` | Create agent |
 | GET | `/api/agents/{name}` | Get agent details |
 | DELETE | `/api/agents/{name}` | Delete agent |
@@ -319,8 +336,11 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | PUT | `/api/agents/{name}/folders` | Update shared folder config |
 | GET | `/api/agents/{name}/folders/available` | List mountable folders from permitted agents |
 | GET | `/api/agents/{name}/folders/consumers` | List agents that will mount this folder |
+| GET | `/api/agents/{name}/autonomy` | Get autonomy status with schedule counts (NEW: 2026-01-01) |
+| PUT | `/api/agents/{name}/autonomy` | Enable/disable autonomy (toggles all schedules) |
+| POST | `/api/agents/{name}/ssh-access` | Generate ephemeral SSH credentials (NEW: 2026-01-02) |
 
-**Note**: Route ordering is critical. `/context-stats` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
+**Note**: Route ordering is critical. `/context-stats` and `/autonomy-status` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
 
 ### Activities (1 endpoint)
 | Method | Path | Description |
@@ -375,28 +395,13 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | POST | `/api/agents/{name}/schedules/{id}/trigger` | Manual trigger |
 | GET | `/api/agents/{name}/schedules/{id}/executions` | Execution history |
 
-### Plans - Task DAG System (8 endpoints) - NEW: 2025-12-05
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/agents/plans/aggregate` | Cross-agent plan summary (must come before `/{name}`) |
-| GET | `/api/agents/{name}/plans` | List agent's plans |
-| POST | `/api/agents/{name}/plans` | Create new plan |
-| GET | `/api/agents/{name}/plans/summary` | Aggregate plan stats for agent |
-| GET | `/api/agents/{name}/plans/{plan_id}` | Get specific plan with tasks |
-| PUT | `/api/agents/{name}/plans/{plan_id}` | Update plan metadata |
-| DELETE | `/api/agents/{name}/plans/{plan_id}` | Delete plan |
-| PUT | `/api/agents/{name}/plans/{plan_id}/tasks/{task_id}` | Update task status |
-
-**Note**: `/plans/aggregate` route must be defined BEFORE `/{name}` routes to avoid FastAPI matching "plans" as an agent name.
-
-**Implementation**: Backend proxies to agent container's `/api/plans` endpoints. Plans stored as YAML files in `plans/active/` and `plans/archive/`.
-
 ### Auth & MCP (12 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/auth/mode` | Get auth mode config (dev/prod) - unauthenticated |
-| POST | `/api/token` | Dev mode login (gated by DEV_MODE_ENABLED) |
-| POST | `/api/auth/exchange` | Exchange Auth0 token for JWT |
+| GET | `/api/auth/mode` | Get auth mode config - unauthenticated |
+| POST | `/api/token` | Admin login (username/password) |
+| POST | `/api/auth/email/request` | Request email verification code |
+| POST | `/api/auth/email/verify` | Verify email code and login |
 | GET | `/api/auth/validate` | Validate JWT (for nginx auth_request) |
 | GET | `/api/users/me` | Current user |
 | GET | `/api/mcp/info` | MCP server info |
@@ -669,7 +674,7 @@ Trinity has multiple authentication layers for different component interactions:
 │                                                                                   │
 │   [Human User]                                                                    │
 │        │                                                                          │
-│        │ (1) User Auth: JWT via Auth0/OAuth or Dev credentials                    │
+│        │ (1) User Auth: JWT via Email verification or Admin login                  │
 │        ▼                                                                          │
 │   ┌─────────┐    JWT Token    ┌─────────────┐                                    │
 │   │ Browser │───────────────►│   Backend   │                                    │
@@ -707,12 +712,11 @@ Users authenticate to the Trinity web UI and API.
 
 | Mode | Flow | Token |
 |------|------|-------|
-| **Dev** (`DEV_MODE_ENABLED=true`) | Username/password → `POST /api/token` | JWT with `mode: "dev"` |
-| **Prod** (`DEV_MODE_ENABLED=false`) | Google OAuth via Auth0 → `POST /api/auth/exchange` | JWT with `mode: "prod"` |
+| **Email** (primary) | Email → 6-digit code → `POST /api/auth/email/verify` | JWT with `mode: "email"` |
+| **Admin** (secondary) | Password → `POST /api/token` | JWT with `mode: "admin"` |
 
-- Runtime mode detection via `GET /api/auth/mode` (no rebuild to switch)
-- Domain restriction (e.g., `@ability.ai`) enforced server-side
-- Token mode claim prevents dev tokens in prod mode
+- Email whitelist controls who can login via email
+- Admin login always available for 'admin' user
 
 ### 2. MCP API Keys (User → MCP Server)
 
@@ -731,6 +735,7 @@ External Claude Code clients authenticate to Trinity MCP Server using MCP API Ke
 {
   "mcpServers": {
     "trinity": {
+      "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": { "Authorization": "Bearer trinity_mcp_..." }
     }
@@ -855,12 +860,9 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 
 ## External Integrations
 
-### Auth0 (User Authentication)
-| Setting | Environment Variable |
-|---------|---------------------|
-| Domain | `AUTH0_DOMAIN` |
-| Client ID | `VITE_AUTH0_CLIENT_ID` |
-| Allowed Domain | `AUTH0_ALLOWED_DOMAIN` (optional) |
+### User Authentication
+Email-based authentication with verification codes (primary) and admin password login (secondary).
+Auth0 OAuth was removed in 2026-01-01 - see [email-authentication.md](feature-flows/email-authentication.md).
 
 ### OAuth Providers (Agent Credentials)
 - Google (Workspace access)
@@ -885,7 +887,7 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 | Frontend | http://localhost:3000 |
 | Backend API | http://localhost:8000/docs |
 | MCP Server | http://localhost:8080/mcp |
-| Audit Logger | http://localhost:8001/docs |
+| Vector (logs) | http://localhost:8686/health |
 | Redis | localhost:6379 |
 
 ### Production URLs
@@ -894,7 +896,7 @@ User uploads credentials → Redis storage → Agent creation OR hot-reload
 | Frontend | `https://your-domain.com` |
 | Backend API | `https://your-domain.com/api/` |
 | MCP Server | `http://your-server:8007/mcp` |
-| Audit Logger | `http://your-server:8006/docs` |
+| Vector (logs) | `http://your-server:8686/health` |
 
 ### Landing Page (Optional)
 Landing page is a separate project that can be deployed on Vercel or any static hosting.

@@ -10,18 +10,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..models import TrinityInjectRequest, TrinityInjectResponse, TrinityStatusResponse
-from ..config import TRINITY_META_PROMPT_DIR, WORKSPACE_DIR, VECTOR_STORE_DIR
+from ..config import TRINITY_META_PROMPT_DIR, WORKSPACE_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# Chroma MCP server configuration to inject into .mcp.json
-CHROMA_MCP_CONFIG = {
-    "command": "python3",
-    "args": ["-m", "chroma_mcp", "--client-type", "persistent", "--data-dir", str(VECTOR_STORE_DIR)],
-    "env": {}
-}
 
 
 def check_trinity_injection_status() -> dict:
@@ -30,47 +22,23 @@ def check_trinity_injection_status() -> dict:
 
     files = {
         ".trinity/prompt.md": (workspace / ".trinity" / "prompt.md").exists(),
-        ".claude/commands/trinity/trinity-plan-create.md": (workspace / ".claude/commands/trinity/trinity-plan-create.md").exists(),
-        ".claude/commands/trinity/trinity-plan-status.md": (workspace / ".claude/commands/trinity/trinity-plan-status.md").exists(),
-        ".claude/commands/trinity/trinity-plan-update.md": (workspace / ".claude/commands/trinity/trinity-plan-update.md").exists(),
-        ".claude/commands/trinity/trinity-plan-list.md": (workspace / ".claude/commands/trinity/trinity-plan-list.md").exists(),
     }
 
     directories = {
-        "plans/active": (workspace / "plans/active").exists(),
-        "plans/archive": (workspace / "plans/archive").exists(),
-        "vector-store": (workspace / "vector-store").exists(),
+        ".trinity": (workspace / ".trinity").exists(),
     }
-
-    # Vector memory status
-    vector_memory = {
-        "vector-store": (workspace / "vector-store").exists(),
-        ".trinity/vector-memory.md": (workspace / ".trinity" / "vector-memory.md").exists(),
-    }
-
-    # Check if chroma MCP is configured in .mcp.json
-    mcp_json_path = workspace / ".mcp.json"
-    chroma_mcp_configured = False
-    if mcp_json_path.exists():
-        try:
-            mcp_config = json.loads(mcp_json_path.read_text())
-            chroma_mcp_configured = "chroma" in mcp_config.get("mcpServers", {})
-        except Exception:
-            pass
-    vector_memory["chroma_mcp_configured"] = chroma_mcp_configured
 
     # Check if CLAUDE.md has Trinity section
     claude_md_path = workspace / "CLAUDE.md"
     claude_md_has_trinity = False
     if claude_md_path.exists():
         content = claude_md_path.read_text()
-        claude_md_has_trinity = "## Trinity Planning System" in content
+        claude_md_has_trinity = "## Trinity Agent System" in content
 
     return {
         "meta_prompt_mounted": TRINITY_META_PROMPT_DIR.exists(),
         "files": files,
         "directories": directories,
-        "vector_memory": vector_memory,
         "claude_md_has_trinity_section": claude_md_has_trinity,
         "injected": all(files.values()) and all(directories.values()) and claude_md_has_trinity
     }
@@ -127,93 +95,14 @@ async def inject_trinity(request: TrinityInjectRequest = TrinityInjectRequest())
             files_created.append(".trinity/prompt.md")
             logger.info(f"Copied {prompt_src} to {prompt_dst}")
 
-        # 2. Create .claude/commands/trinity directory and copy commands
-        commands_dir = workspace / ".claude/commands/trinity"
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        directories_created.append(".claude/commands/trinity")
-
-        commands_src = TRINITY_META_PROMPT_DIR / "commands"
-        if commands_src.exists():
-            for cmd_file in commands_src.glob("*.md"):
-                dst = commands_dir / cmd_file.name
-                shutil.copy2(cmd_file, dst)
-                files_created.append(f".claude/commands/trinity/{cmd_file.name}")
-                logger.info(f"Copied {cmd_file} to {dst}")
-
-        # 3. Create plans directories
-        plans_active = workspace / "plans/active"
-        plans_archive = workspace / "plans/archive"
-        plans_active.mkdir(parents=True, exist_ok=True)
-        plans_archive.mkdir(parents=True, exist_ok=True)
-        directories_created.extend(["plans/active", "plans/archive"])
-
-        # 4. Create vector-store directory for Chroma persistence
-        vector_store_path = workspace / "vector-store"
-        vector_store_path.mkdir(parents=True, exist_ok=True)
-        directories_created.append("vector-store")
-        logger.info(f"Created vector store directory at {vector_store_path}")
-
-        # 5. Copy vector memory documentation
-        vector_docs_src = TRINITY_META_PROMPT_DIR / "vector-memory.md"
-        vector_docs_dst = trinity_dir / "vector-memory.md"
-        if vector_docs_src.exists():
-            shutil.copy2(vector_docs_src, vector_docs_dst)
-            files_created.append(".trinity/vector-memory.md")
-            logger.info(f"Copied {vector_docs_src} to {vector_docs_dst}")
-
-        # 6. Inject chroma MCP server into .mcp.json
-        mcp_json_path = workspace / ".mcp.json"
-        chroma_mcp_added = False
-        try:
-            if mcp_json_path.exists():
-                # Read existing config
-                mcp_config = json.loads(mcp_json_path.read_text())
-            else:
-                # Create new config
-                mcp_config = {"mcpServers": {}}
-
-            # Add chroma MCP server if not present
-            if "mcpServers" not in mcp_config:
-                mcp_config["mcpServers"] = {}
-
-            if "chroma" not in mcp_config["mcpServers"]:
-                mcp_config["mcpServers"]["chroma"] = CHROMA_MCP_CONFIG
-                mcp_json_path.write_text(json.dumps(mcp_config, indent=2))
-                chroma_mcp_added = True
-                files_created.append(".mcp.json (chroma server added)")
-                logger.info(f"Added chroma MCP server to {mcp_json_path}")
-            else:
-                logger.info("Chroma MCP server already configured in .mcp.json")
-        except Exception as e:
-            logger.warning(f"Failed to inject chroma MCP config: {e}")
-
-        # 7. Update CLAUDE.md with Trinity section
+        # 2. Update CLAUDE.md with Trinity section
         claude_md_updated = False
         claude_md_path = workspace / "CLAUDE.md"
         trinity_section = """
 
-## Trinity Planning System
+## Trinity Agent System
 
 This agent is part of the Trinity Deep Agent Orchestration Platform.
-
-### Planning Commands
-
-For multi-step tasks (3+ steps), use these commands:
-
-- `/trinity-plan-create` - Create a new task plan with dependencies
-- `/trinity-plan-status` - View current plan progress
-- `/trinity-plan-update` - Update task status (active/completed/failed)
-- `/trinity-plan-list` - List all active and archived plans
-
-### When to Create Plans
-
-Create a plan when:
-- Task has 3+ distinct steps
-- Steps have dependencies
-- Progress needs to be tracked
-- Task may span multiple sessions
-
-Plans are stored in `plans/active/` and automatically archived on completion.
 
 ### Agent Collaboration
 
@@ -224,12 +113,6 @@ You can collaborate with other agents using the Trinity MCP tools:
 
 **Note**: You can only communicate with agents you have been granted permission to access.
 Use `list_agents` to discover your available collaborators.
-
-### Vector Memory
-
-You have a Chroma MCP server configured for semantic memory storage.
-Use `mcp__chroma__*` tools to store and query by similarity.
-Data persists at `/home/developer/vector-store/`.
 
 ### Trinity System Prompt
 
@@ -262,7 +145,7 @@ Additional platform instructions are available in `.trinity/prompt.md`.
                 had_custom_instructions = True
                 logger.info("Removed existing Custom Instructions section")
 
-            if "## Trinity Planning System" not in content:
+            if "## Trinity Agent System" not in content:
                 with open(claude_md_path, "a") as f:
                     f.write(trinity_section)
                     f.write(custom_section)
@@ -332,9 +215,9 @@ async def reset_trinity():
         claude_md_path = workspace / "CLAUDE.md"
         if claude_md_path.exists():
             content = claude_md_path.read_text()
-            if "## Trinity Planning System" in content:
+            if "## Trinity Agent System" in content:
                 # Remove the Trinity section
-                parts = content.split("## Trinity Planning System")
+                parts = content.split("## Trinity Agent System")
                 if len(parts) > 1:
                     # Keep only the part before Trinity section
                     new_content = parts[0].rstrip()

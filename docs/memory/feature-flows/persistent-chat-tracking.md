@@ -1,5 +1,13 @@
 # Feature: Persistent Chat Session Tracking
 
+> **Note (2025-12-25)**: The Chat tab UI has been replaced by Web Terminal ([agent-terminal.md](agent-terminal.md)).
+> This persistence system still applies to:
+> - Scheduled executions (cron jobs)
+> - MCP `chat_with_agent` tool (agent-to-agent communication)
+> - Backend `/task` endpoint executions
+>
+> Terminal sessions are NOT persisted to this system (they use direct PTY access).
+
 ## Overview
 Database-backed chat session persistence that survives agent restarts, container deletions, and provides long-term observability. Every user message and assistant response is logged to SQLite with full metadata including costs, context usage, tool calls, and execution time. Sessions are automatically created per user+agent combination and track cumulative statistics.
 
@@ -7,8 +15,8 @@ Database-backed chat session persistence that survives agent restarts, container
 As a Trinity platform user, I want all my chat conversations with agents to be permanently stored in the database so that I can review conversation history, audit costs, analyze agent performance, and resume conversations even after restarting or recreating agents.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:345-498` - Chat tab (same interface, transparent persistence)
-- **API**: `POST /api/agents/{name}/chat` (modified to persist messages)
+- **UI**: ~~Chat tab~~ (DEPRECATED - replaced by Terminal tab, see [agent-terminal.md](agent-terminal.md))
+- **API**: `POST /api/agents/{name}/chat` (still active for scheduled/MCP executions)
 - **New APIs**:
   - `GET /api/agents/{name}/chat/history/persistent` - Retrieve persisted history
   - `GET /api/agents/{name}/chat/sessions` - List all sessions
@@ -22,13 +30,16 @@ As a Trinity platform user, I want all my chat conversations with agents to be p
 ### Components
 
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
+
+> **DEPRECATED (2025-12-25)**: Chat tab has been replaced by Terminal tab. The table below is historical reference.
+
 | Line | Element | Purpose |
 |------|---------|---------|
-| 345-498 | Chat tab content | Existing chat UI (no changes) |
-| 1484-1535 | `sendChatMessage()` | Sends message (backend persists) |
-| 1474-1482 | `loadChatHistory()` | Loads in-memory history from container |
+| ~~345-498~~ | ~~Chat tab content~~ | Replaced by Terminal tab |
+| ~~1484-1535~~ | ~~`sendChatMessage()`~~ | Removed from UI, API still works |
+| ~~1474-1482~~ | ~~`loadChatHistory()`~~ | No longer called from UI |
 
-**Note**: UI currently uses in-memory chat history from agent container (`/chat/history`). The persistent history endpoints are backend-only for now but can be integrated for cross-session history viewing.
+**Note**: Persistent chat tracking still works for backend-initiated requests (schedules, MCP, `/task` endpoint). Terminal sessions use direct PTY and are not persisted through this system.
 
 ### State Management (`src/frontend/src/stores/agents.js`)
 
@@ -78,13 +89,13 @@ const response = await axios.get(`/api/agents/${name}/chat/sessions`,
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 50-294 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
-| 586-625 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
-| 628-660 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
-| 663-698 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
-| 701-736 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
+| 106-356 | `/api/agents/{name}/chat` | POST | Send message + persist to DB |
+| 876-915 | `/api/agents/{name}/chat/history/persistent` | GET | Get persistent history |
+| 918-950 | `/api/agents/{name}/chat/sessions` | GET | List sessions for agent |
+| 953-988 | `/api/agents/{name}/chat/sessions/{session_id}` | GET | Get session details |
+| 991-1027 | `/api/agents/{name}/chat/sessions/{session_id}/close` | POST | Close session |
 
-### Modified Chat Endpoint (`routers/chat.py:50-294`)
+### Modified Chat Endpoint (`routers/chat.py:106-356`)
 
 **Key Changes**:
 1. Get or create chat session before sending message
@@ -159,7 +170,7 @@ async def chat_with_agent(
     return response_data
 ```
 
-### New Persistent History Endpoint (`routers/chat.py:586-625`)
+### New Persistent History Endpoint (`routers/chat.py:876-915`)
 
 ```python
 @router.get("/{name}/chat/history/persistent")
@@ -202,7 +213,7 @@ async def get_persistent_chat_history(
     }
 ```
 
-### Sessions List Endpoint (`routers/chat.py:628-660`)
+### Sessions List Endpoint (`routers/chat.py:918-950`)
 
 ```python
 @router.get("/{name}/chat/sessions")
@@ -238,7 +249,7 @@ async def get_agent_chat_sessions(
     }
 ```
 
-### Session Detail Endpoint (`routers/chat.py:663-698`)
+### Session Detail Endpoint (`routers/chat.py:953-988`)
 
 ```python
 @router.get("/{name}/chat/sessions/{session_id}")
@@ -270,7 +281,7 @@ async def get_chat_session_detail(
     }
 ```
 
-### Close Session Endpoint (`routers/chat.py:701-736`)
+### Close Session Endpoint (`routers/chat.py:991-1027`)
 
 ```python
 @router.post("/{name}/chat/sessions/{session_id}/close")
@@ -313,7 +324,7 @@ async def close_chat_session(
 
 ### Schema (`src/backend/database.py`)
 
-#### Chat Sessions Table (`database.py:302-318`)
+#### Chat Sessions Table (`database.py:380-396`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -337,7 +348,7 @@ CREATE INDEX idx_chat_sessions_user ON chat_sessions(user_id)
 CREATE INDEX idx_chat_sessions_status ON chat_sessions(status)
 ```
 
-#### Chat Messages Table (`database.py:320-339`)
+#### Chat Messages Table (`database.py:398-417`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -365,7 +376,7 @@ CREATE INDEX idx_chat_messages_user ON chat_messages(user_id)
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp)
 ```
 
-### Models (`src/backend/db_models.py:185-215`)
+### Models (`src/backend/db_models.py:187-217`)
 
 ```python
 class ChatSession(BaseModel):
@@ -963,7 +974,7 @@ LIMIT 100;
 ## Migration Notes
 
 ### Database Migration
-Handled automatically by `init_database()` in `database.py:159-438`:
+Handled automatically by `init_database()` in `database.py` (tables created in init block):
 1. Creates `chat_sessions` table if not exists
 2. Creates `chat_messages` table if not exists
 3. Creates indexes
@@ -980,3 +991,10 @@ To show persistent history in UI:
 3. Display sessions list with costs/timestamps
 4. Click session -> view all messages
 5. Filter by date range, user (admin only)
+
+---
+
+## Changelog
+
+- **2025-12-30**: Updated line numbers to reflect current codebase after execution queue integration. Chat endpoint now at lines 106-356 (was 50-294). Persistent history endpoints now at lines 876-1027 (was 586-736). Database schema lines updated.
+- **2025-12-01**: Initial implementation of persistent chat session tracking

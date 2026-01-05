@@ -4,6 +4,8 @@ System settings routes for the Trinity backend.
 Provides endpoints for managing system-wide configuration like the Trinity prompt.
 Admin-only access for modification, read access for all authenticated users.
 """
+import os
+import httpx
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -11,38 +13,52 @@ from pydantic import BaseModel
 from models import User
 from database import db, SystemSetting, SystemSettingUpdate
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
+
+# Import from settings_service (these are re-exported for backward compatibility)
+from services.settings_service import (
+    get_anthropic_api_key,
+    get_github_pat,
+    get_google_api_key,
+    get_ops_setting,
+    settings_service,
+    OPS_SETTINGS_DEFAULTS,
+    OPS_SETTINGS_DESCRIPTIONS,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+# ============================================================================
+# API Keys Management - Helper Functions and Models
+# ============================================================================
+
+class ApiKeyUpdate(BaseModel):
+    """Request body for updating an API key."""
+    api_key: str
+
+
+class ApiKeyTest(BaseModel):
+    """Request body for testing an API key."""
+    api_key: str
+
+
+# Note: get_anthropic_api_key and get_github_pat are now imported from
+# services.settings_service for proper architecture (services shouldn't import from routers)
+
+
+def mask_api_key(key: str) -> str:
+    """Mask an API key for display, showing only last 4 characters."""
+    if not key or len(key) < 8:
+        return "****"
+    return f"...{key[-4:]}"
 
 
 # ============================================================================
 # Ops Settings Configuration
 # ============================================================================
 
-# Default values for ops settings (as specified in requirements)
-OPS_SETTINGS_DEFAULTS = {
-    "ops_context_warning_threshold": "75",  # Context % to trigger warning
-    "ops_context_critical_threshold": "90",  # Context % to trigger reset/action
-    "ops_idle_timeout_minutes": "30",  # Minutes before stuck detection
-    "ops_cost_limit_daily_usd": "50.0",  # Daily cost limit (0 = unlimited)
-    "ops_max_execution_minutes": "10",  # Max chat execution time
-    "ops_alert_suppression_minutes": "15",  # Suppress duplicate alerts
-    "ops_log_retention_days": "7",  # Days to keep container logs
-    "ops_health_check_interval": "60",  # Seconds between health checks
-}
-
-# Descriptions for each ops setting
-OPS_SETTINGS_DESCRIPTIONS = {
-    "ops_context_warning_threshold": "Context usage percentage to trigger a warning (default: 75)",
-    "ops_context_critical_threshold": "Context usage percentage to trigger critical alert or action (default: 90)",
-    "ops_idle_timeout_minutes": "Minutes of inactivity before an agent is considered stuck (default: 30)",
-    "ops_cost_limit_daily_usd": "Maximum daily cost limit in USD per agent (0 = unlimited) (default: 50.0)",
-    "ops_max_execution_minutes": "Maximum allowed execution time for a single chat in minutes (default: 10)",
-    "ops_alert_suppression_minutes": "Minutes to suppress duplicate alerts for same agent+type (default: 15)",
-    "ops_log_retention_days": "Number of days to retain container logs (default: 7)",
-    "ops_health_check_interval": "Seconds between automated health checks (default: 60)",
-}
+# Note: OPS_SETTINGS_DEFAULTS and OPS_SETTINGS_DESCRIPTIONS are now imported from
+# services.settings_service for proper architecture
 
 
 class OpsSettingsUpdate(BaseModel):
@@ -71,18 +87,425 @@ async def get_all_settings(
     try:
         settings = db.get_all_settings()
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="list",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return settings
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get settings: {str(e)}")
 
+
+# ============================================================================
+# API Keys Management Endpoints
+# NOTE: These routes MUST be defined BEFORE the /{key} catch-all route
+# ============================================================================
+
+@router.get("/api-keys")
+async def get_api_keys_status(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get status of configured API keys.
+
+    Admin-only. Returns masked key info for security.
+    """
+    require_admin(current_user)
+
+    try:
+        # Get Anthropic key
+        anthropic_key = get_anthropic_api_key()
+        anthropic_configured = bool(anthropic_key)
+
+        # Check if it's from settings or env
+        key_from_settings = bool(db.get_setting_value('anthropic_api_key', None))
+
+        # Get GitHub PAT
+        github_pat = get_github_pat()
+        github_configured = bool(github_pat)
+        github_from_settings = bool(db.get_setting_value('github_pat', None))
+
+        return {
+            "anthropic": {
+                "configured": anthropic_configured,
+                "masked": mask_api_key(anthropic_key) if anthropic_configured else None,
+                "source": "settings" if key_from_settings else ("env" if anthropic_configured else None)
+            },
+            "github": {
+                "configured": github_configured,
+                "masked": mask_api_key(github_pat) if github_configured else None,
+                "source": "settings" if github_from_settings else ("env" if github_configured else None)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get API keys status: {str(e)}")
+
+
+@router.put("/api-keys/anthropic")
+async def update_anthropic_key(
+    body: ApiKeyUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set or update the Anthropic API key.
+
+    Admin-only. Key is stored in system settings.
+    """
+    require_admin(current_user)
+
+    try:
+        # Validate format
+        key = body.api_key.strip()
+        if not key.startswith('sk-ant-'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid API key format. Anthropic keys start with 'sk-ant-'"
+            )
+
+        # Store in settings
+        db.set_setting('anthropic_api_key', key)
+
+        return {
+            "success": True,
+            "masked": mask_api_key(key)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update API key: {str(e)}")
+
+
+@router.delete("/api-keys/anthropic")
+async def delete_anthropic_key(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete the Anthropic API key from settings.
+
+    Admin-only. Will fall back to env var if configured.
+    """
+    require_admin(current_user)
+
+    try:
+        deleted = db.delete_setting('anthropic_api_key')
+
+        # Check if env var fallback exists
+        env_key = os.getenv('ANTHROPIC_API_KEY', '')
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "fallback_configured": bool(env_key)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete API key: {str(e)}")
+
+
+@router.post("/api-keys/anthropic/test")
+async def test_anthropic_key(
+    body: ApiKeyTest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Test if an Anthropic API key is valid.
+
+    Admin-only. Makes a lightweight API call to validate the key.
+    """
+    require_admin(current_user)
+
+    try:
+        key = body.api_key.strip()
+
+        # Validate format first
+        if not key.startswith('sk-ant-'):
+            return {
+                "valid": False,
+                "error": "Invalid format. Anthropic keys start with 'sk-ant-'"
+            }
+
+        # Make a lightweight API call to test the key
+        # Using the models endpoint which is simple and doesn't create any resources
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01"
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                return {"valid": True}
+            elif response.status_code == 401:
+                return {
+                    "valid": False,
+                    "error": "Invalid API key"
+                }
+            else:
+                return {
+                    "valid": False,
+                    "error": f"API returned status {response.status_code}"
+                }
+
+    except httpx.TimeoutException:
+        return {
+            "valid": False,
+            "error": "Request timed out. Please try again."
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": f"Error testing key: {str(e)}"
+        }
+
+
+@router.put("/api-keys/github")
+async def update_github_pat(
+    body: ApiKeyUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set or update the GitHub Personal Access Token.
+
+    Admin-only. Token is stored in system settings.
+    """
+    require_admin(current_user)
+
+    try:
+        # Validate format
+        key = body.api_key.strip()
+        if not (key.startswith('ghp_') or key.startswith('github_pat_')):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid token format. GitHub PATs start with 'ghp_' or 'github_pat_'"
+            )
+
+        # Store in settings
+        db.set_setting('github_pat', key)
+
+        return {
+            "success": True,
+            "masked": mask_api_key(key)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update GitHub PAT: {str(e)}")
+
+
+@router.delete("/api-keys/github")
+async def delete_github_pat(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete the GitHub PAT from settings.
+
+    Admin-only. Will fall back to env var if configured.
+    """
+    require_admin(current_user)
+
+    try:
+        deleted = db.delete_setting('github_pat')
+
+        # Check if env var fallback exists
+        env_key = os.getenv('GITHUB_PAT', '')
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "fallback_configured": bool(env_key)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete GitHub PAT: {str(e)}")
+
+
+@router.post("/api-keys/github/test")
+async def test_github_pat(
+    body: ApiKeyTest,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Test if a GitHub PAT is valid.
+
+    Admin-only. Makes a lightweight API call to validate the token.
+    """
+    require_admin(current_user)
+
+    try:
+        key = body.api_key.strip()
+
+        # Validate format first
+        if not (key.startswith('ghp_') or key.startswith('github_pat_')):
+            return {
+                "valid": False,
+                "error": "Invalid format. GitHub PATs start with 'ghp_' or 'github_pat_'"
+            }
+
+        # Make a lightweight API call to test the token
+        # Using the user endpoint which is simple and doesn't create any resources
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Determine token type and check permissions
+                is_fine_grained = key.startswith('github_pat_')
+                scopes = []
+                has_repo_access = False
+
+                if is_fine_grained:
+                    # Fine-grained PATs: Test actual permissions by trying to list repos
+                    # This will succeed if the token has proper permissions
+                    try:
+                        repos_response = await client.get(
+                            "https://api.github.com/user/repos",
+                            headers={
+                                "Authorization": f"Bearer {key}",
+                                "Accept": "application/vnd.github+json",
+                                "X-GitHub-Api-Version": "2022-11-28"
+                            },
+                            params={"per_page": 1},  # Just test access, don't fetch all repos
+                            timeout=10.0
+                        )
+                        # If we can list repos, the token has sufficient permissions
+                        has_repo_access = repos_response.status_code == 200
+                        scopes = ["fine-grained-pat"]
+                    except Exception:
+                        has_repo_access = False
+                        scopes = ["fine-grained-pat"]
+                else:
+                    # Classic PAT: Check X-OAuth-Scopes header
+                    scope_header = response.headers.get("X-OAuth-Scopes", "")
+                    scopes = [s.strip() for s in scope_header.split(",") if s.strip()]
+                    has_repo_access = "repo" in scopes or "public_repo" in scopes
+
+                return {
+                    "valid": True,
+                    "username": data.get("login"),
+                    "scopes": scopes,
+                    "token_type": "fine-grained" if is_fine_grained else "classic",
+                    "has_repo_access": has_repo_access
+                }
+            elif response.status_code == 401:
+                return {
+                    "valid": False,
+                    "error": "Invalid Personal Access Token"
+                }
+            else:
+                return {
+                    "valid": False,
+                    "error": f"GitHub API returned status {response.status_code}"
+                }
+
+    except httpx.TimeoutException:
+        return {
+            "valid": False,
+            "error": "Request timed out. Please try again."
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": f"Error testing token: {str(e)}"
+        }
+
+
+# ============================================================================
+# Email Whitelist Management (Phase 12.4)
+# ============================================================================
+
+@router.get("/email-whitelist")
+async def list_email_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all whitelisted emails.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    whitelist = db.list_whitelist(limit=1000)
+
+    return {"whitelist": whitelist}
+
+
+@router.post("/email-whitelist")
+async def add_email_to_whitelist(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Add an email to the whitelist.
+
+    Admin-only endpoint.
+    """
+    from database import EmailWhitelistAdd
+
+    require_admin(current_user)
+
+    # Parse request
+    body = await request.json()
+    add_request = EmailWhitelistAdd(**body)
+    email = add_request.email.lower()
+
+    # Add to whitelist
+    try:
+        added = db.add_to_whitelist(email, current_user.username, source=add_request.source)
+
+        if not added:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Email {email} is already whitelisted"
+            )
+
+        return {"success": True, "email": email}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/email-whitelist/{email}")
+async def remove_email_from_whitelist(
+    email: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Remove an email from the whitelist.
+
+    Admin-only endpoint.
+    """
+    require_admin(current_user)
+
+    # Remove from whitelist
+    removed = db.remove_from_whitelist(email)
+
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Email {email} not found in whitelist"
+        )
+
+    return {"success": True, "email": email}
+
+# ============================================================================
+# Generic Settings CRUD - /{key} catch-all routes
+# NOTE: These must come AFTER specific routes like /api-keys
+# ============================================================================
 
 @router.get("/{key}")
 async def get_setting(
@@ -103,15 +526,6 @@ async def get_setting(
 
         if not setting:
             raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
-
-        await log_audit_event(
-            event_type="system_settings",
-            action="read",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
 
         return setting
     except HTTPException:
@@ -137,28 +551,8 @@ async def update_setting(
     try:
         setting = db.set_setting(key, body.value)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"key": key, "value_length": len(body.value)}
-        )
-
         return setting
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update setting: {str(e)}")
 
 
@@ -178,28 +572,8 @@ async def delete_setting(
     try:
         deleted = db.delete_setting(key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"deleted": deleted}
-        )
-
         return {"success": True, "deleted": deleted}
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="delete",
-            user_id=current_user.username,
-            resource=f"setting:{key}",
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to delete setting: {str(e)}")
 
 
@@ -235,14 +609,6 @@ async def get_ops_settings(
                 "is_default": current_value == default_value
             }
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="read_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return {
             "settings": ops_config
         }
@@ -275,30 +641,12 @@ async def update_ops_settings(
             else:
                 ignored.append(key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"updated": updated, "ignored": ignored}
-        )
-
         return {
             "success": True,
             "updated": updated,
             "ignored": ignored if ignored else None
         }
     except Exception as e:
-        await log_audit_event(
-            event_type="system_settings",
-            action="update_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="failed",
-            severity="error",
-            details={"error": str(e)}
-        )
         raise HTTPException(status_code=500, detail=f"Failed to update ops settings: {str(e)}")
 
 
@@ -321,15 +669,6 @@ async def reset_ops_settings(
             if db.delete_setting(key):
                 deleted.append(key)
 
-        await log_audit_event(
-            event_type="system_settings",
-            action="reset_ops",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={"reset": deleted}
-        )
-
         return {
             "success": True,
             "message": "Ops settings reset to defaults",
@@ -339,20 +678,6 @@ async def reset_ops_settings(
         raise HTTPException(status_code=500, detail=f"Failed to reset ops settings: {str(e)}")
 
 
-def get_ops_setting(key: str, as_type: type = str):
-    """
-    Helper function to get an ops setting value with proper type conversion.
+# Note: get_ops_setting is now imported from services.settings_service
 
-    Used internally by the ops module to retrieve settings.
-    Returns the default if not set.
-    """
-    default = OPS_SETTINGS_DEFAULTS.get(key, "")
-    value = db.get_setting_value(key, default)
 
-    if as_type == int:
-        return int(value)
-    elif as_type == float:
-        return float(value)
-    elif as_type == bool:
-        return value.lower() in ("true", "1", "yes")
-    return value

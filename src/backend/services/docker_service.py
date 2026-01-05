@@ -43,6 +43,18 @@ def get_agent_status_from_container(container) -> AgentStatus:
     else:
         normalized_status = docker_status  # paused, restarting, etc.
 
+    # Extract runtime from container environment variables
+    runtime = "claude-code"  # Default
+    try:
+        # Get environment variables from container attrs
+        env_list = container.attrs.get("Config", {}).get("Env", [])
+        for env in env_list:
+            if env.startswith("AGENT_RUNTIME="):
+                runtime = env.split("=", 1)[1]
+                break
+    except Exception:
+        pass  # Use default if we can't read env vars
+
     return AgentStatus(
         name=agent_name,
         type=labels.get("trinity.agent-type", "unknown"),
@@ -54,7 +66,8 @@ def get_agent_status_from_container(container) -> AgentStatus:
             "memory": labels.get("trinity.memory", "4g")
         },
         container_id=container.id,
-        template=labels.get("trinity.template", None) or None
+        template=labels.get("trinity.template", None) or None,
+        runtime=runtime
     )
 
 
@@ -117,3 +130,39 @@ def get_next_available_port() -> int:
             return port
 
     raise RuntimeError("No available ports in range 2290-2500")
+
+
+def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
+    """Execute a command in a Docker container.
+
+    Args:
+        container_name: Name of the container (e.g., "agent-myagent")
+        command: Command to execute
+        timeout: Timeout in seconds
+
+    Returns:
+        Dictionary with 'exit_code' and 'output' keys
+    """
+    if not docker_client:
+        return {"exit_code": 1, "output": "Docker client not available"}
+
+    try:
+        container = docker_client.containers.get(container_name)
+        result = container.exec_run(
+            command,
+            user="developer",
+            demux=False
+        )
+
+        # result.exit_code is the exit code
+        # result.output is bytes, decode to string
+        output = result.output.decode('utf-8') if isinstance(result.output, bytes) else str(result.output)
+
+        return {
+            "exit_code": result.exit_code,
+            "output": output
+        }
+    except docker.errors.NotFound:
+        return {"exit_code": 1, "output": f"Container {container_name} not found"}
+    except Exception as e:
+        return {"exit_code": 1, "output": f"Error executing command: {str(e)}"}

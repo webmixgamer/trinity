@@ -73,7 +73,8 @@ These agents can demonstrate collaboration without external credentials. For ful
 ## Notes
 
 - Agents are created from GitHub templates (requires PAT)
-- Each agent gets a unique working branch: `trinity/{agent-name}/{instance-id}`
+- Source mode (default): Agents track the `main` branch and can pull updates
+- Working branch mode (legacy): Set `source_mode=false` for a unique branch: `trinity/{agent-name}/{instance-id}`
 - The demo can run without external credentials - agents will use their base capabilities
 - Run `/demo-agent-fleet` after creation to showcase the platform
 

@@ -1,10 +1,20 @@
-# Feature: GitHub Bidirectional Sync (Phase 7)
+# Feature: GitHub Sync (Phase 7)
 
 ## Overview
-GitHub-native agents can sync their working directory changes back to GitHub. Each agent instance gets a unique working branch (`trinity/{agent-name}/{instance-id}`), and users can push changes from the agent container to GitHub or pull updates from the remote.
 
-## User Story
-As a **developer using GitHub-native agents**, I want to **sync code changes made by the agent back to GitHub** so that **work done by the agent is version-controlled and can be reviewed via pull requests**.
+GitHub-native agents can synchronize with GitHub repositories in two modes:
+
+### Source Mode (Default - Recommended)
+**Unidirectional pull-only sync**: Agent tracks a source branch (default: `main`) and can pull updates on demand. Changes made in the agent are local only and not pushed back. This is ideal for agents developed locally and deployed to Trinity.
+
+### Working Branch Mode (Legacy)
+**Bidirectional sync**: Agent gets a unique working branch (`trinity/{agent-name}/{instance-id}`) and can push changes back to GitHub. This is the original Phase 7 implementation, now available as an opt-in feature.
+
+## User Stories
+
+**Source Mode**: As a developer, I want to develop agents locally, push to GitHub, and have Trinity pull updates so I can iterate quickly without merge conflicts.
+
+**Working Branch Mode**: As a team using Trinity-native development, I want agent changes synced to a working branch so I can review them via pull requests.
 
 ---
 
@@ -12,339 +22,143 @@ As a **developer using GitHub-native agents**, I want to **sync code changes mad
 
 | Type | Location | Description |
 |------|----------|-------------|
-| **UI** | `src/frontend/src/views/AgentDetail.vue:68-109` | Sync/refresh buttons in agent header (main controls) |
-| **UI** | `src/frontend/src/views/AgentDetail.vue:256-266` | Git tab in agent detail view |
-| **UI** | `src/frontend/src/components/GitPanel.vue` | Git log/history view (read-only) |
+| **UI** | Agent Detail header | Pull/Sync buttons (blue Pull, orange Sync) |
+| **UI** | Git tab in agent detail | Git log/history view |
+| **API** | `POST /api/agents/{name}/git/pull` | Pull latest from source branch |
+| **API** | `POST /api/agents/{name}/git/sync` | Push changes to GitHub (working branch mode) |
 | **API** | `GET /api/agents/{name}/git/status` | Get git repository status |
-| **API** | `POST /api/agents/{name}/git/sync` | Push changes to GitHub |
-| **API** | `GET /api/agents/{name}/git/log` | Get commit history |
-| **API** | `POST /api/agents/{name}/git/pull` | Pull from remote |
 | **API** | `GET /api/agents/{name}/git/config` | Get stored git config |
 
 ---
 
-## Sequence Diagrams
+## Source Mode (Default)
 
-### Agent Creation with Git Sync
+### Configuration
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Backend
-    participant Database
-    participant Docker
-    participant Container
-
-    User->>Frontend: Create agent (github:Org/repo)
-    Frontend->>Backend: POST /api/agents
-    Backend->>Backend: Generate instance_id (8 chars)
-    Backend->>Backend: Generate working_branch (trinity/{name}/{id})
-    Backend->>Docker: Create container with env vars
-    Note right of Docker: GITHUB_REPO, GITHUB_PAT<br/>GIT_SYNC_ENABLED=true<br/>GIT_WORKING_BRANCH
-    Docker->>Container: Start container
-    Container->>Container: startup.sh runs
-    Container->>Container: git clone with full history
-    Container->>Container: git checkout -b {working_branch}
-    Container->>Container: git push -u origin {branch}
-    Backend->>Database: Create agent_git_config record
-    Backend->>Frontend: Return agent status
-```
-
-### Sync to GitHub Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant AgentHeader
-    participant Store
-    participant Backend
-    participant GitService
-    participant Container
-
-    User->>AgentHeader: Click "Sync" button in header
-    AgentHeader->>Store: syncToGithub(agentName)
-    Store->>Backend: POST /api/agents/{name}/git/sync
-    Backend->>Backend: Check authorization (owner only)
-    Backend->>GitService: sync_to_github()
-    GitService->>Container: POST /api/git/sync
-    Container->>Container: git add -A
-    Container->>Container: git commit -m "..."
-    Container->>Container: git push --force-with-lease
-    Container->>GitService: Return commit SHA
-    GitService->>Backend: Update database (last_sync_at)
-    GitService->>Backend: Return GitSyncResult
-    Backend->>Backend: Log audit event
-    Backend->>Store: Return sync result
-    Store->>AgentHeader: Show notification, refresh status
-```
-
----
-
-## Frontend Layer
-
-### Components
-
-#### AgentDetail.vue (Main Controls)
-**Location**: `src/frontend/src/views/AgentDetail.vue`
-
-The primary sync controls are now in the agent header, next to Start/Stop buttons:
-
-| Line | Element | Purpose |
-|------|---------|---------|
-| 68-109 | Git sync controls section | Sync button, refresh, status indicator |
-| 71-88 | Sync button | Orange when changes pending, gray when synced |
-| 89-98 | Refresh button | Refreshes git status |
-| 100-108 | Git indicator (stopped) | Shows "Git enabled" when agent is stopped |
-| 256-266 | Git tab button | Only visible when `hasGitSync` is true |
-| 737-741 | Git tab content | Renders `<GitPanel>` component |
-| 819-822 | `hasGitSync` computed | Checks if template starts with `github:` |
-| 824-836 | Git state refs | `gitStatus`, `gitLoading`, `gitSyncing`, computed helpers |
-| 1311-1367 | Git methods | `loadGitStatus()`, `syncToGithub()`, polling functions |
-
-**Key Methods**:
-```javascript
-// Git sync from header
-const syncToGithub = async () => {
-  const result = await agentsStore.syncToGithub(agent.value.name)
-  if (result.success) {
-    showNotification(`Synced ${result.files_changed} file(s) to GitHub`, 'success')
-  }
-  await loadGitStatus()
-}
-
-// Git status polling (every 30s when running)
-const startGitStatusPolling = () => {
-  loadGitStatus()
-  gitStatusInterval = setInterval(loadGitStatus, 30000)
-}
-```
-
-#### GitPanel.vue (Log View)
-**Location**: `src/frontend/src/components/GitPanel.vue`
-
-Read-only view for git history and status details:
-
-| Line | Element | Purpose |
-|------|---------|---------|
-| 10-16 | `v-if="!gitStatus?.git_enabled"` | Shows "not enabled" state |
-| 19-32 | `v-else-if="gitStatus?.agent_running === false"` | Shows "must be running" state |
-| 35-76 | Repository info header | Shows repo URL, branch, sync status |
-| 78-95 | Pending changes list | Displays file changes with status indicators |
-| 98-120 | Last commit display | Shows most recent commit details |
-| 123-140 | Recent commits | Scrollable commit history |
-| 143-149 | Database config | Last sync time, commit SHA |
-
-### State Management
-
-**Location**: `src/frontend/src/stores/agents.js:258-302`
-
-```javascript
-// Line 259-265: Get git status
-async getGitStatus(name) {
-  const response = await axios.get(`/api/agents/${name}/git/status`, {
-    headers: authStore.authHeader
-  })
-  return response.data
-}
-
-// Line 275-285: Sync to GitHub
-async syncToGithub(name, message = null, paths = null) {
-  const payload = {}
-  if (message) payload.message = message
-  if (paths) payload.paths = paths
-  const response = await axios.post(`/api/agents/${name}/git/sync`,
-    payload,
-    { headers: authStore.authHeader }
-  )
-  return response.data
-}
-
-// Line 287-293: Pull from GitHub
-async pullFromGithub(name) {
-  const response = await axios.post(`/api/agents/${name}/git/pull`, {}, {
-    headers: authStore.authHeader
-  })
-  return response.data
-}
-
-// Line 295-302: Get git log
-async getGitLog(name, limit = 10) {
-  const response = await axios.get(`/api/agents/${name}/git/log`, {
-    params: { limit },
-    headers: authStore.authHeader
-  })
-  return response.data
-}
-```
-
----
-
-## Backend Layer
-
-### Router: git.py
-**Location**: `src/backend/routers/git.py`
-
-| Line | Endpoint | Method | Handler |
-|------|----------|--------|---------|
-| 29-83 | `/api/agents/{agent_name}/git/status` | GET | `get_git_status()` |
-| 86-144 | `/api/agents/{agent_name}/git/sync` | POST | `sync_to_github()` |
-| 147-176 | `/api/agents/{agent_name}/git/log` | GET | `get_git_log()` |
-| 179-212 | `/api/agents/{agent_name}/git/pull` | POST | `pull_from_github()` |
-| 215-252 | `/api/agents/{agent_name}/git/config` | GET | `get_git_config()` |
-
-**Authorization Logic**:
-```python
-# Line 47-48: Read access - can_user_access_agent (owner, shared, or admin)
-if not db.can_user_access_agent(current_user.username, agent_name):
-    raise HTTPException(status_code=403, detail="Access denied")
-
-# Line 109-110: Write access - can_user_share_agent (owner or admin only)
-if not db.can_user_share_agent(current_user.username, agent_name):
-    raise HTTPException(status_code=403, detail="Only agent owners can sync to GitHub")
-```
-
-### Service: git_service.py
-**Location**: `src/backend/services/git_service.py`
-
-| Line | Function | Purpose |
-|------|----------|---------|
-| 17-19 | `generate_instance_id()` | Creates 8-char UUID |
-| 22-24 | `generate_working_branch()` | Returns `trinity/{agent}/{id}` |
-| 27-56 | `create_git_config_for_agent()` | Creates DB record on agent creation |
-| 59-80 | `get_git_status()` | Calls agent's internal `/api/git/status` |
-| 83-153 | `sync_to_github()` | Orchestrates sync via agent container |
-| 156-177 | `get_git_log()` | Fetches commit history from agent |
-| 180-205 | `pull_from_github()` | Pulls remote changes into agent |
-| 208-215 | `get/delete_agent_git_config()` | Database accessors |
-
-**Container Communication**:
-```python
-# Line 71-77: Call agent's internal API via Docker network
-async with httpx.AsyncClient(timeout=30.0) as client:
-    response = await client.get(
-        f"http://agent-{agent_name}:8000/api/git/status"
-    )
-    if response.status_code == 200:
-        return response.json()
-```
-
-### Agent Creation Integration
-**Location**: `src/backend/routers/agents.py:167-174, 271-274, 349-358`
+When creating an agent from a GitHub template:
 
 ```python
-# Line 167-169: Generate git sync identifiers
-git_instance_id = git_service.generate_instance_id()
-git_working_branch = git_service.generate_working_branch(config.name, git_instance_id)
-
-# Line 271-274: Set environment variables for container
-if github_repo_for_agent and github_pat_for_agent:
-    env_vars['GITHUB_REPO'] = github_repo_for_agent
-    env_vars['GITHUB_PAT'] = github_pat_for_agent
-    env_vars['GIT_SYNC_ENABLED'] = 'true'
-    env_vars['GIT_WORKING_BRANCH'] = git_working_branch
-
-# Line 349-358: Create database record after container creation
-if github_repo_for_agent:
-    db.create_git_config(
-        agent_name=config.name,
-        github_repo=github_repo_for_agent,
-        working_branch=git_working_branch,
-        instance_id=git_instance_id
-    )
+# AgentConfig defaults (src/backend/models.py)
+source_branch: Optional[str] = "main"    # Branch to pull from
+source_mode: Optional[bool] = True       # True = source mode (pull only)
 ```
 
----
-
-## Agent Container Layer
-
-### startup.sh
-**Location**: `docker/base-image/startup.sh:14-69`
-
-Git sync initialization when `GIT_SYNC_ENABLED=true`:
+### Environment Variables
 
 ```bash
-# Line 15-16: Check if git sync is enabled
-if [ "${GIT_SYNC_ENABLED}" = "true" ]; then
-    echo "Git sync enabled - cloning with full history for bidirectional sync"
-
-# Line 19-21: Preserve base image files before clone
-cp /home/developer/agent-server.py /tmp/agent-server.py.bak
-cp /home/developer/startup.sh /tmp/startup.sh.bak
-
-# Line 26: Clone repository (replaces /home/developer contents)
-git clone "${CLONE_URL}" /home/developer
-
-# Line 31-32: Configure git user
-git config user.email "trinity-agent@your-domain.com"
-git config user.name "Trinity Agent (${AGENT_NAME:-unknown})"
-
-# Line 35-49: Create/checkout working branch
-if [ -n "${GIT_WORKING_BRANCH}" ]; then
-    # Check if branch exists on remote
-    if git ls-remote --heads origin "${GIT_WORKING_BRANCH}" | grep -q ...; then
-        git checkout "${GIT_WORKING_BRANCH}"
-    else
-        git checkout -b "${GIT_WORKING_BRANCH}"
-        git push -u origin "${GIT_WORKING_BRANCH}"
-    fi
-fi
-
-# Line 55-59: Restore infrastructure files
-cp /tmp/agent-server.py.bak /home/developer/agent-server.py
-cp /tmp/startup.sh.bak /home/developer/startup.sh
-
-# Line 62-67: Add to .gitignore
-echo "agent-server.py" >> /home/developer/.gitignore
-echo "startup.sh" >> /home/developer/.gitignore
-echo ".local/" >> /home/developer/.gitignore
+GITHUB_REPO=Owner/repo
+GITHUB_PAT=ghp_xxx
+GIT_SYNC_ENABLED=true
+GIT_SOURCE_MODE=true           # Enables source mode
+GIT_SOURCE_BRANCH=main         # Branch to track (default: main)
 ```
 
-### Agent Server Git Endpoints
+### Startup Behavior (`docker/base-image/startup.sh`)
 
-> **Architecture Change (2025-12-06)**: The agent-server has been refactored from a monolithic file into a modular package structure at `docker/base-image/agent_server/`.
+```bash
+# Source mode: checkout source branch directly
+if [ "${GIT_SOURCE_MODE}" = "true" ]; then
+    SOURCE_BRANCH="${GIT_SOURCE_BRANCH:-main}"
+    git checkout "${SOURCE_BRANCH}"
+    git branch --set-upstream-to="origin/${SOURCE_BRANCH}"
+fi
+```
 
-**Location**: `docker/base-image/agent_server/routers/git.py`
+### Sequence Diagram: Pull from GitHub
 
-Internal git endpoints running inside the container:
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant Backend
+    participant Container
 
-| Line | Endpoint | Purpose |
-|------|----------|---------|
-| 17-139 | `GET /api/git/status` | Returns branch, changes, ahead/behind |
-| 142-271 | `POST /api/git/sync` | Stage, commit, and push |
-| 274-321 | `GET /api/git/log` | Return commit history |
-| 324-372 | `POST /api/git/pull` | Fetch and rebase from remote |
+    User->>UI: Click "Pull" button
+    UI->>Backend: POST /api/agents/{name}/git/pull
+    Backend->>Container: POST /api/git/pull
+    Container->>Container: git fetch origin
+    Container->>Container: git pull --rebase
+    Container->>Backend: Return result
+    Backend->>UI: Show notification
+```
 
-**Sync Implementation** (`agent_server/routers/git.py:142-271`):
+### Workflow
+
+```
++-----------+      push       +--------------+      pull       +-------------+
+|   Local   |  ----------->   |    GitHub    |   <-----------  |   Trinity   |
+|   Dev     |                 |    (main)    |                 |   Agent     |
++-----------+                 +--------------+                 +-------------+
+```
+
+1. Develop agent locally
+2. Push to GitHub (main branch)
+3. Create agent in Trinity from `github:Owner/repo`
+4. Agent clones and stays on `main` branch
+5. Click "Pull" button to fetch latest changes
+
+### Content Folder Convention
+
+Large generated files (videos, audio, images, exports) should go in `content/` which is automatically gitignored:
+
+```bash
+# Created by startup.sh
+mkdir -p content/{videos,audio,images,exports}
+echo "content/" >> .gitignore
+```
+
+---
+
+## Working Branch Mode (Legacy)
+
+### Configuration
+
+To use working branch mode, explicitly disable source mode:
+
 ```python
-@router.post("/api/git/sync")
-async def sync_to_github(request: GitSyncRequest):
-    # 1. Stage changes
-    if request.paths:
-        for path in request.paths:
-            subprocess.run(["git", "add", path], ...)
-    else:
-        subprocess.run(["git", "add", "-A"], ...)
+AgentConfig(
+    github_repo="Owner/repo",
+    source_mode=False,  # Disable source mode
+    # working_branch auto-generated: trinity/{agent-name}/{instance-id}
+)
+```
 
-    # 2. Check if anything to commit
-    status_result = subprocess.run(["git", "status", "--porcelain"], ...)
-    if not staged_changes:
-        return {"success": True, "message": "No changes to sync", ...}
+### Environment Variables
 
-    # 3. Create commit
-    commit_message = request.message or f"Trinity sync: {datetime.now()}"
-    subprocess.run(["git", "commit", "-m", commit_message], ...)
+```bash
+GITHUB_REPO=Owner/repo
+GITHUB_PAT=ghp_xxx
+GIT_SYNC_ENABLED=true
+GIT_WORKING_BRANCH=trinity/my-agent/a1b2c3d4  # Auto-generated
+```
 
-    # 4. Push to remote
-    subprocess.run(["git", "push", "--force-with-lease"], ...)
+### Startup Behavior
 
-    return {
-        "success": True,
-        "commit_sha": commit_sha,
-        "files_changed": len(staged_changes),
-        "branch": current_branch,
-        "sync_time": datetime.now().isoformat()
-    }
+```bash
+# Working branch mode: create unique branch
+if [ -n "${GIT_WORKING_BRANCH}" ]; then
+    git checkout -b "${GIT_WORKING_BRANCH}"
+    git push -u origin "${GIT_WORKING_BRANCH}"
+fi
+```
+
+### Sequence Diagram: Sync to GitHub
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant Backend
+    participant Container
+
+    User->>UI: Click "Sync" button
+    UI->>Backend: POST /api/agents/{name}/git/sync
+    Backend->>Container: POST /api/git/sync
+    Container->>Container: git add -A
+    Container->>Container: git commit -m "Trinity sync: {timestamp}"
+    Container->>Container: git push --force-with-lease
+    Container->>Backend: Return commit SHA
+    Backend->>UI: Show notification
 ```
 
 ---
@@ -352,15 +166,17 @@ async def sync_to_github(request: GitSyncRequest):
 ## Data Layer
 
 ### Database Model: AgentGitConfig
-**Location**: `src/backend/database.py:154-166`
 
 ```python
+# src/backend/db_models.py
 class AgentGitConfig(BaseModel):
     id: str
     agent_name: str
-    github_repo: str           # e.g., "Abilityai/agent-ruby"
-    working_branch: str        # e.g., "trinity/my-agent/abc123"
+    github_repo: str           # e.g., "Owner/repo"
+    working_branch: str        # "main" (source mode) or "trinity/{agent}/{id}" (legacy)
     instance_id: str           # 8-char unique identifier
+    source_branch: str = "main"  # Branch to pull from
+    source_mode: bool = False    # True = source mode, False = working branch mode
     created_at: datetime
     last_sync_at: Optional[datetime] = None
     last_commit_sha: Optional[str] = None
@@ -368,8 +184,7 @@ class AgentGitConfig(BaseModel):
     sync_paths: Optional[str] = None  # JSON array
 ```
 
-### Database Table: agent_git_config
-**Location**: `src/backend/database.py:374-389`
+### Database Table
 
 ```sql
 CREATE TABLE IF NOT EXISTS agent_git_config (
@@ -378,6 +193,8 @@ CREATE TABLE IF NOT EXISTS agent_git_config (
     github_repo TEXT NOT NULL,
     working_branch TEXT NOT NULL,
     instance_id TEXT NOT NULL,
+    source_branch TEXT DEFAULT 'main',
+    source_mode INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     last_sync_at TEXT,
     last_commit_sha TEXT,
@@ -385,114 +202,313 @@ CREATE TABLE IF NOT EXISTS agent_git_config (
     sync_paths TEXT,
     FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name)
 );
-
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_git_config_agent ON agent_git_config(agent_name);
-CREATE INDEX IF NOT EXISTS idx_git_config_repo ON agent_git_config(github_repo);
-```
-
-### Database Operations
-**Location**: `src/backend/database.py:1568-1676`
-
-| Line | Method | SQL Operation |
-|------|--------|---------------|
-| 1571-1600 | `create_git_config()` | `INSERT INTO agent_git_config` |
-| 1602-1621 | `get_git_config()` | `SELECT * FROM agent_git_config WHERE agent_name = ?` |
-| 1623-1634 | `update_git_sync()` | `UPDATE agent_git_config SET last_sync_at, last_commit_sha` |
-| 1636-1644 | `set_git_sync_enabled()` | `UPDATE agent_git_config SET sync_enabled` |
-| 1646-1652 | `delete_git_config()` | `DELETE FROM agent_git_config WHERE agent_name = ?` |
-| 1654-1676 | `list_git_enabled_agents()` | `SELECT * FROM agent_git_config WHERE sync_enabled = 1` |
-
----
-
-## Side Effects
-
-### Audit Logging
-**Location**: `src/backend/routers/git.py:118-132, 197-207`
-
-```python
-# Sync operation logging
-await log_audit_event(
-    event_type="git_operation",
-    action="sync",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    ip_address=request.client.host,
-    result="success" if result.success else "failed",
-    severity="info" if result.success else "warning",
-    details={
-        "commit_sha": result.commit_sha,
-        "files_changed": result.files_changed,
-        "message": result.message
-    }
-)
-
-# Pull operation logging
-await log_audit_event(
-    event_type="git_operation",
-    action="pull",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    ...
-)
-```
-
-### Agent Creation Audit
-**Location**: `src/backend/routers/agents.py:360-375`
-
-```python
-await log_audit_event(
-    event_type="agent_management",
-    action="create",
-    ...
-    details={
-        ...
-        "git_sync": bool(github_repo_for_agent),
-        "git_branch": git_working_branch if github_repo_for_agent else None
-    }
-)
 ```
 
 ---
 
-## Error Handling
+## Backend Layer
 
-| Error Case | HTTP Status | Location | Message |
-|------------|-------------|----------|---------|
-| Agent not found | 404 | `git_service.py:102-106` | "Agent not found" |
-| Agent not running | 400 | `git_service.py:108-112` | "Agent must be running to sync" |
-| Access denied (read) | 403 | `git.py:48` | "Access denied" |
-| Access denied (write) | 403 | `git.py:110` | "Only agent owners can sync to GitHub" |
-| Git not enabled | 400 | `agent_server/routers/git.py:158` | "Git sync not enabled for this agent" |
-| Git timeout | 504 | `agent_server/routers/git.py:135,265` | "Git operation timed out" |
-| Git add failed | 500 | `agent_server/routers/git.py:184` | "Git add failed: {stderr}" |
-| Git commit failed | 500 | `agent_server/routers/git.py:214` | "Git commit failed: {stderr}" |
-| Git push failed | 500 | `agent_server/routers/git.py:244` | "Git push failed: {stderr}" |
-| Merge conflict (pull) | 409 | `agent_server/routers/git.py:358` | "Pull failed (possible conflict): {stderr}" |
+### Access Control Dependencies
+
+Git endpoints use FastAPI dependencies for access control (defined in `src/backend/dependencies.py:212-263`):
+
+| Dependency | Path Parameter | Access Level | Used By |
+|------------|----------------|--------------|---------|
+| `AuthorizedAgentByName` | `{agent_name}` | Read access | `get_git_status`, `get_git_log`, `get_git_config` |
+| `OwnedAgentByName` | `{agent_name}` | Owner access | `sync_to_github`, `pull_from_github`, `initialize_github_sync` |
+
+**Pattern:**
+```python
+# src/backend/routers/git.py:43-47
+@router.get("/{agent_name}/git/status")
+async def get_git_status(
+    agent_name: AuthorizedAgentByName,  # Validates user can access agent
+    request: Request
+):
+```
+
+The dependency automatically:
+1. Extracts `agent_name` from the path
+2. Gets current user from JWT/MCP key
+3. Checks access via `db.can_user_access_agent()` or `db.can_user_share_agent()`
+4. Returns agent name or raises 403
+
+### Endpoint Signatures
+
+| Endpoint | Line | Dependency | Access Level |
+|----------|------|------------|--------------|
+| `GET /{agent_name}/git/status` | 43 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/sync` | 95 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/log` | 150 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/pull` | 177 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/config` | 214 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/initialize` | 251 | `OwnedAgentByName` | Owner |
+
+### Settings Service Integration
+
+GitHub PAT is retrieved via the centralized settings service:
+
+```python
+# src/backend/routers/git.py:274
+from services.settings_service import get_github_pat
+
+# Used in initialize_github_sync endpoint (line 301)
+github_pat = get_github_pat()
+```
+
+**Settings Service** (`src/backend/services/settings_service.py:69-74`):
+```python
+def get_github_pat(self) -> str:
+    """Get GitHub PAT from settings, fallback to env var."""
+    key = self.get_setting('github_pat')
+    if key:
+        return key
+    return os.getenv('GITHUB_PAT', '')
+```
+
+### GitHub Service Integration
+
+Repository operations use the centralized GitHub service:
+
+```python
+# src/backend/routers/git.py:275
+from services.github_service import GitHubService, GitHubError
+
+# Used in initialize_github_sync endpoint (lines 312-327)
+gh = GitHubService(github_pat)
+repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+if not repo_info.exists:
+    create_result = await gh.create_repository(
+        owner=body.repo_owner,
+        name=body.repo_name,
+        private=body.private,
+        description=body.description
+    )
+```
+
+**GitHub Service** (`src/backend/services/github_service.py:60-265`):
+- `check_repo_exists(owner, name)` - Returns `GitHubRepoInfo`
+- `create_repository(owner, name, private, description)` - Returns `GitHubCreateResult`
+- `validate_token()` - Returns `(is_valid, username)`
+- `get_owner_type(owner)` - Returns `OwnerType.USER` or `OwnerType.ORGANIZATION`
+
+### Git Service Layer
+
+**Location**: `src/backend/services/git_service.py`
+
+| Function | Line | Description |
+|----------|------|-------------|
+| `generate_instance_id()` | 22 | Create 8-char UUID for agent |
+| `generate_working_branch()` | 27 | Create `trinity/{agent}/{id}` branch name |
+| `create_git_config_for_agent()` | 32 | Store config in database |
+| `get_git_status()` | 64 | Proxy to agent `/api/git/status` |
+| `sync_to_github()` | 88 | Proxy to agent `/api/git/sync` with conflict handling |
+| `get_git_log()` | 172 | Proxy to agent `/api/git/log` |
+| `pull_from_github()` | 196 | Proxy to agent `/api/git/pull` with conflict handling |
+| `get_agent_git_config()` | 239 | Get config from database |
+| `initialize_git_in_container()` | 262 | Initialize git in agent container |
+| `check_git_initialized()` | 400 | Check if git exists in container |
+
+---
+
+## Frontend Layer
+
+### useGitSync Composable
+
+**Location**: `src/frontend/src/composables/useGitSync.js`
+
+```javascript
+// Pull from GitHub (source mode)
+const pullFromGithub = async () => {
+  const result = await agentsStore.pullFromGithub(agentRef.value.name)
+  showNotification(result.message, result.success ? 'success' : 'error')
+  await loadGitStatus()
+}
+
+// Sync to GitHub (working branch mode)
+const syncToGithub = async () => {
+  const result = await agentsStore.syncToGithub(agentRef.value.name)
+  showNotification(`Synced ${result.files_changed} file(s)`, 'success')
+  await loadGitStatus()
+}
+```
+
+### UI Controls (AgentDetail.vue)
+
+| Button | Color | Action | Mode |
+|--------|-------|--------|------|
+| Pull | Blue | `pullFromGithub()` | Both modes |
+| Sync | Orange | `syncToGithub()` | Working branch mode |
+| Refresh | Gray | `refreshGitStatus()` | Both modes |
+
+---
+
+## API Reference
+
+### GET /api/agents/{name}/git/config
+
+Returns git configuration including source mode settings:
+
+```json
+{
+  "git_enabled": true,
+  "github_repo": "Owner/repo",
+  "working_branch": "main",
+  "source_branch": "main",
+  "source_mode": true,
+  "instance_id": "a1b2c3d4",
+  "created_at": "2025-12-30T12:00:00",
+  "last_sync_at": null,
+  "sync_enabled": true
+}
+```
+
+### POST /api/agents/{name}/git/pull
+
+Pull latest changes from source branch:
+
+```json
+{
+  "success": true,
+  "message": "Pulled latest changes from main"
+}
+```
+
+### POST /api/agents/{name}/git/sync
+
+Push changes to working branch (only in working branch mode):
+
+```json
+{
+  "success": true,
+  "commit_sha": "abc123...",
+  "files_changed": 3,
+  "branch": "trinity/my-agent/a1b2c3d4",
+  "sync_time": "2025-12-30T12:00:00"
+}
+```
+
+---
+
+## Migration from Working Branch to Source Mode
+
+Existing agents using working branch mode will continue to work. To switch an agent to source mode:
+
+1. Delete the agent
+2. Recreate with default settings (source_mode=true)
+
+Or, if you want to preserve agent state:
+1. Sync any pending changes to GitHub
+2. Merge working branch to main
+3. Delete and recreate the agent
+
+---
+
+## Conflict Resolution
+
+Both pull and sync operations support automatic conflict detection and resolution strategies.
+
+### Pull Conflict Strategies
+
+When a pull operation fails due to local changes conflicting with remote:
+
+| Strategy | Description | When to Use |
+|----------|-------------|-------------|
+| `clean` (default) | Simple pull with rebase. Fails if conflicts. | When you have no local changes |
+| `stash_reapply` | Stash local changes, pull, reapply stash | When you want to keep local changes |
+| `force_reset` | Hard reset to remote, discard all local changes | When remote is source of truth |
+
+### Sync (Push) Conflict Strategies
+
+When a push operation fails because remote has newer changes:
+
+| Strategy | Description | When to Use |
+|----------|-------------|-------------|
+| `normal` (default) | Stage, commit, push. Fails if remote has changes. | When you expect clean push |
+| `pull_first` | Pull latest first, then stage, commit, push | Standard workflow with concurrent changes |
+| `force_push` | Force push, overwriting remote | When local is source of truth |
+
+### Conflict Resolution UI
+
+When a conflict is detected (HTTP 409 response), the UI shows a modal with options:
+
+```
++---------------------------------------------+
+| Pull Conflict                               |
+|                                             |
+| Pull failed: merge conflict detected        |
+|                                             |
+| +-------------------------------------------+
+| | Stash & Reapply (Recommended)             |
+| | Save local changes, pull, reapply         |
+| +-------------------------------------------+
+|                                             |
+| +-------------------------------------------+
+| | Force Replace Local                       |
+| | Discard all local changes (destructive)   |
+| +-------------------------------------------+
+|                                             |
+|                              [Cancel]       |
++---------------------------------------------+
+```
+
+### API Request Format
+
+```json
+// Pull with strategy
+POST /api/agents/{name}/git/pull
+{
+  "strategy": "stash_reapply"  // "clean", "stash_reapply", "force_reset"
+}
+
+// Sync with strategy
+POST /api/agents/{name}/git/sync
+{
+  "strategy": "pull_first",  // "normal", "pull_first", "force_push"
+  "message": "Optional commit message"
+}
+```
+
+### Error Response (Conflict)
+
+```json
+// HTTP 409 Conflict
+{
+  "detail": "Pull failed: merge conflict detected"
+}
+// Header: X-Conflict-Type: merge_conflict | local_uncommitted | push_rejected
+```
+
+### Component Files
+
+| Component | File | Description |
+|-----------|------|-------------|
+| Modal | `src/frontend/src/components/GitConflictModal.vue` | Conflict resolution UI |
+| Composable | `src/frontend/src/composables/useGitSync.js` | State management with conflict handling |
+| Agent-Server | `docker/base-image/agent_server/routers/git.py` | Git operations with strategies |
+| Backend Router | `src/backend/routers/git.py` | API endpoints with strategy params |
+| Git Service | `src/backend/services/git_service.py` | Proxy to agent with conflict detection |
+| Settings Service | `src/backend/services/settings_service.py` | GitHub PAT retrieval |
+| GitHub Service | `src/backend/services/github_service.py` | GitHub API operations |
+| Dependencies | `src/backend/dependencies.py` | Access control (lines 212-263) |
 
 ---
 
 ## Security Considerations
 
-1. **Authorization**: Only owners and admins can sync (write operations). Shared users can view status but not modify.
-
-2. **Credential Handling**: GitHub PAT is passed as environment variable, never exposed in logs or API responses.
-
-3. **Remote URL Sanitization**: Credentials are stripped from remote URLs before display:
-   ```python
-   # agent_server/routers/git.py:118-121
-   if '@github.com' in url:
-       remote_url = "https://github.com/" + url.split('@github.com/')[1]
-   ```
-
-4. **Force Push Protection**: Uses `--force-with-lease` first, falls back to regular push only if needed.
-
-5. **Infrastructure Files Protected**: `agent-server.py`, `startup.sh`, and `.local/` are added to `.gitignore` and restored after clone.
+1. **GitHub PAT**: Passed as environment variable, never exposed in logs or API responses
+2. **Remote URL Sanitization**: Credentials stripped before display
+3. **Force Push Protection**: Uses `--force-with-lease` for normal pushes
+4. **Force Operations Warning**: UI shows red destructive warnings for force operations
+5. **Infrastructure Files**: `content/`, `.local/` auto-added to `.gitignore`
+6. **Access Control**: Read endpoints use `AuthorizedAgentByName`, write endpoints use `OwnedAgentByName`
 
 ---
 
 ## Status
-Working - Verified implementation, all line numbers accurate as of 2025-12-06
+
+Working - Architecture cleanup (2025-12-31)
 
 ---
 
@@ -502,63 +518,7 @@ Working - Verified implementation, all line numbers accurate as of 2025-12-06
 |-----------|------|--------------|
 | **Upstream** | [Template Processing](template-processing.md) | GitHub templates trigger git sync setup |
 | **Upstream** | [Agent Lifecycle](agent-lifecycle.md) | Agent creation enables git sync |
-| **Downstream** | Agent work creates changes | Claude Code modifies files that can be synced |
-
----
-
-## API Response Examples
-
-### GET /api/agents/{name}/git/status
-
-```json
-{
-  "git_enabled": true,
-  "branch": "trinity/my-agent/a1b2c3d4",
-  "remote_url": "https://github.com/Abilityai/agent-ruby.git",
-  "last_commit": {
-    "sha": "abc123...",
-    "short_sha": "abc123",
-    "message": "Trinity sync: 2024-01-15 10:30:00",
-    "author": "Trinity Agent (my-agent)",
-    "date": "2024-01-15T10:30:00"
-  },
-  "changes": [
-    {"status": "M", "path": "memory/task.md"},
-    {"status": "A", "path": "outputs/report.json"}
-  ],
-  "changes_count": 2,
-  "ahead": 1,
-  "behind": 0,
-  "sync_status": "pending_sync",
-  "db_config": {
-    "last_sync_at": "2024-01-15T09:00:00",
-    "last_commit_sha": "xyz789...",
-    "sync_enabled": true
-  }
-}
-```
-
-### POST /api/agents/{name}/git/sync
-
-**Request**:
-```json
-{
-  "message": "Custom commit message (optional)",
-  "paths": ["memory/", "outputs/"]  // Optional: specific paths
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "commit_sha": "abc123def456...",
-  "files_changed": 3,
-  "branch": "trinity/my-agent/a1b2c3d4",
-  "message": "Synced to trinity/my-agent/a1b2c3d4",
-  "sync_time": "2024-01-15T10:35:00"
-}
-```
+| **Downstream** | Content generation | Large files go to `content/` folder |
 
 ---
 
@@ -566,6 +526,8 @@ Working - Verified implementation, all line numbers accurate as of 2025-12-06
 
 | Date | Changes |
 |------|---------|
-| 2025-12-06 | Updated agent-server references to new modular structure (`agent_server/routers/git.py`) |
-| 2025-12-06 | Updated line numbers for git endpoints (17-372 in modular file vs 1128-1501 in old monolithic) |
-| 2025-12-02 | Initial documentation |
+| 2025-12-31 | Updated with access control dependencies (`AuthorizedAgentByName`, `OwnedAgentByName`), settings service (`get_github_pat()`), and GitHub service integration. Added line number references. |
+| 2025-12-30 | Added conflict resolution with pull/sync strategies and GitConflictModal UI. |
+| 2025-12-30 | Added source mode (pull-only) as default. Working branch mode now legacy. |
+| 2025-12-06 | Updated agent-server references to modular structure |
+| 2025-12-02 | Initial documentation (working branch mode) |

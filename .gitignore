@@ -110,8 +110,8 @@ backups/
 # Dynamic test repositories (created during testing)
 repositories/
 
-# Archive folder (local development artifacts)
-archive/
+# Archive folder (local development artifacts, root only)
+/archive/
 
 # Screenshots in root (test artifacts)
 *.png

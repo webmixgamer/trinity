@@ -10,7 +10,6 @@ from fastapi.responses import PlainTextResponse
 from models import User, AgentConfig, SystemDeployRequest, SystemDeployResponse
 from database import db
 from dependencies import get_current_user
-from services.audit_service import log_audit_event
 from services.system_service import (
     parse_manifest,
     validate_manifest,
@@ -121,20 +120,6 @@ async def deploy_system(
             except HTTPException as e:
                 # Re-raise HTTP exceptions (they have proper status codes)
                 logger.error(f"Failed to create agent '{final_name}': {e.detail}")
-                await log_audit_event(
-                    event_type="system_deployment",
-                    action="partial_failure",
-                    user_id=current_user.username,
-                    ip_address=request.client.host if request.client else None,
-                    result="failed",
-                    severity="error",
-                    details={
-                        "system_name": manifest.name,
-                        "failed_agent": final_name,
-                        "created_agents": created_agents,
-                        "error": e.detail
-                    }
-                )
                 raise HTTPException(
                     status_code=500,
                     detail={
@@ -148,20 +133,6 @@ async def deploy_system(
             except Exception as e:
                 # Log partial failure
                 logger.error(f"Failed to create agent '{final_name}': {e}")
-                await log_audit_event(
-                    event_type="system_deployment",
-                    action="partial_failure",
-                    user_id=current_user.username,
-                    ip_address=request.client.host if request.client else None,
-                    result="failed",
-                    severity="error",
-                    details={
-                        "system_name": manifest.name,
-                        "failed_agent": final_name,
-                        "created_agents": created_agents,
-                        "error": str(e)
-                    }
-                )
                 raise HTTPException(
                     status_code=500,
                     detail={
@@ -207,24 +178,6 @@ async def deploy_system(
             all_warnings.append(f"Failed to start {agents_failed} agents: {failed_agents}")
 
         logger.info(f"Started {agents_started}/{len(created_agents)} agents for system '{manifest.name}'")
-
-        # 11. Audit log success
-        await log_audit_event(
-            event_type="system_deployment",
-            action="deploy",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success",
-            details={
-                "system_name": manifest.name,
-                "agents_created": created_agents,
-                "agents_started": agents_started,
-                "prompt_updated": prompt_updated,
-                "permissions_configured": permissions_count,
-                "schedules_created": schedules_count,
-                "folders_configured": folders_configured
-            }
-        )
 
         return SystemDeployResponse(
             status="deployed",
@@ -419,20 +372,6 @@ async def restart_system(
                 logger.error(f"Failed to restart agent '{agent_name}': {e}")
                 failed.append(agent_name)
 
-        # Audit log
-        await log_audit_event(
-            event_type="system_management",
-            action="restart",
-            user_id=current_user.username,
-            ip_address=request.client.host if request.client else None,
-            result="success" if not failed else "partial",
-            details={
-                "system_name": system_name,
-                "restarted": restarted,
-                "failed": failed
-            }
-        )
-
         return {
             "restarted": restarted,
             "failed": failed
@@ -477,19 +416,6 @@ async def get_system_manifest(
 
         # Export manifest
         yaml_content = export_manifest(system_name, system_agents)
-
-        # Audit log
-        await log_audit_event(
-            event_type="system_management",
-            action="export_manifest",
-            user_id=current_user.username,
-            ip_address=None,
-            result="success",
-            details={
-                "system_name": system_name,
-                "agent_count": len(system_agents)
-            }
-        )
 
         return yaml_content
 

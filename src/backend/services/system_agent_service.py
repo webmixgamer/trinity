@@ -21,6 +21,7 @@ from services.docker_service import (
     get_next_available_port,
 )
 from credentials import CredentialManager
+from services.settings_service import get_anthropic_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -176,15 +177,15 @@ class SystemAgentService:
         env_vars = {
             'AGENT_NAME': SYSTEM_AGENT_NAME,
             'AGENT_TYPE': agent_type,
-            'ANTHROPIC_API_KEY': os.getenv('ANTHROPIC_API_KEY', ''),
+            'ANTHROPIC_API_KEY': get_anthropic_api_key(),
             'ENABLE_SSH': 'true',
             'ENABLE_AGENT_UI': 'true',
             'AGENT_SERVER_PORT': '8000',
             'TEMPLATE_NAME': SYSTEM_AGENT_TEMPLATE
         }
 
-        # OpenTelemetry Configuration (opt-in)
-        if os.getenv('OTEL_ENABLED', '0') == '1':
+        # OpenTelemetry Configuration (enabled by default)
+        if os.getenv('OTEL_ENABLED', '1') == '1':
             env_vars['CLAUDE_CODE_ENABLE_TELEMETRY'] = '1'
             env_vars['OTEL_METRICS_EXPORTER'] = os.getenv('OTEL_METRICS_EXPORTER', 'otlp')
             env_vars['OTEL_LOGS_EXPORTER'] = os.getenv('OTEL_LOGS_EXPORTER', 'otlp')
@@ -212,7 +213,7 @@ class SystemAgentService:
             volumes[str(host_template_path)] = {'bind': '/template', 'mode': 'ro'}
             logger.info(f"Mounting template from {host_template_path} to /template")
 
-        # Mount Trinity meta-prompt for task DAG planning and vector memory docs
+        # Mount Trinity meta-prompt for agent collaboration and vector memory docs
         container_meta_prompt_path = Path("/trinity-meta-prompt")
         host_meta_prompt_path = os.getenv("HOST_META_PROMPT_PATH", "./config/trinity-meta-prompt")
         if container_meta_prompt_path.exists():
@@ -224,9 +225,12 @@ class SystemAgentService:
             'trinity.platform': 'agent',
             'trinity.agent-name': SYSTEM_AGENT_NAME,
             'trinity.agent-type': agent_type,
+            'trinity.ssh-port': str(ssh_port),  # Required for port tracking
+            'trinity.cpu': str(resources.get('cpu', '4')),
+            'trinity.memory': resources.get('memory', '8g'),
+            'trinity.created': datetime.utcnow().isoformat(),
             'trinity.template': SYSTEM_AGENT_TEMPLATE,
             'trinity.is-system': 'true',  # Mark as system agent
-            'trinity.created-at': datetime.utcnow().isoformat()
         }
 
         # Create the container

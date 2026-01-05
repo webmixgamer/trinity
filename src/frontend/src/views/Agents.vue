@@ -63,6 +63,8 @@
                       <div class="ml-4 flex-1">
                         <div class="flex items-center space-x-2">
                           <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400">{{ agent.name }}</p>
+                          <!-- Runtime badge (Claude/Gemini) -->
+                          <RuntimeBadge :runtime="agent.runtime" :show-label="false" />
                           <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
                             Shared by {{ agent.owner }}
                           </span>
@@ -87,17 +89,6 @@
                               class="h-full rounded-full transition-all duration-500"
                             ></div>
                           </div>
-                        </div>
-
-                        <!-- Task progress (if has active plan) -->
-                        <div v-if="hasActivePlan(agent.name)" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          <span class="inline-flex items-center">
-                            <ClipboardDocumentCheckIcon class="h-3 w-3 mr-1 text-purple-500 dark:text-purple-400" />
-                            {{ getTaskProgress(agent.name) }}
-                            <span v-if="getCurrentTask(agent.name)" class="ml-2 truncate max-w-[150px] text-purple-600 dark:text-purple-400" :title="getCurrentTask(agent.name)">
-                              • {{ getCurrentTask(agent.name) }}
-                            </span>
-                          </span>
                         </div>
                       </div>
                     </div>
@@ -168,7 +159,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
-import { ServerIcon, PlayIcon, StopIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline'
+import RuntimeBadge from '../components/RuntimeBadge.vue'
+import { ServerIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline'
 
 const agentsStore = useAgentsStore()
 const showCreateModal = ref(false)
@@ -228,21 +220,17 @@ const getProgressBarColor = (agentName) => {
   return 'bg-green-500'
 }
 
-// Task progress helpers
+// Plan/Task helpers (stubbed for now - will be implemented when plan system is active)
 const hasActivePlan = (agentName) => {
-  const stats = agentsStore.planStats[agentName]
-  return stats?.activePlan || false
+  return false  // TODO: Implement when plan tracking is added to agents store
 }
 
 const getTaskProgress = (agentName) => {
-  const stats = agentsStore.planStats[agentName]
-  if (!stats) return ''
-  return `${stats.completedTasks}/${stats.totalTasks} tasks`
+  return ''  // TODO: Return task progress string
 }
 
 const getCurrentTask = (agentName) => {
-  const stats = agentsStore.planStats[agentName]
-  return stats?.currentTask || null
+  return null  // TODO: Return current task description
 }
 
 const startAgent = async (name) => {

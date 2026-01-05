@@ -1,9 +1,18 @@
 # Feature: Agent Network Replay Mode
 
-> **Last Updated**: 2025-12-19
+> **Last Updated**: 2026-01-04
 
 ## Overview
 Time-compressed replay of historical agent messages, allowing users to visualize past interaction patterns at accelerated speeds (1x-50x) with VCR-style controls and timeline scrubbing.
+
+> **Note (2026-01-04)**: The replay controls have been refactored into a dedicated `ReplayTimeline.vue` component with a waterfall-style timeline visualization. See **[replay-timeline.md](replay-timeline.md)** for detailed documentation of the new timeline component including:
+> - Waterfall visualization with agent rows and activity bars
+> - Communication arrows between agent rows
+> - Zoom controls (50% - 2000%)
+> - "Active only" toggle to hide inactive agents
+> - Smooth playback cursor using requestAnimationFrame
+> - 15-minute grid lines with hour marks
+> - Sticky headers for time scale and agent labels
 
 ## User Story
 As a platform user, I want to replay historical agent messages from a specific time period so that I can analyze communication patterns, debug issues, and understand multi-agent workflows without having to trigger live interactions.
@@ -11,7 +20,7 @@ As a platform user, I want to replay historical agent messages from a specific t
 ## Entry Points
 - **UI Route**: `/` (Dashboard) - Agent Network view is now integrated into Dashboard
 - **Legacy Route**: `/network` redirects to `/`
-- **UI Component**: `src/frontend/src/views/Dashboard.vue:44-64` - Mode toggle button
+- **UI Component**: `src/frontend/src/views/Dashboard.vue:63-82` - Mode toggle button
 - **Store Function**: `networkStore.setReplayMode(true)` - Switches to replay mode
 - **Data Source**: `historicalCollaborations` array from `GET /api/activities/timeline`
 
@@ -31,7 +40,7 @@ The Replay Mode is now part of Dashboard.vue (previously AgentNetwork.vue was a 
 
 #### Dashboard.vue (`src/frontend/src/views/Dashboard.vue`)
 
-**Mode Toggle** (Lines 44-64):
+**Mode Toggle** (Lines 63-82):
 ```vue
 <div class="flex rounded-md border border-gray-300 p-0.5 bg-gray-50">
   <button
@@ -55,7 +64,7 @@ The Replay Mode is now part of Dashboard.vue (previously AgentNetwork.vue was a 
 </div>
 ```
 
-**Replay Controls Panel** (Lines 120-226 in Dashboard.vue):
+**Replay Controls Panel** (Lines 138-244 in Dashboard.vue):
 ```vue
 <div v-if="isReplayMode" class="bg-gradient-to-r from-slate-50 to-gray-50 border-b-2 border-gray-300 px-6 py-4">
   <!-- Playback Controls -->
@@ -124,7 +133,7 @@ The Replay Mode is now part of Dashboard.vue (previously AgentNetwork.vue was a 
 </div>
 ```
 
-**Event Handlers** (Lines 538-578 in Dashboard.vue):
+**Event Handlers** (Lines 565-605 in Dashboard.vue):
 ```javascript
 // Mode toggle
 function toggleMode(mode) {
@@ -178,7 +187,7 @@ function formatTimestamp(timestamp) {
 
 > **Note**: Store was renamed from `collaborations.js` to `network.js` (2025-12-19)
 
-**Replay State Variables** (Lines 35-42):
+**Replay State Variables** (Lines 51-58):
 ```javascript
 // Replay mode state
 const isReplayMode = ref(false)        // Mode toggle (live vs replay)
@@ -190,7 +199,7 @@ const replayStartTime = ref(null)      // Timestamp when replay started
 const replayElapsedMs = ref(0)         // Elapsed time in replay (virtual time)
 ```
 
-**Computed Properties** (Lines 60-89):
+**Computed Properties** (Lines 76-105):
 ```javascript
 // Total number of events
 const totalEvents = computed(() => historicalCommunications.value.length)
@@ -230,7 +239,7 @@ const currentTime = computed(() => {
 
 **Replay Control Functions**:
 
-##### setReplayMode() (Lines 742-760)
+##### setReplayMode() (Lines 690-708)
 ```javascript
 function setReplayMode(mode) {
   isReplayMode.value = mode
@@ -261,7 +270,7 @@ When exiting replay mode:
 2. Reconnects WebSocket for live updates
 3. Resumes context stat polling
 
-##### startReplay() (Lines 762-780)
+##### startReplay() (Lines 710-728)
 ```javascript
 function startReplay() {
   if (historicalCommunications.value.length === 0) {
@@ -290,7 +299,7 @@ function startReplay() {
 - Resets edges if starting from beginning
 - Initiates event scheduling loop
 
-##### pauseReplay() (Lines 782-789)
+##### pauseReplay() (Lines 730-737)
 ```javascript
 function pauseReplay() {
   isPlaying.value = false
@@ -304,7 +313,7 @@ function pauseReplay() {
 
 **Purpose**: Pauses replay at current position without resetting progress.
 
-##### stopReplay() (Lines 791-805)
+##### stopReplay() (Lines 739-753)
 ```javascript
 function stopReplay() {
   isPlaying.value = false
@@ -325,7 +334,7 @@ function stopReplay() {
 
 **Purpose**: Stops replay and resets to beginning. Clears all edge animations.
 
-##### setReplaySpeed() (Lines 807-816)
+##### setReplaySpeed() (Lines 755-764)
 ```javascript
 function setReplaySpeed(speed) {
   replaySpeed.value = speed
@@ -343,7 +352,7 @@ function setReplaySpeed(speed) {
 
 **Replay Scheduling Logic**:
 
-##### scheduleNextEvent() (Lines 818-849)
+##### scheduleNextEvent() (Lines 766-797)
 ```javascript
 function scheduleNextEvent() {
   if (!isPlaying.value) return
@@ -393,7 +402,7 @@ replayDelay = Math.max(replayDelay, 100)             // Minimum 100ms floor
 
 **Timeline Navigation**:
 
-##### jumpToTime() (Lines 851-872)
+##### jumpToTime() (Lines 799-820)
 ```javascript
 function jumpToTime(targetTimestamp) {
   // Find event closest to target time
@@ -419,7 +428,7 @@ function jumpToTime(targetTimestamp) {
 }
 ```
 
-##### jumpToEvent() (Lines 874-889)
+##### jumpToEvent() (Lines 822-837)
 ```javascript
 function jumpToEvent(index) {
   if (index >= 0 && index < historicalCommunications.value.length) {
@@ -439,7 +448,7 @@ function jumpToEvent(index) {
 }
 ```
 
-##### resetAllEdges() (Lines 891-922)
+##### resetAllEdges() (Lines 839-870)
 ```javascript
 function resetAllEdges() {
   // Set all edges to inactive state
@@ -476,7 +485,7 @@ function resetAllEdges() {
 
 **Timeline Position Calculation**:
 
-##### getEventPosition() (Lines 924-934)
+##### getEventPosition() (Lines 872-882)
 ```javascript
 function getEventPosition(event) {
   if (!timelineStart.value || !timelineEnd.value) return 0
@@ -493,7 +502,7 @@ function getEventPosition(event) {
 
 **Purpose**: Converts event timestamp to timeline position percentage (0-100%).
 
-##### handleTimelineClick() (Lines 936-939)
+##### handleTimelineClick() (Lines 884-887)
 ```javascript
 function handleTimelineClick(clickX, timelineWidth) {
   const percent = (clickX / timelineWidth) * 100
@@ -501,7 +510,7 @@ function handleTimelineClick(clickX, timelineWidth) {
 }
 ```
 
-##### jumpToTimelinePosition() (Lines 941-949)
+##### jumpToTimelinePosition() (Lines 889-897)
 ```javascript
 function jumpToTimelinePosition(percent) {
   if (!timelineStart.value || !timelineEnd.value) return
@@ -519,12 +528,12 @@ function jumpToTimelinePosition(percent) {
 ### Dependencies
 
 **Vue Flow** (unchanged from live mode):
-- Reuses existing `animateEdge()` function (Lines 359-442)
+- Reuses existing `animateEdge()` function (Lines 395-492)
 - Same edge styling and animation system
 - No changes to graph rendering
 
 **Historical Data Source**:
-- `historicalCollaborations` array populated by `fetchHistoricalCollaborations()` (Lines 102-161)
+- `historicalCollaborations` array populated by `fetchHistoricalCollaborations()` (Lines 118-177)
 - Data format:
   ```javascript
   {
@@ -634,7 +643,7 @@ if (savedMode === 'true') {
 ### WebSocket Disconnection
 
 **When**: Entering replay mode
-**Function**: `disconnectWebSocket()` (Lines 550-556)
+**Function**: `disconnectWebSocket()` (Lines 568-574)
 
 **Purpose**: Prevents real-time events from interfering with replay:
 - Stops listening to `agent_collaboration` events
@@ -646,7 +655,7 @@ if (savedMode === 'true') {
 ### Context Polling Suspension
 
 **When**: Entering replay mode
-**Function**: `stopContextPolling()` (Lines 691-697)
+**Function**: `stopContextPolling()` (Lines 639-645)
 
 **Purpose**: Stops 5-second interval that fetches agent context stats from `GET /api/agents/context-stats`.
 
@@ -654,7 +663,7 @@ if (savedMode === 'true') {
 
 ### Edge Animation Reuse
 
-**Function**: `animateEdge(source, target)` (Lines 377-474)
+**Function**: `animateEdge(source, target)` (Lines 395-492)
 
 **Shared Logic**: Same edge animation used in both live and replay modes:
 1. Find or create edge object
@@ -1427,6 +1436,8 @@ localStorage.removeItem('trinity-replay-mode')
 
 | Date | Changes |
 |------|---------|
+| 2026-01-04 | **ReplayTimeline component**: Replay controls refactored into dedicated `ReplayTimeline.vue` component with waterfall timeline. See [replay-timeline.md](replay-timeline.md) for new component documentation. |
+| 2025-12-30 | **Line reference update**: Updated all line numbers to match current codebase after OTel and system agent additions |
 | 2025-12-19 | **Store renamed**: `collaborations.js` renamed to `network.js`. Updated all line number references. Updated feature-flows.md index. |
 | 2025-12-07 | **Major refactor**: Merged into Dashboard.vue (AgentNetwork.vue deleted). Route changed from `/network` to `/`. Updated line references. Renamed "communications" to "messages". |
 | 2025-12-07 | Terminology refactor: Collaboration Dashboard -> Agent Network, collaborations -> communications |
@@ -1473,8 +1484,8 @@ localStorage.removeItem('trinity-replay-mode')
 ## References
 
 ### Code Files
-- `src/frontend/src/views/Dashboard.vue` - Main view with replay controls (Lines 120-226)
-- `src/frontend/src/stores/network.js` - Replay state and actions (Lines 35-42, 742-949)
+- `src/frontend/src/views/Dashboard.vue` - Main view with replay controls (Lines 138-244)
+- `src/frontend/src/stores/network.js` - Replay state and actions (Lines 51-58, 689-897)
 - `src/backend/routers/activities.py` - Activity timeline API
 
 ### Renamed Files
