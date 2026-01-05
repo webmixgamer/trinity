@@ -82,17 +82,17 @@ def mock_log_files(test_log_dir):
 
 class TestLogArchiveAuthentication:
     """Test that all log endpoints require admin authentication."""
-    
+
     def test_stats_requires_auth(self, unauthenticated_client):
         """Test GET /api/logs/stats requires authentication."""
         response = unauthenticated_client.get("/api/logs/stats", auth=False)
         assert_status(response, 401)
-    
+
     def test_retention_config_requires_auth(self, unauthenticated_client):
         """Test GET /api/logs/retention requires authentication."""
         response = unauthenticated_client.get("/api/logs/retention", auth=False)
         assert_status(response, 401)
-    
+
     def test_update_retention_requires_auth(self, unauthenticated_client):
         """Test PUT /api/logs/retention requires authentication."""
         response = unauthenticated_client.put(
@@ -101,12 +101,12 @@ class TestLogArchiveAuthentication:
             auth=False
         )
         assert_status(response, 401)
-    
+
     def test_archive_requires_auth(self, unauthenticated_client):
         """Test POST /api/logs/archive requires authentication."""
         response = unauthenticated_client.post("/api/logs/archive", json={}, auth=False)
         assert_status(response, 401)
-    
+
     def test_health_requires_auth(self, unauthenticated_client):
         """Test GET /api/logs/health requires authentication."""
         response = unauthenticated_client.get("/api/logs/health", auth=False)
@@ -119,14 +119,14 @@ class TestLogArchiveAuthentication:
 
 class TestLogStats:
     """Test log statistics endpoint."""
-    
+
     def test_stats_returns_expected_fields(self, api_client):
         """Test that stats endpoint returns expected structure."""
         response = api_client.get("/api/logs/stats")
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         # Check required fields
         assert "log_files" in data
         assert "archive_files" in data
@@ -136,14 +136,14 @@ class TestLogStats:
         assert "total_archive_size_mb" in data
         assert "log_file_count" in data
         assert "archive_file_count" in data
-    
+
     def test_stats_log_files_structure(self, api_client):
         """Test that log files array has expected structure."""
         response = api_client.get("/api/logs/stats")
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         if data["log_file_count"] > 0:
             log_file = data["log_files"][0]
             assert "name" in log_file
@@ -157,60 +157,60 @@ class TestLogStats:
 
 class TestRetentionConfig:
     """Test retention configuration endpoints."""
-    
+
     def test_get_retention_returns_defaults(self, api_client):
         """Test GET /api/logs/retention returns default values."""
         response = api_client.get("/api/logs/retention")
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         assert "retention_days" in data
         assert "archive_enabled" in data
         assert "cleanup_hour" in data
-        
+
         assert isinstance(data["retention_days"], int)
         assert isinstance(data["archive_enabled"], bool)
         assert isinstance(data["cleanup_hour"], int)
         assert 0 <= data["cleanup_hour"] <= 23
-    
+
     def test_update_retention_validates_days_minimum(self, api_client):
         """Test that retention days must be at least 1."""
         response = api_client.put(
             "/api/logs/retention",
             json={"retention_days": 0, "archive_enabled": True, "cleanup_hour": 3}
         )
-        
+
         assert_status_in(response, [400, 422])
-    
+
     def test_update_retention_validates_days_maximum(self, api_client):
         """Test that retention days cannot exceed 3650."""
         response = api_client.put(
             "/api/logs/retention",
             json={"retention_days": 9999, "archive_enabled": True, "cleanup_hour": 3}
         )
-        
+
         assert_status_in(response, [400, 422])
-    
+
     def test_update_retention_validates_hour_range(self, api_client):
         """Test that cleanup hour must be 0-23."""
         response = api_client.put(
             "/api/logs/retention",
             json={"retention_days": 90, "archive_enabled": True, "cleanup_hour": 25}
         )
-        
+
         assert_status_in(response, [400, 422])
-    
+
     def test_update_retention_succeeds(self, api_client):
         """Test successful retention update."""
         response = api_client.put(
             "/api/logs/retention",
             json={"retention_days": 30, "archive_enabled": True, "cleanup_hour": 2}
         )
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         assert data["retention_days"] == 30
         assert data["archive_enabled"] is True
         assert data["cleanup_hour"] == 2
@@ -227,7 +227,7 @@ class TestArchiveService:
     async def test_extract_date_from_filename(self):
         """Test date extraction from log filenames."""
         from services.log_archive_service import LogArchiveService
-        
+
         service = LogArchiveService()
 
         # Valid filenames
@@ -301,43 +301,43 @@ class TestArchiveService:
 
 class TestManualArchive:
     """Test manual archive trigger endpoint."""
-    
+
     def test_archive_endpoint_exists(self, api_client):
         """Test that archive endpoint is available."""
         response = api_client.post(
             "/api/logs/archive",
             json={"retention_days": 365, "delete_after_archive": False}
         )
-        
+
         # Should succeed or return an expected error (not 404)
         assert response.status_code != 404
-    
+
     def test_archive_returns_expected_fields(self, api_client):
         """Test that archive response has expected structure."""
         response = api_client.post(
             "/api/logs/archive",
             json={"retention_days": 365, "delete_after_archive": False}
         )
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         assert "status" in data
         assert "files_processed" in data
         assert "bytes_saved" in data
         assert "s3_uploaded" in data
         assert "retention_days" in data
-    
+
     def test_archive_respects_retention_days_param(self, api_client):
         """Test that archive respects custom retention_days parameter."""
         response = api_client.post(
             "/api/logs/archive",
             json={"retention_days": 30, "delete_after_archive": False}
         )
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         assert data["retention_days"] == 30
 
 
@@ -347,21 +347,21 @@ class TestManualArchive:
 
 class TestLogServiceHealth:
     """Test log service health endpoint."""
-    
+
     def test_health_returns_scheduler_status(self, api_client):
         """Test that health endpoint returns scheduler status."""
         response = api_client.get("/api/logs/health")
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         assert "scheduler_running" in data
         assert "archive_enabled" in data
         assert "s3_enabled" in data
         assert "s3_configured" in data
         assert "retention_days" in data
         assert "cleanup_hour" in data
-        
+
         assert isinstance(data["scheduler_running"], bool)
         assert isinstance(data["archive_enabled"], bool)
         assert isinstance(data["s3_enabled"], bool)
@@ -421,10 +421,10 @@ class TestS3Integration:
     def test_s3_disabled_by_default(self, api_client):
         """Test that S3 upload is disabled by default."""
         response = api_client.get("/api/logs/health")
-        
+
         assert_status(response, 200)
         data = response.json()
-        
+
         # S3 should be disabled by default
         assert data["s3_enabled"] is False
 
@@ -487,15 +487,15 @@ class TestLogArchiveIntegration:
             "/api/logs/retention",
             json={"retention_days": 45, "archive_enabled": True, "cleanup_hour": 4}
         )
-        
+
         assert_status(update_response, 200)
-        
+
         # Verify change persisted
         get_response = api_client.get("/api/logs/retention")
-        
+
         assert_status(get_response, 200)
         data = get_response.json()
-        
+
         assert data["retention_days"] == 45
         assert data["cleanup_hour"] == 4
 
@@ -506,23 +506,23 @@ class TestLogArchiveIntegration:
 
 class TestArchiveValidation:
     """Test validation of archive parameters."""
-    
+
     def test_archive_validates_retention_days_negative(self, api_client):
         """Test that negative retention days are rejected."""
         response = api_client.post(
             "/api/logs/archive",
             json={"retention_days": -1, "delete_after_archive": True}
         )
-        
+
         assert_status_in(response, [400, 422])
-    
+
     def test_archive_validates_retention_days_excessive(self, api_client):
         """Test that excessive retention days are rejected."""
         response = api_client.post(
             "/api/logs/archive",
             json={"retention_days": 5000, "delete_after_archive": True}
         )
-        
+
         assert_status_in(response, [400, 422])
 
 
