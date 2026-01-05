@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     apscheduler==3.11.0 \
     croniter==5.0.1 \
     pytz==2024.2 \
-    psutil==6.1.1
+    psutil==6.1.1 \
+    boto3==1.35.84
 
 # Copy all backend source files
 COPY ../../src/backend/main.py /app/
@@ -32,6 +33,7 @@ COPY ../../src/backend/db_models.py /app/
 COPY ../../src/backend/dependencies.py /app/
 COPY ../../src/backend/credentials.py /app/
 COPY ../../src/backend/database.py /app/
+COPY ../../src/backend/logging_config.py /app/
 
 # Copy module directories
 COPY ../../src/backend/routers /app/routers/

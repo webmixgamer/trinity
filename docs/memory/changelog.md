@@ -1,3 +1,54 @@
+### 2026-01-05 18:30:00
+✨ **Feature: Vector Log Retention and Archival**
+
+**New Feature**: Automated log retention, rotation, and archival system for Vector logs with optional S3 storage.
+
+**Compliance Gap Addressed**: Vector logging lacked retention policy and archival capabilities required for SOC2/ISO27001 compliance.
+
+**What Was Added**:
+1. **Daily Log Rotation** - Vector now writes to date-stamped files (`platform-2026-01-05.json`)
+2. **Automated Archival** - Nightly job compresses and archives logs older than retention period
+3. **S3 Integration** - Optional upload to S3-compatible storage (AWS S3, MinIO, Cloudflare R2)
+4. **API Endpoints** - Admin-only endpoints for stats, config, and manual archival
+5. **Integrity Verification** - SHA256 checksums ensure archive integrity
+
+**New Files**:
+- `src/backend/services/log_archive_service.py` - Archival logic + APScheduler
+- `src/backend/services/s3_storage.py` - S3-compatible upload module
+- `src/backend/routers/logs.py` - Log management API endpoints
+- `tests/test_log_archive.py` - Comprehensive test coverage
+
+**Modified Files**:
+- `config/vector.yaml` - Date-based file paths for daily rotation
+- `src/backend/main.py` - Register logs router, start archive scheduler
+- `docker-compose.yml` - Add log retention env vars, trinity-archives volume
+- `docs/memory/feature-flows/vector-logging.md` - Document retention features
+
+**Configuration**:
+```bash
+LOG_RETENTION_DAYS=90       # Days to keep logs
+LOG_ARCHIVE_ENABLED=true    # Enable automated archival
+LOG_CLEANUP_HOUR=3          # Hour (UTC) to run nightly job
+LOG_S3_ENABLED=false        # Optional S3 upload
+```
+
+**API Endpoints**:
+- `GET /api/logs/stats` - Log file statistics
+- `GET /api/logs/retention` - Retention configuration
+- `PUT /api/logs/retention` - Update retention (runtime)
+- `POST /api/logs/archive` - Manual archival trigger
+- `GET /api/logs/health` - Service health check
+
+**Impact**:
+- No breaking changes to existing Vector functionality
+- Existing single-file logs (`platform.json`, `agents.json`) can be manually archived
+- New date-based files start after Vector restart
+- Disk space remains stable after retention period
+
+**Compliance**: Addresses SOC2/ISO27001 requirement for log retention policy and secure archival.
+
+---
+
 ### 2026-01-05 10:15:00
 🐛 **Fix: ReplayTimeline infinite loop causing browser hang**
 

@@ -313,12 +313,130 @@ curl http://localhost:8686/health
 curl http://localhost:8686/api/v1/topology
 ```
 
+## Log Retention & Archival
+
+### Overview
+
+Automated log retention system that:
+1. Rotates logs daily to date-stamped files
+2. Archives old logs with compression
+3. Optionally uploads to S3-compatible storage
+4. Deletes originals after successful archive
+
+### Configuration
+
+Environment variables in `docker-compose.yml`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_RETENTION_DAYS` | `90` | Days to keep logs before archival |
+| `LOG_ARCHIVE_ENABLED` | `true` | Enable automated archival |
+| `LOG_CLEANUP_HOUR` | `3` | Hour (UTC) to run nightly archival |
+| `LOG_S3_ENABLED` | `false` | Upload archives to S3 |
+| `LOG_S3_BUCKET` | - | S3 bucket name |
+| `LOG_S3_ACCESS_KEY` | - | S3 access key |
+| `LOG_S3_SECRET_KEY` | - | S3 secret key |
+| `LOG_S3_ENDPOINT` | - | Custom endpoint (MinIO, R2, etc.) |
+| `LOG_S3_REGION` | `us-east-1` | AWS region |
+
+### Daily Rotation
+
+Vector writes logs to date-stamped files:
+- `platform-2026-01-05.json` (today's platform logs)
+- `agents-2026-01-05.json` (today's agent logs)
+
+Files rotate automatically at midnight UTC.
+
+### Automated Archival
+
+The backend runs a nightly job (default: 3 AM UTC) that:
+
+1. **Finds old files**: Identifies logs older than retention period
+2. **Compresses**: Gzip level 9 (~90% size reduction)
+3. **Verifies**: SHA256 integrity check
+4. **Uploads** (optional): Sends to S3-compatible storage
+5. **Cleans up**: Deletes original files after successful archive
+
+### API Endpoints
+
+Admin-only endpoints for log management:
+
+```bash
+# Get log statistics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/stats
+
+# Get retention configuration
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/retention
+
+# Update retention (runtime only)
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"retention_days": 30, "archive_enabled": true, "cleanup_hour": 3}' \
+  http://localhost:8000/api/logs/retention
+
+# Manually trigger archival
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"retention_days": 90, "delete_after_archive": true}' \
+  http://localhost:8000/api/logs/archive
+
+# Check archival service health
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/health
+```
+
+### S3 Configuration Example
+
+For AWS S3:
+```bash
+LOG_S3_ENABLED=true
+LOG_S3_BUCKET=my-trinity-logs
+LOG_S3_ACCESS_KEY=AKIA...
+LOG_S3_SECRET_KEY=xxx
+LOG_S3_REGION=us-east-1
+```
+
+For MinIO/self-hosted:
+```bash
+LOG_S3_ENABLED=true
+LOG_S3_BUCKET=trinity-logs
+LOG_S3_ACCESS_KEY=minioadmin
+LOG_S3_SECRET_KEY=minioadmin
+LOG_S3_ENDPOINT=http://minio:9000
+LOG_S3_REGION=us-east-1
+```
+
+For Cloudflare R2:
+```bash
+LOG_S3_ENABLED=true
+LOG_S3_BUCKET=trinity-logs
+LOG_S3_ACCESS_KEY=xxx
+LOG_S3_SECRET_KEY=xxx
+LOG_S3_ENDPOINT=https://xxx.r2.cloudflarestorage.com
+LOG_S3_REGION=auto
+```
+
+### Storage Locations
+
+| Location | Contents | Purpose |
+|----------|----------|---------|
+| `/data/logs/` | Active log files | Daily logs (current + retention period) |
+| `/data/archives/` | Compressed archives | Local backup of archived logs |
+| S3 bucket | Compressed archives | Long-term storage (if enabled) |
+
+### Disk Space Management
+
+Example with 90-day retention:
+- Daily log size: ~150 MB
+- 90 days uncompressed: ~13.5 GB
+- 90 days compressed: ~1.35 GB (10% of original)
+- Active logs stay at ~13.5 GB (stable after 90 days)
+
 ## Side Effects
 
-- **File Output**: Logs written to Docker volume `trinity-logs`
+- **File Output**: Logs written to Docker volume `trinity-logs` with daily rotation
+- **Compressed Archives**: Old logs archived to Docker volume `trinity-archives`
 - **No Database**: Logs are file-based, not persisted to SQLite
 - **No WebSocket**: No real-time log streaming to UI (query only)
-- **No Rotation**: Currently no automatic rotation configured (monitor file sizes)
 
 ## Error Handling
 
@@ -442,4 +560,5 @@ No cleanup required - logs accumulate until manually cleared.
 
 | Date | Change |
 |------|--------|
+| 2026-01-05 | Added log retention, rotation, and S3 archival capabilities |
 | 2025-12-31 | Initial implementation - replaced audit-logger with Vector |

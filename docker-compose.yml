@@ -31,6 +31,17 @@ services:
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - SMTP_FROM=${SMTP_FROM:-noreply@trinity.example.com}
+      # Log Retention & Archival Configuration
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-90}
+      - LOG_ARCHIVE_ENABLED=${LOG_ARCHIVE_ENABLED:-true}
+      - LOG_CLEANUP_HOUR=${LOG_CLEANUP_HOUR:-3}
+      # S3-compatible Storage for Log Archives (Optional)
+      - LOG_S3_ENABLED=${LOG_S3_ENABLED:-false}
+      - LOG_S3_BUCKET=${LOG_S3_BUCKET:-}
+      - LOG_S3_ACCESS_KEY=${LOG_S3_ACCESS_KEY:-}
+      - LOG_S3_SECRET_KEY=${LOG_S3_SECRET_KEY:-}
+      - LOG_S3_ENDPOINT=${LOG_S3_ENDPOINT:-}
+      - LOG_S3_REGION=${LOG_S3_REGION:-us-east-1}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
@@ -38,6 +49,8 @@ services:
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - agent-configs:/agent-configs
       - trinity-data:/data
+      - trinity-logs:/data/logs:ro  # Read-only access to Vector logs
+      - trinity-archives:/data/archives  # Log archives storage
     depends_on:
       redis:
         condition: service_started
@@ -181,6 +194,7 @@ volumes:
   redis-data:
   trinity-data:
   trinity-logs:  # Vector log storage
+  trinity-archives:  # Compressed log archives
 
 networks:
   trinity-network:
