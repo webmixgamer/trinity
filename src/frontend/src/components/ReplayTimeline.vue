@@ -409,17 +409,23 @@ const nowX = computed(() => {
 
 // Generate time ticks (15 min intervals)
 const timeTicks = computed(() => {
-  if (!duration.value) return []
+  // Guard: Need valid timeline bounds to generate ticks
+  // If startTime is 0 (no timelineStart prop), the loop would run from epoch to now = millions of iterations!
+  if (!duration.value || !startTime.value || !endTime.value) return []
 
   const ticks = []
   const intervalMs = 15 * 60 * 1000 // 15 minutes
   const start = startTime.value
   const end = endTime.value
 
+  // Safety: Limit to reasonable number of ticks (max 7 days = 672 ticks)
+  const maxTicks = 700
+  let tickCount = 0
+
   // Round start to nearest 15 min
   const firstTick = Math.ceil(start / intervalMs) * intervalMs
 
-  for (let time = firstTick; time <= end; time += intervalMs) {
+  for (let time = firstTick; time <= end && tickCount < maxTicks; time += intervalMs) {
     const x = ((time - start) / duration.value) * actualGridWidth.value
     const date = new Date(time)
     const hours = date.getHours()
@@ -432,6 +438,7 @@ const timeTicks = computed(() => {
       label: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
       major
     })
+    tickCount++
   }
 
   return ticks
@@ -439,7 +446,8 @@ const timeTicks = computed(() => {
 
 // Create agent rows with activity data
 const agentRows = computed(() => {
-  if (!props.agents.length) return []
+  // Guard: Need valid timeline data
+  if (!props.agents.length || !startTime.value || !duration.value) return []
 
   // Group events by agent
   const agentActivityMap = new Map()
@@ -510,7 +518,8 @@ const filteredAgentRows = computed(() => {
 
 // Create communication arrows based on filtered agent rows
 const communicationArrows = computed(() => {
-  if (!props.events.length || !filteredAgentRows.value.length) return []
+  // Guard: Need valid timeline data
+  if (!props.events.length || !filteredAgentRows.value.length || !startTime.value || !duration.value) return []
 
   // Build index map from filtered rows
   const agentIndexMap = new Map()
@@ -548,7 +557,8 @@ const communicationArrows = computed(() => {
 
 // Current time cursor position - smooth interpolation based on elapsed time
 const currentTimeX = computed(() => {
-  if (!props.events.length || !duration.value) return -1
+  // Guard: Need valid timeline data
+  if (!props.events.length || !duration.value || !startTime.value) return -1
 
   // Get the first event time as the replay start reference
   const chronoEvents = [...props.events].reverse()

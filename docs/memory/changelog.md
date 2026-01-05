@@ -1,3 +1,86 @@
+### 2026-01-05 10:15:00
+🐛 **Fix: ReplayTimeline infinite loop causing browser hang**
+
+Fixed critical bug where switching to Replay mode caused the browser to freeze.
+
+**Root Cause**: The `timeTicks` computed property in ReplayTimeline.vue generates grid lines every 15 minutes. When `timelineStart` is `null` (no historical events), `startTime` computed to 0 (epoch 1970). The for loop then ran from epoch to current time (2026), creating ~2 million tick iterations and hanging the browser.
+
+**Fix**: Added guards to all computed properties that rely on timeline bounds:
+- `timeTicks`: Early return if `!startTime.value` or `!endTime.value`, plus safety limit of 700 max ticks
+- `agentRows`: Early return if timeline data is missing
+- `communicationArrows`: Early return if timeline data is missing
+- `currentTimeX`: Early return if timeline data is missing
+
+**Files Changed**:
+- `src/frontend/src/components/ReplayTimeline.vue`: Lines 411-445, 448-450, 520-522, 557-560
+
+**Behavior Now**:
+- Switching to Replay mode with no historical data shows empty timeline (no hang)
+- Timeline safely handles edge cases with missing data
+
+---
+
+### 2026-01-03 21:45:00
+🎬 **Enhancement: Replay Mode Activity & Context Simulation**
+
+Enhanced replay mode to simulate agent activity states and context changes during playback.
+
+**What Was Missing**: After the edge animation fix, replay only showed animated arrows but:
+1. Agent activity state (green blinking "Active" indicator) wasn't updating
+2. Context progress bars remained static during replay
+
+**Solution**: Added simulation functions to `network.js`:
+- `setNodeActivityState()` - Updates agent activity state with Vue reactivity
+- `simulateContextChange()` - Adjusts context percentage with bounds (0-100%)
+- `simulateAgentActivity()` - Orchestrates the full activity simulation:
+  - Source agent becomes active immediately (initiating collaboration)
+  - Target agent becomes active after 300ms (processing request)
+  - Context bars increase: source +1-3%, target +2-5%
+  - Both return to idle after 2-3 seconds
+
+**Files Changed**:
+- `src/frontend/src/stores/network.js`:
+  - Added `activityTimeouts` ref to track pending timeouts
+  - Added `setNodeActivityState()`, `simulateContextChange()`, `simulateAgentActivity()`
+  - `scheduleNextEvent()` now calls `simulateAgentActivity()` for each event
+  - `startReplay()` initializes context percentages (5-15%) for running agents
+  - `stopReplay()` clears activity timeouts and resets all agents to idle
+
+**Behavior Now**:
+- During replay, agents show green pulsing "Active" state when involved in collaboration
+- Context bars grow incrementally as events play back
+- All states reset properly when replay stops
+- Switching to Live mode resumes real context polling
+
+---
+
+### 2026-01-03 21:15:00
+🐛 **Fix: Dashboard Replay Mode Now Works**
+
+Fixed critical bug where replay mode visuals weren't updating on the Dashboard.
+
+**Root Cause**: The `edges` variable is a computed property that merges `collaborationEdges` and `permissionEdges`. All edge manipulation functions (`animateEdge`, `createHistoricalEdges`, `resetAllEdges`, etc.) were trying to modify `edges.value` directly. Since computed properties return new arrays each time, modifications were being lost.
+
+**Fix**: Updated all edge manipulation functions to work with `collaborationEdges.value` instead of `edges.value`. Added Vue reactivity triggers (`collaborationEdges.value = [...collaborationEdges.value]`) after modifications to ensure the computed `edges` recalculates.
+
+**Files Changed**:
+- `src/frontend/src/stores/network.js`:
+  - `createHistoricalEdges()` - Push to `collaborationEdges.value` (line 217)
+  - `animateEdge()` - Find/push in `collaborationEdges.value` (lines 455, 486)
+  - `fadeEdgeAnimation()` - Find in `collaborationEdges.value` (line 554)
+  - `clearEdgeAnimation()` - Find in `collaborationEdges.value` (line 573)
+  - `resetAllEdges()` - Iterate over `collaborationEdges.value` (line 946)
+  - `handleAgentDeleted()` - Filter `collaborationEdges.value` (line 434)
+  - Added reactivity triggers after all edge modifications
+
+**Behavior Now**:
+- Replay mode properly animates edges when playing back historical events
+- Edges turn blue/animated during replay, then fade back to gray
+- Play/Pause/Stop controls work correctly
+- Timeline scrubber and event markers function as expected
+
+---
+
 ### 2026-01-03 19:30:00
 🎛️ **Dashboard Autonomy Toggle Switch**
 
