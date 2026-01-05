@@ -178,7 +178,7 @@
               <span
                 class="w-2 h-2 rounded-full mr-2 flex-shrink-0"
                 :class="[
-                  row.isExecuting ? 'bg-green-500 animate-pulse' : (row.status === 'running' ? 'bg-green-500' : 'bg-gray-400')
+                  row.isExecuting ? 'bg-green-500 animate-pulse' : (row.status === 'running' ? 'bg-green-700 opacity-60' : 'bg-gray-400')
                 ]"
               ></span>
               <span class="truncate text-gray-700 dark:text-gray-300" :title="row.name">
