@@ -1,7 +1,7 @@
 """
 Log Archive Service for Trinity Vector Logs.
 
-Handles automatic archival of old log files with compression and optional S3 upload.
+Handles automatic archival of old log files with compression.
 """
 import os
 import gzip
@@ -16,6 +16,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from .archive_storage import get_archive_storage
+
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
@@ -24,7 +26,7 @@ LOG_ARCHIVE_ENABLED = os.getenv("LOG_ARCHIVE_ENABLED", "true").lower() == "true"
 LOG_CLEANUP_HOUR = int(os.getenv("LOG_CLEANUP_HOUR", "3"))
 
 LOG_DIR = Path("/data/logs")
-ARCHIVE_DIR = Path("/data/archives")
+TEMP_ARCHIVE_DIR = Path("/tmp/archives")
 
 
 class LogArchiveService:
@@ -32,26 +34,8 @@ class LogArchiveService:
 
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
-        self.s3_storage = None
-        self._init_s3()
-
-    def _init_s3(self):
-        """Initialize S3 storage if enabled."""
-        if os.getenv("LOG_S3_ENABLED", "false").lower() == "true":
-            try:
-                # Import dynamically to avoid dependency if not used
-                from .s3_storage import S3ArchiveStorage
-                self.s3_storage = S3ArchiveStorage(
-                    bucket=os.getenv("LOG_S3_BUCKET", ""),
-                    access_key=os.getenv("LOG_S3_ACCESS_KEY", ""),
-                    secret_key=os.getenv("LOG_S3_SECRET_KEY", ""),
-                    endpoint=os.getenv("LOG_S3_ENDPOINT"),
-                    region=os.getenv("LOG_S3_REGION", "us-east-1"),
-                )
-                logger.info("S3 storage initialized for log archival")
-            except Exception as e:
-                logger.warning(f"Failed to initialize S3 storage: {e}")
-                self.s3_storage = None
+        self.storage = get_archive_storage()
+        logger.info("Archive storage initialized")
 
     def start(self):
         """Start the archival scheduler."""
@@ -59,8 +43,8 @@ class LogArchiveService:
             logger.info("Log archival disabled (LOG_ARCHIVE_ENABLED=false)")
             return
 
-        # Ensure archive directory exists
-        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        # Ensure temp archive directory exists for compression staging
+        TEMP_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
         # Schedule nightly archival
         self.scheduler.add_job(
@@ -109,7 +93,7 @@ class LogArchiveService:
         files_processed = 0
         bytes_before = 0
         bytes_after = 0
-        s3_uploaded = 0
+        files_stored = 0
         errors = []
 
         # Find all log files older than retention period
@@ -119,8 +103,8 @@ class LogArchiveService:
                 file_date = self._extract_date_from_filename(log_file.name)
 
                 if file_date and file_date < cutoff_date.date():
-                    # Compress the file
-                    archive_path = ARCHIVE_DIR / f"{log_file.stem}.json.gz"
+                    # Compress the file to temp directory
+                    archive_path = TEMP_ARCHIVE_DIR / f"{log_file.stem}.json.gz"
                     original_size = log_file.stat().st_size
 
                     logger.info(f"Archiving {log_file.name} ({original_size / 1024 / 1024:.1f} MB)")
@@ -131,14 +115,26 @@ class LogArchiveService:
                         bytes_before += original_size
                         bytes_after += compressed_size
 
-                        # Upload to S3 if enabled
-                        if self.s3_storage:
-                            try:
-                                await self._upload_to_s3(archive_path, log_file.name)
-                                s3_uploaded += 1
-                            except Exception as e:
-                                logger.error(f"S3 upload failed for {archive_path.name}: {e}")
-                                errors.append(f"S3 upload failed: {archive_path.name}")
+                        # Store archive using storage backend
+                        try:
+                            metadata = {
+                                "original_size": str(original_size),
+                                "compressed_size": str(compressed_size),
+                                "archived_at": datetime.utcnow().isoformat(),
+                                "retention_days": str(retention_days),
+                                "original_file": log_file.name,
+                            }
+
+                            await self.storage.store_archive(archive_path, metadata)
+                            files_stored += 1
+
+                        except Exception as e:
+                            logger.error(f"Storage failed for {archive_path.name}: {e}")
+                            errors.append(f"Storage failed: {archive_path.name}")
+                            # Clean up temp file
+                            if archive_path.exists():
+                                archive_path.unlink()
+                            continue
 
                         # Delete original if requested
                         if delete_after_archive:
@@ -158,7 +154,7 @@ class LogArchiveService:
         logger.info(
             f"Archival complete: {files_processed} files, "
             f"{bytes_saved / 1024 / 1024:.1f} MB saved "
-            f"({s3_uploaded} uploaded to S3)"
+            f"({files_stored} files stored)"
         )
 
         return {
@@ -166,7 +162,7 @@ class LogArchiveService:
             "bytes_before": bytes_before,
             "bytes_after": bytes_after,
             "bytes_saved": bytes_saved,
-            "s3_uploaded": s3_uploaded,
+            "files_stored": files_stored,
             "errors": errors,
             "retention_days": retention_days,
             "cutoff_date": cutoff_date.isoformat(),
@@ -217,26 +213,6 @@ class LogArchiveService:
             for chunk in iter(lambda: f.read(1024*1024), b''):
                 sha256.update(chunk)
         return sha256.hexdigest()
-
-    async def _upload_to_s3(self, archive_path: Path, original_name: str):
-        """Upload archive to S3."""
-        if not self.s3_storage:
-            return
-
-        # Use original name for S3 key (without .gz for consistency)
-        s3_key = f"trinity-logs/{original_name}.gz"
-
-        metadata = {
-            "original_size": str(archive_path.stat().st_size),
-            "archived_at": datetime.utcnow().isoformat(),
-            "retention_days": str(LOG_RETENTION_DAYS),
-        }
-
-        await self.s3_storage.upload_file(
-            file_path=str(archive_path),
-            s3_key=s3_key,
-            metadata=metadata
-        )
 
     def _extract_date_from_filename(self, filename: str) -> Optional[datetime.date]:
         """
@@ -295,15 +271,17 @@ class LogArchiveService:
                     if not stats["newest_log"] or file_date > datetime.fromisoformat(stats["newest_log"]).date():
                         stats["newest_log"] = file_date.isoformat()
 
-        if ARCHIVE_DIR.exists():
-            archive_files = list(ARCHIVE_DIR.glob("*.json.gz"))
-            for archive_file in archive_files:
-                file_size = archive_file.stat().st_size
+        # Get archived files from storage backend
+        try:
+            archives = self.storage.list_archives()
+            for archive in archives:
                 stats["archive_files"].append({
-                    "name": archive_file.name,
-                    "size": file_size,
+                    "name": archive["name"],
+                    "size": archive["size"],
                 })
-                stats["total_archive_size"] += file_size
+                stats["total_archive_size"] += archive["size"]
+        except Exception as e:
+            logger.error(f"Failed to list archives: {e}")
 
         return stats
 

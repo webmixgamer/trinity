@@ -109,10 +109,23 @@ async def update_retention_config(
         f"{config.retention_days} days, archive={config.archive_enabled}"
     )
 
-    # Reschedule if cleanup hour changed
+    # Reschedule the job with new cleanup hour if scheduler is running
     if log_archive_service.scheduler.running:
-        log_archive_service.stop()
-        log_archive_service.start()
+        try:
+            # Remove and re-add the job with new hour
+            log_archive_service.scheduler.remove_job("log_archival")
+        except Exception:
+            pass  # Job might not exist
+
+        from apscheduler.triggers.cron import CronTrigger
+        log_archive_service.scheduler.add_job(
+            log_archive_service.archive_old_logs,
+            CronTrigger(hour=config.cleanup_hour, minute=0),
+            id="log_archival",
+            name="Nightly Log Archival",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
 
     return config
 
@@ -146,7 +159,7 @@ async def trigger_archive(
             "bytes_after": result["bytes_after"],
             "bytes_saved": result["bytes_saved"],
             "bytes_saved_mb": round(result["bytes_saved"] / 1024 / 1024, 2),
-            "s3_uploaded": result["s3_uploaded"],
+            "files_stored": result["files_stored"],
             "errors": result["errors"],
             "retention_days": result["retention_days"],
             "cutoff_date": result["cutoff_date"],
@@ -162,15 +175,14 @@ async def log_service_health(current_user: User = Depends(require_admin)):
     """
     Get health status of log archival service.
 
-    Returns information about the scheduler and S3 configuration.
+    Returns information about the scheduler and storage configuration.
     """
     import os
 
     return {
         "scheduler_running": log_archive_service.scheduler.running if log_archive_service.scheduler else False,
         "archive_enabled": os.getenv("LOG_ARCHIVE_ENABLED", "true").lower() == "true",
-        "s3_enabled": os.getenv("LOG_S3_ENABLED", "false").lower() == "true",
-        "s3_configured": log_archive_service.s3_storage is not None,
+        "archive_path": os.getenv("LOG_ARCHIVE_PATH", "/data/archives"),
         "retention_days": int(os.getenv("LOG_RETENTION_DAYS", "90")),
         "cleanup_hour": int(os.getenv("LOG_CLEANUP_HOUR", "3")),
     }

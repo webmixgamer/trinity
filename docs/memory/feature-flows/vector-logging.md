@@ -319,9 +319,8 @@ curl http://localhost:8686/api/v1/topology
 
 Automated log retention system that:
 1. Rotates logs daily to date-stamped files
-2. Archives old logs with compression
-3. Optionally uploads to S3-compatible storage
-4. Deletes originals after successful archive
+2. Archives old logs with compression to local storage
+3. Deletes originals after successful archive
 
 ### Configuration
 
@@ -332,12 +331,7 @@ Environment variables in `docker-compose.yml`:
 | `LOG_RETENTION_DAYS` | `90` | Days to keep logs before archival |
 | `LOG_ARCHIVE_ENABLED` | `true` | Enable automated archival |
 | `LOG_CLEANUP_HOUR` | `3` | Hour (UTC) to run nightly archival |
-| `LOG_S3_ENABLED` | `false` | Upload archives to S3 |
-| `LOG_S3_BUCKET` | - | S3 bucket name |
-| `LOG_S3_ACCESS_KEY` | - | S3 access key |
-| `LOG_S3_SECRET_KEY` | - | S3 secret key |
-| `LOG_S3_ENDPOINT` | - | Custom endpoint (MinIO, R2, etc.) |
-| `LOG_S3_REGION` | `us-east-1` | AWS region |
+| `LOG_ARCHIVE_PATH` | `/data/archives` | Local path for archived logs |
 
 ### Daily Rotation
 
@@ -354,7 +348,7 @@ The backend runs a nightly job (default: 3 AM UTC) that:
 1. **Finds old files**: Identifies logs older than retention period
 2. **Compresses**: Gzip level 9 (~90% size reduction)
 3. **Verifies**: SHA256 integrity check
-4. **Uploads** (optional): Sends to S3-compatible storage
+4. **Stores locally**: Moves to mounted archive volume
 5. **Cleans up**: Deletes original files after successful archive
 
 ### API Endpoints
@@ -384,35 +378,70 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/health
 ```
 
-### S3 Configuration Example
+### Custom Backup Strategies
 
-For AWS S3:
-```bash
-LOG_S3_ENABLED=true
-LOG_S3_BUCKET=my-trinity-logs
-LOG_S3_ACCESS_KEY=AKIA...
-LOG_S3_SECRET_KEY=xxx
-LOG_S3_REGION=us-east-1
+Trinity archives logs locally by default, keeping all data within your infrastructure (sovereign deployment). You can implement custom backup strategies using standard Docker volume management:
+
+#### Option 1: Mount NAS/NFS for Archives
+
+Mount a network storage device to the archives volume:
+
+```yaml
+# In docker-compose.yml
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: /mnt/nas/trinity-archives  # Your NAS mount point
+        target: /data/archives
 ```
 
-For MinIO/self-hosted:
+#### Option 2: rsync to Backup Server
+
+Create a cron job to sync archives to another server:
+
 ```bash
-LOG_S3_ENABLED=true
-LOG_S3_BUCKET=trinity-logs
-LOG_S3_ACCESS_KEY=minioadmin
-LOG_S3_SECRET_KEY=minioadmin
-LOG_S3_ENDPOINT=http://minio:9000
-LOG_S3_REGION=us-east-1
+# /etc/cron.daily/trinity-archive-sync
+#!/bin/bash
+rsync -avz --delete \
+  /var/lib/docker/volumes/trinity-archives/_data/ \
+  backup-server:/backups/trinity-logs/
 ```
 
-For Cloudflare R2:
+#### Option 3: Docker Volume Backup
+
+Use Docker's built-in volume backup:
+
 ```bash
-LOG_S3_ENABLED=true
-LOG_S3_BUCKET=trinity-logs
-LOG_S3_ACCESS_KEY=xxx
-LOG_S3_SECRET_KEY=xxx
-LOG_S3_ENDPOINT=https://xxx.r2.cloudflarestorage.com
-LOG_S3_REGION=auto
+# Backup archives volume to tarball
+docker run --rm \
+  -v trinity-archives:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/trinity-archives-$(date +%Y%m%d).tar.gz /data
+
+# Restore from tarball
+docker run --rm \
+  -v trinity-archives:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/trinity-archives-20260105.tar.gz -C /
+```
+
+#### Option 4: Cross-Instance Volume Copy
+
+Copy archives between Docker instances:
+
+```bash
+# Export from instance A
+docker run --rm \
+  -v trinity-archives:/source \
+  -v $(pwd):/dest \
+  alpine sh -c "cd /source && tar czf - ." > trinity-archives.tar.gz
+
+# Import to instance B (transfer trinity-archives.tar.gz via scp/rsync)
+docker run --rm \
+  -v trinity-archives:/dest \
+  -v $(pwd):/source \
+  alpine sh -c "cd /dest && tar xzf /source/trinity-archives.tar.gz"
 ```
 
 ### Storage Locations
@@ -420,8 +449,8 @@ LOG_S3_REGION=auto
 | Location | Contents | Purpose |
 |----------|----------|---------|
 | `/data/logs/` | Active log files | Daily logs (current + retention period) |
-| `/data/archives/` | Compressed archives | Local backup of archived logs |
-| S3 bucket | Compressed archives | Long-term storage (if enabled) |
+| `/data/archives/` | Compressed archives | Local storage of archived logs |
+| Docker volume `trinity-archives` | Persistent storage | Mounted at `/data/archives` in backend |
 
 ### Disk Space Management
 
@@ -560,5 +589,6 @@ No cleanup required - logs accumulate until manually cleared.
 
 | Date | Change |
 |------|--------|
-| 2026-01-05 | Added log retention, rotation, and S3 archival capabilities |
+| 2026-01-06 | Refactored to sovereign architecture - removed external S3 dependency, added pluggable storage interface |
+| 2026-01-05 | Added log retention, rotation, and archival capabilities |
 | 2025-12-31 | Initial implementation - replaced audit-logger with Vector |

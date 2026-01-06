@@ -1,7 +1,7 @@
 """
 Tests for Vector log archival and retention.
 
-Tests the log archive service, API endpoints, compression, and S3 integration.
+Tests the log archive service, API endpoints, compression, and local storage.
 """
 import pytest
 import json
@@ -325,7 +325,7 @@ class TestManualArchive:
         assert "status" in data
         assert "files_processed" in data
         assert "bytes_saved" in data
-        assert "s3_uploaded" in data
+        assert "files_stored" in data
         assert "retention_days" in data
 
     def test_archive_respects_retention_days_param(self, api_client):
@@ -357,76 +357,11 @@ class TestLogServiceHealth:
 
         assert "scheduler_running" in data
         assert "archive_enabled" in data
-        assert "s3_enabled" in data
-        assert "s3_configured" in data
         assert "retention_days" in data
         assert "cleanup_hour" in data
 
         assert isinstance(data["scheduler_running"], bool)
         assert isinstance(data["archive_enabled"], bool)
-        assert isinstance(data["s3_enabled"], bool)
-
-
-# =========================================================================
-# Test: S3 Integration
-# =========================================================================
-
-class TestS3Integration:
-    """Test S3 storage integration (mocked)."""
-
-    @pytest.mark.asyncio
-    async def test_s3_storage_upload(self):
-        """Test S3 upload with mocked boto3."""
-        from services.s3_storage import S3ArchiveStorage, BOTO3_AVAILABLE
-
-        if not BOTO3_AVAILABLE:
-            pytest.skip("boto3 not installed")
-
-        # Mock boto3 client
-        with patch('services.s3_storage.boto3') as mock_boto3:
-            mock_client = Mock()
-            mock_boto3.client.return_value = mock_client
-
-            # Create storage instance
-            storage = S3ArchiveStorage(
-                bucket="test-bucket",
-                access_key="test-key",
-                secret_key="test-secret",
-                region="us-east-1"
-            )
-
-            # Create a test file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json.gz', delete=False) as f:
-                f.write("test data")
-                test_file = f.name
-
-            try:
-                # Test upload
-                await storage.upload_file(
-                    file_path=test_file,
-                    s3_key="logs/test.json.gz",
-                    metadata={"test": "metadata"}
-                )
-
-                # Verify upload_file was called
-                mock_client.upload_file.assert_called_once()
-                call_args = mock_client.upload_file.call_args
-
-                assert call_args[1]["Bucket"] == "test-bucket"
-                assert call_args[1]["Key"] == "logs/test.json.gz"
-
-            finally:
-                Path(test_file).unlink()
-
-    def test_s3_disabled_by_default(self, api_client):
-        """Test that S3 upload is disabled by default."""
-        response = api_client.get("/api/logs/health")
-
-        assert_status(response, 200)
-        data = response.json()
-
-        # S3 should be disabled by default
-        assert data["s3_enabled"] is False
 
 
 # =========================================================================
@@ -440,10 +375,14 @@ class TestLogArchiveIntegration:
     async def test_full_archive_workflow(self, test_log_dir, test_archive_dir):
         """Test complete archive workflow with file operations."""
         from services.log_archive_service import LogArchiveService
+        from services.archive_storage import LocalArchiveStorage
 
         # Patch the service to use test directories
         with patch('services.log_archive_service.LOG_DIR', test_log_dir), \
-             patch('services.log_archive_service.ARCHIVE_DIR', test_archive_dir):
+             patch('services.log_archive_service.TEMP_ARCHIVE_DIR', test_log_dir / "temp"):
+
+            # Create temp directory
+            (test_log_dir / "temp").mkdir(exist_ok=True)
 
             # Create old log file
             old_date = (datetime.utcnow() - timedelta(days=100)).date()
@@ -462,7 +401,7 @@ class TestLogArchiveIntegration:
 
             # Run archival with 90-day retention
             service = LogArchiveService()
-            service.s3_storage = None  # Disable S3 for this test
+            service.storage = LocalArchiveStorage(archive_path=str(test_archive_dir))
 
             result = await service.archive_old_logs(
                 retention_days=90,

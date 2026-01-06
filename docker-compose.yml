@@ -35,13 +35,7 @@ services:
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-90}
       - LOG_ARCHIVE_ENABLED=${LOG_ARCHIVE_ENABLED:-true}
       - LOG_CLEANUP_HOUR=${LOG_CLEANUP_HOUR:-3}
-      # S3-compatible Storage for Log Archives (Optional)
-      - LOG_S3_ENABLED=${LOG_S3_ENABLED:-false}
-      - LOG_S3_BUCKET=${LOG_S3_BUCKET:-}
-      - LOG_S3_ACCESS_KEY=${LOG_S3_ACCESS_KEY:-}
-      - LOG_S3_SECRET_KEY=${LOG_S3_SECRET_KEY:-}
-      - LOG_S3_ENDPOINT=${LOG_S3_ENDPOINT:-}
-      - LOG_S3_REGION=${LOG_S3_REGION:-us-east-1}
+      - LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
