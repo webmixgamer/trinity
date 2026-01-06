@@ -32,6 +32,7 @@ COPY ../../src/backend/db_models.py /app/
 COPY ../../src/backend/dependencies.py /app/
 COPY ../../src/backend/credentials.py /app/
 COPY ../../src/backend/database.py /app/
+COPY ../../src/backend/logging_config.py /app/
 
 # Copy module directories
 COPY ../../src/backend/routers /app/routers/
