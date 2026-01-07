@@ -189,7 +189,7 @@
                     :height="20"
                   />
                   <span
-                    class="font-mono text-right"
+                    class="font-mono text-right min-w-[2.5rem]"
                     :class="agentStats.cpu_percent > 80 ? 'text-red-500' : agentStats.cpu_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
                   >{{ agentStats.cpu_percent }}%</span>
                   <span class="text-gray-400 dark:text-gray-500 font-mono">/ {{ resourceLimits.current_cpu || '2' }}</span>
@@ -205,7 +205,7 @@
                     :height="20"
                   />
                   <span
-                    class="font-mono text-right"
+                    class="font-mono text-right min-w-[4rem]"
                     :class="agentStats.memory_percent > 80 ? 'text-red-500' : agentStats.memory_percent > 50 ? 'text-yellow-500' : 'text-green-500'"
                   >{{ formatBytes(agentStats.memory_used_bytes) }}</span>
                   <span class="text-gray-400 dark:text-gray-500 font-mono">/ {{ (resourceLimits.current_memory || '4g').toUpperCase() }}</span>
@@ -213,13 +213,13 @@
                 <!-- Network -->
                 <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
                   <span class="text-gray-400 dark:text-gray-500">NET</span>
-                  <span class="text-green-600 dark:text-green-400">↓{{ formatBytes(agentStats.network_rx_bytes) }}</span>
-                  <span class="text-blue-600 dark:text-blue-400">↑{{ formatBytes(agentStats.network_tx_bytes) }}</span>
+                  <span class="text-green-600 dark:text-green-400 font-mono min-w-[4.5rem]">↓{{ formatBytes(agentStats.network_rx_bytes) }}</span>
+                  <span class="text-blue-600 dark:text-blue-400 font-mono min-w-[4.5rem]">↑{{ formatBytes(agentStats.network_tx_bytes) }}</span>
                 </div>
                 <!-- Uptime -->
                 <div class="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
                   <span class="text-gray-400 dark:text-gray-500">UP</span>
-                  <span class="font-mono">{{ formatUptime(agentStats.uptime_seconds) }}</span>
+                  <span class="font-mono min-w-[3.5rem]">{{ formatUptime(agentStats.uptime_seconds) }}</span>
                 </div>
                 <!-- Resource Config Button -->
                 <button

@@ -1,6 +1,6 @@
 ---
 description: Ask the researcher to investigate a specific topic
-allowed-tools: Read, mcp__trinity__chat_with_agent
+allowed-tools: Read, Bash, Glob, mcp__trinity__list_agents, mcp__trinity__chat_with_agent
 ---
 
 # Request Research
@@ -20,21 +20,27 @@ The user will provide a topic after this command, like:
    - Extract the topic from the user's input
    - Formulate a clear research request
 
-2. **Check Current Findings (Optional)**
+2. **Find the Researcher Agent**
+   - List available agents: `mcp__trinity__list_agents()`
+   - Look for an agent with "researcher" in the name
+   - Common names: `research-network-researcher` (system manifest) or `researcher` (individual)
+
+3. **Check Current Findings (Optional)**
+   - List shared-in folder: `ls /home/developer/shared-in/`
    - Quickly scan existing findings to avoid duplicate research
    - Mention if related research already exists
 
-3. **Call the Researcher**
+4. **Call the Researcher**
    Use the Trinity MCP tool to request research:
 
    ```
    mcp__trinity__chat_with_agent(
-       agent_name="research-network-researcher",
+       agent_name="[RESEARCHER_AGENT_NAME]",  # Use actual name from step 2
        message="/research [TOPIC]"
    )
    ```
 
-4. **Report Status**
+5. **Report Status**
    - Confirm the research request was sent
    - Explain that findings will appear in the shared folder
    - Suggest checking back or running `/briefing` after research completes
@@ -45,7 +51,7 @@ The user will provide a topic after this command, like:
 ## Research Request Submitted
 
 **Topic**: [requested topic]
-**Sent to**: research-network-researcher
+**Sent to**: [researcher agent name]
 **Status**: Request delivered
 
 ### What Happens Next

@@ -1654,6 +1654,157 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 
 ---
 
+### 13. Agent Scalability & Event-Driven Architecture
+
+#### 13.1 Horizontal Agent Scalability
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Scale agent capacity by spawning multiple instances of the same agent template to handle parallel workloads
+- **Architecture**:
+  - Agent "pools" with N instances of the same template
+  - Load balancing of incoming tasks across instances
+  - Instance naming: `{agent-name}-{instance-id}` (e.g., `researcher-1`, `researcher-2`)
+  - Shared configuration but isolated execution contexts
+  - Auto-scaling based on queue depth or schedule
+- **Acceptance Criteria**:
+  - [ ] Pool configuration in template.yaml (`scaling: {min: 1, max: 5}`)
+  - [ ] API: `POST /api/agents/{name}/scale` to adjust instance count
+  - [ ] Instance lifecycle management (create/destroy based on demand)
+  - [ ] Task routing to available instances (round-robin or least-busy)
+  - [ ] Shared credentials across pool instances
+  - [ ] Pool-level metrics (aggregate cost, tokens, task throughput)
+  - [ ] UI: Pool view showing all instances with individual status
+  - [ ] Auto-scale triggers (queue depth threshold, schedule-based)
+- **Use Cases**:
+  - Research agent pool processing multiple queries simultaneously
+  - Content generation with N parallel writers
+  - Data processing pipelines with variable load
+
+#### 13.2 Event Bus Infrastructure
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Platform-wide pub/sub system for agent event broadcasting, subscription, and reaction
+- **Architecture**:
+  - Redis Streams or dedicated message broker for event persistence
+  - Event types: `task_completed`, `task_failed`, `anomaly_detected`, `resource_available`, `attention_required`, `process_step_completed`
+  - Agents subscribe to event channels via template.yaml or runtime API
+  - Permission-gated subscriptions (agents only receive events from permitted agents)
+  - Event handlers trigger agent execution (like scheduled tasks but event-driven)
+- **Event Schema**:
+  ```yaml
+  event:
+    id: uuid
+    type: task_completed | process_step_completed | anomaly_detected | custom
+    source_agent: string
+    timestamp: ISO8601
+    payload: object
+    correlation_id: string  # Links related events
+  ```
+- **Subscription Model**:
+  ```yaml
+  # In template.yaml
+  events:
+    subscribe:
+      - type: task_completed
+        from: ["researcher-*", "analyst"]  # Glob patterns
+        handler: /handle-research-complete  # Slash command to execute
+      - type: anomaly_detected
+        from: ["*"]  # All permitted agents
+        handler: /investigate-anomaly
+  ```
+- **Acceptance Criteria**:
+  - [ ] Event bus service (Redis Streams backend)
+  - [ ] Event publish API: `POST /api/events`
+  - [ ] Event subscription API: `GET/POST /api/agents/{name}/subscriptions`
+  - [ ] Permission integration (reuse agent_permissions table)
+  - [ ] Event-triggered task execution (like schedules but event-based)
+  - [ ] Event persistence and replay for late-joining agents
+  - [ ] MCP tool: `publish_event`, `subscribe_to_events`
+  - [ ] Event history API: `GET /api/events?source=agent&type=...`
+  - [ ] Dashboard: Event stream visualization
+- **Permission Rules**:
+  - Agents can only subscribe to events from agents they have permission to call
+  - System agent can subscribe to all events (system scope bypass)
+  - Event subscriptions respect same ownership/sharing rules as chat
+
+#### 13.3 Event Handlers & Reactions
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Configure automatic agent reactions to events from other agents
+- **Configuration**:
+  ```yaml
+  # In template.yaml
+  event_handlers:
+    - name: on-research-complete
+      trigger:
+        event_type: task_completed
+        source_pattern: "researcher-*"
+        filter:
+          payload.task_type: research
+      action:
+        type: execute_command
+        command: /process-research
+        message: "Process research results from ${event.source_agent}: ${event.payload.summary}"
+    - name: on-anomaly
+      trigger:
+        event_type: anomaly_detected
+      action:
+        type: notify_and_execute
+        command: /investigate
+  ```
+- **Acceptance Criteria**:
+  - [ ] Event handler configuration in template.yaml
+  - [ ] Handler registration on agent start
+  - [ ] Event matching with filters (type, source, payload conditions)
+  - [ ] Action execution (command, notification, or custom)
+  - [ ] Handler execution logged in agent_activities
+  - [ ] Debouncing/throttling for high-frequency events
+  - [ ] UI: Event handlers tab showing configured reactions
+
+---
+
+### 14. Process-Driven Multi-Agent Systems (Future Vision)
+
+> **Note**: This section outlines the strategic vision for evolving Trinity into a business process orchestration platform. See `docs/drafts/PROCESS_DRIVEN_AGENTS.md` for the full concept document.
+
+#### 14.1 Business Process Definitions
+- **Status**: ⏳ Not Started (Concept Phase)
+- **Priority**: Future
+- **Description**: Define business processes as first-class entities that orchestrate agent collaboration
+- **Key Concepts**:
+  - Process = sequence of steps executed by agents
+  - Simplified role model: **Executor** (does work), **Monitor** (watches for failures), **Informed** (learns from events)
+  - Agents are stateful entities that build memory and situational awareness over time
+  - Processes can be event-triggered, scheduled, or manual
+  - Human approval steps for decisions requiring human judgment
+  - Output storage is agent responsibility (shared folders or external systems)
+- **See**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+
+#### 14.2 Process Execution & Human Approval
+- **Status**: ⏳ Not Started (Concept Phase)
+- **Priority**: Future
+- **Description**: Process execution coordination with human-in-the-loop approval gates
+- **Components**:
+  - Process Execution Engine (platform component, not an agent)
+  - Monitor agents for domain-specific process watching
+  - Human Approval Interface for operator decisions
+  - Dedicated approval queue with timeout/escalation
+- **Note**: Trinity System Agent remains focused on platform operations, NOT process orchestration
+- **See**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+
+#### 14.3 Human-in-the-Loop Improvement
+- **Status**: ⏳ Not Started (Concept Phase)
+- **Priority**: Future
+- **Description**: Feedback collection and continuous improvement of agent behavior
+- **Capabilities**:
+  - Post-execution feedback (👍/👎 rating)
+  - Feedback-driven instruction updates
+  - Quality trend tracking per process
+  - Improvement history and audit trail
+- **See**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)

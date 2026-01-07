@@ -50,6 +50,76 @@ LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
 
 ---
 
+### 2026-01-06 15:45:00
+📋 **Docs: Process-Driven Multi-Agent Systems Vision (Refined)**
+
+Refined the concept document based on design review discussion.
+
+**Key Design Decisions**:
+
+1. **Simplified Role Model** (dropped RACI complexity):
+   - **Executor**: Does the work, saves outputs
+   - **Monitor**: Watches for failures, handles escalations
+   - **Informed**: Learns from events, builds situational awareness
+   - Dropped "Consulted" (just an agent-to-agent call)
+
+2. **Stateful Agents as Core Principle**:
+   - Agents build memory, beliefs, and judgment over time
+   - "Informed" role enables situational awareness
+   - Informed agents can proactively trigger actions based on observed events
+
+3. **Output Storage**:
+   - Agent responsibility (not platform-managed)
+   - Executors save to shared folders or external systems (CRM, Google Drive, etc.)
+   - Next step's agent ingests from designated location
+
+4. **Human Approval Steps** (critical feature):
+   - Dedicated `type: human_approval` step type
+   - Separate approval interface for human operators
+   - Timeout, escalation, delegation support
+   - Mobile-friendly with email/Slack action links
+
+5. **System Agent Role** (unchanged):
+   - Stays focused on platform operations
+   - Does NOT orchestrate business processes
+   - Process orchestration handled by Process Execution Engine + Monitor agents
+
+**Updated Files**:
+- `docs/drafts/PROCESS_DRIVEN_AGENTS.md` - Full concept with refined roles, human approval section, approval interface mockup
+- `docs/memory/requirements.md` - Updated 14.1, 14.2, added 14.3 for human-in-the-loop
+
+---
+
+### 2026-01-06 14:30:00
+📋 **Docs: Process-Driven Multi-Agent Systems Vision**
+
+Added comprehensive documentation for the strategic evolution of Trinity into a business process orchestration platform.
+
+**New Concept Document**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+- Business processes as first-class entities that orchestrate agent collaboration
+- Simplified role model: Executor, Monitor, Informed
+- Process lifecycle: Design → Configure → Test → Production → Improvement
+- Human-in-the-loop improvement cycles with feedback collection
+- UI vision: Process Designer, Process Dashboard, Execution View, Human Approval Interface
+
+**New Requirements Added** (requirements.md):
+- **13.1 Horizontal Agent Scalability**: Agent pools with N instances, load balancing, auto-scaling
+- **13.2 Event Bus Infrastructure**: Redis Streams pub/sub with permission-gated subscriptions
+- **13.3 Event Handlers & Reactions**: Automatic agent reactions to events from permitted agents
+- **14.1 Business Process Definitions**: Role-based orchestration, triggers, policies
+- **14.2 Process Execution & Human Approval**: Execution engine, approval interface
+- **14.3 Human-in-the-Loop Improvement**: Feedback collection, quality tracking
+
+**Roadmap Updates**:
+- Phase 13: Agent Scalability & Event-Driven Architecture
+- Phase 14: Process-Driven Multi-Agent Systems (Future Vision)
+- Updated backlog with new high-priority items
+- Added 3 decision log entries
+
+**Key Insight**: Business processes should drive agent design, not the other way around. Start with "what outcome do we want?" and derive the agents needed to achieve it.
+
+---
+
 ### 2026-01-05 18:30:00
 ✨ **Feature: Vector Log Retention and Archival**
 
