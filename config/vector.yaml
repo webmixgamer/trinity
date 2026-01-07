@@ -75,22 +75,22 @@ transforms:
 
 # Sinks - write to files
 sinks:
-  # Platform services log file
+  # Platform services log file (daily rotation)
   platform_logs:
     type: file
     inputs:
       - route_platform
-    path: /data/logs/platform.json
+    path: /data/logs/platform-%Y-%m-%d.json
     encoding:
       codec: json
     compression: none
 
-  # Agent containers log file
+  # Agent containers log file (daily rotation)
   agent_logs:
     type: file
     inputs:
       - route_agents
-    path: /data/logs/agents.json
+    path: /data/logs/agents-%Y-%m-%d.json
     encoding:
       codec: json
     compression: none

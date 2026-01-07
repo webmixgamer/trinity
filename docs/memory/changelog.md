@@ -1,3 +1,105 @@
+### 2026-01-06 18:30:00
+♻️ **Refactor: Sovereign Archive Storage Architecture**
+
+**Refactoring**: Removed external S3 dependency and implemented pluggable storage interface with local-only default for sovereign deployments.
+
+**Motivation**: Following architectural feedback to maintain full data sovereignty - no system logs or archives should leave the company's infrastructure. The platform now stores all data locally within mounted volumes, giving operators full control over backup strategies.
+
+**What Changed**:
+1. **New Storage Interface** - Abstract `ArchiveStorage` base class with pluggable backend support
+2. **Local Storage Default** - `LocalArchiveStorage` implementation stores archives in mounted Docker volume
+3. **S3 Code Removed** - Deleted S3-specific code (`s3_storage.py`), boto3 dependency, and S3 env vars
+4. **Sovereign Backup Strategies** - Documentation now covers Docker volume backups, NAS/NFS mounts, rsync, cross-instance copies
+
+**New Files**:
+- `src/backend/services/archive_storage.py` - Storage abstraction layer
+
+**Deleted Files**:
+- `src/backend/services/s3_storage.py` - S3 integration (removed)
+
+**Modified Files**:
+- `src/backend/services/log_archive_service.py` - Uses storage interface instead of S3 directly
+- `docker/backend/Dockerfile` - Removed boto3 dependency
+- `docker-compose.yml` - Removed S3 env vars, added `LOG_ARCHIVE_PATH`
+- `docs/memory/feature-flows/vector-logging.md` - Replaced S3 docs with sovereign backup strategies
+- `tests/test_log_archive.py` - Removed S3 tests, updated to use storage interface
+
+**Configuration Changes**:
+```bash
+# Removed:
+LOG_S3_ENABLED, LOG_S3_BUCKET, LOG_S3_ACCESS_KEY, LOG_S3_SECRET_KEY,
+LOG_S3_ENDPOINT, LOG_S3_REGION
+
+# Added:
+LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+```
+
+**Backup Strategies** (Sovereign):
+- Mount NAS/NFS to archives volume
+- rsync to backup server via cron
+- Docker volume backup/restore
+- Cross-instance volume copy
+
+**Impact**:
+- **Breaking**: S3 configuration no longer supported (by design)
+- **Non-Breaking**: Archives still stored in `trinity-archives` volume
+- **Benefit**: Full data sovereignty - no external dependencies
+- **Extensible**: Storage interface allows future backends (NFS, SFTP, etc.) without S3
+
+**Architecture Philosophy**: Keep all data (logs, archives, backups) within operator-controlled infrastructure. External storage can be implemented via volume mounts or custom scripts, not hardcoded cloud dependencies.
+
+---
+
+### 2026-01-05 18:30:00
+✨ **Feature: Vector Log Retention and Archival**
+
+**New Feature**: Automated log retention, rotation, and archival system for Vector logs with local storage.
+
+**Compliance Gap Addressed**: Vector logging lacked retention policy and archival capabilities required for SOC2/ISO27001 compliance.
+
+**What Was Added**:
+1. **Daily Log Rotation** - Vector now writes to date-stamped files (`platform-2026-01-05.json`)
+2. **Automated Archival** - Nightly job compresses and archives logs older than retention period
+3. **Local Storage** - Archives stored in mounted Docker volume (`trinity-archives`)
+4. **API Endpoints** - Admin-only endpoints for stats, config, and manual archival
+5. **Integrity Verification** - SHA256 checksums ensure archive integrity
+
+**New Files**:
+- `src/backend/services/log_archive_service.py` - Archival logic + APScheduler
+- `src/backend/routers/logs.py` - Log management API endpoints
+- `tests/test_log_archive.py` - Comprehensive test coverage
+
+**Modified Files**:
+- `config/vector.yaml` - Date-based file paths for daily rotation
+- `src/backend/main.py` - Register logs router, start archive scheduler
+- `docker-compose.yml` - Add log retention env vars, trinity-archives volume
+- `docs/memory/feature-flows/vector-logging.md` - Document retention features
+
+**Configuration**:
+```bash
+LOG_RETENTION_DAYS=90       # Days to keep logs
+LOG_ARCHIVE_ENABLED=true    # Enable automated archival
+LOG_CLEANUP_HOUR=3          # Hour (UTC) to run nightly job
+LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+```
+
+**API Endpoints**:
+- `GET /api/logs/stats` - Log file statistics
+- `GET /api/logs/retention` - Retention configuration
+- `PUT /api/logs/retention` - Update retention (runtime)
+- `POST /api/logs/archive` - Manual archival trigger
+- `GET /api/logs/health` - Service health check
+
+**Impact**:
+- No breaking changes to existing Vector functionality
+- Existing single-file logs (`platform.json`, `agents.json`) can be manually archived
+- New date-based files start after Vector restart
+- Disk space remains stable after retention period
+
+**Compliance**: Addresses SOC2/ISO27001 requirement for log retention policy and secure archival.
+
+---
+
 ### 2026-01-05 10:15:00
 🐛 **Fix: ReplayTimeline infinite loop causing browser hang**
 

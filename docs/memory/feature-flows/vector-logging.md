@@ -313,12 +313,159 @@ curl http://localhost:8686/health
 curl http://localhost:8686/api/v1/topology
 ```
 
+## Log Retention & Archival
+
+### Overview
+
+Automated log retention system that:
+1. Rotates logs daily to date-stamped files
+2. Archives old logs with compression to local storage
+3. Deletes originals after successful archive
+
+### Configuration
+
+Environment variables in `docker-compose.yml`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_RETENTION_DAYS` | `90` | Days to keep logs before archival |
+| `LOG_ARCHIVE_ENABLED` | `true` | Enable automated archival |
+| `LOG_CLEANUP_HOUR` | `3` | Hour (UTC) to run nightly archival |
+| `LOG_ARCHIVE_PATH` | `/data/archives` | Local path for archived logs |
+
+### Daily Rotation
+
+Vector writes logs to date-stamped files:
+- `platform-2026-01-05.json` (today's platform logs)
+- `agents-2026-01-05.json` (today's agent logs)
+
+Files rotate automatically at midnight UTC.
+
+### Automated Archival
+
+The backend runs a nightly job (default: 3 AM UTC) that:
+
+1. **Finds old files**: Identifies logs older than retention period
+2. **Compresses**: Gzip level 9 (~90% size reduction)
+3. **Verifies**: SHA256 integrity check
+4. **Stores locally**: Moves to mounted archive volume
+5. **Cleans up**: Deletes original files after successful archive
+
+### API Endpoints
+
+Admin-only endpoints for log management:
+
+```bash
+# Get log statistics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/stats
+
+# Get retention configuration
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/retention
+
+# Update retention (runtime only)
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"retention_days": 30, "archive_enabled": true, "cleanup_hour": 3}' \
+  http://localhost:8000/api/logs/retention
+
+# Manually trigger archival
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"retention_days": 90, "delete_after_archive": true}' \
+  http://localhost:8000/api/logs/archive
+
+# Check archival service health
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/health
+```
+
+### Custom Backup Strategies
+
+Trinity archives logs locally by default, keeping all data within your infrastructure (sovereign deployment). You can implement custom backup strategies using standard Docker volume management:
+
+#### Option 1: Mount NAS/NFS for Archives
+
+Mount a network storage device to the archives volume:
+
+```yaml
+# In docker-compose.yml
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: /mnt/nas/trinity-archives  # Your NAS mount point
+        target: /data/archives
+```
+
+#### Option 2: rsync to Backup Server
+
+Create a cron job to sync archives to another server:
+
+```bash
+# /etc/cron.daily/trinity-archive-sync
+#!/bin/bash
+rsync -avz --delete \
+  /var/lib/docker/volumes/trinity-archives/_data/ \
+  backup-server:/backups/trinity-logs/
+```
+
+#### Option 3: Docker Volume Backup
+
+Use Docker's built-in volume backup:
+
+```bash
+# Backup archives volume to tarball
+docker run --rm \
+  -v trinity-archives:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/trinity-archives-$(date +%Y%m%d).tar.gz /data
+
+# Restore from tarball
+docker run --rm \
+  -v trinity-archives:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/trinity-archives-20260105.tar.gz -C /
+```
+
+#### Option 4: Cross-Instance Volume Copy
+
+Copy archives between Docker instances:
+
+```bash
+# Export from instance A
+docker run --rm \
+  -v trinity-archives:/source \
+  -v $(pwd):/dest \
+  alpine sh -c "cd /source && tar czf - ." > trinity-archives.tar.gz
+
+# Import to instance B (transfer trinity-archives.tar.gz via scp/rsync)
+docker run --rm \
+  -v trinity-archives:/dest \
+  -v $(pwd):/source \
+  alpine sh -c "cd /dest && tar xzf /source/trinity-archives.tar.gz"
+```
+
+### Storage Locations
+
+| Location | Contents | Purpose |
+|----------|----------|---------|
+| `/data/logs/` | Active log files | Daily logs (current + retention period) |
+| `/data/archives/` | Compressed archives | Local storage of archived logs |
+| Docker volume `trinity-archives` | Persistent storage | Mounted at `/data/archives` in backend |
+
+### Disk Space Management
+
+Example with 90-day retention:
+- Daily log size: ~150 MB
+- 90 days uncompressed: ~13.5 GB
+- 90 days compressed: ~1.35 GB (10% of original)
+- Active logs stay at ~13.5 GB (stable after 90 days)
+
 ## Side Effects
 
-- **File Output**: Logs written to Docker volume `trinity-logs`
+- **File Output**: Logs written to Docker volume `trinity-logs` with daily rotation
+- **Compressed Archives**: Old logs archived to Docker volume `trinity-archives`
 - **No Database**: Logs are file-based, not persisted to SQLite
 - **No WebSocket**: No real-time log streaming to UI (query only)
-- **No Rotation**: Currently no automatic rotation configured (monitor file sizes)
 
 ## Error Handling
 
@@ -442,4 +589,6 @@ No cleanup required - logs accumulate until manually cleared.
 
 | Date | Change |
 |------|--------|
+| 2026-01-06 | Refactored to sovereign architecture - removed external S3 dependency, added pluggable storage interface |
+| 2026-01-05 | Added log retention, rotation, and archival capabilities |
 | 2025-12-31 | Initial implementation - replaced audit-logger with Vector |
