@@ -1,3 +1,39 @@
+### 2026-01-09 19:45:00
+🔧 **Refactor: AgentDetail.vue Modularization**
+
+**Goal**: Split monolithic AgentDetail.vue (~1860 lines) into modular, maintainable components.
+
+**Results**:
+- **AgentDetail.vue**: Reduced from ~1860 lines to **603 lines** (68% reduction)
+- **9 new components extracted** totaling ~1500 lines (focused, reusable)
+
+**Components Created**:
+| Component | Lines | Purpose |
+|-----------|-------|---------|
+| `AgentHeader.vue` | 316 | Agent header with stats, controls, git sync |
+| `CredentialsPanel.vue` | 296 | Credential management (assign, quick-add) |
+| `TerminalPanelContent.vue` | 165 | Terminal tab inner content |
+| `PermissionsPanel.vue` | 147 | Agent collaboration permissions |
+| `FileTreeNode.vue` | 140 | Recursive file tree (render function) |
+| `FilesPanel.vue` | 129 | Files tab with tree browser |
+| `SharingPanel.vue` | 125 | Share agent with team members |
+| `ResourceModal.vue` | 109 | Memory/CPU configuration modal |
+| `LogsPanel.vue` | 73 | Container logs viewer |
+
+**Key Improvements**:
+- Each component is self-contained with its own composable initialization
+- Terminal KeepAlive behavior preserved (v-show pattern maintained)
+- Tab navigation simplified with computed `visibleTabs` array
+- All existing functionality preserved (zero behavioral changes)
+
+**Pattern**: Components receive `agent-name` and `agent-status` props, initialize their own composables internally. This follows the pattern established by existing panels (`InfoPanel`, `SchedulesPanel`, etc.).
+
+**Modified Files**:
+- `src/frontend/src/views/AgentDetail.vue` - Lean orchestrator
+- `src/frontend/src/components/` - 9 new component files
+
+---
+
 ### 2026-01-09 18:30:00
 🐛 **Fix: System Agent Not Visually Distinct on Dashboard**
 

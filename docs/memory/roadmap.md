@@ -300,6 +300,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Priority | Item | Requirement |
 |----------|------|-------------|
+| Low | **Create Schedule from Task** | UX: Add icon in Tasks tab to create schedule from execution - switches to Schedules tab with message pre-filled |
 | **High** | **Horizontal Agent Scalability** | 13.1 - Agent pools with multiple instances for parallel workloads |
 | **High** | **Event Bus Infrastructure** | 13.2 - Platform-wide pub/sub for agent event broadcasting/subscription |
 | **High** | **Event Handlers & Reactions** | 13.3 - Automatic agent reactions to events from permitted agents |
