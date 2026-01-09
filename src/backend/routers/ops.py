@@ -424,6 +424,77 @@ async def stop_fleet(
 # Schedule Control
 # ============================================================================
 
+@router.get("/schedules")
+async def list_all_schedules(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    agent_name: Optional[str] = Query(None, description="Filter by agent name"),
+    enabled_only: bool = Query(False, description="Only return enabled schedules")
+):
+    """
+    List all schedules across all agents.
+
+    Returns schedule information including next run times and recent execution status.
+    This endpoint is used by the system agent for schedule overview and management.
+    """
+    schedules = db.list_all_schedules()
+
+    # Apply filters
+    if agent_name:
+        schedules = [s for s in schedules if s.agent_name == agent_name]
+    if enabled_only:
+        schedules = [s for s in schedules if s.enabled]
+
+    # Build response with schedule details
+    schedule_list = []
+    for schedule in schedules:
+        # Get recent executions for this schedule
+        recent_executions = db.get_schedule_executions(schedule.id, limit=5)
+        last_execution = recent_executions[0] if recent_executions else None
+
+        schedule_data = {
+            "id": schedule.id,
+            "agent_name": schedule.agent_name,
+            "name": schedule.name,
+            "cron_expression": schedule.cron_expression,
+            "message": schedule.message,
+            "enabled": schedule.enabled,
+            "timezone": schedule.timezone,
+            "description": schedule.description,
+            "created_at": schedule.created_at.isoformat() if schedule.created_at else None,
+            "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+            "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+            "last_execution": {
+                "id": last_execution.id,
+                "status": last_execution.status,
+                "started_at": last_execution.started_at.isoformat(),
+                "completed_at": last_execution.completed_at.isoformat() if last_execution.completed_at else None,
+                "duration_ms": last_execution.duration_ms,
+                "error": last_execution.error
+            } if last_execution else None
+        }
+        schedule_list.append(schedule_data)
+
+    # Calculate summary
+    total = len(schedules)
+    enabled = sum(1 for s in schedules if s.enabled)
+    disabled = total - enabled
+
+    # Group by agent
+    agents_with_schedules = len(set(s.agent_name for s in schedules))
+
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "summary": {
+            "total": total,
+            "enabled": enabled,
+            "disabled": disabled,
+            "agents_with_schedules": agents_with_schedules
+        },
+        "schedules": schedule_list
+    }
+
+
 @router.post("/schedules/pause")
 async def pause_all_schedules(
     request: Request,

@@ -161,7 +161,7 @@ The test suite covers:
 - **Public Links** (test_public_links.py) - Public agent sharing with email verification (Req 11.3)
 
 ### Operations & Observability
-- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule pause/resume, emergency stop, alerts, costs [SLOW]
+- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule list/pause/resume, emergency stop, alerts, costs [SLOW]
 - **System Agent** (test_system_agent.py) - System agent status, restart, reinitialize, is_system flag [SLOW]
 - **Observability** (test_observability.py) - OTel status, metrics, cost tracking
 - **Activity Stream** (test_activities.py) - Cross-agent timeline, per-agent activities

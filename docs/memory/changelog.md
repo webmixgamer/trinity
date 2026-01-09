@@ -1,3 +1,40 @@
+### 2026-01-09 21:30:00
+✨ **Feature: System Agent Schedule & Execution Management**
+
+**Goal**: Enable System Agent to manage schedules and monitor executions via slash commands and REST API.
+
+**Backend Changes**:
+- Added `GET /api/ops/schedules` endpoint for listing all schedules with filters and execution history
+- Added `list_all_schedules()` method to `db/schedules.py`
+- Exposed method via `database.py` DatabaseManager
+
+**System Agent Slash Commands**:
+| Command | Purpose |
+|---------|---------|
+| `/ops/schedules` | Quick schedule overview |
+| `/ops/schedules/list` | Detailed schedule listing with history |
+| `/ops/schedules/pause [agent]` | Pause schedules (all or per-agent) |
+| `/ops/schedules/resume [agent]` | Resume paused schedules |
+| `/ops/executions/list [agent]` | List recent task executions |
+| `/ops/executions/status <id>` | Get execution details |
+
+**Files Created**:
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/list.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/pause.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/resume.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/list.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/status.md`
+
+**Files Modified**:
+- `src/backend/routers/ops.py` - New `/api/ops/schedules` endpoint
+- `src/backend/db/schedules.py` - `list_all_schedules()` method
+- `src/backend/database.py` - Exposed method
+- `config/agent-templates/trinity-system/CLAUDE.md` - Schedule management docs
+- `config/agent-templates/trinity-system/template.yaml` - New slash commands
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules.md` - Updated overview
+
+---
+
 ### 2026-01-09 19:45:00
 🔧 **Refactor: AgentDetail.vue Modularization**
 

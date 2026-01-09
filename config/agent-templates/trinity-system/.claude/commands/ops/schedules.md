@@ -1,54 +1,54 @@
 # Schedule Overview
 
-List all schedules across all agents with their status and next run times.
+Quick overview of all schedules across the platform.
 
 ## Instructions
 
-1. **Get all agents** using `mcp__trinity__list_agents`
+1. **Get schedule summary** using the API:
 
-2. **For each agent, note**:
-   - Whether it has schedules
-   - If agent is running (schedules won't run on stopped agents)
+```bash
+curl -s "http://backend:8000/api/ops/schedules" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY" | jq '.summary'
+```
 
-3. **Compile schedule information**:
-   - Agent name
-   - Schedule name
-   - Cron expression (human-readable)
-   - Enabled/Disabled status
-   - Next run time
-   - Last run time and status
-
-4. **Generate the report**:
+2. **Generate a brief report**:
 
 ```
 ## Schedule Overview
 Generated: {timestamp}
 
-### Summary
-- Total Schedules: X
-- Enabled: X
-- Disabled: X
-- Agents with Schedules: X
+- Total Schedules: {total}
+- Enabled: {enabled}
+- Disabled: {disabled}
+- Agents with Schedules: {agents_with_schedules}
 
-### Upcoming Runs (Next 24 Hours)
-| Time | Agent | Schedule | Cron |
-|------|-------|----------|------|
-| ... | ... | ... | ... |
-
-### All Schedules by Agent
-
-#### {Agent Name}
-| Schedule | Cron | Status | Next Run | Last Run |
-|----------|------|--------|----------|----------|
-| ... | ... | ... | ... | ... |
-
-### Warnings
-- {List any issues, like schedules on stopped agents}
+For detailed information, use:
+- `/ops/schedules/list` - Full schedule listing
+- `/ops/schedules/pause` - Pause schedules
+- `/ops/schedules/resume` - Resume schedules
 ```
 
-## Notes
+## Related Commands
 
-- Group schedules by agent for clarity
-- Highlight schedules that haven't run recently
-- Warn about schedules on stopped agents
-- Show human-readable cron descriptions (e.g., "Every day at 9 AM")
+| Command | Purpose |
+|---------|---------|
+| `/ops/schedules/list` | Detailed schedule listing with execution history |
+| `/ops/schedules/pause [agent]` | Pause all or agent-specific schedules |
+| `/ops/schedules/resume [agent]` | Resume paused schedules |
+| `/ops/executions/list` | View recent task executions |
+| `/ops/executions/status <id>` | Get details of specific execution |
+
+## Quick Actions
+
+**Check if any schedules are failing:**
+```bash
+curl -s "http://backend:8000/api/ops/schedules" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY" | \
+  jq '.schedules[] | select(.last_execution.status == "failed")'
+```
+
+**Emergency pause all:**
+```bash
+curl -X POST "http://backend:8000/api/ops/schedules/pause" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```

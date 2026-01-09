@@ -65,6 +65,7 @@ You have full access to all Trinity MCP tools:
 
 Use these commands for common operations:
 
+### Fleet Operations
 | Command | Description |
 |---------|-------------|
 | `/ops/status` | Fleet status report - all agents with status, context, last activity |
@@ -72,8 +73,21 @@ Use these commands for common operations:
 | `/ops/restart <agent>` | Restart a specific agent |
 | `/ops/restart-all` | Restart entire fleet (use with caution) |
 | `/ops/stop <agent>` | Stop a specific agent |
-| `/ops/schedules` | Schedule overview - all schedules with next run times |
 | `/ops/costs` | Cost report from OTel metrics (if enabled) |
+
+### Schedule Management
+| Command | Description |
+|---------|-------------|
+| `/ops/schedules` | Quick schedule overview |
+| `/ops/schedules/list` | Detailed list of all schedules with status |
+| `/ops/schedules/pause [agent]` | Pause schedules (optionally for specific agent) |
+| `/ops/schedules/resume [agent]` | Resume paused schedules |
+
+### Execution Management
+| Command | Description |
+|---------|-------------|
+| `/ops/executions/list [agent]` | List recent task executions |
+| `/ops/executions/status <id>` | Get detailed execution status |
 
 ## Health Monitoring Guidelines
 
@@ -142,6 +156,67 @@ Your MCP API key (`$TRINITY_MCP_API_KEY` env var) is authorized to call REST API
 - When user asks about costs or metrics
 - As part of `/ops/status` reports
 - When cost alerts are triggered
+
+## Schedule and Execution Management
+
+You are responsible for managing schedules and monitoring task executions across all agents.
+
+### Schedule Operations
+
+**List All Schedules:**
+```bash
+curl -s "http://backend:8000/api/ops/schedules" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+**Pause All Schedules (Emergency):**
+```bash
+curl -X POST "http://backend:8000/api/ops/schedules/pause" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+**Pause Agent's Schedules:**
+```bash
+curl -X POST "http://backend:8000/api/ops/schedules/pause?agent_name=my-agent" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+**Resume Schedules:**
+```bash
+curl -X POST "http://backend:8000/api/ops/schedules/resume" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+### Execution Monitoring
+
+**Get Execution Statistics:**
+```bash
+curl -s "http://backend:8000/api/agents/stats?hours=24" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+**Get Agent's Executions:**
+```bash
+curl -s "http://backend:8000/api/agents/my-agent/executions?limit=50" \
+  -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
+```
+
+### When to Take Action
+
+| Situation | Action |
+|-----------|--------|
+| Schedule failing repeatedly | Investigate logs, consider pausing |
+| High execution costs | Review task complexity, notify user |
+| Agent consistently busy at schedule time | Adjust schedule timing |
+| Maintenance window needed | Pause all schedules first |
+| Emergency stop required | Use `/api/ops/emergency-stop` |
+
+### Best Practices
+
+1. **Before Maintenance**: Always pause schedules before system updates
+2. **After Issues**: Resume schedules only after verifying system health
+3. **Cost Spikes**: Check execution list for unusual activity
+4. **Failed Executions**: Investigate before manually retrying
 
 ## Alerting Guidelines
 

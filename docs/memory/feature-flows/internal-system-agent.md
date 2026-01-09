@@ -2,6 +2,8 @@
 
 > **Phase 11.1 & 11.2** - Platform operations manager with privileged access
 >
+> **Updated 2026-01-09**: Added Schedule & Execution Management slash commands and `GET /api/ops/schedules` endpoint
+>
 > **Updated 2025-12-31**: Added AgentClient service pattern for HTTP communication
 
 ## Overview
@@ -67,13 +69,23 @@ The Internal System Agent (`trinity-system`) is an auto-deployed, deletion-prote
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │  Slash Commands (/ops/*)                                      │   │
+│  │  Fleet Operations:                                            │   │
 │  │  - /ops/status - Fleet status report                         │   │
 │  │  - /ops/health - Health check all agents                     │   │
 │  │  - /ops/restart <agent> - Restart specific agent             │   │
 │  │  - /ops/restart-all - Restart entire fleet                   │   │
 │  │  - /ops/stop <agent> - Stop specific agent                   │   │
-│  │  - /ops/schedules - Schedule overview                        │   │
 │  │  - /ops/costs - Cost report from OTel                        │   │
+│  │                                                               │   │
+│  │  Schedule Management:                                         │   │
+│  │  - /ops/schedules - Quick schedule overview                  │   │
+│  │  - /ops/schedules/list - Detailed listing with history       │   │
+│  │  - /ops/schedules/pause [agent] - Pause schedules            │   │
+│  │  - /ops/schedules/resume [agent] - Resume schedules          │   │
+│  │                                                               │   │
+│  │  Execution Management:                                        │   │
+│  │  - /ops/executions/list [agent] - List recent executions     │   │
+│  │  - /ops/executions/status <id> - Execution details           │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -175,9 +187,14 @@ The `SystemAgent.vue` view provides a dedicated, ops-focused interface:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/ops/schedules/pause` | POST | Pause all schedules |
-| `/api/ops/schedules/resume` | POST | Resume all schedules |
+| `/api/ops/schedules` | GET | List all schedules with filters and execution history |
+| `/api/ops/schedules/pause` | POST | Pause all schedules (optionally per-agent) |
+| `/api/ops/schedules/resume` | POST | Resume all schedules (optionally per-agent) |
 | `/api/ops/emergency-stop` | POST | Halt all executions immediately |
+
+**Query Parameters for `GET /api/ops/schedules`**:
+- `agent_name` - Filter by specific agent
+- `enabled_only` - Only return enabled schedules (default: false)
 
 ### Cost & Observability (OTel Integration)
 
@@ -265,6 +282,8 @@ Stored in `system_settings` table with these defaults:
 
 Commands are located in `config/agent-templates/trinity-system/.claude/commands/ops/`:
 
+### Fleet Operations
+
 | Command | File | Description |
 |---------|------|-------------|
 | `/ops/status` | `status.md` | Fleet status with context usage |
@@ -272,8 +291,23 @@ Commands are located in `config/agent-templates/trinity-system/.claude/commands/
 | `/ops/restart <agent>` | `restart.md` | Restart specific agent |
 | `/ops/restart-all` | `restart-all.md` | Restart entire fleet |
 | `/ops/stop <agent>` | `stop.md` | Stop specific agent |
-| `/ops/schedules` | `schedules.md` | Schedule overview with next runs |
 | `/ops/costs` | `costs.md` | Cost report from OTel metrics |
+
+### Schedule Management
+
+| Command | File | Description |
+|---------|------|-------------|
+| `/ops/schedules` | `schedules.md` | Quick schedule overview |
+| `/ops/schedules/list` | `schedules/list.md` | Detailed schedule listing with execution history |
+| `/ops/schedules/pause [agent]` | `schedules/pause.md` | Pause schedules (all or per-agent) |
+| `/ops/schedules/resume [agent]` | `schedules/resume.md` | Resume paused schedules |
+
+### Execution Management
+
+| Command | File | Description |
+|---------|------|-------------|
+| `/ops/executions/list [agent]` | `executions/list.md` | List recent task executions |
+| `/ops/executions/status <id>` | `executions/status.md` | Get detailed execution status |
 
 ## Data Flow
 
@@ -512,7 +546,88 @@ User: /ops/costs (or "show me platform costs")
 - `config/agent-templates/trinity-system/.claude/commands/ops/costs.md:11` - Fixed env var
 - `config/agent-templates/trinity-system/CLAUDE.md:123-147` - Added Cost Monitoring section
 
-### 5. Reinitialize Flow (5-Step Process)
+### 5. Schedule Management Flow (2026-01-09)
+
+The system agent manages schedules across all agents via REST API calls:
+
+```
+User: /ops/schedules/list
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│ System Agent reads schedules/list.md instructions        │
+│ Executes curl command:                                   │
+│ curl -s "http://backend:8000/api/ops/schedules" \        │
+│   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"        │
+└────────┬─────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────┐
+│ Backend /api/ops/schedules endpoint (ops.py:427-495)     │
+│ 1. db.list_all_schedules()                               │
+│ 2. Apply filters (agent_name, enabled_only)              │
+│ 3. For each schedule, get recent executions              │
+│ 4. Build response with summary + schedule list           │
+└────────┬─────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────┐
+│ Response JSON:                                           │
+│ {                                                        │
+│   "summary": {total, enabled, disabled, agents_with_...},│
+│   "schedules": [{                                        │
+│     "id", "agent_name", "name", "cron_expression",       │
+│     "enabled", "next_run_at", "last_run_at",             │
+│     "last_execution": {status, duration_ms, error}       │
+│   }, ...]                                                │
+│ }                                                        │
+└────────┬─────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────┐
+│ System Agent formats report:                             │
+│ - Summary stats                                          │
+│ - Schedules grouped by agent                             │
+│ - Warnings for failing schedules                         │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Pause/Resume Flow:**
+
+```
+User: /ops/schedules/pause my-agent
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│ curl -X POST "http://backend:8000/api/ops/schedules/     │
+│   pause?agent_name=my-agent" \                           │
+│   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"        │
+└────────┬─────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────┐
+│ Backend (ops.py:498-516)                                 │
+│ 1. Get all enabled schedules for agent                   │
+│ 2. For each: db.set_schedule_enabled(id, False)          │
+│ 3. Remove from APScheduler                               │
+└────────┬─────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────┐
+│ Response: {"paused_count": 3, "agent_filter": "my-agent"}│
+└──────────────────────────────────────────────────────────┘
+```
+
+**Database Layer (db/schedules.py):**
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `list_all_schedules()` | 185-193 | List all schedules across all agents |
+| `list_all_enabled_schedules()` | 165-173 | List enabled schedules |
+| `list_all_disabled_schedules()` | 175-183 | List disabled schedules |
+| `set_schedule_enabled()` | 250-258 | Enable/disable a schedule |
+
+### 6. Reinitialize Flow (5-Step Process)
 
 The reinitialize endpoint resets the system agent to a clean state without losing database records:
 

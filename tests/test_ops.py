@@ -186,6 +186,136 @@ class TestFleetOperationsAdminOnly:
             assert summary["successes"] == 0
 
 
+class TestSchedulesList:
+    """Tests for GET /api/ops/schedules endpoint."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_schedules_list_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """GET /api/ops/schedules requires authentication."""
+        response = unauthenticated_client.get("/api/ops/schedules", auth=False)
+        assert_status(response, 401)
+
+    def test_schedules_list_returns_structure(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules returns expected structure."""
+        response = api_client.get("/api/ops/schedules")
+        assert_status(response, 200)
+        data = assert_json_response(response)
+
+        # Should have timestamp, summary, and schedules
+        assert_has_fields(data, ["timestamp", "summary", "schedules"])
+
+        # Summary should have counts
+        summary = data["summary"]
+        assert_has_fields(summary, ["total", "enabled", "disabled", "agents_with_schedules"])
+        assert isinstance(summary["total"], int)
+        assert isinstance(summary["enabled"], int)
+        assert isinstance(summary["disabled"], int)
+        assert isinstance(summary["agents_with_schedules"], int)
+
+        # Schedules should be a list
+        assert isinstance(data["schedules"], list)
+
+    def test_schedules_list_schedule_fields(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules returns schedules with expected fields."""
+        response = api_client.get("/api/ops/schedules")
+        assert_status(response, 200)
+        data = response.json()
+
+        schedules = data.get("schedules", [])
+        for schedule in schedules:
+            # Each schedule should have these fields
+            assert_has_fields(schedule, [
+                "id", "agent_name", "name", "cron_expression",
+                "enabled", "timezone"
+            ])
+            assert isinstance(schedule["enabled"], bool)
+
+    def test_schedules_list_with_agent_filter(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules filters by agent_name."""
+        # First get all schedules to find an agent with schedules
+        response = api_client.get("/api/ops/schedules")
+        assert_status(response, 200)
+        data = response.json()
+
+        schedules = data.get("schedules", [])
+        if schedules:
+            # Filter by first agent's name
+            agent_name = schedules[0]["agent_name"]
+            response = api_client.get(f"/api/ops/schedules?agent_name={agent_name}")
+            assert_status(response, 200)
+            filtered_data = response.json()
+
+            # All returned schedules should be for this agent
+            for schedule in filtered_data["schedules"]:
+                assert schedule["agent_name"] == agent_name
+
+            # Summary should only count this agent's schedules
+            assert filtered_data["summary"]["agents_with_schedules"] <= 1
+
+    def test_schedules_list_nonexistent_agent_returns_empty(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules with nonexistent agent returns empty list."""
+        response = api_client.get("/api/ops/schedules?agent_name=nonexistent-agent-xyz")
+        assert_status(response, 200)
+        data = response.json()
+
+        assert data["summary"]["total"] == 0
+        assert data["schedules"] == []
+
+    def test_schedules_list_enabled_only_filter(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules filters by enabled_only."""
+        response = api_client.get("/api/ops/schedules?enabled_only=true")
+        assert_status(response, 200)
+        data = response.json()
+
+        # All returned schedules should be enabled
+        for schedule in data["schedules"]:
+            assert schedule["enabled"] is True
+
+        # Summary disabled count should be 0 (filtered out)
+        assert data["summary"]["disabled"] == 0
+
+    def test_schedules_list_summary_counts_match(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules summary counts match schedules list."""
+        response = api_client.get("/api/ops/schedules")
+        assert_status(response, 200)
+        data = response.json()
+
+        summary = data["summary"]
+        schedules = data["schedules"]
+
+        # Total should match schedules count
+        assert summary["total"] == len(schedules)
+
+        # Enabled + disabled should equal total
+        assert summary["enabled"] + summary["disabled"] == summary["total"]
+
+        # Count enabled/disabled manually
+        enabled_count = sum(1 for s in schedules if s["enabled"])
+        disabled_count = sum(1 for s in schedules if not s["enabled"])
+        assert summary["enabled"] == enabled_count
+        assert summary["disabled"] == disabled_count
+
+    def test_schedules_list_includes_execution_info(self, api_client: TrinityApiClient):
+        """GET /api/ops/schedules includes last execution info when available."""
+        response = api_client.get("/api/ops/schedules")
+        assert_status(response, 200)
+        data = response.json()
+
+        schedules = data.get("schedules", [])
+        for schedule in schedules:
+            # These fields should always be present (can be null)
+            assert "last_run_at" in schedule
+            assert "next_run_at" in schedule
+            assert "last_execution" in schedule
+
+            # If last_execution exists, check its structure
+            if schedule["last_execution"]:
+                assert_has_fields(schedule["last_execution"], [
+                    "id", "status", "started_at"
+                ])
+
+
 class TestScheduleControl:
     """Tests for Schedule Control API."""
 

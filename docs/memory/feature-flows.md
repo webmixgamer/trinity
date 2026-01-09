@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-09)**: System Agent Schedule & Execution Management:
+> - **internal-system-agent.md**: Added Schedule and Execution Management via slash commands
+> - New `GET /api/ops/schedules` endpoint (ops.py:427-495) with `agent_name` and `enabled_only` filters
+> - New slash commands: `/ops/schedules/list`, `/ops/schedules/pause`, `/ops/schedules/resume`
+> - New execution commands: `/ops/executions/list`, `/ops/executions/status`
+> - Backend: `list_all_schedules()` method in db/schedules.py:185-193
+> - Template: Updated CLAUDE.md with schedule management section, template.yaml with 6 new commands
+> - Files: ops.py, db/schedules.py, database.py, config/agent-templates/trinity-system/*
+>
 > **Updated (2026-01-09)**: Agents Page Dashboard Parity:
 > - **agents-page-ui-improvements.md**: Complete UI overhaul to match Dashboard (AgentNode.vue) tiles
 > - Layout: Vertical list replaced with responsive 3-column grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
@@ -194,7 +203,7 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2025-12-31**: AgentClient service pattern for context polling. **2025-12-21**: OTel access fix, 5-step reinitialize, Cost Monitoring flow (Req 11.1, 11.2) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-09**: Schedule & Execution Management via slash commands (`/ops/schedules/*`, `/ops/executions/*`). **2025-12-31**: AgentClient service pattern. **2025-12-21**: OTel access fix (Req 11.1, 11.2) |
 | **System Agent UI** | High | [system-agent-ui.md](feature-flows/system-agent-ui.md) | Admin-only `/system-agent` page with fleet overview cards, quick actions (Emergency Stop, Restart All, Pause/Resume Schedules), and Operations Console chat interface (Req 11.3 - Created 2025-12-20) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |

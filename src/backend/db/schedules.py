@@ -182,6 +182,16 @@ class ScheduleOperations:
             """)
             return [self._row_to_schedule(row) for row in cursor.fetchall()]
 
+    def list_all_schedules(self) -> List[Schedule]:
+        """List all schedules across all agents (for system agent overview)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM agent_schedules
+                ORDER BY agent_name, name
+            """)
+            return [self._row_to_schedule(row) for row in cursor.fetchall()]
+
     def update_schedule(self, schedule_id: str, username: str, updates: Dict) -> Optional[Schedule]:
         """Update a schedule."""
         user = self._user_ops.get_user_by_username(username)
