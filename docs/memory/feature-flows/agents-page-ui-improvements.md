@@ -1,8 +1,8 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: ✅ Implemented (2025-12-07)
+> **Status**: ✅ Implemented (2025-12-07, Enhanced 2026-01-09)
 > **Tested**: ✅ All features verified working
-> **Last Updated**: 2025-12-30
+> **Last Updated**: 2026-01-09
 
 ## Overview
 
@@ -372,11 +372,191 @@ const getProgressBarColor = (agentName) => {
 
 ---
 
+## Enhancement: Dashboard Parity (2026-01-09)
+
+### Overview
+
+Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Changed from list view to responsive grid layout with card-based design.
+
+### Changes Made
+
+#### Layout
+- **Grid Layout**: Changed from vertical list to responsive 3-column grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
+- **Card Design**: Each agent displayed in a card matching AgentNode.vue styling (320px width concept, shadow, rounded corners)
+- **Stopped Agent Styling**: Cards for stopped agents have reduced opacity (`opacity-75`) for visual distinction
+
+#### New Features Added
+
+1. **Autonomy Toggle** (`Agents.vue` lines 98-133)
+   - Interactive toggle switch with AUTO/Manual label
+   - Amber color (`bg-amber-500`) when enabled, gray (`bg-gray-200`) when disabled
+   - Calls `agentsStore.toggleAutonomy()` via `handleAutonomyToggle()` (line 354-364)
+   - Loading state with `autonomyLoading` ref during API call
+   - ARIA support with `role="switch"` and `aria-checked`
+
+2. **Execution Stats Row** (`Agents.vue` lines 155-172)
+   - Task count (24h): `{{ getExecutionStats(agent.name).taskCount }}`
+   - Success rate with color coding:
+     - Green (`text-green-600`) for ≥80%
+     - Yellow (`text-yellow-600`) for 50-79%
+     - Red (`text-red-600`) for <50%
+   - Total cost in dollars (conditionally shown if > 0)
+   - Last execution time (relative display: "just now", "2m ago", "1h ago", "1d ago")
+   - Fallback: "No tasks (24h)" when no execution data
+
+3. **Context Progress Bar Always Visible** (`Agents.vue` lines 140-153)
+   - Shows for all agents (not just running ones)
+   - Color coded by percentage:
+     - Green (`bg-green-500`) for 0-49%
+     - Yellow (`bg-yellow-500`) for 50-74%
+     - Orange (`bg-orange-500`) for 75-89%
+     - Red (`bg-red-500`) for 90-100%
+   - Smooth transition: `transition-all duration-500`
+
+4. **RuntimeBadge Integration** (`Agents.vue` line 68)
+   - Shows Claude/Gemini icon next to agent name
+   - Uses existing `RuntimeBadge` component with `show-label="false"`
+
+#### Store Changes (`agents.js`)
+
+1. **New State** (line 14):
+   ```javascript
+   executionStats: {},  // Map of agent name -> execution stats
+   ```
+
+2. **New Actions**:
+   - `fetchExecutionStats()` (lines 523-547): Fetches from `GET /api/agents/execution-stats`
+     - Maps response to: `taskCount`, `successCount`, `failedCount`, `runningCount`, `successRate`, `totalCost`, `lastExecutionAt`
+   - `toggleAutonomy(agentName)` (lines 550-576): Calls `PUT /api/agents/{name}/autonomy`
+     - Toggles `agent.autonomy_enabled` locally after successful API call
+     - Returns `{ success, enabled, schedulesUpdated }`
+
+3. **Updated Polling** (lines 578-594):
+   - `startContextPolling()` now also calls `fetchExecutionStats()` on mount and every 5 seconds
+   - Both `fetchContextStats()` and `fetchExecutionStats()` run in parallel
+
+#### Helper Functions (`Agents.vue` script section)
+
+| Function | Lines | Purpose |
+|----------|-------|---------|
+| `getActivityState(agentName)` | 279-286 | Returns 'Active', 'Idle', or 'Offline' |
+| `isActive(agentName)` | 288-290 | Returns true if agent is actively processing |
+| `getStatusDotColor(agentName)` | 292-297 | Returns hex color for status dot |
+| `getActivityLabelClass(agentName)` | 299-303 | Returns Tailwind classes for activity label |
+| `getContextPercent(agentName)` | 306-309 | Returns rounded context percentage (0-100) |
+| `getProgressBarColor(agentName)` | 311-317 | Returns Tailwind bg class based on percentage |
+| `getExecutionStats(agentName)` | 320-322 | Returns execution stats object or null |
+| `hasExecutionStats(agentName)` | 324-327 | Returns true if taskCount > 0 |
+| `getSuccessRateColorClass(agentName)` | 329-336 | Returns color class for success rate |
+| `getLastExecutionDisplay(agentName)` | 338-351 | Returns relative time string |
+| `handleAutonomyToggle(agent)` | 354-364 | Handles autonomy toggle with loading state |
+
+### Backend Endpoints
+
+1. **GET /api/agents/execution-stats** (`agents.py` lines 144-165)
+   - Returns task counts, success rates, costs for all accessible agents
+   - Query param: `hours` (default: 24)
+   - Response: `{ agents: [{ name, task_count_24h, success_count, failed_count, running_count, success_rate, total_cost, last_execution_at }] }`
+
+2. **PUT /api/agents/{name}/autonomy** (`agents.py` lines 775-790)
+   - Body: `{ enabled: boolean }`
+   - When enabled: activates all schedules for the agent
+   - When disabled: pauses all schedules
+   - Response: `{ enabled, schedules_updated }`
+
+3. **GET /api/agents/context-stats** (`agents.py` lines 138-141)
+   - Returns context window usage and activity state for all agents
+   - Response: `{ agents: [{ name, contextPercent, contextUsed, contextMax, activityState, lastActivityTime }] }`
+
+### Visual Comparison
+
+| Feature | Before | After |
+|---------|--------|-------|
+| Layout | Vertical list (`<ul>` with `<li>`) | 3-column responsive grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`) |
+| Autonomy | Not shown | Toggle switch with AUTO/Manual label |
+| Execution Stats | Not shown | Tasks · Success Rate · Cost · Last Run row |
+| Context Bar | Only for running agents | All agents (consistent card height) |
+| Card Style | Simple table rows | Styled cards with shadow-lg, rounded-xl, hover:shadow-xl |
+| Status Indicator | Basic badge | Pulsing dot with activity state label |
+
+### Data Flow
+
+```
+User loads /agents page
+    └── onMounted() [Agents.vue:269-272]
+        ├── agentsStore.fetchAgents() → GET /api/agents
+        └── agentsStore.startContextPolling() [agents.js:578-594]
+            ├── fetchContextStats() → GET /api/agents/context-stats
+            ├── fetchExecutionStats() → GET /api/agents/execution-stats
+            └── setInterval(5000) for continuous updates
+
+User toggles autonomy switch
+    └── handleAutonomyToggle(agent) [Agents.vue:354-364]
+        └── agentsStore.toggleAutonomy(agentName) [agents.js:550-576]
+            └── PUT /api/agents/{name}/autonomy
+                └── Updates agent.autonomy_enabled locally
+```
+
+### Files Modified
+
+1. **`/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`** (681 lines total):
+   - Line 14: Added `executionStats: {}` state
+   - Lines 523-547: Added `fetchExecutionStats()` action
+   - Lines 550-576: Added `toggleAutonomy()` action
+   - Lines 578-594: Updated `startContextPolling()` to include execution stats
+
+2. **`/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue`** (413 lines total):
+   - Lines 44-224: Complete rewrite with grid layout and card components
+   - Lines 98-133: Autonomy toggle implementation
+   - Lines 140-153: Context progress bar (always visible)
+   - Lines 155-172: Execution stats row
+   - Lines 279-364: Helper functions for stats and autonomy
+   - Lines 394-411: CSS for active-pulse animation
+
+### Testing Steps
+
+#### Autonomy Toggle
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Load `/agents` page | See AUTO/Manual label on each agent card |
+| 2 | Click toggle on agent | Toggle animates, label changes, API called |
+| 3 | Verify in DB | Agent's `autonomy_enabled` field updated |
+| 4 | Disable autonomy | All schedules for agent are paused |
+| 5 | Re-enable | Schedules resume |
+
+#### Execution Stats
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | View agent with tasks | See "X tasks · Y% · $Z · Nm ago" |
+| 2 | View agent without tasks | See "No tasks (24h)" |
+| 3 | Verify success rate colors | Green ≥80%, yellow 50-79%, red <50% |
+| 4 | Wait 5 seconds | Stats auto-refresh |
+
+#### Context Progress Bar
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | View stopped agent | Context bar shows 0% (gray area visible) |
+| 2 | View running agent | Context bar shows actual percentage |
+| 3 | Chat with agent | Progress bar fills as context grows |
+| 4 | Check color changes | Green → yellow → orange → red as % increases |
+
+### Related Components
+
+- **AgentNode.vue**: Dashboard tiles use same visual design
+  - Path: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentNode.vue`
+  - Lines 52-97: Autonomy toggle (identical implementation)
+  - Lines 130-147: Execution stats row
+  - Lines 115-128: Context progress bar
+
+---
+
 ## References
 
-> Line numbers verified 2025-12-30
-- **AgentNode.vue**: `/src/frontend/src/components/AgentNode.vue` - Visual design reference
-- **network.js**: `/src/frontend/src/stores/network.js:582-640` - API polling reference (fetchContextStats)
-- **agents.js**: `/src/frontend/src/stores/agents.js:460-500` - Context stats fetching + polling
-- **Backend endpoint**: `/src/backend/routers/agents.py:142-145` - context-stats endpoint (delegated to service)
-- **Agents.vue**: `/src/frontend/src/views/Agents.vue:1-283` - Full component with dark mode support (283 lines total)
+> Line numbers verified 2026-01-09
+- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (413 lines total)
+- **agents.js store**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js` (681 lines total)
+- **AgentNode.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentNode.vue` (393 lines) - Visual design reference
+- **Backend agents router**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py`
+  - Lines 138-141: GET /context-stats endpoint
+  - Lines 144-165: GET /execution-stats endpoint
+  - Lines 775-790: PUT /{name}/autonomy endpoint

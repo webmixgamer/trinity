@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-09)**: Agents Page Dashboard Parity:
+> - **agents-page-ui-improvements.md**: Complete UI overhaul to match Dashboard (AgentNode.vue) tiles
+> - Layout: Vertical list replaced with responsive 3-column grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
+> - Autonomy Toggle: Interactive AUTO/Manual switch with amber/gray styling, calls `PUT /api/agents/{name}/autonomy`
+> - Execution Stats: Tasks (24h), success rate (color-coded), cost, last execution time
+> - Context Progress Bar: Now always visible for consistent card height
+> - Store: Added `executionStats` state, `fetchExecutionStats()`, `toggleAutonomy()` actions to agents.js
+> - Files: Agents.vue (413 lines), agents.js (681 lines)
+>
 > **Updated (2026-01-04)**: ReplayTimeline Component documented:
 > - **replay-timeline.md**: New feature flow for Dashboard replay timeline waterfall visualization
 > - Waterfall-style timeline with agent rows, activity bars, and communication arrows
@@ -175,7 +184,7 @@
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |
-| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Activity indicators, context stats, task progress, sorting - reusing Collaboration Dashboard APIs (Implemented 2025-12-07, Updated 2025-12-19) |
+| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design (Implemented 2025-12-07, **Dashboard Parity 2026-01-09**) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
 | **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |

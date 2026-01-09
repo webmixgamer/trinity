@@ -1,3 +1,43 @@
+### 2026-01-09 14:30:00
+✨ **Feature: Agents Page UI Overhaul - Dashboard Parity**
+
+**Enhancement**: Completely redesigned the Agents page (`/agents`) to match the Dashboard tile design, providing consistent UX across the platform.
+
+**What Changed**:
+
+1. **Grid Layout** - Changed from vertical list to responsive 3-column grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
+
+2. **Autonomy Toggle** - Added interactive AUTO/Manual toggle switch matching Dashboard tiles
+   - Amber color when enabled, gray when disabled
+   - Calls `PUT /api/agents/{name}/autonomy` to toggle all schedules
+   - Loading state during API calls
+
+3. **Execution Stats Row** - New compact stats display:
+   - Task count (24h): "12 tasks"
+   - Success rate with color coding: green (≥80%), yellow (50-79%), red (<50%)
+   - Total cost: "$0.45"
+   - Last execution: "2m ago"
+
+4. **Context Progress Bar** - Now always visible (not just for running agents)
+   - Color coded: green → yellow → orange → red based on usage
+
+5. **Card Styling** - Matching AgentNode.vue design with shadows, rounded corners, hover effects
+
+**Modified Files**:
+- `src/frontend/src/stores/agents.js` - Added `executionStats` state, `fetchExecutionStats()`, `toggleAutonomy()` actions
+- `src/frontend/src/views/Agents.vue` - Complete rewrite with grid layout and new features
+- `docs/memory/feature-flows/agents-page-ui-improvements.md` - Added Enhancement section
+
+**Visual Comparison**:
+| Feature | Before | After |
+|---------|--------|-------|
+| Layout | Vertical list | 3-column grid |
+| Autonomy | Not shown | Toggle switch |
+| Execution Stats | Not shown | Tasks · Rate · Cost · Time |
+| Context Bar | Running only | All agents |
+
+---
+
 ### 2026-01-06 18:30:00
 ♻️ **Refactor: Sovereign Archive Storage Architecture**
 
