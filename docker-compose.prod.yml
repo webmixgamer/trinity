@@ -32,9 +32,8 @@ services:
       - AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
       # Host paths for volumes (used when creating agent containers)
-      # These MUST be set in your environment or deploy.config
-      - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH}
-      - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH}
+      - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${PWD}/config/agent-templates}
+      - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-${PWD}/config/trinity-meta-prompt}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
