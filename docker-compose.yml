@@ -72,7 +72,7 @@ services:
     image: trinity-frontend:latest
     container_name: trinity-frontend
     ports:
-      - "3000:3000"
+      - "80:80"
     volumes:
       - ./src/frontend:/app
       - /app/node_modules

@@ -24,7 +24,7 @@ This file provides guidance to Claude Code when working with this repository.
 ✅ **Use placeholders**: `your-domain.com`, `your-api-key`, `user@example.com`
 ✅ **Example files**: Commit `.example` templates (e.g., `deploy.config.example`)
 ✅ **Environment variables**: Reference `${VAR_NAME}` instead of hardcoded values
-✅ **Local examples**: Use `localhost:3000` or `127.0.0.1` in documentation
+✅ **Local examples**: Use `localhost` or `127.0.0.1` in documentation
 ✅ **Review diffs**: Always check `git diff` before committing to catch accidental secrets
 ✅ **Public-first mindset**: Assume every commit will be visible forever and indexed by search engines
 
@@ -52,7 +52,7 @@ Trinity implements the **Four Pillars of Deep Agency**:
 
 Each agent runs as an isolated Docker container with standardized interfaces for credentials, tools, and MCP server integrations.
 
-**Local**: http://localhost:3000
+**Local**: http://localhost
 **Backend API**: http://localhost:8000/docs
 
 ---
@@ -126,7 +126,7 @@ docker-compose logs -f backend
 ```
 
 ### Local URLs
-- **Web UI**: http://localhost:3000
+- **Web UI**: http://localhost
 - **Backend API**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
 - **Vector (logs)**: http://localhost:8686/health
@@ -237,7 +237,7 @@ curl -X POST http://localhost:8000/api/agents \
   -d '{"name": "my-agent", "template": "github:Org/repo"}'
 
 # Via UI
-# Visit http://localhost:3000 → Create Agent
+# Visit http://localhost → Create Agent
 ```
 
 ### Agent Container Labels

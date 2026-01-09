@@ -265,6 +265,33 @@
 | ⏳ | **Process Designer UI** | Visual process builder with RACI matrix editor | Future |
 | ⏳ | **Process Dashboard** | Process monitoring, execution history, metrics | Future |
 
+### Phase 15: Compliance-Ready Development Methodology
+⏳ **Pending** — *SOC-2 and ISO-compatible AI development practices*
+
+> **Template Location**: `dev-methodology-template/`
+
+| Status | Item | Description | Priority |
+|--------|------|-------------|----------|
+| ⏳ | **SOC-2 Control Mapping** | Map methodology components to SOC-2 Trust Service Criteria (Security, Availability, Confidentiality) | HIGH |
+| ⏳ | **ISO 27001 Alignment** | Align with ISO 27001:2022 controls for ISMS (A.8 Asset Management, A.14 System Dev) | HIGH |
+| ⏳ | **Change Management Controls** | Formalize changelog, approval workflows, rollback procedures per SOC-2 CC8.1 | HIGH |
+| ⏳ | **Access Control Documentation** | Document RBAC model, credential handling, audit trail requirements | MEDIUM |
+| ⏳ | **Security Review Gates** | Mandatory `/security-check` before commits, OWASP compliance verification | MEDIUM |
+| ⏳ | **Audit Trail Requirements** | Structured logging, immutable changelog, evidence retention policies | MEDIUM |
+| ⏳ | **Incident Response Procedures** | Add `incidents.md` memory file, response playbooks, escalation paths | MEDIUM |
+| ⏳ | **Compliance Evidence Generation** | Automated report generation for auditors (changelog → evidence, test runs → attestation) | LOW |
+
+**Scope**: Extend `dev-methodology-template/` to produce development artifacts that satisfy:
+- **SOC-2 Type II**: Trust Service Criteria for service organizations
+- **ISO 27001**: Information Security Management System requirements
+- **ISO 27701**: Privacy extension (GDPR alignment)
+
+**Deliverables**:
+- Control mapping documents (SOC-2, ISO 27001)
+- Enhanced security-analyzer agent with compliance checks
+- Audit-ready documentation templates
+- Compliance dashboard/report generation
+
 ---
 
 ## Backlog
@@ -278,6 +305,7 @@ Items not yet scheduled. Will be prioritized as needed.
 | **High** | **Event Handlers & Reactions** | 13.3 - Automatic agent reactions to events from permitted agents |
 | **High** | **Attention Amplification Pattern** | Phase 12 - Cognitive pattern for salience-based event amplification |
 | Medium | **Process-Driven Systems** | 14.1, 14.2 - Business process orchestration (see concept doc) |
+| Medium | **SOC-2/ISO Compliance Methodology** | 15.* - Extend dev-methodology-template for audit-ready practices |
 | Low | Task DAG Graph Visualization | 9.8 - Visual dependency graph (Vue Flow) - backend ready, UI nice-to-have |
 | Medium | Kubernetes deployment scripts | 10.3 Kubernetes Deployment |
 | Medium | Helm charts | 10.3 Kubernetes Deployment |
@@ -291,6 +319,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-01-09 | Compliance-Ready Development Methodology (Phase 15) | Extend `dev-methodology-template/` to produce SOC-2 and ISO 27001-compatible development artifacts. The existing methodology (slash commands, memory files, security-check, changelog) maps naturally to compliance controls. Formalizing this enables enterprise adoption and audit-ready AI development practices. |
 | 2026-01-06 | Process-Driven Multi-Agent Vision | Evolution from agent management to business process orchestration. Processes define agents (not vice versa). RACI matrix for role assignment. System Agent as primary interface for design/test/monitor. Human-in-the-loop improvement cycles. See `docs/drafts/PROCESS_DRIVEN_AGENTS.md`. |
 | 2026-01-06 | Event Bus with Permission-Gated Subscriptions | Agents subscribe to events from permitted agents only (reuses agent_permissions). Event handlers trigger agent execution like schedules but event-driven. Foundation for process-driven systems. |
 | 2026-01-06 | Horizontal Agent Scalability | Agent pools with N instances for parallel task processing. Load balancing, auto-scaling, shared credentials. Enables high-throughput workflows. |
