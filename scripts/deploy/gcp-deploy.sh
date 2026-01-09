@@ -158,8 +158,8 @@ NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 
 # Ports
-BACKEND_PORT=${BACKEND_PORT:-8005}
-FRONTEND_PORT=${FRONTEND_PORT:-3005}
+BACKEND_PORT=${BACKEND_PORT:-8000}
+FRONTEND_PORT=${FRONTEND_PORT:-80}
 
 # Host paths for agent volumes
 HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${REMOTE_DIR}/config/agent-templates}
@@ -244,11 +244,11 @@ case "${1:-full}" in
             echo "Access your deployment at:"
             echo "  Web UI:  https://${DOMAIN}"
             echo "  API:     https://${DOMAIN}/api/docs"
-            echo "  MCP:     http://${GCP_EXTERNAL_IP:-$DOMAIN}:${MCP_PORT:-8007}/mcp"
+            echo "  MCP:     http://${GCP_EXTERNAL_IP:-$DOMAIN}:${MCP_PORT:-8080}/mcp"
         else
             echo "Access your deployment at:"
-            echo "  Web UI:  http://${GCP_EXTERNAL_IP}:${FRONTEND_PORT:-3005}"
-            echo "  API:     http://${GCP_EXTERNAL_IP}:${BACKEND_PORT:-8005}/docs"
+            echo "  Web UI:  http://${GCP_EXTERNAL_IP}:${FRONTEND_PORT:-80}"
+            echo "  API:     http://${GCP_EXTERNAL_IP}:${BACKEND_PORT:-8000}/docs"
         fi
         ;;
 esac

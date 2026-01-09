@@ -116,8 +116,8 @@ def get_next_available_port() -> int:
     agents = list_all_agents()
     existing_ports = set(a.port for a in agents if a.port)
 
-    # Start from max existing port + 1, or 2290 if no agents exist
-    start_port = max(existing_ports or {2289}) + 1
+    # Start from max existing port + 1, or 2222 if no agents exist
+    start_port = max(existing_ports or {2221}) + 1
 
     # Try up to 100 ports to find an available one
     for port in range(start_port, start_port + 100):
@@ -125,11 +125,11 @@ def get_next_available_port() -> int:
             return port
 
     # Fallback: if all sequential ports are taken, scan from base
-    for port in range(2290, 2500):
+    for port in range(2222, 2500):
         if port not in existing_ports and is_port_available(port):
             return port
 
-    raise RuntimeError("No available ports in range 2290-2500")
+    raise RuntimeError("No available ports in range 2222-2500")
 
 
 def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:

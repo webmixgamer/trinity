@@ -48,17 +48,17 @@ echo "Creating firewall rules..."
 echo ""
 
 # Platform services firewall rule
-PLATFORM_PORTS="${FRONTEND_PORT:-3005},${BACKEND_PORT:-8005},${AUDIT_PORT:-8006},${MCP_PORT:-8007}"
+PLATFORM_PORTS="${FRONTEND_PORT:-80},${BACKEND_PORT:-8000},${MCP_PORT:-8080}"
 echo "1. Creating trinity-platform rule (ports ${PLATFORM_PORTS})..."
 
 if gcloud compute firewall-rules describe trinity-platform --project="${GCP_PROJECT}" &>/dev/null; then
     echo "   Rule exists. Updating..."
     gcloud compute firewall-rules update trinity-platform \
-        --allow=tcp:${FRONTEND_PORT:-3005},tcp:${BACKEND_PORT:-8005},tcp:${AUDIT_PORT:-8006},tcp:${MCP_PORT:-8007} \
+        --allow=tcp:${FRONTEND_PORT:-80},tcp:${BACKEND_PORT:-8000},tcp:${MCP_PORT:-8080} \
         --project="${GCP_PROJECT}"
 else
     gcloud compute firewall-rules create trinity-platform \
-        --allow=tcp:${FRONTEND_PORT:-3005},tcp:${BACKEND_PORT:-8005},tcp:${AUDIT_PORT:-8006},tcp:${MCP_PORT:-8007} \
+        --allow=tcp:${FRONTEND_PORT:-80},tcp:${BACKEND_PORT:-8000},tcp:${MCP_PORT:-8080} \
         --target-tags="${NETWORK_TAG}" \
         --description="Trinity Agent Platform - Core services" \
         --project="${GCP_PROJECT}"
@@ -67,7 +67,7 @@ echo "   Done."
 echo ""
 
 # Agent SSH ports firewall rule
-SSH_START="${AGENT_SSH_PORT_START:-2223}"
+SSH_START="${AGENT_SSH_PORT_START:-2222}"
 SSH_END=$((SSH_START + 19))
 echo "2. Creating trinity-agents rule (SSH ports ${SSH_START}-${SSH_END})..."
 

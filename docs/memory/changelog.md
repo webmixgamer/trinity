@@ -1,3 +1,39 @@
+### 2026-01-09 15:45:00
+🔧 **Infrastructure: Production Port Remapping**
+
+**Change**: Simplified production port configuration to use standard ports.
+
+**Port Changes**:
+| Service | Before | After |
+|---------|--------|-------|
+| Frontend (nginx) | 3005 | **80** |
+| Backend (FastAPI) | 8005 | **8000** |
+| MCP Server | 8007 | **8080** |
+| Agent SSH Start | 2223 | **2222** |
+
+**Rationale**:
+- Port 80: Standard HTTP, no port needed in URLs
+- Port 8000: De facto Python API standard
+- Port 8080: Common HTTP alternative, intuitive for MCP
+- Port 2222: Memorable SSH sequence
+
+**Modified Files**:
+- `docker-compose.prod.yml` - Updated port mappings and internal references
+- `deploy.config.example` - Updated default ports
+- `src/frontend/nginx.conf` - Updated backend proxy URLs
+- `src/backend/services/docker_service.py` - SSH port range now starts at 2222
+- `scripts/deploy/gcp-deploy.sh` - Updated default ports and display URLs
+- `scripts/deploy/gcp-firewall.sh` - Updated firewall port list
+- `CLAUDE.local.md.example` - Updated port documentation
+- `docs/memory/architecture.md` - Updated port allocation table
+
+**Migration Notes**:
+- Update firewall rules to allow 80/tcp, 8000/tcp, 8080/tcp
+- No data migration required - purely port mapping change
+- Development ports unchanged (3000, 8000, 8080)
+
+---
+
 ### 2026-01-09 14:30:00
 ✨ **Feature: Agents Page UI Overhaul - Dashboard Parity**
 
