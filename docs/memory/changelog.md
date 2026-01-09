@@ -1,3 +1,62 @@
+### 2026-01-09 16:45:00
+🐛 **Fix: MCP Configuration Modal - Missing `type` and Port**
+
+**Issues Fixed**:
+1. Missing `"type": "http"` in generated MCP config - required by Claude Code
+2. Production URL missing port 8080 (was `https://{host}/mcp`, now `http://{host}:8080/mcp`)
+
+**Before** (broken):
+```json
+{
+  "mcpServers": {
+    "trinity": {
+      "url": "https://example.com/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+```
+
+**After** (correct):
+```json
+{
+  "mcpServers": {
+    "trinity": {
+      "type": "http",
+      "url": "http://example.com:8080/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+```
+
+**Modified Files**:
+- `src/frontend/src/views/ApiKeys.vue` - Fixed `getMcpConfig()` and `mcpServerUrl` computed property
+
+---
+
+### 2026-01-09 16:15:00
+📋 **Roadmap: Phase 15 - Compliance-Ready Development Methodology**
+
+**Addition**: Added Phase 15 to roadmap for SOC-2 and ISO 27001-compatible development practices.
+
+**Scope**: Extend `dev-methodology-template/` to produce audit-ready artifacts:
+- SOC-2 Control Mapping (Trust Service Criteria)
+- ISO 27001:2022 Alignment (ISMS controls)
+- Change Management Controls (CC8.1)
+- Access Control Documentation
+- Security Review Gates (mandatory `/security-check`)
+- Audit Trail Requirements
+- Incident Response Procedures
+- Compliance Evidence Generation
+
+**Reference**: Template at `dev-methodology-template/` contains reusable slash commands, sub-agents, and memory file structure that maps naturally to compliance controls.
+
+**Modified Files**:
+- `docs/memory/roadmap.md` - Added Phase 15, backlog entry, decision log
+
+---
+
 ### 2026-01-09 15:45:00
 🔧 **Infrastructure: Production Port Remapping**
 
