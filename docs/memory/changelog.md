@@ -1,3 +1,20 @@
+### 2026-01-09 18:30:00
+🐛 **Fix: System Agent Not Visually Distinct on Dashboard**
+
+**Issue**: Trinity System Agent displayed as a regular agent instead of using the distinct purple `SystemAgentNode` component.
+
+**Root Cause**: `register_agent_owner()` silently failed on `IntegrityError` when the ownership record already existed, without updating the `is_system` flag. If the system agent was created before the `is_system` feature, or if the container was recreated, the flag stayed `0` (false).
+
+**Fix**:
+1. Modified `register_agent_owner()` to update `is_system=1` when record exists and `is_system=True` is passed
+2. Added call in `ensure_deployed()` to always ensure database record has correct flag
+
+**Modified Files**:
+- `src/backend/db/agents.py` - Update is_system on conflict
+- `src/backend/services/system_agent_service.py` - Ensure flag on startup
+
+---
+
 ### 2026-01-09 17:00:00
 🐛 **Fix: GitHub PAT Lookup for Dynamic Templates**
 

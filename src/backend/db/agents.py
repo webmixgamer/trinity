@@ -61,7 +61,12 @@ class AgentOperations:
                 conn.commit()
                 return True
             except sqlite3.IntegrityError:
-                # Agent already registered
+                # Agent already registered - update is_system flag if needed
+                if is_system:
+                    cursor.execute("""
+                        UPDATE agent_ownership SET is_system = 1 WHERE agent_name = ?
+                    """, (agent_name,))
+                    conn.commit()
                 return False
 
     def get_agent_owner(self, agent_name: str) -> Optional[Dict]:
