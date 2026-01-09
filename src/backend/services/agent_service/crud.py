@@ -26,7 +26,7 @@ from services.template_service import (
     generate_credential_files,
 )
 from services import git_service
-from services.settings_service import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key, get_github_pat
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)
@@ -105,8 +105,6 @@ async def create_agent_internal(
             else:
                 # Dynamic GitHub template - use any github:owner/repo format
                 # Requires system GitHub PAT to be configured
-                from config import GITHUB_PAT_CREDENTIAL_ID
-
                 repo_path = config.template[7:]  # Remove "github:" prefix
                 if "/" not in repo_path:
                     raise HTTPException(
@@ -114,21 +112,13 @@ async def create_agent_internal(
                         detail="Invalid GitHub template format. Use: github:owner/repo"
                     )
 
-                # Get system GitHub PAT from credential store
-                github_cred = credential_manager.get_credential(GITHUB_PAT_CREDENTIAL_ID, "admin")
-                if not github_cred:
+                # Get system GitHub PAT from settings (SQLite) or env var
+                github_pat = get_github_pat()
+                if not github_pat:
                     raise HTTPException(
                         status_code=500,
                         detail="GitHub PAT not configured. Set GITHUB_PAT in .env or add via Settings."
                     )
-
-                github_secret = credential_manager.get_credential_secret(GITHUB_PAT_CREDENTIAL_ID, "admin")
-                if not github_secret:
-                    raise HTTPException(status_code=500, detail="GitHub PAT secret not found")
-
-                github_pat = github_secret.get("token") or github_secret.get("api_key")
-                if not github_pat:
-                    raise HTTPException(status_code=500, detail="GitHub PAT value not found in credential")
 
                 github_repo_for_agent = repo_path
                 github_pat_for_agent = github_pat

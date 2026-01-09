@@ -1,3 +1,17 @@
+### 2026-01-09 17:00:00
+🐛 **Fix: GitHub PAT Lookup for Dynamic Templates**
+
+**Issue**: MCP `create_agent` with `github:owner/repo` templates failed with "GitHub PAT not configured" even when PAT was set via Settings or env var.
+
+**Root Cause**: Code inconsistency - Settings page stored PAT in SQLite `system_settings` table, but agent creation looked in Redis credential store (legacy location).
+
+**Fix**: Updated `crud.py` to use `get_github_pat()` from `settings_service.py` which checks SQLite first, then falls back to `GITHUB_PAT` env var.
+
+**Modified Files**:
+- `src/backend/services/agent_service/crud.py` - Use settings_service instead of credential_manager
+
+---
+
 ### 2026-01-09 16:45:00
 🐛 **Fix: MCP Configuration Modal - Missing `type` and Port**
 
