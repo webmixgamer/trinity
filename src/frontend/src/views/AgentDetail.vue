@@ -79,7 +79,7 @@
 
             <!-- Tasks Tab Content -->
             <div v-if="activeTab === 'tasks'" class="p-6">
-              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" />
+              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" />
             </div>
 
             <!-- Metrics Tab Content -->
@@ -524,6 +524,15 @@ onMounted(async () => {
   await loadApiKeySetting()
   await loadResourceLimits()
   startAllPolling()
+
+  // Handle tab query param (from Timeline click navigation)
+  if (route.query.tab) {
+    const requestedTab = route.query.tab
+    const validTabs = ['info', 'tasks', 'metrics', 'terminal', 'logs', 'credentials', 'sharing', 'permissions', 'schedules', 'git', 'files', 'folders', 'public-links']
+    if (validTabs.includes(requestedTab)) {
+      activeTab.value = requestedTab
+    }
+  }
 })
 
 // onActivated fires when component is shown (after being cached by KeepAlive)

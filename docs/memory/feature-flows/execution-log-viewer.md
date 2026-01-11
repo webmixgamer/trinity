@@ -4,7 +4,7 @@
 
 The Execution Log Viewer displays Claude Code execution transcripts in a formatted chat-like interface within the Tasks panel. When users click the document icon on a completed task, a modal window shows the complete execution history including Claude's thinking, tool calls, tool results, and final cost/duration metrics.
 
-**Important**: All execution types (scheduled, manual trigger, user tasks) now use the same log format - raw Claude Code `stream-json` output. This was standardized on 2025-01-02 by switching the scheduler from `/api/chat` to `/api/task`.
+**Important**: All execution types (scheduled, manual trigger, user tasks, MCP calls) now use the same log format - raw Claude Code `stream-json` output. This was standardized on 2025-01-02 (scheduler) and 2026-01-10 (chat endpoint) by ensuring all endpoints return raw format.
 
 ## User Story
 
@@ -374,17 +374,42 @@ async def get_execution_log(
 
 ### Log Capture
 
-**File**: `docker/base-image/agent_server/services/claude_code.py:521-699`
+Both `/api/chat` and `/api/task` endpoints now capture and return raw Claude Code `stream-json` format.
 
-The `execute_headless_task()` function captures all raw JSON messages from Claude Code:
+**File**: `docker/base-image/agent_server/services/claude_code.py`
 
+**`execute_claude_code()` (lines 381-516)** - For chat endpoint:
+```python
+async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
+    # ...
+    execution_log: List[ExecutionLogEntry] = []
+    raw_messages: List[Dict] = []  # Capture ALL raw JSON messages for execution log viewer
+
+    def read_subprocess_output():
+        for line in iter(process.stdout.readline, ''):
+            if not line:
+                break
+            # Capture raw JSON for full execution log (same as execute_headless_task)
+            try:
+                raw_msg = json.loads(line.strip())
+                raw_messages.append(raw_msg)
+            except json.JSONDecodeError:
+                pass
+            # Process each line for activity tracking
+            process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+
+    # Returns: (response_text, execution_log, metadata, raw_messages)
+    return response_text, execution_log, metadata, raw_messages
+```
+
+**`execute_headless_task()` (lines 521-709)** - For task endpoint:
 ```python
 async def execute_headless_task(
     prompt: str,
     model: Optional[str] = None,
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
-    timeout_seconds: int = 300
+    timeout_seconds: int = 900
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     # ...
     raw_messages: List[Dict] = []  # Capture ALL raw JSON messages from Claude Code
@@ -401,8 +426,24 @@ async def execute_headless_task(
             pass
 
     # Return raw_messages as the execution log (full JSON transcript from Claude Code)
-    # Contains: init, assistant (thinking/tool_use), user (tool_result), result
     return response_text, raw_messages, metadata, final_session_id
+```
+
+### Chat Endpoint Returns Raw Format
+
+**File**: `docker/base-image/agent_server/routers/chat.py:74-90`
+
+```python
+# Return enhanced response with execution log and session stats
+# Use raw_messages (full Claude Code JSON transcript) for execution log viewer compatibility
+return {
+    "response": response_text,
+    "execution_log": raw_messages,  # Full Claude Code stream-json format for UI
+    "execution_log_simplified": [entry.model_dump() for entry in execution_log],  # For activity tracking
+    "metadata": metadata.model_dump(),
+    "session": {...},
+    "timestamp": datetime.now().isoformat()
+}
 ```
 
 ### How Scheduled Executions Get Raw Logs
@@ -543,28 +584,35 @@ if execution_id:
 
 ---
 
-## Log Format Standardization (2025-01-02)
+## Log Format Standardization
 
-### Problem
+### Phase 1: Scheduler Fix (2025-01-02)
 
-Scheduled executions were not displaying in the log viewer. The root cause was a format mismatch:
+**Problem**: Scheduled executions were not displaying in the log viewer. The root cause was that the scheduler used `/api/chat` which returned a simplified format.
 
+**Solution**: Added `AgentClient.task()` method (`src/backend/services/agent_client.py:194-281`) that calls `/api/task` and returns raw format.
+
+### Phase 2: Chat Endpoint Fix (2026-01-10)
+
+**Problem**: MCP calls and interactive chat executions still returned simplified format.
+
+**Original Issue**:
 | Endpoint | Response Format | `parseExecutionLog()` Compatible |
 |----------|-----------------|----------------------------------|
 | `/api/task` | Raw Claude Code `stream-json` | Yes |
 | `/api/chat` | Simplified `ExecutionLogEntry` | No |
 
-The scheduler was using `AgentClient.chat()` which called `/api/chat`. This returned a simplified format that `parseExecutionLog()` could not parse.
+**Solution**: Modified the agent server to return raw format from both endpoints:
 
-### Solution
+1. **Agent Server Changes** (`docker/base-image/agent_server/`):
+   - `services/claude_code.py`: Updated `execute_claude_code()` to capture `raw_messages`
+   - `services/runtime_adapter.py`: Updated abstract interface signature
+   - `routers/chat.py`: Returns `raw_messages` as `execution_log`
 
-Added `AgentClient.task()` method (`src/backend/services/agent_client.py:194-281`) that:
-1. Calls `/api/task` endpoint instead of `/api/chat`
-2. Returns raw Claude Code `stream-json` format via `_parse_task_response()`
-
-Changed scheduler to use `client.task()`:
-- Regular schedule execution: `src/backend/services/scheduler_service.py:266-278`
-- Manual trigger execution: `src/backend/services/scheduler_service.py:450-461`
+2. **Backend Changes** (`src/backend/routers/chat.py`):
+   - Extracts both `execution_log` (raw) and `execution_log_simplified`
+   - Uses simplified format for activity tracking
+   - Stores raw format in database for UI
 
 ### Verification
 
@@ -572,6 +620,8 @@ All execution types now produce logs that `parseExecutionLog()` can render:
 - **User tasks** (via Tasks panel Run button): Uses `/api/task` directly
 - **Scheduled tasks** (cron): Uses `AgentClient.task()` -> `/api/task`
 - **Manual triggers** (play button): Uses `AgentClient.task()` -> `/api/task`
+- **MCP calls** (user or agent-to-agent): Uses `/api/chat` -> raw format
+- **Terminal chat**: Uses `/api/chat` -> raw format
 
 ---
 
@@ -588,6 +638,7 @@ All execution types now produce logs that `parseExecutionLog()` can render:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-10 | **Chat endpoint log fix**: Updated `/api/chat` to return raw Claude Code format. Modified `execute_claude_code()` to capture `raw_messages`. Backend now extracts both formats for activity tracking and UI. All execution types including MCP calls now produce parseable logs. |
 | 2025-01-02 | **Scheduler log fix**: Documented switch from `/api/chat` to `/api/task` for scheduled executions. Added `AgentClient.task()` method and `_parse_task_response()`. All execution types now produce parseable logs. |
 | 2025-12-31 | Initial documentation |
 

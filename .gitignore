@@ -118,3 +118,11 @@ src/frontend/dist/
 
 # Coverage reports
 tests/reports/coverage/
+
+# Test agent templates (created during automated tests)
+src/backend/config/agent-templates/test-*/
+
+# Agent template runtime artifacts (generated during execution)
+config/agent-templates/**/memory/
+config/agent-templates/**/outputs/
+config/agent-templates/**/metrics.json

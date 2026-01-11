@@ -116,11 +116,15 @@ class GeminiRuntime(AgentRuntime):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False
-    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """
         Execute Gemini CLI with the given prompt.
 
         Uses same output format as Claude Code for compatibility.
+
+        Returns: (response_text, execution_log, metadata, raw_messages)
+            - execution_log: Simplified ExecutionLogEntry objects for activity tracking
+            - raw_messages: Full JSON transcript for execution log viewer
         """
         if not self.is_available():
             raise HTTPException(
@@ -155,6 +159,7 @@ class GeminiRuntime(AgentRuntime):
 
             # Initialize tracking structures
             execution_log: List[ExecutionLogEntry] = []
+            raw_messages: List[Dict] = []  # Capture ALL raw JSON messages for execution log viewer
             metadata = ExecutionMetadata()
             metadata.context_window = self.get_context_window(model)
             tool_start_times: Dict[str, datetime] = {}
@@ -184,6 +189,12 @@ class GeminiRuntime(AgentRuntime):
                     for line in iter(process.stdout.readline, ''):
                         if not line:
                             break
+                        # Capture raw JSON for full execution log (same as Claude Code)
+                        try:
+                            raw_msg = json.loads(line.strip())
+                            raw_messages.append(raw_msg)
+                        except json.JSONDecodeError:
+                            pass
                         # Process each line immediately
                         # Gemini CLI uses same stream-json format as Claude Code
                         self._process_stream_line(line, execution_log, metadata, tool_start_times, tool_names, response_parts, model)
@@ -244,9 +255,9 @@ class GeminiRuntime(AgentRuntime):
                 agent_state.session_context_tokens = metadata.input_tokens
             agent_state.session_context_window = metadata.context_window
 
-            logger.info(f"Gemini response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}")
+            logger.info(f"Gemini response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}, raw_messages={len(raw_messages)}")
 
-            return response_text, execution_log, metadata
+            return response_text, execution_log, metadata, raw_messages
 
         except HTTPException:
             raise

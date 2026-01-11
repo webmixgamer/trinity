@@ -177,8 +177,16 @@ def get_authorized_agent(
     Returns the agent name if authorized.
 
     Raises:
+        HTTPException(404): If agent does not exist
         HTTPException(403): If user cannot access the agent
     """
+    # First check if agent exists
+    if not db.get_agent_owner(name):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    # Then check if user has access
     if not db.can_user_access_agent(current_user.username, name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -199,8 +207,16 @@ def get_owned_agent(
     Returns the agent name if authorized.
 
     Raises:
+        HTTPException(404): If agent does not exist
         HTTPException(403): If user is not owner/admin
     """
+    # First check if agent exists
+    if not db.get_agent_owner(name):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    # Then check if user has owner access
     if not db.can_user_share_agent(current_user.username, name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -221,8 +237,16 @@ def get_authorized_agent_by_name(
     Returns the agent name if authorized.
 
     Raises:
+        HTTPException(404): If agent does not exist
         HTTPException(403): If user cannot access the agent
     """
+    # First check if agent exists
+    if not db.get_agent_owner(agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    # Then check if user has access
     if not db.can_user_access_agent(current_user.username, agent_name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -243,8 +267,16 @@ def get_owned_agent_by_name(
     Returns the agent name if authorized.
 
     Raises:
+        HTTPException(404): If agent does not exist
         HTTPException(403): If user is not owner/admin
     """
+    # First check if agent exists
+    if not db.get_agent_owner(agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    # Then check if user has owner access
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

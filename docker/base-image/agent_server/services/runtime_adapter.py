@@ -32,7 +32,7 @@ class AgentRuntime(ABC):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False
-    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """
         Execute agent with the given prompt.
 
@@ -43,7 +43,9 @@ class AgentRuntime(ABC):
             stream: Whether to stream responses (for future use)
 
         Returns:
-            Tuple of (response_text, execution_log, metadata)
+            Tuple of (response_text, execution_log, metadata, raw_messages)
+            - execution_log: Simplified ExecutionLogEntry objects for activity tracking
+            - raw_messages: Full JSON transcript for execution log viewer
         """
         pass
 

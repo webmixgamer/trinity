@@ -202,21 +202,7 @@ class SchedulerService:
             source_user_id=str(schedule.owner_id) if schedule.owner_id else None
         )
 
-        # Track schedule start activity
-        schedule_activity_id = await activity_service.track_activity(
-            agent_name=schedule.agent_name,
-            activity_type=ActivityType.SCHEDULE_START,
-            user_id=schedule.owner_id,
-            triggered_by="schedule",
-            details={
-                "schedule_id": schedule.id,
-                "schedule_name": schedule.name,
-                "cron_expression": schedule.cron_expression,
-                "queue_execution_id": queue_execution.id
-            }
-        )
-
-        # Create execution record
+        # Create execution record FIRST so we have the database ID for activity tracking
         execution = db.create_schedule_execution(
             schedule_id=schedule.id,
             agent_name=schedule.agent_name,
@@ -227,6 +213,22 @@ class SchedulerService:
         if not execution:
             logger.error(f"Failed to create execution record for schedule {schedule_id}")
             return
+
+        # Track schedule start activity WITH related_execution_id for proper linkage
+        schedule_activity_id = await activity_service.track_activity(
+            agent_name=schedule.agent_name,
+            activity_type=ActivityType.SCHEDULE_START,
+            user_id=schedule.owner_id,
+            triggered_by="schedule",
+            related_execution_id=execution.id,  # Database execution ID for structured queries
+            details={
+                "schedule_id": schedule.id,
+                "schedule_name": schedule.name,
+                "cron_expression": schedule.cron_expression,
+                "execution_id": execution.id,  # Also in details for WebSocket events
+                "queue_execution_id": queue_execution.id
+            }
+        )
 
         # Broadcast execution started
         await self._broadcast({
@@ -417,6 +419,9 @@ class SchedulerService:
 
     async def _execute_manual_trigger(self, schedule: Schedule, execution_id: str):
         """Execute a manually triggered schedule. Uses execution queue."""
+        # Import activity service (avoid circular import)
+        from services.activity_service import activity_service
+
         # Create queue execution request
         queue = get_execution_queue()
         queue_execution = queue.create_execution(
@@ -424,6 +429,22 @@ class SchedulerService:
             message=schedule.message,
             source=ExecutionSource.SCHEDULE,
             source_user_id=str(schedule.owner_id) if schedule.owner_id else None
+        )
+
+        # Track schedule start activity WITH related_execution_id for proper linkage
+        schedule_activity_id = await activity_service.track_activity(
+            agent_name=schedule.agent_name,
+            activity_type=ActivityType.SCHEDULE_START,
+            user_id=schedule.owner_id,
+            triggered_by="manual",
+            related_execution_id=execution_id,  # Database execution ID for structured queries
+            details={
+                "schedule_id": schedule.id,
+                "schedule_name": schedule.name,
+                "execution_id": execution_id,  # Also in details for WebSocket events
+                "queue_execution_id": queue_execution.id,
+                "manual_trigger": True
+            }
         )
 
         # Submit to queue (will wait if agent is busy)
@@ -436,6 +457,11 @@ class SchedulerService:
             logger.warning(f"[ManualTrigger] {error_msg}")
             db.update_execution_status(
                 execution_id=execution_id,
+                status="failed",
+                error=error_msg
+            )
+            await activity_service.complete_activity(
+                activity_id=schedule_activity_id,
                 status="failed",
                 error=error_msg
             )
@@ -468,6 +494,21 @@ class SchedulerService:
 
             execution_success = True
 
+            # Get execution log for tool count
+            execution_log = task_response.raw_response.get("execution_log")
+
+            # Track schedule completion
+            await activity_service.complete_activity(
+                activity_id=schedule_activity_id,
+                status="completed",
+                details={
+                    "context_used": task_response.metrics.context_used,
+                    "context_max": task_response.metrics.context_max,
+                    "cost_usd": task_response.metrics.cost_usd,
+                    "tool_count": len(execution_log) if execution_log else 0
+                }
+            )
+
             await self._broadcast({
                 "type": "schedule_execution_completed",
                 "agent": schedule.agent_name,
@@ -480,6 +521,12 @@ class SchedulerService:
             error_msg = f"Agent not reachable: {str(e)}"
             db.update_execution_status(
                 execution_id=execution_id,
+                status="failed",
+                error=error_msg
+            )
+
+            await activity_service.complete_activity(
+                activity_id=schedule_activity_id,
                 status="failed",
                 error=error_msg
             )
@@ -497,6 +544,12 @@ class SchedulerService:
             error_msg = str(e)
             db.update_execution_status(
                 execution_id=execution_id,
+                status="failed",
+                error=error_msg
+            )
+
+            await activity_service.complete_activity(
+                activity_id=schedule_activity_id,
                 status="failed",
                 error=error_msg
             )

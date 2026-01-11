@@ -81,8 +81,13 @@ class ClaudeCodeRuntime(AgentRuntime):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False
-    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
-        """Execute Claude Code with the given prompt."""
+    ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
+        """Execute Claude Code with the given prompt.
+
+        Returns: (response_text, execution_log, metadata, raw_messages)
+            - execution_log: Simplified ExecutionLogEntry objects for activity tracking
+            - raw_messages: Full Claude Code JSON transcript for execution log viewer
+        """
         # Note: continue_session is handled internally by agent_state.session_started
         # The execute_claude_code function checks agent_state and uses --continue automatically
         return await execute_claude_code(prompt, stream, model)
@@ -378,7 +383,7 @@ def process_stream_line(line: str, execution_log: List[ExecutionLogEntry], metad
                     response_parts.append(text)
 
 
-async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
+async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
     """
     Execute Claude Code in headless mode with the given prompt.
 
@@ -388,7 +393,9 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     Uses --continue flag for subsequent messages to maintain conversation context
     Uses --model to select Claude model (sonnet, opus, haiku, or full model name)
 
-    Returns: (response_text, execution_log, metadata)
+    Returns: (response_text, execution_log, metadata, raw_messages)
+        - execution_log: Simplified ExecutionLogEntry objects for activity tracking
+        - raw_messages: Full Claude Code JSON transcript for execution log viewer
     """
 
     if not agent_state.claude_code_available:
@@ -436,6 +443,7 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
 
         # Initialize tracking structures
         execution_log: List[ExecutionLogEntry] = []
+        raw_messages: List[Dict] = []  # Capture ALL raw JSON messages for execution log viewer
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
@@ -464,6 +472,12 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
                 for line in iter(process.stdout.readline, ''):
                     if not line:
                         break
+                    # Capture raw JSON for full execution log (same as execute_headless_task)
+                    try:
+                        raw_msg = json.loads(line.strip())
+                        raw_messages.append(raw_msg)
+                    except json.JSONDecodeError:
+                        pass
                     # Process each line immediately - updates session_activity in real-time
                     process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
             except Exception as e:
@@ -502,9 +516,9 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
 
         # Log metadata for debugging
         # NOTE: input_tokens already includes cached tokens - cache_creation and cache_read are billing subsets, NOT additional
-        logger.info(f"Claude response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}")
+        logger.info(f"Claude response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}, raw_messages={len(raw_messages)}")
 
-        return response_text, execution_log, metadata
+        return response_text, execution_log, metadata, raw_messages
 
     except HTTPException:
         raise
@@ -692,7 +706,11 @@ async def execute_headless_task(
         # Use session_id from Claude if available, otherwise use our generated one
         final_session_id = metadata.session_id or task_session_id
 
-        logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
+        # Log warning if raw_messages is empty (transcript won't be available in UI)
+        if len(raw_messages) == 0:
+            logger.warning(f"[Headless Task] Task {final_session_id} completed but raw_messages is empty - execution transcript will be unavailable")
+        else:
+            logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
 
         # Return raw_messages as the execution log (full JSON transcript from Claude Code)
         # Contains: init, assistant (thinking/tool_use), user (tool_result), result

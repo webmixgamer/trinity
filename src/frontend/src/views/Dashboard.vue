@@ -65,22 +65,22 @@
               <!-- Mode Toggle -->
               <div class="flex rounded-md border border-gray-300 dark:border-gray-600 p-0.5 bg-gray-50 dark:bg-gray-700">
                 <button
-                  @click="toggleMode('live')"
+                  @click="toggleMode('graph')"
                   :class="[
                     'px-2 py-1 rounded text-xs font-medium transition-all',
-                    !isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    !isTimelineMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   ]"
                 >
-                  Live
+                  Graph
                 </button>
                 <button
-                  @click="toggleMode('replay')"
+                  @click="toggleMode('timeline')"
                   :class="[
                     'px-2 py-1 rounded text-xs font-medium transition-all',
-                    isReplayMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    isTimelineMode ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   ]"
                 >
-                  Replay
+                  Timeline
                 </button>
               </div>
 
@@ -138,10 +138,11 @@
           </div>
         </div>
 
-    <!-- Replay Timeline (only visible in replay mode) -->
+    <!-- Timeline View (only visible in timeline mode) -->
     <ReplayTimeline
-      v-if="isReplayMode"
+      v-if="isTimelineMode"
       :agents="agents"
+      :nodes="nodes"
       :events="historicalCollaborations"
       :timeline-start="timelineStart"
       :timeline-end="timelineEnd"
@@ -151,14 +152,19 @@
       :replay-elapsed-ms="replayElapsedMs"
       :replay-speed="replaySpeed"
       :is-playing="isPlaying"
+      :context-stats="contextStats"
+      :execution-stats="executionStats"
+      :is-live-mode="true"
+      :time-range-hours="selectedTimeRange"
       @play="handlePlay"
       @pause="handlePause"
       @stop="handleStop"
       @speed-change="handleSpeedChange"
+      @toggle-autonomy="handleToggleAutonomy"
     />
 
-    <!-- Graph Canvas - Full Height (expands to fill remaining space) -->
-    <div class="relative bg-white dark:bg-gray-800 shadow-sm dark:shadow-gray-900 flex-1 min-h-0">
+    <!-- Graph Canvas - Full Height (expands to fill remaining space) - Hidden in Timeline mode -->
+    <div v-if="!isTimelineMode" class="relative bg-white dark:bg-gray-800 shadow-sm dark:shadow-gray-900 flex-1 min-h-0">
       <!-- Empty state -->
       <div
         v-if="nodes.length === 0"
@@ -375,8 +381,10 @@ const {
   totalCollaborationCount,
   timeRangeHours,
   isLoadingHistory,
-  // Replay state
-  isReplayMode,
+  contextStats,
+  executionStats,
+  // Timeline/Replay state
+  isTimelineMode,
   isPlaying,
   replaySpeed,
   currentEventIndex,
@@ -487,9 +495,9 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
-// Replay Mode Functions
+// View Mode Functions
 function toggleMode(mode) {
-  networkStore.setReplayMode(mode === 'replay')
+  networkStore.setViewMode(mode)
 }
 
 function handlePlay() {
@@ -507,6 +515,10 @@ function handleStop() {
 function handleSpeedChange(event) {
   const speed = parseInt(event.target.value)
   networkStore.setReplaySpeed(speed)
+}
+
+async function handleToggleAutonomy(agentName) {
+  await networkStore.toggleAutonomy(agentName)
 }
 
 function handleTimelineClick(event) {

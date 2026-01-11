@@ -1,54 +1,11 @@
 <template>
-  <div class="replay-timeline bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-    <!-- Header with playback controls -->
-    <div class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-      <!-- Playback Controls -->
+  <div class="replay-timeline flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+    <!-- Header with controls -->
+    <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
+      <!-- Left: Controls -->
       <div class="flex items-center space-x-3">
-        <button
-          @click="$emit('play')"
-          :disabled="isPlaying || totalEvents === 0"
-          class="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-40"
-          title="Play"
-        >
-          <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-          </svg>
-        </button>
-        <button
-          @click="$emit('pause')"
-          :disabled="!isPlaying"
-          class="p-1.5 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/30 disabled:opacity-40"
-          title="Pause"
-        >
-          <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
-          </svg>
-        </button>
-        <button
-          @click="$emit('stop')"
-          class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
-          title="Stop"
-        >
-          <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M5.25 3A2.25 2.25 0 003 5.25v9.5A2.25 2.25 0 005.25 17h9.5A2.25 2.25 0 0017 14.75v-9.5A2.25 2.25 0 0014.75 3h-9.5z" />
-          </svg>
-        </button>
-
-        <select
-          :value="replaySpeed"
-          @change="$emit('speed-change', $event)"
-          class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-200"
-        >
-          <option :value="1">1x</option>
-          <option :value="2">2x</option>
-          <option :value="5">5x</option>
-          <option :value="10">10x</option>
-          <option :value="20">20x</option>
-          <option :value="50">50x</option>
-        </select>
-
         <!-- Zoom Controls -->
-        <div class="flex items-center space-x-1 ml-4 border-l border-gray-300 dark:border-gray-600 pl-4">
+        <div class="flex items-center space-x-1">
           <button
             @click="zoomOut"
             class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
@@ -81,7 +38,7 @@
         </div>
 
         <!-- Hide inactive toggle -->
-        <div class="flex items-center space-x-1 ml-4 border-l border-gray-300 dark:border-gray-600 pl-4">
+        <div class="flex items-center space-x-1 border-l border-gray-300 dark:border-gray-600 pl-3">
           <label class="flex items-center space-x-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
             <input
               type="checkbox"
@@ -91,31 +48,163 @@
             <span>Active only</span>
           </label>
         </div>
+
+        <!-- Jump to Now button (when scrolled away) -->
+        <button
+          v-if="isLiveMode && !autoScrollEnabled"
+          @click="jumpToNow"
+          class="flex items-center space-x-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+        >
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+          </svg>
+          <span>Jump to Now</span>
+        </button>
       </div>
 
-      <!-- Stats -->
+      <!-- Right: Legend and Stats -->
       <div class="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
-        <span>{{ currentEventIndex }}/{{ totalEvents }} events</span>
-        <span>{{ formatDuration(replayElapsedMs) }} / {{ formatDuration(totalDuration) }}</span>
+        <!-- Activity type legend -->
+        <div class="hidden sm:flex items-center space-x-3 border-r border-gray-300 dark:border-gray-600 pr-3">
+          <span class="flex items-center space-x-1" title="Manual task executions">
+            <span class="w-2 h-2 rounded" style="background-color: #22c55e"></span>
+            <span>Manual</span>
+          </span>
+          <span class="flex items-center space-x-1" title="Scheduled task executions">
+            <span class="w-2 h-2 rounded" style="background-color: #8b5cf6"></span>
+            <span>Scheduled</span>
+          </span>
+          <span class="flex items-center space-x-1" title="Agent-triggered executions (called by another agent)">
+            <span class="w-2 h-2 rounded" style="background-color: #06b6d4"></span>
+            <span>Agent-Triggered</span>
+          </span>
+        </div>
+        <span v-if="isLiveMode" class="flex items-center space-x-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          <span>Live</span>
+        </span>
+        <span>{{ totalEvents }} events</span>
       </div>
     </div>
 
     <!-- Timeline Grid with scroll -->
     <div
-      class="timeline-scroll-container overflow-auto"
+      class="timeline-scroll-container flex-1 overflow-auto"
       ref="timelineContainer"
       @wheel="handleWheel"
+      @scroll="handleScroll"
     >
-      <div class="relative" :style="{ width: timelineWidth + 'px', height: timelineHeight + 'px' }">
-        <!-- Time scale header (sticky) -->
+      <div class="relative flex" :style="{ width: timelineWidth + 'px', minHeight: '100%' }">
+        <!-- Sticky agent labels (Compact tiles) -->
         <div
-          class="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-20"
-          :style="{ height: headerHeight + 'px' }"
+          class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 flex-shrink-0"
+          :style="{ width: labelWidth + 'px' }"
         >
-          <div class="flex">
-            <!-- Label spacer -->
-            <div :style="{ width: labelWidth + 'px', flexShrink: 0 }" class="bg-gray-50 dark:bg-gray-800"></div>
-            <!-- Time header -->
+          <!-- Time scale header spacer -->
+          <div
+            class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
+            :style="{ height: headerHeight + 'px' }"
+          ></div>
+
+          <!-- Agent tiles (compact) -->
+          <div
+            v-for="(row, i) in filteredAgentRows"
+            :key="'label-' + i"
+            :class="[
+              'px-3 py-2 border-b border-r border-gray-200 dark:border-gray-700',
+              'flex flex-col justify-between',
+              row.isSystemAgent
+                ? 'bg-purple-50/80 dark:bg-purple-900/20'
+                : 'bg-white dark:bg-gray-800'
+            ]"
+            :style="{ height: rowHeight + 'px' }"
+          >
+            <!-- Row 1: Name, badges, status dot -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center flex-1 mr-2 min-w-0">
+                <div
+                  :class="[
+                    'w-2 h-2 rounded-full flex-shrink-0 mr-1.5',
+                    row.activityState === 'active' ? 'active-pulse' : ''
+                  ]"
+                  :style="{ backgroundColor: getStatusDotColor(row) }"
+                ></div>
+                <span
+                  class="text-sm font-semibold text-gray-900 dark:text-white truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
+                  @click="navigateToAgent(row.name)"
+                  :title="row.name"
+                >
+                  {{ row.name }}
+                </span>
+                <span
+                  v-if="row.isSystemAgent"
+                  class="ml-1.5 px-1 py-0.5 text-[10px] font-semibold rounded bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 flex-shrink-0"
+                >
+                  SYS
+                </span>
+              </div>
+              <!-- Autonomy toggle (compact) -->
+              <button
+                v-if="!row.isSystemAgent"
+                @click.stop="toggleAutonomy(row.name)"
+                :class="[
+                  'relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  row.autonomyEnabled
+                    ? 'bg-amber-500'
+                    : 'bg-gray-200 dark:bg-gray-600'
+                ]"
+                :title="row.autonomyEnabled ? 'AUTO mode' : 'Manual mode'"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    row.autonomyEnabled ? 'translate-x-3' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+
+            <!-- Row 2: Context bar (inline) -->
+            <div class="flex items-center gap-2">
+              <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="getProgressBarClass(row.contextPercent)"
+                  :style="{ width: (row.contextPercent || 0) + '%' }"
+                ></div>
+              </div>
+              <span class="text-[10px] font-medium text-gray-500 dark:text-gray-400 w-7 text-right">{{ Math.round(row.contextPercent || 0) }}%</span>
+            </div>
+
+            <!-- Row 3: Stats (compact) -->
+            <div class="flex items-center text-[10px] text-gray-500 dark:text-gray-400 gap-1">
+              <template v-if="row.executionStats && row.executionStats.taskCount > 0">
+                <span class="font-medium text-gray-700 dark:text-gray-300">{{ row.executionStats.taskCount }}</span>
+                <span>tasks</span>
+                <span class="text-gray-300 dark:text-gray-600">·</span>
+                <span :class="getSuccessRateClass(row.executionStats.successRate)" class="font-medium">{{ Math.round(row.executionStats.successRate || 0) }}%</span>
+                <template v-if="row.executionStats.totalCost > 0">
+                  <span class="text-gray-300 dark:text-gray-600">·</span>
+                  <span class="font-medium">${{ row.executionStats.totalCost.toFixed(2) }}</span>
+                </template>
+              </template>
+              <template v-else>
+                <span class="text-gray-400 dark:text-gray-500">No tasks</span>
+              </template>
+              <span class="flex-1"></span>
+              <span class="text-gray-400">{{ row.memoryLimit || '4g' }}</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Timeline grid area -->
+        <div class="flex-1">
+          <!-- Time scale header (sticky top) -->
+          <div
+            class="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-20"
+            :style="{ height: headerHeight + 'px' }"
+          >
             <svg :width="actualGridWidth" :height="headerHeight" class="overflow-visible">
               <g v-for="(tick, i) in timeTicks" :key="'tick-' + i">
                 <line
@@ -145,46 +234,19 @@
                   :x2="nowX"
                   :y2="headerHeight"
                   stroke="#10b981"
-                  stroke-width="1"
-                  stroke-dasharray="2,2"
+                  stroke-width="2"
                 />
                 <text
                   :x="nowX"
                   :y="10"
                   text-anchor="middle"
-                  class="fill-emerald-500"
-                  font-size="8"
+                  class="fill-emerald-500 font-medium"
+                  font-size="9"
                 >
-                  now
+                  NOW
                 </text>
               </g>
             </svg>
-          </div>
-        </div>
-
-        <!-- Agent rows -->
-        <div class="relative flex">
-          <!-- Sticky agent labels -->
-          <div
-            class="sticky left-0 z-10 bg-white dark:bg-gray-800"
-            :style="{ width: labelWidth + 'px', flexShrink: 0 }"
-          >
-            <div
-              v-for="(row, i) in filteredAgentRows"
-              :key="'label-' + i"
-              class="flex items-center px-2 text-xs font-medium truncate border-b border-gray-100 dark:border-gray-700"
-              :style="{ height: rowHeight + 'px' }"
-            >
-              <span
-                class="w-2 h-2 rounded-full mr-2 flex-shrink-0"
-                :class="[
-                  row.isExecuting ? 'bg-green-500 animate-pulse' : (row.status === 'running' ? 'bg-green-700 opacity-60' : 'bg-gray-400')
-                ]"
-              ></span>
-              <span class="truncate text-gray-700 dark:text-gray-300" :title="row.name">
-                {{ row.name }}
-              </span>
-            </div>
           </div>
 
           <!-- Grid content -->
@@ -213,7 +275,7 @@
                 :y1="(i + 1) * rowHeight"
                 :x2="actualGridWidth"
                 :y2="(i + 1) * rowHeight"
-                stroke="#f3f4f6"
+                stroke="#e5e7eb"
                 stroke-width="1"
                 class="dark:stroke-gray-700"
               />
@@ -226,32 +288,36 @@
                 :key="'act-' + rowIndex + '-' + actIndex"
                 :x="activity.x"
                 :y="rowIndex * rowHeight + (rowHeight - barHeight) / 2"
-                :width="Math.max(activity.width, 4)"
+                :width="activity.width"
                 :height="barHeight"
-                :fill="activity.active ? '#3b82f6' : '#93c5fd'"
-                :opacity="activity.active ? 1 : 0.7"
-                rx="2"
-                class="transition-all duration-300"
-              />
+                :fill="getBarColor(activity)"
+                :opacity="activity.active || activity.hasError ? 1 : 0.7"
+                rx="4"
+                class="transition-all duration-300 cursor-pointer hover:opacity-90 hover:stroke-white hover:stroke-2"
+                @click="navigateToExecution(activity)"
+              >
+                <title>{{ getBarTooltip(activity) }} (Click to open in new tab)</title>
+              </rect>
             </g>
 
             <!-- Communication arrows -->
             <g v-for="(arrow, i) in communicationArrows" :key="'arrow-' + i">
+              <!-- Arrow line (offset outside boxes) -->
               <line
                 :x1="arrow.x"
-                :y1="arrow.y1"
+                :y1="arrow.y1Start"
                 :x2="arrow.x"
-                :y2="arrow.y2"
-                :stroke="arrow.active ? '#06b6d4' : '#67e8f9'"
-                :stroke-width="arrow.active ? 1.5 : 1"
-                :opacity="arrow.active ? 1 : 0.6"
+                :y2="arrow.y2End"
+                :stroke="arrow.hasError ? '#ef4444' : (arrow.active ? '#06b6d4' : '#67e8f9')"
+                :stroke-width="arrow.active ? 2.5 : 1.5"
+                :opacity="arrow.active || arrow.hasError ? 1 : 0.7"
                 class="transition-all duration-300"
               />
-              <!-- Smaller arrow head -->
+              <!-- Arrowhead (larger, at end of arrow) -->
               <polygon
                 :points="getArrowHead(arrow)"
-                :fill="arrow.active ? '#06b6d4' : '#67e8f9'"
-                :opacity="arrow.active ? 1 : 0.6"
+                :fill="arrow.hasError ? '#ef4444' : (arrow.active ? '#06b6d4' : '#67e8f9')"
+                :opacity="arrow.active || arrow.hasError ? 1 : 0.7"
               />
             </g>
 
@@ -263,21 +329,8 @@
               :x2="nowX"
               :y2="filteredAgentRows.length * rowHeight"
               stroke="#10b981"
-              stroke-width="1"
-              stroke-dasharray="4,4"
-              opacity="0.6"
-            />
-
-            <!-- Current time cursor (playback position) -->
-            <line
-              v-if="currentTimeX >= 0"
-              :x1="currentTimeX"
-              y1="0"
-              :x2="currentTimeX"
-              :y2="filteredAgentRows.length * rowHeight"
-              stroke="#ef4444"
               stroke-width="2"
-              class="transition-all duration-100"
+              opacity="0.8"
             />
           </svg>
         </div>
@@ -287,10 +340,14 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const props = defineProps({
   agents: { type: Array, default: () => [] },
+  nodes: { type: Array, default: () => [] },
   events: { type: Array, default: () => [] },
   timelineStart: { type: String, default: null },
   timelineEnd: { type: String, default: null },
@@ -299,86 +356,127 @@ const props = defineProps({
   totalDuration: { type: Number, default: 0 },
   replayElapsedMs: { type: Number, default: 0 },
   replaySpeed: { type: Number, default: 10 },
-  isPlaying: { type: Boolean, default: false }
+  isPlaying: { type: Boolean, default: false },
+  contextStats: { type: Object, default: () => ({}) },
+  executionStats: { type: Object, default: () => ({}) },
+  isLiveMode: { type: Boolean, default: false },
+  timeRangeHours: { type: Number, default: 24 }
 })
 
-defineEmits(['play', 'pause', 'stop', 'speed-change', 'seek'])
+const emit = defineEmits(['play', 'pause', 'stop', 'speed-change', 'seek', 'toggle-autonomy'])
 
 const timelineContainer = ref(null)
-const zoomLevel = ref(1)
 const hideInactiveAgents = ref(false)
+const autoScrollEnabled = ref(true)
+const currentNow = ref(Date.now())
 
-// Smooth playback cursor tracking
-const localElapsedMs = ref(0)
-const playbackStartTime = ref(0)
-const playbackStartElapsed = ref(0)
-let animationFrame = null
+// Calculate default zoom to show last 2 hours
+// If timeRangeHours is 24, we want zoom to show ~2 hours, so zoom = 24/2 = 12
+const defaultZoom = computed(() => {
+  return Math.max(1, props.timeRangeHours / 2)
+})
 
-function updateCursor() {
-  if (props.isPlaying && playbackStartTime.value > 0) {
-    const wallClockElapsed = Date.now() - playbackStartTime.value
-    localElapsedMs.value = playbackStartElapsed.value + wallClockElapsed
-    animationFrame = requestAnimationFrame(updateCursor)
+const zoomLevel = ref(1)
+
+// Set initial zoom on mount
+onMounted(() => {
+  zoomLevel.value = defaultZoom.value
+
+  if (props.isLiveMode) {
+    startNowUpdates()
+    // Auto-scroll to "now" on mount
+    setTimeout(() => {
+      scrollToNow()
+    }, 100)
+  }
+})
+
+let nowUpdateInterval = null
+
+function startNowUpdates() {
+  if (nowUpdateInterval) clearInterval(nowUpdateInterval)
+  nowUpdateInterval = setInterval(() => {
+    currentNow.value = Date.now()
+  }, 1000)
+}
+
+function stopNowUpdates() {
+  if (nowUpdateInterval) {
+    clearInterval(nowUpdateInterval)
+    nowUpdateInterval = null
   }
 }
 
-watch(() => props.isPlaying, (playing) => {
-  if (playing) {
-    // Store when we started and the elapsed value at that time
-    playbackStartTime.value = Date.now()
-    playbackStartElapsed.value = props.replayElapsedMs
-    localElapsedMs.value = props.replayElapsedMs
-    updateCursor()
-  } else {
-    if (animationFrame) {
-      cancelAnimationFrame(animationFrame)
-      animationFrame = null
-    }
-    // Sync to actual elapsed when paused
-    localElapsedMs.value = props.replayElapsedMs
-  }
-})
-
-// Sync when replayElapsedMs changes externally (e.g., stop/reset)
-watch(() => props.replayElapsedMs, (newVal) => {
-  if (!props.isPlaying) {
-    localElapsedMs.value = newVal
-  }
-})
-
 onUnmounted(() => {
-  if (animationFrame) {
-    cancelAnimationFrame(animationFrame)
+  stopNowUpdates()
+})
+
+// Watch for new events and auto-scroll if enabled
+watch(() => props.events.length, () => {
+  if (props.isLiveMode && autoScrollEnabled.value) {
+    scrollToNow()
   }
 })
 
-// Layout constants
-const labelWidth = 150
+function scrollToNow() {
+  if (!timelineContainer.value) return
+  const container = timelineContainer.value
+  // Position NOW at 90% of the visible viewport width (10% space on right)
+  const viewportWidth = container.clientWidth - labelWidth
+  const nowPosition = labelWidth + nowX.value
+  const targetScroll = nowPosition - (viewportWidth * 0.9)
+  container.scrollLeft = Math.max(0, targetScroll)
+}
+
+function jumpToNow() {
+  autoScrollEnabled.value = true
+  scrollToNow()
+}
+
+function handleScroll() {
+  if (!timelineContainer.value || !props.isLiveMode) return
+  const container = timelineContainer.value
+
+  // Calculate the max scroll position (NOW at 90% of viewport, 10% space on right)
+  const viewportWidth = container.clientWidth - labelWidth
+  const nowPosition = labelWidth + nowX.value
+  const maxAllowedScroll = Math.max(0, nowPosition - (viewportWidth * 0.9))
+
+  // Clamp scroll to prevent scrolling into the future
+  if (container.scrollLeft > maxAllowedScroll + 10) {
+    container.scrollLeft = maxAllowedScroll
+  }
+
+  // Check if we're near the "now" position to enable/disable auto-scroll
+  if (Math.abs(container.scrollLeft - maxAllowedScroll) > 50) {
+    autoScrollEnabled.value = false
+  } else {
+    autoScrollEnabled.value = true
+  }
+}
+
+// Layout constants - compact version
+const labelWidth = 240
 const headerHeight = 24
-const rowHeight = 32
-const barHeight = 16
+const rowHeight = 72
+const barHeight = 24  // Taller bars for better visibility
 const baseGridWidth = 800
 
-// Computed grid width based on zoom
 const actualGridWidth = computed(() => baseGridWidth * zoomLevel.value)
-
-const timelineWidth = computed(() => labelWidth + actualGridWidth.value)
-// Note: timelineHeight will be recalculated after filteredAgentRows is defined
-const timelineHeight = computed(() => headerHeight + (filteredAgentRows.value.length * rowHeight))
+// In live mode, add ~11% padding after NOW so it appears at ~90% of viewport
+const futurePadding = computed(() => props.isLiveMode ? Math.max(150, actualGridWidth.value * 0.11) : 0)
+const timelineWidth = computed(() => labelWidth + actualGridWidth.value + futurePadding.value)
 
 // Zoom controls
 function zoomIn() {
-  const current = parseFloat(zoomLevel.value) || 1
-  zoomLevel.value = Math.min(20, current + 0.5)
+  zoomLevel.value = Math.min(20, zoomLevel.value + 0.5)
 }
 
 function zoomOut() {
-  const current = parseFloat(zoomLevel.value) || 1
-  zoomLevel.value = Math.max(0.5, current - 0.5)
+  zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.5)
 }
 
 function handleWheel(event) {
-  // Ctrl+wheel for zoom
   if (event.ctrlKey || event.metaKey) {
     event.preventDefault()
     if (event.deltaY < 0) {
@@ -389,40 +487,35 @@ function handleWheel(event) {
   }
 }
 
-// Parse timeline bounds - extend to "now" if needed
+// Parse timeline bounds - extend to "now" for live mode
 const startTime = computed(() => props.timelineStart ? new Date(props.timelineStart).getTime() : 0)
 const endTime = computed(() => {
   const eventEnd = props.timelineEnd ? new Date(props.timelineEnd).getTime() : 0
-  const now = Date.now()
-  // Use whichever is later: last event or now
-  return Math.max(eventEnd, now)
+  if (props.isLiveMode) {
+    return Math.max(eventEnd, currentNow.value)
+  }
+  return eventEnd
 })
 const duration = computed(() => endTime.value - startTime.value)
 
 // Position of "now" on the timeline
 const nowX = computed(() => {
   if (!duration.value || !startTime.value) return -1
-  const now = Date.now()
+  const now = currentNow.value
   if (now < startTime.value || now > endTime.value) return -1
   return ((now - startTime.value) / duration.value) * actualGridWidth.value
 })
 
 // Generate time ticks (15 min intervals)
 const timeTicks = computed(() => {
-  // Guard: Need valid timeline bounds to generate ticks
-  // If startTime is 0 (no timelineStart prop), the loop would run from epoch to now = millions of iterations!
   if (!duration.value || !startTime.value || !endTime.value) return []
 
   const ticks = []
-  const intervalMs = 15 * 60 * 1000 // 15 minutes
+  const intervalMs = 15 * 60 * 1000
   const start = startTime.value
   const end = endTime.value
-
-  // Safety: Limit to reasonable number of ticks (max 7 days = 672 ticks)
   const maxTicks = 700
   let tickCount = 0
-
-  // Round start to nearest 15 min
   const firstTick = Math.ceil(start / intervalMs) * intervalMs
 
   for (let time = firstTick; time <= end && tickCount < maxTicks; time += intervalMs) {
@@ -430,7 +523,7 @@ const timeTicks = computed(() => {
     const date = new Date(time)
     const hours = date.getHours()
     const minutes = date.getMinutes()
-    const major = minutes === 0 // Major tick at hour marks
+    const major = minutes === 0
 
     ticks.push({
       x,
@@ -444,167 +537,403 @@ const timeTicks = computed(() => {
   return ticks
 })
 
-// Create agent rows with activity data
+// Create agent rows with full tile data matching AgentNode.vue
 const agentRows = computed(() => {
-  // Guard: Need valid timeline data
   if (!props.agents.length || !startTime.value || !duration.value) return []
 
-  // Group events by agent
+  // Build activity map from events
+  // Only create boxes for EXECUTION events (chat_start, schedule_start)
+  // Collaboration events (agent_collaboration) are only used for arrows, not boxes
   const agentActivityMap = new Map()
-
   props.events.forEach((event, index) => {
-    // Source agent activity
+    // Skip collaboration events for boxes - they only create arrows
+    // The target agent will have its own chat_start event with triggered_by='agent'
+    if (event.activity_type === 'agent_collaboration') {
+      return
+    }
+
+    // Check if event has error status
+    const hasError = event.status === 'error' || event.status === 'failed' || event.error || event.hasError
+    // Get duration from event (in milliseconds)
+    // If null, use a default of 30 seconds for visibility (typical execution time)
+    const durationMs = event.duration_ms || 30000
+
     if (!agentActivityMap.has(event.source_agent)) {
       agentActivityMap.set(event.source_agent, [])
     }
+    const isInProgress = event.status === 'started'
+    const isEstimated = !event.duration_ms
+
+    // Add activity box for the executing agent
     agentActivityMap.get(event.source_agent).push({
       time: new Date(event.timestamp).getTime(),
-      type: 'send',
-      eventIndex: index
+      type: 'execution',
+      eventIndex: index,
+      hasError,
+      durationMs,
+      isInProgress,
+      isEstimated,
+      activityType: event.activity_type,
+      triggeredBy: event.triggered_by,
+      scheduleName: event.schedule_name,
+      // For navigation to execution details
+      executionId: event.execution_id,
+      agentName: event.source_agent
     })
+  })
 
-    // Target agent activity
-    if (!agentActivityMap.has(event.target_agent)) {
-      agentActivityMap.set(event.target_agent, [])
+  // Build a map from agent name to node data for full tile info
+  const nodeMap = new Map()
+  props.nodes.forEach(node => {
+    if (node.data && node.data.label) {
+      nodeMap.set(node.data.label, node.data)
     }
-    agentActivityMap.get(event.target_agent).push({
-      time: new Date(event.timestamp).getTime(),
-      type: 'receive',
-      eventIndex: index
-    })
   })
 
   return props.agents.map(agent => {
     const activities = agentActivityMap.get(agent.name) || []
+    const nodeData = nodeMap.get(agent.name) || {}
+    const ctxStats = props.contextStats[agent.name] || {}
+    const execStats = props.executionStats[agent.name] || null
 
-    // Convert activities to bars
     const bars = activities.map(act => {
       const x = ((act.time - startTime.value) / duration.value) * actualGridWidth.value
-      // Check if this activity is at or before current playback position
       const chronoIndex = props.events.length - 1 - act.eventIndex
       const active = chronoIndex < props.currentEventIndex
 
+      // Calculate bar width based on duration
+      // duration.value is total timeline span in ms, actualGridWidth is pixels
+      const minBarWidth = 12  // Minimum width for visibility
+      let barWidth = minBarWidth
+      if (act.durationMs > 0) {
+        // Convert duration to pixels: (durationMs / totalMs) * gridWidth
+        barWidth = Math.max(minBarWidth, (act.durationMs / duration.value) * actualGridWidth.value)
+      }
+
       return {
-        x: Math.max(0, x - 2), // Center the bar on the time
-        width: 8, // Fixed width bar
+        x: Math.max(0, x),
+        width: barWidth,
         active,
-        type: act.type
+        type: act.type,
+        hasError: act.hasError,
+        durationMs: act.durationMs,
+        isInProgress: act.isInProgress,
+        isEstimated: act.isEstimated,
+        // Activity type info for color coding
+        activityType: act.activityType,
+        triggeredBy: act.triggeredBy,
+        scheduleName: act.scheduleName,
+        // For navigation to execution details
+        executionId: act.executionId,
+        agentName: act.agentName
       }
     })
 
-    // Check if agent has any activity
     const hasActivity = bars.length > 0
-
-    // Check if agent is currently executing (has activity around current playback position)
-    const isExecuting = bars.some(bar => bar.active) && props.isPlaying
 
     return {
       name: agent.name,
       status: agent.status,
       activities: bars,
       hasActivity,
-      isExecuting
+      // From node data
+      runtime: nodeData.runtime || null,
+      isSystemAgent: nodeData.is_system === true,
+      autonomyEnabled: nodeData.autonomy_enabled === true,
+      githubRepo: nodeData.githubRepo || null,
+      memoryLimit: nodeData.memoryLimit || '4g',
+      cpuLimit: nodeData.cpuLimit || '2',
+      // From context/execution stats
+      contextPercent: ctxStats.contextPercent || 0,
+      activityState: ctxStats.activityState || (agent.status === 'running' ? 'idle' : 'offline'),
+      executionStats: execStats
     }
   })
 })
 
-// Filtered agent rows based on hideInactiveAgents toggle
+// Filtered agent rows - system agents first
 const filteredAgentRows = computed(() => {
-  if (!hideInactiveAgents.value) {
-    return agentRows.value
+  let rows = agentRows.value
+  if (hideInactiveAgents.value) {
+    rows = rows.filter(row => row.hasActivity)
   }
-  return agentRows.value.filter(row => row.hasActivity)
+  // Sort: system agents first, then alphabetically
+  return [...rows].sort((a, b) => {
+    if (a.isSystemAgent && !b.isSystemAgent) return -1
+    if (!a.isSystemAgent && b.isSystemAgent) return 1
+    return a.name.localeCompare(b.name)
+  })
 })
 
-// Create communication arrows based on filtered agent rows
+// Communication arrows - only draw when BOTH source and target agents have execution boxes
 const communicationArrows = computed(() => {
-  // Guard: Need valid timeline data
   if (!props.events.length || !filteredAgentRows.value.length || !startTime.value || !duration.value) return []
 
-  // Build index map from filtered rows
   const agentIndexMap = new Map()
   filteredAgentRows.value.forEach((row, i) => {
     agentIndexMap.set(row.name, i)
   })
 
-  // Reverse to get chronological order
+  // Build a map of which agents have activity boxes and their time ranges
+  // This helps us verify both ends of an arrow have actual boxes
+  const agentActivityTimeRanges = new Map()
+  filteredAgentRows.value.forEach(row => {
+    if (row.activities && row.activities.length > 0) {
+      const ranges = row.activities.map(act => ({
+        startX: act.x,
+        endX: act.x + act.width,
+        startTime: startTime.value + (act.x / actualGridWidth.value) * duration.value,
+        endTime: startTime.value + ((act.x + act.width) / actualGridWidth.value) * duration.value
+      }))
+      agentActivityTimeRanges.set(row.name, ranges)
+    }
+  })
+
   const chronoEvents = [...props.events].reverse()
+  const arrowPadding = 4  // Padding outside the activity bars
 
   return chronoEvents.map((event, chronoIndex) => {
+    // Only process collaboration events (those with target_agent)
+    if (!event.target_agent) return null
+
     const sourceIndex = agentIndexMap.get(event.source_agent)
     const targetIndex = agentIndexMap.get(event.target_agent)
 
     if (sourceIndex === undefined || targetIndex === undefined) return null
 
     const time = new Date(event.timestamp).getTime()
+
+    // Check if target agent has an activity box near this time
+    // The target agent should have a triggered execution
+    const targetRanges = agentActivityTimeRanges.get(event.target_agent)
+    if (!targetRanges || targetRanges.length === 0) {
+      // Target has no activity boxes at all - don't draw arrow
+      return null
+    }
+
+    // Find if there's a box on target agent that could be the triggered execution
+    // Look for boxes that start within ~30 seconds of the collaboration event
+    const toleranceMs = 30000  // 30 second window
+    const hasMatchingTargetBox = targetRanges.some(range => {
+      return Math.abs(range.startTime - time) < toleranceMs
+    })
+
+    if (!hasMatchingTargetBox) {
+      // No matching target box - don't draw a floating arrow
+      return null
+    }
+
     const x = ((time - startTime.value) / duration.value) * actualGridWidth.value
 
-    const y1 = sourceIndex * rowHeight + rowHeight / 2
-    const y2 = targetIndex * rowHeight + rowHeight / 2
+    // Calculate center Y for each row
+    const sourceY = sourceIndex * rowHeight + rowHeight / 2
+    const targetY = targetIndex * rowHeight + rowHeight / 2
 
-    // Check if this event is at or before current playback position
+    // Determine direction and calculate start/end positions outside boxes
+    const goingDown = targetIndex > sourceIndex
+    const barHalf = barHeight / 2
+
+    // Start position: edge of source agent's activity bar
+    const y1Start = goingDown
+      ? sourceY + barHalf + arrowPadding
+      : sourceY - barHalf - arrowPadding
+
+    // End position: edge of target agent's activity bar
+    const y2End = goingDown
+      ? targetY - barHalf - arrowPadding
+      : targetY + barHalf + arrowPadding
+
     const active = chronoIndex < props.currentEventIndex
+    const hasError = event.status === 'error' || event.error || event.hasError
 
     return {
       x,
-      y1,
-      y2,
+      y1: sourceY,
+      y2: targetY,
+      y1Start,
+      y2End,
       active,
-      direction: targetIndex > sourceIndex ? 'down' : 'up'
+      hasError,
+      direction: goingDown ? 'down' : 'up'
     }
   }).filter(a => a !== null)
 })
 
-// Current time cursor position - smooth interpolation based on elapsed time
-const currentTimeX = computed(() => {
-  // Guard: Need valid timeline data
-  if (!props.events.length || !duration.value || !startTime.value) return -1
+// Helper functions
+function navigateToAgent(agentName) {
+  router.push(`/agents/${agentName}`)
+}
 
-  // Get the first event time as the replay start reference
-  const chronoEvents = [...props.events].reverse()
-  const firstEventTime = new Date(chronoEvents[0].timestamp).getTime()
+function navigateToExecution(activity) {
+  // Open execution detail page in a new tab
+  const agentName = activity.agentName
+  if (!agentName) return
 
-  // Calculate current simulated time: wall-clock elapsed * replay speed = simulated elapsed
-  const simulatedElapsedMs = localElapsedMs.value * props.replaySpeed
-  const currentSimulatedTime = firstEventTime + simulatedElapsedMs
+  if (activity.executionId) {
+    // Open Execution Detail page in new tab
+    const route = router.resolve({
+      name: 'ExecutionDetail',
+      params: { name: agentName, executionId: activity.executionId }
+    })
+    window.open(route.href, '_blank')
+  } else {
+    // Fallback: open Tasks tab in new tab
+    const route = router.resolve({
+      path: `/agents/${agentName}`,
+      query: { tab: 'tasks' }
+    })
+    window.open(route.href, '_blank')
+  }
+}
 
-  // Clamp to timeline bounds
-  if (currentSimulatedTime < startTime.value) return -1
+function toggleAutonomy(agentName) {
+  emit('toggle-autonomy', agentName)
+}
 
-  return ((currentSimulatedTime - startTime.value) / duration.value) * actualGridWidth.value
-})
+function getStatusDotColor(row) {
+  if (row.activityState === 'active') return '#10b981'
+  if (row.activityState === 'idle') return '#10b981'
+  return '#9ca3af'
+}
 
-// Smaller arrow head
+function getActivityStateLabel(row) {
+  if (row.activityState === 'active') return 'Active'
+  if (row.activityState === 'idle') return 'Idle'
+  return 'Offline'
+}
+
+function getActivityStateColor(row) {
+  if (row.activityState === 'active') return 'text-green-600 dark:text-green-400'
+  if (row.activityState === 'idle') return 'text-green-600 dark:text-green-400'
+  return 'text-gray-500 dark:text-gray-400'
+}
+
+function getProgressBarClass(percent) {
+  if (percent >= 90) return 'bg-red-500'
+  if (percent >= 75) return 'bg-orange-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-green-500'
+}
+
+function getSuccessRateClass(rate) {
+  if (rate >= 80) return 'text-green-600 dark:text-green-400'
+  if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+}
+
+function formatLastExecution(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now - date
+
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return `${Math.floor(diff / 86400000)}d ago`
+}
+
+function formatGithubRepo(repo) {
+  if (!repo) return ''
+  if (repo.startsWith('github:')) {
+    return repo.substring(7)
+  }
+  if (repo.includes('github.com/')) {
+    const parts = repo.split('github.com/')[1]
+    return parts.replace(/\.git$/, '')
+  }
+  return repo
+}
+
 function getArrowHead(arrow) {
-  const size = 2 // Reduced from 4
+  const size = 6  // Larger arrowhead
   const x = arrow.x
-  const y = arrow.y2
+  const y = arrow.y2End  // Use the end position (outside box)
 
   if (arrow.direction === 'down') {
-    return `${x},${y} ${x-size},${y-size*2} ${x+size},${y-size*2}`
+    // Arrow pointing down
+    return `${x},${y} ${x-size},${y-size*1.5} ${x+size},${y-size*1.5}`
   } else {
-    return `${x},${y} ${x-size},${y+size*2} ${x+size},${y+size*2}`
+    // Arrow pointing up
+    return `${x},${y} ${x-size},${y+size*1.5} ${x+size},${y+size*1.5}`
   }
 }
 
 function formatDuration(ms) {
-  if (!ms) return '00:00'
-  const minutes = Math.floor(ms / 60000)
-  const seconds = Math.floor((ms % 60000) / 1000)
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  if (!ms || ms <= 0) return 'Unknown duration'
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
+  return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`
+}
+
+function getBarColor(activity) {
+  if (activity.hasError) return '#ef4444'  // Red for errors
+  if (activity.isInProgress) return '#f59e0b'  // Amber for in-progress
+
+  // Color by trigger type (not activity type)
+  // Executions are colored by what triggered them
+  const triggeredBy = activity.triggeredBy
+  const activityType = activity.activityType
+
+  // Scheduled executions → Purple
+  if (activityType?.startsWith('schedule_') || triggeredBy === 'schedule') {
+    return activity.active ? '#8b5cf6' : '#c4b5fd'
+  }
+
+  // Agent-triggered executions (called by another agent) → Cyan
+  if (triggeredBy === 'agent') {
+    return activity.active ? '#06b6d4' : '#67e8f9'
+  }
+
+  // Manual/user executions → Green
+  if (triggeredBy === 'manual' || triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+    return activity.active ? '#22c55e' : '#86efac'
+  }
+
+  // Default blue for unknown types
+  if (activity.active) return '#3b82f6'
+  return '#93c5fd'
+}
+
+function getBarTooltip(activity) {
+  let prefix = ''
+  let status = ''
+
+  // Determine execution type prefix based on trigger
+  const activityType = activity.activityType
+  const triggeredBy = activity.triggeredBy
+
+  if (activityType?.startsWith('schedule_') || triggeredBy === 'schedule') {
+    prefix = activity.scheduleName ? `Scheduled: ${activity.scheduleName}` : 'Scheduled Task'
+  } else if (triggeredBy === 'agent') {
+    prefix = 'Agent-Triggered Task'
+  } else if (triggeredBy === 'manual') {
+    prefix = 'Manual Task'
+  } else if (triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+    prefix = 'Task'
+  } else {
+    prefix = 'Execution'
+  }
+
+  // Determine status
+  if (activity.hasError) status = '(Error)'
+  else if (activity.isInProgress) status = '(In Progress)'
+  else status = ''
+
+  const duration = activity.isEstimated
+    ? `~${formatDuration(activity.durationMs)}`
+    : formatDuration(activity.durationMs)
+
+  return `${prefix} ${status} - ${duration}`.trim().replace('  ', ' ')
 }
 </script>
 
 <style scoped>
 .replay-timeline {
-  max-height: 320px;
+  min-height: 400px;
 }
 
-.timeline-scroll-container {
-  max-height: 280px;
-}
-
-/* Scrollbar styling for both axes */
 .timeline-scroll-container::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -643,7 +972,6 @@ function formatDuration(ms) {
   background: #374151;
 }
 
-/* Zoom slider styling */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -669,5 +997,24 @@ input[type="range"]::-webkit-slider-thumb {
   height: 12px;
   width: 12px;
   border-radius: 50%;
+}
+
+/* Active pulse animation for status dot */
+.active-pulse {
+  animation: active-pulse-animation 0.8s ease-in-out infinite;
+  box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.6);
+}
+
+@keyframes active-pulse-animation {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.6);
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+    box-shadow: 0 0 16px 4px rgba(16, 185, 129, 0.9);
+  }
 }
 </style>

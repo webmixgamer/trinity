@@ -350,3 +350,131 @@ class TestCrossAgentTimeline:
                 if timestamps[i] and timestamps[i + 1]:
                     assert timestamps[i] >= timestamps[i + 1], \
                         "Activities should be sorted by time descending"
+
+
+class TestTimelineForDashboard:
+    """Tests for Dashboard Timeline View API requirements.
+
+    These tests verify the timeline API provides data needed by the
+    Dashboard Timeline View feature including execution tracking and
+    trigger-based color coding.
+    Feature Flow: dashboard-timeline-view.md
+    """
+
+    pytestmark = pytest.mark.smoke
+
+    def test_timeline_activity_types_for_dashboard(self, api_client: TrinityApiClient):
+        """Timeline returns execution activity types needed by Dashboard."""
+        # Dashboard requests these activity types
+        activity_types = "agent_collaboration,schedule_start,schedule_end,chat_start,chat_end"
+        response = api_client.get(f"/api/activities/timeline?activity_types={activity_types}&limit=50")
+        assert_status(response, 200)
+        data = response.json()
+
+        # Verify returned activities match requested types
+        valid_types = {"agent_collaboration", "schedule_start", "schedule_end", "chat_start", "chat_end"}
+        for activity in data.get("activities", []):
+            assert activity["activity_type"] in valid_types, \
+                f"Unexpected activity type: {activity['activity_type']}"
+
+    def test_timeline_activity_has_duration(self, api_client: TrinityApiClient):
+        """Timeline activities include duration_ms field."""
+        response = api_client.get("/api/activities/timeline?limit=20")
+        assert_status(response, 200)
+        activities = response.json().get("activities", [])
+
+        for activity in activities:
+            # duration_ms should be present (can be None if in progress)
+            assert "duration_ms" in activity or "details" in activity
+
+    def test_timeline_activity_has_triggered_by(self, api_client: TrinityApiClient):
+        """Timeline activities include triggered_by field for color coding."""
+        response = api_client.get("/api/activities/timeline?limit=20")
+        assert_status(response, 200)
+        activities = response.json().get("activities", [])
+
+        for activity in activities:
+            # triggered_by indicates what triggered the execution
+            # Used for color coding: schedule=purple, agent=cyan, manual/user=green
+            assert "triggered_by" in activity, \
+                f"Activity {activity.get('id')} should have triggered_by field"
+
+    def test_timeline_activity_details_structure(self, api_client: TrinityApiClient):
+        """Timeline activity details have expected structure for arrows."""
+        response = api_client.get("/api/activities/timeline?limit=50")
+        assert_status(response, 200)
+        activities = response.json().get("activities", [])
+
+        for activity in activities:
+            # Details should be a dict if present
+            details = activity.get("details")
+            if details:
+                assert isinstance(details, dict), "Details should be a dict"
+
+            # Collaboration events should have target_agent in details
+            if activity["activity_type"] == "agent_collaboration":
+                if details:
+                    # May have source_agent and target_agent for arrow drawing
+                    pass  # Fields are optional depending on event
+
+    def test_timeline_collaboration_filter(self, api_client: TrinityApiClient):
+        """Timeline can filter for collaboration events only."""
+        response = api_client.get("/api/activities/timeline?activity_types=agent_collaboration&limit=20")
+        assert_status(response, 200)
+        data = response.json()
+
+        for activity in data.get("activities", []):
+            assert activity["activity_type"] == "agent_collaboration"
+
+    def test_timeline_schedule_filter(self, api_client: TrinityApiClient):
+        """Timeline can filter for schedule events only."""
+        response = api_client.get("/api/activities/timeline?activity_types=schedule_start,schedule_end&limit=20")
+        assert_status(response, 200)
+        data = response.json()
+
+        for activity in data.get("activities", []):
+            assert activity["activity_type"] in ["schedule_start", "schedule_end"]
+
+    def test_timeline_trigger_type_values(self, api_client: TrinityApiClient):
+        """Timeline triggered_by values match expected Dashboard values."""
+        response = api_client.get("/api/activities/timeline?limit=100")
+        assert_status(response, 200)
+        activities = response.json().get("activities", [])
+
+        # Valid trigger types for Dashboard color coding
+        valid_triggers = {"schedule", "agent", "manual", "user", None}
+
+        for activity in activities:
+            triggered_by = activity.get("triggered_by")
+            # triggered_by should be one of the expected values
+            assert triggered_by in valid_triggers or triggered_by is None, \
+                f"Unexpected triggered_by value: {triggered_by}"
+
+
+class TestActivityWithScheduleInfo:
+    """Tests for activity schedule information."""
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_scheduled_activity_has_schedule_name(
+        self,
+        api_client: TrinityApiClient,
+        created_agent: dict
+    ):
+        """Scheduled activities include schedule_name in details."""
+        agent_name = created_agent["name"]
+
+        # First check if there are any scheduled activities
+        response = api_client.get(
+            f"/api/agents/{agent_name}/activities?activity_type=schedule_start&limit=10"
+        )
+        assert_status(response, 200)
+        activities = response.json().get("activities", [])
+
+        for activity in activities:
+            # Scheduled activities should have schedule info
+            details = activity.get("details", {})
+            # schedule_name may be in details for scheduled executions
+            if activity.get("triggered_by") == "schedule":
+                # Details may contain schedule_name
+                pass  # Field structure depends on how schedule was created

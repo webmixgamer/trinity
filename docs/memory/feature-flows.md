@@ -3,6 +3,35 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-11)**: Execution ID Tracking System:
+> - **execution-queue.md**: Documented two ID systems - Queue ID (UUID, Redis, 10-min TTL) vs Database ID (`token_urlsafe(16)`, SQLite, permanent)
+> - **execution-detail-page.md**: Clarified navigation uses Database Execution ID from `task_execution_id` in chat response
+> - **scheduling.md**: Execution record created BEFORE activity for `related_execution_id` linkage; manual trigger now has full activity tracking
+> - **dashboard-timeline-view.md**: Added execution ID handling section - timeline navigation uses Database ID
+> - **chat.py**: Activity tracking uses `related_execution_id` as top-level field (not just in details dict)
+> - **scheduler_service.py**: Lines 206-231 - execution created first, then activity with `related_execution_id=execution.id`
+>
+> **Updated (2026-01-10)**: Execution Detail Page:
+> - **execution-detail-page.md**: New dedicated page for viewing execution details
+> - Route: `/agents/:name/executions/:executionId` with full metadata, timestamps, task input, response, and transcript
+> - Entry points: External link icon in TasksPanel (207-217), click on Timeline execution bars (767-785)
+> - Backend: `GET /api/agents/{name}/executions/{id}` (schedules.py:319-332), `GET .../log` (schedules.py:335-375)
+> - Database: `get_execution()` in db/schedules.py:447-453, `schedule_executions` table
+> - Files: `ExecutionDetail.vue` (496 lines), `TasksPanel.vue`, `ReplayTimeline.vue`, router/index.js:41-46
+>
+> **Previous (2026-01-10)**: Dashboard Timeline View - Execution Boxes & Trigger-Based Colors:
+> - **dashboard-timeline-view.md**: Major update - execution-only boxes, trigger-based color coding, arrow validation
+> - **Execution-only boxes**: Only `chat_start`/`schedule_start` events create boxes; `agent_collaboration` events only create arrows (not boxes)
+> - **Trigger-based color coding**: Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered (based on `triggered_by` field, not activity type)
+> - **Arrow validation**: Arrows only drawn when target agent has execution box within 30-second tolerance window (prevents floating arrows)
+> - **Source agent mapping fix**: Execution events use `activity.agent_name`, collaboration events use `details.source_agent` for correct row attribution
+> - **Legend updated**: Shows "Manual", "Scheduled", "Agent-Triggered" labels with color swatches
+> - Files: `ReplayTimeline.vue` (lines 543-579, 661-753, 841-868), `network.js` (lines 161-171)
+>
+> **Previous (2026-01-10)**: Dashboard Timeline View - Visual Enhancements:
+> - Duration-based bar widths proportional to `duration_ms`, NOW marker at 90% viewport, future scroll prevention
+> - Bug fix: `routers/chat.py:386-392` - Collaboration activities complete on HTTP errors
+>
 > **Updated (2026-01-09)**: System Agent Schedule & Execution Management:
 > - **internal-system-agent.md**: Added Schedule and Execution Management via slash commands
 > - New `GET /api/ops/schedules` endpoint (ops.py:427-495) with `agent_name` and `enabled_only` filters
@@ -57,6 +86,12 @@
 > - API: `GET/PUT /api/agents/{name}/resources` (agents.py:797-898)
 > - Database: `memory_limit` and `cpu_limit` columns in `agent_ownership` table (db/agents.py:363-409)
 > - Lifecycle: `check_resource_limits_match()` in helpers.py triggers container recreation on start
+>
+> **Updated (2026-01-10)**: Chat endpoint execution log fix:
+> - **execution-log-viewer.md**: Phase 2 fix - `/api/chat` now returns raw Claude Code format like `/api/task`
+> - Agent server: `execute_claude_code()` captures `raw_messages`, chat router returns both raw and simplified formats
+> - Backend: `chat.py` extracts `execution_log` (raw) and `execution_log_simplified` for activity tracking
+> - Fix: MCP calls and chat-based executions now display transcripts in Tasks panel log viewer
 >
 > **Updated (2025-01-02)**: Scheduler execution log fix:
 > - **execution-log-viewer.md**: Documented log format standardization - all execution types now use `/api/task` for raw Claude Code `stream-json` format
@@ -169,10 +204,8 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| ~~Authentication Mode System~~ | ~~High~~ | [auth0-authentication.md](feature-flows/auth0-authentication.md) | **REMOVED** (2026-01-01) - Auth0 code deleted, see email-authentication.md |
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, frontend: useAgentLifecycle.js composable (Updated 2025-12-30) |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
-| ~~Agent Chat~~ | ~~High~~ | ~~[agent-chat.md](feature-flows/agent-chat.md)~~ | ❌ DEPRECATED (2025-12-25) - Replaced by Agent Terminal for direct Claude Code interaction |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format (Updated 2025-01-02) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
@@ -188,8 +221,8 @@
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - includes execution stats display on Agent Cards (Updated 2026-01-01) |
-| Agent Network Replay Mode | High | [agent-network-replay-mode.md](feature-flows/agent-network-replay-mode.md) | Time-compressed replay of historical messages with VCR controls and timeline scrubbing - **now in Dashboard.vue** (Updated 2025-12-30) |
-| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline visualization for replay mode - agent rows, activity bars, communication arrows, zoom controls, smooth cursor, 15-min grid (Created 2026-01-04) |
+| **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport (Updated 2026-01-10) |
+| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-10) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |
@@ -198,7 +231,6 @@
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
 | **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |
 | **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File collaboration via shared volumes - **service layer: folders.py** (Updated 2025-12-27) |
-| ~~Agent Vector Memory~~ | ~~Medium~~ | ~~[vector-memory.md](feature-flows/vector-memory.md)~~ | ❌ REMOVED (2025-12-24) - Templates should define their own memory. Platform should not inject agent capabilities. |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
@@ -212,11 +244,25 @@
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, all execution types use raw log format (Updated 2025-01-02) |
-| **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user) now produce parseable logs (Updated 2025-01-02) |
+| **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
+| **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel icon, Timeline click (Implemented 2026-01-10) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
+
+---
+
+## Archived Flows
+
+> **Note**: These flows document features that have been removed, deprecated, or superseded. They are preserved in `feature-flows/archive/` for historical reference.
+
+| Flow | Status | Document | Reason |
+|------|--------|----------|--------|
+| Authentication Mode System | REMOVED | [archive/auth0-authentication.md](feature-flows/archive/auth0-authentication.md) | Auth0 deleted (2026-01-01) - replaced by email-authentication.md |
+| Agent Chat | DEPRECATED | [archive/agent-chat.md](feature-flows/archive/agent-chat.md) | UI replaced by Agent Terminal (2025-12-25) - API docs merged into execution-queue.md |
+| Agent Vector Memory | REMOVED | [archive/vector-memory.md](feature-flows/archive/vector-memory.md) | Platform-injected vector memory removed (2025-12-24) - templates should define their own |
+| Agent Network Replay Mode | SUPERSEDED | [archive/agent-network-replay-mode.md](feature-flows/archive/agent-network-replay-mode.md) | VCR-style replay replaced by Dashboard Timeline View and replay-timeline.md (2026-01-04) |
 
 ---
 

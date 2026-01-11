@@ -50,8 +50,8 @@ export const useNetworkStore = defineStore('network', () => {
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
 
-  // Replay mode state
-  const isReplayMode = ref(false)
+  // View mode state (graph vs timeline)
+  const isTimelineMode = ref(false)
   const isPlaying = ref(false)
   const replaySpeed = ref(10) // 10x default
   const currentEventIndex = ref(0)
@@ -127,45 +127,77 @@ export const useNetworkStore = defineStore('network', () => {
       const startTime = new Date()
       startTime.setHours(startTime.getHours() - hoursToQuery)
 
+      // Fetch ALL execution types (not just collaborations)
       const params = {
-        activity_types: 'agent_collaboration',
+        activity_types: 'agent_collaboration,schedule_start,schedule_end,chat_start,chat_end',
         start_time: startTime.toISOString(),
         limit: 500
       }
 
       const response = await axios.get('/api/activities/timeline', { params })
 
-      // Parse activities into collaboration events
-      const collaborations = response.data.activities
-        .filter(activity => activity.details)
+      // Parse activities into timeline events
+      const events = response.data.activities
+        .filter(activity => {
+          // Skip activities without details
+          if (!activity.details) return false
+
+          // Filter out regular user chats (keep automated executions only)
+          if (activity.activity_type && activity.activity_type.startsWith('chat_')) {
+            const details = typeof activity.details === 'string'
+              ? JSON.parse(activity.details)
+              : activity.details || {}
+
+            // Keep: agent-initiated, schedule-triggered, or manual tasks (parallel_mode)
+            // Skip: regular user chat sessions
+            if (activity.triggered_by === 'user' && !details.parallel_mode) {
+              return false
+            }
+          }
+
+          return true
+        })
         .map(activity => {
           try {
             const details = typeof activity.details === 'string'
               ? JSON.parse(activity.details)
               : activity.details
 
+            // For execution events (chat_start, schedule_start): use agent_name (the executor)
+            // For collaboration events: use details.source_agent (the caller) for arrows
+            const isCollaboration = activity.activity_type === 'agent_collaboration'
+
             return {
-              source_agent: details.source_agent || activity.agent_name,
-              target_agent: details.target_agent,
+              source_agent: isCollaboration ? (details.source_agent || activity.agent_name) : activity.agent_name,
+              target_agent: details.target_agent || null,  // null for non-collaboration events
               timestamp: activity.started_at || activity.created_at,
               activity_id: activity.id,
+              // Execution ID for navigation to Execution Detail page
+              // Priority: top-level related_execution_id (database ID) > details fallbacks
+              execution_id: activity.related_execution_id || details.execution_id || details.related_execution_id || null,
               status: activity.activity_state,
-              duration_ms: activity.duration_ms
+              duration_ms: activity.duration_ms,
+              // Activity type tracking for color coding
+              activity_type: activity.activity_type,
+              triggered_by: activity.triggered_by,
+              schedule_name: details.schedule_name || null,
+              error: activity.error
             }
           } catch (e) {
             console.warn('Failed to parse activity details:', e)
             return null
           }
         })
-        .filter(c => c !== null && c.target_agent) // Only keep valid collaborations
+        .filter(e => e !== null)
 
-      historicalCollaborations.value = collaborations
-      totalCollaborationCount.value = collaborations.length
+      historicalCollaborations.value = events
+      totalCollaborationCount.value = events.length
 
-      // Create initial inactive edges from historical data
-      createHistoricalEdges(collaborations)
+      // Create initial inactive edges from collaboration events only
+      const collaborationEvents = events.filter(e => e.target_agent)
+      createHistoricalEdges(collaborationEvents)
 
-      console.log(`[Collaboration] Loaded ${collaborations.length} historical collaborations from last ${hoursToQuery}h`)
+      console.log(`[Collaboration] Loaded ${events.length} historical events (${collaborationEvents.length} collaborations) from last ${hoursToQuery}h`)
 
     } catch (error) {
       console.error('Failed to fetch historical collaborations:', error)
@@ -794,25 +826,28 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
-  // Replay Mode Functions
-  function setReplayMode(mode) {
-    isReplayMode.value = mode
-    localStorage.setItem('trinity-replay-mode', mode ? 'true' : 'false')
+  // View Mode Functions (graph vs timeline)
+  function setViewMode(mode) {
+    const isTimeline = mode === 'timeline'
+    isTimelineMode.value = isTimeline
+    localStorage.setItem('trinity-dashboard-view', mode)
 
-    if (mode) {
-      // Entering replay mode - disconnect WebSocket and stop polling
-      disconnectWebSocket()
-      stopContextPolling()
-      stopAgentRefresh()
-      console.log('[Collaboration] Switched to Replay mode')
-    } else {
-      // Exiting replay mode - reconnect WebSocket and start polling
+    // Keep WebSocket and polling active in BOTH views for live updates
+    // Timeline view now shows live events, so we need real-time data
+    if (isTimeline) {
+      // Entering timeline mode - stop any active replay playback
       stopReplay()
-      connectWebSocket()
-      startContextPolling()
-      startAgentRefresh()
-      console.log('[Collaboration] Switched to Live mode')
+      console.log('[Collaboration] Switched to Timeline view (live mode)')
+    } else {
+      // Entering graph mode
+      stopReplay()
+      console.log('[Collaboration] Switched to Graph view')
     }
+  }
+
+  // Legacy function for backwards compatibility
+  function setReplayMode(mode) {
+    setViewMode(mode ? 'timeline' : 'graph')
   }
 
   function startReplay() {
@@ -1176,8 +1211,8 @@ export const useNetworkStore = defineStore('network', () => {
     isLoadingHistory,
     contextStats,
     executionStats,
-    // Replay state
-    isReplayMode,
+    // View mode / Replay state
+    isTimelineMode,
     isPlaying,
     replaySpeed,
     currentEventIndex,
@@ -1218,7 +1253,8 @@ export const useNetworkStore = defineStore('network', () => {
     stopContextPolling,
     startAgentRefresh,
     stopAgentRefresh,
-    // Replay actions
+    // View mode / Replay actions
+    setViewMode,
     setReplayMode,
     startReplay,
     pauseReplay,

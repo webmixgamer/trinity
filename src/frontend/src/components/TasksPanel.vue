@@ -121,10 +121,12 @@
         <div
           v-for="task in allTasks"
           :key="task.id"
+          :ref="el => { if (isHighlightedTask(task.id)) highlightedTaskRef = el }"
           class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           :class="{
             'bg-yellow-50/50 dark:bg-yellow-900/10': task.status === 'running',
-            'bg-red-50/30 dark:bg-red-900/10': task.status === 'failed'
+            'bg-red-50/30 dark:bg-red-900/10': task.status === 'failed',
+            'ring-2 ring-indigo-500 ring-inset bg-indigo-50/50 dark:bg-indigo-900/20': isHighlightedTask(task.id)
           }"
         >
           <div class="flex items-start justify-between">
@@ -202,12 +204,23 @@
 
             <!-- Right side: Actions -->
             <div class="flex items-center space-x-2 ml-4">
-              <!-- View Log Button -->
+              <!-- Open Execution Detail Page -->
+              <router-link
+                v-if="!task.id.startsWith('local-')"
+                :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id } }"
+                class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
+                title="Open execution details"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </router-link>
+              <!-- View Log Button (Modal) -->
               <button
                 v-if="task.status !== 'running' && !task.id.startsWith('local-')"
                 @click="viewExecutionLog(task)"
                 class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
-                title="View execution log"
+                title="View execution log (modal)"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -398,9 +411,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
+
+// Template ref for highlighted task element
+const highlightedTaskRef = ref(null)
 
 const props = defineProps({
   agentName: {
@@ -410,6 +426,10 @@ const props = defineProps({
   agentStatus: {
     type: String,
     default: 'stopped'
+  },
+  highlightExecutionId: {
+    type: String,
+    default: null
   }
 })
 
@@ -434,6 +454,11 @@ const logError = ref(null)
 
 // Polling interval
 let pollInterval = null
+
+// Check if a task should be highlighted
+function isHighlightedTask(taskId) {
+  return props.highlightExecutionId && taskId === props.highlightExecutionId
+}
 
 // Combine pending tasks with server executions
 const allTasks = computed(() => {
@@ -479,9 +504,32 @@ async function loadExecutions() {
       headers: authStore.authHeader
     })
     executions.value = response.data
+
+    // If highlightExecutionId is provided, expand and scroll to that task
+    if (props.highlightExecutionId) {
+      scrollToHighlightedTask()
+    }
   } catch (error) {
     console.error('Failed to load executions:', error)
   }
+}
+
+// Scroll to highlighted task and expand it
+function scrollToHighlightedTask() {
+  if (!props.highlightExecutionId) return
+
+  // Auto-expand the highlighted task
+  expandedTaskId.value = props.highlightExecutionId
+
+  // Scroll to the highlighted task after DOM update
+  nextTick(() => {
+    if (highlightedTaskRef.value) {
+      highlightedTaskRef.value.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      })
+    }
+  })
 }
 
 // Load queue status

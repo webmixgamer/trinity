@@ -1,3 +1,394 @@
+### 2026-01-11 21:30:00
+📚 **Docs: Archive Deprecated Feature Flows**
+
+Cleaned up feature-flows index by archiving 4 deprecated/removed feature flows:
+
+| Flow | Status | Reason |
+|------|--------|--------|
+| auth0-authentication.md | REMOVED | Auth0 deleted (2026-01-01), replaced by email auth |
+| agent-chat.md | DEPRECATED | UI replaced by Web Terminal (2025-12-25) |
+| vector-memory.md | REMOVED | Platform-injected memory removed (2025-12-24) |
+| agent-network-replay-mode.md | SUPERSEDED | Replaced by Dashboard Timeline View (2026-01-04) |
+
+**Changes**:
+- Created `docs/memory/feature-flows/archive/` directory
+- Moved 4 obsolete flow documents to archive
+- Updated feature-flows.md index: removed struck-through entries, added "Archived Flows" section
+
+---
+
+### 2026-01-11 13:30:00
+🐛 **Fix: Frontend Timeline Execution ID Extraction**
+
+**Problem**: Dashboard Timeline couldn't navigate to Execution Detail pages because the frontend was looking for execution ID in the wrong place.
+
+**Root Cause**: `network.js` was only checking `details.execution_id` and `details.related_execution_id` (inside the details JSON), but the backend now stores `related_execution_id` as a **top-level field** on the activity record.
+
+**Fix**: Updated `network.js` line 176 to prioritize top-level field:
+```javascript
+// Before (broken):
+execution_id: details.execution_id || details.related_execution_id || null
+
+// After (fixed):
+execution_id: activity.related_execution_id || details.execution_id || details.related_execution_id || null
+```
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Extract execution_id from activity.related_execution_id
+
+**Impact**: Timeline clicks now correctly navigate to Execution Detail page with proper database ID.
+
+---
+
+### 2026-01-11 12:15:00
+🔧 **Refactor: Consistent Execution ID Tracking Across All Entry Points**
+
+**Problem**: Execution tracking had multiple inconsistencies:
+1. Activities only stored execution ID in `details` dict, not in `related_execution_id` field
+2. Tool call activities had no link to parent execution
+3. Chat response returned queue ID (transient) instead of database ID (permanent)
+4. Manual trigger executions had no activity tracking
+5. Schedule activities were created BEFORE execution record (no ID to link)
+
+**Solution**: Comprehensive fix to ensure all execution types use consistent ID tracking:
+
+**chat.py Changes**:
+1. Collaboration activity: Added `related_execution_id=task_execution_id` (line 201)
+2. Chat start activity: Added `related_execution_id=task_execution_id` (line 224)
+3. Tool call activities: Added `related_execution_id=task_execution_id` (line 302)
+4. Chat response: Now includes both `id` (queue) and `task_execution_id` (database) (line 357-361)
+5. Parallel task activity: Added `related_execution_id=execution_id` (line 462)
+
+**scheduler_service.py Changes**:
+1. Reordered operations: Create execution record BEFORE activity tracking
+2. Schedule activity: Added `related_execution_id=execution.id` (line 222)
+3. Manual trigger: Added full activity tracking with `related_execution_id` (lines 431-446)
+4. Manual trigger: Added activity completion for success/failure paths
+
+**ID System Clarification**:
+| ID Type | Format | Storage | Purpose |
+|---------|--------|---------|---------|
+| Queue ID | UUID | Redis (10m TTL) | Internal queue management |
+| Database ID | token_urlsafe(16) | SQLite (permanent) | API access, UI navigation |
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - 5 activity tracking calls + response format
+- `src/backend/services/scheduler_service.py` - Reordered + added activity tracking
+
+**Impact**: Timeline clicks now correctly navigate to Execution Detail page. All execution types (chat, parallel task, scheduled, manual trigger) now have consistent activity linkage.
+
+---
+
+### 2026-01-11 10:31:00
+🐛 **Fix: Agent Authorization Dependencies Return 404 for Non-Existent Agents**
+
+**Problem**: API endpoints using `AuthorizedAgent`, `AuthorizedAgentByName`, `OwnedAgent`, and `OwnedAgentByName` dependencies returned incorrect responses for non-existent agents:
+- Admin users: 200 OK with empty data (admin bypass skipped existence check)
+- Non-admin users: 403 Forbidden (permission check failed before existence check)
+
+**Expected**: All users should receive 404 Not Found for non-existent agents.
+
+**Fix**: Updated all four authorization dependency functions to check agent existence before checking permissions:
+1. `get_authorized_agent()` - Lines 183-188
+2. `get_authorized_agent_by_name()` - Lines 235-240
+3. `get_owned_agent()` - Lines 213-218
+4. `get_owned_agent_by_name()` - Lines 273-278
+
+Each function now:
+1. First checks if agent exists via `db.get_agent_owner()`
+2. Returns 404 if agent doesn't exist
+3. Then checks user permissions
+4. Returns 403 if user lacks access
+
+**Files Modified**:
+- `src/backend/dependencies.py` - All 4 agent authorization dependencies
+
+**Test**: `test_get_executions_nonexistent_agent_returns_404` now passes
+
+---
+
+### 2026-01-11 10:18:00
+🐛 **Fix: Timeline Execution Links Not Finding Executions**
+
+**Problem**: Clicking on execution bars in the Dashboard Timeline opened the Execution Detail page, but it showed "Execution not found" even though executions existed in the database.
+
+**Root Cause**: ID mismatch between two different execution tracking systems:
+- **Queue execution ID** (UUID format): `4df12ce0-742b-4671-b9ae-ad024ba7c595`
+- **Database execution ID** (base64 format): `lxTrun4spCbAtlMUHh748w`
+
+Activities were storing `execution.id` (queue UUID) instead of `task_execution_id` (database ID).
+
+**Fix**: Changed all activity tracking calls to use `task_execution_id` instead of `execution.id`:
+- Line 205: collaboration_activity details
+- Line 227: chat_start activity details
+- Line 320: chat_activity completion details
+- Line 333: collaboration_activity completion details
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - 4 locations fixed
+
+**Note**: Existing activities have wrong execution_id. New executions will work correctly.
+
+---
+
+### 2026-01-11 09:15:00
+✨ **UX: Timeline Execution Click Opens New Tab**
+
+Changed the Dashboard Timeline behavior when clicking on execution bars:
+- **Before**: Same-tab navigation to Execution Detail page
+- **After**: Opens Execution Detail page in a new browser tab
+
+This allows users to explore execution details without losing their place on the Dashboard.
+
+**Files Modified**:
+- `src/frontend/src/components/ReplayTimeline.vue` - Changed `router.push()` to `window.open(route.href, '_blank')`
+
+**Docs Updated**:
+- `docs/memory/feature-flows/dashboard-timeline-view.md`
+- `docs/memory/feature-flows/execution-detail-page.md`
+
+---
+
+### 2026-01-10 13:30:00
+🐛 **Fix: Execution Transcripts Not Showing for Chat-Based Executions**
+
+**Problem**: Execution transcripts were not displaying for some executions (especially MCP and chat-based ones). The frontend's `parseExecutionLog()` expects raw Claude Code stream-json format, but `/api/chat` was returning a simplified `ExecutionLogEntry` format.
+
+**Root Cause**:
+- Agent `/api/task` returns raw Claude Code format → ✅ Works
+- Agent `/api/chat` returns simplified `ExecutionLogEntry[]` format → ❌ Broken
+
+**Solution**: Unified both endpoints to return raw Claude Code stream-json format:
+
+1. **Agent Server Changes** (`docker/base-image/agent_server/`):
+   - `services/claude_code.py`: Updated `execute_claude_code()` to capture raw_messages
+   - `services/gemini_runtime.py`: Updated `execute()` to capture raw_messages
+   - `services/runtime_adapter.py`: Updated abstract interface signature
+   - `routers/chat.py`: Now returns `raw_messages` as `execution_log`
+
+2. **Backend Changes** (`src/backend/routers/chat.py`):
+   - Extracts both `execution_log` (raw) and `execution_log_simplified`
+   - Uses simplified format for activity tracking
+   - Stores raw format in database for UI display
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/claude_code.py`
+- `docker/base-image/agent_server/services/gemini_runtime.py`
+- `docker/base-image/agent_server/services/runtime_adapter.py`
+- `docker/base-image/agent_server/routers/chat.py`
+- `src/backend/routers/chat.py`
+
+**Rebuild Required**: Base image (`./scripts/deploy/build-base-image.sh`) + backend
+
+---
+
+### 2026-01-10 12:00:00
+✨ **Feature: Execution Detail Page**
+
+**Goal**: Provide a dedicated page for viewing comprehensive execution details instead of just a modal.
+
+**Changes**:
+
+1. **New Page** (`ExecutionDetail.vue`):
+   - Route: `/agents/:name/executions/:executionId`
+   - Header with back button, agent name breadcrumb, status badge
+   - Metadata cards: Duration, Cost, Context, Trigger
+   - Timestamps row: Started, Completed, Execution ID
+   - Task Input panel with full message
+   - Error panel (conditional, for failed executions)
+   - Response Summary panel
+   - Full Execution Transcript (reuses parseExecutionLog logic)
+
+2. **Navigation from TasksPanel** (`TasksPanel.vue:207-217`):
+   - New external link icon before the log modal icon
+   - Links to ExecutionDetail page for the execution
+   - Only shown for server-persisted tasks (not local-)
+
+3. **Navigation from Timeline** (`ReplayTimeline.vue:767-785`):
+   - Updated `navigateToExecution()` to open ExecutionDetail page
+   - Previously navigated to Tasks tab with highlight
+   - Now opens dedicated page for better UX
+
+4. **Router** (`router/index.js:41-46`):
+   - Added route: `/agents/:name/executions/:executionId`
+   - Named route: `ExecutionDetail`
+   - Requires authentication
+
+**Files Modified**:
+- `src/frontend/src/views/ExecutionDetail.vue` - New page component
+- `src/frontend/src/router/index.js` - New route
+- `src/frontend/src/components/TasksPanel.vue` - External link icon
+- `src/frontend/src/components/ReplayTimeline.vue` - Updated navigation
+- `docs/memory/feature-flows/execution-detail-page.md` - New feature flow
+
+---
+
+### 2026-01-10 11:15:00
+✨ **Feature: Timeline Click-to-Navigate to Execution Details**
+
+**Goal**: Allow users to click on execution bars in the Dashboard Timeline to view full execution details in the Tasks tab.
+
+**Changes**:
+
+1. **Execution ID Tracking** (`network.js`):
+   - Now extracts `execution_id` from activity details
+   - Available via `details.execution_id` or `details.related_execution_id`
+   - Passed through to Timeline events for navigation
+
+2. **Click Handler** (`ReplayTimeline.vue`):
+   - Added `@click="navigateToExecution(activity)"` on execution bars
+   - Navigates to `/agents/{name}?tab=tasks&execution={id}`
+   - Tooltip updated: "(Click to view details)"
+   - Visual feedback: hover adds white stroke outline
+
+3. **Tab Query Param** (`AgentDetail.vue`):
+   - Now reads `tab` query param on mount
+   - Auto-selects requested tab (tasks, terminal, etc.)
+   - Passes `highlightExecutionId` prop to TasksPanel
+
+4. **Execution Highlighting** (`TasksPanel.vue`):
+   - New prop: `highlightExecutionId`
+   - Highlighted execution has indigo ring border
+   - Auto-expands the highlighted execution
+   - Scrolls to highlighted execution on load
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Extract execution_id from details
+- `src/frontend/src/components/ReplayTimeline.vue` - Click handler, navigation
+- `src/frontend/src/views/AgentDetail.vue` - Tab query param, pass highlight prop
+- `src/frontend/src/components/TasksPanel.vue` - Highlight styling, auto-scroll
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+
+---
+
+### 2026-01-10 10:30:00
+✨ **Feature: Timeline All Executions Display**
+
+**Goal**: Show ALL executions on Dashboard Timeline (scheduled, manual, collaboration) - not just agent-to-agent collaborations.
+
+**Changes**:
+
+1. **Expanded Activity Query** (`network.js`):
+   - Now fetches: `agent_collaboration,schedule_start,schedule_end,chat_start,chat_end`
+   - Filters out regular user chat sessions (keeps automated executions only)
+   - Parses `activity_type`, `triggered_by`, `schedule_name` for color coding
+
+2. **Activity Type Color Coding** (`ReplayTimeline.vue`):
+   | Type | Color | Use Case |
+   |------|-------|----------|
+   | Cyan `#06b6d4` | Agent-to-agent calls | `agent_collaboration` |
+   | Purple `#8b5cf6` | Scheduled tasks | `schedule_start/end` |
+   | Green `#22c55e` | Manual/automated tasks | `chat_start/end` (non-user) |
+   | Red `#ef4444` | Errors | Any failed execution |
+   | Amber `#f59e0b` | In progress | Currently running |
+
+3. **Legend Display**:
+   - Color legend added to Timeline header
+   - Shows: Collaboration (cyan), Scheduled (purple), Task (green)
+   - Hidden on small screens for space
+
+4. **Enhanced Tooltips**:
+   - Now shows execution type prefix: "Agent Call", "Scheduled: {name}", "Manual Task", "Task"
+   - Status indicator: "(Error)", "(In Progress)"
+   - Duration with estimated marker when needed
+
+5. **Arrows Only for Collaborations**:
+   - Non-collaboration events render bars only (no target_agent)
+   - Communication arrows only shown for `agent_collaboration` events
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Expanded query, filter logic, new fields
+- `src/frontend/src/components/ReplayTimeline.vue` - Color coding, legend, tooltips
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+- `docs/requirements/TIMELINE_ALL_EXECUTIONS.md` - Requirements (completed)
+
+**Backend**: No changes needed - API already supports all activity types.
+
+---
+
+### 2026-01-10 09:45:00
+🔧 **Fix: Dashboard Timeline View Improvements**
+
+**Goal**: Address user feedback to improve Timeline view usability and feature parity with Graph view.
+
+**Changes**:
+
+1. **Graph Hidden in Timeline Mode**:
+   - Graph canvas now completely hidden when Timeline is active
+   - Views are mutually exclusive - no overlay issues
+
+2. **Default Zoom to Last 2 Hours**:
+   - On page load, zoom defaults to `timeRangeHours / 2`
+   - For 24h range, zoom is 12x (shows ~2 hours of activity)
+   - Auto-scrolls to "Now" position on mount
+
+3. **Rich Agent Tiles** (expanded from 220px to 280px):
+   - Now matches Graph tile layout exactly:
+   - Row 1: Agent name, runtime badge (Claude/Gemini), system badge, status dot
+   - Row 2: Activity state (Active/Idle/Offline) + Autonomy toggle (AUTO/Manual)
+   - Row 3: GitHub repo or "Local agent"
+   - Row 4: Context progress bar with percentage
+   - Row 5: Execution stats (tasks, success rate, cost, last execution)
+   - Row 6: Resource info (memory, CPU cores)
+   - Row 7: View Details button (or System Dashboard link for system agent)
+
+4. **Autonomy Toggle**:
+   - Added `@toggle-autonomy` event emission
+   - Wired to Dashboard's `handleToggleAutonomy()` handler
+   - Toggle works directly from Timeline view
+
+5. **New Props**:
+   - `nodes` - Full node data for tile information
+   - `timeRangeHours` - For default zoom calculation
+
+**Files Modified**:
+- `src/frontend/src/views/Dashboard.vue` - Hide Graph in Timeline, pass nodes prop
+- `src/frontend/src/components/ReplayTimeline.vue` - Rich tiles, default zoom, autonomy toggle
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+
+---
+
+### 2026-01-10 09:22:00
+✨ **Feature: Dashboard Timeline View**
+
+**Goal**: Transform Dashboard to offer two views - Graph (node-based) and Timeline (waterfall activity view) with live event streaming and rich agent labels.
+
+**Changes**:
+
+1. **Renamed Mode Toggle**: "Live/Replay" → "Graph/Timeline"
+   - Graph view shows the VueFlow node visualization (unchanged)
+   - Timeline view shows waterfall activity timeline
+
+2. **Live Event Streaming in Timeline**:
+   - WebSocket stays connected in Timeline view (previously disconnected)
+   - New events appear at right edge in real-time
+   - "Now" marker updates continuously every second
+   - Auto-scroll to latest events (disables when user scrolls back)
+   - "Jump to Now" button appears when scrolled away
+
+3. **Rich Agent Labels** (expanded from 150px to 220px):
+   - Status dot (green pulsing = active, green = running, gray = stopped)
+   - Agent name with click-to-navigate to AgentDetail
+   - Context percentage with color coding (red ≥80%, yellow ≥60%)
+   - Mini progress bar showing context usage
+   - Execution stats row: tasks count, success rate, cost, last execution time
+
+4. **Improved Layout**:
+   - Row height increased from 32px to 64px for rich labels
+   - Timeline max-height increased from 320px to 400px
+   - Playback controls hidden in live mode (shown only when replaying)
+   - Stopped agents display grayed out with "Stopped" label
+
+5. **State Persistence**:
+   - View preference saved to `trinity-dashboard-view` localStorage key
+
+**Files Modified**:
+- `src/frontend/src/views/Dashboard.vue` - Toggle labels, stats props
+- `src/frontend/src/components/ReplayTimeline.vue` - Rich labels, live mode
+- `src/frontend/src/stores/network.js` - `setViewMode()`, keep WebSocket connected
+
+---
+
 ### 2026-01-09 21:30:00
 ✨ **Feature: System Agent Schedule & Execution Management**
 
