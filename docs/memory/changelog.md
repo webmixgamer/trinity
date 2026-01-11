@@ -1,3 +1,32 @@
+### 2026-01-11 21:44:00
+🐛 **Fix: Autonomy Toggle Not Syncing Schedules to APScheduler**
+
+**Problem**: When autonomy was toggled via the UI or API, schedules were enabled/disabled in the database but APScheduler was never updated. This caused schedules to stop running after autonomy was re-enabled until the backend was restarted.
+
+**Root Cause**: `autonomy.py` was calling `db.set_schedule_enabled()` directly, which only updates the database. It should use `scheduler_service.enable_schedule()` and `scheduler_service.disable_schedule()` which update both the database AND APScheduler.
+
+**Fix**: Updated `services/agent_service/autonomy.py` to use scheduler_service methods:
+```python
+# Before (broken):
+db.set_schedule_enabled(schedule_id, enabled)
+
+# After (fixed):
+if enabled:
+    scheduler_service.enable_schedule(schedule_id)
+else:
+    scheduler_service.disable_schedule(schedule_id)
+```
+
+**Files Modified**:
+- `src/backend/services/agent_service/autonomy.py` - Import scheduler_service, use enable/disable methods
+
+**Testing**:
+1. Disabled autonomy → Jobs removed from APScheduler
+2. Re-enabled autonomy → Jobs re-added to APScheduler
+3. Schedule executed on next cron trigger ✅
+
+---
+
 ### 2026-01-11 21:30:00
 📚 **Docs: Archive Deprecated Feature Flows**
 

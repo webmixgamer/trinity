@@ -269,7 +269,7 @@ async def get_autonomy_status_logic(
     }
 ```
 
-#### Set Status Logic (lines 52-112)
+#### Set Status Logic (lines 52-117)
 ```python
 async def set_autonomy_status_logic(
     agent_name: str,
@@ -299,12 +299,16 @@ async def set_autonomy_status_logic(
     db.set_autonomy_enabled(agent_name, enabled)
 
     # Enable/disable all schedules for this agent
+    # IMPORTANT: Use scheduler_service methods to sync both database AND APScheduler
     schedules = db.list_agent_schedules(agent_name)
     updated_count = 0
     for schedule in schedules:
         schedule_id = schedule.id
         if schedule_id:
-            db.set_schedule_enabled(schedule_id, enabled)
+            if enabled:
+                scheduler_service.enable_schedule(schedule_id)
+            else:
+                scheduler_service.disable_schedule(schedule_id)
             updated_count += 1
 
     logger.info(
@@ -320,6 +324,8 @@ async def set_autonomy_status_logic(
         "message": f"Autonomy {'enabled' if enabled else 'disabled'}. {updated_count} schedule(s) updated."
     }
 ```
+
+> **Note**: The service uses `scheduler_service.enable_schedule()` and `scheduler_service.disable_schedule()` (not `db.set_schedule_enabled()` directly) to ensure schedules are synced to APScheduler immediately. This was fixed in 2026-01-11.
 
 #### Bulk Status Logic (lines 115-138)
 ```python
