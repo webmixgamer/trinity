@@ -309,15 +309,15 @@
                 :x2="arrow.x"
                 :y2="arrow.y2End"
                 :stroke="arrow.hasError ? '#ef4444' : (arrow.active ? '#06b6d4' : '#67e8f9')"
-                :stroke-width="arrow.active ? 2.5 : 1.5"
-                :opacity="arrow.active || arrow.hasError ? 1 : 0.7"
+                :stroke-width="arrow.active ? 1.5 : 1"
+                :opacity="arrow.active || arrow.hasError ? 0.8 : 0.5"
                 class="transition-all duration-300"
               />
-              <!-- Arrowhead (larger, at end of arrow) -->
+              <!-- Arrowhead (subtle, at end of arrow) -->
               <polygon
                 :points="getArrowHead(arrow)"
                 :fill="arrow.hasError ? '#ef4444' : (arrow.active ? '#06b6d4' : '#67e8f9')"
-                :opacity="arrow.active || arrow.hasError ? 1 : 0.7"
+                :opacity="arrow.active || arrow.hasError ? 0.8 : 0.5"
               />
             </g>
 
@@ -846,7 +846,7 @@ function formatGithubRepo(repo) {
 }
 
 function getArrowHead(arrow) {
-  const size = 6  // Larger arrowhead
+  const size = 4  // Subtle arrowhead
   const x = arrow.x
   const y = arrow.y2End  // Use the end position (outside box)
 

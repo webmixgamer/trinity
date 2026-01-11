@@ -74,12 +74,12 @@
 
             <!-- Info Tab Content -->
             <div v-if="activeTab === 'info'" class="p-6">
-              <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @use-case-click="handleUseCaseClick" />
+              <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @item-click="handleInfoItemClick" />
             </div>
 
             <!-- Tasks Tab Content -->
             <div v-if="activeTab === 'tasks'" class="p-6">
-              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" />
+              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" />
             </div>
 
             <!-- Metrics Tab Content -->
@@ -255,6 +255,7 @@ const loading = ref(true)
 const error = ref('')
 const activeTab = ref('info')
 const showResourceModal = ref(false)
+const taskPrefillMessage = ref('')
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -562,14 +563,16 @@ onUnmounted(() => {
   stopAllPolling()
 })
 
-// Handle use case click from Info tab - switch to terminal tab
-const handleUseCaseClick = (text) => {
-  activeTab.value = 'terminal'
-  // Focus the terminal after switching tabs
+// Handle item click from Info tab - switch to Tasks tab with prefilled message
+const handleInfoItemClick = ({ type, text }) => {
+  // Set the prefill message and switch to Tasks tab
+  taskPrefillMessage.value = text
+  activeTab.value = 'tasks'
+  // Clear the prefill after a short delay so it can be used again
   nextTick(() => {
-    if (terminalRef.value?.focus) {
-      terminalRef.value.focus()
-    }
+    setTimeout(() => {
+      taskPrefillMessage.value = ''
+    }, 100)
   })
 }
 </script>

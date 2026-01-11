@@ -430,6 +430,10 @@ const props = defineProps({
   highlightExecutionId: {
     type: String,
     default: null
+  },
+  initialMessage: {
+    type: String,
+    default: ''
   }
 })
 
@@ -873,6 +877,14 @@ watch(() => props.agentName, () => {
   loadAllData()
   startPolling()
 })
+
+// Watch for initial message changes (from Info tab clicks)
+// immediate: true ensures it fires on mount when component is conditionally rendered
+watch(() => props.initialMessage, (newMessage) => {
+  if (newMessage) {
+    newTaskMessage.value = newMessage
+  }
+}, { immediate: true })
 
 onMounted(() => {
   loadAllData()
