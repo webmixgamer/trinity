@@ -324,6 +324,21 @@ const stopRefresh = () => {
   }
 }
 
+// Reload when agent name changes (navigating between agents)
+watch(() => props.agentName, (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    // Reset state for new agent
+    metricsData.value = null
+    stopRefresh()
+    if (props.agentStatus === 'running') {
+      loadMetrics()
+      startRefresh()
+    } else {
+      loading.value = false
+    }
+  }
+})
+
 // Reload when agent status changes to running
 watch(() => props.agentStatus, (newStatus) => {
   if (newStatus === 'running') {

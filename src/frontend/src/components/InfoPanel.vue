@@ -353,6 +353,15 @@ const handleSubAgentClick = (subAgent) => {
   handleItemClick('sub-agent', prompt)
 }
 
+// Reload when agent name changes (navigating between agents)
+watch(() => props.agentName, (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    // Reset state and reload for new agent
+    templateInfo.value = null
+    loadTemplateInfo()
+  }
+})
+
 // Reload when agent status changes to running (to get full info)
 watch(() => props.agentStatus, (newStatus) => {
   if (newStatus === 'running') {

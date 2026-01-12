@@ -34,7 +34,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import { useAgentLogs } from '../composables/useAgentLogs'
 
@@ -65,6 +65,13 @@ const {
   refreshLogs,
   handleLogsScroll
 } = useAgentLogs(agent, agentsStore)
+
+// Reload when agent name changes (navigating between agents)
+watch(() => props.agentName, (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    refreshLogs()
+  }
+})
 
 // Load logs on mount
 onMounted(() => {
