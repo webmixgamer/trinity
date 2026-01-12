@@ -20,14 +20,18 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
 - **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
 - **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
+- **Package Persistence** — Installed packages survive container recreation via `~/.trinity/setup.sh`
+- **Base Image Versioning** — Track agent versions and detect when updates are available
 
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
-- **MCP Integration** — 16 tools for external agent orchestration via Model Context Protocol
+- **MCP Integration** — 21 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
 - **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
+- **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
+- **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
 ### Operations
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
@@ -77,20 +81,20 @@ cp .env.example .env
 
 On first launch, Trinity will guide you through initial setup:
 
-1. Open http://localhost:3000 — you'll be redirected to the setup wizard
+1. Open http://localhost — you'll be redirected to the setup wizard
 2. Set your **admin password** (minimum 8 characters)
 3. Log in with username `admin` and your new password
 4. Go to **Settings** → **API Keys** to configure your Anthropic API key
 
 ### Access
 
-- **Web UI**: http://localhost:3000
+- **Web UI**: http://localhost
 - **API Docs**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
 
 ### Create Your First Agent
 
-1. Open http://localhost:3000
+1. Open http://localhost
 2. Click **Create Agent**
 3. Enter a name and select a template (or leave blank for a basic agent)
 4. Click **Create**
@@ -104,7 +108,7 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 │                       Trinity Platform                           │
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server         │
-│     Port 3000       │     Port 8000       │    Port 8080        │
+│      Port 80        │     Port 8000       │    Port 8080        │
 ├─────────────────────────────────────────────────────────────────┤
 │  Redis (secrets)    │  SQLite (data)      │  Vector (logs)      │
 │   Internal only     │   /data volume      │    Port 8686        │
@@ -125,7 +129,7 @@ trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   └── mcp-server/       # Trinity MCP server (16 tools)
+│   └── mcp-server/       # Trinity MCP server (21 tools)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
 │   ├── backend/          # Backend Dockerfile
@@ -221,6 +225,7 @@ Trinity includes an MCP server for external orchestration of agents:
 |------|-------------|
 | `list_agents` | List all agents with status |
 | `get_agent` | Get detailed agent information |
+| `get_agent_info` | Get agent template metadata (capabilities, commands, etc.) |
 | `create_agent` | Create a new agent from template |
 | `start_agent` | Start a stopped agent |
 | `stop_agent` | Stop a running agent |
