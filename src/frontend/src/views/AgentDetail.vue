@@ -34,6 +34,7 @@
             :memory-history="memoryHistory"
             :resource-limits="resourceLimits"
             :has-git-sync="hasGitSync"
+            :git-status="gitStatus"
             :git-loading="gitLoading"
             :git-syncing="gitSyncing"
             :git-pulling="gitPulling"
