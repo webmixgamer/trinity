@@ -355,22 +355,19 @@ shared_folders:
 
 # === CUSTOM METRICS ===
 # Agent-specific KPIs displayed in Trinity UI
+# See "Custom Metrics" section for complete documentation
 metrics:
   - name: metric_name             # Required: internal identifier (snake_case)
     type: counter                 # Required: counter|gauge|percentage|status|duration|bytes
     label: "Display Label"        # Required: shown in UI
     description: "What this tracks"  # Optional: tooltip
-    icon: "chart"                 # Optional: heroicons name
-    unit: "items"                 # Optional: unit label
-    warning_threshold: 80         # Optional (percentage): yellow if below
-    critical_threshold: 50        # Optional (percentage): red if below
+    unit: "items"                 # Optional: unit label (gauge type)
+    warning_threshold: 80         # Optional (percentage type): yellow if below
+    critical_threshold: 50        # Optional (percentage type): red if below
     values:                       # Required for status type only
-      - value: "active"
-        color: "green"
-        label: "Active"
-      - value: "idle"
-        color: "gray"
-        label: "Idle"
+      - value: "active"           # Value written to metrics.json
+        color: "green"            # green|red|yellow|gray|blue|orange
+        label: "Active"           # Display label in UI
 ```
 
 ---
@@ -565,33 +562,165 @@ cat /home/developer/shared-in/agent-a/report.txt
 
 ## Custom Metrics
 
-Agents can define custom metrics displayed in the Trinity UI.
+Agents can define custom KPIs displayed in the Trinity UI Metrics tab. This enables domain-specific observability beyond generic tool call counts.
 
 ### Metric Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `counter` | Monotonically increasing | Posts published: 42 |
-| `gauge` | Value that can go up/down | Active tasks: 3 |
-| `percentage` | 0-100 with progress bar | Goal progress: 75% |
-| `status` | Enum/state value | Status: Active |
-| `duration` | Time in seconds | Uptime: 2h 15m |
-| `bytes` | Size in bytes | Memory: 1.2 MB |
+| Type | Description | Display | Example |
+|------|-------------|---------|---------|
+| `counter` | Monotonically increasing | Large number | "42 Messages" |
+| `gauge` | Value that can go up/down | Number + optional unit | "12.5 Avg Words" |
+| `percentage` | 0-100 with progress bar | Colored bar | "75% Success" |
+| `status` | Enum/state value | Colored badge | "Active", "Idle" |
+| `duration` | Time in seconds | Formatted time | "2h 15m" |
+| `bytes` | Size in bytes | Formatted size | "1.2 MB" |
 
 ### How It Works
 
 1. Define metrics in `template.yaml` under `metrics:`
-2. Agent writes values to `workspace/metrics.json`
-3. Trinity UI displays metrics in the Metrics tab
+2. Agent writes values to `metrics.json` in workspace
+3. Trinity UI displays metrics in the Metrics tab (auto-refresh every 30 seconds)
+4. **Agent must be running** for metrics to be visible
+
+### File Locations
+
+The agent server looks for files in these locations:
+- **Definitions**: `/home/developer/template.yaml` or `/home/developer/workspace/template.yaml`
+- **Values**: `/home/developer/metrics.json` or `/home/developer/workspace/metrics.json`
+
+### template.yaml Metric Definitions
+
+```yaml
+metrics:
+  # Counter - monotonically increasing value
+  - name: messages_processed        # Internal identifier (snake_case)
+    type: counter
+    label: "Messages"               # Display label
+    description: "Total messages"   # Tooltip text
+
+  # Gauge - value that goes up and down
+  - name: avg_response_time
+    type: gauge
+    label: "Avg Response"
+    unit: "ms"                      # Optional unit label
+
+  # Percentage - with color thresholds
+  - name: success_rate
+    type: percentage
+    label: "Success Rate"
+    warning_threshold: 80           # Yellow if below 80%
+    critical_threshold: 50          # Red if below 50%
+
+  # Status - enum with colored badges
+  - name: current_state
+    type: status
+    label: "State"
+    values:                         # Required for status type
+      - value: "active"             # The value in metrics.json
+        color: "green"              # green, red, yellow, gray, blue, orange
+        label: "Active"             # Display label
+      - value: "idle"
+        color: "gray"
+        label: "Idle"
+      - value: "error"
+        color: "red"
+        label: "Error"
+
+  # Duration - time in seconds
+  - name: last_cycle_duration
+    type: duration
+    label: "Last Cycle"
+    description: "Duration of last processing cycle"
+
+  # Bytes - size in bytes
+  - name: cache_size
+    type: bytes
+    label: "Cache Size"
+```
 
 ### metrics.json Format
 
+Your agent writes current values to `metrics.json`:
+
 ```json
 {
-  "posts_published": 42,
-  "goal_progress": 75,
-  "current_status": "active"
+  "messages_processed": 42,
+  "avg_response_time": 125.5,
+  "success_rate": 87.5,
+  "current_state": "active",
+  "last_cycle_duration": 120,
+  "cache_size": 1048576,
+  "last_updated": "2025-12-10T10:30:00Z"
 }
+```
+
+**Notes:**
+- Keys must match the `name` field in template.yaml
+- `last_updated` is optional but recommended (shown as "Updated X ago" in UI)
+- Values are read when the Metrics tab is viewed or refreshed
+
+### Complete Example
+
+**template.yaml:**
+```yaml
+name: research-agent
+display_name: Research Agent
+description: Autonomous researcher
+
+resources:
+  cpu: "1"
+  memory: "2g"
+
+metrics:
+  - name: research_cycles
+    type: counter
+    label: "Research Cycles"
+    description: "Total research cycles completed"
+
+  - name: findings_discovered
+    type: counter
+    label: "Findings"
+    description: "Total findings discovered"
+
+  - name: research_status
+    type: status
+    label: "Status"
+    values:
+      - value: "active"
+        color: "green"
+        label: "Researching"
+      - value: "idle"
+        color: "gray"
+        label: "Idle"
+
+  - name: last_cycle_duration
+    type: duration
+    label: "Last Cycle"
+```
+
+**Updating metrics in your agent:**
+```bash
+# In a script or via Claude Code
+cat > /home/developer/metrics.json << 'EOF'
+{
+  "research_cycles": 5,
+  "findings_discovered": 23,
+  "research_status": "idle",
+  "last_cycle_duration": 180,
+  "last_updated": "2025-12-10T10:30:00Z"
+}
+EOF
+```
+
+**In CLAUDE.md instructions:**
+```markdown
+## Metrics Tracking
+
+After each research cycle, update metrics.json:
+- Increment `research_cycles`
+- Update `findings_discovered` count
+- Set `research_status` to "active" during work, "idle" when done
+- Record `last_cycle_duration` in seconds
 ```
 
 ---
@@ -878,6 +1007,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |
 | 2026-01-12 | Updated .gitignore: added instance-specific files (.npm, .ssh, .trinity, .cache, .claude.json, .sudo_as_admin_successful); clarified what to commit vs exclude from .claude/ directory |
 | 2026-01-12 | Added Package Persistence section with setup.sh convention for surviving container updates |
 | 2026-01-12 | Simplified guide: removed Platform Injection, Testing Locally, Troubleshooting, Registering with Trinity, Multi-Agent Systems sections; Made memory/ optional; Added docs/ best practice |

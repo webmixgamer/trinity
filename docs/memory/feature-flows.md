@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-12)**: Agent Dashboard feature:
+> - **agent-dashboard.md**: New feature flow for agent-defined dashboard system replacing Metrics tab
+> - Dashboard tab renders `DashboardPanel.vue` component with 11 widget types
+> - Agent defines `dashboard.yaml` in `~/` or `~/workspace/` with declarative layout
+> - Backend: `/api/agent-dashboard/{name}` (routers/agent_dashboard.py) -> `services/agent_service/dashboard.py`
+> - Agent Server: `/api/dashboard` (agent_server/routers/dashboard.py) reads and validates YAML
+> - Widget types: metric, status, progress, text, markdown, table, list, link, image, divider, spacer
+> - Auto-refresh based on `config.refresh` (default 30s, min 5s)
+
 > **Updated (2026-01-11)**: Execution ID Tracking System:
 > - **execution-queue.md**: Documented two ID systems - Queue ID (UUID, Redis, 10-min TTL) vs Database ID (`token_urlsafe(16)`, SQLite, permanent)
 > - **execution-detail-page.md**: Clarified navigation uses Database Execution ID from `task_execution_id` in chat response
@@ -250,6 +259,7 @@
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
+| **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
 
 ---
 

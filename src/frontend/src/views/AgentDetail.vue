@@ -84,9 +84,9 @@
               <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" />
             </div>
 
-            <!-- Metrics Tab Content -->
-            <div v-if="activeTab === 'metrics'" class="p-6">
-              <MetricsPanel :agent-name="agent.name" :agent-status="agent.status" />
+            <!-- Dashboard Tab Content -->
+            <div v-if="activeTab === 'dashboard'" class="p-6">
+              <DashboardPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
             <!-- Terminal Tab Content -->
@@ -223,7 +223,7 @@ import SchedulesPanel from '../components/SchedulesPanel.vue'
 import TasksPanel from '../components/TasksPanel.vue'
 import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
-import MetricsPanel from '../components/MetricsPanel.vue'
+import DashboardPanel from '../components/DashboardPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 
@@ -414,7 +414,7 @@ const visibleTabs = computed(() => {
   const tabs = [
     { id: 'info', label: 'Info' },
     { id: 'tasks', label: 'Tasks' },
-    { id: 'metrics', label: 'Metrics' },
+    { id: 'dashboard', label: 'Dashboard' },
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
     { id: 'credentials', label: 'Credentials' }

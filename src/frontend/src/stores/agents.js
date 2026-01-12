@@ -489,6 +489,15 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
+    // Agent Dashboard Actions
+    async getAgentDashboard(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agent-dashboard/${name}`, {
+        headers: authStore.authHeader
+      })
+      return response.data
+    },
+
     updateAgentStatus(name, status) {
       const agent = this.agents.find(a => a.name === name)
       if (agent) agent.status = status

@@ -8,6 +8,7 @@ from .git import router as git_router
 from .files import router as files_router
 from .trinity import router as trinity_router
 from .info import router as info_router
+from .dashboard import router as dashboard_router
 
 __all__ = [
     "chat_router",
@@ -17,4 +18,5 @@ __all__ = [
     "files_router",
     "trinity_router",
     "info_router",
+    "dashboard_router",
 ]
