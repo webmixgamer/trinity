@@ -81,7 +81,7 @@
 
             <!-- Tasks Tab Content -->
             <div v-if="activeTab === 'tasks'" class="p-6">
-              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" />
+              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" @create-schedule="handleCreateSchedule" />
             </div>
 
             <!-- Dashboard Tab Content -->
@@ -145,7 +145,7 @@
 
             <!-- Schedules Tab Content -->
             <div v-if="activeTab === 'schedules'" class="p-6">
-              <SchedulesPanel :agent-name="agent.name" />
+              <SchedulesPanel :agent-name="agent.name" :initial-message="schedulePrefillMessage" />
             </div>
 
             <!-- Git Tab Content -->
@@ -258,6 +258,7 @@ const error = ref('')
 const activeTab = ref('info')
 const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
+const schedulePrefillMessage = ref('')
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -575,6 +576,19 @@ const handleInfoItemClick = ({ type, text }) => {
   nextTick(() => {
     setTimeout(() => {
       taskPrefillMessage.value = ''
+    }, 100)
+  })
+}
+
+// Handle create schedule from Tasks tab - switch to Schedules tab with prefilled message
+const handleCreateSchedule = (message) => {
+  // Set the prefill message and switch to Schedules tab
+  schedulePrefillMessage.value = message
+  activeTab.value = 'schedules'
+  // Clear the prefill after a short delay so it can be used again
+  nextTick(() => {
+    setTimeout(() => {
+      schedulePrefillMessage.value = ''
     }, 100)
   })
 }

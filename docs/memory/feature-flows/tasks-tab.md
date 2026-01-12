@@ -40,12 +40,25 @@ As an agent operator, I want to view and trigger headless task executions from a
 - **Header (lines 4-47)**: Title, queue status indicator, refresh button
 - **New Task Input (lines 49-78)**: Textarea for task message, Run button
 - **Summary Stats (lines 81-100)**: Total tasks, success rate, total cost, avg duration
-- **Task History (lines 102-235)**: Scrollable list of all tasks with expand/collapse
-- **Queue Management (lines 237-256)**: Force release and clear queue buttons
+- **Task History (lines 102-282)**: Scrollable list of all tasks with expand/collapse
+  - **Action Buttons per Task** (lines 240-277):
+    - Re-run (lines 240-250): Repeat the same task
+    - **Make Repeatable** (lines 251-261): Create schedule from task message (calendar icon)
+    - Expand/Collapse (lines 262-277): Show/hide task details
+- **Queue Management (lines 284-303)**: Force release and clear queue buttons
+
+### Events Emitted
+
+**TasksPanel.vue:451** - Component events:
+```javascript
+const emit = defineEmits(['create-schedule'])
+```
+
+- `create-schedule`: Emitted when user clicks "Make Repeatable" button, passes task message
 
 ### State Management
 
-**TasksPanel.vue:264-289** - Local reactive state:
+**TasksPanel.vue:455-469** - Local reactive state:
 ```javascript
 const props = defineProps({
   agentName: { type: String, required: true },
@@ -128,6 +141,16 @@ async function runNewTask() {
   loadQueueStatus()
 }
 ```
+
+**Make Repeatable (lines 654-657)**:
+```javascript
+// Create schedule from task (make repeatable)
+function makeRepeatable(task) {
+  emit('create-schedule', task.message)
+}
+```
+
+This emits the `create-schedule` event with the task message, which is handled by AgentDetail.vue to switch to the Schedules tab with the message pre-filled.
 
 **Queue Management (lines 448-475)**:
 ```javascript
@@ -550,7 +573,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 - **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation
 - **Upstream**: [execution-queue.md](execution-queue.md) - Queue system (bypassed by tasks)
-- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format)
+- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages
 - **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
 
@@ -560,6 +583,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Added "Make Repeatable" feature - calendar icon button to create schedule from task, emits `create-schedule` event to parent |
 | 2025-01-02 | Added note about log format standardization - all execution types now use `/api/task` for raw Claude Code format |
 | 2025-12-31 | Initial documentation - execution log viewer added |
 
@@ -597,12 +621,20 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
    - Click re-run icon on any completed task
    - **Expected**: Task message populates input and submits automatically
 
-5. **Queue Status (with /chat endpoint)**
+5. **Make Repeatable (Create Schedule from Task)**
+   - Find a completed task in the history
+   - Click the calendar icon ("Create schedule from this task")
+   - **Expected**:
+     - UI switches to Schedules tab automatically
+     - Create schedule form opens with message field pre-filled with task message
+     - User can add schedule name, cron expression, and click Create
+
+6. **Queue Status (with /chat endpoint)**
    - Open terminal tab and start a long-running task
    - Switch to Tasks tab
    - **Expected**: Queue status shows "Busy" indicator
 
-6. **Force Release Queue**
+7. **Force Release Queue**
    - When queue shows "Busy"
    - Click "Force Release Queue"
    - **Expected**: Queue indicator returns to "Idle"

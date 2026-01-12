@@ -248,6 +248,17 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
+              <!-- Make Repeatable Button -->
+              <button
+                v-if="task.status !== 'running'"
+                @click="makeRepeatable(task)"
+                class="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded transition-colors"
+                title="Create schedule from this task"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
               <!-- Expand/Collapse Button -->
               <button
                 @click="toggleTaskExpand(task.id)"
@@ -436,6 +447,8 @@ const props = defineProps({
     default: ''
   }
 })
+
+const emit = defineEmits(['create-schedule'])
 
 const authStore = useAuthStore()
 
@@ -636,6 +649,11 @@ function rerunTask(task) {
   newTaskMessage.value = task.message
   // Scroll to top and focus (optional UX improvement)
   runNewTask()
+}
+
+// Create schedule from task (make repeatable)
+function makeRepeatable(task) {
+  emit('create-schedule', task.message)
 }
 
 // Copy task message to clipboard
