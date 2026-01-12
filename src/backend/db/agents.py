@@ -459,3 +459,71 @@ class AgentOperations:
             """, (1 if enabled else 0, agent_name))
             conn.commit()
             return cursor.rowcount > 0
+
+    # =========================================================================
+    # Batch Metadata Query (N+1 Fix)
+    # =========================================================================
+
+    def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
+        """
+        Fetch all agent metadata in a SINGLE query.
+
+        This eliminates the N+1 query problem by joining all related tables
+        and returning a dict keyed by agent_name.
+
+        Args:
+            user_email: Current user's email for checking share access
+
+        Returns:
+            Dict mapping agent_name to metadata dict containing:
+            - owner_id, owner_username, owner_email
+            - is_system, autonomy_enabled, use_platform_api_key
+            - memory_limit, cpu_limit
+            - github_repo, github_branch
+            - is_shared_with_user (bool)
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Single query that joins all needed tables
+            cursor.execute("""
+                SELECT
+                    ao.agent_name,
+                    ao.owner_id,
+                    u.username as owner_username,
+                    u.email as owner_email,
+                    COALESCE(ao.is_system, 0) as is_system,
+                    COALESCE(ao.autonomy_enabled, 0) as autonomy_enabled,
+                    COALESCE(ao.use_platform_api_key, 1) as use_platform_api_key,
+                    ao.memory_limit,
+                    ao.cpu_limit,
+                    gc.github_repo,
+                    gc.working_branch as github_branch,
+                    CASE
+                        WHEN s.id IS NOT NULL THEN 1
+                        ELSE 0
+                    END as is_shared_with_user
+                FROM agent_ownership ao
+                LEFT JOIN users u ON ao.owner_id = u.id
+                LEFT JOIN agent_git_config gc ON gc.agent_name = ao.agent_name
+                LEFT JOIN agent_sharing s ON s.agent_name = ao.agent_name
+                    AND LOWER(s.shared_with_email) = LOWER(?)
+            """, (user_email or '',))
+
+            result = {}
+            for row in cursor.fetchall():
+                result[row["agent_name"]] = {
+                    "owner_id": row["owner_id"],
+                    "owner_username": row["owner_username"],
+                    "owner_email": row["owner_email"],
+                    "is_system": bool(row["is_system"]),
+                    "autonomy_enabled": bool(row["autonomy_enabled"]),
+                    "use_platform_api_key": bool(row["use_platform_api_key"]),
+                    "memory_limit": row["memory_limit"],
+                    "cpu_limit": row["cpu_limit"],
+                    "github_repo": row["github_repo"],
+                    "github_branch": row["github_branch"],
+                    "is_shared_with_user": bool(row["is_shared_with_user"]),
+                }
+
+            return result

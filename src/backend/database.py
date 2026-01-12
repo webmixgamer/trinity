@@ -843,6 +843,13 @@ class DatabaseManager:
         return self._agent_ops.get_all_agents_autonomy_status()
 
     # =========================================================================
+    # Batch Metadata Query (N+1 Fix) - delegated to db/agents.py
+    # =========================================================================
+
+    def get_all_agent_metadata(self, user_email: str = None):
+        return self._agent_ops.get_all_agent_metadata(user_email)
+
+    # =========================================================================
     # Agent Resource Limits (delegated to db/agents.py)
     # =========================================================================
 

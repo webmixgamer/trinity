@@ -1,8 +1,8 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: ✅ Implemented (2025-12-07, Enhanced 2026-01-09)
-> **Tested**: ✅ All features verified working
-> **Last Updated**: 2026-01-09
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09)
+> **Tested**: All features verified working
+> **Last Updated**: 2026-01-12 - Database Batch Queries (N+1 Fix): Agent list loading now uses `db.get_all_agent_metadata()` batch query - reduced from 8-10 DB queries per agent to 2 total. Combined with Docker stats optimization for <50ms response time.
 
 ## Overview
 
@@ -485,6 +485,10 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
 User loads /agents page
     └── onMounted() [Agents.vue:269-272]
         ├── agentsStore.fetchAgents() → GET /api/agents
+        │   └── Backend: get_accessible_agents() [helpers.py:83-153]
+        │       ├── list_all_agents_fast() - Docker labels only (no stats)
+        │       └── db.get_all_agent_metadata() - Single JOIN query for all metadata
+        │           └── Returns: owner, is_system, autonomy, limits, git config, share access
         └── agentsStore.startContextPolling() [agents.js:578-594]
             ├── fetchContextStats() → GET /api/agents/context-stats
             ├── fetchExecutionStats() → GET /api/agents/execution-stats
@@ -496,6 +500,20 @@ User toggles autonomy switch
             └── PUT /api/agents/{name}/autonomy
                 └── Updates agent.autonomy_enabled locally
 ```
+
+### Performance (2026-01-12)
+
+The `/api/agents` endpoint benefits from two optimizations:
+
+1. **Docker Stats Optimization**: `list_all_agents_fast()` (docker_service.py:101-159) extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.stats()`).
+
+2. **Database Batch Queries (N+1 Fix)**: `db.get_all_agent_metadata()` (db/agents.py:467-529) fetches all metadata in a SINGLE JOIN query instead of 8-10 queries per agent.
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Docker API calls | Full inspect per agent | Labels only |
+| Database queries | 160-200 (20 agents) | 2 total |
+| Response time | ~2-3 seconds | <50ms |
 
 ### Files Modified
 
@@ -560,3 +578,15 @@ User toggles autonomy switch
   - Lines 138-141: GET /context-stats endpoint
   - Lines 144-165: GET /execution-stats endpoint
   - Lines 775-790: PUT /{name}/autonomy endpoint
+- **Backend helpers**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/helpers.py`
+  - Lines 83-153: `get_accessible_agents()` with batch query optimization
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added Performance section documenting `get_accessible_agents()` optimization. Now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) for single JOIN query. Database queries reduced from 160-200 to 2 per request. Combined with Docker stats optimization for <50ms response. Updated Data Flow diagram. |
+| 2026-01-09 | **Dashboard Parity**: Major UI overhaul - grid layout, autonomy toggle, execution stats row, context bar always visible. Added `fetchExecutionStats()` and `toggleAutonomy()` to agents.js store. |
+| 2025-12-07 | Initial implementation with sorting, activity state indicators, context progress bars. |

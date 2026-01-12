@@ -87,42 +87,66 @@ def get_accessible_agents(current_user: User) -> list:
     Helper function for use by other routers that need agent access control.
     Returns list of agent dictionaries with ownership metadata.
 
-    Uses list_all_agents_fast() for performance - avoids slow Docker API calls.
+    OPTIMIZED: Uses batch query to fetch all metadata in 2 queries total
+    instead of 8-10 queries per agent (N+1 problem fix).
     """
+    # Fast Docker call (no stats) - avoids slow Docker API calls
     all_agents = list_all_agents_fast()
+
+    # Single query for user info
     user_data = db.get_user_by_username(current_user.username)
-    is_admin = user_data and user_data["role"] == "admin"
+    if not user_data:
+        return []
+
+    is_admin = user_data["role"] == "admin"
+    user_email = user_data.get("email")
+
+    # SINGLE batch query for ALL agent metadata (N+1 fix)
+    all_metadata = db.get_all_agent_metadata(user_email)
 
     accessible_agents = []
     for agent in all_agents:
         agent_dict = agent.dict() if hasattr(agent, 'dict') else dict(agent)
         agent_name = agent_dict.get("name")
 
-        if not db.can_user_access_agent(current_user.username, agent_name):
+        # Get metadata from batch result (not individual queries)
+        metadata = all_metadata.get(agent_name)
+
+        # Handle orphaned agents (exist in Docker but not in DB)
+        if not metadata:
+            # Only admin can see orphaned agents
+            if not is_admin:
+                continue
+            # Show with minimal info
+            agent_dict["owner"] = None
+            agent_dict["is_owner"] = False
+            agent_dict["is_shared"] = False
+            agent_dict["is_system"] = False
+            agent_dict["autonomy_enabled"] = False
+            agent_dict["github_repo"] = None
+            agent_dict["memory_limit"] = None
+            agent_dict["cpu_limit"] = None
+            accessible_agents.append(agent_dict)
             continue
 
-        owner = db.get_agent_owner(agent_name)
-        agent_dict["owner"] = owner["owner_username"] if owner else None
-        agent_dict["is_owner"] = owner and owner["owner_username"] == current_user.username
-        agent_dict["is_shared"] = not agent_dict["is_owner"] and not is_admin and \
-                                   db.is_agent_shared_with_user(agent_name, current_user.username)
-        # Add is_system flag for system agents (deletion-protected)
-        agent_dict["is_system"] = owner.get("is_system", False) if owner else False
+        # Access control check using batch data
+        owner_username = metadata.get("owner_username")
+        is_owner = owner_username == current_user.username
+        is_shared = bool(metadata.get("is_shared_with_user"))
 
-        # Add autonomy_enabled flag for autonomous scheduled operations
-        agent_dict["autonomy_enabled"] = db.get_autonomy_enabled(agent_name)
+        # Skip if no access (not admin, not owner, not shared)
+        if not (is_admin or is_owner or is_shared):
+            continue
 
-        # Add GitHub repo info if agent was created from GitHub template
-        git_config = db.get_git_config(agent_name)
-        if git_config:
-            agent_dict["github_repo"] = git_config.github_repo
-        else:
-            agent_dict["github_repo"] = None
-
-        # Add resource limits for dashboard display
-        resource_limits = db.get_resource_limits(agent_name)
-        agent_dict["memory_limit"] = resource_limits.get("memory_limit") if resource_limits else None
-        agent_dict["cpu_limit"] = resource_limits.get("cpu_limit") if resource_limits else None
+        # Populate agent dict from batch metadata
+        agent_dict["owner"] = owner_username
+        agent_dict["is_owner"] = is_owner
+        agent_dict["is_shared"] = is_shared and not is_owner and not is_admin
+        agent_dict["is_system"] = metadata.get("is_system", False)
+        agent_dict["autonomy_enabled"] = metadata.get("autonomy_enabled", False)
+        agent_dict["github_repo"] = metadata.get("github_repo")
+        agent_dict["memory_limit"] = metadata.get("memory_limit")
+        agent_dict["cpu_limit"] = metadata.get("cpu_limit")
 
         accessible_agents.append(agent_dict)
 

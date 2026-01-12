@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2025-12-31 - Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
+> **Updated**: 2026-01-12 - Database Batch Queries (N+1 Fix): `get_accessible_agents()` now uses `db.get_all_agent_metadata()` batch query - reduced from 8-10 queries per agent to 2 total queries. Combined with Docker stats optimization for <50ms response time.
+>
+> **Previous (2025-12-31)**: Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
 
 ## Overview
 Complete lifecycle management for Trinity agents: create, start, stop, and delete Docker containers with credential injection, network isolation, Trinity meta-prompt injection, and WebSocket broadcasts.
@@ -119,7 +121,7 @@ The agent router uses a **thin router + service layer** architecture:
 
 | Module | Lines | Key Functions |
 |--------|-------|---------------|
-| `helpers.py` | ~200 | `get_accessible_agents()`, `get_next_version_name()`, `check_shared_folder_mounts_match()` |
+| `helpers.py` | ~200 | `get_accessible_agents()` (uses batch query), `get_next_version_name()`, `check_shared_folder_mounts_match()` |
 | `lifecycle.py` | 221 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` |
 | `crud.py` | 507 | `create_agent_internal()` |
 | `terminal.py` | 342 | `TerminalSessionManager` class |
@@ -371,6 +373,50 @@ else:
 ---
 
 ## Database Layer (`src/backend/db/agents.py`)
+
+### Batch Metadata Query (N+1 Fix) - Added 2026-01-12
+
+**Problem**: `get_accessible_agents()` was making 8-10 database queries PER agent, totaling 160-200 queries for 20 agents.
+
+**Solution**: `get_all_agent_metadata()` (lines 467-529) fetches ALL agent metadata in a SINGLE JOIN query:
+
+```python
+def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
+    """
+    Single query that joins all related tables:
+    - agent_ownership (owner, is_system, autonomy_enabled, resource limits)
+    - users (owner username/email)
+    - agent_git_config (GitHub repo/branch)
+    - agent_sharing (share access check)
+
+    Returns dict keyed by agent_name.
+    """
+```
+
+**Usage in `get_accessible_agents()` (helpers.py:83-153)**:
+```python
+# Before (N+1 problem):
+for agent in all_agents:
+    can_access = db.can_user_access_agent(...)     # 2-4 queries
+    owner = db.get_agent_owner(...)                 # 1 query
+    is_shared = db.is_agent_shared_with_user(...)   # 2 queries
+    autonomy = db.get_autonomy_enabled(...)         # 1 query
+    git_config = db.get_git_config(...)             # 1 query
+    limits = db.get_resource_limits(...)            # 1 query
+
+# After (batch query):
+all_metadata = db.get_all_agent_metadata(user_email)  # 1 query for ALL
+for agent in all_agents:
+    metadata = all_metadata.get(agent_name)           # dict lookup
+```
+
+**Result**: Database queries reduced from 160-200 to 2 per `/api/agents` request.
+
+**Exposed on DatabaseManager** (`database.py:845-850`):
+```python
+def get_all_agent_metadata(self, user_email: str = None):
+    return self._agent_ops.get_all_agent_metadata(user_email)
+```
 
 ### Tables
 
@@ -649,6 +695,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added `get_all_agent_metadata()` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables. Rewrote `get_accessible_agents()` in `helpers.py:83-153` to use batch query instead of 8-10 individual queries per agent. Exposed on `DatabaseManager` (`database.py:845-850`). Database queries reduced from 160-200 to 2 per request. Orphaned agents (Docker-only, no DB record) now only visible to admin. |
 | 2026-01-12 | **Docker Stats Optimization**: Added `list_all_agents_fast()` function (docker_service.py:101-159) that extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.image`, `container.stats()`). Updated `get_next_available_port()` to use fast version. Performance: `/api/agents` reduced from ~2-3s to <50ms. |
 | 2025-12-31 | **Settings service and AgentClient refactoring**: (1) API key retrieval now uses `services/settings_service.py` instead of importing from `routers/settings.py`. Updated `lifecycle.py:16` and `crud.py:29`. (2) Trinity injection now uses centralized `AgentClient.inject_trinity_prompt()` from `services/agent_client.py:278-344` with built-in retry logic (max_retries=3, retry_delay=2.0s). Updated `lifecycle.py:17,44-50`. (3) Updated line numbers in crud.py (now 507 lines) and lifecycle.py (now 221 lines). |
 | 2025-12-30 | **Line number verification**: Updated all line numbers after composable refactoring. Frontend lifecycle methods now in `composables/useAgentLifecycle.js`. Updated router line numbers to match current 842-line agents.py. |

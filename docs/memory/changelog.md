@@ -1,3 +1,33 @@
+### 2026-01-12 20:20:00
+⚡ **Performance: Database Batch Queries (N+1 Fix)**
+
+**Problem**: `get_accessible_agents()` was making 8-10 database queries PER agent:
+- `can_user_access_agent()` - 2-4 queries
+- `get_agent_owner()` - 1 query (redundant)
+- `is_agent_shared_with_user()` - 2 queries
+- `get_autonomy_enabled()` - 1 query
+- `get_git_config()` - 1 query
+- `get_resource_limits()` - 1 query
+
+With 20 agents: **160-200 database queries** per `/api/agents` request.
+
+**Solution**: Added `get_all_agent_metadata()` batch query that JOINs all related tables in ONE query:
+- `agent_ownership` - owner, is_system, autonomy_enabled, resource limits
+- `users` - owner username/email
+- `agent_git_config` - GitHub repo/branch
+- `agent_sharing` - share access check (with user's email)
+
+**Result**: Database queries reduced from **160-200 to 2** per request.
+
+**Files Modified**:
+- `src/backend/db/agents.py:467-529` - Added `get_all_agent_metadata()` batch query
+- `src/backend/database.py:845-850` - Exposed method on DatabaseManager
+- `src/backend/services/agent_service/helpers.py:83-153` - Rewrote `get_accessible_agents()` to use batch
+
+**Combined with Docker stats optimization**: `/api/agents` now responds in <50ms (was 2-3s).
+
+---
+
 ### 2026-01-12 20:10:00
 ⚡ **Performance: Docker Stats Optimization - Fast Agent List**
 

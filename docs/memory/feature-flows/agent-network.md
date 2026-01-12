@@ -1,6 +1,6 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-01-01
+> **Last Updated**: 2026-01-12 - Database Batch Queries (N+1 Fix): `get_accessible_agents()` now uses `db.get_all_agent_metadata()` batch query. Combined with Docker stats optimization, agent list loading reduced from ~2-3s to <50ms.
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -619,6 +619,32 @@ Returns JSON:
 6. Log audit event
 
 ## Data Layer
+
+### Agent List Optimization (2026-01-12)
+
+The Dashboard loads agents via `GET /api/agents` which uses `get_accessible_agents()` from `helpers.py:83-153`.
+
+**Performance Optimizations Applied**:
+
+1. **Docker Stats Optimization**: Uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations.
+
+2. **Database Batch Queries (N+1 Fix)**: Uses `db.get_all_agent_metadata(user_email)` (db/agents.py:467-529) - single JOIN query across all related tables instead of 8-10 queries per agent.
+
+**Before/After**:
+| Metric | Before | After |
+|--------|--------|-------|
+| Docker API calls | Full `container.attrs` per agent | Labels only |
+| Database queries | 160-200 (for 20 agents) | 2 total |
+| Response time | ~2-3 seconds | <50ms |
+
+**Batch Query Returns** (per agent):
+- `owner_id`, `owner_username`, `owner_email`
+- `is_system`, `autonomy_enabled`, `use_platform_api_key`
+- `memory_limit`, `cpu_limit`
+- `github_repo`, `github_branch`
+- `is_shared_with_user` (boolean)
+
+**Note**: Orphaned agents (exist in Docker but not in DB) are only visible to admin users.
 
 ### LocalStorage Persistence
 
@@ -1396,6 +1422,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: `get_accessible_agents()` (helpers.py:83-153) now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) - single JOIN query instead of 8-10 queries per agent. Database queries reduced from 160-200 to 2 per request. Added Agent List Optimization section to Data Layer. Orphaned agents (Docker-only) only visible to admin. |
 | 2026-01-12 | **Docker Stats Optimization**: Backend agent listing now uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations. Performance: `/api/agents` reduced from ~2-3s to <50ms. Helpers.py `get_accessible_agents()` updated at line 92. |
 | 2026-01-03 | **Autonomy Toggle Switch**: Added interactive toggle switch to AgentNode cards (lines 62-96). Replaces static "AUTO" badge with clickable toggle showing "AUTO/Manual" label. Toggle calls `networkStore.toggleAutonomy()` (lines 993-1030) to enable/disable all agent schedules. Amber styling when enabled, gray when disabled. |
 | 2026-01-01 | **Execution Stats Display**: Added task execution metrics to AgentNode cards. New `GET /api/agents/execution-stats` endpoint (agents.py:140-161). Database aggregation in `db/schedules.py:445-489`. Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s with context stats. AgentNode shows compact row: "12 tasks - 92% - $0.45 - 2m ago" with color-coded success rate. |
