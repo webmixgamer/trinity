@@ -107,6 +107,7 @@ class ParallelTaskRequest(BaseModel):
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
     timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
+    max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
 
 
 # ============================================================================

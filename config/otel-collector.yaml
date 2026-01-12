@@ -22,16 +22,24 @@ processors:
         value: trinity
         action: upsert
 
+  # Convert delta temporality to cumulative for Prometheus compatibility
+  # Claude Code SDK sends delta metrics, but Prometheus requires cumulative
+  deltatocumulative:
+    max_stale: 10m  # Keep metric streams alive for 10 minutes after last data point
+    max_streams: 10000  # Maximum number of unique metric streams to track
+
 exporters:
   # Prometheus exporter - scrape at :8889/metrics
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: trinity
-    const_labels:
-      platform: trinity
+    # NOTE: Don't use const_labels with resource_to_telemetry_conversion
+    # to avoid duplicate label conflicts
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
   # Debug logging - useful for troubleshooting
-  # Set verbosity to "detailed" to see full metric data
   debug:
     verbosity: basic
     sampling_initial: 5
@@ -41,7 +49,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [batch, resource, deltatocumulative]
       exporters: [prometheus, debug]
     logs:
       receivers: [otlp]

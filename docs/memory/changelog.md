@@ -1,3 +1,56 @@
+### 2026-01-12 12:55:00
+🔧 **Fix: OpenTelemetry Prometheus Export - Delta to Cumulative Conversion**
+
+**Problem**: Claude Code SDK exports metrics with delta temporality, but the Prometheus exporter requires cumulative temporality. Metrics were being received by the collector but not exposed on the Prometheus endpoint.
+
+**Root Cause**: The base OTel Collector image (`otel/opentelemetry-collector:0.91.0`) doesn't include the `deltatocumulative` processor needed to convert delta metrics.
+
+**Solution**:
+1. Switched to contrib image: `otel/opentelemetry-collector-contrib:0.120.0`
+2. Updated config mount path to `/etc/otelcol-contrib/config.yaml` (contrib uses different path)
+3. Added `deltatocumulative` processor to the metrics pipeline
+4. Removed `const_labels` from Prometheus exporter (conflicts with `resource_to_telemetry_conversion`)
+
+**Files Modified**:
+- `docker-compose.yml:167-176` - Changed image and config mount path
+- `config/otel-collector.yaml` - Added deltatocumulative processor, fixed exporter config
+- `docs/memory/feature-flows/opentelemetry-integration.md` - Updated with critical configuration notes
+
+**Verification**: Metrics now appear correctly in Prometheus endpoint at `http://localhost:8889/metrics`:
+- `trinity_claude_code_cost_usage_USD_total` - Cost per model
+- `trinity_claude_code_token_usage_tokens_total` - Tokens by type (input, output, cacheRead, cacheCreation)
+
+---
+
+### 2026-01-12 11:30:00
+🛡️ **Feature: max_turns Parameter for Runaway Prevention**
+
+**Problem**: Headless task execution could run indefinitely if an agent got stuck in an infinite loop or continued executing far beyond expected scope.
+
+**Solution**: Added optional `max_turns` parameter to the `/api/task` endpoint. When specified, it adds `--max-turns N` to the Claude Code or Gemini CLI command, limiting the number of agentic turns before the CLI exits.
+
+**Files Modified**:
+- `docker/base-image/agent_server/models.py:221` - Added `max_turns: Optional[int] = None` to ParallelTaskRequest
+- `docker/base-image/agent_server/services/runtime_adapter.py:106` - Added max_turns to execute_headless interface
+- `docker/base-image/agent_server/services/claude_code.py:604-606` - Pass --max-turns to Claude Code
+- `docker/base-image/agent_server/services/gemini_runtime.py:542-544` - Pass --max-turns to Gemini CLI
+- `docker/base-image/agent_server/routers/chat.py:120` - Pass max_turns to runtime
+- `src/backend/models.py:110` - Added max_turns to backend ParallelTaskRequest
+
+**Usage**:
+```json
+POST /api/task
+{
+  "message": "Analyze this codebase",
+  "max_turns": 50,
+  "timeout_seconds": 900
+}
+```
+
+**Documentation**: Updated `docs/memory/feature-flows/parallel-headless-execution.md`
+
+---
+
 ### 2026-01-12 10:15:00
 🔧 **UI: Git Buttons Renamed and Enhanced**
 

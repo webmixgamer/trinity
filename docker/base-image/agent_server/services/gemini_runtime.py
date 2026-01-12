@@ -492,7 +492,8 @@ class GeminiRuntime(AgentRuntime):
         model: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
-        timeout_seconds: int = 900
+        timeout_seconds: int = 900,
+        max_turns: Optional[int] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute Gemini CLI in headless mode for parallel tasks.
@@ -501,6 +502,7 @@ class GeminiRuntime(AgentRuntime):
         - Does NOT use --resume (stateless)
         - Each call is independent
         - Supports tool restrictions and custom system prompts
+        - Supports max_turns for runaway prevention
         """
         if not self.is_available():
             raise HTTPException(
@@ -535,6 +537,11 @@ class GeminiRuntime(AgentRuntime):
             # Add system prompt if specified
             if system_prompt:
                 cmd.extend(["--system-prompt", system_prompt])
+
+            # Add max turns limit for runaway prevention
+            if max_turns is not None:
+                cmd.extend(["--max-turns", str(max_turns)])
+                logger.info(f"[Headless Task {session_id}] Limiting to {max_turns} agentic turns")
 
             # Initialize tracking structures
             execution_log: List[ExecutionLogEntry] = []

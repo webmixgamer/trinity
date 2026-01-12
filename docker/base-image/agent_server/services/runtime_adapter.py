@@ -102,7 +102,8 @@ class AgentRuntime(ABC):
         model: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
-        timeout_seconds: int = 900
+        timeout_seconds: int = 900,
+        max_turns: Optional[int] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute a stateless task in headless mode (no conversation context).
@@ -118,6 +119,7 @@ class AgentRuntime(ABC):
             allowed_tools: List of allowed tool names (None = all tools)
             system_prompt: Custom system prompt
             timeout_seconds: Execution timeout
+            max_turns: Maximum agentic turns for runaway prevention (None = unlimited)
 
         Returns:
             Tuple of (response_text, execution_log, metadata, session_id)

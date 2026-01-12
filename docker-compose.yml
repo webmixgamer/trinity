@@ -163,8 +163,9 @@ services:
       start_period: 10s  # Give Vector time to start before health checks
 
   # OpenTelemetry Collector - receives metrics from Claude Code agents
+  # Using contrib image for deltatocumulative processor (required for Prometheus export)
   otel-collector:
-    image: otel/opentelemetry-collector:0.91.0
+    image: otel/opentelemetry-collector-contrib:0.120.0
     container_name: trinity-otel-collector
     restart: unless-stopped
     ports:
@@ -172,7 +173,7 @@ services:
       - "4318:4318"   # HTTP receiver (OTLP)
       - "8889:8889"   # Prometheus metrics exporter
     volumes:
-      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
       - trinity-network
     labels:
