@@ -1,3 +1,21 @@
+### 2026-01-12 10:15:00
+🔧 **UI: Git Buttons Renamed and Enhanced**
+
+**Changes**:
+1. **Renamed "Sync" to "Push"**: Consistent Pull/Push terminology
+2. **Pull button now shows commits behind**: Displays "Pull (N)" when remote has N commits to fetch
+3. **Dynamic button colors**:
+   - Pull: Blue when behind, gray when up to date
+   - Push: Orange when local changes, gray when clean
+
+**Files Modified**:
+- `src/frontend/src/components/AgentHeader.vue` - Button labels, colors, and props
+- `src/frontend/src/composables/useGitSync.js` - Added `gitBehind` computed property
+- `src/frontend/src/views/AgentDetail.vue` - Pass `gitBehind` prop, handle `git-push` event
+- `docs/memory/feature-flows/github-sync.md` - Updated documentation
+
+---
+
 ### 2026-01-11 21:44:00
 🐛 **Fix: Autonomy Toggle Not Syncing Schedules to APScheduler**
 
