@@ -1,3 +1,30 @@
+### 2026-01-12 20:45:00
+⚡ **Performance: Frontend Polling Optimization**
+
+**Problem**: AgentDetail page generated ~50 requests/minute from concurrent polling loops, overwhelming backend with multiple users/tabs.
+
+**Solution**: Increased polling intervals while maintaining acceptable UX:
+
+| Composable | Before | After | Reduction |
+|------------|--------|-------|-----------|
+| `useSessionActivity.js` | 2s | 5s | -60% |
+| `useAgentStats.js` | 5s | 10s | -50% |
+| `useAgentLogs.js` | 10s | 15s | -33% |
+| `useGitSync.js` | 30s | 60s | -50% |
+| **Total requests/min** | ~50 | ~20 | **-60%** |
+
+**Result**: Per-page polling reduced from ~50 to ~20 requests/minute. With 5 users and 2 tabs each: 500 → 200 req/min saved.
+
+**Files Modified**:
+- `src/frontend/src/composables/useSessionActivity.js:117` - 2000ms → 5000ms
+- `src/frontend/src/composables/useAgentStats.js:4,59` - MAX_POINTS 60→30, 5000ms → 10000ms
+- `src/frontend/src/composables/useAgentLogs.js:45` - 10000ms → 15000ms
+- `src/frontend/src/composables/useGitSync.js:164` - 30000ms → 60000ms
+
+**Note**: Sparkline history still shows 5 minutes (30 samples × 10s = 300s).
+
+---
+
 ### 2026-01-12 20:20:00
 ⚡ **Performance: Database Batch Queries (N+1 Fix)**
 

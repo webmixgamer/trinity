@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 
-// History configuration: 60 samples at 5s intervals = 5 minutes
-const MAX_POINTS = 60
+// History configuration: 30 samples at 10s intervals = 5 minutes
+const MAX_POINTS = 30
 
 /**
  * Composable for agent container stats polling with history tracking
@@ -56,7 +56,7 @@ export function useAgentStats(agentRef, agentsStore) {
   const startStatsPolling = () => {
     initHistory() // Reset history on start
     loadStats() // Load immediately
-    statsRefreshInterval = setInterval(loadStats, 5000) // Then every 5 seconds
+    statsRefreshInterval = setInterval(loadStats, 10000) // Then every 10 seconds
   }
 
   const stopStatsPolling = () => {

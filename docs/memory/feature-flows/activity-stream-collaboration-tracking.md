@@ -798,8 +798,8 @@ await log_audit_event(
 - **Lazy Loading**: Historical data fetched only when dashboard opens
 - **Pagination**: Limited to 15 events in history panel (scrollable)
 - **Edge Deduplication**: Single edge per agent pair, count label shows frequency
-- **Context Polling**: Every 5 seconds for context stats and activity state
-- **Agent Refresh**: Every 10 seconds for agent list updates
+- **Context Polling**: Every 10 seconds for context stats and activity state
+- **Agent Refresh**: Every 15 seconds for agent list updates
 
 ### Scalability Limits
 - **Tested**: 50 agents, 100 collaborations/hour
@@ -962,3 +962,12 @@ WHERE a1.activity_type = 'agent_collaboration'
 - **Requirements**: `docs/memory/requirements.md` REQ-9.7 (Activity Stream)
 - **Architecture**: `docs/memory/architecture.md` Activity Tracking section
 - **Related Flow**: `docs/memory/feature-flows/agent-network.md`
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-12 | **Polling interval optimization**: Context polling changed from 5s to 10s, agent refresh changed from 10s to 15s. Updated Frontend Optimization section. |
+| 2025-12-19 | Initial documentation |

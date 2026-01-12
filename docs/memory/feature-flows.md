@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-12)**: Frontend Polling Optimization:
+> - Reduced polling frequency across all composables to lower API load:
+>   - `useSessionActivity.js:117`: Activity polling changed from 2s to 5s
+>   - `useAgentStats.js:4,59`: Stats polling changed from 5s to 10s, MAX_POINTS from 60 to 30 (still 5 min of history)
+>   - `useAgentLogs.js:45`: Logs auto-refresh changed from 10s to 15s
+>   - `useGitSync.js:164`: Git status polling changed from 30s to 60s
+> - Feature flows updated: activity-monitoring.md, agent-logs-telemetry.md, github-sync.md, agent-network.md, agents-page-ui-improvements.md, activity-stream-collaboration-tracking.md
+>
 > **Updated (2026-01-12)**: Database Batch Queries (N+1 Fix):
 > - **New method**: `db.get_all_agent_metadata(user_email)` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables
 > - **Updated function**: `get_accessible_agents()` in `helpers.py:83-153` - was 8-10 queries per agent, now 2 total queries
@@ -143,7 +151,7 @@
 > - **agent-network.md**: Updated with execution stats display on Agent Cards
 > - New `GET /api/agents/execution-stats` endpoint documented (agents.py:140-161)
 > - Database layer: `get_all_agents_execution_stats()` in db/schedules.py:445-489
-> - Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s
+> - Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 10s
 > - AgentNode.vue: Compact stats row showing "12 tasks - 92% - $0.45 - 2m ago" (lines 86-103)
 >
 > **Updated (2025-12-31)**: Execution Log Viewer feature flow documented:

@@ -42,7 +42,7 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 - **Offline**: Gray dot (`#9ca3af`) + "Offline" label
 
 **Implementation**:
-- Call `GET /api/agents/context-stats` on mount and poll every 5 seconds
+- Call `GET /api/agents/context-stats` on mount and poll every 10 seconds
 - Parse `activityState` field from response
 - Reuse CSS animation from AgentNode.vue:
 ```css
@@ -124,7 +124,7 @@ startContextPolling() {
   this.fetchContextStats()
   this.contextPollingInterval = setInterval(() => {
     this.fetchContextStats()
-  }, 5000)
+  }, 10000)  // Every 10 seconds
 },
 
 stopContextPolling() {
@@ -432,7 +432,7 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
      - Returns `{ success, enabled, schedulesUpdated }`
 
 3. **Updated Polling** (lines 578-594):
-   - `startContextPolling()` now also calls `fetchExecutionStats()` on mount and every 5 seconds
+   - `startContextPolling()` now also calls `fetchExecutionStats()` on mount and every 10 seconds
    - Both `fetchContextStats()` and `fetchExecutionStats()` run in parallel
 
 #### Helper Functions (`Agents.vue` script section)
@@ -548,7 +548,7 @@ The `/api/agents` endpoint benefits from two optimizations:
 | 1 | View agent with tasks | See "X tasks · Y% · $Z · Nm ago" |
 | 2 | View agent without tasks | See "No tasks (24h)" |
 | 3 | Verify success rate colors | Green ≥80%, yellow 50-79%, red <50% |
-| 4 | Wait 5 seconds | Stats auto-refresh |
+| 4 | Wait 10 seconds | Stats auto-refresh |
 
 #### Context Progress Bar
 | Step | Action | Expected Result |
@@ -587,6 +587,7 @@ The `/api/agents` endpoint benefits from two optimizations:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s for reduced API load. Updated all polling interval references and test cases. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added Performance section documenting `get_accessible_agents()` optimization. Now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) for single JOIN query. Database queries reduced from 160-200 to 2 per request. Combined with Docker stats optimization for <50ms response. Updated Data Flow diagram. |
 | 2026-01-09 | **Dashboard Parity**: Major UI overhaul - grid layout, autonomy toggle, execution stats row, context bar always visible. Added `fetchExecutionStats()` and `toggleAutonomy()` to agents.js store. |
 | 2025-12-07 | Initial implementation with sorting, activity state indicators, context progress bars. |

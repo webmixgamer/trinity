@@ -318,7 +318,19 @@ if not repo_info.exists:
 
 **Location**: `src/frontend/src/composables/useGitSync.js`
 
+**Polling Behavior**:
+- Git status polled every 60 seconds to detect changes
+- Polling starts on component mount, stops on unmount
+- Manual refresh available via refresh button
+
 ```javascript
+// Git status polling (line 164)
+const startGitStatusPolling = () => {
+  if (!hasGitSync.value) return
+  loadGitStatus() // Load immediately
+  gitStatusInterval = setInterval(loadGitStatus, 60000) // Then every 60 seconds
+}
+
 // Pull from GitHub (source mode)
 const pullFromGithub = async () => {
   const result = await agentsStore.pullFromGithub(agentRef.value.name)
@@ -526,6 +538,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Polling interval optimization**: Git status polling changed from 30s to 60s for reduced API load. Added polling behavior documentation to useGitSync composable section. |
 | 2026-01-12 | Renamed "Sync" button to "Push" for consistent Pull/Push terminology. Pull button now shows commits behind count when remote has updates. Both buttons use dynamic coloring (active color when action available, gray when up to date). |
 | 2025-12-31 | Updated with access control dependencies (`AuthorizedAgentByName`, `OwnedAgentByName`), settings service (`get_github_pat()`), and GitHub service integration. Added line number references. |
 | 2025-12-30 | Added conflict resolution with pull/sync strategies and GitConflictModal UI. |

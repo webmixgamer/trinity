@@ -345,12 +345,12 @@ async function fetchExecutionStats() {
 ```
 
 ##### startContextPolling() / stopContextPolling() (Lines 660-686)
-- Polls every 5 seconds for context stats AND execution stats
+- Polls every 10 seconds for context stats AND execution stats
 - Calls both `fetchContextStats()` and `fetchExecutionStats()` on each poll
 - Automatically starts on dashboard mount, stops on unmount
 
 ##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
-- Polls every 10 seconds for agent list changes
+- Polls every 15 seconds for agent list changes
 - Detects new/deleted agents and updates graph
 
 ##### toggleAutonomy() (Lines 993-1030)
@@ -1158,14 +1158,14 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 **Functions** (Lines 563-619):
 ```javascript
 fetchContextStats()        // Fetch stats from backend, update node data (563-591)
-startContextPolling()      // Start 5-second interval polling (593-607)
+startContextPolling()      // Start 10-second interval polling (593-607)
 stopContextPolling()       // Clear interval on unmount (609-619)
 ```
 
 **Polling Strategy**:
 - Starts on dashboard mount
-- Polls every 5 seconds for context stats
-- Polls every 10 seconds for agent list refresh
+- Polls every 10 seconds for context stats
+- Polls every 15 seconds for agent list refresh
 - Updates node data reactively
 - Stops on dashboard unmount
 
@@ -1294,9 +1294,9 @@ onUnmounted(() => {
 
 ### Performance Considerations
 
-**Polling Frequency**: 5 seconds
+**Polling Frequency**: 10 seconds (context/execution stats), 15 seconds (agent list)
 - Balance between freshness and API load
-- 12 requests/minute for typical dashboard usage
+- 6 context requests/minute + 4 agent refresh requests/minute
 - Async/await prevents request queuing
 
 **Context Fetch Optimization**:
@@ -1397,7 +1397,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 - Agent nodes now correctly show Active/Idle/Offline status
 - Pulsing green dots for active agents
 - Context progress bars display with color coding (green/yellow/orange/red)
-- Activity state updates every 5 seconds via polling
+- Activity state updates every 10 seconds via polling
 
 #### Issue #3: Time Range Selector Purpose Unclear
 **Problem**: "Time Range:" label ambiguous - users unclear what it controls
@@ -1422,6 +1422,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s. Agent list refresh changed from 10s to 15s. Updated polling strategy documentation and performance considerations. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: `get_accessible_agents()` (helpers.py:83-153) now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) - single JOIN query instead of 8-10 queries per agent. Database queries reduced from 160-200 to 2 per request. Added Agent List Optimization section to Data Layer. Orphaned agents (Docker-only) only visible to admin. |
 | 2026-01-12 | **Docker Stats Optimization**: Backend agent listing now uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations. Performance: `/api/agents` reduced from ~2-3s to <50ms. Helpers.py `get_accessible_agents()` updated at line 92. |
 | 2026-01-03 | **Autonomy Toggle Switch**: Added interactive toggle switch to AgentNode cards (lines 62-96). Replaces static "AUTO" badge with clickable toggle showing "AUTO/Manual" label. Toggle calls `networkStore.toggleAutonomy()` (lines 993-1030) to enable/disable all agent schedules. Amber styling when enabled, gray when disabled. |

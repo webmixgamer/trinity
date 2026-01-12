@@ -93,12 +93,13 @@ const userScrolledUp = ref(false)   // Smart scroll tracking
 ### Polling Behavior
 
 **Stats Polling** (when agent is running):
-- Interval: 5 seconds
+- Interval: 10 seconds
+- History: 30 samples (5 minutes of data at 10s intervals)
 - Method: `startStatsPolling()` in `onMounted()`
 - Cleanup: `stopStatsPolling()` in `onUnmounted()`
 
 **Logs Auto-Refresh** (optional):
-- Interval: 10 seconds
+- Interval: 15 seconds
 - User-controlled toggle
 - Smart scroll: Auto-scroll to bottom unless user scrolled up
 
@@ -280,7 +281,7 @@ This feature reads directly from Docker API - no database persistence.
 ### Logs Tab Features
 - Scrollable container (max-height: 500px)
 - Line count selector: 50, 100, 200, 500
-- Auto-refresh toggle (10-second interval)
+- Auto-refresh toggle (15-second interval)
 - Manual refresh button
 - Smart auto-scroll (pauses when user scrolls up)
 - Monospace font with line wrapping
@@ -329,7 +330,8 @@ Stats and logs are pull-based, not push-based.
 - No credential data exposed in logs (container logs only)
 
 ### Rate Limiting
-- 5-second polling interval prevents API overload
+- 10-second stats polling interval prevents API overload
+- 15-second logs auto-refresh interval for reduced load
 - `stream=False` for stats prevents long-running connections
 
 ---
@@ -362,5 +364,6 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Polling interval optimization**: Stats polling changed from 5s to 10s, logs auto-refresh changed from 10s to 15s. Stats history reduced from 60 to 30 samples (still 5 min at 10s intervals). Updated composables `useAgentStats.js` and `useAgentLogs.js`. |
 | 2025-12-30 | **Updated for service layer refactor**: Stats logic moved from `agents.py` to `services/agent_service/stats.py`. Logs endpoint now at lines 404-430 (was 558-584). Stats endpoint now at 433-440 delegating to service layer. Updated all business logic line references to stats.py. |
 | 2025-12-02 | Initial documentation |
