@@ -1,3 +1,68 @@
+### 2026-01-12 18:15:00
+🐛 **Fix: Credential Injection Bug - Passing Dict Instead of Username**
+
+**Problem**: Credentials assigned to agents were not being injected on restart despite the previous fix. The `.env` file was not being created.
+
+**Root Cause**: In `inject_assigned_credentials()`, the code was passing the entire `owner` dict from `db.get_agent_owner()` to `credential_manager.get_assigned_credential_values()` and `get_assigned_file_credentials()`. However, these methods expect `user_id` as a string (e.g., "admin"), not a dict. The ownership verification in `get_credential()` was comparing strings to dicts, which always failed silently, resulting in empty credentials being returned.
+
+```python
+# BROKEN - owner is a dict like {"owner_username": "admin", ...}
+credentials = credential_manager.get_assigned_credential_values(agent_name, owner)
+
+# FIXED - extract the username string
+owner_username = owner.get("owner_username")
+credentials = credential_manager.get_assigned_credential_values(agent_name, owner_username)
+```
+
+**Solution**:
+1. Extract `owner_username` from the dict before passing to credential methods
+2. Add validation in case `owner_username` is missing
+3. Add logging to show owner username in credential injection messages
+4. Fix import of `CredentialManager` (was trying to import non-existent `credential_manager` singleton)
+5. Update `/api/agents/{name}/start` endpoint to include `credentials_injection` and `credentials_result` in response
+
+**Files Modified**:
+- `src/backend/services/agent_service/lifecycle.py:69-92` - Fix owner_username extraction and import
+- `src/backend/routers/agents.py:315-335` - Include credential injection status in start response
+
+**Verification**:
+```bash
+# Stop agent and start via API
+curl -X POST /api/agents/demo-fleet-ruby/start
+# Response includes: "credentials_injection": "success", "credentials_result": {"status": "success", "credential_count": 2}
+
+# Check agent .env file
+docker exec agent-demo-fleet-ruby cat /home/developer/.env
+# Shows: API_KEY="value1"
+```
+
+---
+
+### 2026-01-12 18:00:00
+📚 **Docs: Expanded Custom Metrics Documentation**
+
+Significantly expanded the Custom Metrics section in `TRINITY_COMPATIBLE_AGENT_GUIDE.md`:
+
+**Added**:
+- File locations: where agent server looks for `template.yaml` and `metrics.json`
+- Complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes)
+- `percentage` type with `warning_threshold` and `critical_threshold` fields
+- `status` type with `values` array showing value/color/label structure
+- Available colors for status badges: green, red, yellow, gray, blue, orange
+- `metrics.json` format with `last_updated` optional field
+- Complete working example showing template.yaml → metrics.json → CLAUDE.md integration
+- Note that agent must be running for metrics to be visible
+- Note about auto-refresh every 30 seconds
+
+**Updated**:
+- Removed unused `icon` field from schema (not implemented in frontend)
+- Added cross-reference to detailed Custom Metrics section from schema
+
+**Files Modified**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Expanded Custom Metrics section
+
+---
+
 ### 2026-01-12 17:30:00
 🐛 **Fix: Credential Injection on Agent Restart**
 

@@ -66,8 +66,13 @@ async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, ret
     Returns:
         dict with injection status
     """
+    import os
     import asyncio
-    from credentials import credential_manager
+    from credentials import CredentialManager
+
+    # Initialize credential manager
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+    credential_manager = CredentialManager(redis_url)
 
     # Get the agent owner from database
     owner = db.get_agent_owner(agent_name)
@@ -75,15 +80,21 @@ async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, ret
         logger.warning(f"No owner found for agent {agent_name}, skipping credential injection")
         return {"status": "skipped", "reason": "no_owner"}
 
+    # Extract owner username - get_agent_owner returns a dict with 'owner_username' key
+    owner_username = owner.get("owner_username")
+    if not owner_username:
+        logger.warning(f"No owner_username in owner data for agent {agent_name}, skipping credential injection")
+        return {"status": "skipped", "reason": "no_owner_username"}
+
     # Get assigned credentials
-    credentials = credential_manager.get_assigned_credential_values(agent_name, owner)
-    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, owner)
+    credentials = credential_manager.get_assigned_credential_values(agent_name, owner_username)
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, owner_username)
 
     if not credentials and not file_credentials:
-        logger.debug(f"No assigned credentials for agent {agent_name}")
+        logger.debug(f"No assigned credentials for agent {agent_name} (owner: {owner_username})")
         return {"status": "skipped", "reason": "no_credentials"}
 
-    logger.info(f"Injecting {len(credentials)} credentials and {len(file_credentials)} files into agent {agent_name}")
+    logger.info(f"Injecting {len(credentials)} credentials and {len(file_credentials)} files into agent {agent_name} (owner: {owner_username})")
 
     # Push to agent with retries
     last_error = None

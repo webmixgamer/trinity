@@ -318,14 +318,21 @@ async def start_agent_endpoint(agent_name: str, request: Request, current_user: 
     try:
         result = await start_agent_internal(agent_name)
         trinity_status = result.get("trinity_injection", "unknown")
+        credentials_status = result.get("credentials_injection", "unknown")
+        credentials_result = result.get("credentials_result", {})
 
         if manager:
             await manager.broadcast(json.dumps({
                 "event": "agent_started",
-                "data": {"name": agent_name, "trinity_injection": trinity_status}
+                "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
             }))
 
-        return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
+        return {
+            "message": f"Agent {agent_name} started",
+            "trinity_injection": trinity_status,
+            "credentials_injection": credentials_status,
+            "credentials_result": credentials_result
+        }
     except HTTPException:
         raise
     except Exception as e:
