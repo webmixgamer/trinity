@@ -1,3 +1,40 @@
+### 2026-01-12 17:30:00
+🐛 **Fix: Credential Injection on Agent Restart**
+
+**Problem**: Credentials assigned via the Credentials tab were NOT being injected when an agent was restarted. Credentials were only injected at agent creation time.
+
+**Root Cause**:
+1. `start_agent_internal()` only started the container and injected the Trinity meta-prompt - it did NOT fetch or inject assigned credentials
+2. The "Apply to Agent" button was only visible when `hasChanges` was true, which reset on page refresh
+
+**Solution**:
+1. Added `inject_assigned_credentials()` function to `lifecycle.py` that:
+   - Gets the agent owner from the database
+   - Fetches assigned credentials from Redis via credential_manager
+   - Pushes credentials to the running agent via internal API
+   - Includes retry logic for agent startup delays
+
+2. Modified `start_agent_internal()` to call `inject_assigned_credentials()` after starting the container
+
+3. Fixed the "Apply to Agent" button visibility in `CredentialsPanel.vue`:
+   - Changed from `v-if="hasChanges && agentStatus === 'running'"`
+   - To `v-if="agentStatus === 'running' && assignedCredentials.length > 0"`
+   - Added "Start agent to apply" hint when agent is stopped
+
+**Files Modified**:
+- `src/backend/services/agent_service/lifecycle.py:54-121` - Added `inject_assigned_credentials()` function
+- `src/backend/services/agent_service/lifecycle.py:165-167` - Call credential injection in `start_agent_internal()`
+- `src/backend/services/agent_service/__init__.py` - Export new function
+- `src/frontend/src/components/CredentialsPanel.vue:27-44` - Fix button visibility logic
+
+**Verification**:
+1. Create credentials in the Credentials page
+2. Assign them to an agent via Agent Detail → Credentials tab
+3. Stop and restart the agent
+4. Credentials are now automatically injected on start
+
+---
+
 ### 2026-01-12 16:00:00
 📦 **Feature: Package Persistence & Version Tracking**
 

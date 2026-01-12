@@ -5,6 +5,7 @@ Contains functions for starting, stopping, and reconfiguring agents.
 """
 import logging
 import docker
+import httpx
 
 from fastapi import HTTPException
 
@@ -50,6 +51,76 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
     )
 
 
+async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, retry_delay: float = 2.0) -> dict:
+    """
+    Inject assigned credentials into a running agent.
+
+    This is called after agent startup to push any credentials that were
+    assigned to this agent in the Credentials tab.
+
+    Args:
+        agent_name: Name of the agent
+        max_retries: Number of retries for connection
+        retry_delay: Seconds between retries
+
+    Returns:
+        dict with injection status
+    """
+    import asyncio
+    from credentials import credential_manager
+
+    # Get the agent owner from database
+    owner = db.get_agent_owner(agent_name)
+    if not owner:
+        logger.warning(f"No owner found for agent {agent_name}, skipping credential injection")
+        return {"status": "skipped", "reason": "no_owner"}
+
+    # Get assigned credentials
+    credentials = credential_manager.get_assigned_credential_values(agent_name, owner)
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, owner)
+
+    if not credentials and not file_credentials:
+        logger.debug(f"No assigned credentials for agent {agent_name}")
+        return {"status": "skipped", "reason": "no_credentials"}
+
+    logger.info(f"Injecting {len(credentials)} credentials and {len(file_credentials)} files into agent {agent_name}")
+
+    # Push to agent with retries
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"http://agent-{agent_name}:8000/api/credentials/update",
+                    json={
+                        "credentials": credentials,
+                        "mcp_config": None,
+                        "files": file_credentials if file_credentials else None
+                    },
+                    timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    return {
+                        "status": "success",
+                        "credential_count": len(credentials),
+                        "file_count": len(file_credentials)
+                    }
+                else:
+                    last_error = f"Agent returned status {response.status_code}"
+                    logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
+
+        except httpx.RequestError as e:
+            last_error = str(e)
+            logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+
+    logger.error(f"Failed to inject credentials into agent {agent_name} after {max_retries} attempts: {last_error}")
+    return {"status": "failed", "error": last_error}
+
+
 async def start_agent_internal(agent_name: str) -> dict:
     """
     Internal function to start an agent.
@@ -91,10 +162,16 @@ async def start_agent_internal(agent_name: str) -> dict:
     trinity_result = await inject_trinity_meta_prompt(agent_name)
     trinity_status = trinity_result.get("status", "unknown")
 
+    # Inject assigned credentials from the Credentials page
+    credentials_result = await inject_assigned_credentials(agent_name)
+    credentials_status = credentials_result.get("status", "unknown")
+
     return {
         "message": f"Agent {agent_name} started",
         "trinity_injection": trinity_status,
-        "trinity_result": trinity_result
+        "trinity_result": trinity_result,
+        "credentials_injection": credentials_status,
+        "credentials_result": credentials_result
     }
 
 

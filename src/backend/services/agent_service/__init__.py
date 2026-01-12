@@ -15,6 +15,7 @@ from .helpers import (
 )
 from .lifecycle import (
     inject_trinity_meta_prompt,
+    inject_assigned_credentials,
     start_agent_internal,
     recreate_container_with_updated_config,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "check_api_key_env_matches",
     # Lifecycle
     "inject_trinity_meta_prompt",
+    "inject_assigned_credentials",
     "start_agent_internal",
     "recreate_container_with_updated_config",
     # CRUD
