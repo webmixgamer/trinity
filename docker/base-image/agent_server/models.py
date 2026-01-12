@@ -79,6 +79,7 @@ class ExecutionMetadata(BaseModel):
     num_turns: Optional[int] = None
     tool_count: int = 0
     session_id: Optional[str] = None
+    execution_id: Optional[str] = None  # Unique ID for process registry (termination)
     # Token tracking for context window
     input_tokens: int = 0
     output_tokens: int = 0

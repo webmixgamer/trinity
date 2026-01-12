@@ -1,3 +1,47 @@
+### 2026-01-12 21:30:00
+✨ **Feature: Execution Termination**
+
+**Problem**: Users had no way to stop runaway executions or incorrect agent behavior once started.
+
+**Solution**: Implemented full execution termination flow across all layers:
+
+**Agent Container (docker/base-image/agent_server/)**:
+- New `services/process_registry.py` - Thread-safe registry tracking subprocess handles by execution_id
+- Modified `services/claude_code.py` - Registers/unregisters processes in both `execute_claude_code()` and `execute_headless_task()`
+- New endpoints in `routers/chat.py`:
+  - `POST /api/executions/{execution_id}/terminate` - SIGINT then SIGKILL
+  - `GET /api/executions/running` - List running processes
+  - `GET /api/executions/{execution_id}/status` - Check specific execution
+
+**Backend (src/backend/)**:
+- New proxy endpoints in `routers/chat.py`:
+  - `POST /api/agents/{name}/executions/{execution_id}/terminate` - Proxies to agent, clears queue
+  - `GET /api/agents/{name}/executions/running` - Lists agent's running executions
+- Added `EXECUTION_CANCELLED` to `ActivityType` enum in `models.py`
+
+**Frontend (src/frontend/)**:
+- Stop button in `TasksPanel.vue` for running tasks
+- Fetches running executions to get `execution_id` for termination
+- Graceful UI feedback with spinner during termination
+
+**Termination Flow**:
+1. Frontend calls backend proxy endpoint
+2. Backend forwards to agent container
+3. Agent sends SIGINT (graceful), waits 5s, then SIGKILL if needed
+4. Backend clears execution queue state
+5. Activity tracked as EXECUTION_CANCELLED
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/process_registry.py` (new)
+- `docker/base-image/agent_server/services/claude_code.py`
+- `docker/base-image/agent_server/routers/chat.py`
+- `docker/base-image/agent_server/models.py`
+- `src/backend/routers/chat.py`
+- `src/backend/models.py`
+- `src/frontend/src/components/TasksPanel.vue`
+
+---
+
 ### 2026-01-12 20:45:00
 ⚡ **Performance: Frontend Polling Optimization**
 

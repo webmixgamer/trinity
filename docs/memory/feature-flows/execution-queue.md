@@ -945,6 +945,51 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 ---
 
+## Execution Termination (Added 2026-01-12)
+
+Running executions can be terminated mid-flight via the Stop button in the Tasks panel. This uses a process registry to track subprocess handles and send graceful termination signals.
+
+### Process Registry
+
+**File**: `docker/base-image/agent_server/services/process_registry.py`
+
+Thread-safe registry for tracking running subprocess handles:
+- `register(execution_id, process, metadata)` - Register subprocess when started
+- `unregister(execution_id)` - Remove when completed
+- `terminate(execution_id)` - Graceful SIGINT -> SIGKILL termination
+- `list_running()` - Get all running executions
+
+### Termination Flow
+
+1. User clicks Stop button in Tasks panel (`TasksPanel.vue:239-255`)
+2. Frontend calls `POST /api/agents/{name}/executions/{execution_id}/terminate`
+3. Backend proxies to agent container (`chat.py:1059-1131`)
+4. Agent server terminates subprocess via registry (`routers/chat.py:241-260`)
+5. Backend clears queue state on success
+6. Activity tracked with type `EXECUTION_CANCELLED`
+
+### Signal Handling
+
+| Signal | Purpose | Timeout |
+|--------|---------|---------|
+| `SIGINT` | Graceful termination | 5 seconds |
+| `SIGKILL` | Force kill fallback | 2 seconds |
+
+Claude Code handles SIGINT gracefully, finishing its current tool operation before exiting.
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/agents/{name}/executions/{execution_id}/terminate` | Backend proxy |
+| `GET /api/agents/{name}/executions/running` | List running for termination |
+| `POST /api/executions/{execution_id}/terminate` | Agent container endpoint |
+| `GET /api/executions/running` | Agent container endpoint |
+
+See [execution-termination.md](execution-termination.md) for full documentation.
+
+---
+
 ## Future Improvements
 
 1. **Frontend Integration**
@@ -997,6 +1042,7 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Execution Termination**: Added section documenting process registry, termination flow, signal handling (SIGINT -> SIGKILL), and new endpoints. See [execution-termination.md](execution-termination.md) for full feature documentation. |
 | 2026-01-11 | **Execution ID tracking**: Documented two ID systems (Queue vs Database). Chat response now includes both `id` (queue) and `task_execution_id` (database). Activity tracking uses `related_execution_id` as top-level field for structured SQL queries. |
 | 2025-01-02 | **Scheduler log fix**: Changed scheduler from `AgentClient.chat()` to `AgentClient.task()`. The `task()` method calls `/api/task` endpoint which returns raw Claude Code `stream-json` format. This fixes execution log viewer which could not parse the simplified format from `/api/chat`. Added `task()` method and `_parse_task_response()` to `AgentClient`. |
 | 2025-12-31 | **AgentClient service**: Scheduler now uses centralized `AgentClient` from `services/agent_client.py` instead of raw `httpx` calls. Response parsing logic moved to `AgentClient._parse_chat_response()`. Added `AgentChatResponse` and `AgentChatMetrics` dataclasses. Context token bug fix documented (cache tokens are subsets, not additional). |

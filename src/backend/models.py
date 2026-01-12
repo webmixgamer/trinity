@@ -131,6 +131,9 @@ class ActivityType(str, Enum):
     # Collaboration activities
     AGENT_COLLABORATION = "agent_collaboration"
 
+    # Execution control activities
+    EXECUTION_CANCELLED = "execution_cancelled"
+
     # Future activity types (not yet implemented)
     FILE_ACCESS = "file_access"
     MODEL_CHANGE = "model_change"

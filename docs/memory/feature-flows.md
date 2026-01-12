@@ -3,6 +3,17 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-12)**: Execution Termination Feature:
+> - **execution-termination.md**: New feature flow for stopping running executions
+> - Stop button in Tasks panel (`TasksPanel.vue:239-255`) for running tasks with `execution_id`
+> - Process Registry (`agent_server/services/process_registry.py`) - thread-safe subprocess tracking
+> - Agent endpoints: `POST /api/executions/{id}/terminate`, `GET /api/executions/running`
+> - Backend proxy: `POST /api/agents/{name}/executions/{id}/terminate` with queue release
+> - Signal flow: SIGINT (graceful, 5s timeout) -> SIGKILL (force)
+> - New `EXECUTION_CANCELLED` activity type for audit trail
+> - Process registration in `claude_code.py` for both chat and task executions
+> - Updated flows: execution-queue.md, tasks-tab.md
+>
 > **Updated (2026-01-12)**: Make Repeatable Feature:
 > - **tasks-tab.md**: Added "Make Repeatable" button (calendar icon) to create schedule from task execution
 > - **scheduling.md**: Added "Make Repeatable" flow (Section 1b) with `initialMessage` prop and pre-fill behavior
@@ -263,7 +274,8 @@
 | **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-10) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
-| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |
+| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2026-01-12: termination section) |
+| **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
 | **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization (Updated 2026-01-12) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
@@ -281,7 +293,7 @@
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
-| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, **Make Repeatable** button to create schedules from tasks (Updated 2026-01-12) |
+| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
 | **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel icon, Timeline click (Implemented 2026-01-10) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |

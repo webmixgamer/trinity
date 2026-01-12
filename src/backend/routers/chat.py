@@ -1050,3 +1050,110 @@ async def close_chat_session(
         return {"status": "closed", "session_id": session_id}
     else:
         raise HTTPException(status_code=500, detail="Failed to close session")
+
+
+# ============================================================================
+# Execution Termination Routes
+# ============================================================================
+
+@router.post("/{name}/executions/{execution_id}/terminate")
+async def terminate_agent_execution(
+    name: str,
+    execution_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Terminate a running execution on an agent.
+
+    Proxies the termination request to the agent container and clears
+    the execution queue state if successful.
+
+    Args:
+        name: Agent name
+        execution_id: The execution ID to terminate (from metadata.execution_id)
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    try:
+        # Proxy termination request to agent container
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"http://agent-{name}:8000/api/executions/{execution_id}/terminate"
+            )
+
+        result = response.json()
+
+        # Handle different termination outcomes
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Execution not found in agent")
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=result.get("detail", "Termination failed")
+            )
+
+        # Clear queue state if termination succeeded
+        if result.get("status") in ["terminated", "already_finished"]:
+            queue = get_execution_queue()
+            await queue.force_release(name)
+            logger.info(f"[Terminate] Released queue for agent '{name}' after terminating execution {execution_id}")
+
+        # Track termination activity
+        await activity_service.track_activity(
+            agent_name=name,
+            activity_type=ActivityType.EXECUTION_CANCELLED,
+            user_id=current_user.id,
+            triggered_by="user",
+            details={
+                "execution_id": execution_id,
+                "status": result.get("status"),
+                "returncode": result.get("returncode")
+            }
+        )
+
+        return result
+
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to agent '{name}'"
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Timeout connecting to agent '{name}'"
+        )
+
+
+@router.get("/{name}/executions/running")
+async def get_agent_running_executions(
+    name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get list of running executions on an agent.
+
+    Returns execution IDs, start times, and metadata for running processes.
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        return {"executions": []}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"http://agent-{name}:8000/api/executions/running"
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError:
+        return {"executions": []}

@@ -7,12 +7,13 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from ..models import ChatRequest, ModelRequest, ParallelTaskRequest
 from ..state import agent_state
 from ..services.claude_code import get_execution_lock
 from ..services.runtime_adapter import get_runtime
+from ..services.process_registry import get_process_registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -232,6 +233,61 @@ async def clear_chat_history():
         }
     }
 
+
+# ============================================================================
+# Execution Termination Endpoints
+# ============================================================================
+
+@router.post("/api/executions/{execution_id}/terminate")
+async def terminate_execution(execution_id: str):
+    """
+    Terminate a running execution by ID.
+
+    Sends SIGINT for graceful termination, then SIGKILL if needed.
+    This allows Claude Code to finish its current operation gracefully.
+    """
+    registry = get_process_registry()
+    result = registry.terminate(execution_id)
+
+    if result["success"]:
+        logger.info(f"[Terminate] Execution {execution_id} terminated successfully")
+        return {"status": "terminated", "execution_id": execution_id}
+    elif result["reason"] == "not_found":
+        raise HTTPException(status_code=404, detail="Execution not found")
+    elif result["reason"] == "already_finished":
+        return {"status": "already_finished", "execution_id": execution_id, "returncode": result.get("returncode")}
+    else:
+        raise HTTPException(status_code=500, detail=result.get("error", "Termination failed"))
+
+
+@router.get("/api/executions/running")
+async def list_running_executions():
+    """
+    List all currently running executions.
+
+    Returns execution_id, start time, and metadata for each running process.
+    """
+    registry = get_process_registry()
+    return {"executions": registry.list_running()}
+
+
+@router.get("/api/executions/{execution_id}/status")
+async def get_execution_status(execution_id: str):
+    """
+    Get status of a specific execution.
+
+    Returns running state, return code (if finished), and metadata.
+    """
+    registry = get_process_registry()
+    status = registry.get_status(execution_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return status
+
+
+# ============================================================================
+# WebSocket Endpoints
+# ============================================================================
 
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):

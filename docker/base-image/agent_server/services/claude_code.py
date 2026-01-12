@@ -20,6 +20,7 @@ from ..models import ExecutionLogEntry, ExecutionMetadata
 from ..state import agent_state
 from .activity_tracking import start_tool_execution, complete_tool_execution
 from .runtime_adapter import AgentRuntime
+from .process_registry import get_process_registry
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +449,7 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
+        execution_id = str(uuid.uuid4())
 
         # Mark session as potentially running (will be set to running when first tool starts)
         logger.info(f"Starting Claude Code with streaming: {' '.join(cmd[:5])}...")
@@ -461,6 +463,13 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
             text=True,
             bufsize=1  # Line buffered
         )
+
+        # Register process for potential termination
+        registry = get_process_registry()
+        registry.register(execution_id, process, metadata={
+            "type": "chat",
+            "message_preview": prompt[:100]
+        })
 
         # Write prompt to stdin and close it
         process.stdin.write(prompt)
@@ -492,34 +501,39 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         # Run the blocking subprocess reading in a thread pool to allow FastAPI
         # to handle other requests (like /api/activity polling) during execution
         loop = asyncio.get_event_loop()
-        stderr_output, return_code = await loop.run_in_executor(_executor, read_subprocess_output)
+        try:
+            stderr_output, return_code = await loop.run_in_executor(_executor, read_subprocess_output)
 
-        # Check for errors
-        if return_code != 0:
-            logger.error(f"Claude Code failed (exit {return_code}): {stderr_output[:500]}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Claude Code execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
-            )
+            # Check for errors
+            if return_code != 0:
+                logger.error(f"Claude Code failed (exit {return_code}): {stderr_output[:500]}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Claude Code execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                )
 
-        # Build final response text
-        response_text = "\n".join(response_parts) if response_parts else ""
+            # Build final response text
+            response_text = "\n".join(response_parts) if response_parts else ""
 
-        if not response_text:
-            raise HTTPException(
-                status_code=500,
-                detail="Claude Code returned empty response"
-            )
+            if not response_text:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Claude Code returned empty response"
+                )
 
-        # Count unique tools used
-        tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
-        metadata.tool_count = tool_use_count
+            # Count unique tools used
+            tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
+            metadata.tool_count = tool_use_count
+            metadata.execution_id = execution_id  # Track execution_id in metadata
 
-        # Log metadata for debugging
-        # NOTE: input_tokens already includes cached tokens - cache_creation and cache_read are billing subsets, NOT additional
-        logger.info(f"Claude response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}, raw_messages={len(raw_messages)}")
+            # Log metadata for debugging
+            # NOTE: input_tokens already includes cached tokens - cache_creation and cache_read are billing subsets, NOT additional
+            logger.info(f"Claude response: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, context={metadata.input_tokens}/{metadata.context_window}, raw_messages={len(raw_messages)}, execution_id={execution_id}")
 
-        return response_text, execution_log, metadata, raw_messages
+            return response_text, execution_log, metadata, raw_messages
+        finally:
+            # Always unregister process when done
+            registry.unregister(execution_id)
 
     except HTTPException:
         raise
@@ -626,6 +640,13 @@ async def execute_headless_task(
             bufsize=1  # Line buffered
         )
 
+        # Register process for potential termination
+        registry = get_process_registry()
+        registry.register(task_session_id, process, metadata={
+            "type": "task",
+            "message_preview": prompt[:100]
+        })
+
         # Write prompt to stdin and close it
         process.stdin.write(prompt)
         process.stdin.close()
@@ -672,57 +693,62 @@ async def execute_headless_task(
         # Run with timeout using asyncio
         loop = asyncio.get_event_loop()
         try:
-            return_code = await asyncio.wait_for(
-                loop.run_in_executor(None, read_subprocess_output_with_timeout),
-                timeout=timeout_seconds
-            )
-        except asyncio.TimeoutError:
-            # Kill the process on timeout
-            process.kill()
-            process.wait()
-            logger.error(f"[Headless Task] Task {task_session_id} timed out after {timeout_seconds}s")
-            raise HTTPException(
-                status_code=504,
-                detail=f"Task execution timed out after {timeout_seconds} seconds"
-            )
+            try:
+                return_code = await asyncio.wait_for(
+                    loop.run_in_executor(None, read_subprocess_output_with_timeout),
+                    timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                # Kill the process on timeout
+                process.kill()
+                process.wait()
+                logger.error(f"[Headless Task] Task {task_session_id} timed out after {timeout_seconds}s")
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"Task execution timed out after {timeout_seconds} seconds"
+                )
 
-        # Build verbose transcript from stderr (the human-readable execution log)
-        verbose_transcript = "\n".join(verbose_output_lines)
+            # Build verbose transcript from stderr (the human-readable execution log)
+            verbose_transcript = "\n".join(verbose_output_lines)
 
-        # Check for errors
-        if return_code != 0:
-            error_preview = verbose_transcript[:500] if verbose_transcript else "Unknown error"
-            logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {error_preview}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Task execution failed: {error_preview[:200]}"
-            )
+            # Check for errors
+            if return_code != 0:
+                error_preview = verbose_transcript[:500] if verbose_transcript else "Unknown error"
+                logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {error_preview}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Task execution failed: {error_preview[:200]}"
+                )
 
-        # Build final response text
-        response_text = "\n".join(response_parts) if response_parts else ""
+            # Build final response text
+            response_text = "\n".join(response_parts) if response_parts else ""
 
-        if not response_text:
-            raise HTTPException(
-                status_code=500,
-                detail="Task returned empty response"
-            )
+            if not response_text:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Task returned empty response"
+                )
 
-        # Count unique tools used
-        tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
-        metadata.tool_count = tool_use_count
+            # Count unique tools used
+            tool_use_count = len([e for e in execution_log if e.type == "tool_use"])
+            metadata.tool_count = tool_use_count
+            metadata.execution_id = task_session_id  # Track execution_id in metadata
 
-        # Use session_id from Claude if available, otherwise use our generated one
-        final_session_id = metadata.session_id or task_session_id
+            # Use session_id from Claude if available, otherwise use our generated one
+            final_session_id = metadata.session_id or task_session_id
 
-        # Log warning if raw_messages is empty (transcript won't be available in UI)
-        if len(raw_messages) == 0:
-            logger.warning(f"[Headless Task] Task {final_session_id} completed but raw_messages is empty - execution transcript will be unavailable")
-        else:
-            logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
+            # Log warning if raw_messages is empty (transcript won't be available in UI)
+            if len(raw_messages) == 0:
+                logger.warning(f"[Headless Task] Task {final_session_id} completed but raw_messages is empty - execution transcript will be unavailable")
+            else:
+                logger.info(f"[Headless Task] Task {final_session_id} completed: cost=${metadata.cost_usd}, duration={metadata.duration_ms}ms, tools={metadata.tool_count}, raw_messages={len(raw_messages)}")
 
-        # Return raw_messages as the execution log (full JSON transcript from Claude Code)
-        # Contains: init, assistant (thinking/tool_use), user (tool_result), result
-        return response_text, raw_messages, metadata, final_session_id
+            # Return raw_messages as the execution log (full JSON transcript from Claude Code)
+            # Contains: init, assistant (thinking/tool_use), user (tool_result), result
+            return response_text, raw_messages, metadata, final_session_id
+        finally:
+            # Always unregister process when done
+            registry.unregister(task_session_id)
 
     except HTTPException:
         raise

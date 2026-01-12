@@ -236,6 +236,23 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </button>
+              <!-- Stop Button (for running tasks) -->
+              <button
+                v-if="task.status === 'running' && task.execution_id"
+                @click="terminateTask(task)"
+                :disabled="terminatingTaskId === task.id"
+                class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors disabled:opacity-50"
+                title="Stop execution"
+              >
+                <svg v-if="terminatingTaskId === task.id" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                </svg>
+              </button>
               <!-- Re-run Button -->
               <button
                 v-if="task.status !== 'running'"
@@ -462,12 +479,16 @@ const taskLoading = ref(false)
 const releaseLoading = ref(false)
 const clearLoading = ref(false)
 const expandedTaskId = ref(null)
+const terminatingTaskId = ref(null)
 
 // Execution log modal state
 const showLogModal = ref(false)
 const logData = ref(null)
 const logLoading = ref(false)
 const logError = ref(null)
+
+// Running executions from agent (for termination)
+const runningExecutions = ref([])
 
 // Polling interval
 let pollInterval = null
@@ -484,7 +505,29 @@ const allTasks = computed(() => {
     // Only show if not already in executions (to avoid duplicates after refresh)
     return !executions.value.some(e => e.message === p.message && e.started_at === p.started_at)
   })
-  return [...pending, ...executions.value]
+
+  // Enhance running tasks with execution_id from runningExecutions
+  const enhanceWithExecutionId = (task) => {
+    if (task.status !== 'running' || task.execution_id) {
+      return task
+    }
+    // Try to match by message preview (first 100 chars match metadata.message_preview)
+    const messagePreview = task.message.substring(0, 100)
+    const match = runningExecutions.value.find(e =>
+      e.metadata?.message_preview === messagePreview ||
+      e.metadata?.message_preview?.startsWith(messagePreview.substring(0, 50))
+    )
+    if (match) {
+      return { ...task, execution_id: match.execution_id }
+    }
+    // If only one running execution, assume it's this task
+    if (runningExecutions.value.length === 1) {
+      return { ...task, execution_id: runningExecutions.value[0].execution_id }
+    }
+    return task
+  }
+
+  return [...pending.map(enhanceWithExecutionId), ...executions.value.map(enhanceWithExecutionId)]
 })
 
 // Computed stats (from server executions only)
@@ -553,6 +596,7 @@ function scrollToHighlightedTask() {
 async function loadQueueStatus() {
   if (props.agentStatus !== 'running') {
     queueStatus.value = null
+    runningExecutions.value = []
     return
   }
   try {
@@ -560,8 +604,32 @@ async function loadQueueStatus() {
       headers: authStore.authHeader
     })
     queueStatus.value = response.data
+
+    // If agent is busy, also fetch running executions for termination support
+    if (response.data.is_busy) {
+      await loadRunningExecutions()
+    } else {
+      runningExecutions.value = []
+    }
   } catch (error) {
     console.error('Failed to load queue status:', error)
+  }
+}
+
+// Load running executions from agent (for termination)
+async function loadRunningExecutions() {
+  if (props.agentStatus !== 'running') {
+    runningExecutions.value = []
+    return
+  }
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/executions/running`, {
+      headers: authStore.authHeader
+    })
+    runningExecutions.value = response.data.executions || []
+  } catch (error) {
+    console.error('Failed to load running executions:', error)
+    runningExecutions.value = []
   }
 }
 
@@ -669,6 +737,43 @@ async function copyTaskMessage(task) {
 // Toggle task expansion
 function toggleTaskExpand(taskId) {
   expandedTaskId.value = expandedTaskId.value === taskId ? null : taskId
+}
+
+// Terminate a running task
+async function terminateTask(task) {
+  if (!task.execution_id) {
+    console.error('No execution_id available for termination')
+    return
+  }
+
+  terminatingTaskId.value = task.id
+
+  try {
+    await axios.post(
+      `/api/agents/${props.agentName}/executions/${task.execution_id}/terminate`,
+      {},
+      { headers: authStore.authHeader }
+    )
+
+    // Update task status locally while we wait for refresh
+    const idx = pendingTasks.value.findIndex(t => t.id === task.id)
+    if (idx !== -1) {
+      pendingTasks.value[idx].status = 'failed'
+      pendingTasks.value[idx].error = 'Execution terminated by user'
+    }
+
+    // Refresh data to get updated status
+    await loadAllData()
+  } catch (error) {
+    console.error('Failed to terminate task:', error)
+    // Show error in task if possible
+    const idx = pendingTasks.value.findIndex(t => t.id === task.id)
+    if (idx !== -1) {
+      pendingTasks.value[idx].error = error.response?.data?.detail || 'Failed to terminate'
+    }
+  } finally {
+    terminatingTaskId.value = null
+  }
 }
 
 // View execution log
