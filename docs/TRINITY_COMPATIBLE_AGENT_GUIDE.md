@@ -139,7 +139,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets and large content:
+Must exclude secrets, instance-specific files, and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -152,9 +152,23 @@ credentials.json
 # Large generated content - DO NOT COMMIT
 content/
 
-# Claude Code session data
+# Instance-specific directories - DO NOT COMMIT
+.npm/
+.ssh/
+.trinity/
+.cache/
+
+# Instance-specific files - DO NOT COMMIT
+.claude.json
+.claude.json.backup
+.sudo_as_admin_successful
+
+# Claude Code - commit commands/skills/agents, exclude runtime data
 .claude/projects/
 .claude/statsig/
+.claude/todos/
+.claude/debug/
+# Keep: .claude/commands/, .claude/skills/, .claude/agents/, settings.local.json
 
 # Temporary files
 *.log
@@ -167,6 +181,18 @@ content/
 !.env.example
 !.mcp.json.template
 ```
+
+**What to commit from `.claude/`:**
+- ✅ `.claude/commands/` - Slash commands
+- ✅ `.claude/skills/` - Skills
+- ✅ `.claude/agents/` - Sub-agents
+- ✅ `.claude/settings.local.json` - Claude Code settings
+
+**What NOT to commit from `.claude/`:**
+- ❌ `.claude/projects/` - Session data
+- ❌ `.claude/statsig/` - Analytics
+- ❌ `.claude/todos/` - Temporary todo lists
+- ❌ `.claude/debug/` - Debug logs
 
 ---
 
@@ -852,6 +878,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Updated .gitignore: added instance-specific files (.npm, .ssh, .trinity, .cache, .claude.json, .sudo_as_admin_successful); clarified what to commit vs exclude from .claude/ directory |
 | 2026-01-12 | Added Package Persistence section with setup.sh convention for surviving container updates |
 | 2026-01-12 | Simplified guide: removed Platform Injection, Testing Locally, Troubleshooting, Registering with Trinity, Multi-Agent Systems sections; Made memory/ optional; Added docs/ best practice |
 | 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
