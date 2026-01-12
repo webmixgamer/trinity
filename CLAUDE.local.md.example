@@ -25,16 +25,15 @@
 
 | Service | Port |
 |---------|------|
-| Frontend (nginx) | 3005 |
-| Backend (FastAPI) | 8005 |
-| Audit Logger | 8006 |
-| MCP Server | 8007 |
-| Agent SSH | 2224-2242 |
+| Frontend (nginx) | 80 |
+| Backend (FastAPI) | 8000 |
+| MCP Server | 8080 |
+| Agent SSH | 2222-2262 |
 
 ## MCP Server Endpoint
 
 ```
-http://your-server-ip:8007/mcp
+http://your-server-ip:8080/mcp
 ```
 
 ## Quick Access

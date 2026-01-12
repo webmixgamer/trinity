@@ -55,9 +55,29 @@ Research a specific topic in depth.
 ### /status
 Report on recent research activity and findings count.
 
+## Metrics Tracking
+
+After each research cycle, update your metrics in `metrics.json`:
+
+```json
+{
+  "research_cycles": 1,
+  "findings_discovered": 5,
+  "topics_researched": 3,
+  "research_status": "idle",
+  "last_cycle_duration": 120
+}
+```
+
+- Increment `research_cycles` after each `/research` run
+- Update `findings_discovered` with total findings count
+- Set `research_status` to "active" during research, "idle" when done
+- Record `last_cycle_duration` in seconds
+
 ## Constraints
 
 - Always cite sources
 - Be concise but thorough
 - Flag high-priority findings clearly
 - Maintain consistent formatting across reports
+- Update metrics.json after each research cycle

@@ -39,6 +39,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/agents/:name/executions/:executionId',
+    name: 'ExecutionDetail',
+    component: () => import('../views/ExecutionDetail.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/files',
     name: 'FileManager',
     component: () => import('../views/FileManager.vue'),

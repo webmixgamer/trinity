@@ -117,10 +117,19 @@ APScheduler fires                 scheduler_service.py:169
 _execute_schedule()
                                   # EXECUTION QUEUE (Added 2025-12-06)
                                   queue.create_execution(source=SCHEDULE)
-                                  queue.submit() -> "running" or QueueFullError
 
-                                  create_execution(running)
+                                  # CREATE DB RECORD FIRST (Fixed 2026-01-11)
+                                  # Execution record created BEFORE activity so we have
+                                  # the database ID for related_execution_id linkage
+                                  execution = db.create_schedule_execution()
+                                  |
+                                  # ACTIVITY TRACKING with related_execution_id
+                                  activity_service.track_activity(
+                                    related_execution_id=execution.id  # For SQL JOINs
+                                  )
+                                  |
                                   broadcast(started)
+                                  queue.submit() -> "running" or QueueFullError
                                   |
                                   # AGENT CLIENT (Fixed 2025-01-02)
                                   client = get_agent_client(agent_name)
@@ -143,11 +152,14 @@ _execute_schedule()
 **Queue Full Handling**: If the agent's queue is full (3 pending requests), the scheduled execution fails with error "Agent queue full (N waiting), skipping scheduled execution".
 
 **Files:**
-- `src/backend/services/scheduler_service.py:169-373` - _execute_schedule() with queue and AgentClient.task()
+- `src/backend/services/scheduler_service.py:169-381` - _execute_schedule() with queue and AgentClient.task()
 - `src/backend/services/agent_client.py:194-281` - AgentClient.task() and _parse_task_response()
 - `src/backend/services/execution_queue.py` - Execution queue service
 - `src/backend/database.py:1318-1348` - create_schedule_execution()
 - `src/backend/database.py:1350-1378` - update_execution_status()
+
+**Key Implementation Detail (2026-01-11):**
+Execution record is created BEFORE tracking the activity (lines 206-215). This ensures we have the database execution ID available for `related_execution_id` field in the activity, enabling structured SQL queries to find all activities for a given execution.
 
 ### 3. Manual Trigger Flow
 
@@ -159,24 +171,32 @@ Frontend                          Backend                           Agent
 SchedulesPanel.vue               schedules.py:236              →    agent-{name}:8000
 POST .../trigger                  trigger_schedule()                POST /api/task
                                   ↓
-                                  scheduler_service.py:375
+                                  scheduler_service.py:382
                                   trigger_schedule()
                                   create_execution(manual)
                                   asyncio.create_task(_execute_manual_trigger)
                                   ↓
-                                  scheduler_service.py:413
+                                  scheduler_service.py:420
                                   _execute_manual_trigger()
+                                  # FULL ACTIVITY TRACKING (Added 2026-01-11)
+                                  activity_service.track_activity(
+                                    related_execution_id=execution_id
+                                  )
+                                  queue.create_execution()
+                                  queue.submit()
                                   client = get_agent_client(...)
                                   client.task(message)  # Uses /api/task for raw log format
+                                  activity_service.complete_activity()
+                                  queue.complete()
 ```
 
-**Note**: Manual triggers also use `client.task()` (not `client.chat()`) to ensure consistent log format across all execution types.
+**Note**: Manual triggers now have full activity tracking with `related_execution_id` linkage (added 2026-01-11), matching the automatic schedule execution flow.
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - triggerSchedule() method
 - `src/backend/routers/schedules.py:236-260` - trigger_schedule endpoint
-- `src/backend/services/scheduler_service.py:375-411` - trigger_schedule()
-- `src/backend/services/scheduler_service.py:413-510` - _execute_manual_trigger() with AgentClient.task()
+- `src/backend/services/scheduler_service.py:382-418` - trigger_schedule()
+- `src/backend/services/scheduler_service.py:420-568` - _execute_manual_trigger() with queue integration and activity tracking
 
 ### 4. Enable/Disable Flow
 
@@ -622,29 +642,33 @@ def _parse_cron(self, cron_expression: str) -> Dict:
 ## Activity Stream Integration (NEW: Req 9.7)
 
 **Implemented**: 2025-12-02
+**Updated**: 2026-01-11 - `related_execution_id` now a top-level field for structured SQL queries
 
 Schedule executions now create persistent activity records in the unified activity stream for cross-platform observability.
 
 ### Activity Tracking Flow
 
-**Schedule Start** (`scheduler_service.py:200-212`):
+**Schedule Start** (`scheduler_service.py:217-231`):
 ```python
-# Track schedule start activity
+# Track schedule start activity WITH related_execution_id as top-level field
+# Note: Execution record is created FIRST (line 206) so we have the database ID
 schedule_activity_id = await activity_service.track_activity(
     agent_name=schedule.agent_name,
     activity_type=ActivityType.SCHEDULE_START,
     user_id=schedule.owner_id,
     triggered_by="schedule",
+    related_execution_id=execution.id,  # Database ID - enables SQL JOINs
     details={
         "schedule_id": schedule.id,
         "schedule_name": schedule.name,
         "cron_expression": schedule.cron_expression,
+        "execution_id": execution.id,  # Also in details for WebSocket events
         "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Completion** (`scheduler_service.py:291-303`):
+**Schedule Completion** (`scheduler_service.py:299-311`):
 ```python
 # Track schedule completion
 await activity_service.complete_activity(
@@ -652,16 +676,16 @@ await activity_service.complete_activity(
     status="completed",
     details={
         "related_execution_id": execution.id,
-        "context_used": chat_response.metrics.context_used,
-        "context_max": chat_response.metrics.context_max,
-        "cost_usd": chat_response.metrics.cost_usd,
+        "context_used": task_response.metrics.context_used,
+        "context_max": task_response.metrics.context_max,
+        "cost_usd": task_response.metrics.cost_usd,
         "tool_count": len(execution_log) if execution_log else 0,
         "queue_execution_id": queue_execution.id
     }
 )
 ```
 
-**Schedule Failure** (`scheduler_service.py:318-324`):
+**Schedule Failure** (`scheduler_service.py:326-332`):
 ```python
 # Track schedule failure
 await activity_service.complete_activity(
@@ -676,11 +700,26 @@ await activity_service.complete_activity(
 
 Each schedule execution creates:
 1. **schedule_executions** record (existing): Full execution details, response, error, cost, tool_calls
+   - ID format: `token_urlsafe(16)` - permanent, used for API and UI navigation
 2. **agent_activities** record (NEW): Unified activity stream with:
    - `activity_type`: "schedule_start"
-   - `related_execution_id`: Links to schedule_executions table
+   - `related_execution_id`: Links to `schedule_executions.id` - enables structured SQL queries
    - `duration_ms`: Calculated on completion
    - Parent-child relationships with tool calls (future)
+
+**Activity Linkage Pattern** (2026-01-11):
+```sql
+-- Find all activities for a given execution
+SELECT * FROM agent_activities
+WHERE related_execution_id = ?
+ORDER BY started_at;
+
+-- Join activities with execution details
+SELECT a.*, e.status, e.cost, e.duration_ms
+FROM agent_activities a
+JOIN schedule_executions e ON a.related_execution_id = e.id
+WHERE e.agent_name = ?;
+```
 
 ### WebSocket Events
 
@@ -736,6 +775,7 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
+**Updated 2026-01-11** - Execution record created BEFORE activity tracking for proper `related_execution_id` linkage. Manual trigger now has full activity tracking with queue integration.
 **Updated 2025-01-02** - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` for raw log format compatibility with execution log viewer
 **Updated 2025-12-31** - Documented access control dependencies and AgentClient service (Plan 02/03 refactoring)
 **Updated 2025-12-29** - Fixed API endpoint line numbers to match current schedules.py (post-refactoring)

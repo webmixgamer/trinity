@@ -79,6 +79,9 @@ class SystemAgentService:
             container = get_agent_container(SYSTEM_AGENT_NAME)
             container.reload()
 
+            # Ensure database record has is_system=True (fixes regression if record exists without flag)
+            db.register_agent_owner(SYSTEM_AGENT_NAME, SYSTEM_AGENT_OWNER, is_system=True)
+
             # If running, nothing to do
             if container.status == "running":
                 result["action"] = "none"

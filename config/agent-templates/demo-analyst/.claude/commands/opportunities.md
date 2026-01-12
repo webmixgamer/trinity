@@ -1,6 +1,6 @@
 ---
 description: List and rank all identified opportunities
-allowed-tools: Read, Glob
+allowed-tools: Read, Glob, Bash
 ---
 
 # Opportunities Analysis
@@ -10,7 +10,9 @@ Compile and rank all opportunities identified across research findings.
 ## Steps
 
 1. **Gather All Findings**
-   - Read all files from `/home/developer/shared-in/research-network-researcher/findings/`
+   - First, discover the researcher's shared folder: `ls /home/developer/shared-in/`
+   - Look for a folder containing "researcher" in the name
+   - Read all files from that folder's `findings/` subdirectory
    - Extract every opportunity mentioned
 
 2. **Compile Opportunities**

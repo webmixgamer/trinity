@@ -1,6 +1,7 @@
 name: demo-researcher
 display_name: Research Agent
 description: Autonomous researcher that gathers and summarizes information on trending topics
+tagline: Discovers trends and opportunities
 version: "1.0.0"
 author: Trinity Demo
 
@@ -12,6 +13,11 @@ capabilities:
   - web-search
   - summarization
   - report-generation
+
+use_cases:
+  - "/research - Run a full research cycle on current trends"
+  - "/research AI agents - Research a specific topic"
+  - "/status - Check recent research activity"
 
 shared_folders:
   expose: true
@@ -29,3 +35,40 @@ schedules:
     cron: "0 */4 * * *"
     message: "/research"
     description: Regular research cycle
+
+# Custom metrics displayed in Trinity UI
+metrics:
+  - name: research_cycles
+    type: counter
+    label: "Research Cycles"
+    description: "Total research cycles completed"
+
+  - name: findings_discovered
+    type: counter
+    label: "Findings"
+    description: "Total findings discovered"
+
+  - name: topics_researched
+    type: counter
+    label: "Topics Researched"
+    description: "Unique topics researched"
+
+  - name: research_status
+    type: status
+    label: "Status"
+    description: "Current research status"
+    values:
+      - value: "active"
+        color: "green"
+        label: "Researching"
+      - value: "idle"
+        color: "gray"
+        label: "Idle"
+      - value: "error"
+        color: "red"
+        label: "Error"
+
+  - name: last_cycle_duration
+    type: duration
+    label: "Last Cycle"
+    description: "Duration of last research cycle"

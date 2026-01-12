@@ -7,7 +7,7 @@ Displays template metadata (capabilities, commands, sub-agents, platforms, resou
 As a platform user, I want to see what an agent is capable of so that I understand its purpose and available commands before interacting with it.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:364-366` - Info tab content rendering
+- **UI**: `src/frontend/src/views/AgentDetail.vue:76-78` - Info tab content rendering
 - **API**: `GET /api/agents/{name}/info`
 
 ---
@@ -32,65 +32,91 @@ Tab button for Info panel:
 </button>
 ```
 
-#### AgentDetail.vue:364-366
+#### AgentDetail.vue:76-78
 Info tab content rendering:
 ```vue
 <div v-if="activeTab === 'info'" class="p-6">
-  <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @use-case-click="handleUseCaseClick" />
+  <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @item-click="handleInfoItemClick" />
 </div>
 ```
 
-#### InfoPanel.vue:1-338
-The complete Info Panel component displaying template metadata.
+#### AgentDetail.vue:566-576 - Item Click Handler
+Handles clicks from Info tab items (use cases, commands, sub-agents) and redirects to Tasks tab:
+```javascript
+// Handle item click from Info tab - switch to Tasks tab with prefilled message
+const handleInfoItemClick = ({ type, text }) => {
+  // Set the prefill message and switch to Tasks tab
+  taskPrefillMessage.value = text
+  activeTab.value = 'tasks'
+  // Clear the prefill after a short delay so it can be used again
+  nextTick(() => {
+    setTimeout(() => {
+      taskPrefillMessage.value = ''
+    }, 100)
+  })
+}
+```
 
-**Key sections displayed:**
-| Section | Lines | Data Field | Visual Style |
-|---------|-------|------------|--------------|
-| Header (name, version, author) | 27-67 | `display_name`, `tagline`, `version`, `author`, `type` | Gradient header box |
-| Use Cases | 70-91 | `use_cases[]` | Clickable prompts grid |
-| Resources (CPU, Memory) | 93-111 | `resources.cpu`, `resources.memory` | White card with icon |
-| Sub-Agents | 113-136 | `sub_agents[]` | Blue grid cards |
-| Slash Commands | 138-158 | `commands[]` | Purple mono pills |
-| MCP Servers | 160-180 | `mcp_servers[]` | Yellow mono pills |
-| Skills | 182-202 | `skills[]` | Teal pills |
-| Capabilities | 204-221 | `capabilities[]` | Green pills |
-| Platforms | 223-240 | `platforms[]` | Gray pills |
-| Enabled Tools | 242-260 | `tools[]` | Orange pills |
-
-**Component script (lines 265-337):**
+#### TasksPanel.vue - Initial Message Prop
 ```javascript
 const props = defineProps({
   agentName: { type: String, required: true },
-  agentStatus: { type: String, default: 'stopped' }
+  agentStatus: { type: String, default: 'stopped' },
+  highlightExecutionId: { type: String, default: null },
+  initialMessage: { type: String, default: '' }  // NEW: prefilled task message
 })
 
-const emit = defineEmits(['use-case-click'])
-
-const loadTemplateInfo = async () => {
-  loading.value = true
-  try {
-    const response = await agentsStore.getAgentInfo(props.agentName)
-    templateInfo.value = response
-  } catch (error) {
-    templateInfo.value = {
-      has_template: false,
-      message: 'Failed to load template information'
-    }
-  } finally {
-    loading.value = false
+// Watch for initial message changes (from Info tab clicks)
+watch(() => props.initialMessage, (newMessage) => {
+  if (newMessage) {
+    newTaskMessage.value = newMessage
   }
+})
+```
+
+#### InfoPanel.vue:1-360
+The complete Info Panel component displaying template metadata.
+
+**Key sections displayed:**
+| Section | Lines | Data Field | Visual Style | Clickable |
+|---------|-------|------------|--------------|-----------|
+| Header (name, version, author) | 27-67 | `display_name`, `tagline`, `version`, `author`, `type` | Gradient header box | No |
+| Use Cases | 70-91 | `use_cases[]` | Clickable prompts grid | ✅ Yes |
+| Resources (CPU, Memory) | 93-111 | `resources.cpu`, `resources.memory` | White card with icon | No |
+| Sub-Agents | 113-145 | `sub_agents[]` | Blue grid cards | ✅ Yes |
+| Slash Commands | 147-172 | `commands[]` | Purple mono pills | ✅ Yes |
+| MCP Servers | 174-194 | `mcp_servers[]` | Yellow mono pills | No |
+| Skills | 196-216 | `skills[]` | Teal pills | No |
+| Capabilities | 218-235 | `capabilities[]` | Green pills | No |
+| Platforms | 237-254 | `platforms[]` | Gray pills | No |
+| Enabled Tools | 256-274 | `tools[]` | Orange pills | No |
+
+**Click handlers (lines 333-353):**
+```javascript
+const emit = defineEmits(['item-click'])
+
+const handleItemClick = (type, text) => {
+  // Emit event to parent to open Tasks tab with this text
+  emit('item-click', { type, text })
 }
 
-// Reload when agent status changes to running (to get full info)
-watch(() => props.agentStatus, (newStatus) => {
-  if (newStatus === 'running') {
-    loadTemplateInfo()
-  }
-})
+const handleUseCaseClick = (text) => {
+  handleItemClick('use-case', text)
+}
 
-onMounted(() => {
-  loadTemplateInfo()
-})
+const handleCommandClick = (command) => {
+  const commandName = getItemName(command)
+  handleItemClick('command', `/${commandName}`)
+}
+
+const handleSubAgentClick = (subAgent) => {
+  const agentName = getItemName(subAgent)
+  const description = getItemDescription(subAgent)
+  const prompt = description
+    ? `Ask ${agentName} to help with: ${description}`
+    : `Ask ${agentName} to help with a task`
+  handleItemClick('sub-agent', prompt)
+}
 ```
 
 ### State Management
@@ -525,6 +551,7 @@ if (info.capabilities?.includes("code_review")) {
   - [Agent Lifecycle](agent-lifecycle.md) - Agent must exist to display info
   - [Template Processing](template-processing.md) - Template must be parsed at agent creation
 - **Downstream**:
+  - [Tasks Tab](tasks-tab.md) - **Click-through destination** for use cases, commands, and sub-agents
   - [Agent Terminal](agent-terminal.md) - User understands commands before interacting
   - [Credential Injection](credential-injection.md) - User sees required MCP servers
 - **MCP Integration**:
@@ -539,16 +566,23 @@ if (info.capabilities?.includes("code_review")) {
 2. **Test with running agent**: Should show full template metadata
 3. **Test without template**: Should show "No Template Information" message
 4. **Test status change**: Reload should trigger when agent starts
+5. **Test use case click**: Should switch to Tasks tab with text prefilled
+6. **Test command click**: Should switch to Tasks tab with `/command-name` prefilled
+7. **Test sub-agent click**: Should switch to Tasks tab with delegation prompt prefilled
 
 ---
 
 ## Status
-**Working** - Verified implementation, line numbers updated as of 2026-01-03
+**Working** - Verified implementation, line numbers updated as of 2026-01-12
 
 **Key Changes:**
+- **2026-01-12**: **Interactive Items** - Use cases, commands, and sub-agents are now clickable
+  - Clicking redirects to Tasks tab with text pre-filled in task input
+  - Event changed from `@use-case-click` to `@item-click` with `{type, text}` payload
+  - TasksPanel has new `initialMessage` prop for prefilled text
+  - Commands prefill as `/command-name`, sub-agents prefill as delegation prompts
 - **2026-01-03**: Added MCP tool `get_agent_info` for programmatic access to template metadata
 - **2025-12-30**: Line numbers verified for agent server modular package
 - **2025-12-06**: Agent server refactored to modular package structure (`docker/base-image/agent_server/`)
 - InfoPanel.vue now supports `use_cases`, `skills`, `tagline` fields
 - Items can be strings or {name, description} objects for rich display
-- Added `@use-case-click` event for interactive use cases

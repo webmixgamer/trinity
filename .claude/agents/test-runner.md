@@ -28,7 +28,7 @@ python -m pytest -m smoke -v --tb=short 2>&1
 ```
 Tests: auth, templates, mcp_keys, setup, settings/api-keys, activities, metrics, folders, deploy-local (no agent creation)
 
-### Tier 2: CORE TESTS (~3-5 minutes)
+### Tier 2: CORE TESTS (~15-20 minutes)
 Use for: Standard validation, pre-commit checks, feature verification
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
@@ -37,7 +37,7 @@ python -m pytest -m "not slow" -v --tb=short 2>&1
 ```
 Tests: Everything except slow chat execution tests
 
-### Tier 3: FULL SUITE (~5-8 minutes)
+### Tier 3: FULL SUITE (~20-30 minutes)
 Use for: Release validation, comprehensive testing, post-deployment verification
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
@@ -131,6 +131,7 @@ The test suite covers:
 
 ### Smoke Tests (Fast, No Agent Required)
 - **Authentication** (test_auth.py) - Login, token validation, auth modes [SMOKE]
+- **Email Authentication** (test_email_auth.py) - Email-based login, OTP codes [SMOKE]
 - **Templates** (test_templates.py) - Template listing [SMOKE]
 - **MCP Keys** (test_mcp_keys.py) - API key management [SMOKE]
 - **First-Time Setup** (test_setup.py) - Setup status, admin password validation [SMOKE]
@@ -144,12 +145,15 @@ The test suite covers:
 - **Agent Git** (test_agent_git.py) - Git sync operations
 - **Agent Metrics** (test_agent_metrics.py) - Custom metrics endpoint (Req 9.9)
 - **Agent Shared Folders** (test_shared_folders.py) - Folder expose/consume configuration (Req 9.11)
+- **Agent API Key** (test_agent_api_key_setting.py) - Per-agent API key configuration
+- **Web Terminal** (test_web_terminal.py) - WebSocket terminal sessions
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
 - **Settings** (test_settings.py) - System settings, Trinity prompt, API keys management
 - **Schedules** (test_schedules.py) - Scheduled executions
 - **Execution Queue** (test_execution_queue.py) - Queue management
+- **Executions** (test_executions.py) - Execution history, status tracking
 
 ### System & Deployment
 - **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules (Req 10.7)
@@ -157,21 +161,22 @@ The test suite covers:
 - **Public Links** (test_public_links.py) - Public agent sharing with email verification (Req 11.3)
 
 ### Operations & Observability
-- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule pause/resume, emergency stop, alerts, costs [SLOW]
-- **System Agent** (test_system_agent.py) - System agent status, restart, reinitialize [SLOW]
+- **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule list/pause/resume, emergency stop, alerts, costs [SLOW]
+- **System Agent** (test_system_agent.py) - System agent status, restart, reinitialize, is_system flag [SLOW]
 - **Observability** (test_observability.py) - OTel status, metrics, cost tracking
 - **Activity Stream** (test_activities.py) - Cross-agent timeline, per-agent activities
 - **Parallel Tasks** (test_parallel_task.py) - Parallel headless execution (Req 12.1)
+- **Log Archive** (test_log_archive.py) - Log archival service (requires docker package in test env)
 
 ### Direct Agent Tests
 - **Agent Server Direct** (agent_server/) - Direct agent server tests [SKIPPED unless TEST_AGENT_NAME set]
 
-## Performance Notes (2025-12-09)
+## Performance Notes (2026-01-09)
 
 **Fixture Optimization**:
 - `created_agent` is now module-scoped (ONE agent per test FILE)
 - Previously function-scoped (NEW agent per test) caused ~60 minute runs
-- Expected timing now: ~5-8 minutes for full suite
+- Expected timing now: ~15-20 minutes for core tests, ~20-30 minutes for full suite
 
 **Agent Creation Overhead**:
 - Each agent takes ~30-45 seconds to create and become ready
@@ -179,22 +184,23 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~515 tests across 28 test files
-**Smoke Tests**: ~90 tests (fast, no agent creation)
-**Agent-Requiring Tests**: ~380 tests
-**Slow Tests**: ~45 tests (chat execution, fleet ops)
+**Total Tests**: ~520 tests across 29 test files
+**Smoke Tests**: ~100 tests (fast, no agent creation)
+**Agent-Requiring Tests**: ~370 tests
+**Slow Tests**: ~50 tests (chat execution, fleet ops, system agent ops)
 
-## Expected Skipped Tests (~30 tests)
+## Expected Skipped Tests (~38 tests)
 
 Skipped tests are **intentional** - they indicate missing prerequisites, not failures:
 
 | Category | Count | Reason |
 |----------|-------|--------|
 | Agent Server Direct | 20 | Need `TEST_AGENT_NAME` env var |
-| Git not configured | 3 | Test agent has no git template |
+| Git not configured | 5 | Test agent has no git template |
 | Queue full tests | 2 | Hard to trigger in test |
 | Setup already complete | 3 | Can only test validation on fresh install |
-| Optional features | 2 | Feature not implemented/no test data |
+| Session tests | 5 | No active sessions at test time |
+| Optional features | 3 | Feature not implemented/no test data |
 
 **To run agent server direct tests:**
 ```bash
@@ -207,6 +213,13 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Healthy**: >90% pass rate, 0 critical failures
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
+
+## Known Issues (2026-01-09)
+
+| Issue | Test | Severity | Status |
+|-------|------|----------|--------|
+| Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
+| Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
 
 ## Important Notes
 

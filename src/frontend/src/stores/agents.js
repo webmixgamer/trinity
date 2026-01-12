@@ -10,6 +10,8 @@ export const useAgentsStore = defineStore('agents', {
     error: null,
     // Context stats for agents list page
     contextStats: {},  // Map of agent name -> stats
+    // Execution stats for agents list page (tasks, success rate, cost, last run)
+    executionStats: {},  // Map of agent name -> execution stats
     contextPollingInterval: null,
     sortBy: 'created_desc'  // Default sort order
   }),
@@ -517,6 +519,62 @@ export const useAgentsStore = defineStore('agents', {
       }
     },
 
+    // Execution Stats Actions (for Agents list page - tasks, success rate, cost, last run)
+    async fetchExecutionStats() {
+      try {
+        const authStore = useAuthStore()
+        const response = await axios.get('/api/agents/execution-stats', {
+          headers: authStore.authHeader
+        })
+        const agentStats = response.data.agents || []
+
+        const newStats = {}
+        agentStats.forEach(stat => {
+          newStats[stat.name] = {
+            taskCount: stat.task_count_24h || 0,
+            successCount: stat.success_count || 0,
+            failedCount: stat.failed_count || 0,
+            runningCount: stat.running_count || 0,
+            successRate: stat.success_rate || 0,
+            totalCost: stat.total_cost || 0,
+            lastExecutionAt: stat.last_execution_at
+          }
+        })
+        this.executionStats = newStats
+      } catch (error) {
+        console.error('Failed to fetch execution stats:', error)
+      }
+    },
+
+    // Toggle autonomy mode for an agent
+    async toggleAutonomy(agentName) {
+      try {
+        const authStore = useAuthStore()
+        const agent = this.agents.find(a => a.name === agentName)
+        if (!agent) return { success: false, error: 'Agent not found' }
+
+        const newState = !agent.autonomy_enabled
+
+        const response = await axios.put(`/api/agents/${agentName}/autonomy`, {
+          enabled: newState
+        }, {
+          headers: authStore.authHeader
+        })
+
+        // Update local state
+        agent.autonomy_enabled = newState
+
+        return {
+          success: true,
+          enabled: newState,
+          schedulesUpdated: response.data.schedules_updated
+        }
+      } catch (error) {
+        console.error('Failed to toggle autonomy:', error)
+        throw error
+      }
+    },
+
     startContextPolling() {
       if (this.contextPollingInterval) {
         clearInterval(this.contextPollingInterval)
@@ -524,10 +582,12 @@ export const useAgentsStore = defineStore('agents', {
 
       // Fetch immediately
       this.fetchContextStats()
+      this.fetchExecutionStats()
 
       // Then poll every 5 seconds
       this.contextPollingInterval = setInterval(() => {
         this.fetchContextStats()
+        this.fetchExecutionStats()
       }, 5000)
 
       console.log('[Agents] Started context polling (every 5s)')

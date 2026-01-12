@@ -564,14 +564,29 @@ class TestExecutionLog:
         assert_status(log_response, 200)
         data = log_response.json()
 
-        # If it's a dict, check for expected log fields
-        if isinstance(data, dict):
-            # May have 'log', 'entries', or 'content' field
-            assert "log" in data or "entries" in data or "content" in data or "execution_log" in data
+        # Execution log response has specific structure
+        assert isinstance(data, dict), "Log response should be a dict"
+        assert_has_fields(data, ["execution_id", "has_log"])
+
+        # If has_log is True, should have log data
+        if data["has_log"]:
+            assert_has_fields(data, ["log", "agent_name", "started_at", "status"])
+            assert data["log"] is not None
+            # Log should be a list (raw Claude Code format) or string (legacy)
+            assert isinstance(data["log"], (list, str))
+        else:
+            # When no log available, log is None
+            assert data["log"] is None
+            assert "message" in data  # Should have explanatory message
 
 
 class TestExecutionDetails:
-    """Tests for GET /api/agents/{name}/executions/{execution_id} endpoint."""
+    """Tests for GET /api/agents/{name}/executions/{execution_id} endpoint.
+
+    These tests verify the Execution Detail Page API which provides
+    comprehensive execution metadata including timing, cost, and context.
+    Feature Flow: execution-detail-page.md
+    """
 
     def test_get_execution_details(
         self,
@@ -601,6 +616,116 @@ class TestExecutionDetails:
         assert_status(response, 200)
         data = assert_json_response(response)
         assert isinstance(data, dict)
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_execution_detail_has_all_fields(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Execution detail response includes all ExecutionResponse fields."""
+        # Create an execution
+        task_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/task",
+            json={"message": "Detail test"},
+            timeout=120.0
+        )
+
+        if task_response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(task_response, 200)
+        time.sleep(3)
+
+        # Get execution ID from list
+        list_response = api_client.get(f"/api/agents/{created_agent['name']}/executions")
+        assert_status(list_response, 200)
+        executions = list_response.json()
+
+        if not executions:
+            pytest.skip("No executions found")
+
+        execution_id = executions[0].get("id")
+
+        # Get execution details
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/{execution_id}"
+        )
+        assert_status(response, 200)
+        data = response.json()
+
+        # Verify all required fields from ExecutionResponse model
+        assert_has_fields(data, [
+            "id",
+            "schedule_id",
+            "agent_name",
+            "status",
+            "started_at",
+            "message",
+            "triggered_by"
+        ])
+
+        # Verify optional observability fields are present (can be null)
+        assert "duration_ms" in data
+        assert "completed_at" in data
+        assert "response" in data
+        assert "error" in data
+        assert "context_used" in data
+        assert "context_max" in data
+        assert "cost" in data
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_execution_detail_cost_context_populated(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Completed execution has cost and context fields populated."""
+        # Create an execution
+        task_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/task",
+            json={"message": "Cost and context test"},
+            timeout=120.0
+        )
+
+        if task_response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        assert_status(task_response, 200)
+        time.sleep(3)
+
+        # Get executions
+        list_response = api_client.get(f"/api/agents/{created_agent['name']}/executions")
+        assert_status(list_response, 200)
+        executions = list_response.json()
+
+        # Find completed execution
+        completed = [e for e in executions if e.get("status") == "success"]
+        if not completed:
+            pytest.skip("No completed executions")
+
+        execution_id = completed[0]["id"]
+
+        # Get execution detail
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/{execution_id}"
+        )
+        assert_status(response, 200)
+        data = response.json()
+
+        # Verify observability fields are populated for completed execution
+        assert data["duration_ms"] is not None, "Duration should be recorded"
+        assert data["duration_ms"] > 0, "Duration should be positive"
+
+        # Cost may be null if not tracking, but should be present
+        assert "cost" in data
+
+        # Context should be tracked
+        if data["context_used"] is not None:
+            assert isinstance(data["context_used"], int)
+            assert data["context_used"] >= 0
 
     def test_get_execution_details_nonexistent_returns_404(
         self,

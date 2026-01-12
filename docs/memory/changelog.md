@@ -1,3 +1,834 @@
+### 2026-01-11 21:44:00
+🐛 **Fix: Autonomy Toggle Not Syncing Schedules to APScheduler**
+
+**Problem**: When autonomy was toggled via the UI or API, schedules were enabled/disabled in the database but APScheduler was never updated. This caused schedules to stop running after autonomy was re-enabled until the backend was restarted.
+
+**Root Cause**: `autonomy.py` was calling `db.set_schedule_enabled()` directly, which only updates the database. It should use `scheduler_service.enable_schedule()` and `scheduler_service.disable_schedule()` which update both the database AND APScheduler.
+
+**Fix**: Updated `services/agent_service/autonomy.py` to use scheduler_service methods:
+```python
+# Before (broken):
+db.set_schedule_enabled(schedule_id, enabled)
+
+# After (fixed):
+if enabled:
+    scheduler_service.enable_schedule(schedule_id)
+else:
+    scheduler_service.disable_schedule(schedule_id)
+```
+
+**Files Modified**:
+- `src/backend/services/agent_service/autonomy.py` - Import scheduler_service, use enable/disable methods
+
+**Testing**:
+1. Disabled autonomy → Jobs removed from APScheduler
+2. Re-enabled autonomy → Jobs re-added to APScheduler
+3. Schedule executed on next cron trigger ✅
+
+---
+
+### 2026-01-11 21:30:00
+📚 **Docs: Archive Deprecated Feature Flows**
+
+Cleaned up feature-flows index by archiving 4 deprecated/removed feature flows:
+
+| Flow | Status | Reason |
+|------|--------|--------|
+| auth0-authentication.md | REMOVED | Auth0 deleted (2026-01-01), replaced by email auth |
+| agent-chat.md | DEPRECATED | UI replaced by Web Terminal (2025-12-25) |
+| vector-memory.md | REMOVED | Platform-injected memory removed (2025-12-24) |
+| agent-network-replay-mode.md | SUPERSEDED | Replaced by Dashboard Timeline View (2026-01-04) |
+
+**Changes**:
+- Created `docs/memory/feature-flows/archive/` directory
+- Moved 4 obsolete flow documents to archive
+- Updated feature-flows.md index: removed struck-through entries, added "Archived Flows" section
+
+---
+
+### 2026-01-11 13:30:00
+🐛 **Fix: Frontend Timeline Execution ID Extraction**
+
+**Problem**: Dashboard Timeline couldn't navigate to Execution Detail pages because the frontend was looking for execution ID in the wrong place.
+
+**Root Cause**: `network.js` was only checking `details.execution_id` and `details.related_execution_id` (inside the details JSON), but the backend now stores `related_execution_id` as a **top-level field** on the activity record.
+
+**Fix**: Updated `network.js` line 176 to prioritize top-level field:
+```javascript
+// Before (broken):
+execution_id: details.execution_id || details.related_execution_id || null
+
+// After (fixed):
+execution_id: activity.related_execution_id || details.execution_id || details.related_execution_id || null
+```
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Extract execution_id from activity.related_execution_id
+
+**Impact**: Timeline clicks now correctly navigate to Execution Detail page with proper database ID.
+
+---
+
+### 2026-01-11 12:15:00
+🔧 **Refactor: Consistent Execution ID Tracking Across All Entry Points**
+
+**Problem**: Execution tracking had multiple inconsistencies:
+1. Activities only stored execution ID in `details` dict, not in `related_execution_id` field
+2. Tool call activities had no link to parent execution
+3. Chat response returned queue ID (transient) instead of database ID (permanent)
+4. Manual trigger executions had no activity tracking
+5. Schedule activities were created BEFORE execution record (no ID to link)
+
+**Solution**: Comprehensive fix to ensure all execution types use consistent ID tracking:
+
+**chat.py Changes**:
+1. Collaboration activity: Added `related_execution_id=task_execution_id` (line 201)
+2. Chat start activity: Added `related_execution_id=task_execution_id` (line 224)
+3. Tool call activities: Added `related_execution_id=task_execution_id` (line 302)
+4. Chat response: Now includes both `id` (queue) and `task_execution_id` (database) (line 357-361)
+5. Parallel task activity: Added `related_execution_id=execution_id` (line 462)
+
+**scheduler_service.py Changes**:
+1. Reordered operations: Create execution record BEFORE activity tracking
+2. Schedule activity: Added `related_execution_id=execution.id` (line 222)
+3. Manual trigger: Added full activity tracking with `related_execution_id` (lines 431-446)
+4. Manual trigger: Added activity completion for success/failure paths
+
+**ID System Clarification**:
+| ID Type | Format | Storage | Purpose |
+|---------|--------|---------|---------|
+| Queue ID | UUID | Redis (10m TTL) | Internal queue management |
+| Database ID | token_urlsafe(16) | SQLite (permanent) | API access, UI navigation |
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - 5 activity tracking calls + response format
+- `src/backend/services/scheduler_service.py` - Reordered + added activity tracking
+
+**Impact**: Timeline clicks now correctly navigate to Execution Detail page. All execution types (chat, parallel task, scheduled, manual trigger) now have consistent activity linkage.
+
+---
+
+### 2026-01-11 10:31:00
+🐛 **Fix: Agent Authorization Dependencies Return 404 for Non-Existent Agents**
+
+**Problem**: API endpoints using `AuthorizedAgent`, `AuthorizedAgentByName`, `OwnedAgent`, and `OwnedAgentByName` dependencies returned incorrect responses for non-existent agents:
+- Admin users: 200 OK with empty data (admin bypass skipped existence check)
+- Non-admin users: 403 Forbidden (permission check failed before existence check)
+
+**Expected**: All users should receive 404 Not Found for non-existent agents.
+
+**Fix**: Updated all four authorization dependency functions to check agent existence before checking permissions:
+1. `get_authorized_agent()` - Lines 183-188
+2. `get_authorized_agent_by_name()` - Lines 235-240
+3. `get_owned_agent()` - Lines 213-218
+4. `get_owned_agent_by_name()` - Lines 273-278
+
+Each function now:
+1. First checks if agent exists via `db.get_agent_owner()`
+2. Returns 404 if agent doesn't exist
+3. Then checks user permissions
+4. Returns 403 if user lacks access
+
+**Files Modified**:
+- `src/backend/dependencies.py` - All 4 agent authorization dependencies
+
+**Test**: `test_get_executions_nonexistent_agent_returns_404` now passes
+
+---
+
+### 2026-01-11 10:18:00
+🐛 **Fix: Timeline Execution Links Not Finding Executions**
+
+**Problem**: Clicking on execution bars in the Dashboard Timeline opened the Execution Detail page, but it showed "Execution not found" even though executions existed in the database.
+
+**Root Cause**: ID mismatch between two different execution tracking systems:
+- **Queue execution ID** (UUID format): `4df12ce0-742b-4671-b9ae-ad024ba7c595`
+- **Database execution ID** (base64 format): `lxTrun4spCbAtlMUHh748w`
+
+Activities were storing `execution.id` (queue UUID) instead of `task_execution_id` (database ID).
+
+**Fix**: Changed all activity tracking calls to use `task_execution_id` instead of `execution.id`:
+- Line 205: collaboration_activity details
+- Line 227: chat_start activity details
+- Line 320: chat_activity completion details
+- Line 333: collaboration_activity completion details
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - 4 locations fixed
+
+**Note**: Existing activities have wrong execution_id. New executions will work correctly.
+
+---
+
+### 2026-01-11 09:15:00
+✨ **UX: Timeline Execution Click Opens New Tab**
+
+Changed the Dashboard Timeline behavior when clicking on execution bars:
+- **Before**: Same-tab navigation to Execution Detail page
+- **After**: Opens Execution Detail page in a new browser tab
+
+This allows users to explore execution details without losing their place on the Dashboard.
+
+**Files Modified**:
+- `src/frontend/src/components/ReplayTimeline.vue` - Changed `router.push()` to `window.open(route.href, '_blank')`
+
+**Docs Updated**:
+- `docs/memory/feature-flows/dashboard-timeline-view.md`
+- `docs/memory/feature-flows/execution-detail-page.md`
+
+---
+
+### 2026-01-10 13:30:00
+🐛 **Fix: Execution Transcripts Not Showing for Chat-Based Executions**
+
+**Problem**: Execution transcripts were not displaying for some executions (especially MCP and chat-based ones). The frontend's `parseExecutionLog()` expects raw Claude Code stream-json format, but `/api/chat` was returning a simplified `ExecutionLogEntry` format.
+
+**Root Cause**:
+- Agent `/api/task` returns raw Claude Code format → ✅ Works
+- Agent `/api/chat` returns simplified `ExecutionLogEntry[]` format → ❌ Broken
+
+**Solution**: Unified both endpoints to return raw Claude Code stream-json format:
+
+1. **Agent Server Changes** (`docker/base-image/agent_server/`):
+   - `services/claude_code.py`: Updated `execute_claude_code()` to capture raw_messages
+   - `services/gemini_runtime.py`: Updated `execute()` to capture raw_messages
+   - `services/runtime_adapter.py`: Updated abstract interface signature
+   - `routers/chat.py`: Now returns `raw_messages` as `execution_log`
+
+2. **Backend Changes** (`src/backend/routers/chat.py`):
+   - Extracts both `execution_log` (raw) and `execution_log_simplified`
+   - Uses simplified format for activity tracking
+   - Stores raw format in database for UI display
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/claude_code.py`
+- `docker/base-image/agent_server/services/gemini_runtime.py`
+- `docker/base-image/agent_server/services/runtime_adapter.py`
+- `docker/base-image/agent_server/routers/chat.py`
+- `src/backend/routers/chat.py`
+
+**Rebuild Required**: Base image (`./scripts/deploy/build-base-image.sh`) + backend
+
+---
+
+### 2026-01-10 12:00:00
+✨ **Feature: Execution Detail Page**
+
+**Goal**: Provide a dedicated page for viewing comprehensive execution details instead of just a modal.
+
+**Changes**:
+
+1. **New Page** (`ExecutionDetail.vue`):
+   - Route: `/agents/:name/executions/:executionId`
+   - Header with back button, agent name breadcrumb, status badge
+   - Metadata cards: Duration, Cost, Context, Trigger
+   - Timestamps row: Started, Completed, Execution ID
+   - Task Input panel with full message
+   - Error panel (conditional, for failed executions)
+   - Response Summary panel
+   - Full Execution Transcript (reuses parseExecutionLog logic)
+
+2. **Navigation from TasksPanel** (`TasksPanel.vue:207-217`):
+   - New external link icon before the log modal icon
+   - Links to ExecutionDetail page for the execution
+   - Only shown for server-persisted tasks (not local-)
+
+3. **Navigation from Timeline** (`ReplayTimeline.vue:767-785`):
+   - Updated `navigateToExecution()` to open ExecutionDetail page
+   - Previously navigated to Tasks tab with highlight
+   - Now opens dedicated page for better UX
+
+4. **Router** (`router/index.js:41-46`):
+   - Added route: `/agents/:name/executions/:executionId`
+   - Named route: `ExecutionDetail`
+   - Requires authentication
+
+**Files Modified**:
+- `src/frontend/src/views/ExecutionDetail.vue` - New page component
+- `src/frontend/src/router/index.js` - New route
+- `src/frontend/src/components/TasksPanel.vue` - External link icon
+- `src/frontend/src/components/ReplayTimeline.vue` - Updated navigation
+- `docs/memory/feature-flows/execution-detail-page.md` - New feature flow
+
+---
+
+### 2026-01-10 11:15:00
+✨ **Feature: Timeline Click-to-Navigate to Execution Details**
+
+**Goal**: Allow users to click on execution bars in the Dashboard Timeline to view full execution details in the Tasks tab.
+
+**Changes**:
+
+1. **Execution ID Tracking** (`network.js`):
+   - Now extracts `execution_id` from activity details
+   - Available via `details.execution_id` or `details.related_execution_id`
+   - Passed through to Timeline events for navigation
+
+2. **Click Handler** (`ReplayTimeline.vue`):
+   - Added `@click="navigateToExecution(activity)"` on execution bars
+   - Navigates to `/agents/{name}?tab=tasks&execution={id}`
+   - Tooltip updated: "(Click to view details)"
+   - Visual feedback: hover adds white stroke outline
+
+3. **Tab Query Param** (`AgentDetail.vue`):
+   - Now reads `tab` query param on mount
+   - Auto-selects requested tab (tasks, terminal, etc.)
+   - Passes `highlightExecutionId` prop to TasksPanel
+
+4. **Execution Highlighting** (`TasksPanel.vue`):
+   - New prop: `highlightExecutionId`
+   - Highlighted execution has indigo ring border
+   - Auto-expands the highlighted execution
+   - Scrolls to highlighted execution on load
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Extract execution_id from details
+- `src/frontend/src/components/ReplayTimeline.vue` - Click handler, navigation
+- `src/frontend/src/views/AgentDetail.vue` - Tab query param, pass highlight prop
+- `src/frontend/src/components/TasksPanel.vue` - Highlight styling, auto-scroll
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+
+---
+
+### 2026-01-10 10:30:00
+✨ **Feature: Timeline All Executions Display**
+
+**Goal**: Show ALL executions on Dashboard Timeline (scheduled, manual, collaboration) - not just agent-to-agent collaborations.
+
+**Changes**:
+
+1. **Expanded Activity Query** (`network.js`):
+   - Now fetches: `agent_collaboration,schedule_start,schedule_end,chat_start,chat_end`
+   - Filters out regular user chat sessions (keeps automated executions only)
+   - Parses `activity_type`, `triggered_by`, `schedule_name` for color coding
+
+2. **Activity Type Color Coding** (`ReplayTimeline.vue`):
+   | Type | Color | Use Case |
+   |------|-------|----------|
+   | Cyan `#06b6d4` | Agent-to-agent calls | `agent_collaboration` |
+   | Purple `#8b5cf6` | Scheduled tasks | `schedule_start/end` |
+   | Green `#22c55e` | Manual/automated tasks | `chat_start/end` (non-user) |
+   | Red `#ef4444` | Errors | Any failed execution |
+   | Amber `#f59e0b` | In progress | Currently running |
+
+3. **Legend Display**:
+   - Color legend added to Timeline header
+   - Shows: Collaboration (cyan), Scheduled (purple), Task (green)
+   - Hidden on small screens for space
+
+4. **Enhanced Tooltips**:
+   - Now shows execution type prefix: "Agent Call", "Scheduled: {name}", "Manual Task", "Task"
+   - Status indicator: "(Error)", "(In Progress)"
+   - Duration with estimated marker when needed
+
+5. **Arrows Only for Collaborations**:
+   - Non-collaboration events render bars only (no target_agent)
+   - Communication arrows only shown for `agent_collaboration` events
+
+**Files Modified**:
+- `src/frontend/src/stores/network.js` - Expanded query, filter logic, new fields
+- `src/frontend/src/components/ReplayTimeline.vue` - Color coding, legend, tooltips
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+- `docs/requirements/TIMELINE_ALL_EXECUTIONS.md` - Requirements (completed)
+
+**Backend**: No changes needed - API already supports all activity types.
+
+---
+
+### 2026-01-10 09:45:00
+🔧 **Fix: Dashboard Timeline View Improvements**
+
+**Goal**: Address user feedback to improve Timeline view usability and feature parity with Graph view.
+
+**Changes**:
+
+1. **Graph Hidden in Timeline Mode**:
+   - Graph canvas now completely hidden when Timeline is active
+   - Views are mutually exclusive - no overlay issues
+
+2. **Default Zoom to Last 2 Hours**:
+   - On page load, zoom defaults to `timeRangeHours / 2`
+   - For 24h range, zoom is 12x (shows ~2 hours of activity)
+   - Auto-scrolls to "Now" position on mount
+
+3. **Rich Agent Tiles** (expanded from 220px to 280px):
+   - Now matches Graph tile layout exactly:
+   - Row 1: Agent name, runtime badge (Claude/Gemini), system badge, status dot
+   - Row 2: Activity state (Active/Idle/Offline) + Autonomy toggle (AUTO/Manual)
+   - Row 3: GitHub repo or "Local agent"
+   - Row 4: Context progress bar with percentage
+   - Row 5: Execution stats (tasks, success rate, cost, last execution)
+   - Row 6: Resource info (memory, CPU cores)
+   - Row 7: View Details button (or System Dashboard link for system agent)
+
+4. **Autonomy Toggle**:
+   - Added `@toggle-autonomy` event emission
+   - Wired to Dashboard's `handleToggleAutonomy()` handler
+   - Toggle works directly from Timeline view
+
+5. **New Props**:
+   - `nodes` - Full node data for tile information
+   - `timeRangeHours` - For default zoom calculation
+
+**Files Modified**:
+- `src/frontend/src/views/Dashboard.vue` - Hide Graph in Timeline, pass nodes prop
+- `src/frontend/src/components/ReplayTimeline.vue` - Rich tiles, default zoom, autonomy toggle
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated documentation
+
+---
+
+### 2026-01-10 09:22:00
+✨ **Feature: Dashboard Timeline View**
+
+**Goal**: Transform Dashboard to offer two views - Graph (node-based) and Timeline (waterfall activity view) with live event streaming and rich agent labels.
+
+**Changes**:
+
+1. **Renamed Mode Toggle**: "Live/Replay" → "Graph/Timeline"
+   - Graph view shows the VueFlow node visualization (unchanged)
+   - Timeline view shows waterfall activity timeline
+
+2. **Live Event Streaming in Timeline**:
+   - WebSocket stays connected in Timeline view (previously disconnected)
+   - New events appear at right edge in real-time
+   - "Now" marker updates continuously every second
+   - Auto-scroll to latest events (disables when user scrolls back)
+   - "Jump to Now" button appears when scrolled away
+
+3. **Rich Agent Labels** (expanded from 150px to 220px):
+   - Status dot (green pulsing = active, green = running, gray = stopped)
+   - Agent name with click-to-navigate to AgentDetail
+   - Context percentage with color coding (red ≥80%, yellow ≥60%)
+   - Mini progress bar showing context usage
+   - Execution stats row: tasks count, success rate, cost, last execution time
+
+4. **Improved Layout**:
+   - Row height increased from 32px to 64px for rich labels
+   - Timeline max-height increased from 320px to 400px
+   - Playback controls hidden in live mode (shown only when replaying)
+   - Stopped agents display grayed out with "Stopped" label
+
+5. **State Persistence**:
+   - View preference saved to `trinity-dashboard-view` localStorage key
+
+**Files Modified**:
+- `src/frontend/src/views/Dashboard.vue` - Toggle labels, stats props
+- `src/frontend/src/components/ReplayTimeline.vue` - Rich labels, live mode
+- `src/frontend/src/stores/network.js` - `setViewMode()`, keep WebSocket connected
+
+---
+
+### 2026-01-09 21:30:00
+✨ **Feature: System Agent Schedule & Execution Management**
+
+**Goal**: Enable System Agent to manage schedules and monitor executions via slash commands and REST API.
+
+**Backend Changes**:
+- Added `GET /api/ops/schedules` endpoint for listing all schedules with filters and execution history
+- Added `list_all_schedules()` method to `db/schedules.py`
+- Exposed method via `database.py` DatabaseManager
+
+**System Agent Slash Commands**:
+| Command | Purpose |
+|---------|---------|
+| `/ops/schedules` | Quick schedule overview |
+| `/ops/schedules/list` | Detailed schedule listing with history |
+| `/ops/schedules/pause [agent]` | Pause schedules (all or per-agent) |
+| `/ops/schedules/resume [agent]` | Resume paused schedules |
+| `/ops/executions/list [agent]` | List recent task executions |
+| `/ops/executions/status <id>` | Get execution details |
+
+**Files Created**:
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/list.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/pause.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/resume.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/list.md`
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/status.md`
+
+**Files Modified**:
+- `src/backend/routers/ops.py` - New `/api/ops/schedules` endpoint
+- `src/backend/db/schedules.py` - `list_all_schedules()` method
+- `src/backend/database.py` - Exposed method
+- `config/agent-templates/trinity-system/CLAUDE.md` - Schedule management docs
+- `config/agent-templates/trinity-system/template.yaml` - New slash commands
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules.md` - Updated overview
+
+---
+
+### 2026-01-09 19:45:00
+🔧 **Refactor: AgentDetail.vue Modularization**
+
+**Goal**: Split monolithic AgentDetail.vue (~1860 lines) into modular, maintainable components.
+
+**Results**:
+- **AgentDetail.vue**: Reduced from ~1860 lines to **603 lines** (68% reduction)
+- **9 new components extracted** totaling ~1500 lines (focused, reusable)
+
+**Components Created**:
+| Component | Lines | Purpose |
+|-----------|-------|---------|
+| `AgentHeader.vue` | 316 | Agent header with stats, controls, git sync |
+| `CredentialsPanel.vue` | 296 | Credential management (assign, quick-add) |
+| `TerminalPanelContent.vue` | 165 | Terminal tab inner content |
+| `PermissionsPanel.vue` | 147 | Agent collaboration permissions |
+| `FileTreeNode.vue` | 140 | Recursive file tree (render function) |
+| `FilesPanel.vue` | 129 | Files tab with tree browser |
+| `SharingPanel.vue` | 125 | Share agent with team members |
+| `ResourceModal.vue` | 109 | Memory/CPU configuration modal |
+| `LogsPanel.vue` | 73 | Container logs viewer |
+
+**Key Improvements**:
+- Each component is self-contained with its own composable initialization
+- Terminal KeepAlive behavior preserved (v-show pattern maintained)
+- Tab navigation simplified with computed `visibleTabs` array
+- All existing functionality preserved (zero behavioral changes)
+
+**Pattern**: Components receive `agent-name` and `agent-status` props, initialize their own composables internally. This follows the pattern established by existing panels (`InfoPanel`, `SchedulesPanel`, etc.).
+
+**Modified Files**:
+- `src/frontend/src/views/AgentDetail.vue` - Lean orchestrator
+- `src/frontend/src/components/` - 9 new component files
+
+---
+
+### 2026-01-09 18:30:00
+🐛 **Fix: System Agent Not Visually Distinct on Dashboard**
+
+**Issue**: Trinity System Agent displayed as a regular agent instead of using the distinct purple `SystemAgentNode` component.
+
+**Root Cause**: `register_agent_owner()` silently failed on `IntegrityError` when the ownership record already existed, without updating the `is_system` flag. If the system agent was created before the `is_system` feature, or if the container was recreated, the flag stayed `0` (false).
+
+**Fix**:
+1. Modified `register_agent_owner()` to update `is_system=1` when record exists and `is_system=True` is passed
+2. Added call in `ensure_deployed()` to always ensure database record has correct flag
+
+**Modified Files**:
+- `src/backend/db/agents.py` - Update is_system on conflict
+- `src/backend/services/system_agent_service.py` - Ensure flag on startup
+
+---
+
+### 2026-01-09 17:00:00
+🐛 **Fix: GitHub PAT Lookup for Dynamic Templates**
+
+**Issue**: MCP `create_agent` with `github:owner/repo` templates failed with "GitHub PAT not configured" even when PAT was set via Settings or env var.
+
+**Root Cause**: Code inconsistency - Settings page stored PAT in SQLite `system_settings` table, but agent creation looked in Redis credential store (legacy location).
+
+**Fix**: Updated `crud.py` to use `get_github_pat()` from `settings_service.py` which checks SQLite first, then falls back to `GITHUB_PAT` env var.
+
+**Modified Files**:
+- `src/backend/services/agent_service/crud.py` - Use settings_service instead of credential_manager
+
+---
+
+### 2026-01-09 16:45:00
+🐛 **Fix: MCP Configuration Modal - Missing `type` and Port**
+
+**Issues Fixed**:
+1. Missing `"type": "http"` in generated MCP config - required by Claude Code
+2. Production URL missing port 8080 (was `https://{host}/mcp`, now `http://{host}:8080/mcp`)
+
+**Before** (broken):
+```json
+{
+  "mcpServers": {
+    "trinity": {
+      "url": "https://example.com/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+```
+
+**After** (correct):
+```json
+{
+  "mcpServers": {
+    "trinity": {
+      "type": "http",
+      "url": "http://example.com:8080/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+```
+
+**Modified Files**:
+- `src/frontend/src/views/ApiKeys.vue` - Fixed `getMcpConfig()` and `mcpServerUrl` computed property
+
+---
+
+### 2026-01-09 16:15:00
+📋 **Roadmap: Phase 15 - Compliance-Ready Development Methodology**
+
+**Addition**: Added Phase 15 to roadmap for SOC-2 and ISO 27001-compatible development practices.
+
+**Scope**: Extend `dev-methodology-template/` to produce audit-ready artifacts:
+- SOC-2 Control Mapping (Trust Service Criteria)
+- ISO 27001:2022 Alignment (ISMS controls)
+- Change Management Controls (CC8.1)
+- Access Control Documentation
+- Security Review Gates (mandatory `/security-check`)
+- Audit Trail Requirements
+- Incident Response Procedures
+- Compliance Evidence Generation
+
+**Reference**: Template at `dev-methodology-template/` contains reusable slash commands, sub-agents, and memory file structure that maps naturally to compliance controls.
+
+**Modified Files**:
+- `docs/memory/roadmap.md` - Added Phase 15, backlog entry, decision log
+
+---
+
+### 2026-01-09 15:45:00
+🔧 **Infrastructure: Production Port Remapping**
+
+**Change**: Simplified production port configuration to use standard ports.
+
+**Port Changes**:
+| Service | Before | After |
+|---------|--------|-------|
+| Frontend (nginx) | 3005 | **80** |
+| Backend (FastAPI) | 8005 | **8000** |
+| MCP Server | 8007 | **8080** |
+| Agent SSH Start | 2223 | **2222** |
+
+**Rationale**:
+- Port 80: Standard HTTP, no port needed in URLs
+- Port 8000: De facto Python API standard
+- Port 8080: Common HTTP alternative, intuitive for MCP
+- Port 2222: Memorable SSH sequence
+
+**Modified Files**:
+- `docker-compose.prod.yml` - Updated port mappings and internal references
+- `deploy.config.example` - Updated default ports
+- `src/frontend/nginx.conf` - Updated backend proxy URLs
+- `src/backend/services/docker_service.py` - SSH port range now starts at 2222
+- `scripts/deploy/gcp-deploy.sh` - Updated default ports and display URLs
+- `scripts/deploy/gcp-firewall.sh` - Updated firewall port list
+- `CLAUDE.local.md.example` - Updated port documentation
+- `docs/memory/architecture.md` - Updated port allocation table
+
+**Migration Notes**:
+- Update firewall rules to allow 80/tcp, 8000/tcp, 8080/tcp
+- No data migration required - purely port mapping change
+- Development ports unchanged (3000, 8000, 8080)
+
+---
+
+### 2026-01-09 14:30:00
+✨ **Feature: Agents Page UI Overhaul - Dashboard Parity**
+
+**Enhancement**: Completely redesigned the Agents page (`/agents`) to match the Dashboard tile design, providing consistent UX across the platform.
+
+**What Changed**:
+
+1. **Grid Layout** - Changed from vertical list to responsive 3-column grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
+
+2. **Autonomy Toggle** - Added interactive AUTO/Manual toggle switch matching Dashboard tiles
+   - Amber color when enabled, gray when disabled
+   - Calls `PUT /api/agents/{name}/autonomy` to toggle all schedules
+   - Loading state during API calls
+
+3. **Execution Stats Row** - New compact stats display:
+   - Task count (24h): "12 tasks"
+   - Success rate with color coding: green (≥80%), yellow (50-79%), red (<50%)
+   - Total cost: "$0.45"
+   - Last execution: "2m ago"
+
+4. **Context Progress Bar** - Now always visible (not just for running agents)
+   - Color coded: green → yellow → orange → red based on usage
+
+5. **Card Styling** - Matching AgentNode.vue design with shadows, rounded corners, hover effects
+
+**Modified Files**:
+- `src/frontend/src/stores/agents.js` - Added `executionStats` state, `fetchExecutionStats()`, `toggleAutonomy()` actions
+- `src/frontend/src/views/Agents.vue` - Complete rewrite with grid layout and new features
+- `docs/memory/feature-flows/agents-page-ui-improvements.md` - Added Enhancement section
+
+**Visual Comparison**:
+| Feature | Before | After |
+|---------|--------|-------|
+| Layout | Vertical list | 3-column grid |
+| Autonomy | Not shown | Toggle switch |
+| Execution Stats | Not shown | Tasks · Rate · Cost · Time |
+| Context Bar | Running only | All agents |
+
+---
+
+### 2026-01-06 18:30:00
+♻️ **Refactor: Sovereign Archive Storage Architecture**
+
+**Refactoring**: Removed external S3 dependency and implemented pluggable storage interface with local-only default for sovereign deployments.
+
+**Motivation**: Following architectural feedback to maintain full data sovereignty - no system logs or archives should leave the company's infrastructure. The platform now stores all data locally within mounted volumes, giving operators full control over backup strategies.
+
+**What Changed**:
+1. **New Storage Interface** - Abstract `ArchiveStorage` base class with pluggable backend support
+2. **Local Storage Default** - `LocalArchiveStorage` implementation stores archives in mounted Docker volume
+3. **S3 Code Removed** - Deleted S3-specific code (`s3_storage.py`), boto3 dependency, and S3 env vars
+4. **Sovereign Backup Strategies** - Documentation now covers Docker volume backups, NAS/NFS mounts, rsync, cross-instance copies
+
+**New Files**:
+- `src/backend/services/archive_storage.py` - Storage abstraction layer
+
+**Deleted Files**:
+- `src/backend/services/s3_storage.py` - S3 integration (removed)
+
+**Modified Files**:
+- `src/backend/services/log_archive_service.py` - Uses storage interface instead of S3 directly
+- `docker/backend/Dockerfile` - Removed boto3 dependency
+- `docker-compose.yml` - Removed S3 env vars, added `LOG_ARCHIVE_PATH`
+- `docs/memory/feature-flows/vector-logging.md` - Replaced S3 docs with sovereign backup strategies
+- `tests/test_log_archive.py` - Removed S3 tests, updated to use storage interface
+
+**Configuration Changes**:
+```bash
+# Removed:
+LOG_S3_ENABLED, LOG_S3_BUCKET, LOG_S3_ACCESS_KEY, LOG_S3_SECRET_KEY,
+LOG_S3_ENDPOINT, LOG_S3_REGION
+
+# Added:
+LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+```
+
+**Backup Strategies** (Sovereign):
+- Mount NAS/NFS to archives volume
+- rsync to backup server via cron
+- Docker volume backup/restore
+- Cross-instance volume copy
+
+**Impact**:
+- **Breaking**: S3 configuration no longer supported (by design)
+- **Non-Breaking**: Archives still stored in `trinity-archives` volume
+- **Benefit**: Full data sovereignty - no external dependencies
+- **Extensible**: Storage interface allows future backends (NFS, SFTP, etc.) without S3
+
+**Architecture Philosophy**: Keep all data (logs, archives, backups) within operator-controlled infrastructure. External storage can be implemented via volume mounts or custom scripts, not hardcoded cloud dependencies.
+
+---
+
+### 2026-01-06 15:45:00
+📋 **Docs: Process-Driven Multi-Agent Systems Vision (Refined)**
+
+Refined the concept document based on design review discussion.
+
+**Key Design Decisions**:
+
+1. **Simplified Role Model** (dropped RACI complexity):
+   - **Executor**: Does the work, saves outputs
+   - **Monitor**: Watches for failures, handles escalations
+   - **Informed**: Learns from events, builds situational awareness
+   - Dropped "Consulted" (just an agent-to-agent call)
+
+2. **Stateful Agents as Core Principle**:
+   - Agents build memory, beliefs, and judgment over time
+   - "Informed" role enables situational awareness
+   - Informed agents can proactively trigger actions based on observed events
+
+3. **Output Storage**:
+   - Agent responsibility (not platform-managed)
+   - Executors save to shared folders or external systems (CRM, Google Drive, etc.)
+   - Next step's agent ingests from designated location
+
+4. **Human Approval Steps** (critical feature):
+   - Dedicated `type: human_approval` step type
+   - Separate approval interface for human operators
+   - Timeout, escalation, delegation support
+   - Mobile-friendly with email/Slack action links
+
+5. **System Agent Role** (unchanged):
+   - Stays focused on platform operations
+   - Does NOT orchestrate business processes
+   - Process orchestration handled by Process Execution Engine + Monitor agents
+
+**Updated Files**:
+- `docs/drafts/PROCESS_DRIVEN_AGENTS.md` - Full concept with refined roles, human approval section, approval interface mockup
+- `docs/memory/requirements.md` - Updated 14.1, 14.2, added 14.3 for human-in-the-loop
+
+---
+
+### 2026-01-06 14:30:00
+📋 **Docs: Process-Driven Multi-Agent Systems Vision**
+
+Added comprehensive documentation for the strategic evolution of Trinity into a business process orchestration platform.
+
+**New Concept Document**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+- Business processes as first-class entities that orchestrate agent collaboration
+- Simplified role model: Executor, Monitor, Informed
+- Process lifecycle: Design → Configure → Test → Production → Improvement
+- Human-in-the-loop improvement cycles with feedback collection
+- UI vision: Process Designer, Process Dashboard, Execution View, Human Approval Interface
+
+**New Requirements Added** (requirements.md):
+- **13.1 Horizontal Agent Scalability**: Agent pools with N instances, load balancing, auto-scaling
+- **13.2 Event Bus Infrastructure**: Redis Streams pub/sub with permission-gated subscriptions
+- **13.3 Event Handlers & Reactions**: Automatic agent reactions to events from permitted agents
+- **14.1 Business Process Definitions**: Role-based orchestration, triggers, policies
+- **14.2 Process Execution & Human Approval**: Execution engine, approval interface
+- **14.3 Human-in-the-Loop Improvement**: Feedback collection, quality tracking
+
+**Roadmap Updates**:
+- Phase 13: Agent Scalability & Event-Driven Architecture
+- Phase 14: Process-Driven Multi-Agent Systems (Future Vision)
+- Updated backlog with new high-priority items
+- Added 3 decision log entries
+
+**Key Insight**: Business processes should drive agent design, not the other way around. Start with "what outcome do we want?" and derive the agents needed to achieve it.
+
+---
+
+### 2026-01-05 18:30:00
+✨ **Feature: Vector Log Retention and Archival**
+
+**New Feature**: Automated log retention, rotation, and archival system for Vector logs with local storage.
+
+**Compliance Gap Addressed**: Vector logging lacked retention policy and archival capabilities required for SOC2/ISO27001 compliance.
+
+**What Was Added**:
+1. **Daily Log Rotation** - Vector now writes to date-stamped files (`platform-2026-01-05.json`)
+2. **Automated Archival** - Nightly job compresses and archives logs older than retention period
+3. **Local Storage** - Archives stored in mounted Docker volume (`trinity-archives`)
+4. **API Endpoints** - Admin-only endpoints for stats, config, and manual archival
+5. **Integrity Verification** - SHA256 checksums ensure archive integrity
+
+**New Files**:
+- `src/backend/services/log_archive_service.py` - Archival logic + APScheduler
+- `src/backend/routers/logs.py` - Log management API endpoints
+- `tests/test_log_archive.py` - Comprehensive test coverage
+
+**Modified Files**:
+- `config/vector.yaml` - Date-based file paths for daily rotation
+- `src/backend/main.py` - Register logs router, start archive scheduler
+- `docker-compose.yml` - Add log retention env vars, trinity-archives volume
+- `docs/memory/feature-flows/vector-logging.md` - Document retention features
+
+**Configuration**:
+```bash
+LOG_RETENTION_DAYS=90       # Days to keep logs
+LOG_ARCHIVE_ENABLED=true    # Enable automated archival
+LOG_CLEANUP_HOUR=3          # Hour (UTC) to run nightly job
+LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+```
+
+**API Endpoints**:
+- `GET /api/logs/stats` - Log file statistics
+- `GET /api/logs/retention` - Retention configuration
+- `PUT /api/logs/retention` - Update retention (runtime)
+- `POST /api/logs/archive` - Manual archival trigger
+- `GET /api/logs/health` - Service health check
+
+**Impact**:
+- No breaking changes to existing Vector functionality
+- Existing single-file logs (`platform.json`, `agents.json`) can be manually archived
+- New date-based files start after Vector restart
+- Disk space remains stable after retention period
+
+**Compliance**: Addresses SOC2/ISO27001 requirement for log retention policy and secure archival.
+
+---
+
 ### 2026-01-05 10:15:00
 🐛 **Fix: ReplayTimeline infinite loop causing browser hang**
 

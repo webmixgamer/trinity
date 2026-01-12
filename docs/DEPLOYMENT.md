@@ -27,7 +27,7 @@ cp .env.example .env
 ./scripts/deploy/start.sh
 
 # 5. Access the platform
-# Web UI: http://localhost:3000
+# Web UI: http://localhost
 # API Docs: http://localhost:8000/docs
 ```
 
@@ -111,9 +111,8 @@ Requirements:
 Open these ports:
 | Port | Service |
 |------|---------|
-| 80 | HTTP (redirect to HTTPS) |
-| 443 | HTTPS |
-| 3000 | Frontend (or behind nginx) |
+| 80 | Frontend (HTTP) |
+| 443 | HTTPS (optional, via nginx) |
 | 8000 | Backend API |
 | 8080 | MCP Server |
 | 2222-2262 | Agent SSH (optional) |
@@ -153,9 +152,9 @@ server {
     ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
-    # Frontend
+    # Frontend (proxied from port 80)
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:80;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -194,7 +193,7 @@ EXTRA_CORS_ORIGINS=https://your-domain.com,http://your-domain.com
 │                      Trinity Platform                        │
 ├─────────────────────────────────────────────────────────────┤
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server     │
-│     Port 3000       │     Port 8000       │    Port 8080    │
+│      Port 80        │     Port 8000       │    Port 8080    │
 ├─────────────────────────────────────────────────────────────┤
 │  Redis (secrets)    │  SQLite (data)      │  Vector (logs)  │
 │   Internal only     │   /data volume      │    Port 8686    │

@@ -32,14 +32,13 @@ BACKEND_URL="https://${DOMAIN}/api"
 # Port Configuration
 # ===========================================
 
-# Trinity services ports (change if you have conflicts)
-BACKEND_PORT="8005"
-FRONTEND_PORT="3005"
-AUDIT_PORT="8006"
-MCP_PORT="8007"
+# Trinity services ports (standard ports for production)
+BACKEND_PORT="8000"
+FRONTEND_PORT="80"
+MCP_PORT="8080"
 
 # Agent SSH port range start (agents use consecutive ports)
-AGENT_SSH_PORT_START="2223"
+AGENT_SSH_PORT_START="2222"
 
 # ===========================================
 # Authentication

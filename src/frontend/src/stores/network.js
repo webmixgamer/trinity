@@ -50,8 +50,8 @@ export const useNetworkStore = defineStore('network', () => {
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
 
-  // Replay mode state
-  const isReplayMode = ref(false)
+  // View mode state (graph vs timeline)
+  const isTimelineMode = ref(false)
   const isPlaying = ref(false)
   const replaySpeed = ref(10) // 10x default
   const currentEventIndex = ref(0)
@@ -127,45 +127,77 @@ export const useNetworkStore = defineStore('network', () => {
       const startTime = new Date()
       startTime.setHours(startTime.getHours() - hoursToQuery)
 
+      // Fetch ALL execution types (not just collaborations)
       const params = {
-        activity_types: 'agent_collaboration',
+        activity_types: 'agent_collaboration,schedule_start,schedule_end,chat_start,chat_end',
         start_time: startTime.toISOString(),
         limit: 500
       }
 
       const response = await axios.get('/api/activities/timeline', { params })
 
-      // Parse activities into collaboration events
-      const collaborations = response.data.activities
-        .filter(activity => activity.details)
+      // Parse activities into timeline events
+      const events = response.data.activities
+        .filter(activity => {
+          // Skip activities without details
+          if (!activity.details) return false
+
+          // Filter out regular user chats (keep automated executions only)
+          if (activity.activity_type && activity.activity_type.startsWith('chat_')) {
+            const details = typeof activity.details === 'string'
+              ? JSON.parse(activity.details)
+              : activity.details || {}
+
+            // Keep: agent-initiated, schedule-triggered, or manual tasks (parallel_mode)
+            // Skip: regular user chat sessions
+            if (activity.triggered_by === 'user' && !details.parallel_mode) {
+              return false
+            }
+          }
+
+          return true
+        })
         .map(activity => {
           try {
             const details = typeof activity.details === 'string'
               ? JSON.parse(activity.details)
               : activity.details
 
+            // For execution events (chat_start, schedule_start): use agent_name (the executor)
+            // For collaboration events: use details.source_agent (the caller) for arrows
+            const isCollaboration = activity.activity_type === 'agent_collaboration'
+
             return {
-              source_agent: details.source_agent || activity.agent_name,
-              target_agent: details.target_agent,
+              source_agent: isCollaboration ? (details.source_agent || activity.agent_name) : activity.agent_name,
+              target_agent: details.target_agent || null,  // null for non-collaboration events
               timestamp: activity.started_at || activity.created_at,
               activity_id: activity.id,
+              // Execution ID for navigation to Execution Detail page
+              // Priority: top-level related_execution_id (database ID) > details fallbacks
+              execution_id: activity.related_execution_id || details.execution_id || details.related_execution_id || null,
               status: activity.activity_state,
-              duration_ms: activity.duration_ms
+              duration_ms: activity.duration_ms,
+              // Activity type tracking for color coding
+              activity_type: activity.activity_type,
+              triggered_by: activity.triggered_by,
+              schedule_name: details.schedule_name || null,
+              error: activity.error
             }
           } catch (e) {
             console.warn('Failed to parse activity details:', e)
             return null
           }
         })
-        .filter(c => c !== null && c.target_agent) // Only keep valid collaborations
+        .filter(e => e !== null)
 
-      historicalCollaborations.value = collaborations
-      totalCollaborationCount.value = collaborations.length
+      historicalCollaborations.value = events
+      totalCollaborationCount.value = events.length
 
-      // Create initial inactive edges from historical data
-      createHistoricalEdges(collaborations)
+      // Create initial inactive edges from collaboration events only
+      const collaborationEvents = events.filter(e => e.target_agent)
+      createHistoricalEdges(collaborationEvents)
 
-      console.log(`[Collaboration] Loaded ${collaborations.length} historical collaborations from last ${hoursToQuery}h`)
+      console.log(`[Collaboration] Loaded ${events.length} historical events (${collaborationEvents.length} collaborations) from last ${hoursToQuery}h`)
 
     } catch (error) {
       console.error('Failed to fetch historical collaborations:', error)
@@ -204,6 +236,9 @@ export const useNetworkStore = defineStore('network', () => {
       }
     })
 
+    // Clear existing collaboration edges before rebuilding
+    collaborationEdges.value = []
+
     // Create inactive edges for all historical collaborations
     edgeMap.forEach((edgeData, edgeId) => {
       // Only add if both nodes exist
@@ -211,40 +246,36 @@ export const useNetworkStore = defineStore('network', () => {
       const targetExists = nodes.value.some(n => n.id === edgeData.target)
 
       if (sourceExists && targetExists) {
-        const existingEdge = edges.value.find(e => e.id === edgeId)
-
-        if (!existingEdge) {
-          edges.value.push({
-            id: edgeId,
-            source: edgeData.source,
-            target: edgeData.target,
-            type: 'smoothstep', // Changed from 'default' to 'smoothstep' for better routing
-            animated: false,
-            className: 'collaboration-edge-inactive',
-            style: {
-              stroke: '#cbd5e1',
-              strokeWidth: 2,
-              opacity: 0.5,
-              transition: 'all 0.5s ease-in-out'
-            },
-            markerEnd: {
-              type: 'arrowclosed',
-              color: '#cbd5e1',
-              width: 15, // Reduced from 20
-              height: 15  // Reduced from 20
-            },
-            label: edgeData.count > 1 ? `${edgeData.count}x` : undefined,
-            labelStyle: {
-              fontSize: '10px',
-              fill: '#64748b'
-            },
-            data: {
-              collaborationCount: edgeData.count,
-              lastTimestamp: edgeData.lastTimestamp,
-              timestamps: edgeData.timestamps
-            }
-          })
-        }
+        collaborationEdges.value.push({
+          id: edgeId,
+          source: edgeData.source,
+          target: edgeData.target,
+          type: 'smoothstep',
+          animated: false,
+          className: 'collaboration-edge-inactive',
+          style: {
+            stroke: '#cbd5e1',
+            strokeWidth: 2,
+            opacity: 0.5,
+            transition: 'all 0.5s ease-in-out'
+          },
+          markerEnd: {
+            type: 'arrowclosed',
+            color: '#cbd5e1',
+            width: 15,
+            height: 15
+          },
+          label: edgeData.count > 1 ? `${edgeData.count}x` : undefined,
+          labelStyle: {
+            fontSize: '10px',
+            fill: '#64748b'
+          },
+          data: {
+            collaborationCount: edgeData.count,
+            lastTimestamp: edgeData.lastTimestamp,
+            timestamps: edgeData.timestamps
+          }
+        })
       }
     })
   }
@@ -431,8 +462,13 @@ export const useNetworkStore = defineStore('network', () => {
     // Remove node
     nodes.value = nodes.value.filter(n => n.id !== event.agent_name)
 
-    // Remove edges connected to this agent
-    edges.value = edges.value.filter(e =>
+    // Remove collaboration edges connected to this agent
+    collaborationEdges.value = collaborationEdges.value.filter(e =>
+      e.source !== event.agent_name && e.target !== event.agent_name
+    )
+
+    // Remove permission edges connected to this agent
+    permissionEdges.value = permissionEdges.value.filter(e =>
       e.source !== event.agent_name && e.target !== event.agent_name
     )
 
@@ -452,8 +488,8 @@ export const useNetworkStore = defineStore('network', () => {
       delete edgeTimeouts.value[edgeId]
     }
 
-    // Check if edge already exists
-    let edge = edges.value.find(e => e.id === edgeId)
+    // Check if edge already exists in collaborationEdges (the source of truth)
+    let edge = collaborationEdges.value.find(e => e.id === edgeId)
 
     if (!edge) {
       // Create new edge with fade-in effect
@@ -461,7 +497,7 @@ export const useNetworkStore = defineStore('network', () => {
         id: edgeId,
         source: sourceId,
         target: targetId,
-        type: 'smoothstep', // Changed to smoothstep for better routing
+        type: 'smoothstep',
         animated: true,
         className: 'collaboration-edge-active',
         style: {
@@ -484,11 +520,12 @@ export const useNetworkStore = defineStore('network', () => {
           targetAgent: targetId
         }
       }
-      edges.value.push(edge)
+      collaborationEdges.value.push(edge)
 
       // Trigger fade-in animation
       setTimeout(() => {
-        edge.style.opacity = 1
+        const e = collaborationEdges.value.find(e => e.id === edgeId)
+        if (e) e.style.opacity = 1
       }, 50)
     } else {
       // Update existing edge to active state with glow
@@ -531,6 +568,9 @@ export const useNetworkStore = defineStore('network', () => {
     // Increment active collaborations
     activeCollaborations.value++
 
+    // Trigger Vue reactivity for nested object changes
+    collaborationEdges.value = [...collaborationEdges.value]
+
     // Extended duration: 8 seconds (time for target agent to process and update context)
     // Standard duration: 3 seconds
     const fadeDelay = extendedDuration ? 8000 : 6000
@@ -543,7 +583,7 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function fadeEdgeAnimation(edgeId) {
-    const edge = edges.value.find(e => e.id === edgeId)
+    const edge = collaborationEdges.value.find(e => e.id === edgeId)
     if (edge) {
       // First fade the glow
       edge.style = {
@@ -551,6 +591,9 @@ export const useNetworkStore = defineStore('network', () => {
         filter: 'drop-shadow(0 0 2px rgba(148, 163, 184, 0.3))',
         strokeWidth: 2.5
       }
+
+      // Trigger Vue reactivity for nested object changes
+      collaborationEdges.value = [...collaborationEdges.value]
 
       // Then fade to inactive state after 800ms
       setTimeout(() => {
@@ -560,7 +603,7 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function clearEdgeAnimation(edgeId) {
-    const edge = edges.value.find(e => e.id === edgeId)
+    const edge = collaborationEdges.value.find(e => e.id === edgeId)
     if (edge) {
       edge.animated = false
       edge.type = 'smoothstep'
@@ -575,8 +618,8 @@ export const useNetworkStore = defineStore('network', () => {
       edge.markerEnd = {
         type: 'arrowclosed',
         color: '#cbd5e1',
-        width: 15, // Reduced from 20
-        height: 15  // Reduced from 20
+        width: 15,
+        height: 15
       }
 
       // Keep the count label but make it gray
@@ -587,6 +630,9 @@ export const useNetworkStore = defineStore('network', () => {
           fill: '#64748b'
         }
       }
+
+      // Trigger Vue reactivity for nested object changes
+      collaborationEdges.value = [...collaborationEdges.value]
 
       // Decrement active collaborations
       activeCollaborations.value = Math.max(0, activeCollaborations.value - 1)
@@ -780,25 +826,28 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
-  // Replay Mode Functions
-  function setReplayMode(mode) {
-    isReplayMode.value = mode
-    localStorage.setItem('trinity-replay-mode', mode ? 'true' : 'false')
+  // View Mode Functions (graph vs timeline)
+  function setViewMode(mode) {
+    const isTimeline = mode === 'timeline'
+    isTimelineMode.value = isTimeline
+    localStorage.setItem('trinity-dashboard-view', mode)
 
-    if (mode) {
-      // Entering replay mode - disconnect WebSocket and stop polling
-      disconnectWebSocket()
-      stopContextPolling()
-      stopAgentRefresh()
-      console.log('[Collaboration] Switched to Replay mode')
-    } else {
-      // Exiting replay mode - reconnect WebSocket and start polling
+    // Keep WebSocket and polling active in BOTH views for live updates
+    // Timeline view now shows live events, so we need real-time data
+    if (isTimeline) {
+      // Entering timeline mode - stop any active replay playback
       stopReplay()
-      connectWebSocket()
-      startContextPolling()
-      startAgentRefresh()
-      console.log('[Collaboration] Switched to Live mode')
+      console.log('[Collaboration] Switched to Timeline view (live mode)')
+    } else {
+      // Entering graph mode
+      stopReplay()
+      console.log('[Collaboration] Switched to Graph view')
     }
+  }
+
+  // Legacy function for backwards compatibility
+  function setReplayMode(mode) {
+    setViewMode(mode ? 'timeline' : 'graph')
   }
 
   function startReplay() {
@@ -813,6 +862,14 @@ export const useNetworkStore = defineStore('network', () => {
     // Start from current index or beginning
     if (currentEventIndex.value === 0) {
       resetAllEdges()
+      // Store base context values for each agent (use current or default to 10%)
+      nodes.value.forEach(node => {
+        if (node.data.status === 'running') {
+          baseContextValues.value[node.id] = node.data.contextPercent || 10
+          node.data.activityState = 'idle'
+        }
+      })
+      nodes.value = [...nodes.value]
     }
 
     console.log(`[Collaboration] Starting replay from event ${currentEventIndex.value + 1} at ${replaySpeed.value}x speed`)
@@ -840,8 +897,25 @@ export const useNetworkStore = defineStore('network', () => {
       replayInterval.value = null
     }
 
+    // Clear all activity timeouts
+    Object.keys(activityTimeouts.value).forEach(key => {
+      clearTimeout(activityTimeouts.value[key])
+    })
+    activityTimeouts.value = {}
+
+    // Clear base context values
+    baseContextValues.value = {}
+
     // Reset all edges to inactive state
     resetAllEdges()
+
+    // Reset all agents to idle state
+    nodes.value.forEach(node => {
+      if (node.data.status === 'running') {
+        node.data.activityState = 'idle'
+      }
+    })
+    nodes.value = [...nodes.value]
 
     console.log('[Collaboration] Stopped replay')
   }
@@ -857,12 +931,99 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
+  // Track activity timeouts for replay mode
+  const activityTimeouts = ref({})
+
+  function setNodeActivityState(agentName, state) {
+    const node = nodes.value.find(n => n.id === agentName)
+    if (node) {
+      node.data = {
+        ...node.data,
+        activityState: state
+      }
+      // Trigger Vue reactivity
+      nodes.value = [...nodes.value]
+    }
+  }
+
+  // Store base context values for replay reset
+  const baseContextValues = ref({})
+
+  function simulateContextSpike(agentName, spike) {
+    const node = nodes.value.find(n => n.id === agentName)
+    if (node) {
+      const baseContext = baseContextValues.value[agentName] || 10
+      // Show temporary spike above base value
+      node.data = {
+        ...node.data,
+        contextPercent: Math.min(100, baseContext + spike)
+      }
+      // Trigger Vue reactivity
+      nodes.value = [...nodes.value]
+    }
+  }
+
+  function resetContextToBase(agentName) {
+    const node = nodes.value.find(n => n.id === agentName)
+    if (node) {
+      const baseContext = baseContextValues.value[agentName] || 10
+      node.data = {
+        ...node.data,
+        contextPercent: baseContext
+      }
+      nodes.value = [...nodes.value]
+    }
+  }
+
+  function simulateAgentActivity(sourceAgent, targetAgent) {
+    // Clear any existing timeouts for these agents
+    if (activityTimeouts.value[sourceAgent]) {
+      clearTimeout(activityTimeouts.value[sourceAgent])
+    }
+    if (activityTimeouts.value[targetAgent]) {
+      clearTimeout(activityTimeouts.value[targetAgent])
+    }
+
+    // Source agent becomes active immediately (initiating the collaboration)
+    setNodeActivityState(sourceAgent, 'active')
+    // Show context spike for source
+    simulateContextSpike(sourceAgent, 5 + Math.random() * 10) // +5-15% spike
+
+    // Target agent becomes active after a short delay (processing the request)
+    setTimeout(() => {
+      setNodeActivityState(targetAgent, 'active')
+      // Show context spike for target (larger, processing incoming message)
+      simulateContextSpike(targetAgent, 10 + Math.random() * 15) // +10-25% spike
+    }, 300)
+
+    // Source agent returns to idle after 2 seconds, reset context
+    activityTimeouts.value[sourceAgent] = setTimeout(() => {
+      setNodeActivityState(sourceAgent, 'idle')
+      resetContextToBase(sourceAgent)
+      delete activityTimeouts.value[sourceAgent]
+    }, 2000)
+
+    // Target agent returns to idle after 3 seconds, reset context
+    activityTimeouts.value[targetAgent] = setTimeout(() => {
+      setNodeActivityState(targetAgent, 'idle')
+      resetContextToBase(targetAgent)
+      delete activityTimeouts.value[targetAgent]
+    }, 3000)
+  }
+
   function scheduleNextEvent() {
     if (!isPlaying.value) return
     if (currentEventIndex.value >= historicalCollaborations.value.length) {
       // Replay complete
       console.log('[Collaboration] Replay complete')
       isPlaying.value = false
+      // Reset all agents to idle
+      nodes.value.forEach(node => {
+        if (node.data.status === 'running') {
+          node.data.activityState = 'idle'
+        }
+      })
+      nodes.value = [...nodes.value]
       return
     }
 
@@ -873,6 +1034,9 @@ export const useNetworkStore = defineStore('network', () => {
 
     // Animate current edge
     animateEdge(currentEvent.source_agent, currentEvent.target_agent)
+
+    // Simulate agent activity states (green blinking)
+    simulateAgentActivity(currentEvent.source_agent, currentEvent.target_agent)
 
     // Calculate delay to next event
     let delay = 500 // Default 500ms if last event
@@ -931,8 +1095,8 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function resetAllEdges() {
-    // Set all edges to inactive state
-    edges.value.forEach(edge => {
+    // Set all collaboration edges to inactive state
+    collaborationEdges.value.forEach(edge => {
       edge.animated = false
       edge.type = 'smoothstep'
       edge.className = 'collaboration-edge-inactive'
@@ -946,8 +1110,8 @@ export const useNetworkStore = defineStore('network', () => {
       edge.markerEnd = {
         type: 'arrowclosed',
         color: '#cbd5e1',
-        width: 15, // Reduced from 20
-        height: 15  // Reduced from 20
+        width: 15,
+        height: 15
       }
 
       // Keep count labels gray
@@ -959,6 +1123,9 @@ export const useNetworkStore = defineStore('network', () => {
         }
       }
     })
+
+    // Trigger Vue reactivity for nested object changes
+    collaborationEdges.value = [...collaborationEdges.value]
 
     activeCollaborations.value = 0
   }
@@ -1044,8 +1211,8 @@ export const useNetworkStore = defineStore('network', () => {
     isLoadingHistory,
     contextStats,
     executionStats,
-    // Replay state
-    isReplayMode,
+    // View mode / Replay state
+    isTimelineMode,
     isPlaying,
     replaySpeed,
     currentEventIndex,
@@ -1086,7 +1253,8 @@ export const useNetworkStore = defineStore('network', () => {
     stopContextPolling,
     startAgentRefresh,
     stopAgentRefresh,
-    // Replay actions
+    // View mode / Replay actions
+    setViewMode,
     setReplayMode,
     startReplay,
     pauseReplay,

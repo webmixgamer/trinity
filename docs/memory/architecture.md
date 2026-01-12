@@ -158,7 +158,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 
 **Technology:** FastMCP with Streamable HTTP transport
 
-**Port:** 8080 (internal), 8007 (production)
+**Port:** 8080 (internal and production)
 
 **Authentication:**
 - API key-based authentication via `Authorization: Bearer` header
@@ -881,34 +881,25 @@ Auth0 OAuth was removed in 2026-01-01 - see [email-authentication.md](feature-fl
 
 ## Development Environment
 
-### Local URLs
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000/docs |
-| MCP Server | http://localhost:8080/mcp |
-| Vector (logs) | http://localhost:8686/health |
-| Redis | localhost:6379 |
+### URLs (Local & Production)
 
-### Production URLs
-| Service | URL |
-|---------|-----|
-| Frontend | `https://your-domain.com` |
-| Backend API | `https://your-domain.com/api/` |
-| MCP Server | `http://your-server:8007/mcp` |
-| Vector (logs) | `http://your-server:8686/health` |
+Local and production use the same ports for consistency:
 
-### Landing Page (Optional)
-Landing page is a separate project that can be deployed on Vercel or any static hosting.
+| Service | Local | Production |
+|---------|-------|------------|
+| Frontend | http://localhost | https://your-domain.com |
+| Backend API | http://localhost:8000/docs | https://your-domain.com/api/ |
+| MCP Server | http://localhost:8080/mcp | http://your-server:8080/mcp |
+| Vector (logs) | http://localhost:8686/health | http://your-server:8686/health |
+| Redis | localhost:6379 (internal) | internal only |
 
-### Port Allocation (Production)
+### Port Allocation
 | Port | Service |
 |------|---------|
-| 3005 | Frontend (nginx) |
-| 8005 | Backend (FastAPI) |
-| 8006 | Audit Logger |
-| 8007 | MCP Server |
-| 2224-2242 | Agent SSH |
+| 80 | Frontend (nginx/Vite) |
+| 8000 | Backend (FastAPI) |
+| 8080 | MCP Server |
+| 2222-2262 | Agent SSH |
 
 ---
 

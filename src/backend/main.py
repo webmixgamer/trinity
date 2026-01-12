@@ -45,6 +45,7 @@ from routers.public_links import router as public_links_router, set_websocket_ma
 from routers.public import router as public_router
 from routers.setup import router as setup_router
 from routers.telemetry import router as telemetry_router
+from routers.logs import router as logs_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -54,6 +55,9 @@ from services.activity_service import activity_service
 
 # Import system agent service
 from services.system_agent_service import system_agent_service
+
+# Import log archive service
+from services.log_archive_service import log_archive_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
@@ -195,6 +199,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Error initializing scheduler: {e}")
 
+    # Initialize log archive service
+    try:
+        log_archive_service.start()
+        print("Log archive service started")
+    except Exception as e:
+        print(f"Error starting log archive service: {e}")
+
     yield
 
     # Shutdown the scheduler
@@ -203,6 +214,13 @@ async def lifespan(app: FastAPI):
         print("Scheduler service shutdown")
     except Exception as e:
         print(f"Error shutting down scheduler: {e}")
+
+    # Shutdown log archive service
+    try:
+        log_archive_service.stop()
+        print("Log archive service stopped")
+    except Exception as e:
+        print(f"Error stopping log archive service: {e}")
 
 
 # Create FastAPI app
@@ -242,6 +260,7 @@ app.include_router(public_links_router)
 app.include_router(public_router)
 app.include_router(setup_router)
 app.include_router(telemetry_router)
+app.include_router(logs_router)
 
 
 # WebSocket endpoint

@@ -39,7 +39,7 @@ async def chat(request: ChatRequest):
         runtime = get_runtime()
         # Use request.model if provided, otherwise use the model set via /api/model endpoint
         effective_model = request.model or agent_state.current_model
-        response_text, execution_log, metadata = await runtime.execute(
+        response_text, execution_log, metadata, raw_messages = await runtime.execute(
             prompt=request.message,
             model=effective_model,
             continue_session=True,
@@ -72,9 +72,12 @@ async def chat(request: ChatRequest):
         logger.info(f"[Chat] Execution lock releasing after completion")
 
         # Return enhanced response with execution log and session stats
+        # Use raw_messages (full Claude Code JSON transcript) for execution log viewer compatibility
+        # Also include simplified execution_log for backward compatibility with activity tracking
         return {
             "response": response_text,
-            "execution_log": [entry.model_dump() for entry in execution_log],
+            "execution_log": raw_messages,  # Full Claude Code stream-json format for UI
+            "execution_log_simplified": [entry.model_dump() for entry in execution_log],  # For activity tracking
             "metadata": metadata.model_dump(),
             "session": {
                 "total_cost_usd": agent_state.session_total_cost,
@@ -245,7 +248,7 @@ async def websocket_chat(websocket: WebSocket):
             runtime = get_runtime()
             # Use model from message if provided, otherwise use current_model from state
             effective_model = message.get("model") or agent_state.current_model
-            response_text, execution_log, metadata = await runtime.execute(
+            response_text, execution_log, metadata, raw_messages = await runtime.execute(
                 prompt=message["content"],
                 model=effective_model,
                 continue_session=True,
@@ -257,7 +260,7 @@ async def websocket_chat(websocket: WebSocket):
                 "type": "message",
                 "role": "assistant",
                 "content": response_text,
-                "execution_log": [entry.model_dump() for entry in execution_log],
+                "execution_log": raw_messages,  # Full Claude Code stream-json format
                 "metadata": metadata.model_dump()
             })
     except WebSocketDisconnect:

@@ -346,7 +346,8 @@ const mcpServerUrl = computed(() => {
   if (host === 'localhost' || host === '127.0.0.1') {
     return 'http://localhost:8080/mcp'
   }
-  return `https://${host}/mcp`
+  // Production: MCP server runs on port 8080 (not proxied through nginx)
+  return `http://${host}:8080/mcp`
 })
 
 // Filter out agent-scoped keys for non-admin users
@@ -362,6 +363,7 @@ const getMcpConfig = (apiKey) => {
   return JSON.stringify({
     mcpServers: {
       trinity: {
+        type: "http",
         url: mcpServerUrl.value,
         headers: {
           Authorization: `Bearer ${apiKey}`

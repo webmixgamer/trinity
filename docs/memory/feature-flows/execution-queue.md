@@ -702,25 +702,43 @@ Logged in `schedule_executions` table:
 ## Side Effects
 
 ### Activity Tracking
-Each chat execution creates activity records:
+Each chat execution creates activity records with `related_execution_id` for structured queries:
 ```python
-# Track chat start with queue status
+# Track chat start with queue status AND execution linkage
+# related_execution_id is a top-level field for SQL JOINs
 chat_activity_id = await activity_service.track_activity(
     agent_name=name,
+    activity_type=ActivityType.CHAT_START,
+    related_execution_id=task_execution_id,  # Database ID for structured queries
     details={
-        "execution_id": execution.id,
+        "execution_id": task_execution_id,  # Also in details for WebSocket events
         "queue_status": queue_result  # "running" or "queued:N"
     }
 )
 ```
 
+### Two ID Systems
+
+**Important**: The system maintains two distinct execution ID types:
+
+| ID Type | Format | Storage | TTL | Purpose |
+|---------|--------|---------|-----|---------|
+| **Queue Execution ID** | UUID v4 | Redis | 10 min | Internal queue management, transient |
+| **Database Execution ID** | `token_urlsafe(16)` | SQLite `schedule_executions` | Permanent | API access, UI navigation, activity linkage |
+
+**Usage**:
+- `related_execution_id` in `agent_activities` table links to `schedule_executions.id` (Database ID)
+- `execution.id` in queue operations is the Redis Queue ID (transient)
+- Navigation URLs use Database Execution ID: `/agents/{name}/executions/{database_id}`
+
 ### Execution Metadata in Response
-Chat responses include execution metadata:
+Chat responses include both IDs for clarity:
 ```json
 {
   "response": "...",
   "execution": {
-    "id": "uuid-123",
+    "id": "uuid-123",               // Queue ID (transient, 10-min TTL)
+    "task_execution_id": "abc123...", // Database ID (permanent) - use for navigation
     "queue_status": "running",
     "was_queued": false
   }
@@ -979,6 +997,7 @@ The chat endpoint (`routers/chat.py:106-400`) integrates with the execution queu
 
 | Date | Changes |
 |------|---------|
+| 2026-01-11 | **Execution ID tracking**: Documented two ID systems (Queue vs Database). Chat response now includes both `id` (queue) and `task_execution_id` (database). Activity tracking uses `related_execution_id` as top-level field for structured SQL queries. |
 | 2025-01-02 | **Scheduler log fix**: Changed scheduler from `AgentClient.chat()` to `AgentClient.task()`. The `task()` method calls `/api/task` endpoint which returns raw Claude Code `stream-json` format. This fixes execution log viewer which could not parse the simplified format from `/api/chat`. Added `task()` method and `_parse_task_response()` to `AgentClient`. |
 | 2025-12-31 | **AgentClient service**: Scheduler now uses centralized `AgentClient` from `services/agent_client.py` instead of raw `httpx` calls. Response parsing logic moved to `AgentClient._parse_chat_response()`. Added `AgentChatResponse` and `AgentChatMetrics` dataclasses. Context token bug fix documented (cache tokens are subsets, not additional). |
 | 2025-12-31 | **Execution log storage**: All execution records now store full Claude Code execution transcript in `execution_log` column. New endpoint `GET /api/agents/{name}/executions/{execution_id}/log` retrieves full execution log for debugging and audit purposes. |

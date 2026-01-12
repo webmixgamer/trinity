@@ -96,7 +96,7 @@ Copy this into each feature flow:
 
 ### Prerequisites
 - [ ] Backend running at http://localhost:8000
-- [ ] Frontend running at http://localhost:3000
+- [ ] Frontend running at http://localhost
 - [ ] Docker daemon running
 - [ ] Redis running (for queue/credential features)
 - [ ] Logged in (via email auth or admin login)
@@ -149,13 +149,13 @@ Copy this into each feature flow:
 
 ### Prerequisites
 - [ ] Backend running at http://localhost:8000
-- [ ] Frontend running at http://localhost:3000
+- [ ] Frontend running at http://localhost
 - [ ] Docker daemon running
 - [ ] Logged in as test@ability.ai
 
 ### 1. Create Agent
 **Action**:
-- Navigate to http://localhost:3000
+- Navigate to http://localhost
 - Click "Create Agent" button
 - Enter name: "test-lifecycle"
 - Select template: "local:default"

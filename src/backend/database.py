@@ -894,6 +894,10 @@ class DatabaseManager:
     def list_all_disabled_schedules(self):
         return self._schedule_ops.list_all_disabled_schedules()
 
+    def list_all_schedules(self):
+        """List all schedules across all agents."""
+        return self._schedule_ops.list_all_schedules()
+
     def update_schedule(self, schedule_id: str, username: str, updates: dict):
         return self._schedule_ops.update_schedule(schedule_id, username, updates)
 

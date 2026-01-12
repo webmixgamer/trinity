@@ -80,7 +80,7 @@
             :key="index"
             class="flex items-start space-x-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:border-indigo-200 dark:hover:border-indigo-700 border border-transparent transition-colors cursor-pointer"
             @click="handleUseCaseClick(useCase)"
-            title="Click to try this in chat"
+            title="Click to run this task"
           >
             <svg class="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -122,7 +122,9 @@
           <div
             v-for="subAgent in templateInfo.sub_agents"
             :key="getItemName(subAgent)"
-            class="flex items-start space-x-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg"
+            class="flex items-start space-x-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer transition-colors"
+            @click="handleSubAgentClick(subAgent)"
+            title="Click to delegate task to this sub-agent"
           >
             <div class="w-2 h-2 bg-blue-400 rounded-full mt-1.5 flex-shrink-0"></div>
             <div class="flex-1 min-w-0">
@@ -131,6 +133,9 @@
                 {{ getItemDescription(subAgent) }}
               </p>
             </div>
+            <svg class="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
       </div>
@@ -147,12 +152,17 @@
           <div
             v-for="command in templateInfo.commands"
             :key="getItemName(command)"
-            class="flex items-start space-x-3 px-3 py-2 bg-purple-50 dark:bg-purple-900/30 rounded-lg"
+            class="flex items-start space-x-3 px-3 py-2 bg-purple-50 dark:bg-purple-900/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 cursor-pointer transition-colors"
+            @click="handleCommandClick(command)"
+            title="Click to run this command"
           >
             <span class="text-sm font-mono font-medium text-purple-800 dark:text-purple-300 flex-shrink-0">/{{ getItemName(command) }}</span>
-            <p v-if="getItemDescription(command)" class="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+            <p v-if="getItemDescription(command)" class="text-xs text-purple-600 dark:text-purple-400 mt-0.5 flex-1">
               {{ getItemDescription(command) }}
             </p>
+            <svg class="w-4 h-4 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
       </div>
@@ -277,7 +287,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['use-case-click'])
+const emit = defineEmits(['item-click'])
 
 const agentsStore = useAgentsStore()
 const templateInfo = ref(null)
@@ -319,9 +329,28 @@ const formatCapability = (capability) => {
     .join(' ')
 }
 
+const handleItemClick = (type, text) => {
+  // Emit event to parent to open Tasks tab with this text
+  emit('item-click', { type, text })
+}
+
 const handleUseCaseClick = (text) => {
-  // Emit event to parent to open chat with this text
-  emit('use-case-click', text)
+  handleItemClick('use-case', text)
+}
+
+const handleCommandClick = (command) => {
+  const commandName = getItemName(command)
+  handleItemClick('command', `/${commandName}`)
+}
+
+const handleSubAgentClick = (subAgent) => {
+  const agentName = getItemName(subAgent)
+  const description = getItemDescription(subAgent)
+  // Create a prompt to delegate to the sub-agent
+  const prompt = description
+    ? `Ask ${agentName} to help with: ${description}`
+    : `Ask ${agentName} to help with a task`
+  handleItemClick('sub-agent', prompt)
 }
 
 // Reload when agent status changes to running (to get full info)

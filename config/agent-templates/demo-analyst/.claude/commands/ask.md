@@ -1,6 +1,6 @@
 ---
 description: Answer a strategic question using accumulated research
-allowed-tools: Read, Glob
+allowed-tools: Read, Glob, Bash
 ---
 
 # Answer Strategic Question
@@ -21,7 +21,9 @@ The user will provide a question after this command, like:
    - Identify key topics and themes to search for
 
 2. **Search Research Findings**
-   - Read all available findings from `/home/developer/shared-in/research-network-researcher/findings/`
+   - First, discover the researcher's shared folder: `ls /home/developer/shared-in/`
+   - Look for a folder containing "researcher" in the name
+   - Read all available findings from that folder's `findings/` subdirectory
    - Look for relevant information matching the question topics
    - Note supporting evidence and sources
 

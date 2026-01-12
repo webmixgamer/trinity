@@ -1,6 +1,6 @@
 ---
 description: Generate daily briefing from research findings
-allowed-tools: Read, Glob, Write
+allowed-tools: Read, Glob, Write, Bash
 ---
 
 # Daily Briefing
@@ -10,7 +10,11 @@ Generate a comprehensive briefing from recent research findings.
 ## Steps
 
 1. **Locate Findings**
-   - Check `/home/developer/shared-in/research-network-researcher/findings/` for research files
+   - First, discover available shared folders: `ls /home/developer/shared-in/`
+   - Look for a researcher agent folder (contains "researcher" in name)
+   - Common paths:
+     - `/home/developer/shared-in/research-network-researcher/findings/` (system manifest)
+     - `/home/developer/shared-in/researcher/findings/` (individual deployment)
    - If the folder is empty or doesn't exist, report that no research is available yet
 
 2. **Read All Recent Findings**

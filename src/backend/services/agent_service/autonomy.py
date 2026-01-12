@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.scheduler_service import scheduler_service
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +91,16 @@ async def set_autonomy_status_logic(
     db.set_autonomy_enabled(agent_name, enabled)
 
     # Enable/disable all schedules for this agent
+    # IMPORTANT: Use scheduler_service methods to sync both database AND APScheduler
     schedules = db.list_agent_schedules(agent_name)
     updated_count = 0
     for schedule in schedules:
         schedule_id = schedule.id
         if schedule_id:
-            db.set_schedule_enabled(schedule_id, enabled)
+            if enabled:
+                scheduler_service.enable_schedule(schedule_id)
+            else:
+                scheduler_service.disable_schedule(schedule_id)
             updated_count += 1
 
     logger.info(

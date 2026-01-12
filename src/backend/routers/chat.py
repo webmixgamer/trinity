@@ -197,12 +197,13 @@ async def chat_with_agent(
             activity_type=ActivityType.AGENT_COLLABORATION,
             user_id=current_user.id,
             triggered_by="agent",
+            related_execution_id=task_execution_id,  # Database execution ID for structured queries
             details={
                 "source_agent": x_source_agent,
                 "target_agent": name,
                 "action": "chat",
                 "message_preview": request.message[:100],
-                "execution_id": execution.id,
+                "execution_id": task_execution_id,  # Also in details for WebSocket events
                 "queue_status": queue_result
             }
         )
@@ -221,10 +222,11 @@ async def chat_with_agent(
         user_id=current_user.id,
         triggered_by="agent" if x_source_agent else "user",
         parent_activity_id=collaboration_activity_id,  # Link to collaboration if agent-initiated
+        related_execution_id=task_execution_id,  # Database execution ID for structured queries
         details={
             "message_preview": request.message[:100],
             "source_agent": x_source_agent,
-            "execution_id": execution.id,
+            "execution_id": task_execution_id,  # Also in details for WebSocket events
             "queue_status": queue_result
         }
     )
@@ -267,8 +269,12 @@ async def chat_with_agent(
 
         # Serialize tool calls if present
         # Note: Check is not None, not truthiness - empty list [] is valid log
+        # execution_log is now raw Claude Code format for UI
+        # execution_log_simplified is the old format for activity tracking
         execution_log = response_data.get("execution_log", [])
-        tool_calls_json = json.dumps(execution_log) if execution_log is not None else None
+        execution_log_simplified = response_data.get("execution_log_simplified", execution_log)
+        execution_log_json = json.dumps(execution_log) if execution_log is not None else None
+        tool_calls_json = json.dumps(execution_log_simplified) if execution_log_simplified is not None else None
 
         # Log assistant response to database with observability data
         assistant_message = db.add_chat_message(
@@ -286,7 +292,8 @@ async def chat_with_agent(
         )
 
         # Track tool calls (granular tracking in agent_activities)
-        for tool_call in execution_log:
+        # Use execution_log_simplified which has the format expected by activity tracking
+        for tool_call in execution_log_simplified:
             await activity_service.track_activity(
                 agent_name=name,
                 activity_type=ActivityType.TOOL_CALL,
@@ -294,6 +301,7 @@ async def chat_with_agent(
                 triggered_by="agent" if x_source_agent else "user",
                 parent_activity_id=chat_activity_id,
                 related_chat_message_id=assistant_message.id,
+                related_execution_id=task_execution_id,  # Link tool calls to execution
                 details={
                     "tool_name": tool_call.get("tool", "unknown"),
                     "duration_ms": tool_call.get("duration_ms"),
@@ -311,8 +319,8 @@ async def chat_with_agent(
                 "context_max": session_data.get("context_window"),
                 "cost_usd": metadata.get("cost_usd"),
                 "execution_time_ms": execution_time_ms,
-                "tool_count": len(execution_log),
-                "execution_id": execution.id
+                "tool_count": len(execution_log_simplified),
+                "execution_id": task_execution_id  # Use database execution ID, not queue ID
             }
         )
 
@@ -325,7 +333,7 @@ async def chat_with_agent(
                     "related_chat_message_id": assistant_message.id,
                     "response_length": len(response_data.get("response", "")),
                     "execution_time_ms": execution_time_ms,
-                    "execution_id": execution.id
+                    "execution_id": task_execution_id  # Use database execution ID, not queue ID
                 }
             )
 
@@ -339,15 +347,19 @@ async def chat_with_agent(
                 context_used=context_used if context_used > 0 else None,
                 context_max=session_data.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),
-                tool_calls=tool_calls_json,
-                execution_log=tool_calls_json  # execution_log same as tool_calls for chat
+                tool_calls=tool_calls_json,  # Simplified format for activity tracking
+                execution_log=execution_log_json  # Raw Claude Code format for UI
             )
 
         execution_success = True
 
         # Add execution metadata to response
+        # Include both IDs for clarity:
+        # - id: Queue execution ID (transient, for queue status tracking)
+        # - task_execution_id: Database execution ID (permanent, for API queries and navigation)
         response_data["execution"] = {
-            "id": execution.id,
+            "id": execution.id,  # Queue ID (transient)
+            "task_execution_id": task_execution_id,  # Database ID (permanent) - use this for navigation
             "queue_status": queue_result,
             "was_queued": is_queued
         }
@@ -379,6 +391,14 @@ async def chat_with_agent(
         if task_execution_id:
             db.update_execution_status(
                 execution_id=task_execution_id,
+                status="failed",
+                error=error_msg
+            )
+
+        # Complete collaboration activity on failure (was missing - caused activities to stay in "started" state)
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
                 status="failed",
                 error=error_msg
             )
@@ -444,13 +464,14 @@ async def execute_parallel_task(
         activity_type=ActivityType.CHAT_START,  # Reusing CHAT_START for now
         user_id=current_user.id,
         triggered_by=triggered_by,
+        related_execution_id=execution_id,  # Database execution ID for structured queries
         details={
             "message_preview": request.message[:100],
             "source_agent": x_source_agent,
             "parallel_mode": True,
             "model": request.model,
             "timeout_seconds": request.timeout_seconds,
-            "execution_id": execution_id
+            "execution_id": execution_id  # Also in details for WebSocket events
         }
     )
 
@@ -496,11 +517,18 @@ async def execute_parallel_task(
             execution_log_json = None
             # Note: Check for key existence, not truthiness - empty list [] is valid log
             if "execution_log" in response_data and response_data["execution_log"] is not None:
-                try:
-                    execution_log_json = json.dumps(response_data["execution_log"])
-                    tool_calls_json = execution_log_json  # Keep for backwards compatibility
-                except Exception:
-                    pass
+                execution_log = response_data["execution_log"]
+                if isinstance(execution_log, list) and len(execution_log) > 0:
+                    try:
+                        execution_log_json = json.dumps(execution_log)
+                        tool_calls_json = execution_log_json  # Keep for backwards compatibility
+                        logger.debug(f"[Task] Execution {execution_id}: captured {len(execution_log)} log entries")
+                    except Exception as e:
+                        logger.error(f"[Task] Failed to serialize execution_log for {execution_id}: {e}")
+                else:
+                    logger.warning(f"[Task] Execution {execution_id}: execution_log is empty (type={type(execution_log).__name__})")
+            else:
+                logger.warning(f"[Task] Execution {execution_id}: no execution_log in agent response")
 
             # Agent returns metadata with input_tokens, output_tokens, context_window
             context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
