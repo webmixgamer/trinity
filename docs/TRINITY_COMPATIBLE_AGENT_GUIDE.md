@@ -21,10 +21,11 @@
 11. [Custom Metrics](#custom-metrics)
 12. [Memory Management](#memory-management)
 13. [Content Folder Convention](#content-folder-convention)
-14. [Compatibility Checklist](#compatibility-checklist)
-15. [Migration Guide](#migration-guide)
-16. [Best Practices](#best-practices)
-17. [Autonomous Agent Design](#autonomous-agent-design)
+14. [Package Persistence](#package-persistence)
+15. [Compatibility Checklist](#compatibility-checklist)
+16. [Migration Guide](#migration-guide)
+17. [Best Practices](#best-practices)
+18. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -641,6 +642,86 @@ When exporting data, save to `content/exports/`.
 
 ---
 
+## Package Persistence
+
+When agents install system packages (via `apt-get`, `npm install -g`, etc.), those packages are lost when the container is updated. Trinity provides a setup script convention to handle this.
+
+### How It Works
+
+1. When an agent installs a system package, it also appends the command to `~/.trinity/setup.sh`
+2. On container start, Trinity runs this script automatically
+3. Packages are reinstalled, surviving image updates
+
+### Setup Script Location
+
+```
+/home/developer/.trinity/setup.sh
+```
+
+This file lives in the persistent workspace volume and survives container recreation.
+
+### Usage Pattern
+
+When installing packages, always add them to the setup script:
+
+```bash
+# Install the package
+sudo apt-get install -y ffmpeg
+
+# Remember it for future container starts
+mkdir -p ~/.trinity
+echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
+```
+
+### Pre-configuring in Templates
+
+Templates can ship with a pre-defined `setup.sh`:
+
+```
+my-agent/
+├── .trinity/
+│   └── setup.sh          # Pre-defined package installations
+├── template.yaml
+└── CLAUDE.md
+```
+
+Example `setup.sh` for a video processing agent:
+
+```bash
+#!/bin/bash
+# Package persistence script - runs on every container start
+
+# System packages
+sudo apt-get update -qq
+sudo apt-get install -y -qq ffmpeg imagemagick
+
+# Global npm packages
+npm install -g typescript ts-node
+
+# Python packages (user-space)
+pip install --user opencv-python moviepy
+```
+
+### What Goes Where
+
+| Package Type | Persists Automatically? | Setup Script Needed? |
+|--------------|------------------------|---------------------|
+| `pip install --user` | ✅ Yes (in ~/.local) | No |
+| `npm install` (local) | ✅ Yes (in node_modules/) | No |
+| `go install` | ✅ Yes (in ~/go/) | No |
+| `apt-get install` | ❌ No | Yes |
+| `npm install -g` | ❌ No | Yes |
+| System-level configs | ❌ No | Yes |
+
+### Best Practices
+
+1. **Prefer user-space installs**: `pip install --user`, local `npm install` when possible
+2. **Keep setup.sh idempotent**: Use `-y` flags, check if already installed
+3. **Minimize apt-get**: Each install adds startup time
+4. **Document dependencies**: List required packages in README.md
+
+---
+
 ## Compatibility Checklist
 
 An agent is Trinity-compatible if:
@@ -771,6 +852,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Added Package Persistence section with setup.sh convention for surviving container updates |
 | 2026-01-12 | Simplified guide: removed Platform Injection, Testing Locally, Troubleshooting, Registering with Trinity, Multi-Agent Systems sections; Made memory/ optional; Added docs/ best practice |
 | 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
 | 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |

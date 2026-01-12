@@ -327,11 +327,16 @@ async def get_version():
     import os
     from pathlib import Path
 
-    # Read version from VERSION file
-    version_file = Path(__file__).parent.parent.parent / "VERSION"
+    # Read version from VERSION file (check multiple locations)
     version = "unknown"
-    if version_file.exists():
-        version = version_file.read_text().strip()
+    version_paths = [
+        Path("/app/VERSION"),  # In container (mounted)
+        Path(__file__).parent.parent.parent / "VERSION",  # Development
+    ]
+    for version_file in version_paths:
+        if version_file.exists():
+            version = version_file.read_text().strip()
+            break
 
     return {
         "version": version,

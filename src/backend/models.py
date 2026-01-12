@@ -42,6 +42,7 @@ class AgentStatus(BaseModel):
     container_id: Optional[str] = None
     template: Optional[str] = None
     runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
+    base_image_version: Optional[str] = None  # Version of trinity-agent-base image
 
     class Config:
         json_encoders = {

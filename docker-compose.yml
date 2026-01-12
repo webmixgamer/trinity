@@ -39,6 +39,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
+      - ./VERSION:/app/VERSION:ro  # Platform version for agent container labels
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - agent-configs:/agent-configs

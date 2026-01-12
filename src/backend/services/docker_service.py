@@ -55,6 +55,17 @@ def get_agent_status_from_container(container) -> AgentStatus:
     except Exception:
         pass  # Use default if we can't read env vars
 
+    # Extract base image version from container labels or image labels
+    base_image_version = labels.get("trinity.base-image-version")
+    if not base_image_version:
+        # Try to get from image labels
+        try:
+            image = container.image
+            image_labels = image.labels or {}
+            base_image_version = image_labels.get("trinity.base-image-version")
+        except Exception:
+            pass
+
     return AgentStatus(
         name=agent_name,
         type=labels.get("trinity.agent-type", "unknown"),
@@ -67,7 +78,8 @@ def get_agent_status_from_container(container) -> AgentStatus:
         },
         container_id=container.id,
         template=labels.get("trinity.template", None) or None,
-        runtime=runtime
+        runtime=runtime,
+        base_image_version=base_image_version
     )
 
 

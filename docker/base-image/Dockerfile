@@ -1,7 +1,12 @@
 FROM ubuntu:22.04
 
+# Version tracking - set at build time via --build-arg VERSION=x.y.z
+ARG VERSION=latest
+LABEL trinity.base-image-version="${VERSION}"
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/New_York
+ENV TRINITY_BASE_VERSION="${VERSION}"
 
 RUN apt-get update && apt-get install -y \
     curl \

@@ -32,6 +32,18 @@ from utils.helpers import sanitize_agent_name
 logger = logging.getLogger(__name__)
 
 
+def get_platform_version() -> str:
+    """Get the current Trinity platform version from VERSION file."""
+    version_paths = [
+        Path("/app/VERSION"),  # In container
+        Path(__file__).parent.parent.parent.parent.parent / "VERSION",  # Development
+    ]
+    for version_path in version_paths:
+        if version_path.exists():
+            return version_path.read_text().strip()
+    return "unknown"
+
+
 async def create_agent_internal(
     config: AgentConfig,
     current_user: User,
@@ -435,7 +447,8 @@ async def create_agent_internal(
                     'trinity.created': datetime.now().isoformat(),
                     'trinity.template': config.template or '',
                     'trinity.agent-runtime': config.runtime or 'claude-code',
-                    'trinity.full-capabilities': str(full_capabilities).lower()
+                    'trinity.full-capabilities': str(full_capabilities).lower(),
+                    'trinity.base-image-version': get_platform_version()
                 },
                 # Security: If full_capabilities=True, use Docker defaults (apt-get works)
                 # Otherwise use restricted mode (secure default)

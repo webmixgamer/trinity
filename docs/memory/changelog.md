@@ -1,3 +1,43 @@
+### 2026-01-12 16:00:00
+📦 **Feature: Package Persistence & Version Tracking**
+
+**Problem**: When agent containers are recreated (due to base image updates or config changes), system packages installed via `apt-get` or `npm install -g` are lost. Users had to manually reinstall packages each time.
+
+**Solution**: Added `~/.trinity/setup.sh` convention - a persistent setup script that runs on container start to reinstall packages.
+
+**Package Persistence**:
+1. `startup.sh` now runs `~/.trinity/setup.sh` if it exists
+2. Agents are instructed (via Trinity CLAUDE.md injection) to append install commands to this script
+3. Templates can ship with pre-defined `setup.sh` for known dependencies
+4. Documented in `TRINITY_COMPATIBLE_AGENT_GUIDE.md`
+
+**Version Tracking**:
+1. Base image Dockerfile now includes `trinity.base-image-version` label
+2. Container labels store version at creation time
+3. `AgentStatus` model includes `base_image_version` field
+4. Frontend can compare agent version vs current platform version
+
+**Files Modified**:
+- `docker/base-image/startup.sh` - Run setup.sh on start
+- `docker/base-image/Dockerfile` - Add VERSION arg and label
+- `docker/base-image/agent_server/routers/trinity.py` - Inject package persistence instructions
+- `src/backend/models.py` - Add base_image_version to AgentStatus
+- `src/backend/services/docker_service.py` - Extract version from container/image labels
+- `src/backend/services/agent_service/crud.py` - Add version label, get_platform_version helper
+- `src/backend/main.py` - Fix version endpoint path resolution
+- `docker-compose.yml` - Mount VERSION file into backend container
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Added Package Persistence section
+
+**Usage**:
+```bash
+# In agent terminal - install and persist
+sudo apt-get install -y ffmpeg
+mkdir -p ~/.trinity
+echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
+```
+
+---
+
 ### 2026-01-12 14:30:00
 🔐 **Feature: Full Capabilities Mode for Container Software Installation**
 
