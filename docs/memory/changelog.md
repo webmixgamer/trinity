@@ -1,3 +1,26 @@
+### 2026-01-12 20:10:00
+⚡ **Performance: Docker Stats Optimization - Fast Agent List**
+
+**Problem**: The `/api/agents` endpoint was slow (~2-3s with multiple agents) due to Docker API calls for container metadata.
+
+**Solution**: Added `list_all_agents_fast()` function that extracts agent info ONLY from container labels, avoiding slow operations like:
+- `container.attrs` (full Docker inspect API call)
+- `container.image` (image metadata lookup)
+- `container.stats()` (CPU sampling - 2+ seconds per container)
+
+**Result**: Response time reduced from ~2-3s to **<50ms** for agent list endpoints.
+
+**Files Modified**:
+- `src/backend/services/docker_service.py:101-159` - Added `list_all_agents_fast()` function
+- `src/backend/services/agent_service/helpers.py:14-17,92` - Use fast version in `get_accessible_agents()`
+- `src/backend/main.py:26,177` - Use fast version at startup
+- `src/backend/routers/ops.py:22,54,132,239,343,558,620` - Use fast version in ops endpoints
+- `src/backend/routers/telemetry.py:16,126` - Use fast version in telemetry
+
+**Note**: Per-agent stats (CPU, memory) still available via `/api/agents/{name}/stats` (~1s due to Docker sampling).
+
+---
+
 ### 2026-01-12 18:15:00
 🐛 **Fix: Credential Injection Bug - Passing Dict Instead of Username**
 

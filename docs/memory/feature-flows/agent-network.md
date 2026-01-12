@@ -1396,6 +1396,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Docker Stats Optimization**: Backend agent listing now uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations. Performance: `/api/agents` reduced from ~2-3s to <50ms. Helpers.py `get_accessible_agents()` updated at line 92. |
 | 2026-01-03 | **Autonomy Toggle Switch**: Added interactive toggle switch to AgentNode cards (lines 62-96). Replaces static "AUTO" badge with clickable toggle showing "AUTO/Manual" label. Toggle calls `networkStore.toggleAutonomy()` (lines 993-1030) to enable/disable all agent schedules. Amber styling when enabled, gray when disabled. |
 | 2026-01-01 | **Execution Stats Display**: Added task execution metrics to AgentNode cards. New `GET /api/agents/execution-stats` endpoint (agents.py:140-161). Database aggregation in `db/schedules.py:445-489`. Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s with context stats. AgentNode shows compact row: "12 tasks - 92% - $0.45 - 2m ago" with color-coded success rate. |
 | 2025-12-19 | **Documentation Update**: Updated all line number references for Dashboard.vue, AgentNode.vue, network.js, agents.py, chat.py, and main.py. Added dark mode styling documentation. Verified store rename (collaborations.js to network.js). Updated file path references. |

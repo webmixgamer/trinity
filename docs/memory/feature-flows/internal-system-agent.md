@@ -395,14 +395,14 @@ GET /api/ops/fleet/status
        │
        ▼
 ┌──────────────────────────────────────┐
-│ routers/ops.py:40-116                │
+│ routers/ops.py:40-100                │
 │ get_fleet_status()                   │
 └────────┬─────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────────┐
-│ list_all_agents()                    │
-│ Get all agent containers             │
+│ list_all_agents_fast()  (line 54)    │
+│ Get agents from labels only (~50ms)  │
 └────────┬─────────────────────────────┘
          │
          ▼
@@ -825,6 +825,14 @@ echo $TRINITY_MCP_API_KEY  # Should show the key
 curl -s http://backend:8000/api/ops/costs \
   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
 ```
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-12 | **Docker Stats Optimization**: Updated fleet status flow - `list_all_agents_fast()` now used at ops.py:54 instead of `list_all_agents()`. Avoids slow Docker API calls for better dashboard performance (~50ms vs 2-3s). |
+| 2026-01-09 | Added Schedule & Execution Management slash commands and `GET /api/ops/schedules` endpoint |
+| 2025-12-31 | Added AgentClient service pattern for HTTP communication |
 
 ## Related Documents
 

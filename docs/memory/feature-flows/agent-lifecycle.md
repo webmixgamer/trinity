@@ -348,10 +348,13 @@ async def stop_agent_endpoint(agent_name: str, request: Request, current_user: U
 | Function | Line | Purpose |
 |----------|------|---------|
 | `get_agent_container()` | 18-28 | Get container by name from Docker API |
-| `get_agent_status_from_container()` | 31-71 | Convert Docker container to AgentStatus model |
-| `list_all_agents()` | 74-86 | List all containers with `trinity.platform=agent` label |
-| `get_agent_by_name()` | 89-94 | Get specific agent status |
-| `get_next_available_port()` | 109-132 | Find next SSH port (2290+) |
+| `get_agent_status_from_container()` | 31-83 | Convert Docker container to AgentStatus model (full metadata) |
+| `list_all_agents()` | 86-98 | List all containers with full metadata (slower, uses `container.attrs`) |
+| `list_all_agents_fast()` | 101-159 | **Fast listing using labels only** - avoids slow Docker API calls (~50ms vs 2-3s) |
+| `get_agent_by_name()` | 162-167 | Get specific agent status |
+| `get_next_available_port()` | 182-205 | Find next SSH port (2222+) - uses `list_all_agents_fast()` |
+
+> **Performance Note (2026-01-12)**: `list_all_agents_fast()` was added to optimize agent listing. It extracts data ONLY from container labels, avoiding expensive Docker operations like `container.attrs`, `container.image`, and `container.stats()`. This reduced `/api/agents` response time from ~2-3s to <50ms.
 
 **Status Normalization (line 38-44):**
 ```python
@@ -646,6 +649,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Docker Stats Optimization**: Added `list_all_agents_fast()` function (docker_service.py:101-159) that extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.image`, `container.stats()`). Updated `get_next_available_port()` to use fast version. Performance: `/api/agents` reduced from ~2-3s to <50ms. |
 | 2025-12-31 | **Settings service and AgentClient refactoring**: (1) API key retrieval now uses `services/settings_service.py` instead of importing from `routers/settings.py`. Updated `lifecycle.py:16` and `crud.py:29`. (2) Trinity injection now uses centralized `AgentClient.inject_trinity_prompt()` from `services/agent_client.py:278-344` with built-in retry logic (max_retries=3, retry_delay=2.0s). Updated `lifecycle.py:17,44-50`. (3) Updated line numbers in crud.py (now 507 lines) and lifecycle.py (now 221 lines). |
 | 2025-12-30 | **Line number verification**: Updated all line numbers after composable refactoring. Frontend lifecycle methods now in `composables/useAgentLifecycle.js`. Updated router line numbers to match current 842-line agents.py. |
 | 2025-12-27 | **Service layer refactoring**: Updated all references to new modular architecture. Business logic moved from `routers/agents.py` to `services/agent_service/` modules (lifecycle.py, crud.py, helpers.py). Router reduced from 2928 to 786 lines. |

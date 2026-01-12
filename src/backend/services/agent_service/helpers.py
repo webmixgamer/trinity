@@ -14,6 +14,7 @@ from database import db
 from services.docker_service import (
     docker_client,
     list_all_agents,
+    list_all_agents_fast,
     get_agent_container,
 )
 from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
@@ -85,8 +86,10 @@ def get_accessible_agents(current_user: User) -> list:
 
     Helper function for use by other routers that need agent access control.
     Returns list of agent dictionaries with ownership metadata.
+
+    Uses list_all_agents_fast() for performance - avoids slow Docker API calls.
     """
-    all_agents = list_all_agents()
+    all_agents = list_all_agents_fast()
     user_data = db.get_user_by_username(current_user.username)
     is_admin = user_data and user_data["role"] == "admin"
 
@@ -158,8 +161,10 @@ def get_agents_by_prefix(prefix: str) -> List[AgentStatus]:
 
     Returns:
         List of matching AgentStatus objects
+
+    Uses list_all_agents_fast() for performance.
     """
-    all_agents = list_all_agents()
+    all_agents = list_all_agents_fast()
     matching = []
 
     for agent in all_agents:

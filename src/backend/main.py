@@ -23,7 +23,7 @@ import httpx
 from config import CORS_ORIGINS, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
 from models import User
 from dependencies import get_current_user
-from services.docker_service import docker_client, list_all_agents
+from services.docker_service import docker_client, list_all_agents_fast
 
 # Import routers
 from routers.auth import router as auth_router
@@ -174,7 +174,7 @@ async def lifespan(app: FastAPI):
 
     if docker_client:
         try:
-            agents = list_all_agents()
+            agents = list_all_agents_fast()  # Fast startup - no slow Docker API calls
             print(f"Found {len(agents)} existing Trinity agent containers")
             for agent in agents:
                 print(f"  - Agent: {agent.name} (status: {agent.status}, ssh_port: {agent.port})")

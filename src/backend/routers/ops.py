@@ -19,7 +19,7 @@ import httpx
 from models import User
 from database import db
 from dependencies import get_current_user
-from services.docker_service import get_agent_container, docker_client, list_all_agents
+from services.docker_service import get_agent_container, docker_client, list_all_agents_fast
 from services.agent_client import get_agent_client
 from db.agents import SYSTEM_AGENT_NAME
 
@@ -51,7 +51,7 @@ async def get_fleet_status(
     - Last activity time
     - System agent flag
     """
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     fleet_status = []
     context_stats = {}
@@ -129,7 +129,7 @@ async def get_fleet_health(
     - Container errors
     - No activity for > 30 minutes (for running agents)
     """
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     # Health thresholds (from settings or defaults)
     context_warning = 75
@@ -236,7 +236,7 @@ async def restart_fleet(
     """
     require_admin(current_user)
 
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     results = []
     successes = 0
@@ -340,7 +340,7 @@ async def stop_fleet(
     """
     require_admin(current_user)
 
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     results = []
     successes = 0
@@ -555,7 +555,7 @@ async def resume_all_schedules(
     # If no specific method, get all schedules
     if not schedules:
         all_schedules = []
-        agents = list_all_agents()
+        agents = list_all_agents_fast()
         for agent in agents:
             agent_schedules = db.list_agent_schedules(agent.name)
             all_schedules.extend([s for s in agent_schedules if not s.enabled])
@@ -617,7 +617,7 @@ async def emergency_stop(
             results["errors"].append(f"Schedule {schedule.id}: {e}")
 
     # 2. Stop all non-system agents
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
     for agent in agents:
         agent_name = agent.name
         status = agent.status

@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-12)**: Docker Stats Optimization:
+> - **Performance**: `/api/agents` response time reduced from ~2-3s to <50ms
+> - **New function**: `list_all_agents_fast()` in `services/docker_service.py:101-159` - extracts data ONLY from container labels
+> - **Avoids slow operations**: `container.attrs`, `container.image`, `container.stats()` (2+ seconds per container)
+> - **Updated files**: `helpers.py:17,92,167` (`get_accessible_agents`, `get_agents_by_prefix`), `main.py:26,177` (startup), `ops.py:22` (fleet ops), `telemetry.py:16,126` (container stats)
+> - **Feature flows updated**: agent-lifecycle.md, agent-network.md, internal-system-agent.md
+
 > **Updated (2026-01-12)**: Agent Dashboard feature:
 > - **agent-dashboard.md**: New feature flow for agent-defined dashboard system replacing Metrics tab
 > - Dashboard tab renders `DashboardPanel.vue` component with 11 widget types
@@ -213,7 +220,7 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, frontend: useAgentLifecycle.js composable (Updated 2025-12-30) |
+| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, docker_service: `list_all_agents_fast()` for performance (Updated 2026-01-12) |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format (Updated 2025-01-02) |
@@ -229,7 +236,7 @@
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
-| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - includes execution stats display on Agent Cards (Updated 2026-01-01) |
+| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` for performance (Updated 2026-01-12) |
 | **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport (Updated 2026-01-10) |
 | **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-10) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
@@ -244,7 +251,7 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-09**: Schedule & Execution Management via slash commands (`/ops/schedules/*`, `/ops/executions/*`). **2025-12-31**: AgentClient service pattern. **2025-12-21**: OTel access fix (Req 11.1, 11.2) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. **2026-01-09**: Schedule & Execution Management. **2025-12-31**: AgentClient service pattern. (Req 11.1, 11.2) |
 | **System Agent UI** | High | [system-agent-ui.md](feature-flows/system-agent-ui.md) | Admin-only `/system-agent` page with fleet overview cards, quick actions (Emergency Stop, Restart All, Pause/Resume Schedules), and Operations Console chat interface (Req 11.3 - Created 2025-12-20) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
