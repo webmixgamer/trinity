@@ -98,10 +98,11 @@ class ClaudeCodeRuntime(AgentRuntime):
         model: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
-        timeout_seconds: int = 900
+        timeout_seconds: int = 900,
+        max_turns: Optional[int] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """Execute Claude Code in headless mode for parallel tasks."""
-        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds)
+        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds, max_turns)
 
 
 def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
@@ -537,7 +538,8 @@ async def execute_headless_task(
     model: Optional[str] = None,
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
-    timeout_seconds: int = 900
+    timeout_seconds: int = 900,
+    max_turns: Optional[int] = None
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     """
     Execute Claude Code in headless mode for parallel task execution.
@@ -553,6 +555,7 @@ async def execute_headless_task(
         allowed_tools: Optional list of allowed tools (restricts available tools)
         system_prompt: Optional additional system prompt
         timeout_seconds: Execution timeout (default 5 minutes)
+        max_turns: Maximum agentic turns for runaway prevention (None = unlimited)
 
     Returns: (response_text, execution_log, metadata, session_id)
     """
@@ -596,6 +599,11 @@ async def execute_headless_task(
         if system_prompt:
             cmd.extend(["--append-system-prompt", system_prompt])
             logger.info(f"[Headless Task] Appending system prompt ({len(system_prompt)} chars)")
+
+        # Add max turns limit for runaway prevention
+        if max_turns is not None:
+            cmd.extend(["--max-turns", str(max_turns)])
+            logger.info(f"[Headless Task] Limiting to {max_turns} agentic turns")
 
         # Initialize tracking structures
         execution_log: List[ExecutionLogEntry] = []

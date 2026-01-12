@@ -113,12 +113,15 @@ if os.getenv('OTEL_ENABLED', '1') == '1':
 
 ### OTEL Collector Service
 
-**File**: `docker-compose.yml` (lines 150-169)
+**File**: `docker-compose.yml` (lines 165-185)
+
+**CRITICAL**: Must use `contrib` image version 0.120.0+ for `deltatocumulative` processor. Claude Code exports delta metrics, but Prometheus requires cumulative.
 
 ```yaml
 # OpenTelemetry Collector - receives metrics from Claude Code agents
+# Using contrib image for deltatocumulative processor (required for Prometheus export)
 otel-collector:
-  image: otel/opentelemetry-collector:0.91.0
+  image: otel/opentelemetry-collector-contrib:0.120.0
   container_name: trinity-otel-collector
   restart: unless-stopped
   ports:
@@ -126,7 +129,7 @@ otel-collector:
     - "4318:4318"   # HTTP receiver (OTLP)
     - "8889:8889"   # Prometheus metrics exporter
   volumes:
-    - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro  # Note: contrib path
   networks:
     - trinity-network
   labels:
@@ -142,6 +145,11 @@ otel-collector:
 
 **File**: `config/otel-collector.yaml`
 
+**Key Processors**:
+- `batch` - Batches metrics for efficient export
+- `resource` - Adds `platform: trinity` metadata
+- `deltatocumulative` - **CRITICAL** - Converts delta to cumulative temporality (required for Prometheus)
+
 ```yaml
 receivers:
   otlp:
@@ -152,27 +160,31 @@ receivers:
         endpoint: "0.0.0.0:4318"
 
 processors:
-  # Batch metrics for efficient export
   batch:
     timeout: 10s
     send_batch_size: 1024
 
-  # Add Trinity metadata to all metrics
   resource:
     attributes:
       - key: platform
         value: trinity
         action: upsert
 
+  # CRITICAL: Convert delta to cumulative for Prometheus compatibility
+  deltatocumulative:
+    max_stale: 10m
+    max_streams: 10000
+
 exporters:
-  # Prometheus exporter - scrape at :8889/metrics
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: trinity
-    const_labels:
-      platform: trinity
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    # NOTE: Don't use const_labels with resource_to_telemetry_conversion
+    # to avoid duplicate label conflicts
 
-  # Debug logging
   debug:
     verbosity: basic
     sampling_initial: 5
@@ -182,7 +194,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [batch, resource, deltatocumulative]  # deltatocumulative REQUIRED
       exporters: [prometheus, debug]
     logs:
       receivers: [otlp]

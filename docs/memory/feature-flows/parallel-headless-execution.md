@@ -3,6 +3,7 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
+> **Updated**: 2026-01-12 (max_turns parameter for runaway prevention)
 > **Verified**: 2025-12-31
 
 ## Overview
@@ -103,6 +104,7 @@ POST /api/task
 │   --verbose --dangerously-skip-permissions  │
 │   [--model X] [--allowedTools Y]            │
 │   [--append-system-prompt Z]                │
+│   [--max-turns N]                           │
 │   [--mcp-config ~/.mcp.json]                │
 │                                             │
 │ - NO --continue flag (stateless)            │
@@ -117,15 +119,17 @@ POST /api/task
 
 | File | Line | Purpose |
 |------|------|---------|
-| `models.py` | 204-223 | ParallelTaskRequest, ParallelTaskResponse models |
-| `services/claude_code.py` | 521-676 | execute_headless_task() function |
-| `routers/chat.py` | 90-127 | POST /api/task endpoint |
+| `models.py` | 214-231 | ParallelTaskRequest, ParallelTaskResponse models |
+| `services/claude_code.py` | 536-731 | execute_headless_task() function |
+| `services/gemini_runtime.py` | 489-642 | execute_headless() for Gemini CLI |
+| `services/runtime_adapter.py` | 98-127 | AgentRuntime.execute_headless() interface |
+| `routers/chat.py` | 93-133 | POST /api/task endpoint |
 
 ### Backend (src/backend/)
 
 | File | Line | Purpose |
 |------|------|---------|
-| `models.py` | 98 | ParallelTaskRequest model |
+| `models.py` | 103-110 | ParallelTaskRequest model with max_turns |
 | `routers/chat.py` | 358-475 | POST /api/agents/{name}/task endpoint |
 
 ### MCP Server (src/mcp-server/)
@@ -146,7 +150,8 @@ POST /api/task
   "model": "sonnet|opus|haiku",  // Optional: Model override
   "allowed_tools": ["Read"],     // Optional: Tool restrictions
   "system_prompt": "string",     // Optional: Additional instructions
-  "timeout_seconds": 300         // Optional: Timeout (default 5 min)
+  "timeout_seconds": 900,        // Optional: Timeout (default 15 min)
+  "max_turns": 50                // Optional: Max agentic turns (runaway prevention)
 }
 ```
 
@@ -212,7 +217,8 @@ Retrieve the full execution log for any task execution.
 | model | string | null | Model override (parallel only) |
 | allowed_tools | string[] | null | Tool restrictions (parallel only) |
 | system_prompt | string | null | Additional instructions (parallel only) |
-| timeout_seconds | number | 300 | Timeout in seconds (parallel only) |
+| timeout_seconds | number | 900 | Timeout in seconds (parallel only) |
+| max_turns | number | null | Max agentic turns for runaway prevention (parallel only) |
 
 ## Key Differences: Chat vs Task
 
@@ -226,6 +232,101 @@ Retrieve the full execution log for any task execution.
 | Session updates | Yes | No |
 | Concurrent requests | 1 per agent | N per agent |
 | Use case | Interactive chat | Batch processing |
+
+## Runaway Prevention: max_turns Parameter
+
+**Added**: 2026-01-12
+
+The `max_turns` parameter limits the number of agentic turns an agent can take before the CLI exits. This prevents runaway agents that get stuck in infinite loops or continue executing far beyond expected scope.
+
+### How It Works
+
+When `max_turns` is specified:
+
+1. **Agent Server** passes `--max-turns N` to the Claude Code or Gemini CLI command
+2. **CLI** counts each agentic turn (tool use + tool result cycle)
+3. **At limit**: CLI exits with an error, returning partial results
+4. **Response**: Includes whatever work was completed before the limit
+
+### Implementation Details
+
+**Claude Code** (`docker/base-image/agent_server/services/claude_code.py:604-606`):
+```python
+if max_turns is not None:
+    cmd.extend(["--max-turns", str(max_turns)])
+    logger.info(f"[Headless Task] Limiting to {max_turns} agentic turns")
+```
+
+**Gemini CLI** (`docker/base-image/agent_server/services/gemini_runtime.py:542-544`):
+```python
+if max_turns is not None:
+    cmd.extend(["--max-turns", str(max_turns)])
+    logger.info(f"[Headless Task {session_id}] Limiting to {max_turns} agentic turns")
+```
+
+### Usage Examples
+
+**Conservative limit for simple tasks**:
+```json
+{
+  "message": "Read the README.md file and summarize it",
+  "max_turns": 5
+}
+```
+
+**Higher limit for complex analysis**:
+```json
+{
+  "message": "Analyze this codebase and create a report",
+  "max_turns": 50,
+  "timeout_seconds": 1800
+}
+```
+
+**Combined with tool restrictions**:
+```json
+{
+  "message": "Search for security vulnerabilities",
+  "allowed_tools": ["Read", "Grep", "Glob"],
+  "max_turns": 100,
+  "timeout_seconds": 3600
+}
+```
+
+### Recommended Values
+
+| Task Type | Recommended max_turns | Rationale |
+|-----------|----------------------|-----------|
+| Simple queries | 5-10 | Few file reads needed |
+| Code analysis | 25-50 | Multiple file traversals |
+| Refactoring | 50-100 | Many edit operations |
+| Deep research | 100-200 | Extensive exploration |
+| Unlimited | null (default) | Trusted orchestrators only |
+
+### When to Use
+
+- **Always** for user-triggered parallel tasks
+- **Always** for scheduled tasks without human supervision
+- **Recommended** for agent-to-agent delegation
+- **Optional** for interactive chat (human can cancel)
+
+### Relationship with timeout_seconds
+
+Both parameters provide safety limits:
+
+| Parameter | Protects Against | Behavior at Limit |
+|-----------|-----------------|-------------------|
+| `timeout_seconds` | Wall-clock time exceeded | Process killed, HTTP 504 |
+| `max_turns` | Too many agentic operations | CLI exits gracefully, HTTP 500 |
+
+Use both together for comprehensive protection:
+```json
+{
+  "message": "Complex task",
+  "max_turns": 50,
+  "timeout_seconds": 900
+}
+```
 
 ## Testing
 
@@ -281,7 +382,8 @@ Combine results after all complete.
 2. **Rate Limiting**: Consider implementing concurrency limits
 3. **Audit Trail**: All parallel tasks logged with user attribution
 4. **Tool Restrictions**: `allowed_tools` parameter for sandboxing
-5. **Timeout**: Hard limit prevents runaway tasks
+5. **Timeout**: Hard limit (`timeout_seconds`) prevents wall-clock runaway
+6. **Turn Limit**: `max_turns` prevents infinite agentic loops (added 2026-01-12)
 
 ## Future Enhancements
 

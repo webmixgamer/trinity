@@ -899,6 +899,94 @@ async def set_agent_resources(
 
 
 # ============================================================================
+# Full Capabilities Endpoints (Container Security)
+# ============================================================================
+
+@router.get("/{agent_name}/capabilities")
+async def get_agent_capabilities(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the capabilities setting for an agent.
+
+    Returns:
+    - full_capabilities: True if agent has full Docker capabilities (apt-get works)
+    - current_full_capabilities: Current container setting
+
+    When full_capabilities=True:
+    - Container runs with Docker default capabilities
+    - Can install packages with apt-get
+    - Can use sudo
+
+    When full_capabilities=False (default):
+    - Container runs with restricted capabilities
+    - More secure but cannot install packages
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get DB setting
+    db_full_caps = db.get_full_capabilities(agent_name)
+
+    # Get current container setting from labels
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_full_caps = labels.get("trinity.full-capabilities", "false").lower() == "true"
+
+    return {
+        "full_capabilities": db_full_caps,
+        "current_full_capabilities": current_full_caps
+    }
+
+
+@router.put("/{agent_name}/capabilities")
+async def set_agent_capabilities(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the capabilities for an agent.
+
+    Body:
+    - full_capabilities: True for full Docker capabilities, False for restricted (secure)
+
+    Note: Agent must be restarted for changes to take effect.
+    The container label is updated on restart.
+    """
+    # Only owners can change capabilities
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change capabilities")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    full_caps = body.get("full_capabilities")
+    if full_caps is None:
+        raise HTTPException(status_code=400, detail="full_capabilities is required")
+
+    if not isinstance(full_caps, bool):
+        raise HTTPException(status_code=400, detail="full_capabilities must be a boolean")
+
+    # Update database
+    db.set_full_capabilities(agent_name, full_caps)
+
+    # Update container label (will be applied on restart/recreate)
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_full_caps = labels.get("trinity.full-capabilities", "false").lower() == "true"
+
+    restart_needed = full_caps != current_full_caps
+
+    return {
+        "message": "Capabilities updated",
+        "full_capabilities": full_caps,
+        "restart_needed": restart_needed
+    }
+
+
+# ============================================================================
 # SSH Access Endpoint
 # ============================================================================
 

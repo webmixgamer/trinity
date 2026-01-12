@@ -57,8 +57,11 @@
           <button
             @click="$emit('git-pull')"
             :disabled="gitPulling || gitSyncing"
-            class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white"
-            title="Pull latest changes from GitHub"
+            class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors"
+            :class="gitBehind > 0
+              ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white'
+              : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 text-gray-600 dark:text-gray-300'"
+            :title="gitBehind > 0 ? `Pull ${gitBehind} commit(s) from GitHub` : 'Already up to date'"
           >
             <svg v-if="gitPulling" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -67,17 +70,17 @@
             <svg v-else class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            {{ gitPulling ? 'Pulling...' : 'Pull' }}
+            {{ gitPulling ? 'Pulling...' : (gitBehind > 0 ? `Pull (${gitBehind})` : 'Pull') }}
           </button>
-          <!-- Sync (Push) button -->
+          <!-- Push button -->
           <button
-            @click="$emit('git-sync')"
+            @click="$emit('git-push')"
             :disabled="gitSyncing || gitPulling"
             class="inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors"
             :class="gitHasChanges
               ? 'bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white'
               : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 text-gray-600 dark:text-gray-300'"
-            :title="gitHasChanges ? 'Push changes to GitHub' : 'No changes to sync'"
+            :title="gitHasChanges ? 'Push changes to GitHub' : 'No changes to push'"
           >
             <svg v-if="gitSyncing" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -86,7 +89,7 @@
             <svg v-else class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            {{ gitSyncing ? 'Syncing...' : (gitHasChanges ? `Sync (${gitChangesCount})` : 'Synced') }}
+            {{ gitSyncing ? 'Pushing...' : (gitHasChanges ? `Push (${gitChangesCount})` : 'Push') }}
           </button>
           <button
             @click="$emit('git-refresh')"
@@ -298,6 +301,10 @@ const props = defineProps({
   gitChangesCount: {
     type: Number,
     default: 0
+  },
+  gitBehind: {
+    type: Number,
+    default: 0
   }
 })
 
@@ -308,7 +315,7 @@ defineEmits([
   'toggle-autonomy',
   'open-resource-modal',
   'git-pull',
-  'git-sync',
+  'git-push',
   'git-refresh'
 ])
 

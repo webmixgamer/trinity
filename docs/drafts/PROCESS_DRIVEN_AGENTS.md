@@ -1037,3 +1037,272 @@ The "Informed" role acknowledges this: agents aren't just notified—they *learn
 4. **Design** Process Execution Engine architecture (leave flexible for now)
 5. **Build** Human Approval Interface
 6. **Create** process templates for common workflows
+
+---
+
+## Appendix A: Complete Process Definition YAML Schema
+
+This schema is the **single source of truth** for a process definition. From this YAML, the system can:
+- Render the designer view and workflow diagram
+- Generate the role matrix
+- Validate all agents/credentials exist
+- Deploy and execute the process
+
+```yaml
+# ============================================================
+# PROCESS DEFINITION SCHEMA v1.0
+# ============================================================
+
+version: "1.0"
+
+# === METADATA ===
+metadata:
+  name: weekly-market-report
+  description: |
+    Automated weekly market analysis with human review
+    before publishing to stakeholders.
+  owner: user@example.com
+  tags: [reporting, market-analysis, weekly]
+
+# === AGENTS ===
+# All agents involved in this process
+# Used for: validation, deployment, role matrix columns
+agents:
+  - name: research-assistant
+    role: Data gathering and web research
+    capabilities: [web-search, document-analysis]
+    # If template specified, agent will be created if missing
+    # template: github:company/research-agent
+
+  - name: market-analyst
+    role: Trend analysis and visualization
+    capabilities: [data-analysis, chart-generation]
+
+  - name: report-writer
+    role: Content generation and formatting
+    capabilities: [content-generation, markdown, pdf-export]
+
+# === WORKFLOW ===
+# Ordered steps with explicit dependencies and role assignments
+# Used for: workflow diagram, role matrix rows, execution order
+steps:
+  - id: gather
+    name: Gather Market Data
+    description: Collect latest market data from configured sources
+    agent: research-assistant
+
+    inputs:
+      - name: data_sources
+        from: config                    # From process config
+
+    outputs:
+      - name: raw_data
+        path: /shared/data/market.json
+
+    timeout: 30m
+
+    roles:
+      executor: research-assistant      # Implicit from 'agent', but explicit for clarity
+      monitors: [market-analyst]        # Can observe progress
+      informed: []                      # Notified on completion
+
+  - id: analyze
+    name: Analyze Trends
+    agent: market-analyst
+    depends_on: [gather]
+
+    inputs:
+      - name: market_data
+        from: step:gather.raw_data      # Output from previous step
+
+    outputs:
+      - name: analysis
+        path: /shared/data/analysis.json
+      - name: charts
+        path: /shared/charts/
+
+    roles:
+      monitors: [research-assistant]
+      informed: [report-writer]
+
+  - id: draft
+    name: Draft Report
+    agent: report-writer
+    depends_on: [analyze]
+
+    inputs:
+      - name: analysis
+        from: step:analyze.analysis
+      - name: charts
+        from: step:analyze.charts
+
+    outputs:
+      - name: draft_report
+        path: /shared/reports/draft.md
+
+    roles:
+      monitors: []
+      informed: [market-analyst]
+
+  - id: review
+    name: Human Review
+    type: approval                      # Special step type
+    depends_on: [draft]
+
+    approval:
+      approvers:
+        - manager@example.com
+        - stakeholder@example.com
+      required: 1                       # Approvals needed (1 of N)
+      timeout: 48h
+      on_timeout: notify                # notify | reject | auto-approve
+
+    review_artifacts:                   # What approvers see
+      - from: step:draft.draft_report
+
+    roles:
+      monitors: []
+      informed: [report-writer]         # Author notified of decision
+
+  - id: publish
+    name: Publish Report
+    agent: report-writer
+    depends_on: [review]
+    condition: review.approved          # Only runs if approved
+
+    inputs:
+      - name: draft
+        from: step:draft.draft_report
+
+    outputs:
+      - name: final_report
+        path: /shared/reports/final.pdf
+
+    roles:
+      monitors: []
+      informed: [market-analyst, research-assistant]
+
+# === RESOURCES ===
+# Shared folders and required credentials
+# Used for: validation, deployment, data flow visualization
+resources:
+  shared_folders:
+    - name: data
+      path: /shared/data
+      access:
+        read: [research-assistant, market-analyst, report-writer]
+        write: [research-assistant, market-analyst]
+
+    - name: reports
+      path: /shared/reports
+      access:
+        read: [report-writer]
+        write: [report-writer]
+
+  credentials:
+    - name: MARKET_API_KEY
+      agent: research-assistant
+      required: true
+
+    - name: SLACK_WEBHOOK
+      agent: report-writer
+      required: true
+
+# === PERMISSIONS ===
+# Agent-to-agent communication rules
+# Used for: validation, security, network diagram
+permissions:
+  preset: linear                        # full-mesh | linear | hub-spoke | custom
+  # If custom:
+  # rules:
+  #   - from: research-assistant
+  #     to: market-analyst
+  #     allow: [message, file-transfer]
+
+# === TRIGGER ===
+# How the process is initiated
+# Used for: scheduler integration, UI display
+trigger:
+  type: schedule                        # schedule | manual | event
+
+  schedule:
+    cron: "0 8 * * 1"                   # Every Monday 8am
+    timezone: America/New_York
+
+  # type: event
+  # event:
+  #   source: webhook
+  #   path: /api/processes/weekly-market-report/trigger
+
+# === OUTPUT ===
+# Where results are delivered
+# Used for: notification config, success criteria
+output:
+  on_success:
+    - type: slack
+      channel: "#market-reports"
+      include: [step:publish.final_report]
+
+    - type: email
+      to: [stakeholders@example.com]
+      subject: "Weekly Market Report - {{date}}"
+
+  on_failure:
+    - type: slack
+      channel: "#alerts"
+      message: "Process failed at step: {{failed_step}}"
+
+# === MONITORING ===
+# Global observation and notification settings
+# Used for: role matrix (global monitors), alerting
+monitoring:
+  global_monitors:                      # Agents that monitor ALL steps
+    - orchestrator-agent
+
+  global_informed:                      # Always notified of completion
+    - admin@example.com
+
+# === ERROR HANDLING ===
+# Default retry and failure behavior
+# Used for: execution engine, validation
+error_handling:
+  default_retry:
+    attempts: 2
+    delay: 5m
+    backoff: exponential                # fixed | linear | exponential
+
+  on_step_failure: pause                # pause | abort | skip | notify
+
+  fallback_notification:
+    - type: email
+      to: admin@example.com
+```
+
+### Schema-to-Feature Mapping
+
+| YAML Section | Enables |
+|--------------|---------|
+| `metadata` | Process list, search, ownership |
+| `agents` | Agent validation, deployment, role matrix columns |
+| `steps` | Workflow diagram, execution order, role matrix rows |
+| `steps[].roles` | Role matrix cells (executor/monitor/informed) |
+| `resources.shared_folders` | Data flow visualization, folder provisioning |
+| `resources.credentials` | Pre-deployment validation |
+| `permissions` | Security validation, network diagram |
+| `trigger` | Scheduler integration, manual trigger UI |
+| `output` | Notification routing, success criteria |
+| `monitoring.global_monitors` | Role matrix global row |
+| `error_handling` | Retry logic, failure behavior |
+
+### Validation Rules
+
+The system can enforce these rules at process creation/update time:
+
+1. All `agent` references in steps exist in `agents` list
+2. All `depends_on` references point to valid step IDs
+3. All `from: step:X.Y` inputs reference existing step outputs
+4. All required credentials exist in credential store
+5. No circular dependencies in step graph
+6. Approval steps have at least one approver
+7. Cron expressions are valid
+8. Referenced shared folders have appropriate access permissions

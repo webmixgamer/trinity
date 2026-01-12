@@ -16,7 +16,7 @@ from services.docker_service import (
     list_all_agents,
     get_agent_container,
 )
-from services.settings_service import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)
@@ -329,6 +329,35 @@ def check_resource_limits_match(container, agent_name: str) -> bool:
 
     if expected_cpu != current_cpu:
         logger.info(f"Resource mismatch for {agent_name}: cpu {current_cpu} -> {expected_cpu}")
+        return False
+
+    return True
+
+
+def check_full_capabilities_match(container, agent_name: str) -> bool:
+    """
+    Check if container's full_capabilities setting matches the current system-wide setting.
+    Returns True if capabilities match, False if recreation needed.
+
+    When full_capabilities=True:
+    - Container runs with Docker default capabilities
+    - Can install packages with apt-get, use sudo
+
+    When full_capabilities=False:
+    - Container runs with restricted capabilities
+    - More secure but cannot install packages
+
+    Note: This is now a system-wide setting, not per-agent.
+    """
+    # Get system-wide setting
+    system_full_caps = get_agent_full_capabilities()
+
+    # Get current container setting from labels
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_full_caps = labels.get("trinity.full-capabilities", "false").lower() == "true"
+
+    if system_full_caps != current_full_caps:
+        logger.info(f"Capabilities mismatch for {agent_name}: container={current_full_caps} -> system={system_full_caps}")
         return False
 
     return True

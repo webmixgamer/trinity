@@ -22,7 +22,7 @@ GitHub-native agents can synchronize with GitHub repositories in two modes:
 
 | Type | Location | Description |
 |------|----------|-------------|
-| **UI** | Agent Detail header | Pull/Sync buttons (blue Pull, orange Sync) |
+| **UI** | Agent Detail header | Pull/Push buttons (blue Pull with commits behind count, orange Push with local changes count) |
 | **UI** | Git tab in agent detail | Git log/history view |
 | **API** | `POST /api/agents/{name}/git/pull` | Pull latest from source branch |
 | **API** | `POST /api/agents/{name}/git/sync` | Push changes to GitHub (working branch mode) |
@@ -336,11 +336,11 @@ const syncToGithub = async () => {
 
 ### UI Controls (AgentDetail.vue)
 
-| Button | Color | Action | Mode |
-|--------|-------|--------|------|
-| Pull | Blue | `pullFromGithub()` | Both modes |
-| Sync | Orange | `syncToGithub()` | Working branch mode |
-| Refresh | Gray | `refreshGitStatus()` | Both modes |
+| Button | Color | Display | Action | Mode |
+|--------|-------|---------|--------|------|
+| Pull | Blue (when behind) / Gray (up to date) | `Pull (N)` showing commits behind | `pullFromGithub()` | Both modes |
+| Push | Orange (when changes) / Gray (clean) | `Push (N)` showing local changes count | `syncToGithub()` | Working branch mode |
+| Refresh | Gray | Icon only | `refreshGitStatus()` | Both modes |
 
 ---
 
@@ -526,6 +526,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Renamed "Sync" button to "Push" for consistent Pull/Push terminology. Pull button now shows commits behind count when remote has updates. Both buttons use dynamic coloring (active color when action available, gray when up to date). |
 | 2025-12-31 | Updated with access control dependencies (`AuthorizedAgentByName`, `OwnedAgentByName`), settings service (`get_github_pat()`), and GitHub service integration. Added line number references. |
 | 2025-12-30 | Added conflict resolution with pull/sync strategies and GitConflictModal UI. |
 | 2025-12-30 | Added source mode (pull-only) as default. Working branch mode now legacy. |

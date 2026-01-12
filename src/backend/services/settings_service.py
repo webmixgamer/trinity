@@ -123,3 +123,16 @@ def get_google_api_key() -> str:
 def get_ops_setting(key: str, as_type: type = str):
     """Get an ops setting with type conversion."""
     return settings_service.get_ops_setting(key, as_type)
+
+
+def get_agent_full_capabilities() -> bool:
+    """
+    Get system-wide agent full capabilities setting.
+
+    When True: Agents run with Docker default capabilities (can apt-get install, etc.)
+    When False: Agents run with restricted capabilities (more secure, but limited)
+
+    Default: True (agents have full control of their container environment)
+    """
+    value = settings_service.get_setting('agent_full_capabilities', 'true')
+    return str(value).lower() in ('true', '1', 'yes')

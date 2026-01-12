@@ -116,7 +116,8 @@ async def execute_task(request: ParallelTaskRequest):
         model=request.model,
         allowed_tools=request.allowed_tools,
         system_prompt=request.system_prompt,
-        timeout_seconds=request.timeout_seconds or 300
+        timeout_seconds=request.timeout_seconds or 300,
+        max_turns=request.max_turns
     )
 
     logger.info(f"[Task] Task {session_id} completed successfully")

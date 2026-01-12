@@ -245,6 +245,17 @@ def _migrate_agent_ownership_resource_limits(cursor, conn):
     conn.commit()
 
 
+def _migrate_agent_ownership_full_capabilities(cursor, conn):
+    """Add full_capabilities column to agent_ownership table for container security settings."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "full_capabilities" not in columns:
+        print("Adding full_capabilities column to agent_ownership for container security settings...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN full_capabilities INTEGER DEFAULT 0")
+        conn.commit()
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)

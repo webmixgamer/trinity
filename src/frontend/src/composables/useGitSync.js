@@ -27,6 +27,10 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
     return gitStatus.value?.changes_count || 0
   })
 
+  const gitBehind = computed(() => {
+    return gitStatus.value?.behind || 0
+  })
+
   const loadGitStatus = async () => {
     if (!agentRef.value || agentRef.value.status !== 'running' || !hasGitSync.value) return
     gitLoading.value = true
@@ -181,6 +185,7 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
     gitSyncResult,
     gitHasChanges,
     gitChangesCount,
+    gitBehind,
     // Conflict state
     gitConflict,
     showConflictModal,

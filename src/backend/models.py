@@ -27,6 +27,8 @@ class AgentConfig(BaseModel):
     # Multi-runtime support
     runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
     runtime_model: Optional[str] = None  # Model override (e.g., "sonnet-4.5", "gemini-2.5-pro")
+    # Security options
+    full_capabilities: Optional[bool] = False  # True = Docker default caps (apt-get works), False = restricted (secure default)
 
 
 class AgentStatus(BaseModel):
@@ -107,6 +109,7 @@ class ParallelTaskRequest(BaseModel):
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
     timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
+    max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
 
 
 # ============================================================================

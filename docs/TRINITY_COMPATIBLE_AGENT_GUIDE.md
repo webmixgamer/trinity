@@ -1,8 +1,8 @@
 # Trinity Compatible Agent Guide
 
-> **Comprehensive guide** for creating, deploying, and managing Trinity-compatible agents.
+> **Comprehensive guide** for creating and deploying Trinity-compatible agents.
 >
-> This document covers everything from basic template structure to advanced features like task planning, inter-agent collaboration, and persistent memory.
+> This document covers template structure, inter-agent collaboration, and best practices.
 
 ---
 
@@ -14,19 +14,17 @@
 4. [Directory Structure](#directory-structure)
 5. [template.yaml Schema](#templateyaml-schema)
 6. [CLAUDE.md Requirements](#claudemd-requirements)
-7. [Credential Management](#credential-management)
-8. [Platform Injection](#platform-injection)
-9. [Task Planning System](#task-planning-system)
-10. [Inter-Agent Collaboration](#inter-agent-collaboration)
-11. [Shared Folders](#shared-folders)
-12. [Custom Metrics](#custom-metrics)
-13. [Memory Management](#memory-management)
-14. [Content Folder Convention](#content-folder-convention)
-15. [Testing Locally](#testing-locally)
-16. [Compatibility Checklist](#compatibility-checklist)
-17. [Migration Guide](#migration-guide)
-18. [Troubleshooting](#troubleshooting)
-19. [Best Practices](#best-practices)
+7. [Runtime Options](#runtime-options)
+8. [Credential Management](#credential-management)
+9. [Inter-Agent Collaboration](#inter-agent-collaboration)
+10. [Shared Folders](#shared-folders)
+11. [Custom Metrics](#custom-metrics)
+12. [Memory Management](#memory-management)
+13. [Content Folder Convention](#content-folder-convention)
+14. [Compatibility Checklist](#compatibility-checklist)
+15. [Migration Guide](#migration-guide)
+16. [Best Practices](#best-practices)
+17. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -140,7 +138,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets, platform-managed directories, and large content:
+Must exclude secrets and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -149,10 +147,6 @@ Must exclude secrets, platform-managed directories, and large content:
 *.pem
 *.key
 credentials.json
-
-# Platform-managed directories - DO NOT COMMIT
-.trinity/
-.claude/commands/trinity/
 
 # Large generated content - DO NOT COMMIT
 content/
@@ -184,33 +178,21 @@ my-agent/
 ├── .git/
 ├── .gitignore                     # CRITICAL: excludes secrets
 │
-├── CLAUDE.md                      # Agent instructions (Trinity prompt prepended at runtime)
+├── CLAUDE.md                      # Agent instructions
 ├── README.md                      # Human documentation
 ├── template.yaml                  # Trinity metadata + credential schema
 │
-├── .trinity/                      # PLATFORM-MANAGED (injected at startup)
-│   ├── prompt.md                  # Trinity Meta-Prompt (injected)
-│   └── version.json               # Injection version tracking
-│
 ├── .claude/
-│   ├── agents/                    # Agent's own sub-agents
-│   ├── commands/
-│   │   ├── trinity/               # PLATFORM-INJECTED commands
-│   │   │   ├── trinity-plan-create.md
-│   │   │   ├── trinity-plan-status.md
-│   │   │   ├── trinity-plan-update.md
-│   │   │   └── trinity-plan-list.md
-│   │   └── [agent's own commands] # Agent-specific commands (optional)
-│   ├── skills/                    # Skills
+│   ├── agents/                    # Agent's own sub-agents (optional)
+│   ├── commands/                  # Slash commands (optional)
+│   ├── skills/                    # Skills (optional)
 │   └── settings.local.json        # Claude Code settings
 │
 ├── .mcp.json.template             # MCP config with ${VAR} placeholders
 ├── .env.example                   # Documents required credentials
 │
-├── memory/                        # Agent's persistent state (COMMITTED)
-│   ├── context.md                 # Learned context
-│   ├── preferences.json           # User preferences
-│   └── session_notes/             # Per-session notes
+├── docs/                          # Agent documentation (recommended)
+│   └── ...
 │
 ├── outputs/                       # Generated content (COMMITTED)
 │   ├── reports/
@@ -222,13 +204,9 @@ my-agent/
 │   ├── images/                    # Generated images
 │   └── exports/                   # Data exports, large files
 │
-├── scripts/                       # Helper scripts
-└── resources/                     # Static resources
+├── scripts/                       # Helper scripts (optional)
+└── resources/                     # Static resources (optional)
 ```
-
-**Key Distinction:**
-- `.trinity/` and `.claude/commands/trinity/` = **Platform-managed** (injected, updated by Trinity)
-- Everything else = **Agent-managed** (versioned in agent's repo)
 
 ---
 
@@ -372,7 +350,7 @@ metrics:
 
 ## CLAUDE.md Requirements
 
-Every Trinity-compatible agent MUST have a CLAUDE.md with **domain-specific** content only. Planning and platform instructions are injected by Trinity.
+Every Trinity-compatible agent MUST have a CLAUDE.md with **domain-specific** content.
 
 ### Recommended Structure
 
@@ -388,7 +366,6 @@ What you specialize in. Your knowledge areas.
 
 ## Available Tools
 What MCP servers and integrations you have access to.
-(Trinity MCP is injected automatically - don't list it here)
 
 ## Workflows
 Domain-specific processes you follow.
@@ -398,21 +375,7 @@ How you approach tasks in your specialty.
 - Domain-specific rules
 - Safety constraints for your area
 - Things you should NOT do
-
-## Memory Structure
-How you organize your memory/ directory.
-What goes in session_notes/, context.md, etc.
 ```
-
-### What NOT to Include
-
-These are injected by the platform - don't add them to your CLAUDE.md:
-
-- Planning instructions (`/trinity-plan-*` commands)
-- Collaboration protocols
-- Git/commit instructions
-- Platform constraints
-- Trinity MCP documentation
 
 ---
 
@@ -484,50 +447,6 @@ Credentials can be updated without restarting the agent:
 - Read MCP credentials from `.mcp.json` (Claude Code does this automatically)
 - Read script credentials from `.env` or environment variables
 - Never store credentials in committed files
-
----
-
-## Platform Injection
-
-Trinity controls agent behavior through **runtime injection**. This ensures:
-
-- Consistent planning behavior across all agents
-- Platform can update logic without touching agent repos
-- Agents focus on domain expertise, platform handles orchestration
-
-### What Gets Injected
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| **Trinity Meta-Prompt** | `.trinity/prompt.md` + CLAUDE.md section | Collaboration protocols |
-| **Trinity MCP Config** | `.mcp.json` (merged) | Agent-to-agent collaboration tools |
-| **Credentials** | `.env`, `.mcp.json` | API keys, tokens |
-
-### Injection Timing
-
-**On Agent Start:**
-1. Trinity Meta-Prompt injected/updated in `.trinity/` and CLAUDE.md
-2. Trinity MCP server injected into `.mcp.json`
-3. Credentials injected into `.env` and `.mcp.json`
-
-### CLAUDE.md After Injection
-
-```markdown
-<!-- TRINITY PLATFORM - AUTO-INJECTED -->
-## Trinity Planning System
-
-You are running on the **Trinity Deep Agent Platform**...
-
-[Planning instructions, commands reference, constraints]
-
-<!-- END TRINITY PLATFORM -->
-
-## Custom Instructions
-[Admin-configured system-wide instructions, if any]
-
-# Agent Name
-[Your agent's own content starts here...]
-```
 
 ---
 
@@ -652,9 +571,11 @@ Agents can define custom metrics displayed in the Trinity UI.
 
 ## Memory Management
 
-Agents manage their own memory. Trinity provides storage, not strategy.
+Agents manage their own memory. Trinity provides storage, not strategy. Each agent can implement memory however it sees fit.
 
-### Recommended Structure
+### Example Structure (Optional)
+
+This is a suggested pattern, not a requirement:
 
 ```
 memory/
@@ -665,15 +586,6 @@ memory/
 └── summaries/           # Compressed old context
     └── 2025-11.md       # Monthly summary
 ```
-
-### Memory Folding (Agent-Level)
-
-Agents should periodically compress old context:
-
-1. At session end, review `session_notes/`
-2. Extract key learnings → append to `context.md`
-3. Archive verbose notes to `summaries/`
-4. Commit via Git sync
 
 ---
 
@@ -729,47 +641,6 @@ When exporting data, save to `content/exports/`.
 
 ---
 
-## Testing Locally
-
-You can test your template locally before deploying to Trinity:
-
-```bash
-# 1. Create .env with real credentials
-cp .env.example .env
-# Edit .env with actual values
-
-# 2. Generate .mcp.json from template
-cat .mcp.json.template | envsubst > .mcp.json
-
-# 3. Run Claude Code
-claude
-```
-
-### Local Init Script
-
-Create an `init.sh` for local development setup:
-
-```bash
-#!/bin/bash
-# init.sh - Local development setup
-
-# Check for required env vars
-if [ ! -f .env ]; then
-    echo "Please create .env from .env.example"
-    exit 1
-fi
-
-# Generate MCP config
-cat .mcp.json.template | envsubst > .mcp.json
-
-# Create directories
-mkdir -p memory outputs
-
-echo "Agent ready for local development"
-```
-
----
-
 ## Compatibility Checklist
 
 An agent is Trinity-compatible if:
@@ -779,11 +650,10 @@ An agent is Trinity-compatible if:
 - [ ] Has `CLAUDE.md` with identity and domain-specific instructions
 - [ ] Has `.mcp.json.template` with `${VAR}` placeholders (if using MCP servers)
 - [ ] Has `.env.example` documenting required credentials
-- [ ] Has `.gitignore` excluding secrets AND platform-managed directories
+- [ ] Has `.gitignore` excluding secrets and large content
 
 ### Directory Structure
-- [ ] Has `memory/` directory for persistent state
-- [ ] Does NOT have `.trinity/` in repo (platform creates this)
+- [ ] (Optional) Has `docs/` directory for documentation
 
 ### Security
 - [ ] No credentials stored in repository
@@ -792,7 +662,7 @@ An agent is Trinity-compatible if:
 
 ### Behavior
 - [ ] Agent CLAUDE.md focuses on domain-specific instructions
-- [ ] Can run both locally (with init.sh) and on Trinity platform
+- [ ] Can run both locally and on Trinity platform
 
 ---
 
@@ -805,36 +675,8 @@ To convert an existing agent to Trinity-compatible:
 3. **Create template.yaml** with metadata and credentials
 4. **Create .mcp.json.template** from current .mcp.json (replace values with ${VAR})
 5. **Create .env.example** listing all required variables
-6. **Move memory files** to `memory/` directory
-7. **Add .gitignore** excluding secrets and platform directories
-8. **Test locally** with `init.sh`
-9. **Deploy to Trinity** and verify
-
----
-
-## Troubleshooting
-
-### "Missing credentials" error
-- Check that all `${VAR}` placeholders in `.mcp.json.template` are defined in `template.yaml`
-- Verify credentials are configured in Trinity's credential store
-
-### MCP server not starting
-- Check `.mcp.json` was generated correctly (inspect container logs)
-- Verify the MCP server package exists and is spelled correctly
-
-### Agent can't find credentials
-- Scripts should read from `.env` or environment variables
-- MCP servers read from `.mcp.json` automatically
-
-### Planning commands not available
-- Check that `.trinity/` and `.claude/commands/trinity/` exist in the container
-- Verify Trinity injection completed (check agent logs)
-- Try restarting the agent
-
-### Agent-to-agent chat fails
-- Verify permissions are granted (Permissions tab)
-- Check both agents are running
-- Verify agent names are correct (lowercase, hyphens)
+6. **Add .gitignore** excluding secrets and platform directories
+7. **Deploy to Trinity** and verify
 
 ---
 
@@ -861,107 +703,16 @@ Before publishing, verify:
 - [ ] All `${VAR}` placeholders in `.mcp.json.template` are listed in `credentials`
 - [ ] `.env.example` documents all variables
 - [ ] No secrets are committed anywhere
-- [ ] Agent works locally with `init.sh`
 
 ### Domain Focus
 - Keep CLAUDE.md focused on your agent's specialty
-- Let Trinity handle planning, collaboration, and infrastructure
-- Use memory/ for domain-specific persistent state
+- Let Trinity handle collaboration and infrastructure
 - Use outputs/ for generated content
 
----
-
-## Registering with Trinity
-
-### GitHub Templates
-Use format `github:Org/repo-name` when creating an agent:
-
-```bash
-POST /api/agents
-{
-  "name": "my-agent",
-  "template": "github:YourOrg/your-agent-repo"
-}
-```
-
-Trinity needs a GitHub PAT with read access to clone private repos.
-
-### Local Templates
-Place directory in `config/agent-templates/` on the Trinity server. It will auto-appear in the template list.
-
----
-
-## Multi-Agent Systems
-
-This guide covers **single-agent template development**. If you're building a **multi-agent system** where multiple agents collaborate:
-
-### Deployment Options
-
-**Option 1: System Manifest (Recommended)**
-
-Deploy multiple coordinated agents from a single YAML manifest:
-
-```yaml
-name: content-production
-description: Autonomous content pipeline
-
-agents:
-  orchestrator:
-    template: github:YourOrg/content-orchestrator
-    folders:
-      expose: true
-      consume: true
-    schedules:
-      - name: daily-planning
-        cron: "0 9 * * *"
-        message: "Plan today's tasks"
-
-  ruby:
-    template: github:YourOrg/ruby-content
-    folders:
-      expose: true
-      consume: true
-
-permissions:
-  preset: full-mesh  # or orchestrator-workers, none, explicit
-```
-
-Deploy via API or MCP:
-```bash
-POST /api/systems/deploy
-{"manifest": "...YAML content..."}
-```
-
-See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for complete System Manifest documentation.
-
-**Option 2: Manual Deployment**
-
-Create agents individually, then configure permissions, folders, and schedules via API. See [Multi-Agent System Guide - Manual Deployment](MULTI_AGENT_SYSTEM_GUIDE.md#manual-deployment-workflow-alternative) for step-by-step instructions.
-
-### Design Considerations for Multi-Agent Systems
-
-When building agents intended for multi-agent systems:
-
-1. **Design for Coordination**
-   - Plan how your agent will communicate with others (MCP chat, shared folders)
-   - Document expected file formats in shared-out/ directory
-   - Define clear responsibilities (what this agent does vs. what others do)
-
-2. **Shared Folder Conventions**
-   - Use structured file formats (JSON, YAML)
-   - Include timestamps in shared files
-   - Document file contracts in README.md
-
-3. **System-Wide Prompts**
-   - If deploying via manifest with `prompt:` field, all agents receive the same global instructions
-   - Keep agent-specific CLAUDE.md focused on the agent's domain expertise
-   - Global prompts are useful for system-wide conventions (file formats, communication protocols)
-
-4. **Template Defaults**
-   - Set sensible defaults in `template.yaml` for `shared_folders:` if your agent is designed for collaboration
-   - Don't enable by default if the agent works standalone
-
-See **[Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md)** for comprehensive multi-agent architecture patterns, communication strategies, and deployment workflows.
+### Documentation
+- Keep documentation in a `docs/` folder
+- Use README.md for quick-start and overview
+- Document workflows, integrations, and constraints
 
 ---
 
@@ -1020,6 +771,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | Simplified guide: removed Platform Injection, Testing Locally, Troubleshooting, Registering with Trinity, Multi-Agent Systems sections; Made memory/ optional; Added docs/ best practice |
 | 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
 | 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |
 | 2025-12-27 | Added Content Folder Convention for large generated assets (videos, audio, images) |

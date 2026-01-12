@@ -13,9 +13,9 @@ from services.docker_service import (
     docker_client,
     get_agent_container,
 )
-from services.settings_service import get_anthropic_api_key
+from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
 from services.agent_client import get_agent_client
-from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match
+from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match, check_full_capabilities_match
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +70,13 @@ async def start_agent_internal(agent_name: str) -> dict:
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check if container needs recreation for shared folders, API key, or resource limits
+    # Check if container needs recreation for shared folders, API key, resource limits, or capabilities
     container.reload()
     needs_recreation = (
         not check_shared_folder_mounts_match(container, agent_name) or
         not check_api_key_env_matches(container, agent_name) or
-        not check_resource_limits_match(container, agent_name)
+        not check_resource_limits_match(container, agent_name) or
+        not check_full_capabilities_match(container, agent_name)
     )
 
     if needs_recreation:
@@ -136,6 +137,12 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
     # Update labels with new resource limits for future reference
     labels["trinity.cpu"] = cpu
     labels["trinity.memory"] = memory
+
+    # Get full_capabilities from system-wide setting (not per-agent)
+    full_capabilities = get_agent_full_capabilities()
+
+    # Update label to reflect current setting
+    labels["trinity.full-capabilities"] = str(full_capabilities).lower()
 
     # Stop and remove old container
     try:
@@ -208,6 +215,8 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
                     pass
 
     # Create new container
+    # Security: If full_capabilities=True, use Docker defaults (apt-get works)
+    # Otherwise use restricted mode (secure default)
     new_container = docker_client.containers.run(
         image,
         detach=True,
@@ -216,11 +225,11 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
         volumes=volumes,
         environment=env_vars,
         labels=labels,
-        security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH support
-        cap_drop=['ALL'],
-        cap_add=['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],  # Needed for SSH
+        security_opt=['apparmor:docker-default'] if not full_capabilities else [],
+        cap_drop=[] if full_capabilities else ['ALL'],
+        cap_add=[] if full_capabilities else ['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
         read_only=False,
-        tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
+        tmpfs={'/tmp': 'size=100m'} if full_capabilities else {'/tmp': 'noexec,nosuid,size=100m'},
         network='trinity-agent-network',
         mem_limit=memory,
         cpu_count=int(cpu)

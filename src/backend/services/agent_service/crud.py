@@ -26,7 +26,7 @@ from services.template_service import (
     generate_credential_files,
 )
 from services import git_service
-from services.settings_service import get_anthropic_api_key, get_github_pat
+from services.settings_service import get_anthropic_api_key, get_github_pat, get_agent_full_capabilities
 from utils.helpers import sanitize_agent_name
 
 logger = logging.getLogger(__name__)
@@ -415,6 +415,9 @@ async def create_agent_internal(
                             # Source agent hasn't started yet or doesn't have shared volume
                             pass
 
+            # Get system-wide full_capabilities setting (not per-agent)
+            full_capabilities = get_agent_full_capabilities()
+
             container = docker_client.containers.run(
                 config.base_image,
                 detach=True,
@@ -431,13 +434,16 @@ async def create_agent_internal(
                     'trinity.memory': config.resources['memory'],
                     'trinity.created': datetime.now().isoformat(),
                     'trinity.template': config.template or '',
-                    'trinity.agent-runtime': config.runtime or 'claude-code'
+                    'trinity.agent-runtime': config.runtime or 'claude-code',
+                    'trinity.full-capabilities': str(full_capabilities).lower()
                 },
-                security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH support
-                cap_drop=['ALL'],
-                cap_add=['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],  # Needed for SSH
+                # Security: If full_capabilities=True, use Docker defaults (apt-get works)
+                # Otherwise use restricted mode (secure default)
+                security_opt=['apparmor:docker-default'] if not full_capabilities else [],
+                cap_drop=[] if full_capabilities else ['ALL'],
+                cap_add=[] if full_capabilities else ['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
                 read_only=False,
-                tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
+                tmpfs={'/tmp': 'size=100m'} if full_capabilities else {'/tmp': 'noexec,nosuid,size=100m'},
                 network='trinity-agent-network',
                 mem_limit=config.resources.get('memory', '4Gi'),
                 cpu_count=int(config.resources.get('cpu', '2'))

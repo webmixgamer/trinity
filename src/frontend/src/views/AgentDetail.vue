@@ -39,13 +39,14 @@
             :git-pulling="gitPulling"
             :git-has-changes="gitHasChanges"
             :git-changes-count="gitChangesCount"
+            :git-behind="gitBehind"
             @start="startAgent"
             @stop="stopAgent"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
             @open-resource-modal="showResourceModal = true"
             @git-pull="pullFromGithub"
-            @git-sync="syncToGithub"
+            @git-push="syncToGithub"
             @git-refresh="refreshGitStatus"
           />
 
@@ -299,6 +300,7 @@ const {
   gitPulling,
   gitHasChanges,
   gitChangesCount,
+  gitBehind,
   gitConflict,
   showConflictModal,
   refreshGitStatus,
