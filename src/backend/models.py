@@ -27,6 +27,8 @@ class AgentConfig(BaseModel):
     # Multi-runtime support
     runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
     runtime_model: Optional[str] = None  # Model override (e.g., "sonnet-4.5", "gemini-2.5-pro")
+    # Security options
+    full_capabilities: Optional[bool] = False  # True = Docker default caps (apt-get works), False = restricted (secure default)
 
 
 class AgentStatus(BaseModel):

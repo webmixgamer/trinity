@@ -426,13 +426,19 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 #### 8.5 Container Security
 - **Status**: ✅ Implemented
 - **Priority**: High
-- **Description**: Secure agent containers
+- **Description**: Secure agent containers with configurable capability modes
 - **Acceptance Criteria**:
   - [x] Non-root execution (developer:1000)
-  - [x] CAP_DROP: ALL
-  - [x] no-new-privileges
-  - [x] tmpfs with noexec,nosuid
+  - [x] CAP_DROP: ALL (default restricted mode)
+  - [x] no-new-privileges (removed for SSH support, AppArmor still active)
+  - [x] tmpfs with noexec,nosuid (default restricted mode)
   - [x] Isolated bridge network
+  - [x] **Full Capabilities Mode** (2026-01-12): Optional mode for containers needing system access
+    - `full_capabilities: true` in AgentConfig or template.yaml
+    - Enables Docker default capabilities (apt-get, sudo work)
+    - Removes AppArmor profile and noexec on /tmp
+    - Persisted in database and container labels
+    - Supports `security: {full_capabilities: true}` in template.yaml
 
 #### 8.6 GCP Production Deployment
 - **Status**: ✅ Implemented

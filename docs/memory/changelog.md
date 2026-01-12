@@ -1,3 +1,39 @@
+### 2026-01-12 14:30:00
+🔐 **Feature: Full Capabilities Mode for Container Software Installation**
+
+**Problem**: Claude Code agents in containers couldn't install software via `apt-get` or `sudo` commands because security capabilities were too restricted (`cap_drop=['ALL']`).
+
+**Solution**: Added configurable `full_capabilities` option that enables Docker default capabilities when True, allowing `apt-get`, `sudo`, and other system commands to work while maintaining container isolation.
+
+**Changes**:
+1. Added `full_capabilities: Optional[bool] = False` to AgentConfig model
+2. Container creation respects this setting:
+   - `full_capabilities=False` (default): Restricted mode with `cap_drop=['ALL']`, `apparmor:docker-default`, `noexec` on `/tmp`
+   - `full_capabilities=True`: Docker defaults (no capability restrictions, no AppArmor, executable `/tmp`)
+3. Setting persisted in database (`agent_ownership.full_capabilities` column)
+4. Setting preserved in container labels for recreation
+5. Template support via `full_capabilities: true` or `security: {full_capabilities: true}` in template.yaml
+
+**Files Modified**:
+- `src/backend/models.py:31` - Added full_capabilities field to AgentConfig
+- `src/backend/services/agent_service/crud.py:158-164,435-443,467-473` - Container creation, template parsing, DB storage
+- `src/backend/services/agent_service/lifecycle.py:140-141,222-228` - Container recreation preserves setting
+- `src/backend/database.py:248-256,308-311,860-864` - Migration and wrapper methods
+- `src/backend/db/agents.py:416-461` - get/set_full_capabilities methods
+
+**Usage** (template.yaml):
+```yaml
+name: my-agent
+full_capabilities: true  # Enables apt-get, sudo, etc.
+resources:
+  cpu: "2"
+  memory: "4g"
+```
+
+**Security Note**: Only enable for agents that genuinely need system-level access. Default (restricted) mode is recommended for most use cases.
+
+---
+
 ### 2026-01-12 12:55:00
 🔧 **Fix: OpenTelemetry Prometheus Export - Delta to Cumulative Conversion**
 

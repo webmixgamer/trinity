@@ -412,3 +412,50 @@ class AgentOperations:
             """, (memory, cpu, agent_name))
             conn.commit()
             return cursor.rowcount > 0
+
+    # =========================================================================
+    # Full Capabilities (Container Security)
+    # =========================================================================
+
+    def get_full_capabilities(self, agent_name: str) -> bool:
+        """
+        Get full_capabilities setting for an agent.
+        When True, container runs with Docker default capabilities (apt-get works).
+        When False (default), container runs with restricted capabilities (secure).
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            True if full capabilities enabled, False otherwise
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT full_capabilities FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return bool(row[0])
+            return False
+
+    def set_full_capabilities(self, agent_name: str, enabled: bool) -> bool:
+        """
+        Set full_capabilities setting for an agent.
+        Requires container restart to take effect.
+
+        Args:
+            agent_name: Name of the agent
+            enabled: True for Docker default capabilities, False for restricted
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET full_capabilities = ?
+                WHERE agent_name = ?
+            """, (1 if enabled else 0, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
