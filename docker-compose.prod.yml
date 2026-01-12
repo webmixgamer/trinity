@@ -5,6 +5,9 @@
 #   - 80: Trinity frontend (standard HTTP)
 #   - 8080: Trinity MCP server
 #   - 8686: Vector log aggregator
+#   - 4317: OTel Collector gRPC (OTLP)
+#   - 4318: OTel Collector HTTP (OTLP)
+#   - 8889: OTel Prometheus metrics
 
 services:
   backend:
@@ -37,6 +40,13 @@ services:
       # Host paths for volumes (used when creating agent containers)
       - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${PWD}/config/agent-templates}
       - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-${PWD}/config/trinity-meta-prompt}
+      # OpenTelemetry Configuration (Optional)
+      - OTEL_ENABLED=${OTEL_ENABLED:-0}
+      - OTEL_COLLECTOR_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT:-http://trinity-otel-collector:4317}
+      - OTEL_METRICS_EXPORTER=${OTEL_METRICS_EXPORTER:-otlp}
+      - OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-otlp}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      - OTEL_METRIC_EXPORT_INTERVAL=${OTEL_METRIC_EXPORT_INTERVAL:-60000}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
@@ -178,6 +188,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # OpenTelemetry Collector - receives metrics from Claude Code agents
+  # Using contrib image for deltatocumulative processor (required for Prometheus export)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    container_name: trinity-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # gRPC receiver (OTLP)
+      - "4318:4318"   # HTTP receiver (OTLP)
+      - "8889:8889"   # Prometheus metrics exporter
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - trinity-network
+    labels:
+      - "trinity.platform=infrastructure"
+      - "trinity.service=otel-collector"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8889/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   agent-configs:
