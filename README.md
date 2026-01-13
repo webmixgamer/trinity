@@ -39,7 +39,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
 - **Credential Management** — Redis-backed secrets with hot-reload capability
-- **Scheduling** — Cron-based automation for recurring agent tasks
+- **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Browser** — Browse and download agent workspace files via web UI
@@ -112,8 +112,11 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server         │
 │      Port 80        │     Port 8000       │    Port 8080        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)      │
-│   Internal only     │   /data volume      │    Port 8686        │
+│  Scheduler Service  │  Redis (secrets +   │  SQLite (data)      │
+│    Port 8001        │   distributed locks)│   /data volume      │
+├─────────────────────────────────────────────────────────────────┤
+│  Vector (logs)      │                                           │
+│    Port 8686        │                                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Agent Containers                              │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────────────┐    │
@@ -131,11 +134,13 @@ trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   └── mcp-server/       # Trinity MCP server (21 tools)
+│   ├── mcp-server/       # Trinity MCP server (21 tools)
+│   └── scheduler/        # Dedicated scheduler service (Redis locks)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
 │   ├── backend/          # Backend Dockerfile
-│   └── frontend/         # Frontend Dockerfile
+│   ├── frontend/         # Frontend Dockerfile
+│   └── scheduler/        # Scheduler Dockerfile
 ├── config/
 │   ├── agent-templates/  # Pre-configured agent templates
 │   ├── vector.yaml       # Vector log aggregation config
