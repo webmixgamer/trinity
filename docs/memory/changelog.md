@@ -1,3 +1,48 @@
+### 2026-01-13 21:30:00
+📝 **Docs: Dashboard Widget Field Names**
+
+**Problem**: Agents building dashboards were using incorrect field names, causing validation errors:
+- `text` widgets using `text`/`value`/`label` instead of `content`
+- `list` widgets using `values`/`list` instead of `items`
+- `link` widgets using `href` instead of `url`
+
+**Solution**: Updated `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md`:
+- Added complete examples for ALL 11 widget types (was only 3)
+- Highlighted required field names in bold in the table
+- Added "IMPORTANT" warning box with common field name mistakes
+- Each widget example includes inline comments showing which fields are required
+
+**Files Modified**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Agent Dashboard section expanded
+
+---
+
+### 2026-01-13 20:45:00
+📝 **Docs: Session Management Feature Flow**
+- Updated `docs/memory/feature-flows/persistent-chat-tracking.md` with Session Management section
+- Documented user stories: EXEC-019 (list sessions), EXEC-020 (view session), EXEC-021 (close session)
+- Added backend endpoints with request/response examples
+- Added database layer methods table with line numbers
+- Added access control matrix (user vs admin)
+- Added comprehensive testing section with 6 test cases + edge cases
+- Note: Backend API complete, frontend UI not yet implemented
+
+**Key Files**:
+- `src/backend/routers/chat.py:967-1067` - Session endpoints
+- `src/backend/db/chat.py:145-245` - Database operations
+
+---
+
+### 2026-01-13 13:34:57
+✨ **Feature: Live Button in Tasks Panel**
+- Added "Live" button for running tasks in TasksPanel
+- Green pulsing badge indicates streaming is available
+- Navigates to ExecutionDetail page with live streaming
+- Uses explicit ID logic: server tasks use `task.id`, local tasks use `task.execution_id`
+- Key file: `src/frontend/src/components/TasksPanel.vue`
+
+---
+
 ### 2026-01-13 18:00:00
 📡 **Feature: Live Execution Streaming**
 

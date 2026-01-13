@@ -764,14 +764,98 @@ sections:
 | `metric` | label, value | Number with optional trend (up/down) |
 | `status` | label, value, color | Colored badge |
 | `progress` | label, value | Progress bar (0-100) |
-| `text` | content | Plain text |
-| `markdown` | content | Rendered markdown |
+| `text` | **content** | Plain text (NOT `text` or `value`) |
+| `markdown` | **content** | Rendered markdown |
 | `table` | columns, rows | Tabular data |
-| `list` | items | Bullet/numbered list |
-| `link` | label, url | Clickable link |
+| `list` | **items** | Bullet/numbered list (NOT `values` or `list`) |
+| `link` | label, **url** | Clickable link (NOT `href`) |
 | `image` | src, alt | Image display |
 | `divider` | - | Horizontal line |
 | `spacer` | - | Vertical space |
+
+### Widget Examples (All Types)
+
+**IMPORTANT**: Use exact field names shown below. Common mistakes:
+- `text` widget requires `content` (not `text`, `value`, or `label`)
+- `list` widget requires `items` (not `values`, `list`, or `content`)
+- `link` widget requires `url` (not `href` or `link`)
+
+```yaml
+widgets:
+  # METRIC - numeric value with optional trend
+  - type: metric
+    label: "Total Tasks"        # Required
+    value: 42                   # Required (number)
+    trend: up                   # Optional: up, down
+    trend_value: "+12%"         # Optional
+    unit: "tasks"               # Optional
+    description: "Since start"  # Optional
+
+  # STATUS - colored badge
+  - type: status
+    label: "System Status"      # Required
+    value: "Healthy"            # Required (string)
+    color: green                # Required: green, red, yellow, gray, blue, orange, purple
+
+  # PROGRESS - progress bar (0-100)
+  - type: progress
+    label: "Disk Usage"         # Required
+    value: 75                   # Required (0-100)
+    color: yellow               # Optional: green, red, yellow, blue
+
+  # TEXT - plain text (NOT 'text' or 'value'!)
+  - type: text
+    content: "This is plain text"  # Required - MUST use 'content'
+    size: md                       # Optional: xs, sm, md, lg
+    color: gray                    # Optional
+    align: center                  # Optional: left, center, right
+
+  # MARKDOWN - rendered markdown
+  - type: markdown
+    content: "**Bold** and *italic* text"  # Required - MUST use 'content'
+
+  # TABLE - tabular data
+  - type: table
+    title: "Recent Events"      # Optional
+    columns:                    # Required
+      - { key: date, label: Date }
+      - { key: event, label: Event }
+    rows:                       # Required
+      - { date: "2024-01-01", event: "Started" }
+      - { date: "2024-01-02", event: "Completed" }
+    max_rows: 5                 # Optional
+
+  # LIST - bullet or numbered list (NOT 'values'!)
+  - type: list
+    title: "Tasks"              # Optional
+    items:                      # Required - MUST use 'items'
+      - "Task 1"
+      - "Task 2"
+      - "Task 3"
+    style: bullet               # Optional: bullet, number, none
+    max_items: 10               # Optional
+
+  # LINK - clickable link (NOT 'href'!)
+  - type: link
+    label: "Documentation"      # Required
+    url: "https://example.com"  # Required - MUST use 'url'
+    external: true              # Optional: opens in new tab
+    style: button               # Optional: 'button' or omit for text link
+    color: blue                 # Optional
+
+  # IMAGE - image display
+  - type: image
+    src: "/files/chart.png"     # Required (or full URL)
+    alt: "Chart description"    # Required
+    caption: "Weekly metrics"   # Optional
+
+  # DIVIDER - horizontal line
+  - type: divider
+
+  # SPACER - vertical space
+  - type: spacer
+    size: lg                    # Optional: sm (8px), md (16px), lg (32px)
+```
 
 ### Updating Dashboard Data
 
@@ -1071,6 +1155,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
 | 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
 | 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |
 | 2026-01-12 | Updated .gitignore: added instance-specific files (.npm, .ssh, .trinity, .cache, .claude.json, .sudo_as_admin_successful); clarified what to commit vs exclude from .claude/ directory |
