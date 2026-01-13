@@ -310,6 +310,58 @@ When you detect issues:
 3. **Suggest action** - What should be done
 4. **Don't auto-remediate** without user approval (except for documented auto-recovery cases)
 
+## Report Storage
+
+**All reports MUST be saved to the `~/reports/` directory** for historical tracking and review.
+
+### Directory Structure
+
+```
+~/reports/
+├── fleet/              # /ops/status reports
+├── health/             # /ops/health reports
+├── costs/              # /ops/costs reports
+├── compliance/         # /ops/compatibility-audit reports
+├── service-checks/     # /ops/service-check reports
+├── schedules/          # /ops/schedules/list reports
+└── executions/         # /ops/executions/list reports
+```
+
+### Naming Convention
+
+**Filename format**: `YYYY-MM-DD_HHMM.md`
+
+Examples:
+- `~/reports/fleet/2026-01-13_1430.md`
+- `~/reports/health/2026-01-13_0600.md`
+
+### When to Save Reports
+
+| Command | Save To | When |
+|---------|---------|------|
+| `/ops/status` | `~/reports/fleet/` | Always |
+| `/ops/health` | `~/reports/health/` | Always |
+| `/ops/costs` | `~/reports/costs/` | Always |
+| `/ops/compatibility-audit` | `~/reports/compliance/` | Always |
+| `/ops/service-check` | `~/reports/service-checks/` | Always |
+| `/ops/schedules/list` | `~/reports/schedules/` | Always |
+| `/ops/executions/list` | `~/reports/executions/` | Always |
+
+### Report Workflow
+
+1. **Generate the report** following the command instructions
+2. **Create directory** if it doesn't exist: `mkdir -p ~/reports/{type}`
+3. **Save to file** with timestamp: `~/reports/{type}/YYYY-MM-DD_HHMM.md`
+4. **Output to chat** for immediate viewing
+5. **Confirm save** with the file path
+
+### Finding Latest Report
+
+Reports are named with timestamps, so the latest is always last alphabetically:
+```bash
+ls -1 ~/reports/fleet/ | tail -1
+```
+
 ## Best Practices
 
 1. **Report don't act** - Describe issues and suggest fixes, let users approve

@@ -835,10 +835,42 @@ curl -s http://backend:8000/api/ops/costs \
   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
 ```
 
+## Report Storage
+
+All ops reports are saved to organized directories in the system agent's workspace:
+
+```
+~/reports/
+├── fleet/              # /ops/status reports
+├── health/             # /ops/health reports
+├── costs/              # /ops/costs reports
+├── compliance/         # /ops/compatibility-audit reports
+├── service-checks/     # /ops/service-check reports
+├── schedules/          # /ops/schedules/list reports
+└── executions/         # /ops/executions/list reports
+```
+
+**Naming Convention**: `YYYY-MM-DD_HHMM.md` (e.g., `2026-01-13_1430.md`)
+
+**Workflow**:
+1. Command generates report following instructions
+2. Creates directory if needed: `mkdir -p ~/reports/{type}`
+3. Saves with timestamp: `~/reports/{type}/YYYY-MM-DD_HHMM.md`
+4. Outputs to chat for immediate viewing
+5. Confirms save location
+
+**Finding Latest Report**:
+```bash
+ls -1 ~/reports/fleet/ | tail -1
+```
+
+**gitignored**: The `reports/` directory is excluded from Git sync.
+
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | **Report Storage**: Added organized report storage in `~/reports/` with subdirectories per report type. All slash commands now save reports with timestamped filenames. Added `.gitignore` to exclude reports from sync. |
 | 2026-01-13 | **UI Consolidation**: Removed dedicated `SystemAgent.vue` (782 lines) and `SystemAgentTerminal.vue` (~350 lines). System agent now uses standard `AgentDetail.vue` with tab filtering (`visibleTabs` computed, lines 414-448). Added `systemAgent` and `sortedAgentsWithSystem` getters to `agents.js` store (lines 25-27, 39-41). System agent visible on Agents page for admins only with purple ring and "SYSTEM" badge (Agents.vue lines 46-75). `/system-agent` route redirects to `/agents/trinity-system`. Schedules tab now available for system agent. |
 | 2026-01-12 | **Docker Stats Optimization**: Updated fleet status flow - `list_all_agents_fast()` now used at ops.py:54 instead of `list_all_agents()`. Avoids slow Docker API calls for better dashboard performance (~50ms vs 2-3s). |
 | 2026-01-09 | Added Schedule & Execution Management slash commands and `GET /api/ops/schedules` endpoint |

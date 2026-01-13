@@ -44,6 +44,14 @@ Generated: {timestamp}
 - {Any warnings or issues detected}
 ```
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/fleet`
+2. Save with timestamp: `~/reports/fleet/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/fleet/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Skip the trinity-system agent from health checks (that's you!)

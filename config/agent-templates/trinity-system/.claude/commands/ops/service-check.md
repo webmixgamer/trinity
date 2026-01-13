@@ -111,6 +111,14 @@ Generated: {timestamp}
 | **degraded** | Some non-critical issues (e.g., 1 MCP server down, optional files missing) |
 | **unhealthy** | Critical issues (no credentials, required files missing, all MCP servers down) |
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/service-checks`
+2. Save with timestamp: `~/reports/service-checks/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/service-checks/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Skip `trinity-system` (yourself) from checks

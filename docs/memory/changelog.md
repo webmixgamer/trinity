@@ -1,3 +1,39 @@
+### 2026-01-13 14:30:00
+📁 **Feature: System Agent Report Storage**
+
+**Enhancement**: System agent now saves all generated reports to organized directories for historical tracking.
+
+**Report Storage Structure**:
+```
+~/reports/
+├── fleet/              # /ops/status reports
+├── health/             # /ops/health reports
+├── costs/              # /ops/costs reports
+├── compliance/         # /ops/compatibility-audit reports
+├── service-checks/     # /ops/service-check reports
+├── schedules/          # /ops/schedules/list reports
+└── executions/         # /ops/executions/list reports
+```
+
+**Naming Convention**: `YYYY-MM-DD_HHMM.md` (e.g., `2026-01-13_1430.md`)
+
+**Files Modified**:
+- `config/agent-templates/trinity-system/CLAUDE.md` - Added "Report Storage" section with directory structure and workflow
+- `config/agent-templates/trinity-system/.claude/commands/ops/status.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/health.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/costs.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/compatibility-audit.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/service-check.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/list.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/list.md` - Added save instructions
+
+**Files Created**:
+- `config/agent-templates/trinity-system/.gitignore` - Excludes reports/, dashboard.yaml, metrics.json, credentials
+
+**Result**: Reports are now persisted for historical review. Latest report found by sorting filenames alphabetically.
+
+---
+
 ### 2026-01-13 12:30:00
 🔧 **Refactor: System Agent UI Consolidation**
 

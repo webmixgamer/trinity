@@ -78,6 +78,14 @@ Generated: {timestamp}
 {Top priority fixes across the fleet}
 ```
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/compliance`
+2. Save with timestamp: `~/reports/compliance/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/compliance/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Skip `trinity-system` (yourself) - you don't need self-audit

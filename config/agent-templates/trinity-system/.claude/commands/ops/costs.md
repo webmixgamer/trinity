@@ -140,6 +140,14 @@ The `/api/ops/costs` endpoint returns:
 }
 ```
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/costs`
+2. Save with timestamp: `~/reports/costs/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/costs/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Cost data is aggregated across ALL agents on the platform

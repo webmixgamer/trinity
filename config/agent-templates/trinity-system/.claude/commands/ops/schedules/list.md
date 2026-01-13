@@ -59,6 +59,14 @@ curl -s "http://backend:8000/api/ops/schedules?enabled_only=true" \
   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
 ```
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/schedules`
+2. Save with timestamp: `~/reports/schedules/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/schedules/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Schedules with `last_execution.error` indicate failures
