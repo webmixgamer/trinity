@@ -4,6 +4,8 @@
 
 Unlike reactive chatbots ("System 1" AI), Deep Agents operate with deliberative reasoning ("System 2" AI): they decompose goals into task graphs, persist memory across sessions, delegate to specialized sub-agents, and recover from failures autonomously.
 
+[![Watch the Demo](https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/SWpNphnuPpQ)
+
 ## The Four Pillars of Deep Agency
 
 Trinity implements four foundational capabilities that transform simple AI assistants into autonomous agents:
