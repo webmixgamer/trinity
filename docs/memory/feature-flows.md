@@ -14,6 +14,13 @@
 > - `/system-agent` route now redirects to `/agents/trinity-system`
 > - Key line numbers: AgentDetail.vue `visibleTabs` (414-448), Agents.vue admin check (288-305), agents.js getters (25-27, 39-41)
 >
+> **Updated (2026-01-13)**: System Agent Report Storage:
+> - **internal-system-agent.md**: Added Report Storage section documenting organized report directories
+> - Reports saved to `~/reports/{fleet,health,costs,compliance,service-checks,schedules,executions}/`
+> - Naming convention: `YYYY-MM-DD_HHMM.md` for timestamped reports
+> - All `/ops/` slash commands updated with "Save Report" instructions
+> - New `.gitignore` in template to exclude `reports/` from sync
+>
 > **Updated (2026-01-12)**: Execution Termination Feature:
 > - **execution-termination.md**: New feature flow for stopping running executions
 > - Stop button in Tasks panel (`TasksPanel.vue:239-255`) for running tasks with `execution_id`
@@ -296,7 +303,7 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-13**: UI consolidated - `SystemAgent.vue` removed, now uses `AgentDetail.vue` with tab filtering (visibleTabs:414-448), Agents page display for admins (purple ring, SYSTEM badge), store getters (`systemAgent`, `sortedAgentsWithSystem`). **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. (Req 11.1, 11.2) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-13**: UI consolidated + Report Storage (`~/reports/` directories, timestamped files, `.gitignore`). **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
