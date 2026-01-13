@@ -74,11 +74,10 @@ const routes = [
     component: () => import('../views/Settings.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
   },
+  // Legacy redirect for /system-agent -> agents page (consolidated)
   {
     path: '/system-agent',
-    name: 'SystemAgent',
-    component: () => import('../views/SystemAgent.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    redirect: '/agents/trinity-system'
   },
   // Legacy redirect for /network -> Dashboard
   {

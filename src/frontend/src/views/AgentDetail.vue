@@ -410,8 +410,10 @@ const {
   resetSessionActivity
 } = useSessionActivity(agent, agentsStore)
 
-// Computed tabs based on agent permissions
+// Computed tabs based on agent permissions and system agent status
 const visibleTabs = computed(() => {
+  const isSystem = agent.value?.is_system
+
   const tabs = [
     { id: 'info', label: 'Info' },
     { id: 'tasks', label: 'Tasks' },
@@ -421,11 +423,13 @@ const visibleTabs = computed(() => {
     { id: 'credentials', label: 'Credentials' }
   ]
 
-  if (agent.value?.can_share) {
+  // Sharing/Permissions - hide for system agent (system agent has full access)
+  if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'sharing', label: 'Sharing' })
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
+  // Schedules - show for all agents including system
   tabs.push({ id: 'schedules', label: 'Schedules' })
 
   if (hasGitSync.value) {
@@ -434,7 +438,8 @@ const visibleTabs = computed(() => {
 
   tabs.push({ id: 'files', label: 'Files' })
 
-  if (agent.value?.can_share) {
+  // Folders and Public Links - hide for system agent
+  if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'folders', label: 'Folders' })
     tabs.push({ id: 'public-links', label: 'Public Links' })
   }

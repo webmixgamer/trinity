@@ -21,34 +21,57 @@ export const useAgentsStore = defineStore('agents', {
     userAgents() {
       return this.agents.filter(agent => !agent.is_system)
     },
+    // Get the system agent if it exists
+    systemAgent() {
+      return this.agents.find(agent => agent.is_system) || null
+    },
     runningAgents() {
       return this.userAgents.filter(agent => agent.status === 'running')
     },
     stoppedAgents() {
       return this.userAgents.filter(agent => agent.status === 'stopped')
     },
+    // Sorted agents excluding system agent (for regular users)
     sortedAgents() {
-      // Only show non-system agents in the Agents page
-      const sorted = [...this.userAgents]
-      switch (this.sortBy) {
-        case 'created_desc':
-          return sorted.sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0))
-        case 'created_asc':
-          return sorted.sort((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
-        case 'name_asc':
-          return sorted.sort((a, b) => a.name.localeCompare(b.name))
-        case 'name_desc':
-          return sorted.sort((a, b) => b.name.localeCompare(a.name))
-        case 'status':
-          return sorted.sort((a, b) => (b.status === 'running' ? 1 : 0) - (a.status === 'running' ? 1 : 0))
-        case 'context_desc':
-          return sorted.sort((a, b) => {
-            const aContext = this.contextStats[a.name]?.contextPercent || 0
-            const bContext = this.contextStats[b.name]?.contextPercent || 0
-            return bContext - aContext
-          })
-        default:
-          return sorted
+      return this._getSortedAgents(false)
+    },
+    // Sorted agents including system agent pinned at top (for admins)
+    sortedAgentsWithSystem() {
+      return this._getSortedAgents(true)
+    },
+    // Internal getter for sorted agents with optional system agent inclusion
+    _getSortedAgents() {
+      return (includeSystem) => {
+        const sorted = [...this.userAgents]
+        switch (this.sortBy) {
+          case 'created_desc':
+            sorted.sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0))
+            break
+          case 'created_asc':
+            sorted.sort((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
+            break
+          case 'name_asc':
+            sorted.sort((a, b) => a.name.localeCompare(b.name))
+            break
+          case 'name_desc':
+            sorted.sort((a, b) => b.name.localeCompare(a.name))
+            break
+          case 'status':
+            sorted.sort((a, b) => (b.status === 'running' ? 1 : 0) - (a.status === 'running' ? 1 : 0))
+            break
+          case 'context_desc':
+            sorted.sort((a, b) => {
+              const aContext = this.contextStats[a.name]?.contextPercent || 0
+              const bContext = this.contextStats[b.name]?.contextPercent || 0
+              return bContext - aContext
+            })
+            break
+        }
+        // Pin system agent at top if requested and exists
+        if (includeSystem && this.systemAgent) {
+          return [this.systemAgent, ...sorted]
+        }
+        return sorted
       }
     }
   },

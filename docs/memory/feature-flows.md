@@ -3,6 +3,17 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-13)**: System Agent UI Consolidation:
+> - **system-agent-ui.md**: Archived - dedicated `/system-agent` page removed
+> - **internal-system-agent.md**: Updated Frontend UI section with new AgentDetail.vue tab filtering, Agents.vue system agent display, and store getters
+> - **agents-page-ui-improvements.md**: Added "System Agent Display" enhancement section with store changes, view changes, and testing steps
+> - System agent (`trinity-system`) now uses standard `AgentDetail.vue` with full tab access including **Schedules**
+> - System agent pinned at top of Agents page (admin-only visibility) with purple ring and "SYSTEM" badge
+> - Tabs hidden for system agent: Sharing, Permissions, Folders, Public Links (not applicable)
+> - Files deleted: `SystemAgent.vue` (782 lines), `SystemAgentTerminal.vue` (~350 lines)
+> - `/system-agent` route now redirects to `/agents/trinity-system`
+> - Key line numbers: AgentDetail.vue `visibleTabs` (414-448), Agents.vue admin check (288-305), agents.js getters (25-27, 39-41)
+>
 > **Updated (2026-01-12)**: Execution Termination Feature:
 > - **execution-termination.md**: New feature flow for stopping running executions
 > - Stop button in Tasks panel (`TasksPanel.vue:239-255`) for running tasks with `execution_id`
@@ -276,7 +287,7 @@
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2026-01-12: termination section) |
 | **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
-| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization (Updated 2026-01-12) |
+| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top), `displayAgents` computed, admin check on mount (Updated 2026-01-13) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
 | **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |
@@ -285,8 +296,7 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. **2026-01-09**: Schedule & Execution Management. **2025-12-31**: AgentClient service pattern. (Req 11.1, 11.2) |
-| **System Agent UI** | High | [system-agent-ui.md](feature-flows/system-agent-ui.md) | Admin-only `/system-agent` page with fleet overview cards, quick actions (Emergency Stop, Restart All, Pause/Resume Schedules), and Operations Console chat interface (Req 11.3 - Created 2025-12-20) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-13**: UI consolidated - `SystemAgent.vue` removed, now uses `AgentDetail.vue` with tab filtering (visibleTabs:414-448), Agents page display for admins (purple ring, SYSTEM badge), store getters (`systemAgent`, `sortedAgentsWithSystem`). **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
@@ -314,6 +324,7 @@
 | Agent Chat | DEPRECATED | [archive/agent-chat.md](feature-flows/archive/agent-chat.md) | UI replaced by Agent Terminal (2025-12-25) - API docs merged into execution-queue.md |
 | Agent Vector Memory | REMOVED | [archive/vector-memory.md](feature-flows/archive/vector-memory.md) | Platform-injected vector memory removed (2025-12-24) - templates should define their own |
 | Agent Network Replay Mode | SUPERSEDED | [archive/agent-network-replay-mode.md](feature-flows/archive/agent-network-replay-mode.md) | VCR-style replay replaced by Dashboard Timeline View and replay-timeline.md (2026-01-04) |
+| System Agent UI | CONSOLIDATED | [archive/system-agent-ui.md](feature-flows/archive/system-agent-ui.md) | Dedicated `/system-agent` page removed (2026-01-13) - system agent now uses regular AgentDetail.vue with full tab access including Schedules |
 
 ---
 

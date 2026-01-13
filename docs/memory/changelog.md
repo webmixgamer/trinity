@@ -1,3 +1,30 @@
+### 2026-01-13 12:30:00
+🔧 **Refactor: System Agent UI Consolidation**
+
+**Problem**: System agent (`trinity-system`) had a dedicated `/system-agent` page with limited functionality - no Schedules tab. Regular agents had better feature parity.
+
+**Solution**: Consolidated system agent into the regular agents interface:
+- System agent now appears in Agents list (pinned at top, admin-only visibility)
+- System agent uses `AgentDetail.vue` with full tab access including **Schedules**
+- Purple ring and "SYSTEM" badge distinguish system agent visually
+- Tabs hidden for system agent: Sharing, Permissions, Folders, Public Links (not applicable)
+- Tabs shown: Info, Tasks, Dashboard, Terminal, Logs, Credentials, **Schedules**, Git, Files
+
+**Files Modified**:
+- `src/frontend/src/stores/agents.js` - Added `systemAgent` getter, `sortedAgentsWithSystem` getter, `_getSortedAgents()` internal function
+- `src/frontend/src/views/Agents.vue` - Added admin check, `displayAgents` computed, system agent visual styling
+- `src/frontend/src/views/AgentDetail.vue` - Updated `visibleTabs` to hide irrelevant tabs for system agent
+- `src/frontend/src/components/NavBar.vue` - Removed "System" link
+- `src/frontend/src/router/index.js` - Changed `/system-agent` route to redirect to `/agents/trinity-system`
+
+**Files Deleted**:
+- `src/frontend/src/views/SystemAgent.vue` - 782 lines (consolidated into AgentDetail)
+- `src/frontend/src/components/SystemAgentTerminal.vue` - ~350 lines (uses standard TerminalPanelContent)
+
+**Result**: System agent now has full feature parity with regular agents, including scheduling capabilities.
+
+---
+
 ### 2026-01-13 09:45:00
 📝 **Docs: Requirements.md Cleanup & Restructure**
 

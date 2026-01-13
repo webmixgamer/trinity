@@ -43,15 +43,17 @@
         <!-- Agents Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div
-            v-for="agent in agentsStore.sortedAgents"
+            v-for="agent in displayAgents"
             :key="agent.name"
             :class="[
               'bg-white dark:bg-gray-800 rounded-xl border shadow-lg p-5',
               'transition-all duration-200 hover:shadow-xl',
               'flex flex-col',
-              agent.status === 'running'
-                ? 'border-gray-200/60 dark:border-gray-700/50'
-                : 'border-gray-200 dark:border-gray-700 opacity-75'
+              agent.is_system
+                ? 'ring-2 ring-purple-500/50 border-purple-300 dark:border-purple-700'
+                : agent.status === 'running'
+                  ? 'border-gray-200/60 dark:border-gray-700/50'
+                  : 'border-gray-200 dark:border-gray-700 opacity-75'
             ]"
           >
             <!-- Header: Name, Runtime Badge, Status Dot -->
@@ -64,6 +66,13 @@
                 >
                   {{ agent.name }}
                 </router-link>
+                <!-- SYSTEM badge -->
+                <span
+                  v-if="agent.is_system"
+                  class="ml-2 px-1.5 py-0.5 text-xs font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
+                >
+                  SYSTEM
+                </span>
                 <!-- Runtime badge (Claude/Gemini) -->
                 <RuntimeBadge :runtime="agent.runtime" :show-label="false" class="ml-2 flex-shrink-0" />
                 <!-- Shared badge -->
@@ -224,7 +233,7 @@
         </div>
 
         <!-- Empty state -->
-        <div v-if="agentsStore.sortedAgents.length === 0" class="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow">
+        <div v-if="displayAgents.length === 0" class="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow">
           <ServerIcon class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
           <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No agents</h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new agent.</p>
@@ -246,18 +255,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import { ServerIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline'
+import axios from 'axios'
 
 const agentsStore = useAgentsStore()
 const showCreateModal = ref(false)
 const notification = ref(null)
 const actionInProgress = ref(null)
 const autonomyLoading = ref(null)
+const isAdmin = ref(false)
+
+// Computed to show system agent for admins
+const displayAgents = computed(() => {
+  if (isAdmin.value) {
+    return agentsStore.sortedAgentsWithSystem
+  }
+  return agentsStore.sortedAgents
+})
 
 const showNotification = (message, type = 'success') => {
   notification.value = { message, type }
@@ -266,9 +285,23 @@ const showNotification = (message, type = 'success') => {
   }, 3000)
 }
 
-onMounted(() => {
+onMounted(async () => {
   agentsStore.fetchAgents()
   agentsStore.startContextPolling()
+
+  // Check if user is admin
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await axios.get('/api/users/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      isAdmin.value = response.data.role === 'admin'
+    }
+  } catch (e) {
+    console.warn('Failed to fetch user role:', e)
+    isAdmin.value = false
+  }
 })
 
 onUnmounted(() => {
