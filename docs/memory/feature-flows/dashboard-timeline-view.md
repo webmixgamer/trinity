@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-11 (Fixed execution ID extraction from activity.related_execution_id)
+> **Last Updated**: 2026-01-13 (In-progress bars now extend in real-time)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
 
@@ -322,16 +322,64 @@ const params = {
 Activity bars show width proportional to execution duration:
 
 ```javascript
-// ReplayTimeline.vue:595-607
-const durationMs = event.duration_ms || 30000  // Default 30s when null
+// ReplayTimeline.vue:614-621
 const minBarWidth = 12  // Minimum width for visibility
-
 let barWidth = minBarWidth
-if (act.durationMs > 0) {
+if (effectiveDuration > 0) {
   // Convert duration to pixels: (durationMs / totalMs) * gridWidth
-  barWidth = Math.max(minBarWidth, (act.durationMs / duration.value) * actualGridWidth.value)
+  barWidth = Math.max(minBarWidth, (effectiveDuration / duration.value) * actualGridWidth.value)
 }
 ```
+
+### 8a. Real-Time In-Progress Bar Extension
+
+**Added 2026-01-13**: In-progress task bars now grow in real-time as the task executes.
+
+**Implementation** (`ReplayTimeline.vue:568-612`):
+
+1. **Store start timestamp**: Each activity stores `startTimestamp` for dynamic calculation:
+```javascript
+const startTimestamp = new Date(event.timestamp).getTime()
+agentActivityMap.get(event.source_agent).push({
+  time: startTimestamp,
+  startTimestamp, // Store for dynamic duration calculation
+  // ...
+})
+```
+
+2. **Dynamic duration calculation**: For in-progress tasks, elapsed time is calculated from start:
+```javascript
+// ReplayTimeline.vue:606-612
+let effectiveDuration = act.durationMs
+if (act.isInProgress && act.startTimestamp) {
+  // For in-progress tasks, calculate elapsed time from start
+  // This will update every second as currentNow updates
+  effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+}
+```
+
+3. **Reactive timer**: A 1-second interval updates `currentNow` ref (`ReplayTimeline.vue:371, 399`):
+```javascript
+const currentNow = ref(Date.now())
+// Updated every second in the timer interval
+currentNow.value = Date.now()
+```
+
+4. **Bar properties update** (`ReplayTimeline.vue:629, 631`):
+```javascript
+return {
+  // ...
+  durationMs: effectiveDuration, // Use effective duration for tooltips
+  isEstimated: act.isEstimated && !act.isInProgress, // Not estimated if calculating live
+  // ...
+}
+```
+
+**Behavior**:
+- On task start: Amber bar appears with minimum width (12px)
+- Every second: Bar grows as `effectiveDuration` increases
+- Tooltip shows live elapsed time like "In Progress - 45.3s"
+- On task complete: Bar snaps to final size from actual `duration_ms`
 
 ### 9. NOW Marker at 90% Viewport Position
 
@@ -491,6 +539,20 @@ function getBarTooltip(activity) {
 - [x] New events appear without page refresh
 - [x] Colors applied correctly to new events
 
+#### 6a. In-Progress Bar Real-Time Extension (Added 2026-01-13)
+**Action**: Start a long-running task and observe the timeline
+**Expected**:
+- Amber bar appears at task start with minimum width
+- Bar grows every second as task continues
+- Tooltip updates to show live elapsed time (e.g., "In Progress - 45.3s")
+- When task completes, bar snaps to final width based on actual duration
+
+**Verify**:
+- [x] Bar width increases visibly every second
+- [x] Tooltip shows accurate live elapsed time
+- [x] Bar not marked as "estimated" (tilde removed) while in progress
+- [x] Final size uses actual `duration_ms` from completion event
+
 #### 7. Now Marker Positioning
 **Action**: Wait and observe "Now" marker
 **Expected**:
@@ -552,6 +614,7 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-13 | **Feature**: In-progress bars now extend in real-time - bars grow every second as tasks execute, tooltips show live elapsed time |
 | 2026-01-11 | **Fix**: Frontend network.js now correctly reads `related_execution_id` from top-level activity field (was only checking details) |
 | 2026-01-11 | **Docs**: Clarified execution ID handling - navigation uses Database ID (from `related_execution_id`), not Queue ID |
 | 2026-01-11 | **UX**: Click opens Execution Detail page in new tab instead of same-tab navigation |

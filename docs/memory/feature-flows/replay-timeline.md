@@ -1,6 +1,6 @@
 # Feature: Dashboard Replay Timeline
 
-> **Last Updated**: 2026-01-04
+> **Last Updated**: 2026-01-13 (In-progress bars now extend in real-time)
 
 ## Overview
 
@@ -308,6 +308,55 @@ const agentRows = computed(() => {
 **Colors**:
 - Active bars: `#3b82f6` (blue-500) at 100% opacity
 - Inactive bars: `#93c5fd` (blue-300) at 70% opacity
+
+#### 5a. Real-Time In-Progress Bar Extension (Added 2026-01-13)
+
+In-progress task bars now grow in real-time as the task executes, providing live visual feedback.
+
+**Implementation** (`ReplayTimeline.vue:568-612`):
+
+1. **Store start timestamp**: Activities store `startTimestamp` for dynamic duration calculation:
+```javascript
+const startTimestamp = new Date(event.timestamp).getTime()
+agentActivityMap.get(event.source_agent).push({
+  time: startTimestamp,
+  startTimestamp, // Store for dynamic duration calculation
+  isInProgress: event.status === 'started',
+  // ...
+})
+```
+
+2. **Dynamic duration calculation**: For in-progress tasks, elapsed time updates every second:
+```javascript
+// ReplayTimeline.vue:606-612
+let effectiveDuration = act.durationMs
+if (act.isInProgress && act.startTimestamp) {
+  // For in-progress tasks, calculate elapsed time from start
+  // This will update every second as currentNow updates
+  effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+}
+```
+
+3. **Reactive timer**: A `currentNow` ref updates every second (`ReplayTimeline.vue:371, 399`):
+```javascript
+const currentNow = ref(Date.now())
+// Updated every second in setInterval
+currentNow.value = Date.now()
+```
+
+4. **Bar properties**: Updated to use effective duration (`ReplayTimeline.vue:629, 631`):
+```javascript
+return {
+  durationMs: effectiveDuration, // Live elapsed time for tooltips
+  isEstimated: act.isEstimated && !act.isInProgress, // Not estimated while live
+}
+```
+
+**Visual Behavior**:
+- Task starts: Amber bar with minimum width (12px)
+- Every second: Bar grows as `effectiveDuration` increases
+- Tooltip: Shows live time like "In Progress - 45.3s"
+- Task completes: Bar snaps to final size from actual `duration_ms`
 
 #### 6. Blinking Execution Indicator (Lines 178-186)
 
@@ -789,6 +838,15 @@ onUnmounted(() => {
 | 2 | Pause playback | Pulsing stops |
 | 3 | Stop playback | All dots return to static state |
 
+#### Test Case 8: In-Progress Bar Real-Time Extension (Added 2026-01-13)
+| Step | Action | Expected |
+|------|--------|----------|
+| 1 | Start a long-running task | Amber bar appears with minimum width |
+| 2 | Wait 5-10 seconds | Bar visibly grows wider each second |
+| 3 | Hover over bar | Tooltip shows live elapsed time (e.g., "In Progress - 8.2s") |
+| 4 | Wait for task completion | Bar snaps to final width, color changes based on result |
+| 5 | Hover after completion | Tooltip shows actual duration (no tilde prefix) |
+
 ---
 
 ## Related Flows
@@ -807,6 +865,7 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | **Feature**: In-progress bars now extend in real-time - added `startTimestamp` storage, dynamic `effectiveDuration` calculation, and 1-second reactive updates |
 | 2026-01-04 | Initial documentation of ReplayTimeline component |
 
 ---
@@ -824,6 +883,8 @@ onUnmounted(() => {
 |---------|-------|---------|
 | Activity bars (active) | `#3b82f6` (blue-500) | Events at/before cursor |
 | Activity bars (inactive) | `#93c5fd` (blue-300) | Events after cursor |
+| Activity bars (in-progress) | `#f59e0b` (amber-500) | Currently running tasks (grows in real-time) |
+| Activity bars (error) | `#ef4444` (red-500) | Failed executions |
 | Communication arrows (active) | `#06b6d4` (cyan-500) | Active connections |
 | Communication arrows (inactive) | `#67e8f9` (cyan-300) | Future connections |
 | Playback cursor | `#ef4444` (red-500) | Current playback position |

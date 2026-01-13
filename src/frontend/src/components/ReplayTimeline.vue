@@ -565,8 +565,10 @@ const agentRows = computed(() => {
     const isEstimated = !event.duration_ms
 
     // Add activity box for the executing agent
+    const startTimestamp = new Date(event.timestamp).getTime()
     agentActivityMap.get(event.source_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: startTimestamp,
+      startTimestamp, // Store for dynamic duration calculation
       type: 'execution',
       eventIndex: index,
       hasError,
@@ -601,13 +603,21 @@ const agentRows = computed(() => {
       const chronoIndex = props.events.length - 1 - act.eventIndex
       const active = chronoIndex < props.currentEventIndex
 
+      // Calculate effective duration - for in-progress tasks, use elapsed time
+      let effectiveDuration = act.durationMs
+      if (act.isInProgress && act.startTimestamp) {
+        // For in-progress tasks, calculate elapsed time from start
+        // This will update every second as currentNow updates
+        effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+      }
+
       // Calculate bar width based on duration
       // duration.value is total timeline span in ms, actualGridWidth is pixels
       const minBarWidth = 12  // Minimum width for visibility
       let barWidth = minBarWidth
-      if (act.durationMs > 0) {
+      if (effectiveDuration > 0) {
         // Convert duration to pixels: (durationMs / totalMs) * gridWidth
-        barWidth = Math.max(minBarWidth, (act.durationMs / duration.value) * actualGridWidth.value)
+        barWidth = Math.max(minBarWidth, (effectiveDuration / duration.value) * actualGridWidth.value)
       }
 
       return {
@@ -616,9 +626,9 @@ const agentRows = computed(() => {
         active,
         type: act.type,
         hasError: act.hasError,
-        durationMs: act.durationMs,
+        durationMs: effectiveDuration, // Use effective duration for tooltips
         isInProgress: act.isInProgress,
-        isEstimated: act.isEstimated,
+        isEstimated: act.isEstimated && !act.isInProgress, // Not estimated if we're calculating live
         // Activity type info for color coding
         activityType: act.activityType,
         triggeredBy: act.triggeredBy,
