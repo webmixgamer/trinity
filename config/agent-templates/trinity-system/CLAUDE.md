@@ -33,6 +33,7 @@ You do **NOT** participate in:
 | **Alerting** | Notify on anomalies, failures, threshold breaches |
 | **Cleanup** | Reset stuck sessions, archive old plans |
 | **Reporting** | Fleet status, cost summaries, health reports |
+| **Compliance Auditing** | Verify agents follow Trinity compatibility standards |
 
 ### Out of Scope (Not Your Job)
 
@@ -88,6 +89,17 @@ Use these commands for common operations:
 |---------|-------------|
 | `/ops/executions/list [agent]` | List recent task executions |
 | `/ops/executions/status <id>` | Get detailed execution status |
+
+### Compliance & Auditing
+| Command | Description |
+|---------|-------------|
+| `/ops/compatibility-audit` | Audit all agents for Trinity compatibility |
+| `/ops/service-check` | Validate agent runtime setup (read-only diagnostic) |
+
+### Dashboard & Reporting
+| Command | Description |
+|---------|-------------|
+| `/ops/update-dashboard` | Update dashboard.yaml with current platform metrics |
 
 ## Health Monitoring Guidelines
 
@@ -217,6 +229,78 @@ curl -s "http://backend:8000/api/agents/my-agent/executions?limit=50" \
 2. **After Issues**: Resume schedules only after verifying system health
 3. **Cost Spikes**: Check execution list for unusual activity
 4. **Failed Executions**: Investigate before manually retrying
+
+## Compliance & Service Checks
+
+Two types of agent validation are available:
+
+### Compatibility Audit (`/ops/compatibility-audit`)
+
+Verifies agents follow Trinity template standards (file structure check):
+- **Required files**: template.yaml, CLAUDE.md, .gitignore
+- **Optional files**: .mcp.json.template, .env.example, dashboard.yaml
+- **Security**: No secrets in repo, proper gitignore patterns
+- **Structure**: content/ for large assets, proper .claude/ layout
+
+Returns a compatibility score (X/10) with issues and recommendations.
+
+### Service Check (`/ops/service-check`)
+
+Validates agent runtime setup is working (live diagnostic):
+- **MCP Servers**: Are configured servers responding?
+- **Credentials**: Are required credentials present?
+- **Workspace**: Do key files exist?
+- **Tools**: Can the agent use its tools?
+
+> **READ-ONLY**: Service checks do NOT modify any external systems. Agents only perform read/list/get operations.
+
+Returns health status: `healthy`, `degraded`, or `unhealthy`.
+
+### When to Use Each
+
+| Check | Use Case | Frequency |
+|-------|----------|-----------|
+| Compatibility Audit | After template changes, weekly drift check | Weekly |
+| Service Check | Verify integrations working, after credential updates | Daily or on-demand |
+
+### Scheduling
+
+```yaml
+# Weekly compatibility audit (Monday 9am)
+cron: "0 9 * * 1"
+message: "/ops/compatibility-audit"
+
+# Daily service check (6am)
+cron: "0 6 * * *"
+message: "/ops/service-check"
+```
+
+## Dashboard Updates
+
+Use `/ops/update-dashboard` to refresh the platform status dashboard.
+
+### What Gets Updated
+
+The dashboard shows real-time platform metrics:
+- **Platform Health**: Overall status (healthy/degraded/critical)
+- **Agent Counts**: Total, running, stopped, healthy, issues
+- **Execution Stats**: Tasks (24h), success rate, cost
+- **Schedule Status**: Total schedules, enabled count, next run
+- **Agent Table**: Per-agent status, health, context usage
+
+### Scheduling Dashboard Updates
+
+For a live dashboard, schedule frequent updates:
+```
+cron: "*/5 * * * *"  # Every 5 minutes
+message: "/ops/update-dashboard"
+```
+
+Or less frequently for lower overhead:
+```
+cron: "*/15 * * * *"  # Every 15 minutes
+message: "/ops/update-dashboard"
+```
 
 ## Alerting Guidelines
 

@@ -19,13 +19,14 @@
 9. [Inter-Agent Collaboration](#inter-agent-collaboration)
 10. [Shared Folders](#shared-folders)
 11. [Custom Metrics](#custom-metrics)
-12. [Memory Management](#memory-management)
-13. [Content Folder Convention](#content-folder-convention)
-14. [Package Persistence](#package-persistence)
-15. [Compatibility Checklist](#compatibility-checklist)
-16. [Migration Guide](#migration-guide)
-17. [Best Practices](#best-practices)
-18. [Autonomous Agent Design](#autonomous-agent-design)
+12. [Agent Dashboard](#agent-dashboard)
+13. [Memory Management](#memory-management)
+14. [Content Folder Convention](#content-folder-convention)
+15. [Package Persistence](#package-persistence)
+16. [Compatibility Checklist](#compatibility-checklist)
+17. [Migration Guide](#migration-guide)
+18. [Best Practices](#best-practices)
+19. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -725,6 +726,69 @@ After each research cycle, update metrics.json:
 
 ---
 
+## Agent Dashboard
+
+Agents can define a custom dashboard displayed in the Trinity UI Dashboard tab. Create `~/dashboard.yaml` (or `~/workspace/dashboard.yaml`) with widget configuration.
+
+### Basic Structure
+
+```yaml
+title: "My Agent Dashboard"
+refresh: 30                    # Auto-refresh interval (seconds, min 5)
+
+sections:
+  - title: "Status"
+    layout: grid               # 'grid' or 'list'
+    columns: 3                 # 1-4 columns
+    widgets:
+      - type: metric
+        label: "Total Tasks"
+        value: 42
+        trend: up
+
+      - type: status
+        label: "System"
+        value: "Healthy"
+        color: green           # green, red, yellow, gray, blue, orange
+
+      - type: progress
+        label: "Disk Usage"
+        value: 75
+        color: yellow
+```
+
+### Widget Types
+
+| Type | Required Fields | Description |
+|------|----------------|-------------|
+| `metric` | label, value | Number with optional trend (up/down) |
+| `status` | label, value, color | Colored badge |
+| `progress` | label, value | Progress bar (0-100) |
+| `text` | content | Plain text |
+| `markdown` | content | Rendered markdown |
+| `table` | columns, rows | Tabular data |
+| `list` | items | Bullet/numbered list |
+| `link` | label, url | Clickable link |
+| `image` | src, alt | Image display |
+| `divider` | - | Horizontal line |
+| `spacer` | - | Vertical space |
+
+### Updating Dashboard Data
+
+Your agent updates the dashboard by rewriting `dashboard.yaml`. Use dynamic values:
+
+```yaml
+widgets:
+  - type: metric
+    label: "Processed"
+    value: 127              # Update this value in your agent
+    description: "Last run: 2 min ago"
+```
+
+**Note**: Agent must be running for dashboard to display. See `docs/memory/feature-flows/agent-dashboard.md` for complete schema.
+
+---
+
 ## Memory Management
 
 Agents manage their own memory. Trinity provides storage, not strategy. Each agent can implement memory however it sees fit.
@@ -1007,6 +1071,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
 | 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |
 | 2026-01-12 | Updated .gitignore: added instance-specific files (.npm, .ssh, .trinity, .cache, .claude.json, .sudo_as_admin_successful); clarified what to commit vs exclude from .claude/ directory |
 | 2026-01-12 | Added Package Persistence section with setup.sh convention for surviving container updates |
