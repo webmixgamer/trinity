@@ -100,10 +100,11 @@ class ClaudeCodeRuntime(AgentRuntime):
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
         timeout_seconds: int = 900,
-        max_turns: Optional[int] = None
+        max_turns: Optional[int] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """Execute Claude Code in headless mode for parallel tasks."""
-        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds, max_turns)
+        return await execute_headless_task(prompt, model, allowed_tools, system_prompt, timeout_seconds, max_turns, execution_id)
 
 
 def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata]:
@@ -553,7 +554,8 @@ async def execute_headless_task(
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
     timeout_seconds: int = 900,
-    max_turns: Optional[int] = None
+    max_turns: Optional[int] = None,
+    execution_id: Optional[str] = None
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     """
     Execute Claude Code in headless mode for parallel task execution.
@@ -570,6 +572,7 @@ async def execute_headless_task(
         system_prompt: Optional additional system prompt
         timeout_seconds: Execution timeout (default 5 minutes)
         max_turns: Maximum agentic turns for runaway prevention (None = unlimited)
+        execution_id: Optional execution ID to use for process registry (enables termination tracking)
 
     Returns: (response_text, execution_log, metadata, session_id)
     """
@@ -626,7 +629,8 @@ async def execute_headless_task(
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
-        task_session_id = str(uuid.uuid4())
+        # Use provided execution_id if available (enables termination tracking from backend)
+        task_session_id = execution_id or str(uuid.uuid4())
 
         logger.info(f"[Headless Task] Starting task {task_session_id}: {' '.join(cmd[:5])}...")
 

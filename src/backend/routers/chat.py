@@ -485,12 +485,14 @@ async def execute_parallel_task(
 
     try:
         # Build payload for agent's /api/task endpoint
+        # Pass execution_id so agent uses it for process registry (enables termination tracking)
         payload = {
             "message": request.message,
             "model": request.model,
             "allowed_tools": request.allowed_tools,
             "system_prompt": request.system_prompt,
-            "timeout_seconds": request.timeout_seconds
+            "timeout_seconds": request.timeout_seconds,
+            "execution_id": execution_id  # Database execution ID for process registry
         }
 
         start_time = datetime.utcnow()
@@ -557,16 +559,23 @@ async def execute_parallel_task(
             }
         )
 
+        # Add database execution ID to response for frontend tracking
+        response_data["task_execution_id"] = execution_id
+
         return response_data
 
     except httpx.TimeoutException:
-        # Update execution record with timeout failure
+        # Update execution record with timeout failure - but NOT if already cancelled
         if execution_id:
-            db.update_execution_status(
-                execution_id=execution_id,
-                status="failed",
-                error=f"Task execution timed out after {request.timeout_seconds} seconds"
-            )
+            existing = db.get_execution(execution_id)
+            if existing and existing.status == "cancelled":
+                logger.info(f"Execution {execution_id} already cancelled, not overwriting with timeout status")
+            else:
+                db.update_execution_status(
+                    execution_id=execution_id,
+                    status="failed",
+                    error=f"Task execution timed out after {request.timeout_seconds} seconds"
+                )
 
         await activity_service.complete_activity(
             activity_id=task_activity_id,
@@ -593,13 +602,18 @@ async def execute_parallel_task(
                     error_msg = e.response.text[:500]
         logger.error(f"Failed to execute parallel task on {name}: {error_msg}")
 
-        # Update execution record with failure
+        # Update execution record with failure - but NOT if already cancelled (terminated by user)
         if execution_id:
-            db.update_execution_status(
-                execution_id=execution_id,
-                status="failed",
-                error=error_msg
-            )
+            # Check if execution was already cancelled (terminated by user)
+            existing = db.get_execution(execution_id)
+            if existing and existing.status == "cancelled":
+                logger.info(f"Execution {execution_id} already cancelled, not overwriting with failed status")
+            else:
+                db.update_execution_status(
+                    execution_id=execution_id,
+                    status="failed",
+                    error=error_msg
+                )
 
         await activity_service.complete_activity(
             activity_id=task_activity_id,
@@ -1060,6 +1074,7 @@ async def close_chat_session(
 async def terminate_agent_execution(
     name: str,
     execution_id: str,
+    task_execution_id: Optional[str] = None,
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1070,7 +1085,8 @@ async def terminate_agent_execution(
 
     Args:
         name: Agent name
-        execution_id: The execution ID to terminate (from metadata.execution_id)
+        execution_id: The execution ID to terminate (from process registry)
+        task_execution_id: Optional database execution ID to update status
     """
     container = get_agent_container(name)
     if not container:
@@ -1104,14 +1120,25 @@ async def terminate_agent_execution(
             await queue.force_release(name)
             logger.info(f"[Terminate] Released queue for agent '{name}' after terminating execution {execution_id}")
 
+            # Update database execution record if provided
+            if task_execution_id:
+                db.update_execution_status(
+                    execution_id=task_execution_id,
+                    status="cancelled",
+                    error="Execution terminated by user"
+                )
+                logger.info(f"[Terminate] Updated database execution {task_execution_id} to cancelled")
+
         # Track termination activity
         await activity_service.track_activity(
             agent_name=name,
             activity_type=ActivityType.EXECUTION_CANCELLED,
             user_id=current_user.id,
             triggered_by="user",
+            related_execution_id=task_execution_id,
             details={
                 "execution_id": execution_id,
+                "task_execution_id": task_execution_id,
                 "status": result.get("status"),
                 "returncode": result.get("returncode")
             }

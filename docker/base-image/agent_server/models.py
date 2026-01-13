@@ -220,6 +220,7 @@ class ParallelTaskRequest(BaseModel):
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
     timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
     max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
+    execution_id: Optional[str] = None  # Database execution ID (used for process registry if provided)
 
 
 class ParallelTaskResponse(BaseModel):

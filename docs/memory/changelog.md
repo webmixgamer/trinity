@@ -1,3 +1,47 @@
+### 2026-01-13 08:19:28
+✨ **Feature: Execution Termination Status Persistence**
+
+**Problem**: When a task was terminated, the "cancelled" status was being overwritten by "failed" with "Task returned empty response" error. The termination correctly updated the DB to "cancelled", but the /task endpoint's error handler subsequently overwrote it.
+
+**Solution**:
+1. Backend now passes database `execution_id` to agent's process registry (same ID for both)
+2. Termination endpoint accepts `task_execution_id` param to update database
+3. Error handlers check if execution already "cancelled" before overwriting with "failed"
+4. Added orange "cancelled" status styling in UI (distinct from red "failed")
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - Pass execution_id to agent, check cancelled status before overwrite
+- `docker/base-image/agent_server/models.py` - Add execution_id to ParallelTaskRequest
+- `docker/base-image/agent_server/routers/chat.py` - Pass execution_id to runtime
+- `docker/base-image/agent_server/services/claude_code.py` - Use provided execution_id for process registry
+- `docker/base-image/agent_server/services/runtime_adapter.py` - Add execution_id param to interface
+- `docker/base-image/agent_server/services/gemini_runtime.py` - Add execution_id param
+- `src/frontend/src/components/TasksPanel.vue` - Pass task_execution_id on terminate, add cancelled styling
+
+---
+
+### 2026-01-13 08:17:00
+✨ **Feature: Clickable Agent Names in Dashboard**
+
+**Enhancement**: Agent names on the Dashboard graph are now clickable links to their detail pages.
+
+**Files Modified**:
+- `src/frontend/src/components/AgentNode.vue` - Add click handler, hover styles, nodrag class to agent name
+
+---
+
+### 2026-01-13 07:55:07
+🔧 **Fix: Trinity MCP Lost on Credential Reload**
+
+**Problem**: Agents with `.mcp.json.template` (like ruby-internal) lost Trinity MCP entry when credentials were reloaded. The credential update endpoint regenerated `.mcp.json` from template, overwriting the Trinity MCP that was injected at startup.
+
+**Solution**: Re-inject Trinity MCP after any `.mcp.json` regeneration by calling `inject_trinity_mcp_if_configured()` - the same function used at agent startup. This ensures consistent behavior and single source of truth for Trinity MCP injection.
+
+**Files Modified**:
+- `docker/base-image/agent_server/routers/credentials.py` - Import and call `inject_trinity_mcp_if_configured()` after writing `.mcp.json`
+
+---
+
 ### 2026-01-12 21:30:00
 ✨ **Feature: Execution Termination**
 

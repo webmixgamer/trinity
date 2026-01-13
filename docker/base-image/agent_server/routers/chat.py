@@ -118,7 +118,8 @@ async def execute_task(request: ParallelTaskRequest):
         allowed_tools=request.allowed_tools,
         system_prompt=request.system_prompt,
         timeout_seconds=request.timeout_seconds or 300,
-        max_turns=request.max_turns
+        max_turns=request.max_turns,
+        execution_id=request.execution_id  # Use provided ID for process registry (enables termination)
     )
 
     logger.info(f"[Task] Task {session_id} completed successfully")

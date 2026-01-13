@@ -126,6 +126,7 @@
           :class="{
             'bg-yellow-50/50 dark:bg-yellow-900/10': task.status === 'running',
             'bg-red-50/30 dark:bg-red-900/10': task.status === 'failed',
+            'bg-orange-50/30 dark:bg-orange-900/10': task.status === 'cancelled',
             'ring-2 ring-indigo-500 ring-inset bg-indigo-50/50 dark:bg-indigo-900/20': isHighlightedTask(task.id)
           }"
         >
@@ -139,6 +140,7 @@
                     'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
                     task.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
                     task.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                    task.status === 'cancelled' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' :
                     task.status === 'running' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' :
                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                   ]"
@@ -148,6 +150,7 @@
                       'w-1.5 h-1.5 mr-1.5 rounded-full',
                       task.status === 'success' ? 'bg-green-500' :
                       task.status === 'failed' ? 'bg-red-500' :
+                      task.status === 'cancelled' ? 'bg-orange-500' :
                       task.status === 'running' ? 'bg-yellow-500 animate-pulse' :
                       'bg-gray-500'
                     ]"
@@ -605,8 +608,11 @@ async function loadQueueStatus() {
     })
     queueStatus.value = response.data
 
-    // If agent is busy, also fetch running executions for termination support
-    if (response.data.is_busy) {
+    // Fetch running executions for termination support if:
+    // 1. Queue is busy (scheduled/queued tasks), OR
+    // 2. We have local running tasks (manual tasks via /task endpoint bypass queue)
+    const hasLocalRunningTasks = pendingTasks.value.some(t => t.status === 'running')
+    if (response.data.is_busy || hasLocalRunningTasks) {
       await loadRunningExecutions()
     } else {
       runningExecutions.value = []
@@ -660,6 +666,11 @@ async function runNewTask() {
   pendingTasks.value.unshift(localTask)
   newTaskMessage.value = ''
   taskLoading.value = true
+
+  // Poll for running executions shortly after task starts (gives agent time to register process)
+  // This enables the Stop button to appear while task is running
+  setTimeout(() => loadQueueStatus(), 500)
+  setTimeout(() => loadQueueStatus(), 2000)  // Second poll in case first was too early
 
   const startMs = Date.now()
 
@@ -749,8 +760,9 @@ async function terminateTask(task) {
   terminatingTaskId.value = task.id
 
   try {
+    // Pass task_execution_id as query param so backend can update database record
     await axios.post(
-      `/api/agents/${props.agentName}/executions/${task.execution_id}/terminate`,
+      `/api/agents/${props.agentName}/executions/${task.execution_id}/terminate?task_execution_id=${task.execution_id}`,
       {},
       { headers: authStore.authHeader }
     )
@@ -758,7 +770,7 @@ async function terminateTask(task) {
     // Update task status locally while we wait for refresh
     const idx = pendingTasks.value.findIndex(t => t.id === task.id)
     if (idx !== -1) {
-      pendingTasks.value[idx].status = 'failed'
+      pendingTasks.value[idx].status = 'cancelled'
       pendingTasks.value[idx].error = 'Execution terminated by user'
     }
 

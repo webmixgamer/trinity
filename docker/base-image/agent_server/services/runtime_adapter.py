@@ -103,7 +103,8 @@ class AgentRuntime(ABC):
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
         timeout_seconds: int = 900,
-        max_turns: Optional[int] = None
+        max_turns: Optional[int] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute a stateless task in headless mode (no conversation context).
@@ -120,6 +121,7 @@ class AgentRuntime(ABC):
             system_prompt: Custom system prompt
             timeout_seconds: Execution timeout
             max_turns: Maximum agentic turns for runaway prevention (None = unlimited)
+            execution_id: Optional execution ID for process registry (enables termination tracking)
 
         Returns:
             Tuple of (response_text, execution_log, metadata, session_id)

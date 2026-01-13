@@ -493,7 +493,8 @@ class GeminiRuntime(AgentRuntime):
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
         timeout_seconds: int = 900,
-        max_turns: Optional[int] = None
+        max_turns: Optional[int] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
         """
         Execute Gemini CLI in headless mode for parallel tasks.
@@ -519,8 +520,8 @@ class GeminiRuntime(AgentRuntime):
                     detail="GEMINI_API_KEY not configured in agent container"
                 )
 
-            # Generate unique session ID for this task
-            session_id = str(uuid.uuid4())[:8]
+            # Use provided execution_id or generate unique session ID for this task
+            session_id = execution_id or str(uuid.uuid4())[:8]
 
             # Build command - stateless (no --resume)
             cmd = ["gemini", "--output-format", "stream-json", "--yolo"]

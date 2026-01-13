@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..models import CredentialUpdateRequest
 from ..state import agent_state
+from ..services.trinity_mcp import inject_trinity_mcp_if_configured
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,6 +56,10 @@ async def update_credentials(request: CredentialUpdateRequest):
             updated_files.append(str(mcp_file))
             logger.info("Updated .mcp.json from provided config")
 
+            # Re-inject Trinity MCP after updating .mcp.json
+            if inject_trinity_mcp_if_configured():
+                logger.info("Re-injected Trinity MCP after credential reload")
+
         elif mcp_template.exists():
             # Generate .mcp.json from template using envsubst-style substitution
             template_content = mcp_template.read_text()
@@ -68,6 +73,11 @@ async def update_credentials(request: CredentialUpdateRequest):
             mcp_file.write_text(generated_content)
             updated_files.append(str(mcp_file))
             logger.info("Generated .mcp.json from template")
+
+            # Re-inject Trinity MCP after regenerating .mcp.json
+            # This uses the same injection logic as agent startup
+            if inject_trinity_mcp_if_configured():
+                logger.info("Re-injected Trinity MCP after credential reload")
 
         # 3. Also export credentials to environment (for current process)
         # Note: This won't affect already-running subprocesses, but helps for new ones
