@@ -390,6 +390,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - SSE streaming from agent server through backend proxy
   - Live log display with auto-scroll
   - "Live" indicator for running executions
+  - "Live" button in TasksPanel (green pulsing badge) for running tasks
   - Stop button integration
   - Late joiner support (buffered entries)
 - **Spec**: `docs/requirements/LIVE_EXECUTION_STREAMING.md`
@@ -505,17 +506,24 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Configure automatic agent reactions to events
 - **Key Concepts**: Event matching with filters, debouncing/throttling
 
-### 17.4 Automated Git Sync
+### 17.4 Async MCP Chat Commands
+- **Status**: ⏳ Not Started
+- **Priority**: High
+- **Description**: Non-blocking MCP `chat_with_agent` for parallel multi-agent orchestration
+- **Key Concepts**: Returns execution_id immediately, poll for result or webhook callback, enables fan-out patterns
+- **Use Case**: Orchestrator sends tasks to 5 worker agents simultaneously, collects results as they complete
+
+### 17.5 Automated Git Sync
 - **Status**: ⏳ Not Started
 - **Priority**: Medium
 - **Description**: Sync modes - Manual / Scheduled / On Stop
 
-### 17.5 Automated Secret Rotation
+### 17.6 Automated Secret Rotation
 - **Status**: ⏳ Not Started
 - **Priority**: Medium
 - **Description**: Automatic credential rotation with notifications
 
-### 17.6 Kubernetes Deployment
+### 17.7 Kubernetes Deployment
 - **Status**: ⏳ Not Started
 - **Priority**: Low
 - **Description**: Helm charts, StatefulSet for agents

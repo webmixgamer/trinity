@@ -971,6 +971,370 @@ LIMIT 100;
 
 ---
 
+## Session Management
+
+This section documents the session management capabilities for organizing and reviewing past conversations.
+
+### User Stories
+
+| ID | Story | Status |
+|----|-------|--------|
+| EXEC-019 | As a user, I want to list all chat sessions so I can review past conversations | Backend API Complete |
+| EXEC-020 | As a user, I want to view specific session messages so I can see full conversation history | Backend API Complete |
+| EXEC-021 | As a user, I want to close a session so I can organize my conversation history | Backend API Complete |
+
+### Entry Points
+
+- **API Only** (No frontend UI currently):
+  - `GET /api/agents/{name}/chat/sessions` - List all sessions
+  - `GET /api/agents/{name}/chat/sessions/{session_id}` - View session details
+  - `POST /api/agents/{name}/chat/sessions/{session_id}/close` - Close session
+
+### Backend Layer
+
+#### List Sessions Endpoint (`src/backend/routers/chat.py:967-999`)
+
+Lists all chat sessions for an agent with filtering options.
+
+```python
+@router.get("/{name}/chat/sessions")
+async def get_agent_chat_sessions(
+    name: str,
+    status: str = None,  # 'active' or 'closed'
+    current_user: User = Depends(get_current_user)
+):
+```
+
+**Request**: `GET /api/agents/{name}/chat/sessions?status=active`
+
+**Response**:
+```json
+{
+  "agent_name": "my-agent",
+  "session_count": 2,
+  "sessions": [
+    {
+      "id": "abc123...",
+      "agent_name": "my-agent",
+      "user_id": 5,
+      "user_email": "user@example.com",
+      "started_at": "2025-12-01T10:00:00",
+      "last_message_at": "2025-12-01T11:30:00",
+      "message_count": 12,
+      "total_cost": 0.045,
+      "total_context_used": 15000,
+      "total_context_max": 200000,
+      "status": "active"
+    }
+  ]
+}
+```
+
+#### View Session Details Endpoint (`src/backend/routers/chat.py:1002-1037`)
+
+Retrieves detailed session information including all messages.
+
+```python
+@router.get("/{name}/chat/sessions/{session_id}")
+async def get_chat_session_detail(
+    name: str,
+    session_id: str,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user)
+):
+```
+
+**Request**: `GET /api/agents/{name}/chat/sessions/{session_id}?limit=50`
+
+**Response**:
+```json
+{
+  "session": {
+    "id": "abc123...",
+    "agent_name": "my-agent",
+    "user_id": 5,
+    "user_email": "user@example.com",
+    "started_at": "2025-12-01T10:00:00",
+    "last_message_at": "2025-12-01T11:30:00",
+    "message_count": 12,
+    "total_cost": 0.045,
+    "status": "active"
+  },
+  "message_count": 12,
+  "messages": [
+    {
+      "id": "msg1...",
+      "session_id": "abc123...",
+      "role": "assistant",
+      "content": "Response content...",
+      "timestamp": "2025-12-01T11:30:00",
+      "cost": 0.003,
+      "context_used": 15000,
+      "tool_calls": "[{\"tool\": \"Read\", ...}]",
+      "execution_time_ms": 1234
+    },
+    {
+      "id": "msg2...",
+      "session_id": "abc123...",
+      "role": "user",
+      "content": "User message...",
+      "timestamp": "2025-12-01T11:29:55",
+      "cost": null
+    }
+  ]
+}
+```
+
+#### Close Session Endpoint (`src/backend/routers/chat.py:1040-1067`)
+
+Marks a session as closed (history preserved, new messages go to new session).
+
+```python
+@router.post("/{name}/chat/sessions/{session_id}/close")
+async def close_chat_session(
+    name: str,
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+```
+
+**Request**: `POST /api/agents/{name}/chat/sessions/{session_id}/close`
+
+**Response**:
+```json
+{
+  "status": "closed",
+  "session_id": "abc123..."
+}
+```
+
+### Database Layer (`src/backend/db/chat.py`)
+
+#### ChatOperations Methods
+
+| Method | Line | Purpose |
+|--------|------|---------|
+| `get_agent_chat_sessions()` | 194-221 | List sessions with optional user/status filter |
+| `get_chat_session()` | 145-151 | Get single session by ID |
+| `get_chat_messages()` | 153-163 | Get messages for a session |
+| `close_chat_session()` | 223-231 | Set session status to 'closed' |
+| `delete_chat_session()` | 233-245 | Delete session and all messages (not exposed via API) |
+
+### Access Control
+
+| Role | List Sessions | View Session | Close Session |
+|------|--------------|--------------|---------------|
+| **User** | Own sessions only | Own sessions only | Own sessions only |
+| **Admin** | All sessions | All sessions | All sessions |
+
+Access control is enforced at the endpoint level:
+```python
+# Non-admins only see their own sessions
+user_id_filter = None if current_user.role == "admin" else current_user.id
+```
+
+### Frontend Layer (Not Yet Implemented)
+
+**Current Status**: Backend APIs are complete, no frontend UI exists.
+
+**Planned Store Actions** (`src/frontend/src/stores/agents.js`):
+```javascript
+// Future implementation
+async getChatSessions(name, status = null) {
+  const authStore = useAuthStore()
+  const response = await axios.get(`/api/agents/${name}/chat/sessions`, {
+    params: { status },
+    headers: authStore.authHeader
+  })
+  return response.data
+}
+
+async getChatSessionDetail(name, sessionId, limit = 100) {
+  const authStore = useAuthStore()
+  const response = await axios.get(
+    `/api/agents/${name}/chat/sessions/${sessionId}`,
+    {
+      params: { limit },
+      headers: authStore.authHeader
+    }
+  )
+  return response.data
+}
+
+async closeChatSession(name, sessionId) {
+  const authStore = useAuthStore()
+  const response = await axios.post(
+    `/api/agents/${name}/chat/sessions/${sessionId}/close`,
+    {},
+    { headers: authStore.authHeader }
+  )
+  return response.data
+}
+```
+
+**Planned UI Components**:
+1. Sessions List Panel in agent detail view
+2. Session detail modal with message history
+3. Close session button with confirmation
+4. Filter by status (active/closed)
+
+### Testing: Session Management
+
+**Prerequisites**:
+- Agent exists and has been used for chat
+- User authenticated with valid token
+- Database has existing chat sessions
+
+#### Test 1: List All Sessions
+
+**Action**:
+```bash
+# List all sessions for an agent
+curl http://localhost:8000/api/agents/my-agent/chat/sessions \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected**:
+- Returns array of session objects
+- Non-admins see only their own sessions
+- Sessions ordered by last_message_at DESC
+
+**Verify**:
+- [ ] Response has `session_count` and `sessions` array
+- [ ] Each session has id, message_count, total_cost, status
+- [ ] Timestamps are valid ISO format
+
+#### Test 2: Filter Sessions by Status
+
+**Action**:
+```bash
+# List only active sessions
+curl "http://localhost:8000/api/agents/my-agent/chat/sessions?status=active" \
+  -H "Authorization: Bearer $TOKEN"
+
+# List only closed sessions
+curl "http://localhost:8000/api/agents/my-agent/chat/sessions?status=closed" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected**:
+- Only sessions matching the status filter returned
+- Empty array if no matching sessions
+
+**Verify**:
+- [ ] All returned sessions have correct status
+- [ ] Both filters work independently
+
+#### Test 3: View Session Details
+
+**Action**:
+```bash
+# Get session ID from list endpoint first
+SESSION_ID=$(curl -s http://localhost:8000/api/agents/my-agent/chat/sessions \
+  -H "Authorization: Bearer $TOKEN" | jq -r '.sessions[0].id')
+
+# Get session details with messages
+curl "http://localhost:8000/api/agents/my-agent/chat/sessions/$SESSION_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected**:
+- Returns session metadata and messages array
+- Messages include full observability data
+- Messages ordered by timestamp DESC
+
+**Verify**:
+- [ ] Session object matches list response
+- [ ] Messages have role, content, timestamp
+- [ ] Assistant messages have cost, context_used, tool_calls
+- [ ] User messages have cost=null
+
+#### Test 4: Close Session
+
+**Action**:
+```bash
+# Close a session
+curl -X POST "http://localhost:8000/api/agents/my-agent/chat/sessions/$SESSION_ID/close" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected**:
+- Returns `{"status": "closed", "session_id": "..."}`
+- Session status in database changes to "closed"
+- Next chat message creates a new session
+
+**Verify**:
+```sql
+-- Check session is closed
+SELECT id, status FROM chat_sessions WHERE id = '$SESSION_ID';
+-- Should show: status='closed'
+```
+
+#### Test 5: Access Control
+
+**Action**:
+```bash
+# User 1 creates a session
+curl -X POST http://localhost:8000/api/agents/my-agent/chat \
+  -H "Authorization: Bearer $USER1_TOKEN" \
+  -d '{"message": "Hello"}'
+
+# User 2 tries to access User 1's session
+USER1_SESSION=$(sqlite3 ~/trinity-data/trinity.db \
+  "SELECT id FROM chat_sessions WHERE user_id=1 ORDER BY started_at DESC LIMIT 1")
+
+curl "http://localhost:8000/api/agents/my-agent/chat/sessions/$USER1_SESSION" \
+  -H "Authorization: Bearer $USER2_TOKEN"
+```
+
+**Expected**:
+- User 2 gets 403 Forbidden
+- Admin can access any session
+
+**Verify**:
+- [ ] 403 error for non-owner access
+- [ ] Admin (role='admin') can view any session
+
+#### Test 6: Session After Close
+
+**Action**:
+```bash
+# Close current session
+curl -X POST "http://localhost:8000/api/agents/my-agent/chat/sessions/$SESSION_ID/close" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Send new message
+curl -X POST http://localhost:8000/api/agents/my-agent/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message": "Hello again"}'
+
+# List sessions
+curl http://localhost:8000/api/agents/my-agent/chat/sessions \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected**:
+- New session created automatically
+- Old session remains closed with its messages
+- session_count increases by 1
+
+**Verify**:
+```sql
+SELECT id, status, message_count FROM chat_sessions
+WHERE agent_name = 'my-agent' ORDER BY started_at DESC;
+-- Should show: 2 sessions (1 active, 1 closed)
+```
+
+#### Edge Cases
+
+- [ ] Close already-closed session -> succeeds (idempotent)
+- [ ] View session for non-existent agent -> 404
+- [ ] View non-existent session -> 404
+- [ ] Close session belonging to different agent -> 403
+- [ ] List sessions with both status and user filter -> combines filters correctly
+
+---
+
 ## Migration Notes
 
 ### Database Migration
@@ -996,5 +1360,6 @@ To show persistent history in UI:
 
 ## Changelog
 
+- **2026-01-13**: Added Session Management section documenting EXEC-019, EXEC-020, EXEC-021 user stories. Documented list/view/close session APIs, database operations, access control, and testing procedures. Frontend UI not yet implemented (backend-only).
 - **2025-12-30**: Updated line numbers to reflect current codebase after execution queue integration. Chat endpoint now at lines 106-356 (was 50-294). Persistent history endpoints now at lines 876-1027 (was 586-736). Database schema lines updated.
 - **2025-12-01**: Initial implementation of persistent chat session tracking
