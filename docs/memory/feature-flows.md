@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-13)**: Host Telemetry Monitoring (OBS-011, OBS-012):
+> - **host-telemetry.md**: New feature flow for infrastructure health monitoring
+> - Host stats: CPU, memory, disk usage via psutil in Dashboard header
+> - Container stats: Aggregate CPU/memory across running agents (API only)
+> - Frontend: `HostTelemetry.vue` with sparkline charts via uPlot, 5s polling
+> - Backend: `routers/telemetry.py` - `/api/telemetry/host`, `/api/telemetry/containers`
+> - Performance: Container stats use parallel ThreadPoolExecutor + `list_all_agents_fast()`
+> - Files: HostTelemetry.vue (194 lines), SparklineChart.vue (148 lines), telemetry.py (174 lines)
+>
 > **Updated (2026-01-13)**: Live Button for Running Tasks:
 > - **execution-detail-page.md**: Added "Live" button entry point from TasksPanel (lines 213-232)
 > - Green badge with animated pulsing dot appears for running tasks
@@ -286,14 +295,16 @@
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
+| **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels |
 | MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 21 MCP tools for external agent management, including `get_agent_info` for template metadata access (Updated 2026-01-03) |
+| **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - **refactored**: GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency (Updated 2025-12-31) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP (Implemented 2025-11-29) |
-| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
+| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` + `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
@@ -322,11 +333,14 @@
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
 | **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
+| **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - system-wide setting + per-agent API, container security via cap_drop/cap_add, automatic recreation on start (CFG-004, Created 2026-01-13) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
 | **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
+| **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
+| **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
 
 ---
 
@@ -350,6 +364,14 @@
 |----------|---------|
 | [TRINITY_COMPATIBLE_AGENT_GUIDE.md](../TRINITY_COMPATIBLE_AGENT_GUIDE.md) | **Single-agent guide** — Creating Trinity-compatible agents, template structure, Four Pillars, planning system |
 | [MULTI_AGENT_SYSTEM_GUIDE.md](../MULTI_AGENT_SYSTEM_GUIDE.md) | **Multi-agent guide** — Building coordinated multi-agent systems, architecture patterns, shared folders, deployment |
+
+---
+
+## Requirements Specs (Pending Implementation)
+
+| Document | Priority | Description |
+|----------|----------|-------------|
+| [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | Separate scheduler into independent service - fixes duplicate execution bug with multiple workers, Redis job store, distributed locks, APScheduler 4.0 migration path (Created 2026-01-13) |
 
 ---
 

@@ -1,3 +1,37 @@
+### 2026-01-13 22:30:00
+🔬 **Research: Dedicated Scheduler Service Architecture**
+
+**Problem Identified**: Production runs with `--workers 2` (docker-compose.prod.yml:72), causing each worker to initialize its own APScheduler instance with in-memory job store. Result: **duplicate schedule executions**.
+
+**Root Cause Analysis**:
+- APScheduler 3.x has no inter-process coordination
+- MemoryJobStore is not shared between workers
+- Each worker fires the same scheduled jobs independently
+
+**Research Conducted**:
+- APScheduler 4.0: Built-in distributed scheduling via `RedisEventBroker` + shared data stores
+- Distributed locking: `python-redis-lock` with auto-renewal for long executions
+- Architecture patterns: Dedicated scheduler service vs embedded scheduler
+
+**Solution Options Documented**:
+1. **Phase 1 (Immediate)**: Add distributed lock to `_execute_schedule()` OR single worker mode
+2. **Phase 2 (Proper)**: Separate scheduler into dedicated container service
+3. **Phase 3 (Future)**: Migrate to APScheduler 4.0 when stable
+
+**Files Created**:
+- `docs/requirements/DEDICATED_SCHEDULER_SERVICE.md` - Full implementation spec with code examples
+
+**Files Modified**:
+- `docs/memory/roadmap.md` - Added bug to priority queue, added 11.6 Dedicated Scheduler Service
+
+**Sources**:
+- [APScheduler 4.0 API](https://apscheduler.readthedocs.io/en/master/api.html)
+- [APScheduler Migration Guide](https://apscheduler.readthedocs.io/en/master/migration.html)
+- [Redis Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)
+- [python-redis-lock Docs](https://python-redis-lock.readthedocs.io/en/latest/readme.html)
+
+---
+
 ### 2026-01-13 21:30:00
 📝 **Docs: Dashboard Widget Field Names**
 
