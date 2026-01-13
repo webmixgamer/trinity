@@ -154,6 +154,7 @@ The test suite covers:
 - **Schedules** (test_schedules.py) - Scheduled executions
 - **Execution Queue** (test_execution_queue.py) - Queue management
 - **Executions** (test_executions.py) - Execution history, status tracking
+- **Execution Termination** (test_execution_termination.py) - Stop running executions, running execution list (Added 2026-01-12)
 
 ### System & Deployment
 - **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules (Req 10.7)
@@ -184,10 +185,10 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~520 tests across 29 test files
+**Total Tests**: ~535 tests across 30 test files
 **Smoke Tests**: ~100 tests (fast, no agent creation)
-**Agent-Requiring Tests**: ~370 tests
-**Slow Tests**: ~50 tests (chat execution, fleet ops, system agent ops)
+**Agent-Requiring Tests**: ~385 tests
+**Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
 
 ## Expected Skipped Tests (~38 tests)
 
@@ -214,12 +215,23 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
 
-## Known Issues (2026-01-09)
+## Known Issues (2026-01-12)
 
 | Issue | Test | Severity | Status |
 |-------|------|----------|--------|
 | Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
 | Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
+
+## Recent Test Additions (2026-01-12)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_execution_termination.py` | Execution termination feature | ~15 tests |
+
+Tests cover:
+- `GET /api/agents/{name}/executions/running` - List running executions
+- `POST /api/agents/{name}/executions/{execution_id}/terminate` - Stop running executions
+- Activity tracking for EXECUTION_CANCELLED events
 
 ## Important Notes
 
