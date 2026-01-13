@@ -3,6 +3,17 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-13)**: Dedicated Scheduler Service:
+> - **scheduler-service.md**: New standalone scheduler service replacing embedded backend scheduler
+> - Fixes duplicate execution bug in multi-worker deployments (was: each uvicorn worker ran its own APScheduler)
+> - Source: `src/scheduler/` (main.py, service.py, config.py, models.py, database.py, agent_client.py, locking.py)
+> - Docker: `docker/scheduler/` (Dockerfile, requirements.txt, docker-compose.test.yml)
+> - Tests: `tests/scheduler_tests/` (8 test files: config, cron, database, locking, agent_client, service, conftest)
+> - Key features: Single-instance design, Redis distributed locks, event publishing, health endpoints
+> - Lock pattern: `scheduler:lock:schedule:{schedule_id}` with auto-renewal every 300s (half of 600s TTL)
+> - Agent communication: HTTP POST to `/api/task` via AgentClient with 15-min timeout
+> - Related: scheduling.md (backend CRUD API), autonomy-mode.md (execution gating)
+>
 > **Updated (2026-01-13)**: Host Telemetry Monitoring (OBS-011, OBS-012):
 > - **host-telemetry.md**: New feature flow for infrastructure health monitoring
 > - Host stats: CPU, memory, disk usage via psutil in Dashboard header
@@ -293,6 +304,7 @@
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
+| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
@@ -367,11 +379,11 @@
 
 ---
 
-## Requirements Specs (Pending Implementation)
+## Requirements Specs (Implemented)
 
-| Document | Priority | Description |
-|----------|----------|-------------|
-| [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | Separate scheduler into independent service - fixes duplicate execution bug with multiple workers, Redis job store, distributed locks, APScheduler 4.0 migration path (Created 2026-01-13) |
+| Document | Priority | Status | Description |
+|----------|----------|--------|-------------|
+| [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | **IMPLEMENTED** | Standalone scheduler service - fixes duplicate execution bug with multiple workers, Redis distributed locks, single-instance design. See [scheduler-service.md](feature-flows/scheduler-service.md) (Implemented 2026-01-13) |
 
 ---
 
