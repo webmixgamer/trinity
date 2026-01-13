@@ -585,9 +585,9 @@ Agents can define custom KPIs displayed in the Trinity UI Metrics tab. This enab
 
 ### File Locations
 
-The agent server looks for files in these locations:
-- **Definitions**: `/home/developer/template.yaml` or `/home/developer/workspace/template.yaml`
-- **Values**: `/home/developer/metrics.json` or `/home/developer/workspace/metrics.json`
+The agent server reads from the agent's working directory (`/home/developer/`):
+- **Definitions**: `/home/developer/template.yaml`
+- **Values**: `/home/developer/metrics.json`
 
 ### template.yaml Metric Definitions
 
@@ -728,7 +728,13 @@ After each research cycle, update metrics.json:
 
 ## Agent Dashboard
 
-Agents can define a custom dashboard displayed in the Trinity UI Dashboard tab. Create `~/dashboard.yaml` (or `~/workspace/dashboard.yaml`) with widget configuration.
+Agents can define a custom dashboard displayed in the Trinity UI Dashboard tab.
+
+### File Location
+
+Save the dashboard configuration to **`/home/developer/dashboard.yaml`** — the root of the agent's working directory.
+
+If the file does not exist, no dashboard will be displayed.
 
 ### Basic Structure
 

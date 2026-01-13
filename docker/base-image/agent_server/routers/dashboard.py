@@ -15,17 +15,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def find_dashboard_yaml() -> Optional[Path]:
-    """Find dashboard.yaml in possible locations."""
-    home_dir = Path("/home/developer")
-    dashboard_paths = [
-        home_dir / "dashboard.yaml",
-        home_dir / "workspace" / "dashboard.yaml",
-    ]
-    for path in dashboard_paths:
-        if path.exists():
-            return path
-    return None
+def get_dashboard_path() -> Path:
+    """Get the fixed path to dashboard.yaml."""
+    return Path("/home/developer/dashboard.yaml")
 
 
 def validate_widget(widget: Dict[str, Any], index: int) -> Optional[str]:
@@ -166,14 +158,14 @@ async def get_dashboard():
     - last_modified: File modification timestamp
     - error: Error message if parsing failed
     """
-    dashboard_path = find_dashboard_yaml()
+    dashboard_path = get_dashboard_path()
 
-    if not dashboard_path:
+    if not dashboard_path.exists():
         return {
             "has_dashboard": False,
             "config": None,
             "last_modified": None,
-            "error": "No dashboard.yaml found in /home/developer/ or /home/developer/workspace/"
+            "error": "No dashboard.yaml found at /home/developer/dashboard.yaml"
         }
 
     try:
