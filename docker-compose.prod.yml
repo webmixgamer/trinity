@@ -4,6 +4,7 @@
 #   - 8000: Trinity backend
 #   - 80: Trinity frontend (standard HTTP)
 #   - 8080: Trinity MCP server
+#   - 8001: Scheduler service (internal health check)
 #   - 8686: Vector log aggregator
 #   - 4317: OTel Collector gRPC (OTLP)
 #   - 4318: OTel Collector HTTP (OTLP)
@@ -128,6 +129,42 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Scheduler - dedicated service for cron-based agent task execution
+  # Prevents duplicate executions that occurred with multiple backend workers
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    container_name: trinity-scheduler
+    restart: unless-stopped
+    environment:
+      - DATABASE_PATH=/data/trinity.db
+      - REDIS_URL=redis://redis:6379
+      - HEALTH_PORT=8001
+      - LOG_LEVEL=${SCHEDULER_LOG_LEVEL:-INFO}
+      - LOCK_TIMEOUT=600
+      - AGENT_TIMEOUT=900
+      - PUBLISH_EVENTS=true
+    volumes:
+      - ${TRINITY_DATA_PATH:-./trinity-data}:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - trinity-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Vector - centralized log aggregation from all containers
   vector:
