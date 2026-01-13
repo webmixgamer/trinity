@@ -1,3 +1,45 @@
+### 2026-01-13 09:45:00
+📝 **Docs: Requirements.md Cleanup & Restructure**
+
+**Problem**: requirements.md was bloated (1820 lines) with duplicate section numbers, misleading section names, excessive implementation details, and stale entries.
+
+**Issues Fixed**:
+1. **Duplicate Section 12** - Multi-Runtime renumbered to Section 14
+2. **Misleading names** - "In Progress Features" (mostly complete) and "Planned Features" (mostly removed) reorganized into logical groups
+3. **Confusing Phase labels** - Removed "Phase 12.x" references from Section 11 items
+4. **Stale entry** - Updated "Agent Custom Metrics" to "Agent Dashboard" (implemented 2026-01-12)
+5. **Excessive detail** - Condensed completed features from 20-50 lines to 3-5 lines each
+6. **Removed features** - Collapsed to 2-3 lines with removal date/reason
+
+**New Structure** (18 sections, ~560 lines):
+1. Core Agent Management
+2. Authentication & Authorization
+3. Credential Management
+4. Template System
+5. Agent Chat & Terminal
+6. Activity Monitoring
+7. MCP Server
+8. Infrastructure (+ Vector Logging)
+9. Agent Collaboration (+ Timeline View, Replay Timeline)
+10. Scheduling & Autonomy
+11. GitHub Integration
+12. Platform Operations (+ System Agent UI)
+13. Content & File Management (+ Tasks Tab, Execution Log/Detail)
+14. Multi-Runtime Support
+15. Public Access
+16. Advanced Features (+ Local Deploy, Agents Page UI, Dark Mode)
+17. Planned Features
+18. Future Vision
+
+**Cross-check with feature-flows.md**: All 48 documented flows now have corresponding requirements entries.
+
+**Result**: Document reduced from ~1820 to ~560 lines (69% reduction) while ensuring complete alignment with feature-flows.md.
+
+**Files Modified**:
+- `docs/memory/requirements.md` - Complete restructure
+
+---
+
 ### 2026-01-13 08:19:28
 ✨ **Feature: Execution Termination Status Persistence**
 
