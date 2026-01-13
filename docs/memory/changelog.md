@@ -1,3 +1,35 @@
+### 2026-01-13 18:00:00
+📡 **Feature: Live Execution Streaming**
+
+**Problem**: Execution logs were only available after task completion. For long-running tasks (10+ minutes), users had no visibility into progress and couldn't make informed decisions about termination.
+
+**Solution**: Real-time streaming of Claude Code execution logs to the Execution Detail page via Server-Sent Events (SSE).
+
+**Key Features**:
+- Live streaming indicator with animated pulse
+- Auto-scroll with toggle control
+- Stop button integration during streaming
+- Late joiner support (buffered entries sent on subscribe)
+- Graceful stream end on execution completion
+- Fallback to static log on connection failure
+
+**Technical Implementation**:
+- Agent Server: ProcessRegistry extended with log queues and pub/sub methods
+- Agent Server: New `/api/executions/{id}/stream` SSE endpoint
+- Backend: Proxy endpoint with auth validation
+- Frontend: Fetch-based SSE reader (not EventSource, due to header limitations)
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/process_registry.py` - Added log streaming infrastructure
+- `docker/base-image/agent_server/services/claude_code.py` - Publish entries as they arrive
+- `docker/base-image/agent_server/routers/chat.py` - Added SSE streaming endpoint
+- `src/backend/routers/chat.py` - Added proxy streaming endpoint
+- `src/frontend/src/views/ExecutionDetail.vue` - Streaming UI with live indicator
+
+**Spec**: `docs/requirements/LIVE_EXECUTION_STREAMING.md`
+
+---
+
 ### 2026-01-13 14:30:00
 📁 **Feature: System Agent Report Storage**
 

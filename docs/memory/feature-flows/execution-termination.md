@@ -10,7 +10,8 @@ As an agent operator, I want to stop a running task execution so that I can canc
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/components/TasksPanel.vue:243-258` - Stop button for running tasks
+- **UI (Stop)**: `src/frontend/src/components/TasksPanel.vue:243-258` - Stop button for running tasks
+- **UI (Live)**: `src/frontend/src/components/TasksPanel.vue:213-232` - Live button navigates to Execution Detail page (see [execution-detail-page.md](execution-detail-page.md))
 - **API (Backend)**: `POST /api/agents/{name}/executions/{execution_id}/terminate?task_execution_id={id}`
 - **API (Agent)**: `POST /api/executions/{execution_id}/terminate`
 - **API (Agent)**: `GET /api/executions/running`
@@ -513,5 +514,6 @@ Claude Code handles SIGINT gracefully, finishing its current operation before ex
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Added "Live" button entry point (lines 213-232) - green badge with pulsing dot for running tasks, navigates to Execution Detail page for real-time monitoring |
 | 2026-01-13 | Updated: Unified execution ID flow (backend passes to agent), status preservation in error handlers, frontend polling improvements, cancelled status styling |
 | 2026-01-12 | Initial documentation - Execution Termination feature |

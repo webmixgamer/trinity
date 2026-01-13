@@ -42,6 +42,20 @@
 
           <!-- Quick actions -->
           <div class="flex items-center space-x-2">
+            <!-- Stop button for running executions -->
+            <button
+              v-if="execution?.status === 'running'"
+              @click="stopExecution"
+              :disabled="isStopping"
+              class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center space-x-1"
+              title="Stop execution"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              <span>{{ isStopping ? 'Stopping...' : 'Stop' }}</span>
+            </button>
             <button
               @click="copyExecutionId"
               class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -200,21 +214,49 @@
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Response Summary</h2>
         </div>
         <div class="p-4">
-          <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ execution.response }}</div>
+          <div class="prose prose-sm dark:prose-invert max-w-none" v-html="renderedResponse"></div>
         </div>
       </div>
 
       <!-- Execution Log -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Execution Transcript</h2>
-          <span v-if="logEntries.length" class="text-xs text-gray-500 dark:text-gray-400">
-            {{ logEntries.length }} entries
-          </span>
+          <div class="flex items-center space-x-3">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Execution Transcript</h2>
+            <!-- Streaming indicator -->
+            <div v-if="isStreaming" class="flex items-center space-x-2">
+              <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              <span class="text-xs text-green-600 dark:text-green-400 font-medium">Live</span>
+            </div>
+          </div>
+          <div class="flex items-center space-x-3">
+            <!-- Auto-scroll toggle -->
+            <button
+              v-if="isStreaming"
+              @click="toggleAutoScroll"
+              :class="autoScroll ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'"
+              class="text-xs font-medium hover:underline"
+              title="Toggle auto-scroll"
+            >
+              {{ autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF' }}
+            </button>
+            <span v-if="logEntries.length" class="text-xs text-gray-500 dark:text-gray-400">
+              {{ logEntries.length }} entries
+            </span>
+          </div>
         </div>
-        <div class="p-4">
-          <!-- No log available -->
-          <div v-if="!logData?.has_log" class="text-center py-8">
+        <div class="p-4 log-scroll-container" :class="{ 'max-h-[600px] overflow-y-auto': isStreaming }">
+          <!-- Streaming - waiting for entries -->
+          <div v-if="isStreaming && logEntries.length === 0" class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+            <p class="text-gray-500 dark:text-gray-400">Waiting for execution output...</p>
+          </div>
+
+          <!-- No log available (completed execution without log) -->
+          <div v-else-if="!isStreaming && !logData?.has_log && logEntries.length === 0" class="text-center py-8">
             <svg class="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
@@ -302,9 +344,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { marked } from 'marked'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -317,6 +360,14 @@ const loading = ref(true)
 const error = ref(null)
 const execution = ref(null)
 const logData = ref(null)
+
+// Live streaming state
+const isStreaming = ref(false)
+const streamingEntries = ref([])  // Raw entries from stream
+const eventSource = ref(null)
+const autoScroll = ref(true)
+const logContainer = ref(null)
+const isStopping = ref(false)
 
 // Computed
 const statusClass = computed(() => {
@@ -345,8 +396,18 @@ const triggerIconColor = computed(() => {
 })
 
 const logEntries = computed(() => {
+  // If streaming, use streaming entries
+  if (isStreaming.value && streamingEntries.value.length > 0) {
+    return parseExecutionLog(streamingEntries.value)
+  }
+  // Otherwise use loaded log data
   if (!logData.value?.log) return []
   return parseExecutionLog(logData.value.log)
+})
+
+const renderedResponse = computed(() => {
+  if (!execution.value?.response) return ''
+  return marked(execution.value.response)
 })
 
 // Methods
@@ -355,7 +416,123 @@ async function loadExecution() {
   error.value = null
 
   try {
-    // Fetch execution details and log in parallel
+    // Fetch execution details first
+    const execResponse = await axios.get(
+      `/api/agents/${agentName.value}/executions/${executionId.value}`,
+      { headers: authStore.authHeader }
+    )
+    execution.value = execResponse.data
+
+    // If execution is running, start streaming instead of fetching static log
+    if (execution.value.status === 'running') {
+      startStreaming()
+      loading.value = false
+      return
+    }
+
+    // For completed executions, fetch the log
+    const logResponse = await axios.get(
+      `/api/agents/${agentName.value}/executions/${executionId.value}/log`,
+      { headers: authStore.authHeader }
+    )
+    logData.value = logResponse.data
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message || 'Failed to load execution'
+  } finally {
+    loading.value = false
+  }
+}
+
+function startStreaming() {
+  // Don't start if already streaming
+  if (eventSource.value) return
+
+  isStreaming.value = true
+  streamingEntries.value = []
+
+  // Use fetch with ReadableStream for SSE (EventSource doesn't support custom headers)
+  const url = `/api/agents/${agentName.value}/executions/${executionId.value}/stream`
+
+  fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${authStore.token}`,
+      'Accept': 'text/event-stream'
+    }
+  }).then(response => {
+    if (!response.ok) {
+      throw new Error(`Stream failed: ${response.status}`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    function processStream() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          handleStreamEnd()
+          return
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete SSE messages
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''  // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'stream_end') {
+                handleStreamEnd()
+                return
+              }
+
+              if (data.type === 'error') {
+                console.error('Stream error:', data.message)
+                continue
+              }
+
+              // Add entry to streaming entries
+              streamingEntries.value.push(data)
+
+              // Auto-scroll to bottom
+              if (autoScroll.value) {
+                nextTick(() => scrollToBottom())
+              }
+            } catch (e) {
+              // Ignore parse errors for comments/keepalives
+            }
+          }
+        }
+
+        processStream()
+      }).catch(err => {
+        console.error('Stream read error:', err)
+        handleStreamEnd()
+      })
+    }
+
+    processStream()
+  }).catch(err => {
+    console.error('Failed to start stream:', err)
+    isStreaming.value = false
+    // Fall back to polling for log
+    loadExecutionLog()
+  })
+}
+
+function handleStreamEnd() {
+  isStreaming.value = false
+
+  // Reload execution to get final status
+  loadExecutionFinal()
+}
+
+async function loadExecutionFinal() {
+  try {
     const [execResponse, logResponse] = await Promise.all([
       axios.get(`/api/agents/${agentName.value}/executions/${executionId.value}`, {
         headers: authStore.authHeader
@@ -364,13 +541,59 @@ async function loadExecution() {
         headers: authStore.authHeader
       })
     ])
-
     execution.value = execResponse.data
     logData.value = logResponse.data
+    // Clear streaming entries since we now have the full log
+    streamingEntries.value = []
   } catch (err) {
-    error.value = err.response?.data?.detail || err.message || 'Failed to load execution'
+    console.error('Failed to load final execution state:', err)
+  }
+}
+
+async function loadExecutionLog() {
+  try {
+    const logResponse = await axios.get(
+      `/api/agents/${agentName.value}/executions/${executionId.value}/log`,
+      { headers: authStore.authHeader }
+    )
+    logData.value = logResponse.data
+  } catch (err) {
+    console.error('Failed to load execution log:', err)
+  }
+}
+
+function scrollToBottom() {
+  const container = document.querySelector('.log-scroll-container')
+  if (container) {
+    container.scrollTop = container.scrollHeight
+  }
+}
+
+function toggleAutoScroll() {
+  autoScroll.value = !autoScroll.value
+  if (autoScroll.value) {
+    scrollToBottom()
+  }
+}
+
+async function stopExecution() {
+  if (isStopping.value) return
+  isStopping.value = true
+
+  try {
+    // Use the execution ID from the execution record
+    await axios.post(
+      `/api/agents/${agentName.value}/executions/${executionId.value}/terminate`,
+      { task_execution_id: executionId.value },
+      { headers: authStore.authHeader }
+    )
+    // Stream will end naturally, which will trigger loadExecutionFinal
+  } catch (err) {
+    console.error('Failed to stop execution:', err)
+    // Force reload anyway
+    handleStreamEnd()
   } finally {
-    loading.value = false
+    isStopping.value = false
   }
 }
 
@@ -491,5 +714,14 @@ function parseExecutionLog(log) {
 // Lifecycle
 onMounted(() => {
   loadExecution()
+})
+
+onUnmounted(() => {
+  // Clean up stream if active
+  if (eventSource.value) {
+    eventSource.value.close()
+    eventSource.value = null
+  }
+  isStreaming.value = false
 })
 </script>

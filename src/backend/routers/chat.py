@@ -4,6 +4,7 @@ Agent chat and activity routes for the Trinity backend.
 Includes execution queue integration to prevent parallel execution on the same agent.
 """
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import StreamingResponse
 import httpx
 import json
 import logging
@@ -1184,3 +1185,71 @@ async def get_agent_running_executions(
             return response.json()
     except httpx.HTTPError:
         return {"executions": []}
+
+
+# ============================================================================
+# Live Execution Streaming Routes
+# ============================================================================
+
+@router.get("/{name}/executions/{execution_id}/stream")
+async def stream_execution_log(
+    name: str,
+    execution_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Stream execution log entries via Server-Sent Events (SSE).
+
+    Proxies the SSE stream from the agent container to the frontend.
+    Validates user access before starting the stream.
+
+    SSE Event format:
+    - data: JSON-encoded log entry from Claude Code
+    - Final message: {"type": "stream_end"}
+
+    Use this endpoint for live monitoring of running executions.
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    async def proxy_stream():
+        """Proxy SSE stream from agent container."""
+        agent_url = f"http://agent-{name}:8000/api/executions/{execution_id}/stream"
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", agent_url) as response:
+                    if response.status_code == 404:
+                        # Execution not found - send error and close
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+                        return
+
+                    if response.status_code != 200:
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Agent returned {response.status_code}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+                        return
+
+                    # Stream through data from agent
+                    async for chunk in response.aiter_text():
+                        yield chunk
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to connect to agent'})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+        except Exception as e:
+            logger.error(f"[Stream] Error streaming from agent {name}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+
+    return StreamingResponse(
+        proxy_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

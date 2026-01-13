@@ -207,13 +207,25 @@
 
             <!-- Right side: Actions -->
             <div class="flex items-center space-x-2 ml-4">
-              <!-- Open Execution Detail Page -->
+              <!-- Open Execution Detail Page (Live for running, Details for completed) -->
+              <!-- For server executions: task.id IS the database UUID -->
+              <!-- For local tasks: task.id is 'local-xxx', must use task.execution_id instead -->
               <router-link
-                v-if="!task.id.startsWith('local-')"
-                :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id } }"
-                class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
-                title="Open execution details"
+                v-if="!task.id.startsWith('local-') || task.execution_id"
+                :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id.startsWith('local-') ? task.execution_id : task.id } }"
+                :class="[
+                  'p-1.5 rounded transition-colors flex items-center space-x-1',
+                  task.status === 'running'
+                    ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20'
+                    : 'text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                ]"
+                :title="task.status === 'running' ? 'View live execution' : 'Open execution details'"
               >
+                <!-- Live indicator for running tasks -->
+                <span v-if="task.status === 'running'" class="flex items-center">
+                  <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse mr-1"></span>
+                  <span class="text-xs font-medium">Live</span>
+                </span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>

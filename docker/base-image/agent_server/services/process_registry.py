@@ -3,13 +3,16 @@ Process Registry for tracking running subprocess handles.
 
 Enables termination of executions by execution_id.
 Used by both Claude Code and Gemini runtimes.
+
+Also provides log streaming infrastructure for live execution monitoring.
 """
 
 import signal
 import subprocess
+import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List, AsyncIterator
 from threading import Lock
 
 logger = logging.getLogger(__name__)
@@ -21,11 +24,22 @@ class ProcessRegistry:
     Enables termination of executions by execution_id.
 
     Thread-safe via mutex lock for all operations.
+
+    Also provides log streaming infrastructure:
+    - Each execution can have multiple log subscribers (asyncio.Queue)
+    - Log entries are published to all subscribers as they arrive
+    - Subscribers receive entries until execution completes
     """
 
     def __init__(self):
         self._processes: Dict[str, dict] = {}
         self._lock = Lock()
+        # Log streaming: execution_id -> list of subscriber queues
+        self._log_subscribers: Dict[str, List[asyncio.Queue]] = {}
+        # Buffered logs: execution_id -> list of log entries (for late joiners)
+        self._log_buffers: Dict[str, List[dict]] = {}
+        # Maximum buffer size per execution (prevents memory bloat)
+        self._max_buffer_size = 1000
 
     def register(self, execution_id: str, process: subprocess.Popen, metadata: dict = None):
         """
@@ -42,14 +56,30 @@ class ProcessRegistry:
                 "started_at": datetime.utcnow(),
                 "metadata": metadata or {}
             }
+            # Initialize log streaming structures
+            self._log_subscribers[execution_id] = []
+            self._log_buffers[execution_id] = []
             logger.info(f"[ProcessRegistry] Registered execution {execution_id}")
 
     def unregister(self, execution_id: str):
-        """Unregister a completed process."""
+        """Unregister a completed process and signal stream end to subscribers."""
         with self._lock:
             if execution_id in self._processes:
                 del self._processes[execution_id]
                 logger.info(f"[ProcessRegistry] Unregistered execution {execution_id}")
+
+            # Signal end of stream to all subscribers
+            if execution_id in self._log_subscribers:
+                for queue in self._log_subscribers[execution_id]:
+                    try:
+                        queue.put_nowait({"type": "stream_end"})
+                    except asyncio.QueueFull:
+                        pass
+                del self._log_subscribers[execution_id]
+
+            # Clean up buffer (keep for a bit for late requests, but this is fine)
+            if execution_id in self._log_buffers:
+                del self._log_buffers[execution_id]
 
     def terminate(self, execution_id: str, graceful_timeout: int = 5) -> dict:
         """
@@ -161,6 +191,117 @@ class ProcessRegistry:
             if finished:
                 logger.info(f"[ProcessRegistry] Cleaned up {len(finished)} finished processes")
             return len(finished)
+
+    # ========================================================================
+    # Log Streaming Methods
+    # ========================================================================
+
+    def publish_log_entry(self, execution_id: str, entry: dict):
+        """
+        Publish a log entry to all subscribers for an execution.
+
+        Called from claude_code.py as each line is processed.
+        Non-blocking: if a subscriber's queue is full, the entry is dropped for that subscriber.
+
+        Args:
+            execution_id: The execution ID
+            entry: The raw JSON log entry from Claude Code
+        """
+        with self._lock:
+            # Add to buffer for late joiners
+            if execution_id in self._log_buffers:
+                buffer = self._log_buffers[execution_id]
+                buffer.append(entry)
+                # Trim buffer if too large
+                if len(buffer) > self._max_buffer_size:
+                    self._log_buffers[execution_id] = buffer[-self._max_buffer_size:]
+
+            # Publish to all subscribers
+            if execution_id in self._log_subscribers:
+                for queue in self._log_subscribers[execution_id]:
+                    try:
+                        queue.put_nowait(entry)
+                    except asyncio.QueueFull:
+                        # Drop entry for this slow subscriber
+                        logger.warning(f"[ProcessRegistry] Log queue full for execution {execution_id}, dropping entry")
+
+    def subscribe_logs(self, execution_id: str) -> asyncio.Queue:
+        """
+        Subscribe to log entries for an execution.
+
+        Returns a queue that will receive log entries as they arrive.
+        First sends all buffered entries, then streams new ones.
+        Returns None if execution not found.
+
+        Args:
+            execution_id: The execution ID to subscribe to
+
+        Returns:
+            asyncio.Queue to receive log entries, or None if not found
+        """
+        queue = asyncio.Queue(maxsize=500)
+
+        with self._lock:
+            # Check if execution exists (or recently existed with buffer)
+            if execution_id not in self._log_subscribers and execution_id not in self._log_buffers:
+                return None
+
+            # Send buffered entries first
+            if execution_id in self._log_buffers:
+                for entry in self._log_buffers[execution_id]:
+                    try:
+                        queue.put_nowait(entry)
+                    except asyncio.QueueFull:
+                        break
+
+            # Register as subscriber if execution is still running
+            if execution_id in self._log_subscribers:
+                self._log_subscribers[execution_id].append(queue)
+            else:
+                # Execution finished, just send stream_end
+                try:
+                    queue.put_nowait({"type": "stream_end"})
+                except asyncio.QueueFull:
+                    pass
+
+        return queue
+
+    def unsubscribe_logs(self, execution_id: str, queue: asyncio.Queue):
+        """
+        Unsubscribe from log entries.
+
+        Args:
+            execution_id: The execution ID
+            queue: The queue to unsubscribe
+        """
+        with self._lock:
+            if execution_id in self._log_subscribers:
+                try:
+                    self._log_subscribers[execution_id].remove(queue)
+                except ValueError:
+                    pass
+
+    def get_buffered_logs(self, execution_id: str) -> Optional[List[dict]]:
+        """
+        Get all buffered log entries for an execution.
+
+        Used for non-streaming requests (e.g., page refresh on completed execution).
+
+        Args:
+            execution_id: The execution ID
+
+        Returns:
+            List of log entries, or None if execution not found
+        """
+        with self._lock:
+            if execution_id in self._log_buffers:
+                return list(self._log_buffers[execution_id])
+            return None
+
+    def is_execution_running(self, execution_id: str) -> bool:
+        """Check if an execution is currently running."""
+        with self._lock:
+            return execution_id in self._processes
 
 
 # Global instance

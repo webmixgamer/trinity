@@ -487,6 +487,8 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
                     try:
                         raw_msg = json.loads(line.strip())
                         raw_messages.append(raw_msg)
+                        # Publish to live streaming subscribers
+                        registry.publish_log_entry(execution_id, raw_msg)
                     except json.JSONDecodeError:
                         pass
                     # Process each line immediately - updates session_activity in real-time
@@ -682,6 +684,8 @@ async def execute_headless_task(
                     try:
                         raw_msg = json.loads(line.strip())
                         raw_messages.append(raw_msg)
+                        # Publish to live streaming subscribers
+                        registry.publish_log_entry(task_session_id, raw_msg)
                     except json.JSONDecodeError:
                         pass
                     # Process each line for metadata/tool tracking

@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-13)**: Live Button for Running Tasks:
+> - **execution-detail-page.md**: Added "Live" button entry point from TasksPanel (lines 213-232)
+> - Green badge with animated pulsing dot appears for running tasks
+> - Navigates to Execution Detail page for real-time monitoring
+> - Explicit ID logic: server executions use `task.id`, local pending tasks use `task.execution_id` from process registry
+> - **execution-termination.md**: Added Live button as additional entry point alongside Stop button
+> - **LIVE_EXECUTION_STREAMING.md**: Marked FR4 (Entry Point from Running Task) as implemented
+> - Files: TasksPanel.vue (213-232)
+>
 > **Updated (2026-01-13)**: System Agent UI Consolidation:
 > - **system-agent-ui.md**: Archived - dedicated `/system-agent` page removed
 > - **internal-system-agent.md**: Updated Frontend UI section with new AgentDetail.vue tab filtering, Agents.vue system agent display, and store getters
@@ -312,7 +321,7 @@
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
-| **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel icon, Timeline click (Implemented 2026-01-10) |
+| **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |

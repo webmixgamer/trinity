@@ -4,10 +4,12 @@ Chat endpoints for the agent server.
 Now supports multiple runtimes (Claude Code, Gemini CLI) via runtime adapter.
 """
 import json
+import asyncio
 import logging
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import StreamingResponse
 
 from ..models import ChatRequest, ModelRequest, ParallelTaskRequest
 from ..state import agent_state
@@ -284,6 +286,87 @@ async def get_execution_status(execution_id: str):
     if not status:
         raise HTTPException(status_code=404, detail="Execution not found")
     return status
+
+
+# ============================================================================
+# Live Execution Streaming Endpoints
+# ============================================================================
+
+@router.get("/api/executions/{execution_id}/stream")
+async def stream_execution_log(execution_id: str):
+    """
+    Stream execution log entries via Server-Sent Events (SSE).
+
+    Sends log entries in real-time as they are produced by Claude Code.
+    If the execution is already running, first sends all buffered entries,
+    then streams new ones.
+
+    SSE Event format:
+    - data: JSON-encoded log entry from Claude Code
+    - Final message: {"type": "stream_end"}
+
+    Note: This endpoint has no authentication - security is handled by the
+    backend proxy which validates user access before proxying to agent.
+    """
+    registry = get_process_registry()
+
+    # Check if execution exists
+    if not registry.is_execution_running(execution_id):
+        # Try to get buffered logs for recently completed execution
+        buffered = registry.get_buffered_logs(execution_id)
+        if buffered is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        # Return buffered logs as static stream (for completed executions)
+        async def static_generator():
+            for entry in buffered:
+                yield f"data: {json.dumps(entry)}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+
+        return StreamingResponse(
+            static_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    # Subscribe to live stream
+    queue = registry.subscribe_logs(execution_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    async def event_generator():
+        """Generate SSE events from the log queue."""
+        try:
+            while True:
+                try:
+                    # Wait for next entry with timeout (allows checking if client disconnected)
+                    entry = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                    yield f"data: {json.dumps(entry)}\n\n"
+
+                    # Check if stream ended
+                    if entry.get("type") == "stream_end":
+                        break
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    yield ": keepalive\n\n"
+        finally:
+            # Unsubscribe when client disconnects
+            registry.unsubscribe_logs(execution_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 # ============================================================================

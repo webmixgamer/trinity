@@ -383,6 +383,17 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Dedicated page for execution details with metadata, timestamps, transcript
 - **Flow**: `docs/memory/feature-flows/execution-detail-page.md`
 
+### 13.8 Live Execution Streaming
+- **Status**: ✅ Implemented (2026-01-13)
+- **Description**: Real-time streaming of Claude Code execution logs to the Execution Detail page
+- **Key Features**:
+  - SSE streaming from agent server through backend proxy
+  - Live log display with auto-scroll
+  - "Live" indicator for running executions
+  - Stop button integration
+  - Late joiner support (buffered entries)
+- **Spec**: `docs/requirements/LIVE_EXECUTION_STREAMING.md`
+
 ---
 
 ## 14. Multi-Runtime Support
