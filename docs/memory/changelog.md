@@ -1,3 +1,17 @@
+### 2026-01-13 23:00:00
+🎨 **UX: Dashboard Default View & Clickable Logo**
+
+**Changes**:
+1. **Header logo now clickable** - Trinity logo and title navigate to Dashboard (`/`)
+2. **Timeline is now the default view** - New users see Timeline view instead of Graph
+
+**Files Modified**:
+- `src/frontend/src/components/NavBar.vue:6-9` - Logo wrapped in `<router-link to="/">`
+- `src/frontend/src/stores/network.js:53-55` - `isTimelineMode` defaults to `true` if no localStorage preference
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated user journey and revision history
+
+---
+
 ### 2026-01-13 22:30:00
 🔬 **Research: Dedicated Scheduler Service Architecture**
 

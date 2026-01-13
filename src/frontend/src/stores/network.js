@@ -50,8 +50,9 @@ export const useNetworkStore = defineStore('network', () => {
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
 
-  // View mode state (graph vs timeline)
-  const isTimelineMode = ref(false)
+  // View mode state (graph vs timeline) - default to timeline, persist to localStorage
+  const savedViewMode = localStorage.getItem('trinity-dashboard-view')
+  const isTimelineMode = ref(savedViewMode ? savedViewMode === 'timeline' : true)
   const isPlaying = ref(false)
   const replaySpeed = ref(10) // 10x default
   const currentEventIndex = ref(0)

@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-13 (In-progress bars now extend in real-time)
+> **Last Updated**: 2026-01-13 (Timeline is now the default view; logo is clickable)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
 
@@ -19,10 +19,11 @@ The Dashboard offers two views for monitoring the agent fleet:
 ### Switching Views
 
 1. User navigates to Dashboard (`/`)
-2. Toggle buttons in header: `[Graph] [Timeline]`
-3. Click "Timeline" to switch to Timeline view
-4. **Graph canvas is hidden** - only Timeline shows
-5. View preference persisted in localStorage (`trinity-dashboard-view`)
+2. **Timeline is the default view** for new users (no localStorage preference)
+3. Toggle buttons in header: `[Graph] [Timeline]`
+4. Click "Graph" to switch to Graph view if desired
+5. **Graph canvas is hidden** - only Timeline shows when active
+6. View preference persisted in localStorage (`trinity-dashboard-view`)
 
 ### Timeline View Features
 
@@ -614,6 +615,7 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-13 | **UX**: Timeline is now the default view for new users; header logo is clickable and navigates to Dashboard |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - bars grow every second as tasks execute, tooltips show live elapsed time |
 | 2026-01-11 | **Fix**: Frontend network.js now correctly reads `related_execution_id` from top-level activity field (was only checking details) |
 | 2026-01-11 | **Docs**: Clarified execution ID handling - navigation uses Database ID (from `related_execution_id`), not Queue ID |
