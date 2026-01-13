@@ -308,11 +308,13 @@ async def initialize_github_sync(
     repo_full_name = f"{body.repo_owner}/{body.repo_name}"
 
     try:
-        # Step 1: Create repository if requested (using GitHubService)
-        if body.create_repo:
-            gh = GitHubService(github_pat)
-            repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+        gh = GitHubService(github_pat)
 
+        # Step 1: Check repository existence and handle create_repo flag
+        repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+        if body.create_repo:
+            # Create repository if it doesn't exist
             if not repo_info.exists:
                 create_result = await gh.create_repository(
                     owner=body.repo_owner,
@@ -325,6 +327,13 @@ async def initialize_github_sync(
                         status_code=400,
                         detail=f"Failed to create repository: {create_result.error}"
                     )
+        else:
+            # create_repo=False: Repository MUST exist
+            if not repo_info.exists:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Repository '{repo_full_name}' does not exist. Set create_repo=true to create it, or use an existing repository."
+                )
 
         # Step 2: Initialize git in container (using git_service)
         init_result = await git_service.initialize_git_in_container(
@@ -334,9 +343,24 @@ async def initialize_github_sync(
         )
 
         if not init_result.success:
+            # Determine if this is a user error (400) or server error (500)
+            error_msg = init_result.error or "Unknown error"
+            # Repository not found during push = user configuration error
+            if "Repository not found" in error_msg or "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Git initialization failed: {error_msg}. Verify the repository exists and you have push access."
+                )
+            # Permission issues = user error
+            if "permission" in error_msg.lower() or "403" in error_msg:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Git initialization failed: {error_msg}. Check that your GitHub PAT has push access to this repository."
+                )
+            # Other errors could still be server issues
             raise HTTPException(
-                status_code=500,
-                detail=f"Git initialization failed: {init_result.error}"
+                status_code=400,
+                detail=f"Git initialization failed: {error_msg}"
             )
 
         # Step 3: Store configuration in database

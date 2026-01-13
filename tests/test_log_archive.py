@@ -2,11 +2,16 @@
 Tests for Vector log archival and retention.
 
 Tests the log archive service, API endpoints, compression, and local storage.
+
+Note: Service-level tests (TestArchiveService, TestLogArchiveIntegration) require
+the log archive service to have write access to /data directory. These tests
+will be skipped when running outside the proper container environment.
 """
 import pytest
 import json
 import gzip
 import sys
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
@@ -17,6 +22,13 @@ import shutil
 sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "backend"))
 
 from utils.assertions import assert_status, assert_status_in
+
+
+# Skip condition for tests that require the log archive service filesystem
+SKIP_SERVICE_TESTS = not (
+    os.path.exists('/data') and os.access('/data', os.W_OK)
+)
+SKIP_SERVICE_REASON = "Requires writable /data directory (run inside container)"
 
 
 # Test fixtures
@@ -220,8 +232,13 @@ class TestRetentionConfig:
 # Test: Archive Service
 # =========================================================================
 
+@pytest.mark.skipif(SKIP_SERVICE_TESTS, reason=SKIP_SERVICE_REASON)
 class TestArchiveService:
-    """Test log archive service functionality."""
+    """Test log archive service functionality.
+
+    These tests require the log archive service to have filesystem access.
+    They will be skipped when /data directory is not writable.
+    """
 
     @pytest.mark.asyncio
     async def test_extract_date_from_filename(self):
@@ -371,6 +388,7 @@ class TestLogServiceHealth:
 class TestLogArchiveIntegration:
     """Integration tests for log archival workflow."""
 
+    @pytest.mark.skipif(SKIP_SERVICE_TESTS, reason=SKIP_SERVICE_REASON)
     @pytest.mark.asyncio
     async def test_full_archive_workflow(self, test_log_dir, test_archive_dir):
         """Test complete archive workflow with file operations."""
@@ -469,8 +487,13 @@ class TestArchiveValidation:
 # Test: Error Handling
 # =========================================================================
 
+@pytest.mark.skipif(SKIP_SERVICE_TESTS, reason=SKIP_SERVICE_REASON)
 class TestArchiveErrorHandling:
-    """Test error handling in archive service."""
+    """Test error handling in archive service.
+
+    These tests require the log archive service to be importable.
+    They will be skipped when /data directory is not writable.
+    """
 
     @pytest.mark.asyncio
     async def test_archive_handles_missing_log_directory(self):
