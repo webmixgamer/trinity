@@ -13,7 +13,7 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
-| ⏳ | **Duplicate Schedule Execution** | Production runs `--workers 2`, each worker has own APScheduler instance causing duplicate executions. Fix: Dedicated scheduler service OR distributed lock. See `docs/requirements/DEDICATED_SCHEDULER_SERVICE.md`. | **HIGH** |
+| ✅ | **Duplicate Schedule Execution** | **Fixed 2026-01-13**: Implemented dedicated scheduler service with Redis distributed locking. See `src/scheduler/`, `docs/memory/feature-flows/scheduler-service.md`. | **HIGH** |
 | ⏳ | Executions 404 for Non-Existent Agent | `GET /api/agents/{name}/executions` returns `200 + []` instead of `404` for non-existent agents. Should add agent existence check before returning empty list. | LOW |
 | ⏳ | Test Client Headers Bug | `TrinityApiClient.post()` in `tests/utils/api_client.py` passes `headers` param twice to httpx when caller also provides headers. Fix: merge headers instead of passing separately. | LOW |
 | ⏳ | Emergency Stop Test Timeout | `test_emergency_stop_returns_structure` times out (>2 min) with multiple agents. Increase test timeout to 180s or mock the operation. | LOW |
@@ -65,7 +65,7 @@
 | ✅ | **Parallel Headless Execution (12.1)** | Stateless parallel task execution - enables orchestrator to spawn N worker tasks simultaneously. `POST /api/agents/{name}/task` bypasses queue. MCP `chat_with_agent(parallel=true)`. Completed 2025-12-22. | **HIGH** |
 | ✅ | **OWASP Security Hardening** | Fixed 7/14 OWASP Top 10:2025 issues - SECRET_KEY, password hashing, Redis auth, WebSocket auth, CORS, error sanitization. Completed 2025-12-23. | **HIGH** |
 | ✅ | **Web Terminal for System Agent (11.5)** | Browser-based xterm.js terminal with PTY forwarding via Docker exec. Full Claude Code TUI. Admin-only, no SSH exposure. Completed 2025-12-25. | **HIGH** |
-| ⏳ | **Dedicated Scheduler Service (11.6)** | Separate scheduler into independent service. Fixes duplicate execution bug with multiple workers. Redis job store + distributed locks. See `docs/requirements/DEDICATED_SCHEDULER_SERVICE.md`. | **HIGH** |
+| ✅ | **Dedicated Scheduler Service (11.6)** | **Completed 2026-01-13**: Standalone scheduler in `src/scheduler/`. Redis distributed locks, 71 tests, Docker deployment. See `docs/memory/feature-flows/scheduler-service.md`. | **HIGH** |
 | ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |

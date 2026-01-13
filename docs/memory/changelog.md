@@ -1,3 +1,32 @@
+### 2026-01-13 21:00:06
+🐳 **Dedicated Scheduler Service - Implementation Complete**
+
+**Problem Solved**: Multiple uvicorn workers caused duplicate schedule executions (each worker ran its own APScheduler).
+
+**Solution**: Standalone scheduler service with Redis distributed locking.
+
+**New Components**:
+- `src/scheduler/` - Python service (config, models, database, agent_client, locking, service, main)
+- `docker/scheduler/` - Dockerfile, requirements.txt, docker-compose.test.yml
+- `tests/scheduler_tests/` - 71 unit tests (all passing)
+- `docs/memory/feature-flows/scheduler-service.md` - Feature flow documentation
+
+**Key Features**:
+- Single-instance design prevents duplicates
+- Redis lock: `scheduler:lock:schedule:{id}` with 600s TTL, auto-renewal at 300s
+- Agent HTTP client with 15-min timeout to `/api/task`
+- Health endpoints: `/health`, `/status`
+- Redis pub/sub events: `schedule_execution_started`, `schedule_execution_completed`
+
+**Integration Tested**:
+- Docker build ✅
+- Redis connection ✅
+- Database operations ✅
+- Cron scheduling ✅
+- Execution tracking ✅
+
+---
+
 ### 2026-01-13 23:00:00
 🎨 **UX: Dashboard Default View & Clickable Logo**
 
