@@ -1,3 +1,48 @@
+### 2026-01-14 13:15:00
+🐛 **Security Fix: Multiple Bug Fixes from Best Practices Audit**
+
+Implemented 5 bug fixes from the security audit (docs/bugs/BUG_FIX_REQUIREMENTS.md):
+
+**Bug 1: Execution Queue Race Conditions (HIGH)**
+- Fixed `submit()` to use atomic `SET NX EX` for slot acquisition
+- Fixed `complete()` to use Lua script for atomic pop-and-set
+- Replaced `KEYS` with `SCAN` in `get_all_busy_agents()` for production safety
+- File: `src/backend/services/execution_queue.py`
+
+**Bug 2: Missing Auth on Lifecycle Endpoints (HIGH)**
+- Changed `start_agent_endpoint` to use `AuthorizedAgentByName` dependency
+- Changed `stop_agent_endpoint` to use `AuthorizedAgentByName` dependency
+- Changed `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency
+- File: `src/backend/routers/agents.py:315-384`
+
+**Bug 3: Container Security Inconsistency (HIGH)**
+- Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants
+- Fixed ALL container creation paths to ALWAYS apply baseline security:
+  - Always use `cap_drop=['ALL']` then add back specific caps
+  - Always apply AppArmor profile
+  - Always apply `noexec,nosuid` to /tmp
+- Files modified:
+  - `src/backend/services/agent_service/lifecycle.py` - Container recreation
+  - `src/backend/services/agent_service/crud.py` - Initial container creation
+  - `src/backend/services/system_agent_service.py` - System agent creation
+
+**Bug 4: Executions 404 for Non-Existent Agent (LOW)**
+- Verified `AuthorizedAgent` dependency already checks existence via `db.get_agent_owner()`
+- Added clarifying docstring to endpoint
+- File: `src/backend/routers/schedules.py:309-320`
+
+**Bug 5: Test Client Headers Bug (LOW)**
+- Verified already fixed - `kwargs.pop('headers', {})` prevents double passing
+- File: `tests/utils/api_client.py`
+
+**Bug 6: Emergency Stop Timeout (LOW)**
+- Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)`
+- Reduced worst-case time from N*10s to ~20s for many agents
+- Added helper function `_stop_agent_container()` for thread pool
+- File: `src/backend/routers/ops.py:591-682`
+
+---
+
 ### 2026-01-14 12:35:00
 🧪 **Test: Updated Phase 3 Context Validation**
 

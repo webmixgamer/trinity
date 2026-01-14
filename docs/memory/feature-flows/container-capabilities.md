@@ -347,4 +347,5 @@ To enable true per-agent capability control:
 
 | Date | Change |
 |------|--------|
+| 2026-01-14 | **Security Consistency (HIGH)**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. All container creation paths now ALWAYS apply baseline security (`cap_drop=['ALL']`, AppArmor, noexec tmpfs) before adding back needed capabilities. Previously some paths had inconsistent security settings. See [agent-lifecycle.md](agent-lifecycle.md) for full security constant documentation. |
 | 2026-01-13 | Initial documentation - CFG-004 feature flow |

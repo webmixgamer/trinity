@@ -21,6 +21,44 @@ from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Container Security Capability Sets
+# =============================================================================
+# These define the Linux capabilities granted to agent containers.
+# Security principle: Always drop ALL caps, then add back only what's needed.
+
+# Restricted mode capabilities - minimum for agent operation (default)
+RESTRICTED_CAPABILITIES = [
+    'NET_BIND_SERVICE',  # Bind to ports < 1024
+    'SETGID', 'SETUID',  # Change user/group (for su/sudo)
+    'CHOWN',             # Change file ownership
+    'SYS_CHROOT',        # Use chroot
+    'AUDIT_WRITE',       # Write to audit log
+]
+
+# Full capabilities mode - adds package installation support
+# Used when agents need apt-get, pip install, etc.
+FULL_CAPABILITIES = RESTRICTED_CAPABILITIES + [
+    'DAC_OVERRIDE',      # Bypass file permission checks (needed for apt)
+    'FOWNER',            # Bypass permission checks on file owner
+    'FSETID',            # Don't clear setuid/setgid bits
+    'KILL',              # Send signals to processes
+    'MKNOD',             # Create special files
+    'NET_RAW',           # Use raw sockets (ping, etc.)
+    'SYS_PTRACE',        # Trace processes (debugging)
+]
+
+# These capabilities are NEVER granted - they pose significant security risks
+# Listed for documentation; we achieve this by always using cap_drop=['ALL']
+PROHIBITED_CAPABILITIES = [
+    'SYS_ADMIN',         # Mount filesystems, configure namespace - too powerful
+    'NET_ADMIN',         # Network administration - could escape container
+    'SYS_RAWIO',         # Raw I/O access - direct hardware access
+    'SYS_MODULE',        # Load kernel modules - kernel compromise
+    'SYS_BOOT',          # Reboot system
+]
+
+
 async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
     """
     Inject Trinity meta-prompt into an agent via its internal API.
@@ -302,9 +340,11 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
                 except docker.errors.NotFound:
                     pass
 
-    # Create new container
-    # Security: If full_capabilities=True, use Docker defaults (apt-get works)
-    # Otherwise use restricted mode (secure default)
+    # Create new container with security settings
+    # Security principle: ALWAYS apply baseline security, even in full_capabilities mode
+    # - Always drop ALL caps, then add back only what's needed
+    # - Always apply AppArmor profile
+    # - Always apply noexec,nosuid to /tmp
     new_container = docker_client.containers.run(
         image,
         detach=True,
@@ -313,11 +353,15 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
         volumes=volumes,
         environment=env_vars,
         labels=labels,
-        security_opt=['apparmor:docker-default'] if not full_capabilities else [],
-        cap_drop=[] if full_capabilities else ['ALL'],
-        cap_add=[] if full_capabilities else ['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
+        # Always apply AppArmor for additional sandboxing
+        security_opt=['apparmor:docker-default'],
+        # Always drop ALL capabilities first (defense in depth)
+        cap_drop=['ALL'],
+        # Add back only the capabilities needed for the mode
+        cap_add=FULL_CAPABILITIES if full_capabilities else RESTRICTED_CAPABILITIES,
         read_only=False,
-        tmpfs={'/tmp': 'size=100m'} if full_capabilities else {'/tmp': 'noexec,nosuid,size=100m'},
+        # Always apply noexec,nosuid to /tmp for security
+        tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
         network='trinity-agent-network',
         mem_limit=memory,
         cpu_count=int(cpu)

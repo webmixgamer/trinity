@@ -3,7 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-01-13)**: Dedicated Scheduler Service:
+> **Updated (2026-01-14)**: Security Bug Fixes (4 HIGH, 1 LOW):
+> - **execution-queue.md**: Race Condition Fixes - `submit()` uses atomic `SET NX EX`, `complete()` uses Lua script for atomic pop-and-set, `get_all_busy_agents()` uses `SCAN` instead of blocking `KEYS`
+> - **agent-lifecycle.md**: Auth on Lifecycle Endpoints - `start`, `stop`, `logs` endpoints now use `AuthorizedAgentByName` dependency
+> - **agent-lifecycle.md + container-capabilities.md**: Container Security Consistency - Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants, all creation paths now apply baseline security
+> - **internal-system-agent.md**: Emergency Stop Parallel Execution - Uses `ThreadPoolExecutor(max_workers=10)` for faster fleet halt (20-30s vs 200+s)
+>
+> **Previous (2026-01-13)**: Dedicated Scheduler Service:
 > - **scheduler-service.md**: New standalone scheduler service replacing embedded backend scheduler
 > - Fixes duplicate execution bug in multi-worker deployments (was: each uvicorn worker ran its own APScheduler)
 > - Source: `src/scheduler/` (main.py, service.py, config.py, models.py, database.py, agent_client.py, locking.py)
@@ -300,7 +306,7 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
+| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
@@ -324,7 +330,7 @@
 | **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-10) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
-| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2026-01-12: termination section) |
+| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **2026-01-14 Race Condition Fixes**: Atomic `SET NX EX` for slot acquisition, Lua script for atomic pop-and-set, `SCAN` instead of `KEYS`. Service layer: queue.py, scheduler uses AgentClient.task() for raw log format |
 | **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
 | **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top), `displayAgents` computed, admin check on mount (Updated 2026-01-13) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
@@ -335,7 +341,7 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-13**: UI consolidated + Report Storage (`~/reports/` directories, timestamped files, `.gitignore`). **2026-01-12**: Fleet ops uses `list_all_agents_fast()`. (Req 11.1, 11.2) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-14**: Emergency stop uses parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
@@ -345,7 +351,7 @@
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
 | **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
-| **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - system-wide setting + per-agent API, container security via cap_drop/cap_add, automatic recreation on start (CFG-004, Created 2026-01-13) |
+| **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - **2026-01-14**: Added RESTRICTED/FULL_CAPABILITIES constants for consistent security across all container creation paths. System-wide setting + per-agent API, automatic recreation on start (CFG-004) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |

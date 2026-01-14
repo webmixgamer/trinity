@@ -460,7 +460,9 @@ class AgentSessionInfo:
 - Uses `client.get_session()` at lines 167-169
 - Classifies context usage: critical (>90%), warning (>75%), healthy
 
-### 3. Emergency Stop Flow
+### 3. Emergency Stop Flow (Parallel Execution - 2026-01-14)
+
+**Performance Improvement**: Emergency stop now uses `ThreadPoolExecutor(max_workers=10)` to stop agents in parallel instead of sequentially. This significantly reduces the time to halt a large fleet during emergencies.
 
 ```
 POST /api/ops/emergency-stop
@@ -473,11 +475,14 @@ POST /api/ops/emergency-stop
 └────────┬─────────────────────────┘
          │
          ▼
-┌──────────────────────────────────┐
-│ 2. Stop all non-system agents    │
-│    - Skip trinity-system         │
-│    - container.stop(timeout=10)  │
-└────────┬─────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ 2. Stop all non-system agents IN PARALLEL            │
+│    - Filter to running non-system agents             │
+│    - ThreadPoolExecutor(max_workers=10)              │
+│    - _stop_agent_container() helper for each         │
+│    - container.stop(timeout=10) per agent            │
+│    - 60-second timeout for all futures               │
+└────────┬─────────────────────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────┐
@@ -487,6 +492,32 @@ POST /api/ops/emergency-stop
 │    - errors: [...]               │
 └──────────────────────────────────┘
 ```
+
+**Implementation** (`src/backend/routers/ops.py:591-682`):
+
+```python
+def _stop_agent_container(agent_name: str, timeout: int = 10) -> dict:
+    """Stop a single agent container. Used for parallel stopping."""
+    try:
+        container = get_agent_container(agent_name)
+        if container:
+            container.stop(timeout=timeout)
+            return {"agent": agent_name, "result": "stopped"}
+        return {"agent": agent_name, "result": "not_found"}
+    except Exception as e:
+        return {"agent": agent_name, "result": "error", "error": str(e)}
+
+# In emergency_stop():
+with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    futures = {
+        executor.submit(_stop_agent_container, agent_name, 10): agent_name
+        for agent_name in agents_to_stop
+    }
+    for future in concurrent.futures.as_completed(futures, timeout=60):
+        # Process results
+```
+
+**Why Parallel**: Docker SDK `container.stop()` is synchronous and waits for the container to stop (up to timeout). With 20 agents at 10-second timeout each, sequential stopping would take 200+ seconds. Parallel stopping with 10 workers reduces this to ~20-30 seconds.
 
 ### 4. Cost Monitoring Flow (OTel Access)
 
@@ -870,6 +901,7 @@ ls -1 ~/reports/fleet/ | tail -1
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | **Emergency Stop Parallel Execution (LOW)**: Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)` in `routers/ops.py:591-682`. Added `_stop_agent_container()` helper function for thread pool execution. Reduces emergency stop time from 200+ seconds (sequential) to 20-30 seconds for a 20-agent fleet. Uses 60-second timeout for all futures with `concurrent.futures.as_completed()`. |
 | 2026-01-13 | **Report Storage**: Added organized report storage in `~/reports/` with subdirectories per report type. All slash commands now save reports with timestamped filenames. Added `.gitignore` to exclude reports from sync. |
 | 2026-01-13 | **UI Consolidation**: Removed dedicated `SystemAgent.vue` (782 lines) and `SystemAgentTerminal.vue` (~350 lines). System agent now uses standard `AgentDetail.vue` with tab filtering (`visibleTabs` computed, lines 414-448). Added `systemAgent` and `sortedAgentsWithSystem` getters to `agents.js` store (lines 25-27, 39-41). System agent visible on Agents page for admins only with purple ring and "SYSTEM" badge (Agents.vue lines 46-75). `/system-agent` route redirects to `/agents/trinity-system`. Schedules tab now available for system agent. |
 | 2026-01-12 | **Docker Stats Optimization**: Updated fleet status flow - `list_all_agents_fast()` now used at ops.py:54 instead of `list_all_agents()`. Avoids slow Docker API calls for better dashboard performance (~50ms vs 2-3s). |

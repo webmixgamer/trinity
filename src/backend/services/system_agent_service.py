@@ -22,6 +22,7 @@ from services.docker_service import (
 )
 from credentials import CredentialManager
 from services.settings_service import get_anthropic_api_key
+from services.agent_service.lifecycle import FULL_CAPABILITIES
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,9 @@ class SystemAgentService:
             'trinity.is-system': 'true',  # Mark as system agent
         }
 
-        # Create the container
+        # Create the container with security settings
+        # System agent uses FULL_CAPABILITIES for package installation, etc.
+        # Security: Always apply baseline protections even for privileged containers
         container = docker_client.containers.run(
             'trinity-agent-base:latest',
             name=f"agent-{SYSTEM_AGENT_NAME}",
@@ -248,7 +251,15 @@ class SystemAgentService:
             labels=labels,
             mem_limit=resources.get("memory", "8g"),
             cpu_count=int(resources.get("cpu", "4")),
-            restart_policy={"Name": "unless-stopped"}  # Auto-restart on failure
+            restart_policy={"Name": "unless-stopped"},  # Auto-restart on failure
+            # Always apply AppArmor for additional sandboxing
+            security_opt=['apparmor:docker-default'],
+            # Always drop ALL capabilities first (defense in depth)
+            cap_drop=['ALL'],
+            # System agent gets full capabilities for operational tasks
+            cap_add=FULL_CAPABILITIES,
+            # Always apply noexec,nosuid to /tmp for security
+            tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
         )
 
         # Register ownership with is_system=True

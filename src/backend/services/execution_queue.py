@@ -56,12 +56,39 @@ class ExecutionQueue:
 
     Ensures only one execution runs per agent at a time.
     Additional requests are queued (up to MAX_QUEUE_SIZE) or rejected.
+
+    Thread-safety: Uses atomic Redis operations to prevent race conditions:
+    - submit(): Uses SET NX EX for atomic slot acquisition
+    - complete(): Uses Lua script for atomic pop-and-set
     """
+
+    # Lua script for atomic complete operation
+    # Atomically pops next from queue and sets as running, or clears if empty
+    COMPLETE_SCRIPT = """
+local running_key = KEYS[1]
+local queue_key = KEYS[2]
+local ttl = tonumber(ARGV[1])
+
+-- Pop next from queue (RPOP for FIFO)
+local next_item = redis.call('RPOP', queue_key)
+
+if next_item then
+    -- Atomically set as running with TTL
+    redis.call('SET', running_key, next_item, 'EX', ttl)
+    return next_item
+else
+    -- No more items, clear running state
+    redis.call('DEL', running_key)
+    return nil
+end
+"""
 
     def __init__(self, redis_url: str = "redis://redis:6379"):
         self.redis = redis.from_url(redis_url, decode_responses=True)
         self.running_prefix = "agent:running:"
         self.queue_prefix = "agent:queue:"
+        # Register Lua script for atomic complete operation
+        self._complete_script = self.redis.register_script(self.COMPLETE_SCRIPT)
 
     def _running_key(self, agent_name: str) -> str:
         """Redis key for currently running execution."""
@@ -109,6 +136,9 @@ class ExecutionQueue:
         """
         Submit execution request for an agent.
 
+        Uses atomic SET NX EX to prevent race conditions where two concurrent
+        requests could both acquire the execution slot.
+
         Args:
             execution: The execution request to submit
             wait_if_busy: If True, queue the request if busy. If False, raise AgentBusyError.
@@ -125,22 +155,35 @@ class ExecutionQueue:
         running_key = self._running_key(execution.agent_name)
         queue_key = self._queue_key(execution.agent_name)
 
-        # Check if agent is free
-        current = self.redis.get(running_key)
-        if current is None:
-            # Agent is free - start immediately
-            execution.status = ExecutionStatus.RUNNING
-            execution.started_at = datetime.utcnow()
-            self.redis.set(running_key, self._serialize_execution(execution), ex=EXECUTION_TTL)
+        # Prepare execution for running state
+        execution.status = ExecutionStatus.RUNNING
+        execution.started_at = datetime.utcnow()
+        serialized = self._serialize_execution(execution)
+
+        # Atomic acquire: SET key value NX EX ttl
+        # Returns True if key was set (we acquired), False/None if key exists (busy)
+        acquired = self.redis.set(
+            running_key,
+            serialized,
+            nx=True,  # Only set if Not eXists
+            ex=EXECUTION_TTL
+        )
+
+        if acquired:
             logger.info(f"[Queue] Agent '{execution.agent_name}' execution started: {execution.id}")
             return ("running", execution)
 
-        # Agent is busy
+        # Agent is busy - atomic acquire failed
         if not wait_if_busy:
-            current_exec = self._deserialize_execution(current)
+            current = self.redis.get(running_key)
+            current_exec = self._deserialize_execution(current) if current else None
             raise AgentBusyError(execution.agent_name, current_exec)
 
-        # Check queue length
+        # Reset execution state for queuing
+        execution.status = ExecutionStatus.QUEUED
+        execution.started_at = None
+
+        # Check queue length and add (queue operations are a separate concern)
         queue_len = self.redis.llen(queue_key)
         if queue_len >= MAX_QUEUE_SIZE:
             logger.warning(f"[Queue] Agent '{execution.agent_name}' queue full ({queue_len} waiting)")
@@ -156,6 +199,9 @@ class ExecutionQueue:
         """
         Mark current execution done and start next if queued.
 
+        Uses a Lua script for atomic pop-and-set to prevent race conditions
+        where queue entries could be lost or processed twice.
+
         Args:
             agent_name: The agent that completed execution
             success: Whether execution succeeded
@@ -166,25 +212,28 @@ class ExecutionQueue:
         running_key = self._running_key(agent_name)
         queue_key = self._queue_key(agent_name)
 
-        # Get and log completed execution
+        # Log completed execution (before atomic operation)
         completed = self.redis.get(running_key)
         if completed:
             completed_exec = self._deserialize_execution(completed)
-            status = "completed" if success else "failed"
-            logger.info(f"[Queue] Agent '{agent_name}' execution {status}: {completed_exec.id}")
+            status_str = "completed" if success else "failed"
+            logger.info(f"[Queue] Agent '{agent_name}' execution {status_str}: {completed_exec.id}")
 
-        # Get next from queue (right pop for FIFO)
-        next_item = self.redis.rpop(queue_key)
+        # Atomic: pop next and set as running (or clear if empty)
+        # The Lua script handles both operations atomically
+        next_item = self._complete_script(
+            keys=[running_key, queue_key],
+            args=[EXECUTION_TTL]
+        )
+
         if next_item:
             next_exec = self._deserialize_execution(next_item)
+            # Update status in Python object (Redis already has the data)
             next_exec.status = ExecutionStatus.RUNNING
             next_exec.started_at = datetime.utcnow()
-            self.redis.set(running_key, self._serialize_execution(next_exec), ex=EXECUTION_TTL)
             logger.info(f"[Queue] Agent '{agent_name}' starting next execution: {next_exec.id}")
             return next_exec
         else:
-            # No more in queue - clear running state
-            self.redis.delete(running_key)
             logger.info(f"[Queue] Agent '{agent_name}' queue empty, now idle")
             return None
 
@@ -244,10 +293,18 @@ class ExecutionQueue:
         return existed
 
     async def get_all_busy_agents(self) -> List[str]:
-        """Get list of all agents currently executing."""
+        """Get list of all agents currently executing.
+
+        Uses SCAN instead of KEYS to avoid blocking Redis on large datasets.
+        """
         pattern = f"{self.running_prefix}*"
-        keys = self.redis.keys(pattern)
-        agents = [key.replace(self.running_prefix, "") for key in keys]
+        agents = []
+        cursor = 0
+        while True:
+            cursor, keys = self.redis.scan(cursor, match=pattern, count=100)
+            agents.extend(key.replace(self.running_prefix, "") for key in keys)
+            if cursor == 0:
+                break
         return agents
 
 

@@ -1,6 +1,11 @@
 # Feature: Execution Queue System
 
-> **Updated**: 2025-01-02 - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` to ensure execution logs are stored in raw Claude Code `stream-json` format for proper display in the log viewer.
+> **Updated**: 2026-01-14 - **Bug Fix (Race Conditions)**: Atomic Redis operations now prevent race conditions:
+> - `submit()` uses `SET NX EX` for atomic slot acquisition (prevents concurrent requests acquiring the same slot)
+> - `complete()` uses Lua script for atomic pop-and-set (prevents queue entries from being lost or processed twice)
+> - `get_all_busy_agents()` uses `SCAN` instead of `KEYS` to avoid blocking Redis on large datasets
+>
+> **Previous (2025-01-02)**: Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` to ensure execution logs are stored in raw Claude Code `stream-json` format for proper display in the log viewer.
 
 ## Overview
 The Execution Queue System prevents parallel execution on agents by serializing all execution requests through a Redis-backed queue. This ensures only one execution runs per agent at a time, protecting Claude Code's conversation state from corruption.
@@ -147,6 +152,29 @@ class QueueStatus(BaseModel):
 
 ## Execution Queue Service (`src/backend/services/execution_queue.py`)
 
+### Thread Safety (2026-01-14 Bug Fix)
+
+The queue uses atomic Redis operations to prevent race conditions:
+
+| Operation | Pattern | Security Benefit |
+|-----------|---------|------------------|
+| `submit()` | `SET NX EX` | Atomic slot acquisition - prevents two requests from acquiring the same slot |
+| `complete()` | Lua script | Atomic pop-and-set - prevents queue entries from being lost or processed twice |
+| `get_all_busy_agents()` | `SCAN` (not `KEYS`) | Non-blocking iteration - avoids Redis blocking on large datasets |
+
+**Lua Script for `complete()`** (lines 67-84):
+```lua
+-- Atomically pops next from queue and sets as running, or clears if empty
+local next_item = redis.call('RPOP', queue_key)
+if next_item then
+    redis.call('SET', running_key, next_item, 'EX', ttl)
+    return next_item
+else
+    redis.call('DEL', running_key)
+    return nil
+end
+```
+
 ### Configuration (lines 32-34)
 ```python
 MAX_QUEUE_SIZE = 3           # Max queued requests per agent
@@ -162,7 +190,7 @@ QUEUE_WAIT_TIMEOUT = 120     # 120 seconds max wait in queue
 
 ### Core Methods
 
-#### create_execution() (lines 82-102)
+#### create_execution() (lines 109-129)
 Creates an execution request object (not yet submitted to queue):
 ```python
 def create_execution(
@@ -176,8 +204,8 @@ def create_execution(
 ) -> Execution
 ```
 
-#### submit() (lines 104-153)
-Submits execution to queue. Returns status and execution object.
+#### submit() (lines 131-196)
+Submits execution to queue using atomic `SET NX EX` for slot acquisition.
 ```python
 async def submit(
     self,
@@ -185,6 +213,9 @@ async def submit(
     wait_if_busy: bool = True
 ) -> tuple[str, Execution]:
     """
+    Uses atomic SET NX EX to prevent race conditions where two concurrent
+    requests could both acquire the execution slot.
+
     Returns:
         ("running", execution) - Started immediately
         ("queued:N", execution) - Queued at position N
@@ -196,51 +227,67 @@ async def submit(
 ```
 
 **Flow:**
-1. Check if agent is free (Redis key empty)
-2. If free: set key, return "running"
-3. If busy and wait_if_busy=True: check queue length
+1. **Atomic acquire**: `SET key value NX EX ttl` - returns True only if key was set
+2. If acquired: return "running"
+3. If busy (atomic acquire failed) and wait_if_busy=True: check queue length
 4. If queue < MAX_QUEUE_SIZE: LPUSH to queue, return "queued:N"
 5. If queue full: raise QueueFullError
 
-#### complete() (lines 155-189)
-Marks current execution done and starts next if queued:
+#### complete() (lines 198-238)
+Marks current execution done and atomically starts next if queued:
 ```python
 async def complete(self, agent_name: str, success: bool = True) -> Optional[Execution]:
     """
+    Uses a Lua script for atomic pop-and-set to prevent race conditions
+    where queue entries could be lost or processed twice.
+
     Returns:
         Next execution that was started (if any), or None
     """
 ```
 
-**Flow:**
-1. Get and log completed execution
-2. RPOP next from queue (FIFO)
-3. If next exists: update status to RUNNING, set key
-4. If queue empty: delete running key (agent is idle)
+**Flow (Atomic via Lua Script):**
+1. Log completed execution (before atomic operation)
+2. Execute Lua script that atomically:
+   - RPOP next from queue
+   - If next exists: SET as running with TTL
+   - If queue empty: DEL running key
+3. Return next execution (or None if queue empty)
 
-#### get_status() (lines 191-212)
+#### get_status() (lines 240-261)
 Returns current queue status:
 ```python
 async def get_status(self, agent_name: str) -> QueueStatus
 ```
 
-#### is_busy() (lines 214-217)
+#### is_busy() (lines 263-266)
 Quick check if agent is executing:
 ```python
 async def is_busy(self, agent_name: str) -> bool
 ```
 
-#### clear_queue() (lines 219-230)
+#### clear_queue() (lines 268-279)
 Clears all queued executions (not current):
 ```python
 async def clear_queue(self, agent_name: str) -> int
 ```
 
-#### force_release() (lines 232-244)
+#### force_release() (lines 281-293)
 Emergency: clears running state for stuck agents:
 ```python
 async def force_release(self, agent_name: str) -> bool
 ```
+
+#### get_all_busy_agents() (lines 295-308)
+Lists all agents currently executing using `SCAN` (not `KEYS`):
+```python
+async def get_all_busy_agents(self) -> List[str]:
+    """
+    Uses SCAN instead of KEYS to avoid blocking Redis on large datasets.
+    """
+```
+
+**Note**: Previous implementation used `KEYS` which blocks Redis during iteration. The `SCAN` approach iterates incrementally with cursor, returning batches of 100 keys at a time.
 
 ### Custom Exceptions
 
@@ -1042,6 +1089,7 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | **Race Condition Bug Fixes (HIGH)**: Fixed three race conditions in execution queue. (1) `submit()` now uses atomic `SET NX EX` instead of separate EXISTS/SET - prevents two concurrent requests from acquiring the same execution slot. (2) `complete()` now uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice. (3) `get_all_busy_agents()` replaced `KEYS` with `SCAN` - avoids blocking Redis on large datasets. Added Thread Safety section with Lua script documentation. Updated all method line numbers. |
 | 2026-01-12 | **Execution Termination**: Added section documenting process registry, termination flow, signal handling (SIGINT -> SIGKILL), and new endpoints. See [execution-termination.md](execution-termination.md) for full feature documentation. |
 | 2026-01-11 | **Execution ID tracking**: Documented two ID systems (Queue vs Database). Chat response now includes both `id` (queue) and `task_execution_id` (database). Activity tracking uses `related_execution_id` as top-level field for structured SQL queries. |
 | 2025-01-02 | **Scheduler log fix**: Changed scheduler from `AgentClient.chat()` to `AgentClient.task()`. The `task()` method calls `/api/task` endpoint which returns raw Claude Code `stream-json` format. This fixes execution log viewer which could not parse the simplified format from `/api/chat`. Added `task()` method and `_parse_task_response()` to `AgentClient`. |
