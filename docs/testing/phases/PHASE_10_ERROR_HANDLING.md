@@ -21,7 +21,7 @@
 
 ### Step 1: Navigate to test-error
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Click test-error
 - Wait for detail page to load
 
@@ -379,7 +379,7 @@ Phase 10 is **PASSED** when:
 ## Next Phase
 
 Once Phase 10 is **PASSED**, proceed to:
-- **Phase 11**: Multi-Agent Dashboard (all 8 agents)
+- **Phase 11**: Multi-Agent Dashboard (all 3 agents)
 
 ---
 

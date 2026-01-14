@@ -2,7 +2,7 @@
 
 > **Purpose**: Validate context % increases as agents consume tokens (CRITICAL BUG)
 > **Duration**: ~10 minutes
-> **Assumes**: Phase 2 PASSED (8 agents created, all running)
+> **Assumes**: Phase 2 PASSED (3 agents created, all running)
 > **Output**: Context tracking verified or bugs documented
 
 ---
@@ -10,7 +10,7 @@
 ## Prerequisites
 
 - ✅ Phase 2 PASSED
-- ✅ 8 agents running with GitHub templates
+- ✅ 3 agents running with GitHub templates
 - ✅ All agents show status "running" (green)
 - ✅ All agents show Context 0%
 
@@ -48,7 +48,7 @@ The echo agent returns text without using tools. To test activity tracking, use 
 
 ### Step 1: Open Agent Detail Page
 **Action**:
-- Navigate to http://localhost:3000/agents
+- Navigate to http://localhost/agents
 - Click on test-echo agent card
 - Wait for detail page to load
 

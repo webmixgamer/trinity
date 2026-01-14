@@ -21,7 +21,7 @@
 
 ### Step 1: Navigate to test-files
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Click test-files
 - Wait for detail page to load
 
@@ -133,7 +133,7 @@ Timestamp: [current time]
 **Expected**:
 ```
 File ready for download
-URL: http://localhost:3000/api/agents/test-files/files/workspace/config.yaml
+URL: http://localhost/api/agents/test-files/files/workspace/config.yaml
 Size: 52 bytes
 ```
 

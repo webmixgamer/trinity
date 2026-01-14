@@ -10,7 +10,7 @@
 ## Background
 
 **Cleanup Process**:
-- Delete all 8 test agents from system
+- Delete all 3 test agents from system
 - Verify Docker containers removed
 - Check database cleaned up
 - Confirm UI reflects empty state
@@ -21,16 +21,16 @@
 
 ### Step 1: Navigate to Agents List
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Wait 2 seconds for page load
 
 **Expected**:
-- [ ] Agents list shows all 8 agents
+- [ ] Agents list shows all 3 agents
 - [ ] Each agent has delete button (trash icon)
 - [ ] All agents status shows "Running"
 
 **Verify**:
-- [ ] 8 agents visible
+- [ ] 3 agents visible
 - [ ] Delete controls available
 
 ---
@@ -185,7 +185,7 @@ Are you sure? This action cannot be undone.
 
 ```bash
 # Check UI
-curl http://localhost:3000 -o /dev/null -s -w "%{http_code}\n"
+curl http://localhost -o /dev/null -s -w "%{http_code}\n"
 # Expected: 200
 
 # Check backend
@@ -213,7 +213,7 @@ docker logs backend | tail -5
 
 ### Step 10: Confirm Clean Slate
 **Action**:
-- Go to http://localhost:3000 (dashboard)
+- Go to http://localhost (dashboard)
 - Wait 3 seconds
 
 **Expected Dashboard State**:
@@ -233,7 +233,7 @@ docker logs backend | tail -5
 ## Success Criteria
 
 Phase 12 is **PASSED** when:
-- ✅ All 8 agents deleted via UI
+- ✅ All 3 agents deleted via UI
 - ✅ Agents list empty (shows 0 agents)
 - ✅ Page refreshes show empty state persists
 - ✅ Docker: No agent-test-* containers running
@@ -289,7 +289,7 @@ For the complete test run report:
 
 **Date**: 2025-12-10
 **Duration**: 2:45
-**Environment**: Local (localhost:3000 + localhost:8000)
+**Environment**: Local (localhost + localhost:8000)
 **Tester**: [Name or Agent ID]
 
 ## Phase Summary

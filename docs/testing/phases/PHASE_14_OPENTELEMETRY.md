@@ -11,7 +11,7 @@
 
 - Phase 1 PASSED (logged in as admin)
 - Backend healthy at http://localhost:8000
-- Frontend accessible at http://localhost:3000
+- Frontend accessible at http://localhost
 - At least one running agent (for generating metrics)
 - **OTEL_ENABLED=1** in backend .env (or verify with `/api/observability/status`)
 
@@ -73,7 +73,7 @@ curl -s http://localhost:8889/metrics | head -20
 ### Step 3: Verify Dashboard Header Shows OTel Stats
 
 **Action**:
-- Navigate to Dashboard (http://localhost:3000)
+- Navigate to Dashboard (http://localhost)
 - Look at the header stats bar (next to agent counts)
 
 **Expected** (when OTel operational with data):

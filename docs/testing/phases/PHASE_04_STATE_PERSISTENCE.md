@@ -35,7 +35,7 @@
 
 ### Step 1: Navigate to test-counter
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Click test-counter agent
 - Wait for detail page to load
 

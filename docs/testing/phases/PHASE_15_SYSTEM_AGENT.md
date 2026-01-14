@@ -11,7 +11,7 @@
 
 - Phase 1 PASSED (logged in as admin)
 - Backend healthy at http://localhost:8000
-- Frontend accessible at http://localhost:3000
+- Frontend accessible at http://localhost
 - Docker daemon running
 - At least 1-2 other agents running (for fleet operations testing)
 
@@ -111,7 +111,7 @@ docker ps | grep trinity-system  # Should still exist
 ### Step 5: Verify System Agent UI Page
 
 **Action**:
-- Navigate to http://localhost:3000/system-agent
+- Navigate to http://localhost/system-agent
 - OR click "System" link in navbar
 
 **Expected UI Elements**:
@@ -431,7 +431,7 @@ sqlite3 ~/trinity-data/trinity.db \
 ### Step 18: Verify SYSTEM Badge in Dashboard
 
 **Action**:
-- Navigate to main Dashboard (http://localhost:3000)
+- Navigate to main Dashboard (http://localhost)
 - Look at the agent network graph
 
 **Expected**:

@@ -12,7 +12,7 @@
 - ✅ Phase 1 PASSED (logged in as admin)
 - ✅ At least 2 agents running (any type)
 - ✅ Backend healthy at http://localhost:8000
-- ✅ Frontend accessible at http://localhost:3000
+- ✅ Frontend accessible at http://localhost
 
 ---
 
@@ -36,7 +36,7 @@ The Web Terminal (Req 11.5) provides a browser-based CLI interface to agent cont
 ### Step 1: Navigate to Agent Detail
 
 **Action**:
-- Navigate to http://localhost:3000/agents
+- Navigate to http://localhost/agents
 - Click on any running agent
 - Wait for detail page to load
 

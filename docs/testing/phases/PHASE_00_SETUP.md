@@ -29,7 +29,7 @@ curl -s http://localhost:8000/health | jq
 ---
 
 ### Step 2: Verify Frontend Accessible
-**Action**: Navigate to http://localhost:3000
+**Action**: Navigate to http://localhost
 
 **Expected**:
 - Page loads without errors

@@ -11,7 +11,7 @@
 
 - ✅ Phase 1 PASSED (logged in as admin)
 - ✅ Backend healthy at http://localhost:8000
-- ✅ Frontend accessible at http://localhost:3000
+- ✅ Frontend accessible at http://localhost
 - ✅ At least one running agent (or ability to create one)
 
 ---
@@ -44,7 +44,7 @@
 
 **Action**:
 - If possible, login as a non-admin user
-- OR directly navigate to http://localhost:3000/settings
+- OR directly navigate to http://localhost/settings
 
 **Expected** (non-admin):
 - [ ] Settings link NOT visible in navbar

@@ -31,7 +31,7 @@
 
 ### Step 1: Navigate to test-delegator
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Click test-delegator
 - Wait for detail page to load
 
@@ -62,10 +62,10 @@ Available agents:
 - test-error: running
 ```
 
-Or similar format showing all 8 agents with "running" status.
+Or similar format showing all 3 agents with "running" status.
 
 **Verify**:
-- [ ] All 8 agents listed
+- [ ] All 3 agents listed
 - [ ] All show "running" status
 - [ ] test-echo present
 - [ ] test-counter present
@@ -165,7 +165,7 @@ Not 11 anymore! Counter updated via delegation from test-delegator.
 
 ### Step 7: View Dashboard
 **Action**:
-- Navigate to http://localhost:3000/ (Dashboard)
+- Navigate to http://localhost/ (Dashboard)
 - Wait 2 seconds for updates
 
 **Expected**:
@@ -419,7 +419,7 @@ test-counter saw:
 ## Success Criteria
 
 Phase 5 is **PASSED** when:
-- ✅ List agents command shows all 8 agents (when all permitted)
+- ✅ List agents command shows all 3 agents (when all permitted)
 - ✅ Delegation to test-echo works (receives echo response)
 - ✅ Delegation to test-counter works (counter incremented to 16)
 - ✅ test-counter state persisted (verified by direct chat)

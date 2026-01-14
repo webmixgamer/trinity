@@ -46,7 +46,7 @@ curl http://localhost:8000/api/auth/mode
 
 ### Step 1: Navigate to Login Page
 **Action**:
-- Open browser to http://localhost:3000
+- Open browser to http://localhost
 - Refresh page (Ctrl+F5) to clear any cached state
 - If already logged in, logout first
 
@@ -71,7 +71,7 @@ curl http://localhost:8000/api/auth/mode
 - Wait for page to load (10 seconds max)
 
 **Expected**:
-- [ ] Redirects to http://localhost:3000/ (dashboard)
+- [ ] Redirects to http://localhost/ (dashboard)
 - [ ] Navigation bar visible
 - [ ] "Connected" indicator in navbar
 - [ ] Admin profile button shows "admin"
