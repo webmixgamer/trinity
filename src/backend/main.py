@@ -193,12 +193,14 @@ async def lifespan(app: FastAPI):
     else:
         print("Docker not available - running in demo mode")
 
-    # Initialize the scheduler
-    try:
-        scheduler_service.initialize()
-        print("Scheduler service initialized")
-    except Exception as e:
-        print(f"Error initializing scheduler: {e}")
+    # NOTE: Embedded scheduler DISABLED (2026-01-13)
+    # Schedule execution is now handled by the dedicated scheduler service (trinity-scheduler container)
+    # which uses Redis distributed locking to prevent duplicate executions.
+    # The scheduler_service module is still imported for:
+    # - Manual trigger functionality (trigger_schedule)
+    # - CRUD sync with APScheduler jobs (no-op when not initialized)
+    # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
+    print("Embedded scheduler disabled - using dedicated scheduler service (trinity-scheduler)")
 
     # Initialize log archive service
     try:
@@ -209,12 +211,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown the scheduler
-    try:
-        scheduler_service.shutdown()
-        print("Scheduler service shutdown")
-    except Exception as e:
-        print(f"Error shutting down scheduler: {e}")
+    # NOTE: Embedded scheduler shutdown removed - scheduler runs in dedicated container
+    # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
 
     # Shutdown log archive service
     try:

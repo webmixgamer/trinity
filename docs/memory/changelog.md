@@ -1,3 +1,26 @@
+### 2026-01-13 23:15:00
+🔧 **Scheduler Migration Complete - Embedded Scheduler Disabled**
+
+**Change**: Disabled the old embedded scheduler in the backend, completing the migration to the dedicated scheduler service.
+
+**Files Modified**:
+- `src/backend/main.py:196-203` - Removed `scheduler_service.initialize()` call
+- `src/backend/main.py:214-215` - Removed `scheduler_service.shutdown()` call
+
+**Architecture**:
+- Schedule execution now handled exclusively by `trinity-scheduler` container
+- Backend still imports `scheduler_service` for manual trigger functionality
+- CRUD operations update database; dedicated scheduler reloads from DB
+
+**Test Results**: 71/71 scheduler tests passed (100%)
+
+**Impact**:
+- No more duplicate schedule executions from multiple uvicorn workers
+- Redis distributed locking prevents race conditions
+- Clean separation of concerns: backend = API, scheduler = execution
+
+---
+
 ### 2026-01-13 21:00:06
 🐳 **Dedicated Scheduler Service - Implementation Complete**
 

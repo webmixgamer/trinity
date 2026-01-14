@@ -13,6 +13,9 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
+| ⏳ | **Execution Queue Race Conditions** | `execution_queue.py:128-136` uses non-atomic Redis check-and-set in `submit()`. Two concurrent requests can both acquire the slot. Fix: Use `redis.set(key, value, nx=True, ex=TTL)` for atomic acquisition. Also `complete()` at line 176-184 has similar issue. See `docs/reports/BEST_PRACTICES_AUDIT_2026-01-13.md` (EQ-H1, EQ-H2). | **HIGH** |
+| ⏳ | **Missing Auth on Lifecycle Endpoints** | `routers/agents.py:315-339` (`start_agent`) and `routers/agents.py:367-384` (`get_logs`) don't verify user has access to the agent. Add `db.can_user_access_agent()` check before operations. See audit report (AL-H1, AL-H2). | **HIGH** |
+| ⏳ | **Container Security Inconsistency** | `lifecycle.py:308-324` - When `full_capabilities=True`, container recreation drops ALL security settings (empty `security_opt`, empty `cap_drop`, tmpfs allows exec). Should maintain baseline security even in full capabilities mode. See audit report (AL-H3). | **HIGH** |
 | ✅ | **Duplicate Schedule Execution** | **Fixed 2026-01-13**: Implemented dedicated scheduler service with Redis distributed locking. See `src/scheduler/`, `docs/memory/feature-flows/scheduler-service.md`. | **HIGH** |
 | ⏳ | Executions 404 for Non-Existent Agent | `GET /api/agents/{name}/executions` returns `200 + []` instead of `404` for non-existent agents. Should add agent existence check before returning empty list. | LOW |
 | ⏳ | Test Client Headers Bug | `TrinityApiClient.post()` in `tests/utils/api_client.py` passes `headers` param twice to httpx when caller also provides headers. Fix: merge headers instead of passing separately. | LOW |
