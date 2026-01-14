@@ -236,6 +236,7 @@ services:
       - "4317:4317"   # gRPC receiver (OTLP)
       - "4318:4318"   # HTTP receiver (OTLP)
       - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check endpoint
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
@@ -247,12 +248,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8889/metrics || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+    # NOTE: No healthcheck - distroless image has no shell/curl
+    # Collector health can be checked externally via :13133 if health_check extension is enabled
 
 volumes:
   agent-configs:

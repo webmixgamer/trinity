@@ -211,6 +211,7 @@ services:
       - "4317:4317"   # gRPC receiver (OTLP)
       - "4318:4318"   # HTTP receiver (OTLP)
       - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check endpoint
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
