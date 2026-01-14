@@ -307,7 +307,9 @@ SMTP_FROM=noreply@example.com
 SENDGRID_API_KEY=SG.xxx
 
 # Frontend URL (for link generation)
-FRONTEND_URL=http://localhost:3000
+# Default: http://localhost (port 80, Docker deployment)
+# For Vite dev server: http://localhost:5173
+FRONTEND_URL=http://localhost
 ```
 
 ## Error Handling

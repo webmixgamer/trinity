@@ -1,3 +1,66 @@
+### 2026-01-14 12:35:00
+🧪 **Test: Updated Phase 3 Context Validation**
+
+**Change**: Rewrote Phase 3 test to not test context via Terminal (which bypasses context tracking).
+
+**New Test Focus**:
+- Validates Tasks panel functionality instead
+- Documents that context tracking only works for `/api/chat` (not Terminal or Tasks)
+- Provides optional API-based test for verifying context tracking
+
+**File Modified**: `docs/testing/phases/PHASE_03_CONTEXT_VALIDATION.md`
+
+---
+
+### 2026-01-14 12:30:00
+🐛 **Fix: Public Links URL Generation (CRITICAL)**
+
+**Problem**: Public links were generated with wrong port (3000 instead of 80), making them non-functional in Docker deployment.
+
+**Root Cause**: Default `FRONTEND_URL` in `config.py` was `http://localhost:3000` (Vite dev server port), but Docker Compose serves frontend on port 80.
+
+**Fix**: Changed default to `http://localhost` (port 80, standard HTTP).
+
+**Files Modified**:
+- `src/backend/config.py:41` - Changed default FRONTEND_URL from port 3000 to port 80
+- `docs/memory/feature-flows/public-agent-links.md` - Updated configuration example
+
+**Impact**: Public shareable links now work correctly in Docker deployments.
+
+---
+
+### 2026-01-14 12:25:00
+📝 **Documented: Context Tracking Design Limitation**
+
+**Issue from UI Test**: Context tracking stuck at 0% when using Terminal mode.
+
+**Root Cause Analysis**: Terminal mode runs Claude Code directly via PTY (docker exec), bypassing the `/api/chat` endpoint that tracks context. This is by design, not a bug.
+
+**Context Tracking Works For**:
+- `/api/chat` - Session-based chat (tracks context per turn)
+- Scheduled tasks that use conversational context
+
+**Context Tracking Does Not Work For**:
+- Terminal mode (PTY bypass, direct Claude TUI access)
+- `/api/task` endpoint (stateless, no session context)
+
+**Note**: The test report incorrectly identified this as "only counting input_tokens, not cached tokens". The actual issue is architectural - Terminal bypasses the context tracking system entirely.
+
+---
+
+### 2026-01-14 12:20:00
+✅ **Validated: UI Tab Navigation Working Correctly**
+
+**Issue from UI Test**: Report claimed "UI Tab Navigation Broken" in Phases 7, 22.
+
+**Investigation**: Manually tested all 13 tabs (Info, Tasks, Dashboard, Terminal, Logs, Credentials, Sharing, Permissions, Schedules, Git, Files, Folders, Public Links) using Playwright.
+
+**Result**: All tabs navigate correctly. Click handlers work, content switches properly.
+
+**Conclusion**: Test failure was likely a timing/automation issue, not an actual bug. Tabs with horizontal scroll may require proper viewport handling in automated tests.
+
+---
+
 ### 2026-01-13 23:15:00
 🔧 **Scheduler Migration Complete - Embedded Scheduler Disabled**
 

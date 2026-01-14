@@ -38,7 +38,7 @@ if _redis_password and "://@" not in _redis_base_url and "://:" not in _redis_ba
 else:
     REDIS_URL = _redis_base_url
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost")  # Port 80 default (Docker)
 
 # Email Service Configuration (for public link verification)
 EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "resend")  # "console", "smtp", "sendgrid", "resend"
