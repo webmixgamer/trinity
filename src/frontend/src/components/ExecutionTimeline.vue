@@ -19,10 +19,10 @@
       </div>
     </div>
 
-    <!-- Steps timeline -->
+    <!-- Steps timeline (sorted by execution level) -->
     <div class="space-y-3">
       <div
-        v-for="(step, index) in steps"
+        v-for="(step, index) in sortedSteps"
         :key="step.step_id"
         :class="[
           'border rounded-lg transition-all duration-200',
@@ -261,6 +261,17 @@ const maxDuration = computed(() => {
     }
   })
   return max
+})
+
+// Sort steps by parallel_level (execution order), then by step_id
+const sortedSteps = computed(() => {
+  return [...props.steps].sort((a, b) => {
+    const levelA = a.parallel_level || 0
+    const levelB = b.parallel_level || 0
+    if (levelA !== levelB) return levelA - levelB
+    // Same level - sort alphabetically by step_id
+    return a.step_id.localeCompare(b.step_id)
+  })
 })
 
 // Check if step is part of a parallel group (same level as another step)
