@@ -195,6 +195,107 @@ class NotificationConfig:
 StepConfig = AgentTaskConfig | HumanApprovalConfig | GatewayConfig | TimerConfig | NotificationConfig
 
 
+# =============================================================================
+# Trigger Configurations
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class WebhookTriggerConfig:
+    """
+    Configuration for webhook triggers.
+    
+    Allows processes to be started via HTTP POST.
+    
+    Reference: BACKLOG_CORE.md - E8-01
+    """
+    id: str  # Unique trigger ID (used in webhook URL)
+    enabled: bool = True
+    secret: Optional[str] = None  # Optional secret for authentication
+    description: str = ""
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "WebhookTriggerConfig":
+        """Create from dictionary (YAML parsing)."""
+        return cls(
+            id=data.get("id", ""),
+            enabled=data.get("enabled", True),
+            secret=data.get("secret"),
+            description=data.get("description", ""),
+        )
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {
+            "type": "webhook",
+            "id": self.id,
+            "enabled": self.enabled,
+            "description": self.description,
+        }
+        # Don't serialize secret in output
+        return result
+
+
+@dataclass(frozen=True)
+class ScheduleTriggerConfig:
+    """
+    Configuration for scheduled triggers (stub for Advanced phase).
+    
+    Allows processes to run on a cron schedule.
+    """
+    id: str
+    cron: str = ""  # Cron expression (e.g., "0 9 * * 1-5")
+    enabled: bool = True
+    timezone: str = "UTC"
+    description: str = ""
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScheduleTriggerConfig":
+        """Create from dictionary (YAML parsing)."""
+        return cls(
+            id=data.get("id", ""),
+            cron=data.get("cron", ""),
+            enabled=data.get("enabled", True),
+            timezone=data.get("timezone", "UTC"),
+            description=data.get("description", ""),
+        )
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "type": "schedule",
+            "id": self.id,
+            "cron": self.cron,
+            "enabled": self.enabled,
+            "timezone": self.timezone,
+            "description": self.description,
+        }
+
+
+# Type alias for trigger configurations
+TriggerConfig = WebhookTriggerConfig | ScheduleTriggerConfig
+
+
+def parse_trigger_config(trigger_data: dict) -> TriggerConfig:
+    """
+    Parse trigger configuration based on type.
+    
+    Args:
+        trigger_data: Dictionary with trigger configuration
+        
+    Returns:
+        Appropriate TriggerConfig subclass instance
+    """
+    trigger_type = trigger_data.get("type", "webhook")
+    
+    if trigger_type == "webhook":
+        return WebhookTriggerConfig.from_dict(trigger_data)
+    elif trigger_type == "schedule":
+        return ScheduleTriggerConfig.from_dict(trigger_data)
+    else:
+        raise ValueError(f"Unknown trigger type: {trigger_type}")
+
+
 def parse_step_config(step_type: str, config_data: dict) -> StepConfig:
     """
     Parse step configuration based on step type.

@@ -382,6 +382,35 @@ class ExecutionEngine:
             ))
             return
         
+        # Evaluate step condition (for gateway routing)
+        if step_def.condition:
+            from ..services import ConditionEvaluator, EvaluationContext
+            condition_evaluator = ConditionEvaluator()
+            eval_context = EvaluationContext(
+                input_data=execution.input_data,
+                step_outputs=self._build_step_outputs(execution),
+                execution_id=str(execution.id),
+                process_name=execution.process_name,
+            )
+            
+            try:
+                condition_result = condition_evaluator.evaluate(step_def.condition, eval_context)
+                if not condition_result:
+                    logger.info(f"Step '{step_def.name}' skipped: condition not met ({step_def.condition})")
+                    execution.step_executions[str(step_id)].skip(f"Condition not met: {step_def.condition}")
+                    self.execution_repo.save(execution)
+                    
+                    await self._publish_event(StepSkipped(
+                        execution_id=execution.id,
+                        step_id=step_id,
+                        step_name=step_def.name,
+                        reason=f"Condition not met: {step_def.condition}",
+                    ))
+                    return
+            except Exception as e:
+                logger.error(f"Error evaluating condition for step '{step_def.name}': {e}")
+                # On condition evaluation error, continue with step execution
+        
         # Start step (initial)
         execution.start_step(step_id)
         self.execution_repo.save(execution)
@@ -390,7 +419,7 @@ class ExecutionEngine:
             execution_id=execution.id,
             step_id=step_id,
             step_name=step_def.name,
-            step_type=step_def.type.value,
+            step_type=step_def.type,
         ))
         
         logger.info(f"Executing step '{step_def.name}' ({step_id})")
@@ -604,6 +633,16 @@ class ExecutionEngine:
         
         if action == OnErrorAction.FAIL_PROCESS:
             await self._fail_execution(execution, f"Step '{step_def.name}' failed: {result.error}")
+    
+    def _build_step_outputs(self, execution: ProcessExecution) -> dict[str, Any]:
+        """
+        Build step outputs dictionary for condition evaluation.
+        
+        Returns a dict mapping step_id -> output data.
+        """
+        if self.output_storage:
+            return self.output_storage.get_all_outputs(execution.id)
+        return {}
     
     async def _complete_execution(
         self,

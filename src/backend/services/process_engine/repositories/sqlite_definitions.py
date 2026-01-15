@@ -20,6 +20,7 @@ from ..domain import (
     DefinitionStatus,
     StepDefinition,
     OutputConfig,
+    parse_trigger_config,
 )
 
 
@@ -127,6 +128,9 @@ class SqliteProcessDefinitionRepository(ProcessDefinitionRepository):
         # Parse outputs
         outputs = [OutputConfig.from_dict(o) for o in data.get("outputs", [])]
         
+        # Parse triggers
+        triggers = [parse_trigger_config(t) for t in data.get("triggers", [])]
+        
         # Parse timestamps
         created_at = datetime.fromisoformat(row["created_at"])
         updated_at = datetime.fromisoformat(row["updated_at"])
@@ -140,6 +144,7 @@ class SqliteProcessDefinitionRepository(ProcessDefinitionRepository):
             status=DefinitionStatus(row["status"]),
             steps=steps,
             outputs=outputs,
+            triggers=triggers,
             created_by=row["created_by"],
             created_at=created_at,
             updated_at=updated_at,

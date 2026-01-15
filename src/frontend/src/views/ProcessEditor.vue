@@ -32,7 +32,7 @@
                 {{ process.name }} v{{ process.version }}
                 <span v-if="process.status" :class="[
                   'ml-2 px-2 py-0.5 text-xs font-medium rounded-full',
-                  process.status === 'published' 
+                  process.status === 'published'
                     ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
                     : process.status === 'archived'
                       ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
@@ -64,8 +64,9 @@
               </span>
             </button>
 
-            <!-- Save button -->
+            <!-- Save button (only for new or draft) -->
             <button
+              v-if="isNew || process?.status === 'draft'"
               @click="saveProcess"
               :disabled="saving || hasErrors"
               class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -78,6 +79,19 @@
                 Saving...
               </span>
               <span v-else>Save</span>
+            </button>
+
+            <!-- Create New Version button (for published/archived) -->
+            <button
+              v-if="!isNew && process?.status !== 'draft'"
+              @click="createNewVersion"
+              :disabled="saving"
+              class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              title="Published processes are immutable. Create a new draft version to make changes."
+            >
+              <DocumentDuplicateIcon class="h-4 w-4" />
+              <span v-if="saving">Creating...</span>
+              <span v-else>New Version</span>
             </button>
 
             <!-- Publish button (only for draft) -->
@@ -144,6 +158,22 @@
             </div>
           </div>
 
+          <!-- Published/Archived notice -->
+          <div v-if="!isNew && process?.status !== 'draft'" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <div class="p-4">
+              <div class="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                <InformationCircleIcon class="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div class="text-sm text-amber-700 dark:text-amber-300">
+                  <p class="font-medium mb-1">Read-Only Process</p>
+                  <p class="text-xs text-amber-600 dark:text-amber-400">
+                    This process is {{ process?.status }}. Published processes are immutable to ensure version consistency.
+                    Click <strong>"New Version"</strong> to create a draft copy that you can edit.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Help text -->
           <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
             <div class="p-4">
@@ -152,7 +182,7 @@
                 <div class="text-sm text-blue-700 dark:text-blue-300">
                   <p class="font-medium mb-1">YAML Process Definition</p>
                   <p class="text-xs text-blue-600 dark:text-blue-400">
-                    Define your process with steps, dependencies, and configurations. 
+                    Define your process with steps, dependencies, and configurations.
                     Press <kbd class="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded text-xs">Cmd+S</kbd> to save.
                     The flow preview updates as you type.
                   </p>
@@ -172,6 +202,49 @@
           @confirm="confirmLeave"
           @cancel="showUnsavedWarning = false"
         />
+
+        <!-- Execute Process Dialog -->
+        <div v-if="showExecuteDialog" class="fixed inset-0 z-50 overflow-y-auto">
+          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <!-- Backdrop -->
+            <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity" @click="showExecuteDialog = false"></div>
+
+            <!-- Dialog -->
+            <div class="relative bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+              <div class="px-4 pt-5 pb-4 sm:p-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  Execute Process
+                </h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Enter input data as JSON (optional):
+                </p>
+                <textarea
+                  v-model="executeInputJson"
+                  rows="6"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder='{"score": 85}'
+                ></textarea>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                  Access input values in your process using <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">input.fieldName</code>
+                </p>
+              </div>
+              <div class="px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3 bg-gray-50 dark:bg-gray-700/50">
+                <button
+                  @click="confirmExecute"
+                  class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  Execute
+                </button>
+                <button
+                  @click="showExecuteDialog = false"
+                  class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -190,6 +263,7 @@ import {
   CheckCircleIcon,
   InformationCircleIcon,
   PlayIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -207,11 +281,13 @@ const notification = ref(null)
 const hasUnsavedChanges = ref(false)
 const showUnsavedWarning = ref(false)
 const pendingNavigation = ref(null)
+const showExecuteDialog = ref(false)
+const executeInputJson = ref('{}')
 
 // Computed
 const isNew = computed(() => route.name === 'ProcessNew')
 
-const hasErrors = computed(() => 
+const hasErrors = computed(() =>
   validationErrors.value.some(e => e.level === 'error' || !e.level)
 )
 
@@ -285,7 +361,7 @@ async function validateProcess() {
   try {
     const result = await processesStore.validateYaml(yamlContent.value)
     validationErrors.value = result.errors || []
-    
+
     if (result.is_valid) {
       showNotification('Validation passed!', 'success')
     } else {
@@ -304,7 +380,7 @@ async function saveProcess() {
   try {
     const result = await processesStore.validateYaml(yamlContent.value)
     validationErrors.value = result.errors || []
-    
+
     if (!result.is_valid && validationErrors.value.some(e => e.level === 'error' || !e.level)) {
       showNotification('Please fix validation errors before saving', 'error')
       validating.value = false
@@ -316,7 +392,7 @@ async function saveProcess() {
     return
   }
   validating.value = false
-  
+
   saving.value = true
   try {
     if (isNew.value) {
@@ -350,12 +426,45 @@ async function publishProcess() {
   }
 }
 
-async function executeProcess() {
+function executeProcess() {
+  // Show input dialog instead of executing directly
+  executeInputJson.value = '{}'
+  showExecuteDialog.value = true
+}
+
+async function confirmExecute() {
   try {
-    await processesStore.executeProcess(route.params.id)
+    // Parse the JSON input
+    let inputData = {}
+    try {
+      inputData = JSON.parse(executeInputJson.value || '{}')
+    } catch (e) {
+      showNotification('Invalid JSON input', 'error')
+      return
+    }
+
+    showExecuteDialog.value = false
+    const execution = await processesStore.executeProcess(route.params.id, inputData)
     showNotification('Execution started!', 'success')
+    // Navigate to execution detail
+    router.push(`/executions/${execution.id}`)
   } catch (error) {
     showNotification(error.response?.data?.detail || 'Failed to execute', 'error')
+  }
+}
+
+async function createNewVersion() {
+  saving.value = true
+  try {
+    const newProcess = await processesStore.createNewVersion(route.params.id)
+    showNotification(`New version v${newProcess.version} created as draft`, 'success')
+    hasUnsavedChanges.value = false
+    // Navigate to the new draft version
+    router.push(`/processes/${newProcess.id}`)
+  } catch (error) {
+    showNotification(error.response?.data?.detail || 'Failed to create new version', 'error')
+  } finally {
+    saving.value = false
   }
 }
 

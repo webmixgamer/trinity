@@ -125,7 +125,7 @@ class StepDefinition:
             "type": self.type.value,
         }
         
-        # Inline config for agent_task
+        # Inline config for known step types
         if self.type == StepType.AGENT_TASK and isinstance(self.config, AgentTaskConfig):
             result["agent"] = self.config.agent
             result["message"] = self.config.message
@@ -139,6 +139,11 @@ class StepDefinition:
             result["description"] = self.config.description
             result["assignees"] = self.config.assignees
             result["timeout"] = str(self.config.timeout)
+        elif self.type == StepType.GATEWAY and isinstance(self.config, GatewayConfig):
+            result["gateway_type"] = self.config.gateway_type
+            result["routes"] = self.config.routes
+            if self.config.default_route:
+                result["default_route"] = self.config.default_route
         else:
             result["config"] = self.config.to_dict()
         

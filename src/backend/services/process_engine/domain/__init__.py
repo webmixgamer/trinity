@@ -46,6 +46,11 @@ from .step_configs import (
     TimerConfig,
     NotificationConfig,
     parse_step_config,
+    # Trigger configs
+    TriggerConfig,
+    WebhookTriggerConfig,
+    ScheduleTriggerConfig,
+    parse_trigger_config,
 )
 
 from .aggregates import (
@@ -117,6 +122,11 @@ __all__ = [
     "TimerConfig",
     "NotificationConfig",
     "parse_step_config",
+    # Trigger Configs
+    "TriggerConfig",
+    "WebhookTriggerConfig",
+    "ScheduleTriggerConfig",
+    "parse_trigger_config",
     # Aggregates
     "ProcessDefinition",
     "ProcessExecution",

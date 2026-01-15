@@ -121,6 +121,15 @@ export const useProcessesStore = defineStore('processes', () => {
     return response.data
   }
 
+  async function createNewVersion(id) {
+    const token = localStorage.getItem('token')
+    const response = await axios.post(`/api/processes/${id}/new-version`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    await fetchProcesses()
+    return response.data
+  }
+
   async function validateYaml(yamlContent) {
     const token = localStorage.getItem('token')
     const response = await axios.post('/api/processes/validate',
@@ -157,6 +166,7 @@ export const useProcessesStore = defineStore('processes', () => {
     deleteProcess,
     publishProcess,
     archiveProcess,
+    createNewVersion,
     validateYaml,
     executeProcess,
   }

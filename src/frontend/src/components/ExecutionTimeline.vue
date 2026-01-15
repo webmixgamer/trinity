@@ -57,9 +57,17 @@
               <span :class="getStatusBadgeClasses(step.status)" class="px-2 py-0.5 rounded text-xs font-medium capitalize">
                 {{ step.status }}
               </span>
+              <!-- Gateway indicator -->
+              <span 
+                v-if="step.step_type === 'gateway'"
+                class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                title="Gateway (conditional routing)"
+              >
+                ⬡ Gateway
+              </span>
               <!-- Parallel execution indicator -->
               <span 
-                v-if="isParallelStep(step)"
+                v-else-if="isParallelStep(step)"
                 class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
                 :title="`Parallel group (level ${step.parallel_level})`"
               >
@@ -236,8 +244,54 @@
             </div>
           </div>
 
+          <!-- Gateway routing display -->
+          <div v-if="step.step_type === 'gateway' && step.status === 'completed'" class="mb-4">
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-blue-600 dark:text-blue-400 text-lg">⬡</span>
+                <span class="text-sm font-medium text-blue-800 dark:text-blue-300">Gateway Decision</span>
+              </div>
+              <div v-if="stepOutputs[step.step_id]" class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">Route taken:</span>
+                  <span class="px-2 py-0.5 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
+                    {{ stepOutputs[step.step_id].route || stepOutputs[step.step_id].routes?.join(', ') || 'unknown' }}
+                  </span>
+                  <span v-if="stepOutputs[step.step_id].is_default" class="text-xs text-gray-500 dark:text-gray-400">(default)</span>
+                </div>
+                <div v-if="stepOutputs[step.step_id].condition" class="text-xs text-gray-600 dark:text-gray-400">
+                  Condition: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">{{ stepOutputs[step.step_id].condition }}</code>
+                </div>
+                <div v-if="stepOutputs[step.step_id].evaluated_conditions?.length" class="mt-2">
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Evaluated conditions:</div>
+                  <div class="space-y-1">
+                    <div 
+                      v-for="(cond, idx) in stepOutputs[step.step_id].evaluated_conditions" 
+                      :key="idx"
+                      class="flex items-center gap-2 text-xs"
+                    >
+                      <span :class="cond.result ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">
+                        {{ cond.result ? '✓' : '○' }}
+                      </span>
+                      <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">{{ cond.condition || '(empty)' }}</code>
+                      <span class="text-gray-400">→</span>
+                      <span>{{ cond.target }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button
+                v-else
+                @click="loadStepOutput(step.step_id)"
+                class="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+              >
+                Load routing details
+              </button>
+            </div>
+          </div>
+
           <!-- Output display (for completed steps) -->
-          <div v-if="step.status === 'completed'" class="mb-4">
+          <div v-if="step.status === 'completed' && step.step_type !== 'gateway'" class="mb-4">
             <div class="flex items-center justify-between mb-1">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</div>
               <button

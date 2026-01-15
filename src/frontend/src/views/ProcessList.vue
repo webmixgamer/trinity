@@ -165,9 +165,10 @@
                 <router-link
                   :to="`/processes/${process.id}`"
                   class="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                  title="Edit process"
+                  :title="process.status === 'draft' ? 'Edit process' : 'View process'"
                 >
-                  <PencilIcon class="h-5 w-5" />
+                  <PencilIcon v-if="process.status === 'draft'" class="h-5 w-5" />
+                  <EyeIcon v-else class="h-5 w-5" />
                 </router-link>
 
                 <!-- Delete button -->
@@ -224,6 +225,7 @@ import {
   PlusIcon,
   PlayIcon,
   PencilIcon,
+  EyeIcon,
   TrashIcon,
   CubeIcon,
   ClockIcon,

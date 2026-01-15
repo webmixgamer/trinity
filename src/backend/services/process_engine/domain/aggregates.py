@@ -21,6 +21,7 @@ def _utcnow() -> datetime:
 from .enums import DefinitionStatus, ExecutionStatus, StepStatus
 from .value_objects import ProcessId, ExecutionId, StepId, Version, Money, Duration
 from .entities import StepDefinition, StepExecution, OutputConfig
+from .step_configs import TriggerConfig, parse_trigger_config
 from .exceptions import (
     CircularDependencyError,
     InvalidStepReferenceError,
@@ -72,6 +73,7 @@ class ProcessDefinition:
     # Composition
     steps: list[StepDefinition]
     outputs: list[OutputConfig] = field(default_factory=list)
+    triggers: list[TriggerConfig] = field(default_factory=list)
     
     # Metadata
     created_by: Optional[str] = None
@@ -86,6 +88,7 @@ class ProcessDefinition:
         description: str = "",
         steps: Optional[list[StepDefinition]] = None,
         outputs: Optional[list[OutputConfig]] = None,
+        triggers: Optional[list[TriggerConfig]] = None,
         created_by: Optional[str] = None,
     ) -> ProcessDefinition:
         """
@@ -99,6 +102,7 @@ class ProcessDefinition:
             status=DefinitionStatus.DRAFT,
             steps=steps or [],
             outputs=outputs or [],
+            triggers=triggers or [],
             created_by=created_by,
             created_at=_utcnow(),
             updated_at=_utcnow(),
@@ -126,6 +130,11 @@ class ProcessDefinition:
         for output_data in data.get("outputs", []):
             outputs.append(OutputConfig.from_dict(output_data))
         
+        # Parse triggers
+        triggers = []
+        for trigger_data in data.get("triggers", []):
+            triggers.append(parse_trigger_config(trigger_data))
+        
         # Parse version
         version_data = data.get("version", 1)
         if isinstance(version_data, int):
@@ -143,6 +152,7 @@ class ProcessDefinition:
             status=DefinitionStatus.DRAFT,
             steps=steps,
             outputs=outputs,
+            triggers=triggers,
             created_by=created_by,
             created_at=_utcnow(),
             updated_at=_utcnow(),
@@ -161,6 +171,9 @@ class ProcessDefinition:
         
         if self.outputs:
             result["outputs"] = [output.to_dict() for output in self.outputs]
+        
+        if self.triggers:
+            result["triggers"] = [trigger.to_dict() for trigger in self.triggers]
             
         return result
     
@@ -176,6 +189,7 @@ class ProcessDefinition:
             "status": self.status.value,
             "steps": [step.to_dict() for step in self.steps],
             "outputs": [output.to_dict() for output in self.outputs],
+            "triggers": [trigger.to_dict() for trigger in self.triggers],
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),

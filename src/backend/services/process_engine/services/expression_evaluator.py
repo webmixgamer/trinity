@@ -252,3 +252,141 @@ class ExpressionEvaluator:
 class ExpressionError(Exception):
     """Error evaluating an expression."""
     pass
+
+
+class ConditionEvaluator:
+    """
+    Evaluates boolean conditions for gateway routing.
+    
+    Supports:
+    - Comparison operators: ==, !=, >, <, >=, <=
+    - Boolean operators: and, or, not
+    - Accessing step outputs: steps.analyze.output.score
+    - Accessing inputs: input.priority
+    
+    Example:
+    ```python
+    evaluator = ConditionEvaluator()
+    context = EvaluationContext(
+        input_data={"priority": "high"},
+        step_outputs={"analyze": {"score": 85}},
+    )
+    
+    result = evaluator.evaluate("steps.analyze.output.score > 80", context)
+    # result = True
+    ```
+    
+    Reference: BACKLOG_CORE.md - E7-02 (Expression Evaluator)
+    """
+    
+    # Supported comparison operators
+    COMPARISON_OPS = {
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+        ">": lambda a, b: float(a) > float(b) if _is_numeric(a, b) else str(a) > str(b),
+        "<": lambda a, b: float(a) < float(b) if _is_numeric(a, b) else str(a) < str(b),
+        ">=": lambda a, b: float(a) >= float(b) if _is_numeric(a, b) else str(a) >= str(b),
+        "<=": lambda a, b: float(a) <= float(b) if _is_numeric(a, b) else str(a) <= str(b),
+    }
+    
+    def evaluate(self, condition: str, context: EvaluationContext) -> bool:
+        """
+        Evaluate a boolean condition.
+        
+        Args:
+            condition: Boolean expression string
+            context: Context for resolving values
+            
+        Returns:
+            Boolean result of the condition
+            
+        Raises:
+            ExpressionError: If condition cannot be evaluated
+        """
+        if not condition or not condition.strip():
+            return True  # Empty condition is always true
+        
+        condition = condition.strip()
+        
+        try:
+            # Handle 'and' operator (split and evaluate both sides)
+            if " and " in condition:
+                parts = condition.split(" and ", 1)
+                return self.evaluate(parts[0], context) and self.evaluate(parts[1], context)
+            
+            # Handle 'or' operator
+            if " or " in condition:
+                parts = condition.split(" or ", 1)
+                return self.evaluate(parts[0], context) or self.evaluate(parts[1], context)
+            
+            # Handle 'not' operator
+            if condition.startswith("not "):
+                return not self.evaluate(condition[4:], context)
+            
+            # Handle comparison operators
+            for op in ["==", "!=", ">=", "<=", ">", "<"]:
+                if op in condition:
+                    parts = condition.split(op, 1)
+                    if len(parts) == 2:
+                        left = self._resolve_value(parts[0].strip(), context)
+                        right = self._resolve_value(parts[1].strip(), context)
+                        return self.COMPARISON_OPS[op](left, right)
+            
+            # If no operator, treat as truthy check
+            value = self._resolve_value(condition, context)
+            return bool(value)
+            
+        except Exception as e:
+            logger.error(f"Failed to evaluate condition '{condition}': {e}")
+            raise ExpressionError(f"Failed to evaluate condition: {condition}") from e
+    
+    def _resolve_value(self, expr: str, context: EvaluationContext) -> Any:
+        """
+        Resolve an expression to its value.
+        
+        Handles:
+        - String literals: 'value' or "value"
+        - Numeric literals: 123, 45.67
+        - Boolean literals: true, false
+        - Path expressions: steps.analyze.output.score
+        """
+        expr = expr.strip()
+        
+        # String literal (single or double quotes)
+        if (expr.startswith("'") and expr.endswith("'")) or \
+           (expr.startswith('"') and expr.endswith('"')):
+            return expr[1:-1]
+        
+        # Boolean literals
+        if expr.lower() == "true":
+            return True
+        if expr.lower() == "false":
+            return False
+        
+        # Null literal
+        if expr.lower() in ("null", "none"):
+            return None
+        
+        # Numeric literal
+        try:
+            if "." in expr:
+                return float(expr)
+            return int(expr)
+        except ValueError:
+            pass
+        
+        # Path expression - use context to resolve
+        value = context.get(expr)
+        if value is None:
+            logger.warning(f"Expression '{expr}' resolved to None")
+        return value
+
+
+def _is_numeric(a: Any, b: Any) -> bool:
+    """Check if both values can be compared numerically."""
+    try:
+        float(a)
+        float(b)
+        return True
+    except (ValueError, TypeError):
+        return False
