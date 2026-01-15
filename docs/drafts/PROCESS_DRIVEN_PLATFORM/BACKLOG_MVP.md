@@ -270,15 +270,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `ExecutionRepository` interface defined
-- [ ] SQLite implementation with tables:
-  - [ ] `process_executions` - Main execution record
-  - [ ] `step_executions` - Per-step state
-- [ ] Operations: create, get_by_id, update, list_by_process, list_active
-- [ ] Optimistic locking for concurrent updates
+- [x] `ExecutionRepository` interface defined
+- [x] SQLite implementation with tables:
+  - [x] `process_executions` - Main execution record
+  - [x] `step_executions` - Per-step state
+- [x] Operations: create, get_by_id, update, list_by_process, list_active
+- [x] Optimistic locking for concurrent updates
 
 **Technical Notes:**
 - Reference: IT3 Section 7 (Repositories)

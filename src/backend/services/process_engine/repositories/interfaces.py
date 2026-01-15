@@ -128,7 +128,7 @@ class ProcessExecutionRepository(ABC):
     @abstractmethod
     def save(self, execution: ProcessExecution) -> None:
         """
-        Save execution state.
+        Save or update execution state.
         
         Called after each state change (step start, step complete, etc.)
         """
@@ -144,33 +144,11 @@ class ProcessExecutionRepository(ABC):
         ...
 
     @abstractmethod
-    def get_active_for_process(self, process_id: ProcessId) -> list[ProcessExecution]:
+    def update(self, execution: ProcessExecution) -> None:
         """
-        Get all active (running/paused) executions for a process.
-        """
-        ...
-
-    @abstractmethod
-    def get_history(
-        self,
-        process_id: ProcessId,
-        limit: int = 100
-    ) -> list[ProcessExecution]:
-        """
-        Get execution history for a process.
+        Update an existing execution.
         
-        Returns recent executions ordered by started_at descending.
-        """
-        ...
-
-    @abstractmethod
-    def list_by_status(
-        self,
-        status: ExecutionStatus,
-        limit: int = 100
-    ) -> list[ProcessExecution]:
-        """
-        List executions by status.
+        Same as save - uses upsert pattern.
         """
         ...
 
@@ -180,5 +158,52 @@ class ProcessExecutionRepository(ABC):
         Delete an execution by ID.
         
         Returns True if deleted, False if not found.
+        """
+        ...
+
+    @abstractmethod
+    def list_by_process(
+        self,
+        process_id: ProcessId,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ProcessExecution]:
+        """
+        List executions for a specific process.
+        
+        Returns recent executions ordered by created_at descending.
+        """
+        ...
+
+    @abstractmethod
+    def list_active(self) -> list[ProcessExecution]:
+        """
+        List all active (running/pending/paused) executions.
+        """
+        ...
+
+    @abstractmethod
+    def list_all(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        status: Optional[ExecutionStatus] = None,
+    ) -> list[ProcessExecution]:
+        """
+        List all executions with optional filtering.
+        """
+        ...
+
+    @abstractmethod
+    def count(self, status: Optional[ExecutionStatus] = None) -> int:
+        """
+        Count executions with optional status filter.
+        """
+        ...
+
+    @abstractmethod
+    def exists(self, id: ExecutionId) -> bool:
+        """
+        Check if an execution exists.
         """
         ...

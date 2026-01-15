@@ -18,7 +18,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 from .enums import StepType, StepStatus
-from .value_objects import StepId, Duration
+from .value_objects import StepId, Duration, Money
 from .step_configs import (
     StepConfig,
     AgentTaskConfig,
@@ -143,15 +143,17 @@ class StepDefinition:
 class StepExecution:
     """
     Entity within ProcessExecution aggregate.
-    
+
     Tracks the runtime state of a single step execution.
     """
     step_id: StepId
     status: StepStatus = StepStatus.PENDING
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    input: Optional[dict[str, Any]] = None
     output: Optional[dict[str, Any]] = None
     error: Optional[dict[str, Any]] = None
+    cost: Optional["Money"] = None  # Cost incurred by this step
     retry_count: int = 0
     
     @property
@@ -200,36 +202,47 @@ class StepExecution:
             "status": self.status.value,
             "retry_count": self.retry_count,
         }
-        
+
         if self.started_at:
             result["started_at"] = self.started_at.isoformat()
         if self.completed_at:
             result["completed_at"] = self.completed_at.isoformat()
+        if self.input:
+            result["input"] = self.input
         if self.output:
             result["output"] = self.output
         if self.error:
             result["error"] = self.error
+        if self.cost:
+            result["cost"] = str(self.cost)
         if self.duration:
             result["duration_seconds"] = self.duration.seconds
-            
+
         return result
     
     @classmethod
     def from_dict(cls, data: dict) -> StepExecution:
         """Create from dictionary (deserialization)."""
+        # Parse cost if present
+        cost = None
+        if data.get("cost"):
+            cost = Money.from_string(data["cost"])
+        
         execution = cls(
             step_id=StepId(data["step_id"]),
             status=StepStatus(data["status"]),
             retry_count=data.get("retry_count", 0),
+            input=data.get("input"),
             output=data.get("output"),
             error=data.get("error"),
+            cost=cost,
         )
-        
+
         if data.get("started_at"):
             execution.started_at = datetime.fromisoformat(data["started_at"])
         if data.get("completed_at"):
             execution.completed_at = datetime.fromisoformat(data["completed_at"])
-            
+
         return execution
 
 
