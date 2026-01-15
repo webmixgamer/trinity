@@ -403,14 +403,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-06 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `{{steps.X.output}}` syntax supported in step messages
-- [ ] `{{trigger.payload}}` for webhook trigger data
-- [ ] `{{execution.id}}` and other context variables
-- [ ] Jinja2-style templating (familiar syntax)
-- [ ] Clear errors for undefined references
+- [x] `{{steps.X.output}}` syntax supported in step messages
+- [x] `{{input.X}}` for process input data (trigger.payload maps to input)
+- [x] `{{execution.id}}` and other context variables
+- [x] Jinja2-style templating (familiar syntax)
+- [x] Clear errors for undefined references (strict mode)
 
 **Technical Notes:**
 - Reference: IT2 Section 6 (Expression Language choice)

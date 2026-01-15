@@ -12,6 +12,7 @@ import logging
 from typing import Any, Optional
 
 from ...domain import StepType, AgentTaskConfig, Money
+from ...services import ExpressionEvaluator, EvaluationContext
 from ..step_handler import StepHandler, StepResult, StepContext, StepConfig
 
 
@@ -122,14 +123,20 @@ class AgentTaskHandler(StepHandler):
     as step output.
     """
     
-    def __init__(self, gateway: Optional[AgentGateway] = None):
+    def __init__(
+        self,
+        gateway: Optional[AgentGateway] = None,
+        expression_evaluator: Optional[ExpressionEvaluator] = None,
+    ):
         """
         Initialize handler.
         
         Args:
             gateway: Optional AgentGateway instance. If None, creates default.
+            expression_evaluator: Optional expression evaluator. If None, creates default.
         """
         self.gateway = gateway or AgentGateway()
+        self.expression_evaluator = expression_evaluator or ExpressionEvaluator()
     
     @property
     def step_type(self) -> StepType:
@@ -155,8 +162,11 @@ class AgentTaskHandler(StepHandler):
         agent_name = config.agent
         message = config.message
         
-        # Substitute variables in message (will be enhanced in E2-07)
+        # Substitute variables in message using ExpressionEvaluator
         message = self._substitute_variables(message, context)
+        
+        # Also substitute agent name if it's a variable
+        agent_name = self._substitute_variables(agent_name, context)
         
         # Get timeout
         timeout = config.timeout.seconds if config.timeout else 300
@@ -201,32 +211,23 @@ class AgentTaskHandler(StepHandler):
             logger.exception(f"Unexpected error in agent task")
             return StepResult.fail(str(e), error_code="UNEXPECTED_ERROR")
     
-    def _substitute_variables(self, message: str, context: StepContext) -> str:
+    def _substitute_variables(self, template: str, context: StepContext) -> str:
         """
-        Substitute variables in the message.
-        
-        Basic implementation for MVP. Full expression evaluation in E2-07.
+        Substitute variables in the template using ExpressionEvaluator.
         
         Supports:
         - {{input.X}} - Process input data
-        - {{steps.X.output}} - Previous step output (simple string replacement)
+        - {{input.X.Y}} - Nested input data
+        - {{steps.X.output}} - Full step output
+        - {{steps.X.output.Y}} - Nested field in step output
+        - {{execution.id}} - Execution ID
+        - {{process.name}} - Process name
         """
-        # Substitute input variables
-        for key, value in context.input_data.items():
-            placeholder = f"{{{{input.{key}}}}}"
-            if placeholder in message:
-                message = message.replace(placeholder, str(value))
+        eval_context = EvaluationContext(
+            input_data=context.input_data,
+            step_outputs=context.step_outputs,
+            execution_id=str(context.execution.id),
+            process_name=context.execution.process_name,
+        )
         
-        # Substitute step outputs (basic support)
-        for step_id, output in context.step_outputs.items():
-            # Full output reference
-            placeholder = f"{{{{steps.{step_id}.output}}}}"
-            if placeholder in message:
-                if isinstance(output, dict):
-                    # If output is dict, get 'response' field if available
-                    replacement = output.get("response", str(output))
-                else:
-                    replacement = str(output)
-                message = message.replace(placeholder, replacement)
-        
-        return message
+        return self.expression_evaluator.evaluate(template, eval_context)
