@@ -439,3 +439,134 @@ class TestOutputStorage:
         output = output_storage.retrieve(execution.id, StepId("step-a"))
         assert output is not None
         assert "step_id" in output
+
+
+class TestParallelExecution:
+    """Tests for E5-01, E5-02: Parallel step detection and execution."""
+
+    @pytest.fixture
+    def parallel_definition(self):
+        """
+        Create a process with parallel steps:
+        
+        step-a (level 0)
+               |
+           +---+---+
+           |       |
+        step-b  step-c (both level 1, can run in parallel)
+           |       |
+           +---+---+
+               |
+            step-d (level 2, depends on both)
+        """
+        definition = ProcessDefinition.create(name="parallel-process")
+        definition.steps = [
+            StepDefinition.from_dict({
+                "id": "step-a",
+                "name": "First Step",
+                "type": "agent_task",
+                "agent": "test-agent",
+                "message": "Do step A",
+            }),
+            StepDefinition.from_dict({
+                "id": "step-b",
+                "name": "Branch B",
+                "type": "agent_task",
+                "agent": "test-agent",
+                "message": "Do step B",
+                "depends_on": ["step-a"],
+            }),
+            StepDefinition.from_dict({
+                "id": "step-c",
+                "name": "Branch C",
+                "type": "agent_task",
+                "agent": "test-agent",
+                "message": "Do step C",
+                "depends_on": ["step-a"],
+            }),
+            StepDefinition.from_dict({
+                "id": "step-d",
+                "name": "Final Step",
+                "type": "agent_task",
+                "agent": "test-agent",
+                "message": "Do step D",
+                "depends_on": ["step-b", "step-c"],
+            }),
+        ]
+        return definition
+
+    def test_parallel_structure_detection(self, parallel_definition):
+        """Test that DependencyResolver correctly identifies parallel groups."""
+        resolver = DependencyResolver(parallel_definition)
+        structure = resolver.get_parallel_structure()
+        
+        # Should have 3 levels: 0, 1, 2
+        assert len(structure.groups) == 3
+        
+        # Level 0: step-a only
+        assert structure.groups[0].level == 0
+        assert len(structure.groups[0].step_ids) == 1
+        assert not structure.groups[0].is_parallel
+        
+        # Level 1: step-b and step-c (parallel)
+        assert structure.groups[1].level == 1
+        assert len(structure.groups[1].step_ids) == 2
+        assert structure.groups[1].is_parallel
+        
+        # Level 2: step-d only
+        assert structure.groups[2].level == 2
+        assert len(structure.groups[2].step_ids) == 1
+        assert not structure.groups[2].is_parallel
+        
+        # Overall structure has parallel execution
+        assert structure.has_parallel_execution()
+
+    def test_step_levels(self, parallel_definition):
+        """Test that step levels are correctly assigned."""
+        resolver = DependencyResolver(parallel_definition)
+        structure = resolver.get_parallel_structure()
+        
+        assert structure.get_step_level("step-a") == 0
+        assert structure.get_step_level("step-b") == 1
+        assert structure.get_step_level("step-c") == 1
+        assert structure.get_step_level("step-d") == 2
+
+    def test_get_ready_steps_parallel(self, parallel_definition):
+        """Test that multiple steps are ready when they can run in parallel."""
+        resolver = DependencyResolver(parallel_definition)
+        execution = ProcessExecution.create(parallel_definition)
+        
+        # Initially only step-a is ready
+        ready = resolver.get_ready_steps(execution)
+        assert len(ready) == 1
+        assert str(ready[0]) == "step-a"
+        
+        # Complete step-a
+        execution.start_step(StepId("step-a"))
+        execution.complete_step(StepId("step-a"), {})
+        
+        # Now both step-b and step-c should be ready
+        ready = resolver.get_ready_steps(execution)
+        assert len(ready) == 2
+        ready_ids = {str(r) for r in ready}
+        assert ready_ids == {"step-b", "step-c"}
+
+    @pytest.mark.asyncio
+    async def test_parallel_execution(
+        self, execution_repo, handler_registry, parallel_definition
+    ):
+        """Test that parallel steps are executed and process completes."""
+        from services.process_engine.engine.execution_engine import ExecutionConfig
+        
+        engine = ExecutionEngine(
+            execution_repo=execution_repo,
+            handler_registry=handler_registry,
+            config=ExecutionConfig(parallel_execution=True),
+        )
+        
+        execution = await engine.start(parallel_definition)
+        
+        # All steps should be completed
+        assert execution.status == ExecutionStatus.COMPLETED
+        for step_id in ["step-a", "step-b", "step-c", "step-d"]:
+            assert execution.step_executions[step_id].status == StepStatus.COMPLETED

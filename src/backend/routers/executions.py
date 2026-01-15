@@ -68,6 +68,7 @@ class StepExecutionSummary(BaseModel):
     completed_at: Optional[str] = None
     error: Optional[StepError] = None
     retry_count: int = 0
+    parallel_level: int = 0  # Execution level for parallel visualization
 
 
 class ExecutionSummary(BaseModel):
@@ -97,6 +98,7 @@ class ExecutionDetail(BaseModel):
     completed_at: Optional[str] = None
     duration_seconds: Optional[int] = None
     steps: List[StepExecutionSummary]
+    has_parallel_steps: bool = False  # True if process has parallel execution
 
 
 class ExecutionListResponse(BaseModel):
@@ -256,7 +258,7 @@ async def start_execution(
     if background_tasks:
         background_tasks.add_task(_run_execution, str(execution.id), str(definition.id))
     
-    return _to_detail(execution)
+    return _to_detail(execution, definition)
 
 
 async def _run_execution(execution_id: str, process_id: str):
@@ -335,6 +337,7 @@ async def get_execution(
     Get detailed information about a specific execution.
     """
     execution_repo = get_execution_repo()
+    definition_repo = get_definition_repo()
     
     try:
         eid = ExecutionId(execution_id)
@@ -345,7 +348,10 @@ async def get_execution(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
     
-    return _to_detail(execution)
+    # Get definition for parallel structure info
+    definition = definition_repo.get_by_id(execution.process_id)
+    
+    return _to_detail(execution, definition)
 
 
 @router.post("/{execution_id}/cancel", response_model=ExecutionDetail)
@@ -357,6 +363,7 @@ async def cancel_execution(
     Cancel a running execution.
     """
     execution_repo = get_execution_repo()
+    definition_repo = get_definition_repo()
     
     try:
         eid = ExecutionId(execution_id)
@@ -378,7 +385,8 @@ async def cancel_execution(
     
     logger.info(f"Execution {execution_id} cancelled by {current_user.username}")
     
-    return _to_detail(execution)
+    definition = definition_repo.get_by_id(execution.process_id)
+    return _to_detail(execution, definition)
 
 
 @router.post("/{execution_id}/retry", response_model=ExecutionDetail, status_code=201)
@@ -429,7 +437,7 @@ async def retry_execution(
     if background_tasks:
         background_tasks.add_task(_run_execution, str(new_execution.id), str(definition.id))
     
-    return _to_detail(new_execution)
+    return _to_detail(new_execution, definition)
 
 
 @router.get("/{execution_id}/events")
@@ -502,8 +510,22 @@ def _to_summary(execution: ProcessExecution) -> ExecutionSummary:
     )
 
 
-def _to_detail(execution: ProcessExecution) -> ExecutionDetail:
+def _to_detail(
+    execution: ProcessExecution,
+    definition: Optional[ProcessDefinition] = None,
+) -> ExecutionDetail:
     """Convert execution to detail response."""
+    from services.process_engine.engine import DependencyResolver
+    
+    # Calculate parallel structure if definition available
+    parallel_levels: dict[str, int] = {}
+    has_parallel = False
+    if definition:
+        resolver = DependencyResolver(definition)
+        parallel_structure = resolver.get_parallel_structure()
+        parallel_levels = parallel_structure.step_levels
+        has_parallel = parallel_structure.has_parallel_execution()
+    
     steps = []
     for step_id, step_exec in execution.step_executions.items():
         step_error = None
@@ -525,6 +547,7 @@ def _to_detail(execution: ProcessExecution) -> ExecutionDetail:
             completed_at=step_exec.completed_at.isoformat() if step_exec.completed_at else None,
             error=step_error,
             retry_count=step_exec.retry_count,
+            parallel_level=parallel_levels.get(step_id, 0),
         ))
     
     duration = None
@@ -545,4 +568,5 @@ def _to_detail(execution: ProcessExecution) -> ExecutionDetail:
         completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
         duration_seconds=duration,
         steps=steps,
+        has_parallel_steps=has_parallel,
     )

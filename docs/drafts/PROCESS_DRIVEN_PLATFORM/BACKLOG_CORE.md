@@ -65,13 +65,13 @@ E1-01 (Schema - from MVP)
 | Priority | P1 |
 | Phase | Core |
 | Dependencies | E2-03 (MVP) |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `DependencyResolver` identifies parallelizable steps
-- [ ] Steps with no shared dependencies run concurrently
-- [ ] Execution order respects all `depends_on` constraints
-- [ ] Visual indication in UI of parallel branches
+- [x] `DependencyResolver` identifies parallelizable steps
+- [x] Steps with no shared dependencies run concurrently
+- [x] Execution order respects all `depends_on` constraints
+- [x] Visual indication in UI of parallel branches
 
 **Technical Notes:**
 - Reference: IT3 Section 6 (Domain Services - DependencyResolver)
@@ -89,14 +89,14 @@ E1-01 (Schema - from MVP)
 | Priority | P1 |
 | Phase | Core |
 | Dependencies | E5-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Execution engine runs parallel steps concurrently
-- [ ] Uses asyncio for concurrent agent calls
-- [ ] All parallel steps must complete before dependents start
-- [ ] One failure doesn't immediately stop siblings (configurable)
-- [ ] Execution state tracks parallel step progress
+- [x] Execution engine runs parallel steps concurrently
+- [x] Uses asyncio for concurrent agent calls
+- [x] All parallel steps must complete before dependents start
+- [x] One failure doesn't immediately stop siblings (configurable via `stop_on_failure`)
+- [x] Execution state tracks parallel step progress
 
 **Technical Notes:**
 - Reference: IT2 Section 6.2 (Phase 2 - Parallel Execution)
@@ -113,12 +113,12 @@ E1-01 (Schema - from MVP)
 | Priority | P1 |
 | Phase | Core |
 | Dependencies | E5-02, E4-02 (MVP) |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Timeline shows parallel steps with visual marker
-- [ ] Preview diagram shows fork/join points
-- [ ] Duration bars show overlap for concurrent steps
+- [x] Timeline shows parallel steps with visual marker (⫘ icon)
+- [ ] Preview diagram shows fork/join points (deferred - requires diagram library)
+- [x] Duration bars show overlap for concurrent steps
 
 **Technical Notes:**
 - Reference: IT4 Section 4.2 (Layout - parallel indication)

@@ -71,6 +71,12 @@ class ExecutionConfig:
     # Maximum retries for failed steps (0 = no retries)
     max_retries: int = 0
     
+    # Enable parallel execution of independent steps
+    parallel_execution: bool = True
+    
+    # Maximum concurrent steps (0 = unlimited)
+    max_concurrent_steps: int = 0
+    
     def __post_init__(self):
         if self.default_step_timeout is None:
             self.default_step_timeout = Duration.from_minutes(5)
@@ -226,6 +232,7 @@ class ExecutionEngine:
         Main execution loop.
         
         Executes steps in dependency order until complete or failed.
+        Supports parallel execution of independent steps.
         """
         resolver = DependencyResolver(definition)
         
@@ -247,15 +254,15 @@ class ExecutionEngine:
             if execution.status == ExecutionStatus.CANCELLED:
                 break
             
-            # Check for failures
+            # Check for failures (if stop_on_failure is enabled)
             if resolver.has_failed_steps(execution) and self.config.stop_on_failure:
                 await self._fail_execution(execution, "Step execution failed")
                 break
             
-            # Get next step to execute
-            next_step_id = resolver.get_next_step(execution)
+            # Get all ready steps
+            ready_step_ids = resolver.get_ready_steps(execution)
             
-            if next_step_id is None:
+            if not ready_step_ids:
                 # No more steps ready
                 if resolver.is_complete(execution):
                     # All done - complete execution
@@ -266,24 +273,77 @@ class ExecutionEngine:
                     await self._fail_execution(execution, "Step execution failed")
                     break
                 else:
-                    # Shouldn't happen in sequential execution
+                    # Check if steps are still running (parallel execution)
+                    running_steps = resolver.get_running_steps(execution)
+                    if running_steps:
+                        # Wait a bit and continue - steps are still running
+                        await asyncio.sleep(0.1)
+                        continue
+                    # Shouldn't happen - deadlock
                     logger.error("No steps ready but execution not complete")
                     await self._fail_execution(execution, "Execution deadlock")
                     break
             
-            # Execute the step
-            step_def = resolver.get_step_definition(next_step_id)
-            if step_def is None:
-                await self._fail_execution(execution, f"Step definition not found: {next_step_id}")
-                break
+            # Get step definitions
+            step_defs = []
+            for step_id in ready_step_ids:
+                step_def = resolver.get_step_definition(step_id)
+                if step_def is None:
+                    await self._fail_execution(execution, f"Step definition not found: {step_id}")
+                    return execution
+                step_defs.append(step_def)
             
-            await self._execute_step(execution, step_def, definition)
+            # Execute steps (parallel or sequential)
+            if self.config.parallel_execution and len(step_defs) > 1:
+                # Parallel execution
+                await self._execute_steps_parallel(execution, step_defs, definition)
+            else:
+                # Sequential execution (one step at a time)
+                for step_def in step_defs:
+                    await self._execute_step(execution, step_def, definition)
+                    # Check if execution was failed/cancelled during step execution
+                    if execution.status in (ExecutionStatus.FAILED, ExecutionStatus.CANCELLED):
+                        break
             
             # Check if execution was failed/cancelled during step execution
             if execution.status in (ExecutionStatus.FAILED, ExecutionStatus.CANCELLED):
                 break
         
         return execution
+    
+    async def _execute_steps_parallel(
+        self,
+        execution: ProcessExecution,
+        step_defs: list[StepDefinition],
+        definition: ProcessDefinition,
+    ) -> None:
+        """
+        Execute multiple steps in parallel.
+        
+        Uses asyncio.gather to run steps concurrently.
+        Respects max_concurrent_steps configuration.
+        """
+        step_names = [s.name for s in step_defs]
+        logger.info(f"Executing {len(step_defs)} steps in parallel: {step_names}")
+        
+        # Apply concurrency limit if configured
+        if self.config.max_concurrent_steps > 0:
+            semaphore = asyncio.Semaphore(self.config.max_concurrent_steps)
+            
+            async def limited_execute(step_def: StepDefinition):
+                async with semaphore:
+                    await self._execute_step(execution, step_def, definition)
+            
+            tasks = [limited_execute(step_def) for step_def in step_defs]
+        else:
+            tasks = [
+                self._execute_step(execution, step_def, definition)
+                for step_def in step_defs
+            ]
+        
+        # Run all steps concurrently
+        # Using return_exceptions=True to continue even if some fail
+        await asyncio.gather(*tasks, return_exceptions=True)
     
     async def _execute_step(
         self,

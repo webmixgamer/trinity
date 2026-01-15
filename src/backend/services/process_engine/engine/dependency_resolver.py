@@ -3,10 +3,12 @@ Dependency Resolver
 
 Determines execution order based on step dependencies.
 Implements topological sorting for dependency resolution.
+Supports parallel execution by identifying independent step groups.
 
 Reference: IT3 Section 6 (Domain Services - DependencyResolver)
 """
 
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ..domain import (
@@ -16,6 +18,42 @@ from ..domain import (
     StepId,
     StepStatus,
 )
+
+
+@dataclass
+class ParallelGroup:
+    """
+    A group of steps that can execute in parallel.
+    
+    Steps in the same group have no dependencies on each other
+    and all their prerequisites have been satisfied.
+    """
+    level: int  # Execution level (0 = entry steps, 1 = depends on level 0, etc.)
+    step_ids: list[StepId] = field(default_factory=list)
+    
+    @property
+    def is_parallel(self) -> bool:
+        """True if this group has multiple steps that can run in parallel."""
+        return len(self.step_ids) > 1
+
+
+@dataclass
+class ParallelStructure:
+    """
+    Complete parallel execution structure for a process.
+    
+    Provides information for UI visualization of fork/join points.
+    """
+    groups: list[ParallelGroup] = field(default_factory=list)
+    step_levels: dict[str, int] = field(default_factory=dict)  # step_id -> level
+    
+    def get_step_level(self, step_id: str) -> int:
+        """Get the execution level for a step."""
+        return self.step_levels.get(step_id, 0)
+    
+    def has_parallel_execution(self) -> bool:
+        """True if any group has parallel steps."""
+        return any(g.is_parallel for g in self.groups)
 
 
 class DependencyResolver:
@@ -164,3 +202,84 @@ class DependencyResolver:
             True if any step has failed
         """
         return len(execution.get_failed_step_ids()) > 0
+    
+    def get_parallel_structure(self) -> ParallelStructure:
+        """
+        Analyze the process definition to identify parallel execution groups.
+        
+        Groups steps by their "level" - steps at the same level can run
+        in parallel because they don't depend on each other.
+        
+        Returns:
+            ParallelStructure with groups and step levels
+        """
+        # Calculate level for each step (longest path from any entry step)
+        step_levels: dict[str, int] = {}
+        
+        # Entry steps (no dependencies) are level 0
+        for step in self.definition.steps:
+            if not step.dependencies:
+                step_levels[str(step.id)] = 0
+        
+        # Calculate levels for remaining steps
+        # A step's level is max(dependency levels) + 1
+        changed = True
+        while changed:
+            changed = False
+            for step in self.definition.steps:
+                step_id_str = str(step.id)
+                if step_id_str in step_levels:
+                    continue
+                
+                # Check if all dependencies have levels assigned
+                dep_levels = []
+                all_deps_resolved = True
+                for dep in step.dependencies:
+                    dep_str = str(dep)
+                    if dep_str in step_levels:
+                        dep_levels.append(step_levels[dep_str])
+                    else:
+                        all_deps_resolved = False
+                        break
+                
+                if all_deps_resolved and dep_levels:
+                    step_levels[step_id_str] = max(dep_levels) + 1
+                    changed = True
+        
+        # Group steps by level
+        level_groups: dict[int, list[StepId]] = {}
+        for step in self.definition.steps:
+            level = step_levels.get(str(step.id), 0)
+            if level not in level_groups:
+                level_groups[level] = []
+            level_groups[level].append(step.id)
+        
+        # Create ParallelGroups
+        groups = []
+        for level in sorted(level_groups.keys()):
+            groups.append(ParallelGroup(
+                level=level,
+                step_ids=level_groups[level],
+            ))
+        
+        return ParallelStructure(
+            groups=groups,
+            step_levels=step_levels,
+        )
+    
+    def get_running_steps(self, execution: ProcessExecution) -> list[StepId]:
+        """
+        Get steps that are currently running.
+        
+        Args:
+            execution: Current execution state
+            
+        Returns:
+            List of step IDs currently in RUNNING status
+        """
+        running = []
+        for step in self.definition.steps:
+            step_exec = execution.step_executions.get(str(step.id))
+            if step_exec and step_exec.status == StepStatus.RUNNING:
+                running.append(step.id)
+        return running

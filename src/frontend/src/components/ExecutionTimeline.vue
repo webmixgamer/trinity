@@ -57,6 +57,14 @@
               <span :class="getStatusBadgeClasses(step.status)" class="px-2 py-0.5 rounded text-xs font-medium capitalize">
                 {{ step.status }}
               </span>
+              <!-- Parallel execution indicator -->
+              <span 
+                v-if="isParallelStep(step)"
+                class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                :title="`Parallel group (level ${step.parallel_level})`"
+              >
+                ⫘
+              </span>
             </div>
             <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
               <span v-if="step.started_at">Started: {{ formatTime(step.started_at) }}</span>
@@ -254,6 +262,21 @@ const maxDuration = computed(() => {
   })
   return max
 })
+
+// Check if step is part of a parallel group (same level as another step)
+const parallelLevelCounts = computed(() => {
+  const counts = {}
+  props.steps.forEach(step => {
+    const level = step.parallel_level || 0
+    counts[level] = (counts[level] || 0) + 1
+  })
+  return counts
+})
+
+function isParallelStep(step) {
+  const level = step.parallel_level || 0
+  return parallelLevelCounts.value[level] > 1
+}
 
 // Methods
 function toggleStep(stepId) {
