@@ -378,14 +378,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E2-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Step outputs stored in standardized location (not agent responsibility)
-- [ ] Output path pattern: `/executions/{exec_id}/steps/{step_id}/output`
-- [ ] Outputs persisted to SQLite (small) or filesystem (large)
-- [ ] Previous step outputs accessible via `{{steps.X.output}}` syntax
-- [ ] Output cleanup policy (TTL or on execution archive)
+- [x] Step outputs stored in standardized location (not agent responsibility)
+- [x] Output path pattern: `/executions/{exec_id}/steps/{step_id}/output`
+- [x] Outputs persisted to SQLite (small) or filesystem (large)
+- [x] Previous step outputs accessible via `{{steps.X.output}}` syntax
+- [x] Output cleanup policy (TTL or on execution archive)
 
 **Technical Notes:**
 - Reference: IT1 Section 2.4 (Output Storage as "Agent Responsibility" concern)
