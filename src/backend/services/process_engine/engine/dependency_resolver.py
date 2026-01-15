@@ -42,7 +42,7 @@ class DependencyResolver:
         
         A step is ready when:
         1. It has not started yet (PENDING status)
-        2. All its dependencies are COMPLETED
+        2. All its dependencies are COMPLETED or SKIPPED
         
         Args:
             execution: Current execution state
@@ -51,7 +51,10 @@ class DependencyResolver:
             List of step IDs ready to execute
         """
         ready = []
-        completed_steps = set(execution.get_completed_step_ids())
+        
+        # Get both completed and skipped steps as satisfied dependencies
+        satisfied_steps = set(execution.get_completed_step_ids())
+        satisfied_steps.update(execution.get_skipped_step_ids())
         
         for step in self.definition.steps:
             step_exec = execution.step_executions.get(str(step.id))
@@ -60,9 +63,9 @@ class DependencyResolver:
             if step_exec is None or step_exec.status != StepStatus.PENDING:
                 continue
             
-            # Check if all dependencies are completed
+            # Check if all dependencies are completed or skipped
             deps_satisfied = all(
-                str(dep) in completed_steps
+                str(dep) in satisfied_steps
                 for dep in step.dependencies
             )
             

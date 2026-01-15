@@ -380,16 +380,23 @@ class TestStepExecution:
         assert step.output == {"answer": 42}
         assert step.completed_at is not None
 
-    def test_fail_increments_retry(self):
-        """StepExecution.fail() increments retry count."""
+    def test_record_attempt_failure_increments_retry(self):
+        """StepExecution.record_attempt_failure() increments retry count."""
         step = StepExecution(step_id=StepId("test"))
         step.start()
-        
-        step.fail("Error 1")
+
+        # Record retry attempts (step stays RUNNING)
+        step.record_attempt_failure("Error 1")
         assert step.retry_count == 1
-        
-        step.fail("Error 2")
+        assert step.status == StepStatus.RUNNING  # Still running, not failed
+
+        step.record_attempt_failure("Error 2")
         assert step.retry_count == 2
+
+        # Final failure (all retries exhausted)
+        step.fail("Final error")
+        assert step.status == StepStatus.FAILED
+        assert step.retry_count == 2  # Not incremented by fail()
 
     def test_skip(self):
         """StepExecution.skip() sets status and reason."""

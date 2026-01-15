@@ -52,13 +52,22 @@ class ExecutionStartRequest(BaseModel):
     triggered_by: str = Field(default="api", description="What triggered this execution")
 
 
+class StepError(BaseModel):
+    """Error details for a failed step."""
+    message: str
+    code: Optional[str] = None
+    attempt: Optional[int] = None
+    failed_at: Optional[str] = None
+
+
 class StepExecutionSummary(BaseModel):
     """Summary of a step execution."""
     step_id: str
     status: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
-    error: Optional[str] = None
+    error: Optional[StepError] = None
+    retry_count: int = 0
 
 
 class ExecutionSummary(BaseModel):
@@ -497,16 +506,25 @@ def _to_detail(execution: ProcessExecution) -> ExecutionDetail:
     """Convert execution to detail response."""
     steps = []
     for step_id, step_exec in execution.step_executions.items():
-        error_msg = None
+        step_error = None
         if step_exec.error:
-            error_msg = step_exec.error.get("message", str(step_exec.error)) if isinstance(step_exec.error, dict) else str(step_exec.error)
+            if isinstance(step_exec.error, dict):
+                step_error = StepError(
+                    message=step_exec.error.get("message", "Unknown error"),
+                    code=step_exec.error.get("code"),
+                    attempt=step_exec.error.get("attempt"),
+                    failed_at=step_exec.error.get("failed_at"),
+                )
+            else:
+                step_error = StepError(message=str(step_exec.error))
         
         steps.append(StepExecutionSummary(
             step_id=step_id,
             status=step_exec.status.value,
             started_at=step_exec.started_at.isoformat() if step_exec.started_at else None,
             completed_at=step_exec.completed_at.isoformat() if step_exec.completed_at else None,
-            error=error_msg,
+            error=step_error,
+            retry_count=step_exec.retry_count,
         ))
     
     duration = None

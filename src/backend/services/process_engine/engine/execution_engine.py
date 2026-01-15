@@ -278,6 +278,10 @@ class ExecutionEngine:
                 break
             
             await self._execute_step(execution, step_def, definition)
+            
+            # Check if execution was failed/cancelled during step execution
+            if execution.status in (ExecutionStatus.FAILED, ExecutionStatus.CANCELLED):
+                break
         
         return execution
     
@@ -442,7 +446,7 @@ class ExecutionEngine:
         error_policy = step_def.error_policy
         
         # Fail the step in state
-        execution.fail_step(step_id, result.error or "Unknown error")
+        execution.fail_step(step_id, result.error or "Unknown error", result.error_code)
         
         # Check error policy
         action = error_policy.action

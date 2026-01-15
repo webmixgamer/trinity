@@ -238,8 +238,20 @@
                                   Step: {{ event.step_name }}
                                 </span>
                               </p>
+                              <!-- Error message -->
                               <div v-if="event.error_message" class="mt-1 text-sm text-red-600 dark:text-red-400">
                                 {{ event.error_message }}
+                              </div>
+                              <!-- Retry info -->
+                              <div v-if="event.attempt" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                                Attempt {{ event.attempt }} of {{ event.max_attempts }}
+                                <span v-if="event.next_retry_at" class="ml-2 text-gray-500 dark:text-gray-400">
+                                  Next retry: {{ formatDateTime(event.next_retry_at) }}
+                                </span>
+                              </div>
+                              <!-- Retry count for failures -->
+                              <div v-if="event.retry_count > 0 && event.event_type.includes('Failed')" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                After {{ event.retry_count }} retry attempts
                               </div>
                             </div>
                             <div class="text-right text-sm whitespace-nowrap text-gray-500 dark:text-gray-400">
@@ -353,7 +365,13 @@ const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
       if (step) {
         step.status = 'failed'
         step.completed_at = event.timestamp
-        step.error = event.error
+        // Construct error object from event fields
+        step.error = {
+          message: event.error_message || event.error || 'Unknown error',
+          code: event.error_code || null,
+          failed_at: event.timestamp,
+        }
+        step.retry_count = event.retry_count || 0
       }
     }
     // Add to events list if active
@@ -453,19 +471,23 @@ function copyToClipboard(text) {
 }
 
 function getEventIconClass(type) {
+  if (type.includes('Retrying')) return 'bg-amber-500'
   if (type.includes('Started')) return 'bg-blue-500'
   if (type.includes('Completed')) return 'bg-green-500'
   if (type.includes('Failed')) return 'bg-red-500'
   if (type.includes('Cancelled')) return 'bg-gray-500'
+  if (type.includes('Skipped')) return 'bg-gray-400'
   if (type.includes('Approval')) return 'bg-purple-500'
   return 'bg-gray-400'
 }
 
 function getEventIcon(type) {
+  if (type.includes('Retrying')) return ArrowPathIcon
   if (type.includes('Started')) return PlayIcon
   if (type.includes('Completed')) return CheckIcon
   if (type.includes('Failed')) return XMarkIcon
   if (type.includes('Cancelled')) return XMarkIcon
+  if (type.includes('Skipped')) return PauseIcon
   if (type.includes('Approval')) return UserIcon
   return ClockIcon
 }

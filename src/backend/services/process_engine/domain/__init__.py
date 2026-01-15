@@ -18,6 +18,8 @@ from .value_objects import (
     Version,
     Duration,
     Money,
+    RetryPolicy,
+    ErrorPolicy,
 )
 
 from .enums import (
@@ -90,6 +92,8 @@ __all__ = [
     "Version",
     "Duration",
     "Money",
+    "RetryPolicy",
+    "ErrorPolicy",
     # Enums
     "DefinitionStatus",
     "StepType",

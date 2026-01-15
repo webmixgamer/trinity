@@ -357,18 +357,20 @@ class TestExecutionEngineFailure:
         })
         registry = StepHandlerRegistry()
         registry.register(handler)
-        
+
         engine = ExecutionEngine(
             execution_repo=execution_repo,
             handler_registry=registry,
         )
-        
+
         execution = await engine.start(sequential_definition)
-        
+
         assert execution.status == ExecutionStatus.FAILED
         # step-b should still be pending
         assert execution.step_executions["step-b"].status == StepStatus.PENDING
-        assert handler.executed_steps == ["step-a"]
+        # Only step-a was attempted (may have retry attempts), step-b never ran
+        assert all(step == "step-a" for step in handler.executed_steps)
+        assert "step-b" not in handler.executed_steps
 
 
 class TestExecutionEngineCancel:

@@ -120,15 +120,45 @@
 
           <!-- Error display (for failed steps) -->
           <div v-if="step.error" class="mb-4">
-            <div class="text-xs font-medium text-red-600 dark:text-red-400 mb-1">Error</div>
-            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-              <pre class="text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap font-mono">{{ formatError(step.error) }}</pre>
-              <button
-                @click="copyToClipboard(formatError(step.error))"
-                class="mt-2 text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
-              >
-                Copy error
-              </button>
+            <div class="text-xs font-medium text-red-600 dark:text-red-400 mb-2">Error Details</div>
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <!-- Error code badge -->
+              <div v-if="step.error.code" class="mb-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
+                  {{ step.error.code }}
+                </span>
+              </div>
+              
+              <!-- Error message -->
+              <div class="text-sm text-red-700 dark:text-red-300 font-medium mb-2">
+                {{ step.error.message || 'Unknown error' }}
+              </div>
+              
+              <!-- Retry info -->
+              <div v-if="step.retry_count > 0" class="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
+                <div class="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>Failed after {{ step.retry_count }} retry attempt{{ step.retry_count > 1 ? 's' : '' }}</span>
+                </div>
+                <div v-if="step.error.failed_at" class="text-xs text-red-500 dark:text-red-500 mt-1">
+                  Last attempt: {{ formatDateTime(step.error.failed_at) }}
+                </div>
+              </div>
+
+              <!-- Copy button -->
+              <div class="mt-3 flex gap-2">
+                <button
+                  @click="copyToClipboard(JSON.stringify(step.error, null, 2))"
+                  class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 flex items-center gap-1"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy error details
+                </button>
+              </div>
             </div>
           </div>
 

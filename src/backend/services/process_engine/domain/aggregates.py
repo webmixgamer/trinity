@@ -477,11 +477,11 @@ class ProcessExecution:
         if step_exec:
             step_exec.complete(output)
     
-    def fail_step(self, step_id: StepId, error_message: str) -> None:
+    def fail_step(self, step_id: StepId, error_message: str, error_code: Optional[str] = None) -> None:
         """Mark a step as failed (final)."""
         step_exec = self.step_executions.get(str(step_id))
         if step_exec:
-            step_exec.fail(error_message)
+            step_exec.fail(error_message, error_code)
     
     def record_step_attempt(self, step_id: StepId, error_message: str, error_code: Optional[str] = None) -> None:
         """Record a failed attempt for a step."""
@@ -519,6 +519,14 @@ class ProcessExecution:
             step_id
             for step_id, step_exec in self.step_executions.items()
             if step_exec.status == StepStatus.PENDING
+        ]
+    
+    def get_skipped_step_ids(self) -> list[str]:
+        """Get IDs of skipped steps."""
+        return [
+            step_id
+            for step_id, step_exec in self.step_executions.items()
+            if step_exec.status == StepStatus.SKIPPED
         ]
     
     def all_steps_completed(self) -> bool:

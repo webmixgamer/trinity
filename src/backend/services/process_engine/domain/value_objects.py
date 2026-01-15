@@ -198,21 +198,23 @@ class Version:
 class Duration:
     """
     Represents a time duration for timeouts, delays, etc.
-    Stored as seconds internally.
+    Stored as seconds internally (with millisecond precision via float).
     
     Supports parsing from human-readable strings:
+    - "100ms" = 0.1 seconds
     - "30s" = 30 seconds
     - "5m" = 5 minutes
     - "2h" = 2 hours
     - "1d" = 1 day
     """
-    seconds: int
+    seconds: float  # Changed from int to float for millisecond precision
 
     # Pattern for parsing duration strings
-    _PATTERN = re.compile(r"^(\d+)(s|m|h|d)$")
+    _PATTERN = re.compile(r"^(\d+)(ms|s|m|h|d)$")
     
     # Multipliers for each unit
     _UNITS = {
+        "ms": 0.001,
         "s": 1,
         "m": 60,
         "h": 3600,
@@ -230,6 +232,7 @@ class Duration:
         Parse duration from string.
         
         Examples:
+            Duration.from_string("100ms") -> Duration(seconds=0.1)
             Duration.from_string("30s") -> Duration(seconds=30)
             Duration.from_string("5m") -> Duration(seconds=300)
             Duration.from_string("2h") -> Duration(seconds=7200)
@@ -249,7 +252,7 @@ class Duration:
         if not match:
             raise ValueError(
                 f"Invalid duration format '{value}'. "
-                "Use format like '30s', '5m', '2h', '1d'"
+                "Use format like '100ms', '30s', '5m', '2h', '1d'"
             )
         
         amount = int(match.group(1))
@@ -259,9 +262,14 @@ class Duration:
         return cls(seconds=amount * multiplier)
 
     @classmethod
-    def from_seconds(cls, seconds: int) -> Duration:
+    def from_seconds(cls, seconds: float) -> Duration:
         """Create Duration from seconds."""
         return cls(seconds=seconds)
+    
+    @classmethod
+    def from_milliseconds(cls, ms: int) -> Duration:
+        """Create Duration from milliseconds."""
+        return cls(seconds=ms / 1000.0)
 
     @classmethod
     def from_minutes(cls, minutes: int) -> Duration:
@@ -283,19 +291,25 @@ class Duration:
         if self.seconds == 0:
             return "0s"
         
-        days, remainder = divmod(self.seconds, 86400)
+        # Handle sub-second durations
+        if self.seconds < 1:
+            ms = int(self.seconds * 1000)
+            return f"{ms}ms"
+        
+        total_seconds = int(self.seconds)
+        days, remainder = divmod(total_seconds, 86400)
         hours, remainder = divmod(remainder, 3600)
         minutes, seconds = divmod(remainder, 60)
         
         parts = []
         if days:
-            parts.append(f"{days}d")
+            parts.append(f"{int(days)}d")
         if hours:
-            parts.append(f"{hours}h")
+            parts.append(f"{int(hours)}h")
         if minutes:
-            parts.append(f"{minutes}m")
+            parts.append(f"{int(minutes)}m")
         if seconds:
-            parts.append(f"{seconds}s")
+            parts.append(f"{int(seconds)}s")
         
         return "".join(parts)
 
