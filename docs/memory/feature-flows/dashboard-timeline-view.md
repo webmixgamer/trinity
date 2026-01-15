@@ -581,6 +581,7 @@ function getBarTooltip(activity) {
 
 ### Edge Cases
 - [x] 0 agents: Empty timeline with just "Now" marker
+- [x] 0 events: Timeline grid visible with all agent rows, ready for live events (fixed 2026-01-15)
 - [x] Agent with no executions: Row visible but no boxes
 - [x] Collaboration without target execution: Arrow not drawn
 - [x] Multiple rapid collaborations: Each gets own arrow if box exists
@@ -615,6 +616,7 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-15 | **Fix**: Timeline now visible even with no events - `timelineStart`/`timelineEnd` always provide valid time range based on `timeRangeHours`, enabling live event streaming |
 | 2026-01-13 | **UX**: Timeline is now the default view for new users; header logo is clickable and navigates to Dashboard |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - bars grow every second as tasks execute, tooltips show live elapsed time |
 | 2026-01-11 | **Fix**: Frontend network.js now correctly reads `related_execution_id` from top-level activity field (was only checking details) |

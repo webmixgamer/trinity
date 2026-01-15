@@ -92,13 +92,22 @@ export const useNetworkStore = defineStore('network', () => {
   })
 
   const timelineStart = computed(() => {
-    if (historicalCollaborations.value.length === 0) return null
-    return historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp
+    // Always provide a valid time range for the timeline, even with no events
+    // This ensures the timeline grid is visible and ready to show live events
+    const now = new Date()
+    const defaultStart = new Date(now.getTime() - timeRangeHours.value * 60 * 60 * 1000)
+
+    if (historicalCollaborations.value.length === 0) {
+      return defaultStart.toISOString()
+    }
+    // Use oldest event or default start, whichever is earlier
+    const oldestEvent = new Date(historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp)
+    return oldestEvent < defaultStart ? oldestEvent.toISOString() : defaultStart.toISOString()
   })
 
   const timelineEnd = computed(() => {
-    if (historicalCollaborations.value.length === 0) return null
-    return historicalCollaborations.value[0].timestamp
+    // Always use "now" as the end time in live mode so new events can appear
+    return new Date().toISOString()
   })
 
   const currentTime = computed(() => {

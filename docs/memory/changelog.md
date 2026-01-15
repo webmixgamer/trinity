@@ -1,3 +1,20 @@
+### 2026-01-15 09:30:00
+🐛 **Fix: Dashboard Timeline Visible Even With No Events**
+
+**Problem**: Timeline view was hidden/empty when there were no historical events in the selected time range, preventing users from seeing live events as they streamed in.
+
+**Root Cause**: `timelineStart` and `timelineEnd` computed properties in `network.js` returned `null` when `historicalCollaborations` was empty, causing ReplayTimeline to render nothing.
+
+**Fix**: Changed computed properties to always provide a valid time range:
+- `timelineStart` = now - timeRangeHours (e.g., 24h ago)
+- `timelineEnd` = now (always current time for live mode)
+
+**File Modified**: `src/frontend/src/stores/network.js:94-111`
+
+**Impact**: Timeline grid is now always visible with all agent rows, ready to show live events via WebSocket even when there's no historical data.
+
+---
+
 ### 2026-01-14 13:15:00
 🐛 **Security Fix: Multiple Bug Fixes from Best Practices Audit**
 
