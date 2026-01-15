@@ -434,15 +434,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-04 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Table/card view showing all processes
-- [ ] Columns: Name, Version, Status, Last Run, Created
-- [ ] Status badges: Draft, Published, Archived
-- [ ] Actions: Edit, Delete, Execute, View Executions
-- [ ] Sorting and filtering
-- [ ] Empty state with "Create Process" CTA
+- [x] Table/card view showing all processes
+- [x] Columns: Name, Version, Status, Last Run, Created
+- [x] Status badges: Draft, Published, Archived
+- [x] Actions: Edit, Delete, Execute, View Executions
+- [x] Sorting and filtering
+- [x] Empty state with "Create Process" CTA
 
 **Technical Notes:**
 - Reference: IT4 Section 10 (Navigation Structure)
@@ -460,15 +460,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Monaco editor or CodeMirror integration
-- [ ] YAML syntax highlighting
-- [ ] Line numbers
-- [ ] Inline validation errors (from E1-03)
-- [ ] Error markers on specific lines
-- [ ] Basic auto-indent
+- [x] Monaco editor or CodeMirror integration
+- [x] YAML syntax highlighting
+- [x] Line numbers
+- [x] Inline validation errors (from E1-03)
+- [x] Error markers on specific lines
+- [x] Basic auto-indent
 
 **Technical Notes:**
 - Reference: IT4 Section 3 (Process Definition UI)
@@ -511,15 +511,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E3-02, E3-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Split view: Editor (60%) + Preview (40%)
-- [ ] Validation panel at bottom
-- [ ] Save button (creates/updates definition)
-- [ ] Publish button (for drafts)
-- [ ] Discard changes confirmation
-- [ ] Keyboard shortcuts (Cmd+S to save)
+- [x] Split view: Editor (60%) + Preview (40%) - (MVP: editor with validation panel)
+- [x] Validation panel at bottom
+- [x] Save button (creates/updates definition)
+- [x] Publish button (for drafts)
+- [x] Discard changes confirmation
+- [x] Keyboard shortcuts (Cmd+S to save)
 
 **Technical Notes:**
 - Reference: IT4 Section 3.2 (Layout)

@@ -63,6 +63,24 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/processes',
+    name: 'ProcessList',
+    component: () => import('../views/ProcessList.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/processes/new',
+    name: 'ProcessNew',
+    component: () => import('../views/ProcessEditor.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/processes/:id',
+    name: 'ProcessEdit',
+    component: () => import('../views/ProcessEditor.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/api-keys',
     name: 'ApiKeys',
     component: () => import('../views/ApiKeys.vue'),
