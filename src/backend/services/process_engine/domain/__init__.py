@@ -61,6 +61,20 @@ from .exceptions import (
     InvalidExecutionStateError,
 )
 
+from .events import (
+    DomainEvent,
+    ProcessStarted,
+    ProcessCompleted,
+    ProcessFailed,
+    ProcessCancelled,
+    StepStarted,
+    StepCompleted,
+    StepFailed,
+    StepSkipped,
+    ApprovalRequested,
+    ApprovalDecided,
+)
+
 __all__ = [
     # Value Objects
     "ProcessId",
@@ -100,4 +114,16 @@ __all__ = [
     "DuplicateStepIdError",
     "ExecutionNotFoundError",
     "InvalidExecutionStateError",
+    # Domain Events
+    "DomainEvent",
+    "ProcessStarted",
+    "ProcessCompleted",
+    "ProcessFailed",
+    "ProcessCancelled",
+    "StepStarted",
+    "StepCompleted",
+    "StepFailed",
+    "StepSkipped",
+    "ApprovalRequested",
+    "ApprovalDecided",
 ]

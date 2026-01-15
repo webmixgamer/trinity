@@ -679,14 +679,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | None |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `EventPublisher` interface defined
-- [ ] In-memory implementation for MVP
-- [ ] Events: ProcessStarted, ProcessCompleted, ProcessFailed, StepStarted, StepCompleted, StepFailed, ApprovalRequested, ApprovalDecided
-- [ ] Subscribe pattern for handlers
-- [ ] Async event dispatch (non-blocking)
+- [x] `EventPublisher` interface defined
+- [x] In-memory implementation for MVP
+- [x] Events: ProcessStarted, ProcessCompleted, ProcessFailed, StepStarted, StepCompleted, StepFailed, ApprovalRequested, ApprovalDecided
+- [x] Subscribe pattern for handlers
+- [x] Async event dispatch (non-blocking)
 
 **Technical Notes:**
 - Reference: IT3 Section 5 (Domain Events)
