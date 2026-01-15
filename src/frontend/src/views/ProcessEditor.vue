@@ -194,21 +194,27 @@
                     <span
                       :class="[
                         'px-2 py-0.5 text-xs font-medium rounded-full',
-                        trigger.enabled
+                        trigger.enabled !== false
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                       ]"
                     >
-                      {{ trigger.enabled ? 'Enabled' : 'Disabled' }}
+                      {{ trigger.enabled !== false ? 'Enabled' : 'Disabled' }}
                     </span>
-                    <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                      {{ trigger.type }}
+                    <span :class="[
+                      'px-2 py-0.5 text-xs font-medium rounded-full',
+                      trigger.type === 'schedule'
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    ]">
+                      {{ trigger.type || 'webhook' }}
                     </span>
                   </div>
                   <div v-if="trigger.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {{ trigger.description }}
                   </div>
-                  <div v-if="trigger.type === 'webhook'" class="mt-2">
+                  <!-- Webhook trigger details -->
+                  <div v-if="!trigger.type || trigger.type === 'webhook'" class="mt-2">
                     <div class="flex items-center gap-2">
                       <code class="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-600 dark:text-gray-300 truncate max-w-md">
                         {{ getWebhookUrl(trigger.id) }}
@@ -222,10 +228,38 @@
                       </button>
                     </div>
                   </div>
+                  <!-- Schedule trigger details -->
+                  <div v-if="trigger.type === 'schedule'" class="mt-2 space-y-1">
+                    <div class="flex items-center gap-4">
+                      <div class="flex items-center gap-2">
+                        <ClockIcon class="h-4 w-4 text-gray-400" />
+                        <code class="text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded font-mono text-purple-700 dark:text-purple-300">
+                          {{ trigger.cron }}
+                        </code>
+                        <span v-if="getCronPresetLabel(trigger.cron)" class="text-xs text-gray-500 dark:text-gray-400">
+                          ({{ getCronPresetLabel(trigger.cron) }})
+                        </span>
+                      </div>
+                      <div v-if="trigger.timezone && trigger.timezone !== 'UTC'" class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ trigger.timezone }}
+                      </div>
+                    </div>
+                    <div v-if="scheduleTriggerInfo[trigger.id]?.next_run_at" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span>Next run:</span>
+                      <span class="text-gray-700 dark:text-gray-300">{{ formatScheduleTime(scheduleTriggerInfo[trigger.id].next_run_at) }}</span>
+                    </div>
+                    <div v-if="scheduleTriggerInfo[trigger.id]?.last_run_at" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span>Last run:</span>
+                      <span>{{ formatScheduleTime(scheduleTriggerInfo[trigger.id].last_run_at) }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Use these webhook URLs to trigger this process externally via HTTP POST.
+                <span v-if="hasWebhookTriggers">Use webhook URLs to trigger this process externally via HTTP POST.</span>
+                <span v-if="hasScheduleTriggers">
+                  <span v-if="hasWebhookTriggers"> </span>Schedule triggers run automatically at the configured times.
+                </span>
               </div>
             </div>
           </div>
@@ -322,7 +356,9 @@ import {
   DocumentDuplicateIcon,
   LinkIcon,
   ClipboardDocumentIcon,
+  ClockIcon,
 } from '@heroicons/vue/24/outline'
+import api from '../api'
 import jsyaml from 'js-yaml'
 
 const route = useRoute()
@@ -342,6 +378,7 @@ const showUnsavedWarning = ref(false)
 const pendingNavigation = ref(null)
 const showExecuteDialog = ref(false)
 const executeInputJson = ref('{}')
+const scheduleTriggerInfo = ref({})
 
 // Computed
 const isNew = computed(() => route.name === 'ProcessNew')
@@ -359,6 +396,43 @@ const parsedTriggers = computed(() => {
     return []
   }
 })
+
+// Check if we have webhook or schedule triggers
+const hasWebhookTriggers = computed(() =>
+  parsedTriggers.value.some(t => !t.type || t.type === 'webhook')
+)
+
+const hasScheduleTriggers = computed(() =>
+  parsedTriggers.value.some(t => t.type === 'schedule')
+)
+
+// Cron preset labels
+const cronPresetLabels = {
+  'hourly': 'Every hour',
+  'daily': 'Daily at 9 AM',
+  'weekly': 'Weekly (Mondays at 9 AM)',
+  'monthly': 'Monthly (1st at 9 AM)',
+  'weekdays': 'Weekdays at 9 AM',
+  '0 * * * *': 'Every hour',
+  '0 9 * * *': 'Daily at 9 AM',
+  '0 9 * * 1': 'Weekly (Mondays)',
+  '0 9 1 * *': 'Monthly (1st)',
+  '0 9 * * 1-5': 'Weekdays at 9 AM',
+}
+
+function getCronPresetLabel(cron) {
+  return cronPresetLabels[cron] || null
+}
+
+function formatScheduleTime(isoString) {
+  if (!isoString) return ''
+  try {
+    const date = new Date(isoString)
+    return date.toLocaleString()
+  } catch {
+    return isoString
+  }
+}
 
 // Helper functions for triggers
 function getWebhookUrl(triggerId) {
@@ -423,11 +497,31 @@ async function loadProcess() {
     process.value = data
     yamlContent.value = data.yaml_content || defaultYamlTemplate()
     hasUnsavedChanges.value = false
+
+    // Load schedule trigger info for published processes
+    if (data.status === 'published') {
+      await loadScheduleTriggerInfo(id)
+    }
   } catch (error) {
     showNotification(error.response?.data?.detail || 'Failed to load process', 'error')
     router.push('/processes')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadScheduleTriggerInfo(processId) {
+  try {
+    const response = await api.get(`/api/triggers/process/${processId}/schedules`)
+    // Build a map by trigger_id for easy lookup
+    const infoMap = {}
+    for (const schedule of response.data) {
+      infoMap[schedule.trigger_id] = schedule
+    }
+    scheduleTriggerInfo.value = infoMap
+  } catch (error) {
+    // Silently fail - schedule info is optional
+    console.warn('Failed to load schedule trigger info:', error)
   }
 }
 

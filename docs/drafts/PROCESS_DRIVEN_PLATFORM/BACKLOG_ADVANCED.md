@@ -11,12 +11,12 @@
 
 ## Sprint Plan
 
-| Sprint | Stories | Focus |
-|--------|---------|-------|
-| **Sprint 12** | E9-01, E9-02, E9-03 | Timer & Scheduling |
-| **Sprint 13** | E10-01, E10-02, E11-01 | Sub-Processes & Cost |
-| **Sprint 14** | E11-02, E11-03, E12-01, E12-02 | Analytics & Templates |
-| **Sprint 15** | E16-01, E16-02, E16-03 | Agent Roles (EMI) |
+| Sprint | Stories | Focus | Notes |
+|--------|---------|-------|-------|
+| **Sprint 12** | E9-01, E9-02, E9-03 | Timer & Scheduling | Extends existing scheduler service |
+| **Sprint 13** | E10-01, E10-02, E11-01 | Sub-Processes & Cost | |
+| **Sprint 14** | E11-02, E11-03, E12-01, E12-02 | Analytics & Templates | |
+| **Sprint 15** | E16-01, E16-02, E16-03 | Agent Roles (EMI) | |
 
 ---
 
@@ -25,7 +25,11 @@
 ```
 E8-01 (Trigger Schema - from Core)
   │
-  └──► E9-01 (Schedule Trigger) ──► E9-02 (Schedule Integration) ──► E9-03 (Timer Events)
+  └──► E9-01 (Schedule Trigger) ──► E9-02 (Schedule Integration)
+
+E2-03 (Engine - from MVP)
+  │
+  └──► E9-03 (Timer Step)  [independent of scheduling]
 
 E2-03 (Engine - from MVP)
   │
@@ -54,6 +58,8 @@ E1-01 (Schema - from MVP) + E15-01 (Event Bus - from MVP)
 
 > Run processes on a schedule
 
+**Infrastructure Note (2026-01-13):** A standalone scheduler service (`src/scheduler/`) was implemented with APScheduler, Redis distributed locking, and event publishing. This handles agent task scheduling and can be extended for process scheduling.
+
 ---
 
 ### E9-01: Schedule Trigger Type
@@ -62,20 +68,33 @@ E1-01 (Schema - from MVP) + E15-01 (Event Bus - from MVP)
 
 | Attribute | Value |
 |-----------|-------|
-| Size | M |
+| Size | S |
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E8-01 (Core) |
 | Status | pending |
 
 **Acceptance Criteria:**
-- [ ] `schedule` trigger type
-- [ ] Cron expression support
-- [ ] Human-readable presets: daily, weekly, monthly
-- [ ] Timezone configuration
+- [ ] `schedule` trigger type in process YAML
+- [ ] Cron expression support (5-field format)
+- [ ] Human-readable presets: `hourly`, `daily`, `weekly`, `monthly`
+- [ ] Timezone configuration per trigger
+- [ ] Cron validation in `ProcessValidator`
 
 **Technical Notes:**
-- Reuse existing Trinity APScheduler infrastructure
+- `ScheduleTriggerConfig` stub exists in `step_configs.py`
+- Reuse `croniter` library (already in scheduler dependencies)
+- Size reduced from M to S - config parsing only, infrastructure exists
+
+**Example:**
+```yaml
+triggers:
+  - type: schedule
+    id: daily-report
+    cron: "0 9 * * 1-5"  # or preset: "daily"
+    timezone: "America/New_York"
+    enabled: true
+```
 
 ---
 
@@ -85,39 +104,61 @@ E1-01 (Schema - from MVP) + E15-01 (Event Bus - from MVP)
 
 | Attribute | Value |
 |-----------|-------|
-| Size | L |
+| Size | M |
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E9-01 |
 | Status | pending |
 
 **Acceptance Criteria:**
-- [ ] `SchedulerGateway` ACL wraps APScheduler
+- [ ] Extend `src/scheduler/` service with process schedule support
+- [ ] Add `process_schedules` table (parallel to `agent_schedules`)
 - [ ] Schedules registered on process publish
 - [ ] Schedules removed on process archive
-- [ ] Next run time visible in UI
+- [ ] Next run time visible in process list UI
+- [ ] Distributed locking prevents duplicate process executions
 
 **Technical Notes:**
-- Reference: IT3 Section 8 (SchedulerGateway)
+- Extend existing `SchedulerService` rather than creating new gateway
+- Reuse Redis locking from `src/scheduler/locking.py`
+- Scheduler calls backend `/api/processes/{id}/execute` via HTTP
+- Size reduced from L to M - extends existing infrastructure
 
 ---
 
 ### E9-03: Timer Events Within Process
 
-**As a** process designer, **I want** timer events within a process, **so that** I can add delays or timeouts.
+**As a** process designer, **I want** timer events within a process, **so that** I can add delays.
 
 | Attribute | Value |
 |-----------|-------|
-| Size | M |
+| Size | S |
 | Priority | P3 |
 | Phase | Advanced |
-| Dependencies | E9-02 |
+| Dependencies | E2-03 (MVP) |
 | Status | pending |
 
 **Acceptance Criteria:**
 - [ ] `timer` step type: wait for duration before continuing
-- [ ] `timeout` on any step: fail if exceeds duration
-- [ ] Timer state persisted (survives restart)
+- [ ] `TimerStepHandler` with `asyncio.sleep()`
+- [ ] Emits standard `StepStarted`/`StepCompleted` events
+- [ ] Duration configurable via `delay` field
+
+**Technical Notes:**
+- Independent of scheduler service - runs in-process
+- `TimerConfig` stub already exists in `step_configs.py`
+- `TIMER` step type already in enums
+- Size reduced from M to S - simple async handler
+- Timeout on steps already implemented via retry policy
+
+**Example:**
+```yaml
+steps:
+  - id: wait
+    name: Wait 5 minutes
+    type: timer
+    delay: 5m
+```
 
 ---
 

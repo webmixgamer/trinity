@@ -52,6 +52,9 @@ from .step_configs import (
     WebhookTriggerConfig,
     ScheduleTriggerConfig,
     parse_trigger_config,
+    # Cron presets
+    CRON_PRESETS,
+    expand_cron_preset,
 )
 
 from .aggregates import (
@@ -133,6 +136,9 @@ __all__ = [
     "WebhookTriggerConfig",
     "ScheduleTriggerConfig",
     "parse_trigger_config",
+    # Cron presets
+    "CRON_PRESETS",
+    "expand_cron_preset",
     # Aggregates
     "ProcessDefinition",
     "ProcessExecution",

@@ -37,6 +37,7 @@ from services.process_engine.engine import (
     HumanApprovalHandler,
     GatewayHandler,
     NotificationHandler,
+    TimerHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,7 @@ def get_handler_registry() -> StepHandlerRegistry:
         _handler_registry.register(HumanApprovalHandler())
         _handler_registry.register(GatewayHandler())
         _handler_registry.register(NotificationHandler())
+        _handler_registry.register(TimerHandler())
     return _handler_registry
 
 

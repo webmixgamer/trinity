@@ -108,7 +108,7 @@
               >
                 {{ process.name }}
               </router-link>
-              
+
               <!-- Status badge -->
               <span :class="[
                 'px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0',
@@ -126,21 +126,28 @@
             <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
               Version {{ process.version }}
             </div>
-            
+
             <p class="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2 flex-grow">
               {{ process.description || 'No description' }}
             </p>
 
-            <!-- Steps count -->
-            <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-3">
-              <span class="flex items-center">
-                <CubeIcon class="w-4 h-4 mr-1" />
-                {{ process.step_count || 0 }} steps
-              </span>
-              <span v-if="process.last_run_at" class="flex items-center">
-                <ClockIcon class="w-4 h-4 mr-1" />
-                {{ formatRelativeTime(process.last_run_at) }}
-              </span>
+            <!-- Steps count and schedule info -->
+            <div class="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400 mb-3">
+              <div class="flex items-center gap-4">
+                <span class="flex items-center">
+                  <CubeIcon class="w-4 h-4 mr-1" />
+                  {{ process.step_count || 0 }} steps
+                </span>
+                <span v-if="process.last_run_at" class="flex items-center">
+                  <ClockIcon class="w-4 h-4 mr-1" />
+                  {{ formatRelativeTime(process.last_run_at) }}
+                </span>
+              </div>
+              <!-- Schedule info -->
+              <div v-if="scheduleInfo[process.id]?.next_run_at" class="flex items-center gap-1 text-purple-600 dark:text-purple-400">
+                <CalendarIcon class="w-4 h-4" />
+                <span>Next: {{ formatNextRunTime(scheduleInfo[process.id].next_run_at) }}</span>
+              </div>
             </div>
 
             <!-- Action buttons -->
@@ -229,31 +236,55 @@ import {
   TrashIcon,
   CubeIcon,
   ClockIcon,
+  CalendarIcon,
   CubeTransparentIcon,
   ExclamationCircleIcon,
 } from '@heroicons/vue/24/outline'
+import api from '../api'
 
 const processesStore = useProcessesStore()
 const notification = ref(null)
 const actionInProgress = ref(null)
 const deleteTarget = ref(null)
 const statusFilter = ref('')
+const scheduleInfo = ref({})
 
 // Computed
 const displayProcesses = computed(() => {
   let list = processesStore.sortedProcesses
-  
+
   if (statusFilter.value) {
     list = list.filter(p => p.status === statusFilter.value)
   }
-  
+
   return list
 })
 
 // Lifecycle
-onMounted(() => {
-  processesStore.fetchProcesses()
+onMounted(async () => {
+  await processesStore.fetchProcesses()
+  await loadScheduleInfo()
 })
+
+async function loadScheduleInfo() {
+  try {
+    const response = await api.get('/api/triggers/schedules')
+    // Build a map by process_id for easy lookup
+    const infoMap = {}
+    for (const schedule of response.data) {
+      // Use the first schedule for each process (or the one with earliest next_run)
+      if (!infoMap[schedule.process_id] ||
+          (schedule.next_run_at && (!infoMap[schedule.process_id].next_run_at ||
+           schedule.next_run_at < infoMap[schedule.process_id].next_run_at))) {
+        infoMap[schedule.process_id] = schedule
+      }
+    }
+    scheduleInfo.value = infoMap
+  } catch (error) {
+    // Silently fail - schedule info is optional
+    console.warn('Failed to load schedule info:', error)
+  }
+}
 
 // Methods
 const showNotification = (message, type = 'success') => {
@@ -283,6 +314,23 @@ const formatRelativeTime = (dateStr) => {
   return `${diffDays}d ago`
 }
 
+const formatNextRunTime = (dateStr) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = date - now
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMs < 0) return 'overdue'
+  if (diffMins < 1) return 'now'
+  if (diffMins < 60) return `in ${diffMins}m`
+  if (diffHours < 24) return `in ${diffHours}h`
+  if (diffDays < 7) return `in ${diffDays}d`
+  return date.toLocaleDateString()
+}
+
 const handleExecute = async (process) => {
   actionInProgress.value = process.id
   try {
@@ -301,7 +349,7 @@ const handleDelete = (process) => {
 
 const confirmDelete = async () => {
   if (!deleteTarget.value) return
-  
+
   actionInProgress.value = deleteTarget.value.id
   try {
     await processesStore.deleteProcess(deleteTarget.value.id)

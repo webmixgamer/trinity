@@ -330,18 +330,63 @@ class WebhookTriggerConfig:
         return result
 
 
+# =============================================================================
+# Cron Presets
+# =============================================================================
+
+CRON_PRESETS: dict[str, str] = {
+    "hourly": "0 * * * *",      # Every hour at :00
+    "daily": "0 9 * * *",       # Every day at 9:00 AM
+    "weekly": "0 9 * * 1",      # Every Monday at 9:00 AM
+    "monthly": "0 9 1 * *",     # 1st of each month at 9:00 AM
+    "weekdays": "0 9 * * 1-5",  # Weekdays at 9:00 AM
+}
+
+
+def expand_cron_preset(cron: str) -> str:
+    """
+    Expand cron preset to full expression.
+
+    Args:
+        cron: Either a preset name (hourly, daily, etc.) or a cron expression
+
+    Returns:
+        Full 5-field cron expression
+    """
+    return CRON_PRESETS.get(cron, cron)
+
+
 @dataclass(frozen=True)
 class ScheduleTriggerConfig:
     """
-    Configuration for scheduled triggers (stub for Advanced phase).
+    Configuration for scheduled triggers.
 
     Allows processes to run on a cron schedule.
+
+    Supports human-readable presets:
+    - hourly: Every hour at :00
+    - daily: Every day at 9:00 AM
+    - weekly: Every Monday at 9:00 AM
+    - monthly: 1st of each month at 9:00 AM
+    - weekdays: Weekdays at 9:00 AM
+
+    Or standard 5-field cron expressions: "minute hour day month day_of_week"
     """
     id: str
-    cron: str = ""  # Cron expression (e.g., "0 9 * * 1-5")
+    cron: str = ""  # Cron expression or preset (e.g., "daily", "0 9 * * 1-5")
     enabled: bool = True
     timezone: str = "UTC"
     description: str = ""
+
+    @property
+    def cron_expression(self) -> str:
+        """Get the full cron expression (expands presets)."""
+        return expand_cron_preset(self.cron)
+
+    @property
+    def is_preset(self) -> bool:
+        """Check if using a preset rather than explicit cron."""
+        return self.cron in CRON_PRESETS
 
     @classmethod
     def from_dict(cls, data: dict) -> "ScheduleTriggerConfig":
@@ -360,6 +405,7 @@ class ScheduleTriggerConfig:
             "type": "schedule",
             "id": self.id,
             "cron": self.cron,
+            "cron_expression": self.cron_expression,  # Include expanded form
             "enabled": self.enabled,
             "timezone": self.timezone,
             "description": self.description,

@@ -21,7 +21,17 @@ from ..domain import (
     ProcessDefinition,
     StepType,
     ProcessValidationError,
+    ScheduleTriggerConfig,
+    CRON_PRESETS,
+    expand_cron_preset,
 )
+
+# Try to import croniter for cron validation
+try:
+    from croniter import croniter
+    CRONITER_AVAILABLE = True
+except ImportError:
+    CRONITER_AVAILABLE = False
 
 
 class ErrorLevel(str, Enum):
@@ -34,7 +44,7 @@ class ErrorLevel(str, Enum):
 class ValidationError:
     """
     A single validation error or warning.
-    
+
     Attributes:
         message: Human-readable error description
         level: ERROR or WARNING
@@ -47,7 +57,7 @@ class ValidationError:
     path: Optional[str] = None
     line: Optional[int] = None
     suggestion: Optional[str] = None
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
         result = {
@@ -67,24 +77,24 @@ class ValidationError:
 class ValidationResult:
     """
     Result of process validation.
-    
+
     Contains lists of errors and warnings, and indicates if the
     definition is valid for saving/publishing.
     """
     errors: list[ValidationError] = field(default_factory=list)
     warnings: list[ValidationError] = field(default_factory=list)
     definition: Optional[ProcessDefinition] = None
-    
+
     @property
     def is_valid(self) -> bool:
         """True if no errors (warnings are allowed)."""
         return len(self.errors) == 0
-    
+
     @property
     def has_warnings(self) -> bool:
         """True if there are warnings."""
         return len(self.warnings) > 0
-    
+
     def add_error(
         self,
         message: str,
@@ -100,7 +110,7 @@ class ValidationResult:
             line=line,
             suggestion=suggestion,
         ))
-    
+
     def add_warning(
         self,
         message: str,
@@ -116,7 +126,7 @@ class ValidationResult:
             line=line,
             suggestion=suggestion,
         ))
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for API response."""
         return {
@@ -134,33 +144,33 @@ AgentChecker = Callable[[str], tuple[bool, bool]]  # Returns (exists, is_running
 class ProcessValidator:
     """
     Validates process definitions.
-    
+
     Performs multiple levels of validation:
     1. YAML parsing
     2. Schema validation
     3. Semantic validation
     4. Agent existence checking
-    
+
     Usage:
         validator = ProcessValidator(agent_checker=check_agent_func)
         result = validator.validate_yaml(yaml_content)
         if result.is_valid:
             definition = result.definition
     """
-    
+
     def __init__(
         self,
         agent_checker: Optional[AgentChecker] = None,
     ):
         """
         Initialize validator.
-        
+
         Args:
             agent_checker: Optional function to check if agent exists/is running.
                           Signature: (agent_name: str) -> (exists: bool, is_running: bool)
         """
         self.agent_checker = agent_checker
-    
+
     def validate_yaml(
         self,
         yaml_content: str,
@@ -168,16 +178,16 @@ class ProcessValidator:
     ) -> ValidationResult:
         """
         Validate YAML content and return validation result.
-        
+
         Args:
             yaml_content: Raw YAML string
             created_by: Optional user identifier
-            
+
         Returns:
             ValidationResult with errors, warnings, and parsed definition
         """
         result = ValidationResult()
-        
+
         # Step 1: Parse YAML
         try:
             data = yaml.safe_load(yaml_content)
@@ -187,19 +197,19 @@ class ProcessValidator:
                 line=getattr(e, 'problem_mark', None) and e.problem_mark.line + 1,
             )
             return result
-        
+
         if not isinstance(data, dict):
             result.add_error(
                 message="Process definition must be a YAML object/mapping",
                 suggestion="Start with 'name: my-process'",
             )
             return result
-        
+
         # Step 2: Schema validation (required fields)
         self._validate_schema(data, result)
         if not result.is_valid:
             return result
-        
+
         # Step 3: Parse into ProcessDefinition
         try:
             definition = ProcessDefinition.from_yaml_dict(data, created_by=created_by)
@@ -209,48 +219,48 @@ class ProcessValidator:
                 message=f"Failed to parse process definition: {e}",
             )
             return result
-        
+
         # Step 4: Semantic validation (from domain)
         domain_errors = definition.validate()
         for error in domain_errors:
             result.add_error(message=error)
-        
+
         # Step 5: Agent existence checking (warnings)
         if self.agent_checker and result.is_valid:
             self._check_agents(definition, result)
-        
+
         return result
-    
+
     def validate_definition(
         self,
         definition: ProcessDefinition,
     ) -> ValidationResult:
         """
         Validate an existing ProcessDefinition object.
-        
+
         Args:
             definition: ProcessDefinition to validate
-            
+
         Returns:
             ValidationResult with errors and warnings
         """
         result = ValidationResult()
         result.definition = definition
-        
+
         # Domain validation
         domain_errors = definition.validate()
         for error in domain_errors:
             result.add_error(message=error)
-        
+
         # Agent checking
         if self.agent_checker and result.is_valid:
             self._check_agents(definition, result)
-        
+
         return result
-    
+
     def _validate_schema(self, data: dict, result: ValidationResult) -> None:
         """Validate schema (required fields and types)."""
-        
+
         # Required: name
         if "name" not in data:
             result.add_error(
@@ -268,7 +278,7 @@ class ProcessValidator:
                 message="Field 'name' cannot be empty",
                 path="name",
             )
-        
+
         # Required: steps
         if "steps" not in data:
             result.add_error(
@@ -290,7 +300,7 @@ class ProcessValidator:
             # Validate each step
             for i, step in enumerate(data["steps"]):
                 self._validate_step_schema(step, i, result)
-        
+
         # Optional: version
         if "version" in data:
             version = data["version"]
@@ -299,7 +309,7 @@ class ProcessValidator:
                     message="Field 'version' must be a number or string",
                     path="version",
                 )
-        
+
         # Optional: outputs
         if "outputs" in data:
             if not isinstance(data["outputs"], list):
@@ -307,7 +317,18 @@ class ProcessValidator:
                     message="Field 'outputs' must be a list",
                     path="outputs",
                 )
-    
+
+        # Optional: triggers
+        if "triggers" in data:
+            if not isinstance(data["triggers"], list):
+                result.add_error(
+                    message="Field 'triggers' must be a list",
+                    path="triggers",
+                )
+            else:
+                for i, trigger in enumerate(data["triggers"]):
+                    self._validate_trigger_schema(trigger, i, result)
+
     def _validate_step_schema(
         self,
         step: Any,
@@ -316,21 +337,21 @@ class ProcessValidator:
     ) -> None:
         """Validate individual step schema."""
         path_prefix = f"steps[{index}]"
-        
+
         if not isinstance(step, dict):
             result.add_error(
                 message=f"Step at index {index} must be an object",
                 path=path_prefix,
             )
             return
-        
+
         # Required: id
         if "id" not in step:
             result.add_error(
                 message=f"Step at index {index} missing required field: 'id'",
                 path=f"{path_prefix}.id",
             )
-        
+
         # Required: type
         if "type" not in step:
             result.add_error(
@@ -347,7 +368,7 @@ class ProcessValidator:
                     path=f"{path_prefix}.type",
                     suggestion=f"Valid types: {', '.join(valid_types)}",
                 )
-            
+
             # Type-specific validation
             if step_type == "agent_task":
                 if "agent" not in step:
@@ -360,7 +381,118 @@ class ProcessValidator:
                         message=f"agent_task step missing required field: 'message'",
                         path=f"{path_prefix}.message",
                     )
-    
+
+    def _validate_trigger_schema(
+        self,
+        trigger: Any,
+        index: int,
+        result: ValidationResult,
+    ) -> None:
+        """Validate individual trigger schema."""
+        path_prefix = f"triggers[{index}]"
+
+        if not isinstance(trigger, dict):
+            result.add_error(
+                message=f"Trigger at index {index} must be an object",
+                path=path_prefix,
+            )
+            return
+
+        # Required: id
+        if "id" not in trigger:
+            result.add_error(
+                message=f"Trigger at index {index} missing required field: 'id'",
+                path=f"{path_prefix}.id",
+            )
+
+        # Required: type
+        trigger_type = trigger.get("type", "webhook")
+        valid_types = ["webhook", "schedule"]
+        if trigger_type not in valid_types:
+            result.add_error(
+                message=f"Invalid trigger type '{trigger_type}'",
+                path=f"{path_prefix}.type",
+                suggestion=f"Valid types: {', '.join(valid_types)}",
+            )
+
+        # Schedule-specific validation
+        if trigger_type == "schedule":
+            self._validate_schedule_trigger(trigger, index, result)
+
+    def _validate_schedule_trigger(
+        self,
+        trigger: dict,
+        index: int,
+        result: ValidationResult,
+    ) -> None:
+        """Validate schedule trigger configuration."""
+        path_prefix = f"triggers[{index}]"
+
+        # Required: cron
+        cron = trigger.get("cron", "")
+        if not cron:
+            result.add_error(
+                message=f"Schedule trigger missing required field: 'cron'",
+                path=f"{path_prefix}.cron",
+                suggestion=f"Add 'cron: daily' or a cron expression like '0 9 * * *'",
+            )
+            return
+
+        # Validate cron expression
+        cron_error = self._validate_cron_expression(cron)
+        if cron_error:
+            # Show available presets in suggestion
+            presets = ", ".join(CRON_PRESETS.keys())
+            result.add_error(
+                message=cron_error,
+                path=f"{path_prefix}.cron",
+                suggestion=f"Use a preset ({presets}) or 5-field cron: 'minute hour day month day_of_week'",
+            )
+
+        # Validate timezone if provided
+        timezone = trigger.get("timezone", "UTC")
+        if timezone:
+            try:
+                import pytz
+                pytz.timezone(timezone)
+            except Exception:
+                result.add_warning(
+                    message=f"Unknown timezone '{timezone}', will use UTC",
+                    path=f"{path_prefix}.timezone",
+                )
+
+    def _validate_cron_expression(self, cron: str) -> Optional[str]:
+        """
+        Validate a cron expression or preset.
+
+        Args:
+            cron: Cron expression or preset name
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        # Check if it's a valid preset
+        if cron in CRON_PRESETS:
+            return None
+
+        # Expand preset and validate
+        cron_expr = expand_cron_preset(cron)
+
+        # Basic format check (5 fields)
+        parts = cron_expr.strip().split()
+        if len(parts) != 5:
+            return f"Invalid cron expression '{cron}': expected 5 fields (minute hour day month day_of_week)"
+
+        # Use croniter for detailed validation if available
+        if CRONITER_AVAILABLE:
+            try:
+                from datetime import datetime
+                croniter(cron_expr, datetime.now())
+            except (ValueError, KeyError) as e:
+                return f"Invalid cron expression '{cron}': {str(e)}"
+
+        return None
+
     def _check_agents(
         self,
         definition: ProcessDefinition,
@@ -369,13 +501,13 @@ class ProcessValidator:
         """Check if referenced agents exist and are running."""
         if not self.agent_checker:
             return
-        
+
         for i, step in enumerate(definition.steps):
             if step.type == StepType.AGENT_TASK:
                 agent_name = step.config.agent
                 try:
                     exists, is_running = self.agent_checker(agent_name)
-                    
+
                     if not exists:
                         result.add_warning(
                             message=f"Agent '{agent_name}' does not exist",

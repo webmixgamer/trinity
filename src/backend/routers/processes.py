@@ -22,10 +22,19 @@ from services.process_engine.domain import (
     ProcessUpdated,
     ProcessPublished,
     ProcessArchived,
+    ScheduleTriggerConfig,
+    expand_cron_preset,
 )
 from services.process_engine.repositories import SqliteProcessDefinitionRepository
 from services.process_engine.services import ProcessValidator, ValidationResult
 from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
+
+# For process schedule management
+import sqlite3
+import secrets
+from datetime import datetime
+from croniter import croniter
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +133,10 @@ def get_repository() -> SqliteProcessDefinitionRepository:
     if _repository is None:
         # Use a separate database file for process definitions
         process_db_path = DB_PATH.replace(".db", "_processes.db")
-        
+
         # Ensure directory exists
         os.makedirs(os.path.dirname(process_db_path), exist_ok=True)
-        
+
         _repository = SqliteProcessDefinitionRepository(process_db_path)
         logger.info(f"Process definition repository initialized at {process_db_path}")
     return _repository
@@ -175,30 +184,30 @@ async def create_process(
 ) -> dict:
     """
     Create a new process definition from YAML.
-    
+
     The process is created in DRAFT status.
     """
     validator = get_validator()
     result = validator.validate_yaml(request.yaml_content, created_by=current_user.email)
-    
+
     if not result.is_valid:
         error_messages = [e.message for e in result.errors]
         raise HTTPException(
             status_code=422,
             detail={"message": "Validation failed", "errors": error_messages}
         )
-    
+
     # Create from validated data
     definition = result.definition
     if definition is None:
         raise HTTPException(status_code=500, detail="Validation passed but no definition created")
-    
+
     # Save to repository
     repo = get_repository()
     repo.save(definition)
-    
+
     logger.info(f"Process '{definition.name}' created by {current_user.email}")
-    
+
     # Emit domain event
     await publish_event(ProcessCreated(
         process_id=definition.id,
@@ -206,7 +215,7 @@ async def create_process(
         version=definition.version.major,
         created_by=current_user.email,
     ))
-    
+
     return _to_detail(definition, request.yaml_content)
 
 
@@ -220,11 +229,11 @@ async def list_processes(
 ) -> dict:
     """
     List all process definitions.
-    
+
     Supports filtering by status and name, with pagination.
     """
     repo = get_repository()
-    
+
     # Parse status filter
     status_filter = None
     if status:
@@ -232,13 +241,13 @@ async def list_processes(
             status_filter = DefinitionStatus(status)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
-    
+
     # Get definitions
     definitions = repo.list_all(limit=limit, offset=offset, status=status_filter)
     total = repo.count(status=status_filter)
-    
+
     processes = [_to_summary(d) for d in definitions]
-    
+
     return {
         "processes": processes,
         "total": total,
@@ -256,16 +265,16 @@ async def get_process(
     Get a single process definition by ID.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = repo.get_by_id(pid)
     if definition is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     return _to_detail(definition)
 
 
@@ -277,42 +286,42 @@ async def update_process(
 ) -> dict:
     """
     Update a process definition.
-    
+
     Only DRAFT processes can be updated.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     existing = repo.get_by_id(pid)
     if existing is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     if existing.status != DefinitionStatus.DRAFT:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot update process in '{existing.status.value}' status. Only DRAFT processes can be updated."
         )
-    
+
     # Validate new content
     validator = get_validator()
     result = validator.validate_yaml(request.yaml_content, created_by=current_user.email)
-    
+
     if not result.is_valid:
         error_messages = [e.message for e in result.errors]
         raise HTTPException(
             status_code=422,
             detail={"message": "Validation failed", "errors": error_messages}
         )
-    
+
     # Update the definition but keep the same ID
     new_definition = result.definition
     if new_definition is None:
         raise HTTPException(status_code=500, detail="Validation passed but no definition created")
-    
+
     # Preserve ID, created_at, created_by
     from dataclasses import replace
     from datetime import datetime, timezone
@@ -323,10 +332,10 @@ async def update_process(
         created_by=existing.created_by,
         updated_at=datetime.now(timezone.utc),
     )
-    
+
     repo.save(updated)
     logger.info(f"Process '{updated.name}' updated by {current_user.email}")
-    
+
     # Emit domain event
     await publish_event(ProcessUpdated(
         process_id=updated.id,
@@ -334,7 +343,7 @@ async def update_process(
         version=updated.version.major,
         updated_by=current_user.email,
     ))
-    
+
     return _to_detail(updated, request.yaml_content)
 
 
@@ -345,26 +354,26 @@ async def delete_process(
 ) -> None:
     """
     Delete a process definition.
-    
+
     Only DRAFT and ARCHIVED processes can be deleted.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     existing = repo.get_by_id(pid)
     if existing is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     if existing.status == DefinitionStatus.PUBLISHED:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete PUBLISHED processes. Archive them first."
         )
-    
+
     repo.delete(pid)
     logger.info(f"Process '{existing.name}' deleted by {current_user.email}")
 
@@ -376,23 +385,23 @@ async def validate_process(
 ) -> dict:
     """
     Validate an existing process definition.
-    
+
     Returns validation errors and warnings without modifying the process.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = repo.get_by_id(pid)
     if definition is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     validator = get_validator()
     result = validator.validate_definition(definition)
-    
+
     return _to_validation_response(result)
 
 
@@ -403,12 +412,12 @@ async def validate_yaml(
 ) -> dict:
     """
     Validate YAML content without saving.
-    
+
     Useful for real-time validation in the editor.
     """
     validator = get_validator()
     result = validator.validate_yaml(request.yaml_content)
-    
+
     return _to_validation_response(result)
 
 
@@ -419,26 +428,26 @@ async def publish_process(
 ) -> dict:
     """
     Publish a draft process definition.
-    
+
     Published processes are immutable and can be executed.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = repo.get_by_id(pid)
     if definition is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     if definition.status != DefinitionStatus.DRAFT:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot publish process in '{definition.status.value}' status. Only DRAFT processes can be published."
         )
-    
+
     try:
         published = definition.publish()
     except ProcessValidationError as e:
@@ -446,10 +455,15 @@ async def publish_process(
             status_code=422,
             detail={"message": "Validation failed", "errors": e.errors}
         )
-    
+
     repo.save(published)
     logger.info(f"Process '{published.name}' published by {current_user.email}")
-    
+
+    # Register schedule triggers with the scheduler
+    schedule_count = _register_process_schedules(published)
+    if schedule_count > 0:
+        logger.info(f"Registered {schedule_count} schedule trigger(s) for '{published.name}'")
+
     # Emit domain event
     await publish_event(ProcessPublished(
         process_id=published.id,
@@ -457,7 +471,7 @@ async def publish_process(
         version=published.version.major,
         published_by=current_user.email,
     ))
-    
+
     return _to_detail(published)
 
 
@@ -468,27 +482,32 @@ async def archive_process(
 ) -> dict:
     """
     Archive a process definition.
-    
+
     Archived processes cannot be executed but are preserved for history.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = repo.get_by_id(pid)
     if definition is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     if definition.status == DefinitionStatus.ARCHIVED:
         raise HTTPException(status_code=400, detail="Process is already archived")
-    
+
     archived = definition.archive()
     repo.save(archived)
     logger.info(f"Process '{archived.name}' archived by {current_user.email}")
-    
+
+    # Unregister schedule triggers from the scheduler
+    schedule_count = _unregister_process_schedules(archived.id)
+    if schedule_count > 0:
+        logger.info(f"Unregistered {schedule_count} schedule trigger(s) for '{archived.name}'")
+
     # Emit domain event
     await publish_event(ProcessArchived(
         process_id=archived.id,
@@ -496,7 +515,7 @@ async def archive_process(
         version=archived.version.major,
         archived_by=current_user.email,
     ))
-    
+
     return _to_detail(archived)
 
 
@@ -507,26 +526,26 @@ async def create_new_version(
 ) -> dict:
     """
     Create a new version from an existing process.
-    
+
     Creates a new DRAFT copy with incremented version number.
     """
     repo = get_repository()
-    
+
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = repo.get_by_id(pid)
     if definition is None:
         raise HTTPException(status_code=404, detail="Process not found")
-    
+
     new_version = definition.create_new_version()
     new_version = replace(new_version, created_by=current_user.email)
-    
+
     repo.save(new_version)
     logger.info(f"New version of '{new_version.name}' (v{new_version.version}) created by {current_user.email}")
-    
+
     return _to_detail(new_version)
 
 
@@ -554,7 +573,7 @@ def _to_summary(definition: ProcessDefinition) -> dict:
 def _to_detail(definition: ProcessDefinition, yaml_content: Optional[str] = None) -> dict:
     """Convert ProcessDefinition to detail dict."""
     import yaml
-    
+
     result = {
         "id": str(definition.id),
         "name": definition.name,
@@ -568,13 +587,13 @@ def _to_detail(definition: ProcessDefinition, yaml_content: Optional[str] = None
         "updated_at": definition.updated_at.isoformat(),
         "published_at": definition.published_at.isoformat() if definition.published_at else None,
     }
-    
+
     # Include YAML representation if provided or generate from definition
     if yaml_content:
         result["yaml_content"] = yaml_content
     else:
         result["yaml_content"] = yaml.dump(definition.to_yaml_dict(), default_flow_style=False)
-    
+
     return result
 
 
@@ -582,7 +601,7 @@ def _to_validation_response(result: ValidationResult) -> dict:
     """Convert ValidationResult to response dict."""
     errors = []
     warnings = []
-    
+
     for error in result.errors:
         item = {
             "message": error.message,
@@ -595,7 +614,7 @@ def _to_validation_response(result: ValidationResult) -> dict:
             errors.append(item)
         else:
             warnings.append(item)
-    
+
     return {
         "is_valid": result.is_valid,
         "errors": errors,
@@ -605,3 +624,140 @@ def _to_validation_response(result: ValidationResult) -> dict:
 
 # Need this import for new_version endpoint
 from dataclasses import replace
+
+
+# =============================================================================
+# Process Schedule Management
+# =============================================================================
+
+
+def _get_scheduler_db_path() -> str:
+    """Get the path to the main Trinity database used by scheduler."""
+    return os.getenv("TRINITY_DB_PATH", str(Path.home() / "trinity-data" / "trinity.db"))
+
+
+def _register_process_schedules(definition: ProcessDefinition) -> int:
+    """
+    Register schedule triggers for a published process.
+
+    Writes to the process_schedules table that the scheduler service reads.
+    Returns the number of schedules registered.
+    """
+    # Filter for schedule triggers
+    schedule_triggers = [
+        t for t in definition.triggers
+        if isinstance(t, ScheduleTriggerConfig)
+    ]
+
+    if not schedule_triggers:
+        return 0
+
+    db_path = _get_scheduler_db_path()
+    count = 0
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Ensure table exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS process_schedules (
+                id TEXT PRIMARY KEY,
+                process_id TEXT NOT NULL,
+                process_name TEXT NOT NULL,
+                trigger_id TEXT NOT NULL,
+                cron_expression TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                timezone TEXT DEFAULT 'UTC',
+                description TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_run_at TEXT,
+                next_run_at TEXT,
+                UNIQUE(process_id, trigger_id)
+            )
+        """)
+
+        now = datetime.utcnow().isoformat()
+
+        for trigger in schedule_triggers:
+            if not trigger.enabled:
+                continue
+
+            # Expand cron preset if needed
+            cron_expr = expand_cron_preset(trigger.cron)
+
+            # Calculate next run time
+            next_run = None
+            try:
+                tz = pytz.timezone(trigger.timezone) if trigger.timezone else pytz.UTC
+                cron = croniter(cron_expr, datetime.now(tz))
+                next_run = cron.get_next(datetime).isoformat()
+            except Exception as e:
+                logger.warning(f"Failed to calculate next run time for {trigger.id}: {e}")
+
+            schedule_id = secrets.token_urlsafe(16)
+
+            try:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO process_schedules (
+                        id, process_id, process_name, trigger_id, cron_expression,
+                        enabled, timezone, description, created_at, updated_at, next_run_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    schedule_id,
+                    str(definition.id),
+                    definition.name,
+                    trigger.id,
+                    cron_expr,
+                    1,
+                    trigger.timezone,
+                    trigger.description,
+                    now,
+                    now,
+                    next_run
+                ))
+                count += 1
+                logger.info(f"Registered schedule trigger: {definition.name}/{trigger.id} (cron: {cron_expr})")
+            except sqlite3.IntegrityError:
+                logger.warning(f"Schedule already exists: {definition.name}/{trigger.id}")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Failed to register process schedules: {e}")
+
+    return count
+
+
+def _unregister_process_schedules(process_id: ProcessId) -> int:
+    """
+    Unregister all schedule triggers for a process.
+
+    Called when a process is archived.
+    Returns the number of schedules removed.
+    """
+    db_path = _get_scheduler_db_path()
+    count = 0
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "DELETE FROM process_schedules WHERE process_id = ?",
+            (str(process_id),)
+        )
+        count = cursor.rowcount
+
+        conn.commit()
+        conn.close()
+
+        if count > 0:
+            logger.info(f"Unregistered {count} schedule(s) for process {process_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to unregister process schedules: {e}")
+
+    return count
