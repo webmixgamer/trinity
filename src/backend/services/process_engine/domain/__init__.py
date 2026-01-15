@@ -73,6 +73,11 @@ from .events import (
     StepSkipped,
     ApprovalRequested,
     ApprovalDecided,
+    # Process Definition Events
+    ProcessCreated,
+    ProcessUpdated,
+    ProcessPublished,
+    ProcessArchived,
 )
 
 __all__ = [
@@ -126,4 +131,9 @@ __all__ = [
     "StepSkipped",
     "ApprovalRequested",
     "ApprovalDecided",
+    # Process Definition Events
+    "ProcessCreated",
+    "ProcessUpdated",
+    "ProcessPublished",
+    "ProcessArchived",
 ]

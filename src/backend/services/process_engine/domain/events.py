@@ -298,3 +298,88 @@ class ApprovalDecided(DomainEvent):
         if self.comment:
             result["comment"] = self.comment
         return result
+
+
+# =============================================================================
+# Process Definition Events
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ProcessCreated(DomainEvent):
+    """
+    Emitted when a new process definition is created.
+    """
+    process_id: ProcessId
+    process_name: str
+    version: int
+    created_by: str
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "version": self.version,
+            "created_by": self.created_by,
+        }
+
+
+@dataclass(frozen=True)
+class ProcessUpdated(DomainEvent):
+    """
+    Emitted when a process definition is updated.
+    """
+    process_id: ProcessId
+    process_name: str
+    version: int
+    updated_by: str
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "version": self.version,
+            "updated_by": self.updated_by,
+        }
+
+
+@dataclass(frozen=True)
+class ProcessPublished(DomainEvent):
+    """
+    Emitted when a process definition is published.
+    """
+    process_id: ProcessId
+    process_name: str
+    version: int
+    published_by: str
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "version": self.version,
+            "published_by": self.published_by,
+        }
+
+
+@dataclass(frozen=True)
+class ProcessArchived(DomainEvent):
+    """
+    Emitted when a process definition is archived.
+    """
+    process_id: ProcessId
+    process_name: str
+    version: int
+    archived_by: str
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "version": self.version,
+            "archived_by": self.archived_by,
+        }

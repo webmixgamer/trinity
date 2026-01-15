@@ -115,28 +115,48 @@
         </div>
 
         <!-- Editor -->
-        <div v-else class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-          <!-- Editor with validation panel -->
-          <div class="p-6">
-            <YamlEditor
-              v-model="yamlContent"
-              :validation-errors="validationErrors"
-              height="500px"
-              @save="saveProcess"
-              @change="handleChange"
-            />
+        <div v-else class="space-y-4">
+          <!-- Split view: Editor + Preview -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- YAML Editor -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+              <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">YAML Definition</h3>
+              </div>
+              <div class="p-4">
+                <YamlEditor
+                  v-model="yamlContent"
+                  :validation-errors="validationErrors"
+                  height="450px"
+                  @save="saveProcess"
+                  @change="handleChange"
+                />
+              </div>
+            </div>
+
+            <!-- Flow Preview -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+              <ProcessFlowPreview
+                :yaml-content="yamlContent"
+                :validation-errors="validationErrors"
+                height="450px"
+              />
+            </div>
           </div>
 
           <!-- Help text -->
-          <div class="px-6 pb-6">
-            <div class="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
-              <InformationCircleIcon class="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-              <div class="text-sm text-blue-700 dark:text-blue-300">
-                <p class="font-medium mb-1">YAML Process Definition</p>
-                <p class="text-xs text-blue-600 dark:text-blue-400">
-                  Define your process with steps, dependencies, and configurations. 
-                  Press <kbd class="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded text-xs">Cmd+S</kbd> to save.
-                </p>
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <div class="p-4">
+              <div class="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
+                <InformationCircleIcon class="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div class="text-sm text-blue-700 dark:text-blue-300">
+                  <p class="font-medium mb-1">YAML Process Definition</p>
+                  <p class="text-xs text-blue-600 dark:text-blue-400">
+                    Define your process with steps, dependencies, and configurations. 
+                    Press <kbd class="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded text-xs">Cmd+S</kbd> to save.
+                    The flow preview updates as you type.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -162,6 +182,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useProcessesStore } from '../stores/processes'
 import NavBar from '../components/NavBar.vue'
 import YamlEditor from '../components/YamlEditor.vue'
+import ProcessFlowPreview from '../components/ProcessFlowPreview.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
   ArrowLeftIcon,

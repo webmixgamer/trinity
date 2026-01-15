@@ -18,9 +18,14 @@ from services.process_engine.domain import (
     ProcessId,
     DefinitionStatus,
     ProcessValidationError,
+    ProcessCreated,
+    ProcessUpdated,
+    ProcessPublished,
+    ProcessArchived,
 )
 from services.process_engine.repositories import SqliteProcessDefinitionRepository
 from services.process_engine.services import ProcessValidator, ValidationResult
+from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +135,30 @@ def get_validator() -> ProcessValidator:
     return ProcessValidator(agent_checker=None)
 
 
+# Event bus for process definition events
+_event_bus: Optional[InMemoryEventBus] = None
+
+
+def get_event_bus() -> InMemoryEventBus:
+    """Get or create the event bus for definition events."""
+    global _event_bus
+    if _event_bus is None:
+        _event_bus = InMemoryEventBus()
+        # Register WebSocket publisher
+        websocket_publisher = get_websocket_publisher()
+        websocket_publisher.register_with_event_bus(_event_bus)
+    return _event_bus
+
+
+async def publish_event(event) -> None:
+    """Publish a domain event (fire and forget)."""
+    try:
+        event_bus = get_event_bus()
+        await event_bus.publish(event)
+    except Exception as e:
+        logger.warning(f"Failed to publish event {event.__class__.__name__}: {e}")
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -165,6 +194,14 @@ async def create_process(
     repo.save(definition)
     
     logger.info(f"Process '{definition.name}' created by {current_user.email}")
+    
+    # Emit domain event
+    await publish_event(ProcessCreated(
+        process_id=definition.id,
+        process_name=definition.name,
+        version=definition.version.value,
+        created_by=current_user.email,
+    ))
     
     return _to_detail(definition, request.yaml_content)
 
@@ -286,6 +323,14 @@ async def update_process(
     repo.save(updated)
     logger.info(f"Process '{updated.name}' updated by {current_user.email}")
     
+    # Emit domain event
+    await publish_event(ProcessUpdated(
+        process_id=updated.id,
+        process_name=updated.name,
+        version=updated.version.value,
+        updated_by=current_user.email,
+    ))
+    
     return _to_detail(updated, request.yaml_content)
 
 
@@ -401,6 +446,14 @@ async def publish_process(
     repo.save(published)
     logger.info(f"Process '{published.name}' published by {current_user.email}")
     
+    # Emit domain event
+    await publish_event(ProcessPublished(
+        process_id=published.id,
+        process_name=published.name,
+        version=published.version.value,
+        published_by=current_user.email,
+    ))
+    
     return _to_detail(published)
 
 
@@ -431,6 +484,14 @@ async def archive_process(
     archived = definition.archive()
     repo.save(archived)
     logger.info(f"Process '{archived.name}' archived by {current_user.email}")
+    
+    # Emit domain event
+    await publish_event(ProcessArchived(
+        process_id=archived.id,
+        process_name=archived.name,
+        version=archived.version.value,
+        archived_by=current_user.email,
+    ))
     
     return _to_detail(archived)
 

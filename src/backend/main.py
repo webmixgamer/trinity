@@ -65,6 +65,9 @@ from services.log_archive_service import log_archive_service
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
 
+# Import process engine WebSocket publisher
+from services.process_engine.events import set_websocket_publisher_broadcast
+
 # Import logging configuration
 from logging_config import setup_logging
 
@@ -107,6 +110,9 @@ scheduler_service.set_broadcast_callback(manager.broadcast)
 
 # Set up activity service WebSocket manager
 activity_service.set_websocket_manager(manager)
+
+# Set up process engine WebSocket publisher
+set_websocket_publisher_broadcast(manager.broadcast)
 
 
 def initialize_github_pat():

@@ -43,6 +43,20 @@
             </div>
 
             <div class="flex items-center gap-3">
+              <!-- WebSocket connection indicator -->
+              <div 
+                v-if="execution.status === 'running' || execution.status === 'pending'"
+                class="flex items-center gap-2 text-sm"
+              >
+                <span 
+                  class="w-2 h-2 rounded-full"
+                  :class="wsConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+                ></span>
+                <span :class="wsConnected ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                  {{ wsConnected ? 'Live' : 'Polling' }}
+                </span>
+              </div>
+
               <!-- Cancel button (for running/pending) -->
               <button
                 v-if="execution.status === 'running' || execution.status === 'pending'"
@@ -214,9 +228,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useExecutionsStore } from '../stores/executions'
+import { useProcessWebSocket } from '../composables/useProcessWebSocket'
 import NavBar from '../components/NavBar.vue'
 import ExecutionTimeline from '../components/ExecutionTimeline.vue'
 import {
@@ -234,20 +249,66 @@ const loading = ref(false)
 const execution = ref(null)
 const activeTab = ref('timeline')
 const actionInProgress = ref(false)
+const executionId = computed(() => route.params.id)
 
-// Auto-refresh interval
+// WebSocket for real-time updates
+const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
+  executionId,
+  onStepStarted: (event) => {
+    // Update step status in UI
+    if (execution.value) {
+      const step = execution.value.steps?.find(s => s.step_id === event.step_id)
+      if (step) {
+        step.status = 'running'
+        step.started_at = event.timestamp
+      }
+    }
+  },
+  onStepCompleted: (event) => {
+    // Update step status in UI
+    if (execution.value) {
+      const step = execution.value.steps?.find(s => s.step_id === event.step_id)
+      if (step) {
+        step.status = 'completed'
+        step.completed_at = event.timestamp
+      }
+    }
+  },
+  onStepFailed: (event) => {
+    // Update step status in UI
+    if (execution.value) {
+      const step = execution.value.steps?.find(s => s.step_id === event.step_id)
+      if (step) {
+        step.status = 'failed'
+        step.completed_at = event.timestamp
+        step.error = event.error
+      }
+    }
+  },
+  onProcessCompleted: (event) => {
+    // Reload to get final state
+    loadExecution()
+  },
+  onProcessFailed: (event) => {
+    // Reload to get final state
+    loadExecution()
+  },
+})
+
+// Auto-refresh interval (fallback when WebSocket not connected)
 let refreshInterval = null
 
 // Lifecycle
 onMounted(() => {
   loadExecution()
   
-  // Auto-refresh for running executions
+  // Fallback auto-refresh for running executions (when WS not working)
   refreshInterval = setInterval(() => {
-    if (execution.value && (execution.value.status === 'running' || execution.value.status === 'pending')) {
+    if (!wsConnected.value && execution.value && 
+        (execution.value.status === 'running' || execution.value.status === 'pending')) {
       loadExecution()
     }
-  }, 5000) // Refresh every 5 seconds for active executions
+  }, 5000)
 })
 
 onUnmounted(() => {

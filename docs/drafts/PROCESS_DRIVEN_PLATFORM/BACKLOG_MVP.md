@@ -186,12 +186,12 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P2 |
 | Phase | MVP |
 | Dependencies | E1-02, E15-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Events defined: `ProcessCreated`, `ProcessUpdated`, `ProcessPublished`, `ProcessArchived`
-- [ ] Events include: process_id, timestamp, user_id, version
-- [ ] Event bus integration (initially just logging, extensible)
+- [x] Events defined: `ProcessCreated`, `ProcessUpdated`, `ProcessPublished`, `ProcessArchived`
+- [x] Events include: process_id, timestamp, user_id, version
+- [x] Event bus integration (initially just logging, extensible)
 
 **Technical Notes:**
 - Reference: IT3 Section 5 (Domain Events)
@@ -486,14 +486,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E3-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Simple flow diagram rendering
-- [ ] Shows: steps as boxes, arrows for dependencies
-- [ ] Updates as YAML changes (debounced)
-- [ ] Highlights validation errors on diagram
-- [ ] Horizontal or vertical layout option
+- [x] Simple flow diagram rendering
+- [x] Shows: steps as boxes, arrows for dependencies
+- [x] Updates as YAML changes (debounced)
+- [x] Highlights validation errors on diagram
+- [x] Horizontal or vertical layout option
 
 **Technical Notes:**
 - Reference: IT4 Section 3.2 (Layout - Live Preview)
@@ -619,14 +619,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E4-02, E15-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] WebSocket connection when viewing execution detail
-- [ ] Events: step_started, step_completed, step_failed, execution_completed
-- [ ] UI updates without refresh
-- [ ] Connection indicator ("Live" badge)
-- [ ] Graceful reconnection on disconnect
+- [x] WebSocket connection when viewing execution detail
+- [x] Events: step_started, step_completed, step_failed, execution_completed
+- [x] UI updates without refresh
+- [x] Connection indicator ("Live" badge)
+- [x] Graceful reconnection on disconnect
 
 **Technical Notes:**
 - Reference: IT4 Section 6 (Real-Time Updates)
@@ -704,13 +704,13 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E15-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] WebSocket handler subscribes to relevant events
-- [ ] Events broadcast to connected clients
-- [ ] Client can subscribe to specific executions
-- [ ] Event format matches IT4 Section 6.2 specification
+- [x] WebSocket handler subscribes to relevant events
+- [x] Events broadcast to connected clients
+- [x] Client can subscribe to specific executions
+- [x] Event format matches IT4 Section 6.2 specification
 
 **Technical Notes:**
 - Reference: IT4 Section 6 (Real-Time Updates)

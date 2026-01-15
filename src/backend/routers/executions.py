@@ -28,7 +28,7 @@ from services.process_engine.repositories import (
     SqliteProcessExecutionRepository,
 )
 from services.process_engine.services import OutputStorage
-from services.process_engine.events import InMemoryEventBus
+from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
 from services.process_engine.engine import (
     ExecutionEngine,
     StepHandlerRegistry,
@@ -136,6 +136,9 @@ def get_event_bus() -> InMemoryEventBus:
     global _event_bus
     if _event_bus is None:
         _event_bus = InMemoryEventBus()
+        # Register WebSocket publisher to broadcast events
+        websocket_publisher = get_websocket_publisher()
+        websocket_publisher.register_with_event_bus(_event_bus)
     return _event_bus
 
 
