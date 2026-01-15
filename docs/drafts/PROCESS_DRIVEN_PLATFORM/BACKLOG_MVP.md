@@ -296,18 +296,18 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-01, E2-02, E1-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `ExecutionEngine` service that:
-  - [ ] Starts execution from a process definition
-  - [ ] Resolves step dependencies to determine order
-  - [ ] Executes steps one at a time (sequential MVP)
-  - [ ] Updates execution state after each step
-  - [ ] Handles step success → marks complete, captures output
-  - [ ] Handles step failure → marks failed, captures error
-- [ ] Execution is resumable (can restart from last state)
-- [ ] Timeout handling per step
+- [x] `ExecutionEngine` service that:
+  - [x] Starts execution from a process definition
+  - [x] Resolves step dependencies to determine order
+  - [x] Executes steps one at a time (sequential MVP)
+  - [x] Updates execution state after each step
+  - [x] Handles step success → marks complete, captures output
+  - [x] Handles step failure → marks failed, captures error
+- [x] Execution is resumable (can restart from last state)
+- [x] Timeout handling per step
 
 **Technical Notes:**
 - Reference: IT2 Section 6 (Phased Implementation - Phase 1)
