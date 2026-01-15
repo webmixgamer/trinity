@@ -325,16 +325,16 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `AgentGateway` anti-corruption layer created
-- [ ] Gateway wraps existing Trinity MCP client
-- [ ] Sends message to specified agent
-- [ ] Waits for response (with timeout)
-- [ ] Captures response as step output
-- [ ] Handles agent errors gracefully
-- [ ] Supports context passing (previous step outputs available)
+- [x] `AgentGateway` anti-corruption layer created
+- [x] Gateway wraps existing Trinity MCP client
+- [x] Sends message to specified agent
+- [x] Waits for response (with timeout)
+- [x] Captures response as step output
+- [x] Handles agent errors gracefully
+- [x] Supports context passing (previous step outputs available)
 
 **Technical Notes:**
 - Reference: IT3 Section 8 (Anti-Corruption Layers - AgentGateway)
