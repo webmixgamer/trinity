@@ -98,6 +98,15 @@ class StepDefinition:
                 "routes": data.get("routes", []),
                 "default_route": data.get("default_route"),
             }
+        elif step_type == StepType.NOTIFICATION:
+            config_data = {
+                "channel": data.get("channel", "slack"),
+                "message": data.get("message", ""),
+                "webhook_url": data.get("webhook_url"),
+                "recipients": data.get("recipients", []),
+                "subject": data.get("subject", ""),
+                "url": data.get("url"),
+            }
         else:
             # Generic config extraction
             config_data = data.get("config", {})

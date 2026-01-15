@@ -800,7 +800,7 @@ class ExecutionEngine:
 
         if comp_type == "agent_task":
             # Execute compensation via agent
-            handler = self.handler_registry.get_handler(StepType.AGENT_TASK)
+            handler = self.handler_registry.get(StepType.AGENT_TASK)
             if handler:
                 from .step_handler import StepContext
                 from ..domain import AgentTaskConfig
@@ -839,7 +839,7 @@ class ExecutionEngine:
 
         elif comp_type == "notification":
             # Send compensation notification
-            handler = self.handler_registry.get_handler(StepType.NOTIFICATION)
+            handler = self.handler_registry.get(StepType.NOTIFICATION)
             if handler:
                 from .step_handler import StepContext
                 from ..domain import NotificationConfig
@@ -847,7 +847,8 @@ class ExecutionEngine:
                 config = NotificationConfig.from_dict({
                     "channel": compensation.channel,
                     "message": compensation.message or f"Rollback triggered for: {step_def.name}",
-                    "webhook_url": compensation.webhook_url,
+                    "webhook_url": compensation.webhook_url,  # For Slack
+                    "url": compensation.webhook_url,  # For generic webhook
                 })
 
                 context = StepContext(
