@@ -134,6 +134,14 @@ export const useExecutionsStore = defineStore('executions', () => {
     return response.data.output
   }
 
+  async function getExecutionEvents(id) {
+    const token = localStorage.getItem('token')
+    const response = await axios.get(`/api/executions/${id}/events`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    return response.data
+  }
+
   // Polling for auto-refresh
   function startPolling(intervalMs = 30000) {
     stopPolling()
@@ -185,6 +193,7 @@ export const useExecutionsStore = defineStore('executions', () => {
     cancelExecution,
     retryExecution,
     getStepOutput,
+    getExecutionEvents,
     startPolling,
     stopPolling,
     setFilters,

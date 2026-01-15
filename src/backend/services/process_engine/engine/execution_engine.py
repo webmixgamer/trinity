@@ -21,6 +21,7 @@ from ..domain import (
     ExecutionStatus,
     StepStatus,
     StepType,
+    OnErrorAction,
     Money,
     Duration,
     # Events
@@ -31,6 +32,7 @@ from ..domain import (
     StepStarted,
     StepCompleted,
     StepFailed,
+    StepRetrying,
     StepSkipped,
 )
 from ..repositories import ProcessExecutionRepository
@@ -286,7 +288,7 @@ class ExecutionEngine:
         definition: ProcessDefinition,
     ) -> None:
         """
-        Execute a single step.
+        Execute a single step with retry logic.
         """
         step_id = step_def.id
         
@@ -305,7 +307,7 @@ class ExecutionEngine:
             ))
             return
         
-        # Start step
+        # Start step (initial)
         execution.start_step(step_id)
         self.execution_repo.save(execution)
         
@@ -318,42 +320,84 @@ class ExecutionEngine:
         
         logger.info(f"Executing step '{step_def.name}' ({step_id})")
         
-        # Build context
-        step_outputs = {}
-        if self.output_storage:
-            step_outputs = self.output_storage.get_all_outputs(execution.id)
+        # Retry loop
+        retry_policy = step_def.retry_policy
+        max_attempts = retry_policy.max_attempts
+        attempt = 0
         
-        context = StepContext(
-            execution=execution,
-            step_definition=step_def,
-            step_outputs=step_outputs,
-            input_data=execution.input_data,
-        )
-        
-        # Execute with timeout
-        try:
-            timeout_seconds = self.config.default_step_timeout.seconds
-            if hasattr(step_def.config, 'timeout') and step_def.config.timeout:
-                timeout_seconds = step_def.config.timeout.seconds
+        while attempt < max_attempts:
+            attempt += 1
             
-            result = await asyncio.wait_for(
-                handler.execute(context, step_def.config),
-                timeout=timeout_seconds,
+            # Build context
+            step_outputs = {}
+            if self.output_storage:
+                step_outputs = self.output_storage.get_all_outputs(execution.id)
+            
+            context = StepContext(
+                execution=execution,
+                step_definition=step_def,
+                step_outputs=step_outputs,
+                input_data=execution.input_data,
             )
-        except asyncio.TimeoutError:
-            result = StepResult.fail(
-                f"Step timed out after {timeout_seconds}s",
-                error_code="TIMEOUT",
-            )
-        except Exception as e:
-            logger.exception(f"Step '{step_def.name}' raised exception")
-            result = StepResult.fail(str(e), error_code="EXCEPTION")
-        
-        # Handle result
-        if result.success:
-            await self._handle_step_success(execution, step_def, result)
-        else:
-            await self._handle_step_failure(execution, step_def, result)
+            
+            # Execute with timeout
+            try:
+                timeout_seconds = self.config.default_step_timeout.seconds
+                if hasattr(step_def.config, 'timeout') and step_def.config.timeout:
+                    timeout_seconds = step_def.config.timeout.seconds
+                
+                result = await asyncio.wait_for(
+                    handler.execute(context, step_def.config),
+                    timeout=timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                result = StepResult.fail(
+                    f"Step timed out after {timeout_seconds}s",
+                    error_code="TIMEOUT",
+                )
+            except Exception as e:
+                logger.exception(f"Step '{step_def.name}' raised exception (attempt {attempt}/{max_attempts})")
+                result = StepResult.fail(str(e), error_code="EXCEPTION")
+            
+            # Handle result
+            if result.success:
+                await self._handle_step_success(execution, step_def, result)
+                return
+            
+            # If we reached here, it failed. Check if we should retry.
+            # Record the attempt failure
+            execution.record_step_attempt(step_id, result.error or "Unknown error", result.error_code)
+            self.execution_repo.save(execution)
+
+            if attempt < max_attempts:
+                # Calculate delay with exponential backoff
+                delay_seconds = retry_policy.initial_delay.seconds * (retry_policy.backoff_multiplier ** (attempt - 1))
+                next_retry_at = datetime.now(timezone.utc).fromtimestamp(
+                    datetime.now(timezone.utc).timestamp() + delay_seconds
+                )
+                
+                logger.info(f"Step '{step_def.name}' failed, retrying in {delay_seconds}s (attempt {attempt}/{max_attempts})")
+                
+                await self._publish_event(StepRetrying(
+                    execution_id=execution.id,
+                    step_id=step_id,
+                    step_name=step_def.name,
+                    error_message=result.error or "Unknown error",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    next_retry_at=next_retry_at,
+                ))
+                
+                # Wait before next attempt
+                await asyncio.sleep(delay_seconds)
+                
+                # Check if cancelled during sleep
+                if execution.status == ExecutionStatus.CANCELLED:
+                    return
+            else:
+                # All attempts failed
+                await self._handle_step_failure(execution, step_def, result)
+                return
     
     async def _handle_step_success(
         self,
@@ -393,11 +437,38 @@ class ExecutionEngine:
         step_def: StepDefinition,
         result: StepResult,
     ) -> None:
-        """Handle step failure."""
+        """Handle step failure after all retries exhausted."""
         step_id = step_def.id
+        error_policy = step_def.error_policy
         
-        # Fail the step
+        # Fail the step in state
         execution.fail_step(step_id, result.error or "Unknown error")
+        
+        # Check error policy
+        action = error_policy.action
+        
+        if action == OnErrorAction.SKIP_STEP:
+            logger.info(f"Error policy for '{step_def.name}' is SKIP_STEP, marking as skipped")
+            execution.step_executions[str(step_id)].skip(f"Skipped after failure: {result.error}")
+            self.execution_repo.save(execution)
+            
+            await self._publish_event(StepSkipped(
+                execution_id=execution.id,
+                step_id=step_id,
+                step_name=step_def.name,
+                reason=f"Skipped after failure: {result.error}",
+            ))
+            return
+
+        elif action == OnErrorAction.GOTO_STEP and error_policy.target_step:
+            # For MVP, we'll implement GOTO by skipping intermediate steps
+            # This is a bit tricky in the current topological resolver
+            # For now, let's just log it and fail the process as fallback
+            logger.warning(f"GOTO_STEP not fully implemented in MVP, failing process")
+            # Fall through to fail process
+            pass
+            
+        # Default: fail process
         self.execution_repo.save(execution)
         
         step_exec = execution.step_executions[str(step_id)]
@@ -409,10 +480,13 @@ class ExecutionEngine:
             error_message=result.error or "Unknown error",
             error_code=result.error_code,
             retry_count=step_exec.retry_count,
-            will_retry=False,  # No retry in MVP
+            will_retry=False,
         ))
         
-        logger.error(f"Step '{step_def.name}' failed: {result.error}")
+        logger.error(f"Step '{step_def.name}' failed after all retries: {result.error}")
+        
+        if action == OnErrorAction.FAIL_PROCESS:
+            await self._fail_execution(execution, f"Step '{step_def.name}' failed: {result.error}")
     
     async def _complete_execution(
         self,

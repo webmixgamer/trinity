@@ -203,6 +203,7 @@
         <!-- Confirm Delete Modal -->
         <ConfirmDialog
           v-if="deleteTarget"
+          :visible="true"
           title="Delete Process"
           :message="`Are you sure you want to delete '${deleteTarget.name}'? This action cannot be undone.`"
           confirm-text="Delete"

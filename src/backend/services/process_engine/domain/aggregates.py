@@ -478,10 +478,16 @@ class ProcessExecution:
             step_exec.complete(output)
     
     def fail_step(self, step_id: StepId, error_message: str) -> None:
-        """Mark a step as failed."""
+        """Mark a step as failed (final)."""
         step_exec = self.step_executions.get(str(step_id))
         if step_exec:
             step_exec.fail(error_message)
+    
+    def record_step_attempt(self, step_id: StepId, error_message: str, error_code: Optional[str] = None) -> None:
+        """Record a failed attempt for a step."""
+        step_exec = self.step_executions.get(str(step_id))
+        if step_exec:
+            step_exec.record_attempt_failure(error_message, error_code)
     
     def add_cost(self, cost: Money) -> None:
         """Add cost from a step execution."""

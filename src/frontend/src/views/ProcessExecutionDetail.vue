@@ -158,6 +158,17 @@
                 >
                   Output Data
                 </button>
+                <button
+                  @click="activeTab = 'events'"
+                  :class="[
+                    'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
+                    activeTab === 'events'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                  ]"
+                >
+                  Event History
+                </button>
               </nav>
             </div>
 
@@ -205,6 +216,45 @@
                   {{ execution.status === 'completed' ? 'No output data' : 'Execution not yet completed' }}
                 </div>
               </div>
+
+              <!-- Events tab -->
+              <div v-else-if="activeTab === 'events'">
+                <div v-if="events.length > 0" class="flow-root">
+                  <ul role="list" class="-mb-8">
+                    <li v-for="(event, eventIdx) in events" :key="eventIdx">
+                      <div class="relative pb-8">
+                        <span v-if="eventIdx !== events.length - 1" class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200 dark:bg-gray-700" aria-hidden="true"></span>
+                        <div class="relative flex space-x-3">
+                          <div>
+                            <span class="h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white dark:ring-gray-800" :class="getEventIconClass(event.event_type)">
+                              <component :is="getEventIcon(event.event_type)" class="h-5 w-5 text-white" aria-hidden="true" />
+                            </span>
+                          </div>
+                          <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
+                            <div>
+                              <p class="text-sm text-gray-900 dark:text-gray-200">
+                                <span class="font-medium">{{ formatEventType(event.event_type) }}</span>
+                                <span v-if="event.step_name" class="ml-2 text-gray-500 dark:text-gray-400">
+                                  Step: {{ event.step_name }}
+                                </span>
+                              </p>
+                              <div v-if="event.error_message" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                {{ event.error_message }}
+                              </div>
+                            </div>
+                            <div class="text-right text-sm whitespace-nowrap text-gray-500 dark:text-gray-400">
+                              <time :datetime="event.timestamp">{{ formatDateTime(event.timestamp) }}</time>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+                <div v-else class="text-center py-8 text-gray-500 dark:text-gray-400">
+                  No events found
+                </div>
+              </div>
             </div>
           </div>
         </template>
@@ -238,6 +288,12 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ExclamationCircleIcon,
+  PlayIcon,
+  CheckIcon,
+  XMarkIcon,
+  ClockIcon,
+  PauseIcon,
+  UserIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -250,6 +306,14 @@ const execution = ref(null)
 const activeTab = ref('timeline')
 const actionInProgress = ref(false)
 const executionId = computed(() => route.params.id)
+const events = ref([])
+
+// Watch active tab to load events
+watch(activeTab, (newTab) => {
+  if (newTab === 'events' && events.value.length === 0) {
+    loadEvents()
+  }
+})
 
 // WebSocket for real-time updates
 const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
@@ -263,6 +327,10 @@ const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
         step.started_at = event.timestamp
       }
     }
+    // Add to events list if active
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
   },
   onStepCompleted: (event) => {
     // Update step status in UI
@@ -272,6 +340,10 @@ const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
         step.status = 'completed'
         step.completed_at = event.timestamp
       }
+    }
+    // Add to events list if active
+    if (activeTab.value === 'events') {
+      events.value.push(event)
     }
   },
   onStepFailed: (event) => {
@@ -284,14 +356,24 @@ const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
         step.error = event.error
       }
     }
+    // Add to events list if active
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
   },
   onProcessCompleted: (event) => {
     // Reload to get final state
     loadExecution()
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
   },
   onProcessFailed: (event) => {
     // Reload to get final state
     loadExecution()
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
   },
 })
 
@@ -322,11 +404,22 @@ async function loadExecution() {
   loading.value = true
   try {
     execution.value = await executionsStore.getExecution(route.params.id)
+    if (activeTab.value === 'events') {
+      await loadEvents()
+    }
   } catch (error) {
     console.error('Failed to load execution:', error)
     execution.value = null
   } finally {
     loading.value = false
+  }
+}
+
+async function loadEvents() {
+  try {
+    events.value = await executionsStore.getExecutionEvents(executionId.value)
+  } catch (error) {
+    console.error('Failed to load events:', error)
   }
 }
 
@@ -357,6 +450,28 @@ async function handleRetry() {
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text)
+}
+
+function getEventIconClass(type) {
+  if (type.includes('Started')) return 'bg-blue-500'
+  if (type.includes('Completed')) return 'bg-green-500'
+  if (type.includes('Failed')) return 'bg-red-500'
+  if (type.includes('Cancelled')) return 'bg-gray-500'
+  if (type.includes('Approval')) return 'bg-purple-500'
+  return 'bg-gray-400'
+}
+
+function getEventIcon(type) {
+  if (type.includes('Started')) return PlayIcon
+  if (type.includes('Completed')) return CheckIcon
+  if (type.includes('Failed')) return XMarkIcon
+  if (type.includes('Cancelled')) return XMarkIcon
+  if (type.includes('Approval')) return UserIcon
+  return ClockIcon
+}
+
+function formatEventType(type) {
+  return type.replace(/([A-Z])/g, ' $1').trim()
 }
 
 // Formatters

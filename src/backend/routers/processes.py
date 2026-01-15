@@ -124,6 +124,10 @@ def get_repository() -> SqliteProcessDefinitionRepository:
     if _repository is None:
         # Use a separate database file for process definitions
         process_db_path = DB_PATH.replace(".db", "_processes.db")
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(process_db_path), exist_ok=True)
+        
         _repository = SqliteProcessDefinitionRepository(process_db_path)
         logger.info(f"Process definition repository initialized at {process_db_path}")
     return _repository
@@ -199,7 +203,7 @@ async def create_process(
     await publish_event(ProcessCreated(
         process_id=definition.id,
         process_name=definition.name,
-        version=definition.version.value,
+        version=definition.version.major,
         created_by=current_user.email,
     ))
     
@@ -327,7 +331,7 @@ async def update_process(
     await publish_event(ProcessUpdated(
         process_id=updated.id,
         process_name=updated.name,
-        version=updated.version.value,
+        version=updated.version.major,
         updated_by=current_user.email,
     ))
     
@@ -450,7 +454,7 @@ async def publish_process(
     await publish_event(ProcessPublished(
         process_id=published.id,
         process_name=published.name,
-        version=published.version.value,
+        version=published.version.major,
         published_by=current_user.email,
     ))
     
@@ -489,7 +493,7 @@ async def archive_process(
     await publish_event(ProcessArchived(
         process_id=archived.id,
         process_name=archived.name,
-        version=archived.version.value,
+        version=archived.version.major,
         archived_by=current_user.email,
     ))
     

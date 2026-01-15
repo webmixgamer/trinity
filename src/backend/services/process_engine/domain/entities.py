@@ -17,8 +17,8 @@ def _utcnow() -> datetime:
     """Get current UTC time in a timezone-aware manner."""
     return datetime.now(timezone.utc)
 
-from .enums import StepType, StepStatus
-from .value_objects import StepId, Duration, Money
+from .enums import StepType, StepStatus, OnErrorAction
+from .value_objects import StepId, Duration, Money, RetryPolicy, ErrorPolicy
 from .step_configs import (
     StepConfig,
     AgentTaskConfig,
@@ -42,6 +42,8 @@ class StepDefinition:
     config: StepConfig
     dependencies: list[StepId] = field(default_factory=list)
     condition: Optional[str] = None  # Expression like "{{steps.review.decision}} == 'approved'"
+    retry_policy: RetryPolicy = field(default_factory=RetryPolicy.default)
+    error_policy: ErrorPolicy = field(default_factory=ErrorPolicy.default)
     
     @classmethod
     def from_dict(cls, data: dict) -> StepDefinition:
@@ -56,6 +58,10 @@ class StepDefinition:
           agent: research-agent
           message: Research the following topic: {{input.topic}}
           timeout: 5m
+          retry:
+            max_attempts: 5
+            initial_delay: 10s
+          on_error: skip_step
         ```
         """
         step_id = StepId(data["id"])
@@ -96,6 +102,10 @@ class StepDefinition:
             depends_on = [depends_on]
         dependencies = [StepId(dep) for dep in depends_on]
         
+        # Parse policies
+        retry_policy = RetryPolicy.from_dict(data.get("retry", {}))
+        error_policy = ErrorPolicy.from_dict(data.get("on_error", {}))
+        
         return cls(
             id=step_id,
             name=data.get("name", data["id"]),
@@ -103,6 +113,8 @@ class StepDefinition:
             config=config,
             dependencies=dependencies,
             condition=data.get("condition"),
+            retry_policy=retry_policy,
+            error_policy=error_policy,
         )
     
     def to_dict(self) -> dict:
@@ -135,6 +147,9 @@ class StepDefinition:
         
         if self.condition:
             result["condition"] = self.condition
+            
+        result["retry"] = self.retry_policy.to_dict()
+        result["on_error"] = self.error_policy.to_dict()
             
         return result
 
@@ -176,14 +191,24 @@ class StepExecution:
         self.output = output
     
     def fail(self, error_message: str, error_code: Optional[str] = None) -> None:
-        """Mark step as failed with error."""
+        """Mark step as failed with error (final failure)."""
         self.status = StepStatus.FAILED
         self.completed_at = _utcnow()
         self.error = {
             "message": error_message,
             "code": error_code,
         }
+        # retry_count is already incremented by record_attempt_failure
+    
+    def record_attempt_failure(self, error_message: str, error_code: Optional[str] = None) -> None:
+        """Record a single failed attempt but keep status as RUNNING."""
         self.retry_count += 1
+        self.error = {
+            "message": error_message,
+            "code": error_code,
+            "attempt": self.retry_count,
+            "failed_at": _utcnow().isoformat(),
+        }
     
     def skip(self, reason: str = "Condition not met") -> None:
         """Mark step as skipped."""

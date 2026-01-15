@@ -18,6 +18,7 @@
 | **Sprint 4** | E3-01, E3-02, E3-04 | Definition UI |
 | **Sprint 5** | E4-01, E4-02, E4-03, E4-05 | Monitoring UI |
 | **Sprint 6** | E3-03, E4-04, E15-02, E1-05 | Real-Time & Polish |
+| **Sprint 6.5** | E15-03, E15-04 | Unfinished Business (MVP) |
 
 ---
 
@@ -647,15 +648,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Status | done |
 
 **Acceptance Criteria:**
-- [ ] Quick stats bar: Active, Pending Approval, Failed (24h)
-- [ ] Active executions list with progress
-- [ ] Process health cards showing:
-  - [ ] Success rate (%)
-  - [ ] Average duration
-  - [ ] Average cost
-  - [ ] Next scheduled run
-- [ ] "Needs Attention" section: recent failures, overdue approvals
-- [ ] Click-through to details
+- [x] Quick stats bar: Active, Pending Approval, Failed (24h)
+- [x] Active executions list with progress
+- [x] Process health cards showing:
+  - [x] Success rate (%)
+  - [x] Average duration
+  - [x] Average cost
+  - [x] Next scheduled run
+- [x] "Needs Attention" section: recent failures, overdue approvals
+- [x] Click-through to details
 
 **Technical Notes:**
 - Reference: IT4 Section 7 (Dashboard UI)
@@ -752,15 +753,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P2 |
 | Phase | MVP |
 | Dependencies | E15-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `execution_events` table stores all domain events
-- [ ] Events stored with: event_type, execution_id, step_id, payload, timestamp
-- [ ] Events persisted before handlers are called (reliable)
-- [ ] Query API: `GET /api/executions/{id}/events`
-- [ ] Events retained for configurable period (default: 30 days)
-- [ ] UI: Event history tab in execution detail view
+- [x] `execution_events` table stores all domain events
+- [x] Events stored with: event_type, execution_id, step_id, payload, timestamp
+- [x] Events persisted before handlers are called (reliable)
+- [x] Query API: `GET /api/executions/{id}/events`
+- [x] Events retained for configurable period (default: 30 days)
+- [x] UI: Event history tab in execution detail view
 
 **Technical Notes:**
 - Reference: IT3 Section 12 (Open Questions - Event Sourcing)

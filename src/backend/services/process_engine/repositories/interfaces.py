@@ -17,6 +17,7 @@ from ..domain import (
     Version,
     DefinitionStatus,
     ExecutionStatus,
+    DomainEvent,
 )
 
 
@@ -205,5 +206,32 @@ class ProcessExecutionRepository(ABC):
     def exists(self, id: ExecutionId) -> bool:
         """
         Check if an execution exists.
+        """
+        ...
+
+
+class EventRepository(ABC):
+    """
+    Repository interface for domain events.
+    
+    Stores and retrieves domain events for audit logging and debugging.
+    """
+    
+    @abstractmethod
+    def save(self, event: DomainEvent) -> None:
+        """
+        Save a domain event.
+        """
+        ...
+        
+    @abstractmethod
+    def get_by_execution_id(
+        self,
+        execution_id: ExecutionId,
+        limit: int = 100,
+        offset: int = 0
+    ) -> list[DomainEvent]:
+        """
+        Get events for a specific execution.
         """
         ...

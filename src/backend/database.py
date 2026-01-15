@@ -686,21 +686,35 @@ def _ensure_admin_user(cursor, conn):
         conn.commit()
         print(f"Created admin user '{admin_username}' with hashed password")
     else:
-        # Check if existing password needs migration from plaintext to bcrypt
+        # Check if existing password needs update (migration or change)
         existing_hash = existing[1]
+        should_update = False
+        
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
         if existing_hash and not existing_hash.startswith("$2"):
             # Password is likely plaintext (bcrypt hashes start with $2)
             if admin_password and existing_hash == admin_password:
-                # Migrate to bcrypt
-                from passlib.context import CryptContext
-                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-                hashed = pwd_context.hash(admin_password)
-                cursor.execute("""
-                    UPDATE users SET password_hash = ?, updated_at = ?
-                    WHERE username = ?
-                """, (hashed, datetime.utcnow().isoformat(), admin_username))
-                conn.commit()
-                print(f"Migrated admin user '{admin_username}' password from plaintext to bcrypt")
+                should_update = True
+                print(f"Migrating admin user '{admin_username}' password from plaintext to bcrypt")
+        elif admin_password:
+             # Check if environment password matches DB hash
+            try:
+                if not pwd_context.verify(admin_password, existing_hash):
+                    should_update = True
+                    print(f"Environment password changed - updating admin user '{admin_username}'")
+            except Exception as e:
+                print(f"Error verifying password hash: {e}")
+                should_update = True
+
+        if should_update and admin_password:
+            hashed = pwd_context.hash(admin_password)
+            cursor.execute("""
+                UPDATE users SET password_hash = ?, updated_at = ?
+                WHERE username = ?
+            """, (hashed, datetime.utcnow().isoformat(), admin_username))
+            conn.commit()
 
 
 class DatabaseManager:

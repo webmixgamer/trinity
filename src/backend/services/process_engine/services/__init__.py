@@ -7,6 +7,7 @@ Business logic that doesn't naturally fit within aggregates.
 from .validator import ProcessValidator, ValidationResult, ValidationError, ErrorLevel
 from .output_storage import OutputStorage, OutputPath
 from .expression_evaluator import ExpressionEvaluator, EvaluationContext, ExpressionError
+from .event_logger import EventLogger
 
 __all__ = [
     "ProcessValidator",
@@ -18,4 +19,5 @@ __all__ = [
     "ExpressionEvaluator",
     "EvaluationContext",
     "ExpressionError",
+    "EventLogger",
 ]

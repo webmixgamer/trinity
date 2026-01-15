@@ -165,6 +165,7 @@
         <!-- Unsaved changes warning modal -->
         <ConfirmDialog
           v-if="showUnsavedWarning"
+          :visible="true"
           title="Unsaved Changes"
           message="You have unsaved changes. Are you sure you want to leave?"
           confirm-text="Leave"

@@ -36,6 +36,7 @@ services:
       - LOG_ARCHIVE_ENABLED=${LOG_ARCHIVE_ENABLED:-true}
       - LOG_CLEANUP_HOUR=${LOG_CLEANUP_HOUR:-3}
       - LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+      - TRINITY_DB_PATH=/data/trinity.db
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app

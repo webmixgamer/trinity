@@ -25,6 +25,7 @@ from .enums import (
     StepType,
     ExecutionStatus,
     StepStatus,
+    OnErrorAction,
 )
 
 from .entities import (
@@ -70,6 +71,7 @@ from .events import (
     StepStarted,
     StepCompleted,
     StepFailed,
+    StepRetrying,
     StepSkipped,
     ApprovalRequested,
     ApprovalDecided,
@@ -93,6 +95,7 @@ __all__ = [
     "StepType",
     "ExecutionStatus",
     "StepStatus",
+    "OnErrorAction",
     # Entities
     "StepDefinition",
     "StepExecution",
@@ -128,6 +131,7 @@ __all__ = [
     "StepStarted",
     "StepCompleted",
     "StepFailed",
+    "StepRetrying",
     "StepSkipped",
     "ApprovalRequested",
     "ApprovalDecided",

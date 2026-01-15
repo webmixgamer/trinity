@@ -22,7 +22,7 @@ done
 
 echo ""
 echo "2. Checking Docker Compose configuration..."
-if docker-compose config --quiet 2>&1 | grep -q "error\|Error"; then
+if docker compose config --quiet 2>&1 | grep -q "error\|Error"; then
     echo "   ❌ Docker Compose configuration has errors"
     exit 1
 else

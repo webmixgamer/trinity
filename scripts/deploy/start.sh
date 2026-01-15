@@ -17,7 +17,7 @@ if [ ! -f .env ]; then
 fi
 
 echo "Starting services..."
-docker-compose up -d
+docker compose up -d
 
 echo ""
 echo "Waiting for services to be ready..."
@@ -34,9 +34,9 @@ echo "  - Backend API:  http://localhost:8000/docs"
 echo "  - MCP Server:   http://localhost:8080/mcp"
 echo ""
 echo "To view logs:"
-echo "  docker-compose logs -f"
+echo "  docker compose logs -f"
 echo ""
 echo "To stop services:"
-echo "  docker-compose down"
+echo "  docker compose down"
 echo ""
 

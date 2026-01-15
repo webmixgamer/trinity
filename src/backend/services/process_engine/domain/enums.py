@@ -42,3 +42,10 @@ class StepStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class OnErrorAction(str, Enum):
+    """Action to take when a step fails after all retries."""
+    FAIL_PROCESS = "fail_process"
+    SKIP_STEP = "skip_step"
+    GOTO_STEP = "goto_step"

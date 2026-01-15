@@ -228,6 +228,32 @@ class StepFailed(DomainEvent):
 
 
 @dataclass(frozen=True)
+class StepRetrying(DomainEvent):
+    """
+    Emitted when a step fails but will be retried.
+    """
+    execution_id: ExecutionId
+    step_id: StepId
+    step_name: str
+    error_message: str
+    attempt: int
+    max_attempts: int
+    next_retry_at: datetime
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "step_id": str(self.step_id),
+            "step_name": self.step_name,
+            "error_message": self.error_message,
+            "attempt": self.attempt,
+            "max_attempts": self.max_attempts,
+            "next_retry_at": self.next_retry_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
 class StepSkipped(DomainEvent):
     """
     Emitted when a step is skipped.

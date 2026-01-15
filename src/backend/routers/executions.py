@@ -26,8 +26,9 @@ from services.process_engine.domain import (
 from services.process_engine.repositories import (
     SqliteProcessDefinitionRepository,
     SqliteProcessExecutionRepository,
+    SqliteEventRepository,
 )
-from services.process_engine.services import OutputStorage
+from services.process_engine.services import OutputStorage, EventLogger
 from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
 from services.process_engine.engine import (
     ExecutionEngine,
@@ -105,18 +106,24 @@ class ExecutionListResponse(BaseModel):
 # Singleton instances for the process engine components
 _definition_repo: Optional[SqliteProcessDefinitionRepository] = None
 _execution_repo: Optional[SqliteProcessExecutionRepository] = None
+_event_repo: Optional[SqliteEventRepository] = None
 _event_bus: Optional[InMemoryEventBus] = None
 _handler_registry: Optional[StepHandlerRegistry] = None
+_event_logger: Optional[EventLogger] = None
+
+# Database path configuration
+import os
+from pathlib import Path
+DB_PATH = os.getenv("TRINITY_DB_PATH", str(Path.home() / "trinity-data" / "trinity.db"))
 
 
 def get_definition_repo() -> SqliteProcessDefinitionRepository:
     """Get the process definition repository."""
     global _definition_repo
     if _definition_repo is None:
-        import os
-        db_path = os.path.expanduser("~/trinity-data/process_definitions.db")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        _definition_repo = SqliteProcessDefinitionRepository(db_path)
+        process_db_path = DB_PATH.replace(".db", "_processes.db")
+        os.makedirs(os.path.dirname(process_db_path), exist_ok=True)
+        _definition_repo = SqliteProcessDefinitionRepository(process_db_path)
     return _definition_repo
 
 
@@ -124,11 +131,20 @@ def get_execution_repo() -> SqliteProcessExecutionRepository:
     """Get the process execution repository."""
     global _execution_repo
     if _execution_repo is None:
-        import os
-        db_path = os.path.expanduser("~/trinity-data/process_executions.db")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        _execution_repo = SqliteProcessExecutionRepository(db_path)
+        exec_db_path = DB_PATH.replace(".db", "_executions.db")
+        os.makedirs(os.path.dirname(exec_db_path), exist_ok=True)
+        _execution_repo = SqliteProcessExecutionRepository(exec_db_path)
     return _execution_repo
+
+
+def get_event_repo() -> SqliteEventRepository:
+    """Get the event repository."""
+    global _event_repo
+    if _event_repo is None:
+        event_db_path = DB_PATH.replace(".db", "_events.db")
+        os.makedirs(os.path.dirname(event_db_path), exist_ok=True)
+        _event_repo = SqliteEventRepository(event_db_path)
+    return _event_repo
 
 
 def get_event_bus() -> InMemoryEventBus:
@@ -152,10 +168,24 @@ def get_handler_registry() -> StepHandlerRegistry:
     return _handler_registry
 
 
+def get_event_logger() -> EventLogger:
+    """Get and start the event logger."""
+    global _event_logger
+    if _event_logger is None:
+        repo = get_event_repo()
+        bus = get_event_bus()
+        _event_logger = EventLogger(repo, bus)
+        _event_logger.start()
+    return _event_logger
+
+
 def get_execution_engine() -> ExecutionEngine:
     """Get the execution engine."""
     execution_repo = get_execution_repo()
     output_storage = OutputStorage(execution_repo)
+    
+    # Ensure event logger is running
+    get_event_logger()
     
     return ExecutionEngine(
         execution_repo=execution_repo,
@@ -173,9 +203,9 @@ def get_execution_engine() -> ExecutionEngine:
 @router.post("/processes/{process_id}/execute", response_model=ExecutionDetail, status_code=201)
 async def start_execution(
     process_id: str,
+    current_user: CurrentUser,
     request: ExecutionStartRequest = Body(default_factory=ExecutionStartRequest),
     background_tasks: BackgroundTasks = None,
-    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Start a new execution of a process.
@@ -248,11 +278,11 @@ async def _run_execution(execution_id: str, process_id: str):
 
 @router.get("", response_model=ExecutionListResponse)
 async def list_executions(
+    current_user: CurrentUser,
     status: Optional[str] = Query(None, description="Filter by status"),
     process_id: Optional[str] = Query(None, description="Filter by process ID"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     List all executions with optional filters.
@@ -290,7 +320,7 @@ async def list_executions(
 @router.get("/{execution_id}", response_model=ExecutionDetail)
 async def get_execution(
     execution_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser,
 ):
     """
     Get detailed information about a specific execution.
@@ -312,7 +342,7 @@ async def get_execution(
 @router.post("/{execution_id}/cancel", response_model=ExecutionDetail)
 async def cancel_execution(
     execution_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser,
 ):
     """
     Cancel a running execution.
@@ -345,8 +375,8 @@ async def cancel_execution(
 @router.post("/{execution_id}/retry", response_model=ExecutionDetail, status_code=201)
 async def retry_execution(
     execution_id: str,
+    current_user: CurrentUser,
     background_tasks: BackgroundTasks = None,
-    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Retry a failed execution.
@@ -393,11 +423,32 @@ async def retry_execution(
     return _to_detail(new_execution)
 
 
+@router.get("/{execution_id}/events")
+async def get_execution_events(
+    execution_id: str,
+    current_user: CurrentUser,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Get audit log of events for an execution.
+    """
+    event_repo = get_event_repo()
+    
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+    
+    events = event_repo.get_by_execution_id(eid, limit=limit, offset=offset)
+    return [e.to_dict() for e in events]
+
+
 @router.get("/{execution_id}/steps/{step_id}/output")
 async def get_step_output(
     execution_id: str,
     step_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser,
 ):
     """
     Get the output of a specific step.

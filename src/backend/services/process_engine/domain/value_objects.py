@@ -440,3 +440,87 @@ class Money:
 
     def __repr__(self) -> str:
         return f"Money(amount={self.amount}, currency='{self.currency}')"
+
+
+# =============================================================================
+# Error Handling Policies
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """
+    Configuration for step retries.
+    """
+    max_attempts: int = 3
+    initial_delay: Duration = Duration(seconds=5)
+    backoff_multiplier: float = 2.0
+
+    @classmethod
+    def default(cls) -> RetryPolicy:
+        """Return default retry policy."""
+        return cls()
+
+    @classmethod
+    def from_dict(cls, data: dict) -> RetryPolicy:
+        """Create from dictionary."""
+        if not data:
+            return cls.default()
+        
+        return cls(
+            max_attempts=data.get("max_attempts", 3),
+            initial_delay=Duration.from_string(data.get("initial_delay", "5s")),
+            backoff_multiplier=float(data.get("backoff_multiplier", 2.0)),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "max_attempts": self.max_attempts,
+            "initial_delay": str(self.initial_delay),
+            "backoff_multiplier": self.backoff_multiplier,
+        }
+
+
+@dataclass(frozen=True)
+class ErrorPolicy:
+    """
+    Configuration for handling step failures after retries are exhausted.
+    """
+    from .enums import OnErrorAction
+    
+    action: OnErrorAction = OnErrorAction.FAIL_PROCESS
+    target_step: Optional[StepId] = None
+
+    @classmethod
+    def default(cls) -> ErrorPolicy:
+        """Return default error policy."""
+        from .enums import OnErrorAction
+        return cls(action=OnErrorAction.FAIL_PROCESS)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ErrorPolicy:
+        """Create from dictionary."""
+        from .enums import OnErrorAction
+        if not data:
+            return cls.default()
+        
+        if isinstance(data, str):
+            # Simple format: just the action
+            return cls(action=OnErrorAction(data))
+        
+        target_step = data.get("target_step")
+        if target_step:
+            target_step = StepId(target_step)
+            
+        return cls(
+            action=OnErrorAction(data.get("action", "fail_process")),
+            target_step=target_step,
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        result = {"action": self.action.value}
+        if self.target_step:
+            result["target_step"] = str(self.target_step)
+        return result
