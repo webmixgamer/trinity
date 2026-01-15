@@ -79,14 +79,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | None |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] YAML schema supports: name, version, description, steps, outputs
-- [ ] Step schema supports: id, type, agent, message, depends_on, timeout
-- [ ] Step types defined: `agent_task`, `human_approval` (stub), `gateway` (stub)
-- [ ] Schema documented with examples
-- [ ] JSON Schema file created for editor validation
+- [x] YAML schema supports: name, version, description, steps, outputs
+- [x] Step schema supports: id, type, agent, message, depends_on, timeout
+- [x] Step types defined: `agent_task`, `human_approval` (stub), `gateway` (stub)
+- [x] Schema documented with examples
+- [x] JSON Schema file created for editor validation
 
 **Technical Notes:**
 - Reference: IT3 Section 4 (Aggregates - ProcessDefinition)
