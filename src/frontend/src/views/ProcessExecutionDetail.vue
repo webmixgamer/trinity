@@ -39,16 +39,29 @@
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Execution ID: <code class="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs">{{ execution.id }}</code>
                 </p>
+                <!-- Retry relationship badge -->
+                <p v-if="execution.retry_of" class="mt-1 text-sm">
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    <ArrowPathIcon class="w-3 h-3" />
+                    Retry of:
+                    <router-link
+                      :to="`/executions/${execution.retry_of}`"
+                      class="underline hover:text-amber-900 dark:hover:text-amber-100"
+                    >
+                      {{ execution.retry_of.substring(0, 8) }}...
+                    </router-link>
+                  </span>
+                </p>
               </div>
             </div>
 
             <div class="flex items-center gap-3">
               <!-- WebSocket connection indicator -->
-              <div 
+              <div
                 v-if="execution.status === 'running' || execution.status === 'pending'"
                 class="flex items-center gap-2 text-sm"
               >
-                <span 
+                <span
                   class="w-2 h-2 rounded-full"
                   :class="wsConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
                 ></span>
@@ -328,6 +341,11 @@ watch(activeTab, (newTab) => {
   }
 })
 
+// Watch execution ID to clear stale events when navigating to different execution
+watch(executionId, () => {
+  events.value = []  // Clear events for new execution
+})
+
 // WebSocket for real-time updates
 const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
   executionId,
@@ -381,15 +399,32 @@ const { isConnected: wsConnected, error: wsError } = useProcessWebSocket({
     }
   },
   onProcessCompleted: (event) => {
-    // Reload to get final state
-    loadExecution()
+    // Add event immediately for real-time feedback
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
+    // Reload after short delay to ensure all events are persisted
+    setTimeout(() => loadExecution(), 500)
+  },
+  onProcessFailed: (event) => {
+    // Add event immediately for real-time feedback
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
+    // Reload after short delay to ensure all events are persisted
+    setTimeout(() => loadExecution(), 500)
+  },
+  onCompensationStarted: (event) => {
     if (activeTab.value === 'events') {
       events.value.push(event)
     }
   },
-  onProcessFailed: (event) => {
-    // Reload to get final state
-    loadExecution()
+  onCompensationCompleted: (event) => {
+    if (activeTab.value === 'events') {
+      events.value.push(event)
+    }
+  },
+  onCompensationFailed: (event) => {
     if (activeTab.value === 'events') {
       events.value.push(event)
     }
@@ -402,10 +437,10 @@ let refreshInterval = null
 // Lifecycle
 onMounted(() => {
   loadExecution()
-  
+
   // Fallback auto-refresh for running executions (when WS not working)
   refreshInterval = setInterval(() => {
-    if (!wsConnected.value && execution.value && 
+    if (!wsConnected.value && execution.value &&
         (execution.value.status === 'running' || execution.value.status === 'pending')) {
       loadExecution()
     }
@@ -478,6 +513,13 @@ function copyToClipboard(text) {
 }
 
 function getEventIconClass(type) {
+  if (!type) return 'bg-gray-400'
+  // Compensation events
+  if (type.toLowerCase().includes('compensation')) {
+    if (type.toLowerCase().includes('completed')) return 'bg-green-500'
+    if (type.toLowerCase().includes('failed')) return 'bg-red-500'
+    return 'bg-amber-500'  // Started
+  }
   if (type.includes('Retrying')) return 'bg-amber-500'
   if (type.includes('Started')) return 'bg-blue-500'
   if (type.includes('Completed')) return 'bg-green-500'
@@ -500,6 +542,12 @@ function getEventIcon(type) {
 }
 
 function formatEventType(type) {
+  if (!type) return 'Unknown'
+  // Handle snake_case (step_completed -> Step Completed)
+  if (type.includes('_')) {
+    return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+  }
+  // Handle PascalCase (StepCompleted -> Step Completed)
   return type.replace(/([A-Z])/g, ' $1').trim()
 }
 

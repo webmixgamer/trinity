@@ -1,6 +1,6 @@
 /**
  * WebSocket Composable for Process Events
- * 
+ *
  * Provides real-time updates for process executions via WebSocket.
  * Part of the Process-Driven Platform feature.
  */
@@ -9,7 +9,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 /**
  * Composable for subscribing to process execution events via WebSocket.
- * 
+ *
  * @param {Object} options - Configuration options
  * @param {Ref<string>} options.executionId - The execution ID to subscribe to
  * @param {Function} options.onStepStarted - Callback when a step starts
@@ -26,6 +26,9 @@ export function useProcessWebSocket(options = {}) {
     onStepFailed = () => {},
     onProcessCompleted = () => {},
     onProcessFailed = () => {},
+    onCompensationStarted = () => {},
+    onCompensationCompleted = () => {},
+    onCompensationFailed = () => {},
   } = options
 
   const isConnected = ref(false)
@@ -71,7 +74,7 @@ export function useProcessWebSocket(options = {}) {
       ws.onclose = (event) => {
         isConnected.value = false
         console.log('[ProcessWS] Disconnected:', event.code, event.reason)
-        
+
         // Attempt reconnection
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++
@@ -129,6 +132,15 @@ export function useProcessWebSocket(options = {}) {
         break
       case 'process_failed':
         onProcessFailed(message)
+        break
+      case 'compensation_started':
+        onCompensationStarted(message)
+        break
+      case 'compensation_completed':
+        onCompensationCompleted(message)
+        break
+      case 'compensation_failed':
+        onCompensationFailed(message)
         break
     }
   }

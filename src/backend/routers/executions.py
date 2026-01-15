@@ -84,6 +84,7 @@ class ExecutionSummary(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     created_at: str
+    retry_of: Optional[str] = None  # ID of original execution if this is a retry
 
 
 class ExecutionDetail(BaseModel):
@@ -102,6 +103,7 @@ class ExecutionDetail(BaseModel):
     duration_seconds: Optional[int] = None
     steps: List[StepExecutionSummary]
     has_parallel_steps: bool = False  # True if process has parallel execution
+    retry_of: Optional[str] = None  # ID of original execution if this is a retry
 
 
 class ExecutionListResponse(BaseModel):
@@ -432,11 +434,12 @@ async def retry_execution(
     if not definition:
         raise HTTPException(status_code=404, detail="Process definition not found")
 
-    # Create new execution with same input
+    # Create new execution with same input, linking to original
     new_execution = ProcessExecution.create(
         definition=definition,
         input_data=execution.input_data,
         triggered_by="retry",
+        retry_of=execution.id,  # Link to original failed execution
     )
     execution_repo.save(new_execution)
 
@@ -516,6 +519,7 @@ def _to_summary(execution: ProcessExecution) -> ExecutionSummary:
         started_at=execution.started_at.isoformat() if execution.started_at else None,
         completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
         created_at=execution.started_at.isoformat() if execution.started_at else "",
+        retry_of=str(execution.retry_of) if execution.retry_of else None,
     )
 
 
@@ -578,4 +582,5 @@ def _to_detail(
         duration_seconds=duration,
         steps=steps,
         has_parallel_steps=has_parallel,
+        retry_of=str(execution.retry_of) if execution.retry_of else None,
     )
