@@ -157,18 +157,18 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-02, E1-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `POST /api/processes` - Create new process definition
-- [ ] `GET /api/processes` - List all process definitions
-- [ ] `GET /api/processes/{id}` - Get single definition
-- [ ] `PUT /api/processes/{id}` - Update definition
-- [ ] `DELETE /api/processes/{id}` - Delete definition
-- [ ] `POST /api/processes/{id}/validate` - Validate without saving
-- [ ] `POST /api/processes/{id}/publish` - Publish a draft
-- [ ] All endpoints require authentication
-- [ ] OpenAPI documentation complete
+- [x] `POST /api/processes` - Create new process definition
+- [x] `GET /api/processes` - List all process definitions
+- [x] `GET /api/processes/{id}` - Get single definition
+- [x] `PUT /api/processes/{id}` - Update definition
+- [x] `DELETE /api/processes/{id}` - Delete definition
+- [x] `POST /api/processes/{id}/validate` - Validate without saving
+- [x] `POST /api/processes/{id}/publish` - Publish a draft
+- [x] All endpoints require authentication
+- [x] OpenAPI documentation complete
 
 **Technical Notes:**
 - Location: `src/backend/routers/processes.py`
@@ -241,18 +241,18 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-06 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `ProcessExecution` aggregate defined with:
-  - [ ] execution_id, process_id, process_version
-  - [ ] status: pending, running, completed, failed, cancelled
-  - [ ] step_executions: dict of StepId → StepExecution
-  - [ ] started_at, completed_at, total_cost, total_duration
-- [ ] `StepExecution` entity defined with:
-  - [ ] step_id, status, started_at, completed_at
-  - [ ] input, output, error, cost, duration
-- [ ] State transitions are validated (e.g., can't complete a non-running step)
+- [x] `ProcessExecution` aggregate defined with:
+  - [x] execution_id, process_id, process_version
+  - [x] status: pending, running, completed, failed, cancelled
+  - [x] step_executions: dict of StepId → StepExecution
+  - [x] started_at, completed_at, total_cost, total_duration
+- [x] `StepExecution` entity defined with:
+  - [x] step_id, status, started_at, completed_at
+  - [x] input, output, error, cost, duration
+- [x] State transitions are validated (e.g., can't complete a non-running step)
 
 **Technical Notes:**
 - Reference: IT3 Section 4.2 (ProcessExecution Aggregate)
