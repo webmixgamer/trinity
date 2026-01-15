@@ -19,17 +19,17 @@ from .value_objects import Duration
 class AgentTaskConfig:
     """
     Configuration for agent_task step type.
-    
+
     Defines which agent to use and what message to send.
     """
     agent: str  # Agent name to execute the task
     message: str  # Message/prompt to send to agent (supports {{}} templating)
     timeout: Duration = field(default_factory=lambda: Duration.from_minutes(5))
-    
+
     # Optional: specific model or parameters
     model: Optional[str] = None
     temperature: Optional[float] = None
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> AgentTaskConfig:
         """Create from dictionary (YAML parsing)."""
@@ -38,7 +38,7 @@ class AgentTaskConfig:
             timeout = Duration.from_string(timeout)
         elif isinstance(timeout, int):
             timeout = Duration.from_seconds(timeout)
-        
+
         return cls(
             agent=data["agent"],
             message=data["message"],
@@ -46,7 +46,7 @@ class AgentTaskConfig:
             model=data.get("model"),
             temperature=data.get("temperature"),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -65,18 +65,18 @@ class AgentTaskConfig:
 class HumanApprovalConfig:
     """
     Configuration for human_approval step type (stub for Core phase).
-    
+
     Defines approval requirements and assignees.
     """
     title: str  # Title shown in approval UI
     description: str  # Description of what needs approval
     assignees: list[str] = field(default_factory=list)  # User IDs or emails
     timeout: Duration = field(default_factory=lambda: Duration.from_hours(24))
-    
+
     # Options for approval
     allow_comments: bool = True
     require_reason_on_reject: bool = True
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> HumanApprovalConfig:
         """Create from dictionary (YAML parsing)."""
@@ -85,7 +85,7 @@ class HumanApprovalConfig:
             timeout = Duration.from_string(timeout)
         elif isinstance(timeout, int):
             timeout = Duration.from_seconds(timeout)
-            
+
         return cls(
             title=data.get("title", "Approval Required"),
             description=data.get("description", ""),
@@ -94,7 +94,7 @@ class HumanApprovalConfig:
             allow_comments=data.get("allow_comments", True),
             require_reason_on_reject=data.get("require_reason_on_reject", True),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {
@@ -111,13 +111,13 @@ class HumanApprovalConfig:
 class GatewayConfig:
     """
     Configuration for gateway step type (stub for Core phase).
-    
+
     Defines conditional routing based on expressions.
     """
     gateway_type: str = "exclusive"  # exclusive, parallel, inclusive
     routes: list[dict] = field(default_factory=list)  # List of {condition, target}
     default_route: Optional[str] = None  # Default target if no condition matches
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> GatewayConfig:
         """Create from dictionary (YAML parsing)."""
@@ -126,7 +126,7 @@ class GatewayConfig:
             routes=data.get("routes", []),
             default_route=data.get("default_route"),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -142,11 +142,11 @@ class GatewayConfig:
 class TimerConfig:
     """
     Configuration for timer step type (stub for Advanced phase).
-    
+
     Defines delays or scheduled execution.
     """
     delay: Duration = field(default_factory=lambda: Duration.from_minutes(1))
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> TimerConfig:
         """Create from dictionary (YAML parsing)."""
@@ -156,7 +156,7 @@ class TimerConfig:
         elif isinstance(delay, int):
             delay = Duration.from_seconds(delay)
         return cls(delay=delay)
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {"delay": str(self.delay)}
@@ -165,34 +165,128 @@ class TimerConfig:
 @dataclass(frozen=True)
 class NotificationConfig:
     """
-    Configuration for notification step type (stub for Advanced phase).
-    
-    Defines notification targets and message.
+    Configuration for notification step type.
+
+    Defines notification channel, recipients, and message template.
+    Supports Slack webhooks and email (email requires SMTP config).
+
+    Reference: BACKLOG_CORE.md - E14-01
     """
-    channel: str = "email"  # email, slack, webhook
-    recipients: list[str] = field(default_factory=list)
-    template: str = ""
-    
+    channel: str = "slack"  # slack, email, webhook
+    message: str = ""  # Message template with {{...}} substitution
+
+    # Slack-specific
+    webhook_url: Optional[str] = None  # Slack webhook URL (can use env var)
+
+    # Email-specific
+    recipients: list[str] = field(default_factory=list)  # Email addresses
+    subject: str = ""  # Email subject
+
+    # Generic webhook
+    url: Optional[str] = None  # Generic webhook URL
+
     @classmethod
     def from_dict(cls, data: dict) -> NotificationConfig:
         """Create from dictionary (YAML parsing)."""
         return cls(
-            channel=data.get("channel", "email"),
+            channel=data.get("channel", "slack"),
+            message=data.get("message", data.get("template", "")),
+            webhook_url=data.get("webhook_url"),
             recipients=data.get("recipients", []),
-            template=data.get("template", ""),
+            subject=data.get("subject", ""),
+            url=data.get("url"),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
-        return {
+        result = {
             "channel": self.channel,
-            "recipients": self.recipients,
-            "template": self.template,
+            "message": self.message,
         }
+        if self.webhook_url:
+            result["webhook_url"] = self.webhook_url
+        if self.recipients:
+            result["recipients"] = self.recipients
+        if self.subject:
+            result["subject"] = self.subject
+        if self.url:
+            result["url"] = self.url
+        return result
 
 
 # Type alias for step configuration
 StepConfig = AgentTaskConfig | HumanApprovalConfig | GatewayConfig | TimerConfig | NotificationConfig
+
+
+# =============================================================================
+# Compensation Configuration
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class CompensationConfig:
+    """
+    Configuration for step compensation (rollback action).
+
+    Compensation actions are executed when a process fails after a step
+    has completed. They allow cleanup/rollback of side effects.
+
+    Supports two types:
+    - agent_task: Send a message to an agent to perform rollback
+    - notification: Send a notification about the failure
+
+    Reference: BACKLOG_MVP.md - E13-03
+    """
+    type: str = "agent_task"  # "agent_task" | "notification"
+
+    # For agent_task compensation
+    agent: Optional[str] = None
+    message: str = ""  # Message template with {{...}} substitution
+    timeout: Duration = field(default_factory=lambda: Duration.from_minutes(5))
+
+    # For notification compensation
+    channel: str = "slack"  # slack, email, webhook
+    webhook_url: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CompensationConfig":
+        """Create from dictionary (YAML parsing)."""
+        if not data:
+            return cls()
+
+        timeout = data.get("timeout", "5m")
+        if isinstance(timeout, str):
+            timeout = Duration.from_string(timeout)
+        elif isinstance(timeout, int):
+            timeout = Duration.from_seconds(timeout)
+
+        return cls(
+            type=data.get("type", "agent_task"),
+            agent=data.get("agent"),
+            message=data.get("message", ""),
+            timeout=timeout,
+            channel=data.get("channel", "slack"),
+            webhook_url=data.get("webhook_url"),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {"type": self.type}
+
+        if self.type == "agent_task":
+            if self.agent:
+                result["agent"] = self.agent
+            if self.message:
+                result["message"] = self.message
+            result["timeout"] = str(self.timeout)
+        elif self.type == "notification":
+            result["channel"] = self.channel
+            if self.message:
+                result["message"] = self.message
+            if self.webhook_url:
+                result["webhook_url"] = self.webhook_url
+
+        return result
 
 
 # =============================================================================
@@ -204,16 +298,16 @@ StepConfig = AgentTaskConfig | HumanApprovalConfig | GatewayConfig | TimerConfig
 class WebhookTriggerConfig:
     """
     Configuration for webhook triggers.
-    
+
     Allows processes to be started via HTTP POST.
-    
+
     Reference: BACKLOG_CORE.md - E8-01
     """
     id: str  # Unique trigger ID (used in webhook URL)
     enabled: bool = True
     secret: Optional[str] = None  # Optional secret for authentication
     description: str = ""
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "WebhookTriggerConfig":
         """Create from dictionary (YAML parsing)."""
@@ -223,7 +317,7 @@ class WebhookTriggerConfig:
             secret=data.get("secret"),
             description=data.get("description", ""),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -240,7 +334,7 @@ class WebhookTriggerConfig:
 class ScheduleTriggerConfig:
     """
     Configuration for scheduled triggers (stub for Advanced phase).
-    
+
     Allows processes to run on a cron schedule.
     """
     id: str
@@ -248,7 +342,7 @@ class ScheduleTriggerConfig:
     enabled: bool = True
     timezone: str = "UTC"
     description: str = ""
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "ScheduleTriggerConfig":
         """Create from dictionary (YAML parsing)."""
@@ -259,7 +353,7 @@ class ScheduleTriggerConfig:
             timezone=data.get("timezone", "UTC"),
             description=data.get("description", ""),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {
@@ -279,15 +373,15 @@ TriggerConfig = WebhookTriggerConfig | ScheduleTriggerConfig
 def parse_trigger_config(trigger_data: dict) -> TriggerConfig:
     """
     Parse trigger configuration based on type.
-    
+
     Args:
         trigger_data: Dictionary with trigger configuration
-        
+
     Returns:
         Appropriate TriggerConfig subclass instance
     """
     trigger_type = trigger_data.get("type", "webhook")
-    
+
     if trigger_type == "webhook":
         return WebhookTriggerConfig.from_dict(trigger_data)
     elif trigger_type == "schedule":
@@ -299,11 +393,11 @@ def parse_trigger_config(trigger_data: dict) -> TriggerConfig:
 def parse_step_config(step_type: str, config_data: dict) -> StepConfig:
     """
     Parse step configuration based on step type.
-    
+
     Args:
         step_type: The type of step (agent_task, human_approval, etc.)
         config_data: Dictionary with configuration data
-        
+
     Returns:
         Appropriate StepConfig subclass instance
     """
@@ -314,9 +408,9 @@ def parse_step_config(step_type: str, config_data: dict) -> StepConfig:
         "timer": TimerConfig.from_dict,
         "notification": NotificationConfig.from_dict,
     }
-    
+
     parser = parsers.get(step_type)
     if not parser:
         raise ValueError(f"Unknown step type: {step_type}")
-    
+
     return parser(config_data)

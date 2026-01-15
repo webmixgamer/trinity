@@ -174,6 +174,62 @@
             </div>
           </div>
 
+          <!-- Triggers section (for published processes with triggers) -->
+          <div v-if="!isNew && process?.status === 'published' && parsedTriggers.length > 0" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <LinkIcon class="h-4 w-4" />
+                Triggers
+              </h3>
+            </div>
+            <div class="p-4 space-y-3">
+              <div
+                v-for="trigger in parsedTriggers"
+                :key="trigger.id"
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg"
+              >
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trigger.id }}</span>
+                    <span
+                      :class="[
+                        'px-2 py-0.5 text-xs font-medium rounded-full',
+                        trigger.enabled
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                      ]"
+                    >
+                      {{ trigger.enabled ? 'Enabled' : 'Disabled' }}
+                    </span>
+                    <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                      {{ trigger.type }}
+                    </span>
+                  </div>
+                  <div v-if="trigger.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ trigger.description }}
+                  </div>
+                  <div v-if="trigger.type === 'webhook'" class="mt-2">
+                    <div class="flex items-center gap-2">
+                      <code class="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-600 dark:text-gray-300 truncate max-w-md">
+                        {{ getWebhookUrl(trigger.id) }}
+                      </code>
+                      <button
+                        @click="copyWebhookUrl(trigger.id)"
+                        class="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                        title="Copy webhook URL"
+                      >
+                        <ClipboardDocumentIcon class="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Use these webhook URLs to trigger this process externally via HTTP POST.
+              </div>
+            </div>
+          </div>
+
           <!-- Help text -->
           <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
             <div class="p-4">
@@ -264,7 +320,10 @@ import {
   InformationCircleIcon,
   PlayIcon,
   DocumentDuplicateIcon,
+  LinkIcon,
+  ClipboardDocumentIcon,
 } from '@heroicons/vue/24/outline'
+import jsyaml from 'js-yaml'
 
 const route = useRoute()
 const router = useRouter()
@@ -290,6 +349,28 @@ const isNew = computed(() => route.name === 'ProcessNew')
 const hasErrors = computed(() =>
   validationErrors.value.some(e => e.level === 'error' || !e.level)
 )
+
+// Parse triggers from YAML content
+const parsedTriggers = computed(() => {
+  try {
+    const parsed = jsyaml.load(yamlContent.value)
+    return parsed?.triggers || []
+  } catch {
+    return []
+  }
+})
+
+// Helper functions for triggers
+function getWebhookUrl(triggerId) {
+  const baseUrl = window.location.origin
+  return `${baseUrl}/api/triggers/webhook/${triggerId}`
+}
+
+function copyWebhookUrl(triggerId) {
+  const url = getWebhookUrl(triggerId)
+  navigator.clipboard.writeText(url)
+  showNotification('Webhook URL copied to clipboard', 'success')
+}
 
 // Default template for new processes
 function defaultYamlTemplate() {

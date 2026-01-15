@@ -24,6 +24,8 @@ from .step_configs import (
     AgentTaskConfig,
     HumanApprovalConfig,
     GatewayConfig,
+    NotificationConfig,
+    CompensationConfig,
     parse_step_config,
 )
 
@@ -32,9 +34,14 @@ from .step_configs import (
 class StepDefinition:
     """
     Entity within ProcessDefinition aggregate.
-    
-    Defines a single step in a process - what it does, 
+
+    Defines a single step in a process - what it does,
     what it depends on, and how it's configured.
+
+    Compensation:
+        Optional rollback action executed when process fails
+        after this step has completed. Compensations run in
+        reverse order of step completion.
     """
     id: StepId
     name: str
@@ -44,12 +51,13 @@ class StepDefinition:
     condition: Optional[str] = None  # Expression like "{{steps.review.decision}} == 'approved'"
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy.default)
     error_policy: ErrorPolicy = field(default_factory=ErrorPolicy.default)
-    
+    compensation: Optional[CompensationConfig] = None  # Compensation action (rollback)
+
     @classmethod
     def from_dict(cls, data: dict) -> StepDefinition:
         """
         Create StepDefinition from dictionary (YAML parsing).
-        
+
         Example YAML:
         ```yaml
         - id: research
@@ -66,7 +74,7 @@ class StepDefinition:
         """
         step_id = StepId(data["id"])
         step_type = StepType(data["type"])
-        
+
         # Parse config based on step type
         # For agent_task, the config is inlined in the step definition
         if step_type == StepType.AGENT_TASK:
@@ -93,19 +101,24 @@ class StepDefinition:
         else:
             # Generic config extraction
             config_data = data.get("config", {})
-        
+
         config = parse_step_config(step_type.value, config_data)
-        
+
         # Parse dependencies
         depends_on = data.get("depends_on", [])
         if isinstance(depends_on, str):
             depends_on = [depends_on]
         dependencies = [StepId(dep) for dep in depends_on]
-        
+
         # Parse policies
         retry_policy = RetryPolicy.from_dict(data.get("retry", {}))
         error_policy = ErrorPolicy.from_dict(data.get("on_error", {}))
-        
+
+        # Parse compensation (optional rollback action)
+        compensation = None
+        if data.get("compensation"):
+            compensation = CompensationConfig.from_dict(data["compensation"])
+
         return cls(
             id=step_id,
             name=data.get("name", data["id"]),
@@ -115,8 +128,9 @@ class StepDefinition:
             condition=data.get("condition"),
             retry_policy=retry_policy,
             error_policy=error_policy,
+            compensation=compensation,
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -124,7 +138,7 @@ class StepDefinition:
             "name": self.name,
             "type": self.type.value,
         }
-        
+
         # Inline config for known step types
         if self.type == StepType.AGENT_TASK and isinstance(self.config, AgentTaskConfig):
             result["agent"] = self.config.agent
@@ -144,18 +158,32 @@ class StepDefinition:
             result["routes"] = self.config.routes
             if self.config.default_route:
                 result["default_route"] = self.config.default_route
+        elif self.type == StepType.NOTIFICATION and isinstance(self.config, NotificationConfig):
+            result["channel"] = self.config.channel
+            result["message"] = self.config.message
+            if self.config.webhook_url:
+                result["webhook_url"] = self.config.webhook_url
+            if self.config.recipients:
+                result["recipients"] = self.config.recipients
+            if self.config.subject:
+                result["subject"] = self.config.subject
+            if self.config.url:
+                result["url"] = self.config.url
         else:
             result["config"] = self.config.to_dict()
-        
+
         if self.dependencies:
             result["depends_on"] = [str(dep) for dep in self.dependencies]
-        
+
         if self.condition:
             result["condition"] = self.condition
-            
+
         result["retry"] = self.retry_policy.to_dict()
         result["on_error"] = self.error_policy.to_dict()
-            
+
+        if self.compensation:
+            result["compensation"] = self.compensation.to_dict()
+
         return result
 
 
@@ -175,7 +203,7 @@ class StepExecution:
     error: Optional[dict[str, Any]] = None
     cost: Optional["Money"] = None  # Cost incurred by this step
     retry_count: int = 0
-    
+
     @property
     def duration(self) -> Optional[Duration]:
         """Calculate execution duration if completed."""
@@ -183,18 +211,18 @@ class StepExecution:
             delta = self.completed_at - self.started_at
             return Duration(seconds=int(delta.total_seconds()))
         return None
-    
+
     def start(self) -> None:
         """Mark step as running."""
         self.status = StepStatus.RUNNING
         self.started_at = _utcnow()
-    
+
     def complete(self, output: dict[str, Any]) -> None:
         """Mark step as completed with output."""
         self.status = StepStatus.COMPLETED
         self.completed_at = _utcnow()
         self.output = output
-    
+
     def fail(self, error_message: str, error_code: Optional[str] = None) -> None:
         """Mark step as failed with error (final failure)."""
         self.status = StepStatus.FAILED
@@ -204,7 +232,7 @@ class StepExecution:
             "code": error_code,
         }
         # retry_count is already incremented by record_attempt_failure
-    
+
     def record_attempt_failure(self, error_message: str, error_code: Optional[str] = None) -> None:
         """Record a single failed attempt but keep status as RUNNING."""
         self.retry_count += 1
@@ -214,17 +242,17 @@ class StepExecution:
             "attempt": self.retry_count,
             "failed_at": _utcnow().isoformat(),
         }
-    
+
     def skip(self, reason: str = "Condition not met") -> None:
         """Mark step as skipped."""
         self.status = StepStatus.SKIPPED
         self.completed_at = _utcnow()
         self.output = {"skipped_reason": reason}
-    
+
     def wait_for_approval(self) -> None:
         """Mark step as waiting for human approval."""
         self.status = StepStatus.WAITING_APPROVAL
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -249,7 +277,7 @@ class StepExecution:
             result["duration_seconds"] = self.duration.seconds
 
         return result
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> StepExecution:
         """Create from dictionary (deserialization)."""
@@ -257,7 +285,7 @@ class StepExecution:
         cost = None
         if data.get("cost"):
             cost = Money.from_string(data["cost"])
-        
+
         execution = cls(
             step_id=StepId(data["step_id"]),
             status=StepStatus(data["status"]),
@@ -280,14 +308,14 @@ class StepExecution:
 class OutputConfig:
     """
     Configuration for process outputs.
-    
+
     Defines what data should be captured as process output
     and where it should be stored.
     """
     name: str
     source: str  # Expression like "{{steps.final.response}}"
     description: str = ""
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> OutputConfig:
         """Create from dictionary (YAML parsing)."""
@@ -299,7 +327,7 @@ class OutputConfig:
             source=data["source"],
             description=data.get("description", ""),
         )
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         return {
@@ -313,7 +341,7 @@ class OutputConfig:
 class ApprovalRequest:
     """
     Entity for tracking human approval requests.
-    
+
     Created when a human_approval step starts, tracks who can approve
     and the decision made.
     """
@@ -329,7 +357,7 @@ class ApprovalRequest:
     decided_at: Optional[datetime] = None
     decided_by: Optional[str] = None
     decision_comment: Optional[str] = None
-    
+
     @classmethod
     def create(
         cls,
@@ -351,37 +379,37 @@ class ApprovalRequest:
             assignees=assignees,
             deadline=deadline,
         )
-    
+
     def approve(self, decided_by: str, comment: Optional[str] = None) -> None:
         """Mark this request as approved."""
         self.status = ApprovalStatus.APPROVED
         self.decided_at = _utcnow()
         self.decided_by = decided_by
         self.decision_comment = comment
-    
+
     def reject(self, decided_by: str, comment: str) -> None:
         """Mark this request as rejected."""
         self.status = ApprovalStatus.REJECTED
         self.decided_at = _utcnow()
         self.decided_by = decided_by
         self.decision_comment = comment
-    
+
     def expire(self) -> None:
         """Mark this request as expired."""
         self.status = ApprovalStatus.EXPIRED
         self.decided_at = _utcnow()
-    
+
     def is_pending(self) -> bool:
         """Check if this request is still pending."""
         return self.status == ApprovalStatus.PENDING
-    
+
     def can_be_decided_by(self, user: str) -> bool:
         """Check if the given user can decide on this request."""
         # If no assignees specified, anyone can approve
         if not self.assignees:
             return True
         return user in self.assignees
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         result = {
@@ -403,7 +431,7 @@ class ApprovalRequest:
         if self.decision_comment:
             result["decision_comment"] = self.decision_comment
         return result
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "ApprovalRequest":
         """Create from dictionary (deserialization)."""

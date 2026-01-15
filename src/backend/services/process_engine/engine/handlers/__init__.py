@@ -7,6 +7,7 @@ Implementations of StepHandler for different step types.
 from .agent_task import AgentTaskHandler
 from .human_approval import HumanApprovalHandler, ApprovalStore, get_approval_store
 from .gateway import GatewayHandler
+from .notification import NotificationHandler
 
 __all__ = [
     "AgentTaskHandler",
@@ -14,4 +15,5 @@ __all__ = [
     "ApprovalStore",
     "get_approval_store",
     "GatewayHandler",
+    "NotificationHandler",
 ]

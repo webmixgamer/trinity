@@ -32,18 +32,18 @@ def _utcnow() -> datetime:
 class DomainEvent(ABC):
     """
     Base class for all domain events.
-    
+
     Events are immutable records of something that happened.
     They always have a timestamp and can be serialized.
     """
     # kw_only=True allows subclasses to have required fields before this
     timestamp: datetime = field(default_factory=_utcnow, kw_only=True)
-    
+
     @property
     def event_type(self) -> str:
         """Return the event type name."""
         return self.__class__.__name__
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
         # Base implementation - subclasses add their fields
@@ -67,7 +67,7 @@ class ProcessStarted(DomainEvent):
     process_id: ProcessId
     process_name: str
     triggered_by: str = "manual"
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -89,7 +89,7 @@ class ProcessCompleted(DomainEvent):
     total_cost: Money
     total_duration: Duration
     output_data: dict = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -113,7 +113,7 @@ class ProcessFailed(DomainEvent):
     failed_step_id: StepId
     error_message: str
     error_code: Optional[str] = None
-    
+
     def to_dict(self) -> dict:
         result = {
             **super().to_dict(),
@@ -138,7 +138,7 @@ class ProcessCancelled(DomainEvent):
     process_name: str
     cancelled_by: str
     reason: str
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -164,7 +164,7 @@ class StepStarted(DomainEvent):
     step_id: StepId
     step_name: str
     step_type: StepType
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -186,7 +186,7 @@ class StepCompleted(DomainEvent):
     output: dict = field(default_factory=dict)
     cost: Money = field(default_factory=lambda: Money.zero())
     duration: Duration = field(default_factory=lambda: Duration(0))
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -211,7 +211,7 @@ class StepFailed(DomainEvent):
     error_code: Optional[str] = None
     retry_count: int = 0
     will_retry: bool = False
-    
+
     def to_dict(self) -> dict:
         result = {
             **super().to_dict(),
@@ -239,7 +239,7 @@ class StepRetrying(DomainEvent):
     attempt: int
     max_attempts: int
     next_retry_at: datetime
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -262,7 +262,7 @@ class StepSkipped(DomainEvent):
     step_id: StepId
     step_name: str
     reason: str  # "condition_not_met", "upstream_failed"
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -284,7 +284,7 @@ class StepWaitingApproval(DomainEvent):
     approval_id: str
     title: str
     assignees: list[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -313,7 +313,7 @@ class ApprovalRequested(DomainEvent):
     title: str
     description: str
     assignees: list[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -336,7 +336,7 @@ class ApprovalDecided(DomainEvent):
     decision: str  # "approved" | "rejected"
     decided_by: str
     comment: Optional[str] = None
-    
+
     def to_dict(self) -> dict:
         result = {
             **super().to_dict(),
@@ -348,6 +348,73 @@ class ApprovalDecided(DomainEvent):
         if self.comment:
             result["comment"] = self.comment
         return result
+
+
+# =============================================================================
+# Compensation Events
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class CompensationStarted(DomainEvent):
+    """
+    Emitted when compensation handlers begin execution.
+    """
+    execution_id: ExecutionId
+    process_id: ProcessId
+    process_name: str
+    compensation_count: int  # Number of compensations to run
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "compensation_count": self.compensation_count,
+        }
+
+
+@dataclass(frozen=True)
+class CompensationCompleted(DomainEvent):
+    """
+    Emitted when a single compensation handler completes successfully.
+    """
+    execution_id: ExecutionId
+    step_id: StepId
+    step_name: str
+    compensation_type: str  # "agent_task" | "notification"
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "step_id": str(self.step_id),
+            "step_name": self.step_name,
+            "compensation_type": self.compensation_type,
+        }
+
+
+@dataclass(frozen=True)
+class CompensationFailed(DomainEvent):
+    """
+    Emitted when a compensation handler fails.
+    """
+    execution_id: ExecutionId
+    step_id: StepId
+    step_name: str
+    compensation_type: str
+    error_message: str
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "step_id": str(self.step_id),
+            "step_name": self.step_name,
+            "compensation_type": self.compensation_type,
+            "error_message": self.error_message,
+        }
 
 
 # =============================================================================
@@ -364,7 +431,7 @@ class ProcessCreated(DomainEvent):
     process_name: str
     version: int
     created_by: str
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -384,7 +451,7 @@ class ProcessUpdated(DomainEvent):
     process_name: str
     version: int
     updated_by: str
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -404,7 +471,7 @@ class ProcessPublished(DomainEvent):
     process_name: str
     version: int
     published_by: str
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),
@@ -424,7 +491,7 @@ class ProcessArchived(DomainEvent):
     process_name: str
     version: int
     archived_by: str
-    
+
     def to_dict(self) -> dict:
         return {
             **super().to_dict(),

@@ -45,6 +45,7 @@ from .step_configs import (
     GatewayConfig,
     TimerConfig,
     NotificationConfig,
+    CompensationConfig,
     parse_step_config,
     # Trigger configs
     TriggerConfig,
@@ -85,6 +86,10 @@ from .events import (
     StepWaitingApproval,
     ApprovalRequested,
     ApprovalDecided,
+    # Compensation Events
+    CompensationStarted,
+    CompensationCompleted,
+    CompensationFailed,
     # Process Definition Events
     ProcessCreated,
     ProcessUpdated,
@@ -121,6 +126,7 @@ __all__ = [
     "GatewayConfig",
     "TimerConfig",
     "NotificationConfig",
+    "CompensationConfig",
     "parse_step_config",
     # Trigger Configs
     "TriggerConfig",
@@ -155,6 +161,10 @@ __all__ = [
     "StepWaitingApproval",
     "ApprovalRequested",
     "ApprovalDecided",
+    # Compensation Events
+    "CompensationStarted",
+    "CompensationCompleted",
+    "CompensationFailed",
     # Process Definition Events
     "ProcessCreated",
     "ProcessUpdated",

@@ -29,13 +29,14 @@ from services.process_engine.repositories import (
     SqliteEventRepository,
 )
 from services.process_engine.services import OutputStorage, EventLogger
-from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
+from services.process_engine.events import InMemoryEventBus, get_websocket_publisher, get_webhook_publisher
 from services.process_engine.engine import (
     ExecutionEngine,
     StepHandlerRegistry,
     AgentTaskHandler,
     HumanApprovalHandler,
     GatewayHandler,
+    NotificationHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,9 @@ def get_event_bus() -> InMemoryEventBus:
         # Register WebSocket publisher to broadcast events
         websocket_publisher = get_websocket_publisher()
         websocket_publisher.register_with_event_bus(_event_bus)
+        # Register Webhook publisher for external integrations
+        webhook_publisher = get_webhook_publisher()
+        webhook_publisher.register_with_event_bus(_event_bus)
     return _event_bus
 
 
@@ -180,6 +184,7 @@ def get_handler_registry() -> StepHandlerRegistry:
         _handler_registry.register(AgentTaskHandler())
         _handler_registry.register(HumanApprovalHandler())
         _handler_registry.register(GatewayHandler())
+        _handler_registry.register(NotificationHandler())
     return _handler_registry
 
 
@@ -198,10 +203,10 @@ def get_execution_engine() -> ExecutionEngine:
     """Get the execution engine."""
     execution_repo = get_execution_repo()
     output_storage = OutputStorage(execution_repo)
-    
+
     # Ensure event logger is running
     get_event_logger()
-    
+
     return ExecutionEngine(
         execution_repo=execution_repo,
         event_bus=get_event_bus(),
@@ -224,29 +229,29 @@ async def start_execution(
 ):
     """
     Start a new execution of a process.
-    
+
     The execution runs asynchronously in the background.
     Returns the initial execution state immediately.
     """
     definition_repo = get_definition_repo()
-    
+
     # Get the process definition
     try:
         pid = ProcessId(process_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid process ID format")
-    
+
     definition = definition_repo.get_by_id(pid)
     if not definition:
         raise HTTPException(status_code=404, detail="Process definition not found")
-    
+
     # Only published processes can be executed
     if definition.status != DefinitionStatus.PUBLISHED:
         raise HTTPException(
             status_code=400,
             detail=f"Process is not published (status: {definition.status.value})"
         )
-    
+
     # Create the execution
     execution_repo = get_execution_repo()
     execution = ProcessExecution.create(
@@ -255,13 +260,13 @@ async def start_execution(
         triggered_by=request.triggered_by,
     )
     execution_repo.save(execution)
-    
+
     logger.info(f"Created execution {execution.id} for process '{definition.name}' by user {current_user.username}")
-    
+
     # Run execution in background
     if background_tasks:
         background_tasks.add_task(_run_execution, str(execution.id), str(definition.id))
-    
+
     return _to_detail(execution, definition)
 
 
@@ -271,13 +276,13 @@ async def _run_execution(execution_id: str, process_id: str):
         definition_repo = get_definition_repo()
         execution_repo = get_execution_repo()
         engine = get_execution_engine()
-        
+
         definition = definition_repo.get_by_id(ProcessId(process_id))
         execution = execution_repo.get_by_id(ExecutionId(execution_id))
-        
+
         if definition and execution:
             await engine.resume(execution, definition)
-            
+
     except Exception as e:
         logger.exception(f"Error running execution {execution_id}")
         # Update execution to failed state
@@ -303,7 +308,7 @@ async def list_executions(
     List all executions with optional filters.
     """
     execution_repo = get_execution_repo()
-    
+
     # Parse status filter
     status_filter = None
     if status:
@@ -311,7 +316,7 @@ async def list_executions(
             status_filter = ExecutionStatus(status)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
-    
+
     # Filter by process if specified
     if process_id:
         try:
@@ -323,7 +328,7 @@ async def list_executions(
     else:
         executions = execution_repo.list_all(limit=limit, offset=offset, status=status_filter)
         total = execution_repo.count(status=status_filter)
-    
+
     return ExecutionListResponse(
         executions=[_to_summary(e) for e in executions],
         total=total,
@@ -342,19 +347,19 @@ async def get_execution(
     """
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
-    
+
     try:
         eid = ExecutionId(execution_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid execution ID format")
-    
+
     execution = execution_repo.get_by_id(eid)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
-    
+
     # Get definition for parallel structure info
     definition = definition_repo.get_by_id(execution.process_id)
-    
+
     return _to_detail(execution, definition)
 
 
@@ -368,27 +373,27 @@ async def cancel_execution(
     """
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
-    
+
     try:
         eid = ExecutionId(execution_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid execution ID format")
-    
+
     execution = execution_repo.get_by_id(eid)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
-    
+
     if execution.status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.PAUSED]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel execution in status: {execution.status.value}"
         )
-    
+
     execution.cancel(f"Cancelled by {current_user.username}")
     execution_repo.save(execution)
-    
+
     logger.info(f"Execution {execution_id} cancelled by {current_user.username}")
-    
+
     definition = definition_repo.get_by_id(execution.process_id)
     return _to_detail(execution, definition)
 
@@ -401,32 +406,32 @@ async def retry_execution(
 ):
     """
     Retry a failed execution.
-    
+
     Creates a new execution with the same input data.
     """
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
-    
+
     try:
         eid = ExecutionId(execution_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid execution ID format")
-    
+
     execution = execution_repo.get_by_id(eid)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
-    
+
     if execution.status != ExecutionStatus.FAILED:
         raise HTTPException(
             status_code=400,
             detail=f"Can only retry failed executions (status: {execution.status.value})"
         )
-    
+
     # Get the process definition
     definition = definition_repo.get_by_id(execution.process_id)
     if not definition:
         raise HTTPException(status_code=404, detail="Process definition not found")
-    
+
     # Create new execution with same input
     new_execution = ProcessExecution.create(
         definition=definition,
@@ -434,13 +439,13 @@ async def retry_execution(
         triggered_by="retry",
     )
     execution_repo.save(new_execution)
-    
+
     logger.info(f"Created retry execution {new_execution.id} for failed execution {execution_id}")
-    
+
     # Run in background
     if background_tasks:
         background_tasks.add_task(_run_execution, str(new_execution.id), str(definition.id))
-    
+
     return _to_detail(new_execution, definition)
 
 
@@ -455,12 +460,12 @@ async def get_execution_events(
     Get audit log of events for an execution.
     """
     event_repo = get_event_repo()
-    
+
     try:
         eid = ExecutionId(execution_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid execution ID format")
-    
+
     events = event_repo.get_by_execution_id(eid, limit=limit, offset=offset)
     return [e.to_dict() for e in events]
 
@@ -476,22 +481,22 @@ async def get_step_output(
     """
     execution_repo = get_execution_repo()
     output_storage = OutputStorage(execution_repo)
-    
+
     try:
         eid = ExecutionId(execution_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid execution ID format")
-    
+
     from services.process_engine.domain import StepId
     try:
         sid = StepId(step_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid step ID format")
-    
+
     output = output_storage.retrieve(eid, sid)
     if output is None:
         raise HTTPException(status_code=404, detail="Step output not found")
-    
+
     return {"output": output}
 
 
@@ -520,7 +525,7 @@ def _to_detail(
 ) -> ExecutionDetail:
     """Convert execution to detail response."""
     from services.process_engine.engine import DependencyResolver
-    
+
     # Calculate parallel structure if definition available
     parallel_levels: dict[str, int] = {}
     has_parallel = False
@@ -529,7 +534,7 @@ def _to_detail(
         parallel_structure = resolver.get_parallel_structure()
         parallel_levels = parallel_structure.step_levels
         has_parallel = parallel_structure.has_parallel_execution()
-    
+
     steps = []
     for step_id, step_exec in execution.step_executions.items():
         step_error = None
@@ -543,7 +548,7 @@ def _to_detail(
                 )
             else:
                 step_error = StepError(message=str(step_exec.error))
-        
+
         steps.append(StepExecutionSummary(
             step_id=step_id,
             status=step_exec.status.value,
@@ -553,11 +558,11 @@ def _to_detail(
             retry_count=step_exec.retry_count,
             parallel_level=parallel_levels.get(step_id, 0),
         ))
-    
+
     duration = None
     if execution.duration:
         duration = execution.duration.seconds
-    
+
     return ExecutionDetail(
         id=str(execution.id),
         process_id=str(execution.process_id),
