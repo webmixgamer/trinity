@@ -104,14 +104,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `ProcessDefinitionRepository` interface defined
-- [ ] SQLite implementation stores definitions
-- [ ] CRUD operations: create, get_by_id, get_by_name, list_all, update, delete
-- [ ] Version tracking: multiple versions per process name
-- [ ] Status field: draft, published, archived
+- [x] `ProcessDefinitionRepository` interface defined
+- [x] SQLite implementation stores definitions
+- [x] CRUD operations: create, get_by_id, get_by_name, list_all, update, delete
+- [x] Version tracking: multiple versions per process name
+- [x] Status field: draft, published, archived
 
 **Technical Notes:**
 - Reference: IT3 Section 7 (Repositories)

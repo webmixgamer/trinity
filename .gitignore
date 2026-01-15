@@ -106,6 +106,8 @@ backups/
 
 # Dynamic test repositories (created during testing)
 repositories/
+# Exception: Process engine code repositories
+!src/backend/services/process_engine/repositories/
 
 # Archive folder (local development artifacts, root only)
 /archive/
