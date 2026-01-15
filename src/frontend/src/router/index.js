@@ -81,6 +81,24 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/executions',
+    name: 'ExecutionList',
+    component: () => import('../views/ExecutionList.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/executions/:id',
+    name: 'ProcessExecutionDetail',
+    component: () => import('../views/ProcessExecutionDetail.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/process-dashboard',
+    name: 'ProcessDashboard',
+    component: () => import('../views/ProcessDashboard.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/api-keys',
     name: 'ApiKeys',
     component: () => import('../views/ApiKeys.vue'),

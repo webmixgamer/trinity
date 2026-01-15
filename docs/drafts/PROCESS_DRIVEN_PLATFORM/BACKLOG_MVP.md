@@ -543,15 +543,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-05 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Table showing executions
-- [ ] Columns: Process Name, Status, Started, Duration, Cost
-- [ ] Status icons: ✅ ❌ 🔄 ⏳
-- [ ] Filters: by process, by status, date range
-- [ ] Click to view detail
-- [ ] Auto-refresh (polling 30s)
+- [x] Table showing executions
+- [x] Columns: Process Name, Status, Started, Duration, Cost
+- [x] Status icons: ✅ ❌ 🔄 ⏳
+- [x] Filters: by process, by status, date range
+- [x] Click to view detail
+- [x] Auto-refresh (polling 30s)
 
 **Technical Notes:**
 - Reference: IT4 Section 7 (Dashboard UI)
@@ -569,15 +569,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-05 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Horizontal timeline showing all steps
-- [ ] Each step shows: name, status icon, duration bar, cost
-- [ ] Completed steps show output summary (truncated)
-- [ ] Running step highlighted
-- [ ] Failed step shows error summary
-- [ ] Click step to expand details
+- [x] Horizontal timeline showing all steps
+- [x] Each step shows: name, status icon, duration bar, cost
+- [x] Completed steps show output summary (truncated)
+- [x] Running step highlighted
+- [x] Failed step shows error summary
+- [x] Click step to expand details
 
 **Technical Notes:**
 - Reference: IT4 Section 4 (Execution Timeline UI)
@@ -595,14 +595,14 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E4-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Expandable panel within timeline
-- [ ] Shows: agent name, full input, full output
-- [ ] Shows: start time, end time, duration, cost
-- [ ] For failed steps: full error message, stack trace
-- [ ] Copy output/error to clipboard
+- [x] Expandable panel within timeline
+- [x] Shows: agent name, full input, full output
+- [x] Shows: start time, end time, duration, cost
+- [x] For failed steps: full error message, stack trace
+- [x] Copy output/error to clipboard
 
 **Technical Notes:**
 - Reference: IT4 Section 4.4 (Expanded Step View)
@@ -644,7 +644,7 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | E4-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Quick stats bar: Active, Pending Approval, Failed (24h)
