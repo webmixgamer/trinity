@@ -630,7 +630,7 @@ async def get_activity_timeline(
         "start_time": start_time,
         "end_time": end_time,
         "activity_types": types_list,
-        "timeline": filtered_activities
+        "activities": filtered_activities  # Frontend expects "activities" (fixed 2026-01-15)
     }
 
 

@@ -217,11 +217,13 @@ async def chat_with_agent(
     )
 
     # Track chat start activity
+    # triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls, "user" for UI chat
+    activity_triggered_by = "agent" if x_source_agent else ("mcp" if x_via_mcp else "user")
     chat_activity_id = await activity_service.track_activity(
         agent_name=name,
         activity_type=ActivityType.CHAT_START,
         user_id=current_user.id,
-        triggered_by="agent" if x_source_agent else "user",
+        triggered_by=activity_triggered_by,
         parent_activity_id=collaboration_activity_id,  # Link to collaboration if agent-initiated
         related_execution_id=task_execution_id,  # Database execution ID for structured queries
         details={

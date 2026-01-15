@@ -616,6 +616,7 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-15 | **Fix**: MCP executions now appear on Timeline - Fixed API field mismatch (`timeline` → `activities`) and activity `triggered_by` (`user` → `mcp` for MCP calls) |
 | 2026-01-15 | **Fix**: Timeline now visible even with no events - `timelineStart`/`timelineEnd` always provide valid time range based on `timeRangeHours`, enabling live event streaming |
 | 2026-01-13 | **UX**: Timeline is now the default view for new users; header logo is clickable and navigates to Dashboard |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - bars grow every second as tasks execute, tooltips show live elapsed time |

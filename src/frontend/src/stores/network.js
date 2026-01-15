@@ -158,8 +158,8 @@ export const useNetworkStore = defineStore('network', () => {
               ? JSON.parse(activity.details)
               : activity.details || {}
 
-            // Keep: agent-initiated, schedule-triggered, or manual tasks (parallel_mode)
-            // Skip: regular user chat sessions
+            // Keep: agent-initiated, mcp-triggered, schedule-triggered, or manual tasks (parallel_mode)
+            // Skip: regular user chat sessions (triggered_by='user' without parallel_mode)
             if (activity.triggered_by === 'user' && !details.parallel_mode) {
               return false
             }

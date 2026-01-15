@@ -1,3 +1,26 @@
+### 2026-01-15 11:45:00
+🐛 **Fix: MCP Executions Not Appearing on Dashboard Timeline**
+
+**Problem**: Executions triggered via MCP showed in Tasks tab but NOT on Timeline view.
+
+**Root Causes**:
+1. **API field mismatch**: Backend returned `"timeline"` field, frontend expected `"activities"` (introduced Jan 11)
+2. **Activity triggered_by mismatch**: Task execution used `triggered_by="mcp"`, but activity creation used `triggered_by="user"`, which frontend filters out
+
+**Fixes**:
+- Backend: Changed `/api/activities/timeline` response from `"timeline"` to `"activities"` field
+- Backend: Activity creation now uses `triggered_by="mcp"` for user MCP calls (matching task execution)
+- Frontend: Updated filter comment to document MCP support
+
+**Files Modified**:
+- `src/backend/routers/agents.py:633` - API response field name
+- `src/backend/routers/chat.py:221` - Activity triggered_by logic
+- `src/frontend/src/stores/network.js:161` - Filter comment
+
+**Impact**: All execution types (scheduled, manual, MCP) now consistently appear on Dashboard Timeline.
+
+---
+
 ### 2026-01-15 09:30:00
 🐛 **Fix: Dashboard Timeline Visible Even With No Events**
 
