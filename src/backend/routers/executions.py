@@ -1,0 +1,476 @@
+"""
+Process Execution API Router
+
+Provides REST API endpoints for managing process executions.
+Part of the Process-Driven Platform feature.
+
+Reference: BACKLOG_MVP.md - E2-05
+"""
+
+import asyncio
+import logging
+from typing import Optional, List, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, BackgroundTasks
+from pydantic import BaseModel, Field
+
+from dependencies import get_current_user, CurrentUser
+from services.process_engine.domain import (
+    ProcessDefinition,
+    ProcessExecution,
+    ProcessId,
+    ExecutionId,
+    ExecutionStatus,
+    StepStatus,
+    DefinitionStatus,
+)
+from services.process_engine.repositories import (
+    SqliteProcessDefinitionRepository,
+    SqliteProcessExecutionRepository,
+)
+from services.process_engine.services import OutputStorage
+from services.process_engine.events import InMemoryEventBus
+from services.process_engine.engine import (
+    ExecutionEngine,
+    StepHandlerRegistry,
+    AgentTaskHandler,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/executions", tags=["executions"])
+
+
+# =============================================================================
+# Pydantic Models for API
+# =============================================================================
+
+
+class ExecutionStartRequest(BaseModel):
+    """Request body for starting a new execution."""
+    input_data: dict[str, Any] = Field(default_factory=dict, description="Input data for the process")
+    triggered_by: str = Field(default="api", description="What triggered this execution")
+
+
+class StepExecutionSummary(BaseModel):
+    """Summary of a step execution."""
+    step_id: str
+    status: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ExecutionSummary(BaseModel):
+    """Summary view of an execution."""
+    id: str
+    process_id: str
+    process_name: str
+    status: str
+    triggered_by: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: str
+
+
+class ExecutionDetail(BaseModel):
+    """Detailed view of an execution."""
+    id: str
+    process_id: str
+    process_version: str
+    process_name: str
+    status: str
+    triggered_by: str
+    input_data: dict[str, Any]
+    output_data: dict[str, Any]
+    total_cost: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    steps: List[StepExecutionSummary]
+
+
+class ExecutionListResponse(BaseModel):
+    """Response for listing executions."""
+    executions: List[ExecutionSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+
+
+# Singleton instances for the process engine components
+_definition_repo: Optional[SqliteProcessDefinitionRepository] = None
+_execution_repo: Optional[SqliteProcessExecutionRepository] = None
+_event_bus: Optional[InMemoryEventBus] = None
+_handler_registry: Optional[StepHandlerRegistry] = None
+
+
+def get_definition_repo() -> SqliteProcessDefinitionRepository:
+    """Get the process definition repository."""
+    global _definition_repo
+    if _definition_repo is None:
+        import os
+        db_path = os.path.expanduser("~/trinity-data/process_definitions.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        _definition_repo = SqliteProcessDefinitionRepository(db_path)
+    return _definition_repo
+
+
+def get_execution_repo() -> SqliteProcessExecutionRepository:
+    """Get the process execution repository."""
+    global _execution_repo
+    if _execution_repo is None:
+        import os
+        db_path = os.path.expanduser("~/trinity-data/process_executions.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        _execution_repo = SqliteProcessExecutionRepository(db_path)
+    return _execution_repo
+
+
+def get_event_bus() -> InMemoryEventBus:
+    """Get the event bus."""
+    global _event_bus
+    if _event_bus is None:
+        _event_bus = InMemoryEventBus()
+    return _event_bus
+
+
+def get_handler_registry() -> StepHandlerRegistry:
+    """Get the step handler registry."""
+    global _handler_registry
+    if _handler_registry is None:
+        _handler_registry = StepHandlerRegistry()
+        # Register default handlers
+        _handler_registry.register(AgentTaskHandler())
+    return _handler_registry
+
+
+def get_execution_engine() -> ExecutionEngine:
+    """Get the execution engine."""
+    execution_repo = get_execution_repo()
+    output_storage = OutputStorage(execution_repo)
+    
+    return ExecutionEngine(
+        execution_repo=execution_repo,
+        event_bus=get_event_bus(),
+        output_storage=output_storage,
+        handler_registry=get_handler_registry(),
+    )
+
+
+# =============================================================================
+# Endpoints
+# =============================================================================
+
+
+@router.post("/processes/{process_id}/execute", response_model=ExecutionDetail, status_code=201)
+async def start_execution(
+    process_id: str,
+    request: ExecutionStartRequest = Body(default_factory=ExecutionStartRequest),
+    background_tasks: BackgroundTasks = None,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Start a new execution of a process.
+    
+    The execution runs asynchronously in the background.
+    Returns the initial execution state immediately.
+    """
+    definition_repo = get_definition_repo()
+    
+    # Get the process definition
+    try:
+        pid = ProcessId(process_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid process ID format")
+    
+    definition = definition_repo.get_by_id(pid)
+    if not definition:
+        raise HTTPException(status_code=404, detail="Process definition not found")
+    
+    # Only published processes can be executed
+    if definition.status != DefinitionStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Process is not published (status: {definition.status.value})"
+        )
+    
+    # Create the execution
+    execution_repo = get_execution_repo()
+    execution = ProcessExecution.create(
+        definition=definition,
+        input_data=request.input_data,
+        triggered_by=request.triggered_by,
+    )
+    execution_repo.save(execution)
+    
+    logger.info(f"Created execution {execution.id} for process '{definition.name}' by user {current_user.username}")
+    
+    # Run execution in background
+    if background_tasks:
+        background_tasks.add_task(_run_execution, str(execution.id), str(definition.id))
+    
+    return _to_detail(execution)
+
+
+async def _run_execution(execution_id: str, process_id: str):
+    """Background task to run an execution."""
+    try:
+        definition_repo = get_definition_repo()
+        execution_repo = get_execution_repo()
+        engine = get_execution_engine()
+        
+        definition = definition_repo.get_by_id(ProcessId(process_id))
+        execution = execution_repo.get_by_id(ExecutionId(execution_id))
+        
+        if definition and execution:
+            await engine.resume(execution, definition)
+            
+    except Exception as e:
+        logger.exception(f"Error running execution {execution_id}")
+        # Update execution to failed state
+        try:
+            execution_repo = get_execution_repo()
+            execution = execution_repo.get_by_id(ExecutionId(execution_id))
+            if execution and execution.status not in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED]:
+                execution.fail(str(e))
+                execution_repo.save(execution)
+        except Exception:
+            pass
+
+
+@router.get("", response_model=ExecutionListResponse)
+async def list_executions(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    process_id: Optional[str] = Query(None, description="Filter by process ID"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    List all executions with optional filters.
+    """
+    execution_repo = get_execution_repo()
+    
+    # Parse status filter
+    status_filter = None
+    if status:
+        try:
+            status_filter = ExecutionStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    
+    # Filter by process if specified
+    if process_id:
+        try:
+            pid = ProcessId(process_id)
+            executions = execution_repo.list_by_process(pid, limit=limit, offset=offset)
+            total = len(executions)  # Simplified count
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid process ID format")
+    else:
+        executions = execution_repo.list_all(limit=limit, offset=offset, status=status_filter)
+        total = execution_repo.count(status=status_filter)
+    
+    return ExecutionListResponse(
+        executions=[_to_summary(e) for e in executions],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/{execution_id}", response_model=ExecutionDetail)
+async def get_execution(
+    execution_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Get detailed information about a specific execution.
+    """
+    execution_repo = get_execution_repo()
+    
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+    
+    execution = execution_repo.get_by_id(eid)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    return _to_detail(execution)
+
+
+@router.post("/{execution_id}/cancel", response_model=ExecutionDetail)
+async def cancel_execution(
+    execution_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Cancel a running execution.
+    """
+    execution_repo = get_execution_repo()
+    
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+    
+    execution = execution_repo.get_by_id(eid)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    if execution.status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.PAUSED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel execution in status: {execution.status.value}"
+        )
+    
+    execution.cancel(f"Cancelled by {current_user.username}")
+    execution_repo.save(execution)
+    
+    logger.info(f"Execution {execution_id} cancelled by {current_user.username}")
+    
+    return _to_detail(execution)
+
+
+@router.post("/{execution_id}/retry", response_model=ExecutionDetail, status_code=201)
+async def retry_execution(
+    execution_id: str,
+    background_tasks: BackgroundTasks = None,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Retry a failed execution.
+    
+    Creates a new execution with the same input data.
+    """
+    execution_repo = get_execution_repo()
+    definition_repo = get_definition_repo()
+    
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+    
+    execution = execution_repo.get_by_id(eid)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    if execution.status != ExecutionStatus.FAILED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only retry failed executions (status: {execution.status.value})"
+        )
+    
+    # Get the process definition
+    definition = definition_repo.get_by_id(execution.process_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail="Process definition not found")
+    
+    # Create new execution with same input
+    new_execution = ProcessExecution.create(
+        definition=definition,
+        input_data=execution.input_data,
+        triggered_by="retry",
+    )
+    execution_repo.save(new_execution)
+    
+    logger.info(f"Created retry execution {new_execution.id} for failed execution {execution_id}")
+    
+    # Run in background
+    if background_tasks:
+        background_tasks.add_task(_run_execution, str(new_execution.id), str(definition.id))
+    
+    return _to_detail(new_execution)
+
+
+@router.get("/{execution_id}/steps/{step_id}/output")
+async def get_step_output(
+    execution_id: str,
+    step_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Get the output of a specific step.
+    """
+    execution_repo = get_execution_repo()
+    output_storage = OutputStorage(execution_repo)
+    
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+    
+    from services.process_engine.domain import StepId
+    try:
+        sid = StepId(step_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid step ID format")
+    
+    output = output_storage.retrieve(eid, sid)
+    if output is None:
+        raise HTTPException(status_code=404, detail="Step output not found")
+    
+    return {"output": output}
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _to_summary(execution: ProcessExecution) -> ExecutionSummary:
+    """Convert execution to summary response."""
+    return ExecutionSummary(
+        id=str(execution.id),
+        process_id=str(execution.process_id),
+        process_name=execution.process_name,
+        status=execution.status.value,
+        triggered_by=execution.triggered_by,
+        started_at=execution.started_at.isoformat() if execution.started_at else None,
+        completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
+        created_at=execution.started_at.isoformat() if execution.started_at else "",
+    )
+
+
+def _to_detail(execution: ProcessExecution) -> ExecutionDetail:
+    """Convert execution to detail response."""
+    steps = []
+    for step_id, step_exec in execution.step_executions.items():
+        error_msg = None
+        if step_exec.error:
+            error_msg = step_exec.error.get("message", str(step_exec.error)) if isinstance(step_exec.error, dict) else str(step_exec.error)
+        
+        steps.append(StepExecutionSummary(
+            step_id=step_id,
+            status=step_exec.status.value,
+            started_at=step_exec.started_at.isoformat() if step_exec.started_at else None,
+            completed_at=step_exec.completed_at.isoformat() if step_exec.completed_at else None,
+            error=error_msg,
+        ))
+    
+    duration = None
+    if execution.duration:
+        duration = execution.duration.seconds
+    
+    return ExecutionDetail(
+        id=str(execution.id),
+        process_id=str(execution.process_id),
+        process_version=str(execution.process_version),
+        process_name=execution.process_name,
+        status=execution.status.value,
+        triggered_by=execution.triggered_by,
+        input_data=execution.input_data,
+        output_data=execution.output_data,
+        total_cost=str(execution.total_cost) if execution.total_cost else None,
+        started_at=execution.started_at.isoformat() if execution.started_at else None,
+        completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
+        duration_seconds=duration,
+        steps=steps,
+    )

@@ -352,16 +352,16 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E2-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `POST /api/processes/{id}/execute` - Start new execution
-- [ ] `GET /api/executions` - List executions (with filters)
-- [ ] `GET /api/executions/{id}` - Get execution detail
-- [ ] `POST /api/executions/{id}/cancel` - Cancel running execution
-- [ ] `POST /api/executions/{id}/retry` - Retry failed execution
-- [ ] All endpoints require authentication
-- [ ] OpenAPI documentation complete
+- [x] `POST /api/processes/{id}/execute` - Start new execution
+- [x] `GET /api/executions` - List executions (with filters)
+- [x] `GET /api/executions/{id}` - Get execution detail
+- [x] `POST /api/executions/{id}/cancel` - Cancel running execution
+- [x] `POST /api/executions/{id}/retry` - Retry failed execution
+- [x] All endpoints require authentication
+- [x] OpenAPI documentation complete (via FastAPI auto-docs)
 
 **Technical Notes:**
 - Location: `src/backend/routers/executions.py`

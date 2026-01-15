@@ -48,6 +48,7 @@ from routers.telemetry import router as telemetry_router
 from routers.logs import router as logs_router
 from routers.agent_dashboard import router as agent_dashboard_router
 from routers.processes import router as processes_router
+from routers.executions import router as executions_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -263,6 +264,7 @@ app.include_router(telemetry_router)
 app.include_router(logs_router)
 app.include_router(agent_dashboard_router)
 app.include_router(processes_router)
+app.include_router(executions_router)
 
 
 # WebSocket endpoint
