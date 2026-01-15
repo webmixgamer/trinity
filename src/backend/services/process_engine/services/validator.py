@@ -1,0 +1,396 @@
+"""
+Process Validator Service
+
+Validates process definitions at multiple levels:
+1. YAML syntax validation
+2. Schema validation (required fields, types)
+3. Semantic validation (dependencies, references)
+4. Agent existence checking (warnings)
+
+Reference: IT3 Section 6 (Domain Services)
+"""
+
+from __future__ import annotations
+
+import yaml
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Callable, Optional
+
+from ..domain import (
+    ProcessDefinition,
+    StepType,
+    ProcessValidationError,
+)
+
+
+class ErrorLevel(str, Enum):
+    """Severity level for validation errors."""
+    ERROR = "error"  # Must fix before saving
+    WARNING = "warning"  # Can proceed, but may cause issues
+
+
+@dataclass
+class ValidationError:
+    """
+    A single validation error or warning.
+    
+    Attributes:
+        message: Human-readable error description
+        level: ERROR or WARNING
+        path: JSON path to error location (e.g., "steps[0].depends_on")
+        line: Line number in YAML source (if available)
+        suggestion: Optional fix suggestion
+    """
+    message: str
+    level: ErrorLevel = ErrorLevel.ERROR
+    path: Optional[str] = None
+    line: Optional[int] = None
+    suggestion: Optional[str] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API response."""
+        result = {
+            "message": self.message,
+            "level": self.level.value,
+        }
+        if self.path:
+            result["path"] = self.path
+        if self.line:
+            result["line"] = self.line
+        if self.suggestion:
+            result["suggestion"] = self.suggestion
+        return result
+
+
+@dataclass
+class ValidationResult:
+    """
+    Result of process validation.
+    
+    Contains lists of errors and warnings, and indicates if the
+    definition is valid for saving/publishing.
+    """
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[ValidationError] = field(default_factory=list)
+    definition: Optional[ProcessDefinition] = None
+    
+    @property
+    def is_valid(self) -> bool:
+        """True if no errors (warnings are allowed)."""
+        return len(self.errors) == 0
+    
+    @property
+    def has_warnings(self) -> bool:
+        """True if there are warnings."""
+        return len(self.warnings) > 0
+    
+    def add_error(
+        self,
+        message: str,
+        path: Optional[str] = None,
+        line: Optional[int] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add an error to the result."""
+        self.errors.append(ValidationError(
+            message=message,
+            level=ErrorLevel.ERROR,
+            path=path,
+            line=line,
+            suggestion=suggestion,
+        ))
+    
+    def add_warning(
+        self,
+        message: str,
+        path: Optional[str] = None,
+        line: Optional[int] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add a warning to the result."""
+        self.warnings.append(ValidationError(
+            message=message,
+            level=ErrorLevel.WARNING,
+            path=path,
+            line=line,
+            suggestion=suggestion,
+        ))
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API response."""
+        return {
+            "is_valid": self.is_valid,
+            "has_warnings": self.has_warnings,
+            "errors": [e.to_dict() for e in self.errors],
+            "warnings": [w.to_dict() for w in self.warnings],
+        }
+
+
+# Type for agent checker function
+AgentChecker = Callable[[str], tuple[bool, bool]]  # Returns (exists, is_running)
+
+
+class ProcessValidator:
+    """
+    Validates process definitions.
+    
+    Performs multiple levels of validation:
+    1. YAML parsing
+    2. Schema validation
+    3. Semantic validation
+    4. Agent existence checking
+    
+    Usage:
+        validator = ProcessValidator(agent_checker=check_agent_func)
+        result = validator.validate_yaml(yaml_content)
+        if result.is_valid:
+            definition = result.definition
+    """
+    
+    def __init__(
+        self,
+        agent_checker: Optional[AgentChecker] = None,
+    ):
+        """
+        Initialize validator.
+        
+        Args:
+            agent_checker: Optional function to check if agent exists/is running.
+                          Signature: (agent_name: str) -> (exists: bool, is_running: bool)
+        """
+        self.agent_checker = agent_checker
+    
+    def validate_yaml(
+        self,
+        yaml_content: str,
+        created_by: Optional[str] = None,
+    ) -> ValidationResult:
+        """
+        Validate YAML content and return validation result.
+        
+        Args:
+            yaml_content: Raw YAML string
+            created_by: Optional user identifier
+            
+        Returns:
+            ValidationResult with errors, warnings, and parsed definition
+        """
+        result = ValidationResult()
+        
+        # Step 1: Parse YAML
+        try:
+            data = yaml.safe_load(yaml_content)
+        except yaml.YAMLError as e:
+            result.add_error(
+                message=f"Invalid YAML syntax: {e}",
+                line=getattr(e, 'problem_mark', None) and e.problem_mark.line + 1,
+            )
+            return result
+        
+        if not isinstance(data, dict):
+            result.add_error(
+                message="Process definition must be a YAML object/mapping",
+                suggestion="Start with 'name: my-process'",
+            )
+            return result
+        
+        # Step 2: Schema validation (required fields)
+        self._validate_schema(data, result)
+        if not result.is_valid:
+            return result
+        
+        # Step 3: Parse into ProcessDefinition
+        try:
+            definition = ProcessDefinition.from_yaml_dict(data, created_by=created_by)
+            result.definition = definition
+        except Exception as e:
+            result.add_error(
+                message=f"Failed to parse process definition: {e}",
+            )
+            return result
+        
+        # Step 4: Semantic validation (from domain)
+        domain_errors = definition.validate()
+        for error in domain_errors:
+            result.add_error(message=error)
+        
+        # Step 5: Agent existence checking (warnings)
+        if self.agent_checker and result.is_valid:
+            self._check_agents(definition, result)
+        
+        return result
+    
+    def validate_definition(
+        self,
+        definition: ProcessDefinition,
+    ) -> ValidationResult:
+        """
+        Validate an existing ProcessDefinition object.
+        
+        Args:
+            definition: ProcessDefinition to validate
+            
+        Returns:
+            ValidationResult with errors and warnings
+        """
+        result = ValidationResult()
+        result.definition = definition
+        
+        # Domain validation
+        domain_errors = definition.validate()
+        for error in domain_errors:
+            result.add_error(message=error)
+        
+        # Agent checking
+        if self.agent_checker and result.is_valid:
+            self._check_agents(definition, result)
+        
+        return result
+    
+    def _validate_schema(self, data: dict, result: ValidationResult) -> None:
+        """Validate schema (required fields and types)."""
+        
+        # Required: name
+        if "name" not in data:
+            result.add_error(
+                message="Missing required field: 'name'",
+                path="name",
+                suggestion="Add 'name: my-process-name'",
+            )
+        elif not isinstance(data["name"], str):
+            result.add_error(
+                message="Field 'name' must be a string",
+                path="name",
+            )
+        elif not data["name"].strip():
+            result.add_error(
+                message="Field 'name' cannot be empty",
+                path="name",
+            )
+        
+        # Required: steps
+        if "steps" not in data:
+            result.add_error(
+                message="Missing required field: 'steps'",
+                path="steps",
+                suggestion="Add 'steps:' section with at least one step",
+            )
+        elif not isinstance(data["steps"], list):
+            result.add_error(
+                message="Field 'steps' must be a list",
+                path="steps",
+            )
+        elif len(data["steps"]) == 0:
+            result.add_error(
+                message="Process must have at least one step",
+                path="steps",
+            )
+        else:
+            # Validate each step
+            for i, step in enumerate(data["steps"]):
+                self._validate_step_schema(step, i, result)
+        
+        # Optional: version
+        if "version" in data:
+            version = data["version"]
+            if not isinstance(version, (int, str)):
+                result.add_error(
+                    message="Field 'version' must be a number or string",
+                    path="version",
+                )
+        
+        # Optional: outputs
+        if "outputs" in data:
+            if not isinstance(data["outputs"], list):
+                result.add_error(
+                    message="Field 'outputs' must be a list",
+                    path="outputs",
+                )
+    
+    def _validate_step_schema(
+        self,
+        step: Any,
+        index: int,
+        result: ValidationResult,
+    ) -> None:
+        """Validate individual step schema."""
+        path_prefix = f"steps[{index}]"
+        
+        if not isinstance(step, dict):
+            result.add_error(
+                message=f"Step at index {index} must be an object",
+                path=path_prefix,
+            )
+            return
+        
+        # Required: id
+        if "id" not in step:
+            result.add_error(
+                message=f"Step at index {index} missing required field: 'id'",
+                path=f"{path_prefix}.id",
+            )
+        
+        # Required: type
+        if "type" not in step:
+            result.add_error(
+                message=f"Step at index {index} missing required field: 'type'",
+                path=f"{path_prefix}.type",
+                suggestion="Add 'type: agent_task' or other valid type",
+            )
+        else:
+            step_type = step["type"]
+            valid_types = [t.value for t in StepType]
+            if step_type not in valid_types:
+                result.add_error(
+                    message=f"Invalid step type '{step_type}'",
+                    path=f"{path_prefix}.type",
+                    suggestion=f"Valid types: {', '.join(valid_types)}",
+                )
+            
+            # Type-specific validation
+            if step_type == "agent_task":
+                if "agent" not in step:
+                    result.add_error(
+                        message=f"agent_task step missing required field: 'agent'",
+                        path=f"{path_prefix}.agent",
+                    )
+                if "message" not in step:
+                    result.add_error(
+                        message=f"agent_task step missing required field: 'message'",
+                        path=f"{path_prefix}.message",
+                    )
+    
+    def _check_agents(
+        self,
+        definition: ProcessDefinition,
+        result: ValidationResult,
+    ) -> None:
+        """Check if referenced agents exist and are running."""
+        if not self.agent_checker:
+            return
+        
+        for i, step in enumerate(definition.steps):
+            if step.type == StepType.AGENT_TASK:
+                agent_name = step.config.agent
+                try:
+                    exists, is_running = self.agent_checker(agent_name)
+                    
+                    if not exists:
+                        result.add_warning(
+                            message=f"Agent '{agent_name}' does not exist",
+                            path=f"steps[{i}].agent",
+                            suggestion=f"Create agent '{agent_name}' before running this process",
+                        )
+                    elif not is_running:
+                        result.add_warning(
+                            message=f"Agent '{agent_name}' exists but is not running",
+                            path=f"steps[{i}].agent",
+                            suggestion=f"Start agent '{agent_name}' before running this process",
+                        )
+                except Exception:
+                    # Don't fail validation if agent check fails
+                    result.add_warning(
+                        message=f"Could not verify agent '{agent_name}'",
+                        path=f"steps[{i}].agent",
+                    )

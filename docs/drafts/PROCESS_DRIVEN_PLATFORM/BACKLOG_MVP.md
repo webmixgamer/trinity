@@ -129,17 +129,17 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P0 |
 | Phase | MVP |
 | Dependencies | E1-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Schema validation (required fields, types)
-- [ ] Semantic validation:
-  - [ ] No duplicate step IDs
-  - [ ] All `depends_on` references exist
-  - [ ] No circular dependencies
-  - [ ] Referenced agents exist (warning if not running)
-- [ ] Clear error messages with line numbers
-- [ ] Validation service callable from API and UI
+- [x] Schema validation (required fields, types)
+- [x] Semantic validation:
+  - [x] No duplicate step IDs
+  - [x] All `depends_on` references exist
+  - [x] No circular dependencies
+  - [x] Referenced agents exist (warning if not running)
+- [x] Clear error messages with line numbers
+- [x] Validation service callable from API and UI
 
 **Technical Notes:**
 - Reference: IT3 Section 6 (Domain Services - DependencyResolver)
