@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-15)**: Timezone-Aware Timestamp Handling:
+> - All feature flows with timestamp handling updated to reference [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md)
+> - Backend: Uses `utc_now_iso()`, `to_utc_iso()`, `parse_iso_timestamp()` from `utils/helpers.py` - timestamps include 'Z' suffix
+> - Frontend: Uses `parseUTC()`, `getTimestampMs()` from `@/utils/timestamps.js` - handles missing 'Z' suffix for backward compatibility
+> - Updated flows: **activity-stream.md**, **execution-queue.md**, **scheduling.md**, **agent-network.md**
+> - Fix: Dashboard Timeline events now display at correct positions regardless of server/client timezone difference
+>
 > **Updated (2026-01-14)**: Security Bug Fixes (4 HIGH, 1 LOW):
 > - **execution-queue.md**: Race Condition Fixes - `submit()` uses atomic `SET NX EX`, `complete()` uses Lua script for atomic pop-and-set, `get_all_busy_agents()` uses `SCAN` instead of blocking `KEYS`
 > - **agent-lifecycle.md**: Auth on Lifecycle Endpoints - `start`, `stop`, `logs` endpoints now use `AuthorizedAgentByName` dependency

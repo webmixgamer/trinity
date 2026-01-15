@@ -346,6 +346,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { parseUTC, getTimestampMs, formatLocalTime } from '@/utils/timestamps'
 
 const router = useRouter()
 
@@ -492,9 +493,10 @@ function handleWheel(event) {
 }
 
 // Parse timeline bounds - extend to "now" for live mode
-const startTime = computed(() => props.timelineStart ? new Date(props.timelineStart).getTime() : 0)
+// Use getTimestampMs to correctly parse UTC timestamps from backend
+const startTime = computed(() => props.timelineStart ? getTimestampMs(props.timelineStart) : 0)
 const endTime = computed(() => {
-  const eventEnd = props.timelineEnd ? new Date(props.timelineEnd).getTime() : 0
+  const eventEnd = props.timelineEnd ? getTimestampMs(props.timelineEnd) : 0
   if (props.isLiveMode) {
     return Math.max(eventEnd, currentNow.value)
   }
@@ -569,7 +571,8 @@ const agentRows = computed(() => {
     const isEstimated = !event.duration_ms
 
     // Add activity box for the executing agent
-    const startTimestamp = new Date(event.timestamp).getTime()
+    // Use getTimestampMs to correctly parse UTC timestamp from backend
+    const startTimestamp = getTimestampMs(event.timestamp)
     agentActivityMap.get(event.source_agent).push({
       time: startTimestamp,
       startTimestamp, // Store for dynamic duration calculation
@@ -715,7 +718,8 @@ const communicationArrows = computed(() => {
 
     if (sourceIndex === undefined || targetIndex === undefined) return null
 
-    const time = new Date(event.timestamp).getTime()
+    // Use getTimestampMs to correctly parse UTC timestamp from backend
+    const time = getTimestampMs(event.timestamp)
 
     // Check if target agent has an activity box near this time
     // The target agent should have a triggered execution
@@ -837,7 +841,8 @@ function getSuccessRateClass(rate) {
 
 function formatLastExecution(timestamp) {
   if (!timestamp) return ''
-  const date = new Date(timestamp)
+  // Use parseUTC to correctly parse UTC timestamp from backend
+  const date = parseUTC(timestamp)
   const now = new Date()
   const diff = now - date
 

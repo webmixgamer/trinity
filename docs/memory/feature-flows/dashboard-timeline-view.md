@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-15 (Added pink color for MCP executions)
+> **Last Updated**: 2026-01-15 (Added timezone-aware timestamp handling)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
 
@@ -153,8 +153,9 @@ props.events.forEach((event, index) => {
   }
 
   // Add activity box for the executing agent
+  // NOTE: Use getTimestampMs() for timezone-aware parsing (handles missing 'Z' suffix)
   agentActivityMap.get(event.source_agent).push({
-    time: new Date(event.timestamp).getTime(),
+    time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
     type: 'execution',
     activityType: event.activity_type,
     triggeredBy: event.triggered_by,
@@ -258,7 +259,7 @@ const communicationArrows = computed(() => {
     // Only process collaboration events (those with target_agent)
     if (!event.target_agent) return null
 
-    const time = new Date(event.timestamp).getTime()
+    const time = getTimestampMs(event.timestamp)  // Timezone-aware parsing
 
     // Check if target agent has an activity box near this time
     const targetRanges = agentActivityTimeRanges.get(event.target_agent)
@@ -350,7 +351,9 @@ if (effectiveDuration > 0) {
 
 1. **Store start timestamp**: Each activity stores `startTimestamp` for dynamic calculation:
 ```javascript
-const startTimestamp = new Date(event.timestamp).getTime()
+import { getTimestampMs } from '@/utils/timestamps'
+
+const startTimestamp = getTimestampMs(event.timestamp)  // Timezone-aware
 agentActivityMap.get(event.source_agent).push({
   time: startTimestamp,
   startTimestamp, // Store for dynamic duration calculation
@@ -627,6 +630,7 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-15 | **Critical Fix**: Timezone-aware timestamp handling - All timestamps now use UTC with 'Z' suffix. Frontend uses `parseUTC()` and `getTimestampMs()` utilities. Events display at correct positions regardless of server/user timezone difference. See `docs/TIMEZONE_HANDLING.md` |
 | 2026-01-15 | **Fix**: MCP executions now appear on Timeline - Fixed API field mismatch (`timeline` → `activities`) and activity `triggered_by` (`user` → `mcp` for MCP calls) |
 | 2026-01-15 | **Fix**: Timeline now visible even with no events - `timelineStart`/`timelineEnd` always provide valid time range based on `timeRangeHours`, enabling live event streaming |
 | 2026-01-13 | **UX**: Timeline is now the default view for new users; header logo is clickable and navigates to Dashboard |

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useAgentsStore } from './agents'
+import { parseUTC, getTimestampMs } from '@/utils/timestamps'
 
 export const useNetworkStore = defineStore('network', () => {
   // State
@@ -68,7 +69,7 @@ export const useNetworkStore = defineStore('network', () => {
   const lastEventTimeFormatted = computed(() => {
     if (!lastEventTime.value) return 'Never'
     const now = Date.now()
-    const diff = now - new Date(lastEventTime.value).getTime()
+    const diff = now - getTimestampMs(lastEventTime.value)
 
     if (diff < 1000) return 'Just now'
     if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`
@@ -81,8 +82,8 @@ export const useNetworkStore = defineStore('network', () => {
 
   const totalDuration = computed(() => {
     if (historicalCollaborations.value.length < 2) return 0
-    const first = new Date(historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp)
-    const last = new Date(historicalCollaborations.value[0].timestamp)
+    const first = parseUTC(historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp)
+    const last = parseUTC(historicalCollaborations.value[0].timestamp)
     return last - first
   })
 
@@ -101,7 +102,7 @@ export const useNetworkStore = defineStore('network', () => {
       return defaultStart.toISOString()
     }
     // Use oldest event or default start, whichever is earlier
-    const oldestEvent = new Date(historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp)
+    const oldestEvent = parseUTC(historicalCollaborations.value[historicalCollaborations.value.length - 1].timestamp)
     return oldestEvent < defaultStart ? oldestEvent.toISOString() : defaultStart.toISOString()
   })
 
@@ -240,7 +241,7 @@ export const useNetworkStore = defineStore('network', () => {
         const existing = edgeMap.get(edgeId)
         existing.count++
         existing.timestamps.push(collab.timestamp)
-        if (new Date(collab.timestamp) > new Date(existing.lastTimestamp)) {
+        if (getTimestampMs(collab.timestamp) > getTimestampMs(existing.lastTimestamp)) {
           existing.lastTimestamp = collab.timestamp
         }
       }
@@ -1051,7 +1052,7 @@ export const useNetworkStore = defineStore('network', () => {
     // Calculate delay to next event
     let delay = 500 // Default 500ms if last event
     if (nextEvent) {
-      const realTimeDelta = new Date(nextEvent.timestamp) - new Date(currentEvent.timestamp)
+      const realTimeDelta = getTimestampMs(nextEvent.timestamp) - getTimestampMs(currentEvent.timestamp)
       delay = realTimeDelta / replaySpeed.value
       delay = Math.max(delay, 100) // Min 100ms to prevent too fast
     }
@@ -1067,8 +1068,9 @@ export const useNetworkStore = defineStore('network', () => {
   function jumpToTime(targetTimestamp) {
     // Find event closest to target time
     const chronologicalEvents = [...historicalCollaborations.value].reverse()
+    const targetMs = getTimestampMs(targetTimestamp)
     const index = chronologicalEvents.findIndex(event =>
-      new Date(event.timestamp) >= new Date(targetTimestamp)
+      getTimestampMs(event.timestamp) >= targetMs
     )
 
     if (index !== -1) {
@@ -1143,9 +1145,9 @@ export const useNetworkStore = defineStore('network', () => {
   function getEventPosition(event) {
     if (!timelineStart.value || !timelineEnd.value) return 0
 
-    const eventTime = new Date(event.timestamp).getTime()
-    const startTime = new Date(timelineStart.value).getTime()
-    const endTime = new Date(timelineEnd.value).getTime()
+    const eventTime = getTimestampMs(event.timestamp)
+    const startTime = getTimestampMs(timelineStart.value)
+    const endTime = getTimestampMs(timelineEnd.value)
 
     if (endTime === startTime) return 0
 
@@ -1160,8 +1162,8 @@ export const useNetworkStore = defineStore('network', () => {
   function jumpToTimelinePosition(percent) {
     if (!timelineStart.value || !timelineEnd.value) return
 
-    const startTime = new Date(timelineStart.value).getTime()
-    const endTime = new Date(timelineEnd.value).getTime()
+    const startTime = getTimestampMs(timelineStart.value)
+    const endTime = getTimestampMs(timelineEnd.value)
     const targetTime = startTime + ((endTime - startTime) * (percent / 100))
 
     jumpToTime(new Date(targetTime).toISOString())

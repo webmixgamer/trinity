@@ -396,8 +396,8 @@ CREATE TABLE schedule_executions (
     schedule_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
     status TEXT NOT NULL,                -- pending, running, success, failed
-    started_at TEXT NOT NULL,
-    completed_at TEXT,
+    started_at TEXT NOT NULL,            -- UTC timestamp with 'Z' suffix
+    completed_at TEXT,                   -- UTC timestamp with 'Z' suffix
     duration_ms INTEGER,
     message TEXT NOT NULL,               -- The message that was sent
     response TEXT,                       -- Agent's response (truncated to 10KB)
@@ -411,6 +411,8 @@ CREATE TABLE schedule_executions (
     FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
 );
 ```
+
+> **Timezone Note (2026-01-15)**: All timestamps (`started_at`, `completed_at`, `last_run_at`, `next_run_at`) are stored as UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ---
 
@@ -815,6 +817,7 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
+**Updated 2026-01-15** - Added timezone handling note for UTC timestamps with 'Z' suffix
 **Updated 2026-01-12** - Added "Make Repeatable" flow documentation - create schedule from existing task via calendar icon in Tasks tab
 **Updated 2026-01-11** - Execution record created BEFORE activity tracking for proper `related_execution_id` linkage. Manual trigger now has full activity tracking with queue integration.
 **Updated 2025-01-02** - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` for raw log format compatibility with execution log viewer

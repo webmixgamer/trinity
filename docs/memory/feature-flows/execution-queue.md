@@ -132,10 +132,12 @@ class Execution(BaseModel):
     source_user_id: Optional[str] = None       # User who triggered
     source_user_email: Optional[str] = None    # User email for tracking
     message: str                               # The chat message
-    queued_at: datetime
-    started_at: Optional[datetime] = None
+    queued_at: datetime                        # UTC timestamp
+    started_at: Optional[datetime] = None      # UTC timestamp
     status: ExecutionStatus = ExecutionStatus.QUEUED
 ```
+
+> **Timezone Note (2026-01-15)**: All timestamps are stored and transmitted as UTC with 'Z' suffix for consistent cross-timezone behavior. Backend uses `utc_now_iso()` from `utils/helpers.py`. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ### QueueStatus (Model)
 ```python
@@ -877,7 +879,7 @@ curl -X POST http://localhost:8000/api/agents/my-agent/queue/release \
 - [ ] TTL expiration: Stuck execution auto-clears after 10 min
 
 **Status**: Ready for testing
-**Last Updated**: 2025-12-31
+**Last Updated**: 2026-01-15
 
 ---
 

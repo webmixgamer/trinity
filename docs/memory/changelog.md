@@ -1,3 +1,41 @@
+### 2026-01-15 14:00:00
+🐛 **Fix: Timezone-Aware Timestamp Handling (Critical)**
+
+**Problem**: Dashboard Timeline showed executions at wrong times when server runs in different timezone than user. Events appearing hours in the past/future.
+
+**Root Cause**: Backend timestamps stored without timezone indicator (`"2026-01-15T10:30:00"`), causing JavaScript to interpret them as local time instead of UTC.
+
+**Solution**: Comprehensive timezone handling across the stack:
+
+**Backend Changes**:
+- Added `utc_now_iso()`, `to_utc_iso()`, `parse_iso_timestamp()` utilities to `src/backend/utils/helpers.py`
+- All timestamps now include 'Z' suffix (e.g., `"2026-01-15T10:30:00Z"`)
+- Updated `db/activities.py` and `db/schedules.py` to use new utilities
+- Updated `models.py` Pydantic serializers to output UTC with 'Z' suffix
+
+**Frontend Changes**:
+- Added `parseUTC()`, `getTimestampMs()`, `formatLocalTime()` utilities to `src/frontend/src/utils/timestamps.js`
+- Updated composables `useFormatters.js` with timezone-aware parsing
+- Updated `network.js` store to use timestamp utilities
+- Updated `ReplayTimeline.vue` to correctly parse UTC timestamps
+
+**Documentation**:
+- Added comprehensive guide: `docs/TIMEZONE_HANDLING.md`
+
+**Files Modified**:
+- `src/backend/utils/helpers.py` - Added timestamp utilities
+- `src/backend/db/activities.py` - Use UTC with 'Z' suffix
+- `src/backend/db/schedules.py` - Use UTC with 'Z' suffix
+- `src/backend/models.py` - Updated Pydantic serializers
+- `src/frontend/src/utils/timestamps.js` - New timestamp utilities
+- `src/frontend/src/composables/useFormatters.js` - Added timezone-aware parsing
+- `src/frontend/src/stores/network.js` - Use timestamp utilities
+- `src/frontend/src/components/ReplayTimeline.vue` - Use timestamp utilities
+
+**Impact**: Timeline events now display at correct positions regardless of server/user timezone difference.
+
+---
+
 ### 2026-01-15 12:35:00
 ✨ **Enhancement: Distinct Color for MCP Executions on Timeline**
 

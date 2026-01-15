@@ -1,6 +1,6 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-01-12 - Database Batch Queries (N+1 Fix): `get_accessible_agents()` now uses `db.get_all_agent_metadata()` batch query. Combined with Docker stats optimization, agent list loading reduced from ~2-3s to <50ms.
+> **Last Updated**: 2026-01-15 - Timezone-aware timestamps: All timestamps now use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -61,7 +61,7 @@ Main dashboard view component with integrated Agent Network visualization.
 - Lines 530-535: `resetLayout()` - Clears localStorage positions and refits view
 - Lines 537-539: `onNodeDragStop()` - Saves node positions to localStorage
 - Lines 541-553: `getNodeColor()` - Maps agent status to minimap colors
-- Lines 555-563: `formatTime()` - Human-readable relative timestamps
+- Lines 555-563: `formatTime()` - Human-readable relative timestamps (uses `parseUTC()` from `@/utils/timestamps`)
 - Lines 565-605: Replay mode handlers (toggleMode, handlePlay, handlePause, handleStop, etc.)
 
 #### AgentNode.vue (`src/frontend/src/components/AgentNode.vue`)
@@ -171,6 +171,8 @@ Fetches all agents and converts to Vue Flow nodes with grid layout.
 
 ##### fetchHistoricalCollaborations() (Lines 118-177)
 ```javascript
+import { getTimestampMs } from '@/utils/timestamps'
+
 async function fetchHistoricalCollaborations(hours = null) {
   const hoursToQuery = hours || timeRangeHours.value
 
@@ -187,12 +189,13 @@ async function fetchHistoricalCollaborations(hours = null) {
   const response = await axios.get('/api/activities/timeline', { params })
 
   // Parse activities into communication events
+  // Note: Timestamps from backend include 'Z' suffix for UTC
   const collaborations = response.data.activities
     .filter(activity => activity.details)
     .map(activity => ({
       source_agent: details.source_agent,
       target_agent: details.target_agent,
-      timestamp: activity.started_at,
+      timestamp: activity.started_at,  // UTC with 'Z' suffix
       activity_id: activity.id,
       status: activity.activity_state,
       duration_ms: activity.duration_ms
@@ -470,6 +473,8 @@ def set_websocket_manager(manager):
 
 #### broadcast_collaboration_event() (Lines 91-103)
 ```python
+from utils.helpers import utc_now_iso
+
 async def broadcast_collaboration_event(source_agent: str, target_agent: str, action: str = "chat"):
     """Broadcast agent collaboration event to all WebSocket clients."""
     if _websocket_manager:
@@ -478,10 +483,12 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
             "source_agent": source_agent,
             "target_agent": target_agent,
             "action": action,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": utc_now_iso()  # UTC with 'Z' suffix
         }
         await _websocket_manager.broadcast(json.dumps(event))
 ```
+
+> **Timezone Note (2026-01-15)**: All WebSocket event timestamps use `utc_now_iso()` which includes 'Z' suffix. Frontend uses `parseUTC()` from `@/utils/timestamps` to correctly parse these. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 #### Agent-to-Agent Detection (Lines 106-142)
 ```python
@@ -1422,6 +1429,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Timezone-aware timestamps**: All timestamps now use UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. Frontend uses `parseUTC()` and `getTimestampMs()` from `@/utils/timestamps.js`. Added timezone notes to WebSocket events and timestamp parsing sections. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md). |
 | 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s. Agent list refresh changed from 10s to 15s. Updated polling strategy documentation and performance considerations. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: `get_accessible_agents()` (helpers.py:83-153) now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) - single JOIN query instead of 8-10 queries per agent. Database queries reduced from 160-200 to 2 per request. Added Agent List Optimization section to Data Layer. Orphaned agents (Docker-only) only visible to admin. |
 | 2026-01-12 | **Docker Stats Optimization**: Backend agent listing now uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations. Performance: `/api/agents` reduced from ~2-3s to <50ms. Helpers.py `get_accessible_agents()` updated at line 92. |

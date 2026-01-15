@@ -237,13 +237,15 @@ const agentRows = computed(() => {
   // Group events by agent
   const agentActivityMap = new Map()
 
+  // NOTE: Use getTimestampMs() for timezone-aware parsing (handles missing 'Z' suffix)
+  // See docs/TIMEZONE_HANDLING.md for details
   props.events.forEach((event, index) => {
     // Source agent activity
     if (!agentActivityMap.has(event.source_agent)) {
       agentActivityMap.set(event.source_agent, [])
     }
     agentActivityMap.get(event.source_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
       type: 'send',
       eventIndex: index
     })
@@ -253,7 +255,7 @@ const agentRows = computed(() => {
       agentActivityMap.set(event.target_agent, [])
     }
     agentActivityMap.get(event.target_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
       type: 'receive',
       eventIndex: index
     })
@@ -317,7 +319,9 @@ In-progress task bars now grow in real-time as the task executes, providing live
 
 1. **Store start timestamp**: Activities store `startTimestamp` for dynamic duration calculation:
 ```javascript
-const startTimestamp = new Date(event.timestamp).getTime()
+import { getTimestampMs } from '@/utils/timestamps'
+
+const startTimestamp = getTimestampMs(event.timestamp)  // Timezone-aware
 agentActivityMap.get(event.source_agent).push({
   time: startTimestamp,
   startTimestamp, // Store for dynamic duration calculation
@@ -396,7 +400,7 @@ const communicationArrows = computed(() => {
 
     if (sourceIndex === undefined || targetIndex === undefined) return null
 
-    const time = new Date(event.timestamp).getTime()
+    const time = getTimestampMs(event.timestamp)  // Timezone-aware parsing
     const x = ((time - startTime.value) / duration.value) * actualGridWidth.value
 
     const y1 = sourceIndex * rowHeight + rowHeight / 2
@@ -865,6 +869,7 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Timezone-aware timestamps**: Code examples updated to use `getTimestampMs()` from `@/utils/timestamps`. Ensures events display at correct positions regardless of server/user timezone. See `docs/TIMEZONE_HANDLING.md` |
 | 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`); updated Visual Elements Summary with trigger-based color scheme |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - added `startTimestamp` storage, dynamic `effectiveDuration` calculation, and 1-second reactive updates |
 | 2026-01-04 | Initial documentation of ReplayTimeline component |
