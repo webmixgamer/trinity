@@ -209,15 +209,15 @@ E15-01 (Event Bus) ──► E15-02 (WebSocket Publisher)
 | Priority | P1 |
 | Phase | MVP |
 | Dependencies | None |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] `ProcessId` - UUID wrapper with validation
-- [ ] `StepId` - String identifier with format validation
-- [ ] `Version` - Semantic version (1, 2, 3...)
-- [ ] `Duration` - Timeout representation with parsing ("30s", "5m")
-- [ ] `Money` - Cost representation (amount, currency)
-- [ ] All value objects are immutable (frozen dataclasses)
+- [x] `ProcessId` - UUID wrapper with validation
+- [x] `StepId` - String identifier with format validation
+- [x] `Version` - Semantic version (1, 2, 3...)
+- [x] `Duration` - Timeout representation with parsing ("30s", "5m")
+- [x] `Money` - Cost representation (amount, currency)
+- [x] All value objects are immutable (frozen dataclasses)
 
 **Technical Notes:**
 - Reference: IT3 Section 4.3 (Value Objects)
