@@ -133,29 +133,29 @@ class WebSocketEventPublisher:
                 "process_id": str(event.process_id),
                 "process_name": event.process_name,
                 "error": event.error_message,
-                "failed_step_id": event.failed_step_id,
+                "failed_step_id": str(event.failed_step_id),
             })
         elif isinstance(event, StepStarted):
             message.update({
                 "execution_id": str(event.execution_id),
-                "step_id": event.step_id,
+                "step_id": str(event.step_id),
             })
         elif isinstance(event, StepCompleted):
             message.update({
                 "execution_id": str(event.execution_id),
-                "step_id": event.step_id,
+                "step_id": str(event.step_id),
                 "duration_seconds": event.duration.seconds if event.duration else None,
             })
         elif isinstance(event, StepFailed):
             message.update({
                 "execution_id": str(event.execution_id),
-                "step_id": event.step_id,
+                "step_id": str(event.step_id),
                 "error": event.error_message,
             })
         elif isinstance(event, ApprovalRequested):
             message.update({
                 "execution_id": str(event.execution_id),
-                "step_id": event.step_id,
+                "step_id": str(event.step_id),
                 "approvers": event.approvers,
             })
             

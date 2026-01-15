@@ -17,7 +17,7 @@ def _utcnow() -> datetime:
     """Get current UTC time in a timezone-aware manner."""
     return datetime.now(timezone.utc)
 
-from .enums import StepType, StepStatus, OnErrorAction
+from .enums import StepType, StepStatus, OnErrorAction, ApprovalStatus
 from .value_objects import StepId, Duration, Money, RetryPolicy, ErrorPolicy
 from .step_configs import (
     StepConfig,
@@ -302,3 +302,121 @@ class OutputConfig:
             "source": self.source,
             "description": self.description,
         }
+
+
+@dataclass
+class ApprovalRequest:
+    """
+    Entity for tracking human approval requests.
+    
+    Created when a human_approval step starts, tracks who can approve
+    and the decision made.
+    """
+    id: str  # UUID
+    execution_id: str  # ExecutionId as string
+    step_id: str  # StepId as string
+    title: str
+    description: str
+    assignees: list[str]  # Users who can approve
+    status: ApprovalStatus = ApprovalStatus.PENDING
+    deadline: Optional[datetime] = None
+    created_at: datetime = field(default_factory=_utcnow)
+    decided_at: Optional[datetime] = None
+    decided_by: Optional[str] = None
+    decision_comment: Optional[str] = None
+    
+    @classmethod
+    def create(
+        cls,
+        execution_id: str,
+        step_id: str,
+        title: str,
+        description: str,
+        assignees: list[str],
+        deadline: Optional[datetime] = None,
+    ) -> "ApprovalRequest":
+        """Create a new approval request."""
+        import uuid
+        return cls(
+            id=str(uuid.uuid4()),
+            execution_id=execution_id,
+            step_id=step_id,
+            title=title,
+            description=description,
+            assignees=assignees,
+            deadline=deadline,
+        )
+    
+    def approve(self, decided_by: str, comment: Optional[str] = None) -> None:
+        """Mark this request as approved."""
+        self.status = ApprovalStatus.APPROVED
+        self.decided_at = _utcnow()
+        self.decided_by = decided_by
+        self.decision_comment = comment
+    
+    def reject(self, decided_by: str, comment: str) -> None:
+        """Mark this request as rejected."""
+        self.status = ApprovalStatus.REJECTED
+        self.decided_at = _utcnow()
+        self.decided_by = decided_by
+        self.decision_comment = comment
+    
+    def expire(self) -> None:
+        """Mark this request as expired."""
+        self.status = ApprovalStatus.EXPIRED
+        self.decided_at = _utcnow()
+    
+    def is_pending(self) -> bool:
+        """Check if this request is still pending."""
+        return self.status == ApprovalStatus.PENDING
+    
+    def can_be_decided_by(self, user: str) -> bool:
+        """Check if the given user can decide on this request."""
+        # If no assignees specified, anyone can approve
+        if not self.assignees:
+            return True
+        return user in self.assignees
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {
+            "id": self.id,
+            "execution_id": self.execution_id,
+            "step_id": self.step_id,
+            "title": self.title,
+            "description": self.description,
+            "assignees": self.assignees,
+            "status": self.status.value,
+            "created_at": self.created_at.isoformat(),
+        }
+        if self.deadline:
+            result["deadline"] = self.deadline.isoformat()
+        if self.decided_at:
+            result["decided_at"] = self.decided_at.isoformat()
+        if self.decided_by:
+            result["decided_by"] = self.decided_by
+        if self.decision_comment:
+            result["decision_comment"] = self.decision_comment
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "ApprovalRequest":
+        """Create from dictionary (deserialization)."""
+        request = cls(
+            id=data["id"],
+            execution_id=data["execution_id"],
+            step_id=data["step_id"],
+            title=data["title"],
+            description=data["description"],
+            assignees=data.get("assignees", []),
+            status=ApprovalStatus(data.get("status", "pending")),
+        )
+        if data.get("deadline"):
+            request.deadline = datetime.fromisoformat(data["deadline"])
+        if data.get("created_at"):
+            request.created_at = datetime.fromisoformat(data["created_at"])
+        if data.get("decided_at"):
+            request.decided_at = datetime.fromisoformat(data["decided_at"])
+        request.decided_by = data.get("decided_by")
+        request.decision_comment = data.get("decision_comment")
+        return request

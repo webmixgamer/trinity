@@ -49,3 +49,11 @@ class OnErrorAction(str, Enum):
     FAIL_PROCESS = "fail_process"
     SKIP_STEP = "skip_step"
     GOTO_STEP = "goto_step"
+
+
+class ApprovalStatus(str, Enum):
+    """Status of an approval request."""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"

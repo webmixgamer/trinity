@@ -87,6 +87,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/approvals',
+    name: 'Approvals',
+    component: () => import('../views/Approvals.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/executions/:id',
     name: 'ProcessExecutionDetail',
     component: () => import('../views/ProcessExecutionDetail.vue'),

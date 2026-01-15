@@ -283,3 +283,32 @@ class DependencyResolver:
             if step_exec and step_exec.status == StepStatus.RUNNING:
                 running.append(step.id)
         return running
+    
+    def get_waiting_steps(self, execution: ProcessExecution) -> list[StepId]:
+        """
+        Get steps that are waiting for approval.
+        
+        Args:
+            execution: Current execution state
+            
+        Returns:
+            List of step IDs currently in WAITING_APPROVAL status
+        """
+        waiting = []
+        for step in self.definition.steps:
+            step_exec = execution.step_executions.get(str(step.id))
+            if step_exec and step_exec.status == StepStatus.WAITING_APPROVAL:
+                waiting.append(step.id)
+        return waiting
+    
+    def has_waiting_steps(self, execution: ProcessExecution) -> bool:
+        """
+        Check if execution has any steps waiting for approval.
+        
+        Args:
+            execution: Current execution state
+            
+        Returns:
+            True if any step is waiting for approval
+        """
+        return len(self.get_waiting_steps(execution)) > 0

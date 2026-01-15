@@ -178,6 +178,7 @@
                 <ExecutionTimeline
                   :execution-id="execution.id"
                   :steps="execution.steps || []"
+                  @approval-decided="handleApprovalDecided"
                 />
               </div>
 
@@ -464,6 +465,12 @@ async function handleRetry() {
   } finally {
     actionInProgress.value = false
   }
+}
+
+async function handleApprovalDecided({ stepId, decision }) {
+  console.log(`Approval ${decision} for step ${stepId}`)
+  // Refresh execution data to show updated status
+  await loadExecution()
 }
 
 function copyToClipboard(text) {

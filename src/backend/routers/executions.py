@@ -34,6 +34,7 @@ from services.process_engine.engine import (
     ExecutionEngine,
     StepHandlerRegistry,
     AgentTaskHandler,
+    HumanApprovalHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,7 @@ def get_handler_registry() -> StepHandlerRegistry:
         _handler_registry = StepHandlerRegistry()
         # Register default handlers
         _handler_registry.register(AgentTaskHandler())
+        _handler_registry.register(HumanApprovalHandler())
     return _handler_registry
 
 

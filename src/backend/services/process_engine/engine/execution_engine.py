@@ -34,6 +34,7 @@ from ..domain import (
     StepFailed,
     StepRetrying,
     StepSkipped,
+    StepWaitingApproval,
 )
 from ..repositories import ProcessExecutionRepository
 from ..services import OutputStorage
@@ -187,6 +188,12 @@ class ExecutionEngine:
         
         if execution.status == ExecutionStatus.PAUSED:
             execution.resume()
+            # Reset WAITING_APPROVAL steps to PENDING so they get re-executed
+            # The handler will check if approval was given and complete/fail accordingly
+            for step_id, step_exec in execution.step_executions.items():
+                if step_exec.status == StepStatus.WAITING_APPROVAL:
+                    step_exec.status = StepStatus.PENDING
+                    logger.info(f"Reset step '{step_id}' from WAITING_APPROVAL to PENDING for re-execution")
             self.execution_repo.save(execution)
         
         logger.info(f"Resuming execution {execution.id}")
@@ -250,8 +257,12 @@ class ExecutionEngine:
         
         # Execute steps until done
         while True:
-            # Check if cancelled
+            # Check if cancelled or paused
             if execution.status == ExecutionStatus.CANCELLED:
+                break
+            
+            if execution.status == ExecutionStatus.PAUSED:
+                logger.info(f"Execution {execution.id} paused (waiting for approval)")
                 break
             
             # Check for failures (if stop_on_failure is enabled)
@@ -428,10 +439,22 @@ class ExecutionEngine:
                 await self._handle_step_success(execution, step_def, result)
                 return
             
+            # Handle waiting state (e.g., human approval)
+            if result.waiting:
+                await self._handle_step_waiting(execution, step_def, result)
+                return
+            
             # If we reached here, it failed. Check if we should retry.
             # Record the attempt failure
             execution.record_step_attempt(step_id, result.error or "Unknown error", result.error_code)
             self.execution_repo.save(execution)
+
+            # Some errors should not be retried (human decisions, validation errors)
+            non_retryable_errors = {"APPROVAL_REJECTED", "VALIDATION_ERROR", "INVALID_CONFIG"}
+            if result.error_code in non_retryable_errors:
+                logger.info(f"Step '{step_def.name}' failed with non-retryable error: {result.error_code}")
+                await self._handle_step_failure(execution, step_def, result)
+                return
 
             if attempt < max_attempts:
                 # Calculate delay with exponential backoff
@@ -494,6 +517,36 @@ class ExecutionEngine:
         ))
         
         logger.info(f"Step '{step_def.name}' completed successfully")
+    
+    async def _handle_step_waiting(
+        self,
+        execution: ProcessExecution,
+        step_def: StepDefinition,
+        result: StepResult,
+    ) -> None:
+        """Handle step waiting for external input (e.g., approval)."""
+        step_id = step_def.id
+        output = result.output or {}
+        
+        # Set step to waiting approval status
+        step_exec = execution.step_executions[str(step_id)]
+        step_exec.wait_for_approval()
+        
+        # Pause the execution
+        execution.pause()
+        self.execution_repo.save(execution)
+        
+        # Emit event
+        await self._publish_event(StepWaitingApproval(
+            execution_id=execution.id,
+            step_id=step_id,
+            step_name=step_def.name,
+            approval_id=output.get("approval_id", ""),
+            title=output.get("title", ""),
+            assignees=output.get("assignees", []),
+        ))
+        
+        logger.info(f"Step '{step_def.name}' waiting for approval")
     
     async def _handle_step_failure(
         self,

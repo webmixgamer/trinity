@@ -27,11 +27,13 @@ class StepResult:
     
     Attributes:
         success: Whether the step completed successfully
+        waiting: Whether the step is waiting for external input (e.g., approval)
         output: Output data from the step (if successful)
         error: Error message (if failed)
         error_code: Optional error code for categorization
     """
     success: bool
+    waiting: bool = False
     output: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     error_code: Optional[str] = None
@@ -45,6 +47,11 @@ class StepResult:
     def fail(cls, error: str, error_code: Optional[str] = None) -> "StepResult":
         """Create a failed result."""
         return cls(success=False, error=error, error_code=error_code)
+    
+    @classmethod
+    def wait(cls, output: Optional[dict[str, Any]] = None) -> "StepResult":
+        """Create a waiting result (step paused for external input)."""
+        return cls(success=False, waiting=True, output=output)
 
 
 @dataclass

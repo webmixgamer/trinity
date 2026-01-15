@@ -170,6 +170,72 @@
             </div>
           </div>
 
+          <!-- Approval UI (for waiting_approval steps) -->
+          <div v-if="step.status === 'waiting_approval'" class="mb-4">
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-3">
+                <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="font-medium text-amber-800 dark:text-amber-300">Waiting for Approval</span>
+              </div>
+              
+              <div v-if="approvalLoading === step.step_id" class="text-sm text-gray-600 dark:text-gray-400">
+                Processing...
+              </div>
+              
+              <div v-else class="flex items-center gap-3">
+                <button
+                  @click="approveStep(step.step_id)"
+                  :disabled="approvalLoading === step.step_id"
+                  class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <svg v-if="approvalLoading !== step.step_id" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span v-if="approvalLoading === step.step_id" class="animate-spin">⏳</span>
+                  {{ approvalLoading === step.step_id ? 'Approving...' : 'Approve' }}
+                </button>
+                <button
+                  @click="showRejectDialog(step.step_id)"
+                  :disabled="approvalLoading === step.step_id"
+                  class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Reject
+                </button>
+              </div>
+              
+              <!-- Reject dialog -->
+              <div v-if="rejectingStep === step.step_id" class="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rejection reason (required)</label>
+                <textarea
+                  v-model="rejectReason"
+                  rows="2"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  placeholder="Why are you rejecting this?"
+                ></textarea>
+                <div class="flex gap-2 mt-2">
+                  <button
+                    @click="confirmReject(step.step_id)"
+                    :disabled="!rejectReason.trim() || approvalLoading === step.step_id"
+                    class="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {{ approvalLoading === step.step_id ? 'Rejecting...' : 'Confirm Reject' }}
+                  </button>
+                  <button
+                    @click="rejectingStep = null; rejectReason = ''"
+                    class="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Output display (for completed steps) -->
           <div v-if="step.status === 'completed'" class="mb-4">
             <div class="flex items-center justify-between mb-1">
@@ -232,6 +298,12 @@ const executionsStore = useExecutionsStore()
 const expandedStep = ref(null)
 const stepOutputs = ref({})
 const loadingOutput = ref(null)
+const approvalLoading = ref(null)
+const rejectingStep = ref(null)
+const rejectReason = ref('')
+
+// Emits
+const emit = defineEmits(['approval-decided'])
 
 // Computed
 const totalSteps = computed(() => props.steps.length)
@@ -311,6 +383,72 @@ function copyToClipboard(text) {
   navigator.clipboard.writeText(text)
 }
 
+// Approval methods
+async function approveStep(stepId) {
+  approvalLoading.value = stepId
+  try {
+    // First get the approval ID for this step
+    const response = await fetch(`/api/approvals/execution/${props.executionId}/step/${stepId}`)
+    if (!response.ok) throw new Error('Approval not found')
+    const approval = await response.json()
+    
+    // Then approve it
+    const approveResponse = await fetch(`/api/approvals/${approval.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment: '' })
+    })
+    if (!approveResponse.ok) {
+      const errorData = await approveResponse.json().catch(() => ({}))
+      throw new Error(errorData.detail || 'Failed to approve')
+    }
+    
+    emit('approval-decided', { stepId, decision: 'approved' })
+  } catch (error) {
+    console.error('Failed to approve:', error)
+    alert('Failed to approve: ' + error.message)
+  } finally {
+    approvalLoading.value = null
+  }
+}
+
+function showRejectDialog(stepId) {
+  rejectingStep.value = stepId
+  rejectReason.value = ''
+}
+
+async function confirmReject(stepId) {
+  if (!rejectReason.value.trim()) return
+  
+  approvalLoading.value = stepId
+  try {
+    // First get the approval ID for this step
+    const response = await fetch(`/api/approvals/execution/${props.executionId}/step/${stepId}`)
+    if (!response.ok) throw new Error('Approval not found')
+    const approval = await response.json()
+    
+    // Then reject it
+    const rejectResponse = await fetch(`/api/approvals/${approval.id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment: rejectReason.value })
+    })
+    if (!rejectResponse.ok) {
+      const errorData = await rejectResponse.json().catch(() => ({}))
+      throw new Error(errorData.detail || 'Failed to reject')
+    }
+    
+    rejectingStep.value = null
+    rejectReason.value = ''
+    emit('approval-decided', { stepId, decision: 'rejected' })
+  } catch (error) {
+    console.error('Failed to reject:', error)
+    alert('Failed to reject: ' + error.message)
+  } finally {
+    approvalLoading.value = null
+  }
+}
+
 // Formatters
 function getStepIcon(status) {
   const icons = {
@@ -319,6 +457,7 @@ function getStepIcon(status) {
     completed: '✓',
     failed: '✗',
     skipped: '–',
+    waiting_approval: '⏳',
   }
   return icons[status] || '?'
 }
@@ -330,6 +469,7 @@ function getStepNumberClasses(status) {
     completed: 'bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400',
     failed: 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400',
     skipped: 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500',
+    waiting_approval: 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400',
   }
   return classes[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-500'
 }
@@ -341,6 +481,7 @@ function getStatusBadgeClasses(status) {
     completed: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
     failed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
     skipped: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+    waiting_approval: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
   }
   return classes[status] || 'bg-gray-100 text-gray-600'
 }

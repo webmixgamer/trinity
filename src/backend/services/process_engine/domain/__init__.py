@@ -28,12 +28,14 @@ from .enums import (
     ExecutionStatus,
     StepStatus,
     OnErrorAction,
+    ApprovalStatus,
 )
 
 from .entities import (
     StepDefinition,
     StepExecution,
     OutputConfig,
+    ApprovalRequest,
 )
 
 from .step_configs import (
@@ -75,6 +77,7 @@ from .events import (
     StepFailed,
     StepRetrying,
     StepSkipped,
+    StepWaitingApproval,
     ApprovalRequested,
     ApprovalDecided,
     # Process Definition Events
@@ -100,10 +103,12 @@ __all__ = [
     "ExecutionStatus",
     "StepStatus",
     "OnErrorAction",
+    "ApprovalStatus",
     # Entities
     "StepDefinition",
     "StepExecution",
     "OutputConfig",
+    "ApprovalRequest",
     # Step Configs
     "StepConfig",
     "AgentTaskConfig",
@@ -137,6 +142,7 @@ __all__ = [
     "StepFailed",
     "StepRetrying",
     "StepSkipped",
+    "StepWaitingApproval",
     "ApprovalRequested",
     "ApprovalDecided",
     # Process Definition Events

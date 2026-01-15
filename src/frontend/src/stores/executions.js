@@ -100,6 +100,10 @@ export const useExecutionsStore = defineStore('executions', () => {
   }
 
   async function getExecution(id) {
+    if (!id) {
+      console.warn('getExecution called with no ID')
+      return null
+    }
     const token = localStorage.getItem('token')
     const response = await axios.get(`/api/executions/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -127,6 +131,10 @@ export const useExecutionsStore = defineStore('executions', () => {
   }
 
   async function getStepOutput(executionId, stepId) {
+    if (!executionId || !stepId) {
+      console.warn('getStepOutput called with missing IDs')
+      return null
+    }
     const token = localStorage.getItem('token')
     const response = await axios.get(`/api/executions/${executionId}/steps/${stepId}/output`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -135,6 +143,10 @@ export const useExecutionsStore = defineStore('executions', () => {
   }
 
   async function getExecutionEvents(id) {
+    if (!id) {
+      console.warn('getExecutionEvents called with no ID')
+      return []
+    }
     const token = localStorage.getItem('token')
     const response = await axios.get(`/api/executions/${id}/events`, {
       headers: { Authorization: `Bearer ${token}` }

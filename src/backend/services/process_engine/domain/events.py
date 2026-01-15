@@ -273,6 +273,30 @@ class StepSkipped(DomainEvent):
         }
 
 
+@dataclass(frozen=True)
+class StepWaitingApproval(DomainEvent):
+    """
+    Emitted when a step is waiting for human approval.
+    """
+    execution_id: ExecutionId
+    step_id: StepId
+    step_name: str
+    approval_id: str
+    title: str
+    assignees: list[str] = field(default_factory=list)
+    
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "step_id": str(self.step_id),
+            "step_name": self.step_name,
+            "approval_id": self.approval_id,
+            "title": self.title,
+            "assignees": self.assignees,
+        }
+
+
 # =============================================================================
 # Approval Events
 # =============================================================================
