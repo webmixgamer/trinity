@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-13 (Timeline is now the default view; logo is clickable)
+> **Last Updated**: 2026-01-15 (Added pink color for MCP executions)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
 
@@ -196,11 +196,12 @@ Activity bars are colored by what triggered them, not the activity type:
 | In Progress | Amber | `#f59e0b` | - | Currently running |
 | `schedule` | Purple | `#8b5cf6` | `#c4b5fd` | Scheduled executions |
 | `agent` | Cyan | `#06b6d4` | `#67e8f9` | Agent-triggered (called by another agent) |
+| `mcp` | Pink | `#ec4899` | `#f9a8d4` | MCP executions (via Claude Code) |
 | `manual`/`user` | Green | `#22c55e` | `#86efac` | Manual task executions |
 | Default | Blue | `#3b82f6` | `#93c5fd` | Unknown trigger type |
 
 ```javascript
-// ReplayTimeline.vue:841-868
+// ReplayTimeline.vue:880-916
 function getBarColor(activity) {
   if (activity.hasError) return '#ef4444'  // Red for errors
   if (activity.isInProgress) return '#f59e0b'  // Amber for in-progress
@@ -219,8 +220,13 @@ function getBarColor(activity) {
     return activity.active ? '#06b6d4' : '#67e8f9'
   }
 
+  // MCP executions (user via Claude Code MCP client) -> Pink
+  if (triggeredBy === 'mcp') {
+    return activity.active ? '#ec4899' : '#f9a8d4'
+  }
+
   // Manual/user executions -> Green
-  if (triggeredBy === 'manual' || triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  if (triggeredBy === 'manual' || triggeredBy === 'user') {
     return activity.active ? '#22c55e' : '#86efac'
   }
 
@@ -278,14 +284,18 @@ const communicationArrows = computed(() => {
 
 ### 6. Legend Display
 
-The legend shows the three execution trigger types:
+The legend shows the four execution trigger types:
 
 ```html
-<!-- ReplayTimeline.vue:68-81 -->
+<!-- ReplayTimeline.vue:68-85 -->
 <div class="hidden sm:flex items-center space-x-3">
   <span title="Manual task executions">
     <span class="w-2 h-2 rounded" style="background-color: #22c55e"></span>
     <span>Manual</span>
+  </span>
+  <span title="MCP executions (via Claude Code)">
+    <span class="w-2 h-2 rounded" style="background-color: #ec4899"></span>
+    <span>MCP</span>
   </span>
   <span title="Scheduled task executions">
     <span class="w-2 h-2 rounded" style="background-color: #8b5cf6"></span>
@@ -482,6 +492,7 @@ function getBarTooltip(activity) {
 **Action**: Trigger different execution types and view in Timeline
 **Expected**:
 - Manual tasks show as **green** boxes
+- MCP tasks show as **pink** boxes
 - Scheduled tasks show as **purple** boxes
 - Agent-triggered tasks show as **cyan** boxes
 - Errors show as **red** boxes
@@ -489,8 +500,8 @@ function getBarTooltip(activity) {
 
 **Verify**:
 - [x] Colors match the legend in header
-- [x] Legend shows "Manual", "Scheduled", "Agent-Triggered"
-- [x] Tooltips show correct execution type
+- [x] Legend shows "Manual", "MCP", "Scheduled", "Agent-Triggered"
+- [x] Tooltips show correct execution type (e.g., "MCP Task")
 
 #### 3. Collaboration Arrows
 **Action**: Have Agent A call Agent B via MCP
@@ -625,6 +636,7 @@ if collaboration_activity_id:
 | 2026-01-11 | **UX**: Click opens Execution Detail page in new tab instead of same-tab navigation |
 | 2026-01-10 | **Feature**: Click-to-navigate - Click execution bar to view details |
 | 2026-01-10 | **Major**: Execution-only boxes - collaboration events only create arrows, not boxes |
+| 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`) with "MCP Task" tooltip prefix; legend now shows 4 execution types |
 | 2026-01-10 | **Major**: Trigger-based color coding - Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered |
 | 2026-01-10 | **Major**: Arrow validation - 30-second tolerance window, prevents floating arrows |
 | 2026-01-10 | **Fix**: Source agent mapping - execution events use `agent_name`, collaboration events use `details.source_agent` |

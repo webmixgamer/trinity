@@ -70,6 +70,10 @@
             <span class="w-2 h-2 rounded" style="background-color: #22c55e"></span>
             <span>Manual</span>
           </span>
+          <span class="flex items-center space-x-1" title="MCP executions (via Claude Code)">
+            <span class="w-2 h-2 rounded" style="background-color: #ec4899"></span>
+            <span>MCP</span>
+          </span>
           <span class="flex items-center space-x-1" title="Scheduled task executions">
             <span class="w-2 h-2 rounded" style="background-color: #8b5cf6"></span>
             <span>Scheduled</span>
@@ -896,8 +900,13 @@ function getBarColor(activity) {
     return activity.active ? '#06b6d4' : '#67e8f9'
   }
 
+  // MCP executions (user via Claude Code MCP client) → Pink/Rose
+  if (triggeredBy === 'mcp') {
+    return activity.active ? '#ec4899' : '#f9a8d4'
+  }
+
   // Manual/user executions → Green
-  if (triggeredBy === 'manual' || triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  if (triggeredBy === 'manual' || triggeredBy === 'user') {
     return activity.active ? '#22c55e' : '#86efac'
   }
 
@@ -918,9 +927,11 @@ function getBarTooltip(activity) {
     prefix = activity.scheduleName ? `Scheduled: ${activity.scheduleName}` : 'Scheduled Task'
   } else if (triggeredBy === 'agent') {
     prefix = 'Agent-Triggered Task'
+  } else if (triggeredBy === 'mcp') {
+    prefix = 'MCP Task'
   } else if (triggeredBy === 'manual') {
     prefix = 'Manual Task'
-  } else if (triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  } else if (triggeredBy === 'user') {
     prefix = 'Task'
   } else {
     prefix = 'Execution'

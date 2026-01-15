@@ -232,9 +232,68 @@ All agents coordinated successfully
 
 ---
 
+## Test: Timeline View
+
+### Step 10: Switch to Timeline View
+**Action**:
+- Click "Timeline" button (next to "Graph" button)
+- Wait 2 seconds for timeline to render
+
+**Expected**:
+- [ ] Timeline view loads
+- [ ] Agent rows visible (one row per agent)
+- [ ] Time scale visible (x-axis)
+- [ ] Legend shows 4 execution types
+
+**Verify Legend Colors**:
+- [ ] 🟢 Manual (green #22c55e) - Manual task executions
+- [ ] 🩷 MCP (pink #ec4899) - MCP executions via Claude Code
+- [ ] 🟣 Scheduled (purple #8b5cf6) - Scheduled task executions
+- [ ] 🩵 Agent-Triggered (cyan #06b6d4) - Agent-to-agent calls
+
+---
+
+### Step 11: Verify Timeline Execution Bars
+**Action**:
+- Look for colored bars on agent rows
+- Hover over bars to see tooltips
+
+**Expected Bar Colors**:
+- Green bars = Manual tasks (triggered from UI Tasks tab)
+- Pink bars = MCP tasks (triggered via Claude Code MCP client)
+- Purple bars = Scheduled tasks (triggered by cron schedules)
+- Cyan bars = Agent-triggered tasks (agent-to-agent delegation)
+
+**Expected Tooltips**:
+- "Manual Task - Xs" for manual executions
+- "MCP Task - Xs" for MCP executions
+- "Scheduled: [name] - Xs" for scheduled executions
+- "Agent-Triggered Task - Xs" for delegation executions
+
+**Verify**:
+- [ ] At least one execution bar visible (from previous tests)
+- [ ] Bar colors match legend
+- [ ] Tooltips show correct prefix
+- [ ] Hover shows duration
+
+---
+
+### Step 12: Test Zoom Controls
+**Action**:
+- Use zoom slider or +/- buttons
+- Zoom in and out
+
+**Expected**:
+- [ ] Zoom in shows more detail (wider bars)
+- [ ] Zoom out shows more time range
+- [ ] Zoom level indicator updates (e.g., "100%", "50%")
+- [ ] Timeline remains responsive
+
+---
+
 ## Test: Historical Data and Trends
 
-### Step 10: Check Historical Metrics (if available)
+### Step 13: Check Historical Metrics (if available)
 **Action**:
 - Look for historical graph or trend view
 - Check context % growth over time
@@ -365,4 +424,4 @@ Once Phase 11 is **PASSED**, proceed to:
 ---
 
 **Status**: 🟢 Multi-agent dashboard & coordination validated
-**Last Updated**: 2025-12-09
+**Last Updated**: 2026-01-15

@@ -773,6 +773,9 @@ await log_audit_event(
 )
 ```
 
+### Dashboard Timeline Visualization
+MCP executions appear on the Dashboard Timeline with distinct **pink** color (`#ec4899`) when `triggered_by='mcp'`. This distinguishes MCP-initiated tasks from manual (green), scheduled (purple), and agent-triggered (cyan) executions. See [Dashboard Timeline View](dashboard-timeline-view.md) for full color scheme.
+
 ---
 
 ## Error Handling
@@ -918,6 +921,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Docs**: Added Dashboard Timeline Visualization section noting pink (#ec4899) color for MCP executions |
 | 2026-01-03 | **get_agent_info tool**: Added new tool to retrieve full template.yaml metadata for agents. Supports access control - agent-scoped keys can only access self + permitted agents. Returns capabilities, commands, MCP servers, tools, skills, use cases. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: Non-parallel `chat_with_agent` calls now create `schedule_executions` records when agent-scoped, ensuring all MCP agent communications appear in Tasks tab. |
 | 2025-12-30 | **Dynamic GitHub Templates**: `create_agent` now supports any `github:owner/repo` format - not just pre-defined templates. Uses system GITHUB_PAT for access. |

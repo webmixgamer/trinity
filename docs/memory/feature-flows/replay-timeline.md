@@ -1,6 +1,6 @@
 # Feature: Dashboard Replay Timeline
 
-> **Last Updated**: 2026-01-13 (In-progress bars now extend in real-time)
+> **Last Updated**: 2026-01-15 (Added pink color for MCP executions)
 
 ## Overview
 
@@ -865,6 +865,7 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`); updated Visual Elements Summary with trigger-based color scheme |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - added `startTimestamp` storage, dynamic `effectiveDuration` calculation, and 1-second reactive updates |
 | 2026-01-04 | Initial documentation of ReplayTimeline component |
 
@@ -881,10 +882,13 @@ onUnmounted(() => {
 
 | Element | Color | Purpose |
 |---------|-------|---------|
-| Activity bars (active) | `#3b82f6` (blue-500) | Events at/before cursor |
-| Activity bars (inactive) | `#93c5fd` (blue-300) | Events after cursor |
+| Activity bars (manual) | `#22c55e` (green-500) | Manual task executions |
+| Activity bars (MCP) | `#ec4899` (pink-500) | MCP executions via Claude Code |
+| Activity bars (scheduled) | `#8b5cf6` (purple-500) | Scheduled task executions |
+| Activity bars (agent-triggered) | `#06b6d4` (cyan-500) | Agent-triggered executions |
 | Activity bars (in-progress) | `#f59e0b` (amber-500) | Currently running tasks (grows in real-time) |
 | Activity bars (error) | `#ef4444` (red-500) | Failed executions |
+| Activity bars (inactive) | Lighter variant | Events after cursor (30% opacity reduction) |
 | Communication arrows (active) | `#06b6d4` (cyan-500) | Active connections |
 | Communication arrows (inactive) | `#67e8f9` (cyan-300) | Future connections |
 | Playback cursor | `#ef4444` (red-500) | Current playback position |

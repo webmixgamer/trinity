@@ -1,3 +1,26 @@
+### 2026-01-15 12:35:00
+✨ **Enhancement: Distinct Color for MCP Executions on Timeline**
+
+**Change**: MCP executions (via Claude Code MCP client) now have their own distinct **pink/rose** color on the Dashboard Timeline, making them easily distinguishable from manual tasks.
+
+**Updates**:
+- Color: Pink (#ec4899 active, #f9a8d4 inactive) for `triggered_by='mcp'`
+- Tooltip: Shows "MCP Task" prefix instead of generic "Task"
+- Legend: Added "MCP" entry with pink color dot
+
+**Files Modified**:
+- `src/frontend/src/components/ReplayTimeline.vue:73-76` - Legend entry
+- `src/frontend/src/components/ReplayTimeline.vue:899-902` - Color logic
+- `src/frontend/src/components/ReplayTimeline.vue:926-927` - Tooltip prefix
+
+**Visual**:
+- 🟢 Manual (green) - Tasks triggered from UI
+- 🩷 MCP (pink) - Tasks triggered via MCP client
+- 🟣 Scheduled (purple) - Cron-scheduled tasks
+- 🩵 Agent-Triggered (cyan) - Agent-to-agent calls
+
+---
+
 ### 2026-01-15 11:45:00
 🐛 **Fix: MCP Executions Not Appearing on Dashboard Timeline**
 
