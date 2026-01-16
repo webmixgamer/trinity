@@ -104,6 +104,25 @@ steps:
     type: timer
     delay: 30m
 
+  - id: sla-warning
+    name: SLA Warning Notification
+    type: notification
+    depends_on:
+      - sla-timer
+    channel: slack
+    message: |
+      :warning: *SLA Warning - Support Ticket Approaching Breach*
+
+      A support ticket has been open for 30 minutes without resolution.
+
+      Subject: {{input.subject}}
+      Customer: {{input.customer_email}}
+      Category: {{steps.analyze-ticket.output.category}}
+      Priority: {{steps.analyze-ticket.output.priority}}
+      Ticket ID: {{execution.id}}
+
+      Please review and ensure timely resolution.
+
 outputs:
   - name: ticket_analysis
     value: "{{steps.analyze-ticket.output}}"
