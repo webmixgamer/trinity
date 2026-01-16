@@ -71,6 +71,7 @@ steps:
     type: agent_task
     depends_on:
       - check-escalation
+      - escalation-approval
     agent: support-assistant
     message: |
       Please compose and send a professional response to the customer.
