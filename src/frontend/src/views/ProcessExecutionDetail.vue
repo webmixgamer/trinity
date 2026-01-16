@@ -5,6 +5,24 @@
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 sm:px-0">
+        <!-- Breadcrumb navigation for nested executions -->
+        <nav v-if="breadcrumbs.length > 1" class="flex items-center space-x-2 text-sm mb-4" aria-label="Breadcrumb">
+          <HomeIcon class="w-4 h-4 text-gray-400" />
+          <template v-for="(crumb, index) in breadcrumbs" :key="crumb.id">
+            <ChevronRightIcon class="w-4 h-4 text-gray-400" />
+            <router-link
+              v-if="index < breadcrumbs.length - 1"
+              :to="`/executions/${crumb.id}`"
+              class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+            >
+              {{ crumb.process_name }}
+            </router-link>
+            <span v-else class="text-gray-700 dark:text-gray-300 font-medium">
+              {{ crumb.process_name }}
+            </span>
+          </template>
+        </nav>
+
         <!-- Loading state -->
         <div v-if="loading" class="flex justify-center py-12">
           <div class="flex items-center gap-3 text-gray-500 dark:text-gray-400">
@@ -347,6 +365,8 @@ import {
   ClockIcon,
   PauseIcon,
   UserIcon,
+  HomeIcon,
+  ChevronRightIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -360,6 +380,7 @@ const activeTab = ref('timeline')
 const actionInProgress = ref(false)
 const executionId = computed(() => route.params.id)
 const events = ref([])
+const breadcrumbs = ref([])  // For nested sub-process navigation
 
 // Watch active tab to load events
 watch(activeTab, (newTab) => {
@@ -368,9 +389,10 @@ watch(activeTab, (newTab) => {
   }
 })
 
-// Watch execution ID to clear stale events when navigating to different execution
+// Watch execution ID to clear stale data when navigating to different execution
 watch(executionId, () => {
   events.value = []  // Clear events for new execution
+  breadcrumbs.value = []  // Clear breadcrumbs for new execution
 })
 
 // WebSocket for real-time updates
@@ -488,12 +510,50 @@ async function loadExecution() {
     if (activeTab.value === 'events') {
       await loadEvents()
     }
+    // Build breadcrumb chain for nested sub-process navigation
+    await buildBreadcrumbs()
   } catch (error) {
     console.error('Failed to load execution:', error)
     execution.value = null
   } finally {
     loading.value = false
   }
+}
+
+async function buildBreadcrumbs() {
+  const crumbs = []
+  let currentExec = execution.value
+
+  // Start with current execution
+  if (currentExec) {
+    crumbs.unshift({
+      id: currentExec.id,
+      process_name: currentExec.process_name,
+    })
+  }
+
+  // Traverse up the parent chain (max 10 levels to prevent infinite loops)
+  let depth = 0
+  while (currentExec?.parent_execution_id && depth < 10) {
+    try {
+      const parentExec = await executionsStore.getExecution(currentExec.parent_execution_id)
+      if (parentExec) {
+        crumbs.unshift({
+          id: parentExec.id,
+          process_name: parentExec.process_name,
+        })
+        currentExec = parentExec
+      } else {
+        break
+      }
+    } catch (e) {
+      console.warn('Failed to load parent execution:', e)
+      break
+    }
+    depth++
+  }
+
+  breadcrumbs.value = crumbs
 }
 
 async function loadEvents() {

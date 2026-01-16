@@ -419,6 +419,97 @@ class ProcessValidator:
                         path=f"{path_prefix}.input_mapping",
                     )
 
+            # Validate roles if present (EMI pattern) - applies to all step types
+            if "roles" in step:
+                self._validate_step_roles(step, index, step_type, result)
+
+    def _validate_step_roles(
+        self,
+        step: dict,
+        index: int,
+        step_type: str,
+        result: ValidationResult,
+    ) -> None:
+        """Validate EMI roles for a step."""
+        path_prefix = f"steps[{index}].roles"
+        roles = step.get("roles", {})
+
+        if not isinstance(roles, dict):
+            result.add_error(
+                message=f"Field 'roles' must be an object",
+                path=path_prefix,
+            )
+            return
+
+        # Executor is required if roles are specified
+        executor = roles.get("executor")
+        if not executor:
+            result.add_error(
+                message=f"Roles must include an 'executor' agent",
+                path=f"{path_prefix}.executor",
+                suggestion="Add 'executor: agent-name' to specify which agent executes this step",
+            )
+        elif not isinstance(executor, str):
+            result.add_error(
+                message=f"Field 'executor' must be a string (agent name)",
+                path=f"{path_prefix}.executor",
+            )
+        else:
+            # For agent_task, executor should match the step's agent field
+            if step_type == "agent_task":
+                step_agent = step.get("agent")
+                if step_agent and executor != step_agent:
+                    result.add_warning(
+                        message=f"Role executor '{executor}' differs from step agent '{step_agent}'",
+                        path=f"{path_prefix}.executor",
+                        suggestion="For consistency, executor should match the step's agent field",
+                    )
+
+        # Validate monitors list
+        monitors = roles.get("monitors", [])
+        if not isinstance(monitors, list):
+            result.add_error(
+                message=f"Field 'monitors' must be a list of agent names",
+                path=f"{path_prefix}.monitors",
+            )
+        else:
+            for i, monitor in enumerate(monitors):
+                if not isinstance(monitor, str):
+                    result.add_error(
+                        message=f"Monitor at index {i} must be a string (agent name)",
+                        path=f"{path_prefix}.monitors[{i}]",
+                    )
+                elif executor and monitor == executor:
+                    result.add_warning(
+                        message=f"Agent '{monitor}' is both executor and monitor (redundant)",
+                        path=f"{path_prefix}.monitors[{i}]",
+                    )
+
+        # Validate informed list
+        informed = roles.get("informed", [])
+        if not isinstance(informed, list):
+            result.add_error(
+                message=f"Field 'informed' must be a list of agent names",
+                path=f"{path_prefix}.informed",
+            )
+        else:
+            for i, agent in enumerate(informed):
+                if not isinstance(agent, str):
+                    result.add_error(
+                        message=f"Informed agent at index {i} must be a string (agent name)",
+                        path=f"{path_prefix}.informed[{i}]",
+                    )
+                elif executor and agent == executor:
+                    result.add_warning(
+                        message=f"Agent '{agent}' is both executor and informed (redundant)",
+                        path=f"{path_prefix}.informed[{i}]",
+                    )
+                elif isinstance(monitors, list) and agent in monitors:
+                    result.add_warning(
+                        message=f"Agent '{agent}' is in both monitors and informed lists",
+                        path=f"{path_prefix}.informed[{i}]",
+                    )
+
     def _validate_trigger_schema(
         self,
         trigger: Any,
@@ -540,29 +631,68 @@ class ProcessValidator:
             return
 
         for i, step in enumerate(definition.steps):
+            # Check step's primary agent (for agent_task)
             if step.type == StepType.AGENT_TASK:
                 agent_name = step.config.agent
-                try:
-                    exists, is_running = self.agent_checker(agent_name)
+                self._check_single_agent(agent_name, f"steps[{i}].agent", result)
 
-                    if not exists:
-                        result.add_warning(
-                            message=f"Agent '{agent_name}' does not exist",
-                            path=f"steps[{i}].agent",
-                            suggestion=f"Create agent '{agent_name}' before running this process",
-                        )
-                    elif not is_running:
-                        result.add_warning(
-                            message=f"Agent '{agent_name}' exists but is not running",
-                            path=f"steps[{i}].agent",
-                            suggestion=f"Start agent '{agent_name}' before running this process",
-                        )
-                except Exception:
-                    # Don't fail validation if agent check fails
-                    result.add_warning(
-                        message=f"Could not verify agent '{agent_name}'",
-                        path=f"steps[{i}].agent",
+            # Check agents in roles (EMI pattern)
+            if step.roles:
+                # Check executor
+                if step.roles.executor:
+                    self._check_single_agent(
+                        step.roles.executor,
+                        f"steps[{i}].roles.executor",
+                        result,
                     )
+
+                # Check monitors
+                for j, monitor in enumerate(step.roles.monitors):
+                    self._check_single_agent(
+                        monitor,
+                        f"steps[{i}].roles.monitors[{j}]",
+                        result,
+                    )
+
+                # Check informed agents
+                for j, informed in enumerate(step.roles.informed):
+                    self._check_single_agent(
+                        informed,
+                        f"steps[{i}].roles.informed[{j}]",
+                        result,
+                    )
+
+    def _check_single_agent(
+        self,
+        agent_name: str,
+        path: str,
+        result: ValidationResult,
+    ) -> None:
+        """Check if a single agent exists and is running."""
+        if not self.agent_checker:
+            return
+
+        try:
+            exists, is_running = self.agent_checker(agent_name)
+
+            if not exists:
+                result.add_warning(
+                    message=f"Agent '{agent_name}' does not exist",
+                    path=path,
+                    suggestion=f"Create agent '{agent_name}' before running this process",
+                )
+            elif not is_running:
+                result.add_warning(
+                    message=f"Agent '{agent_name}' exists but is not running",
+                    path=path,
+                    suggestion=f"Start agent '{agent_name}' before running this process",
+                )
+        except Exception:
+            # Don't fail validation if agent check fails
+            result.add_warning(
+                message=f"Could not verify agent '{agent_name}'",
+                path=path,
+            )
 
     def _check_sub_processes(
         self,

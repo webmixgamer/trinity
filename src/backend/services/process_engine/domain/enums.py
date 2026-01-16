@@ -58,3 +58,17 @@ class ApprovalStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     EXPIRED = "expired"
+
+
+class AgentRole(str, Enum):
+    """
+    Role that an agent plays in a process step.
+
+    EMI Pattern from IT1:
+    - Executor: The agent that performs the work (exactly one per step)
+    - Monitor: Agent that owns the outcome and can intervene (zero or more)
+    - Informed: Agent that receives events for learning/awareness (zero or more)
+    """
+    EXECUTOR = "executor"
+    MONITOR = "monitor"
+    INFORMED = "informed"

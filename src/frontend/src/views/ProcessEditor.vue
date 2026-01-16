@@ -168,8 +168,41 @@
 
         <!-- Editor -->
         <div v-else class="space-y-4">
-          <!-- Split view: Editor + Preview -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- View tabs -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <div class="border-b border-gray-200 dark:border-gray-700">
+              <nav class="flex -mb-px">
+                <button
+                  @click="activeTab = 'editor'"
+                  :class="[
+                    'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
+                    activeTab === 'editor'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+                  ]"
+                >
+                  Editor
+                </button>
+                <button
+                  @click="activeTab = 'roles'"
+                  :class="[
+                    'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
+                    activeTab === 'roles'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+                  ]"
+                >
+                  Roles
+                  <span v-if="parsedSteps.length > 0" class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700">
+                    {{ parsedSteps.length }}
+                  </span>
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          <!-- Editor Tab Content -->
+          <div v-show="activeTab === 'editor'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <!-- YAML Editor -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
               <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
@@ -194,6 +227,16 @@
                 height="450px"
               />
             </div>
+          </div>
+
+          <!-- Roles Tab Content -->
+          <div v-show="activeTab === 'roles'" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden p-6">
+            <RoleMatrix
+              :steps="parsedSteps"
+              :available-agents="availableAgents"
+              :read-only="process?.status !== 'draft' && !isNew"
+              @update:roles="handleRolesUpdate"
+            />
           </div>
 
           <!-- Published/Archived notice -->
@@ -495,6 +538,7 @@ import NavBar from '../components/NavBar.vue'
 import ProcessSubNav from '../components/ProcessSubNav.vue'
 import YamlEditor from '../components/YamlEditor.vue'
 import TemplateSelector from '../components/process/TemplateSelector.vue'
+import RoleMatrix from '../components/process/RoleMatrix.vue'
 import ProcessFlowPreview from '../components/ProcessFlowPreview.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
@@ -542,6 +586,10 @@ const showTemplateSelector = ref(true)
 const selectedTemplateId = ref(null)
 const loadingTemplate = ref(false)
 
+// Editor tabs
+const activeTab = ref('editor')
+const availableAgents = ref([])
+
 // Computed
 const isNew = computed(() => route.name === 'ProcessNew')
 
@@ -554,6 +602,23 @@ const parsedTriggers = computed(() => {
   try {
     const parsed = jsyaml.load(yamlContent.value)
     return parsed?.triggers || []
+  } catch {
+    return []
+  }
+})
+
+// Parse steps from YAML content for Role Matrix
+const parsedSteps = computed(() => {
+  try {
+    const parsed = jsyaml.load(yamlContent.value)
+    if (!parsed?.steps) return []
+
+    return parsed.steps.map(step => ({
+      id: step.id,
+      name: step.name || step.id,
+      type: step.type,
+      roles: step.roles || null,
+    }))
   } catch {
     return []
   }
@@ -637,7 +702,18 @@ onMounted(async () => {
   if (!isNew.value) {
     await loadProcess()
   }
+  // Fetch available agents for role matrix
+  await loadAvailableAgents()
 })
+
+async function loadAvailableAgents() {
+  try {
+    const response = await api.get('/api/agents')
+    availableAgents.value = response.data.map(a => a.name)
+  } catch (error) {
+    console.warn('Failed to load agents:', error)
+  }
+}
 
 // Navigation guard for unsaved changes
 onBeforeRouteLeave((to, from, next) => {
@@ -884,6 +960,53 @@ async function saveAsTemplate() {
     showNotification(errorMsg, 'error')
   } finally {
     savingTemplate.value = false
+  }
+}
+
+// Handle role updates from RoleMatrix component
+function handleRolesUpdate(rolesMap) {
+  try {
+    const parsed = jsyaml.load(yamlContent.value)
+    if (!parsed?.steps) return
+
+    // Update each step's roles
+    let modified = false
+    for (const step of parsed.steps) {
+      const newRoles = rolesMap[step.id]
+      if (newRoles) {
+        // Only add roles object if there's an executor
+        if (newRoles.executor) {
+          step.roles = {
+            executor: newRoles.executor,
+          }
+          if (newRoles.monitors && newRoles.monitors.length > 0) {
+            step.roles.monitors = newRoles.monitors
+          }
+          if (newRoles.informed && newRoles.informed.length > 0) {
+            step.roles.informed = newRoles.informed
+          }
+          modified = true
+        } else if (step.roles) {
+          // Remove roles if executor was cleared
+          delete step.roles
+          modified = true
+        }
+      }
+    }
+
+    if (modified) {
+      // Convert back to YAML
+      yamlContent.value = jsyaml.dump(parsed, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false,
+      })
+      hasUnsavedChanges.value = true
+    }
+  } catch (error) {
+    console.error('Failed to update roles in YAML:', error)
+    showNotification('Failed to update roles', 'error')
   }
 }
 </script>

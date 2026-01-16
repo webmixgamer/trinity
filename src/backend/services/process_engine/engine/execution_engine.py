@@ -42,7 +42,7 @@ from ..domain import (
     CompensationFailed,
 )
 from ..repositories import ProcessExecutionRepository
-from ..services import OutputStorage
+from ..services import OutputStorage, InformedAgentNotifier, CostAlertService
 from ..events import EventBus
 
 from .dependency_resolver import DependencyResolver
@@ -120,6 +120,8 @@ class ExecutionEngine:
         output_storage: Optional[OutputStorage] = None,
         handler_registry: Optional[StepHandlerRegistry] = None,
         config: Optional[ExecutionConfig] = None,
+        informed_notifier: Optional[InformedAgentNotifier] = None,
+        cost_alert_service: Optional[CostAlertService] = None,
     ):
         """
         Initialize the execution engine.
@@ -130,12 +132,16 @@ class ExecutionEngine:
             output_storage: Optional output storage service
             handler_registry: Optional custom handler registry
             config: Optional execution configuration
+            informed_notifier: Optional notifier for EMI pattern (informed agents)
+            cost_alert_service: Optional service for checking cost thresholds (E11-03)
         """
         self.execution_repo = execution_repo
         self.event_bus = event_bus
         self.output_storage = output_storage
         self.handler_registry = handler_registry or get_default_registry()
         self.config = config or ExecutionConfig()
+        self.informed_notifier = informed_notifier
+        self.cost_alert_service = cost_alert_service
 
     async def start(
         self,
@@ -578,13 +584,24 @@ class ExecutionEngine:
         # Calculate duration
         duration = step_exec.duration
 
-        await self._publish_event(StepCompleted(
+        step_completed_event = StepCompleted(
             execution_id=execution.id,
             step_id=step_id,
             step_name=step_def.name,
             output=output,
-            duration=duration,
-        ))
+            cost=step_exec.cost or Money.zero(),
+            duration=duration or Duration(seconds=0),
+        )
+
+        await self._publish_event(step_completed_event)
+
+        # Notify informed agents (EMI pattern) - run async, don't block
+        if self.informed_notifier and step_def.roles and step_def.roles.informed:
+            asyncio.create_task(self._notify_informed_agents(
+                step_def,
+                step_completed_event,
+                execution,
+            ))
 
         logger.info(f"Step '{step_def.name}' completed successfully")
 
@@ -661,7 +678,7 @@ class ExecutionEngine:
 
         step_exec = execution.step_executions[str(step_id)]
 
-        await self._publish_event(StepFailed(
+        step_failed_event = StepFailed(
             execution_id=execution.id,
             step_id=step_id,
             step_name=step_def.name,
@@ -669,7 +686,17 @@ class ExecutionEngine:
             error_code=result.error_code,
             retry_count=step_exec.retry_count,
             will_retry=False,
-        ))
+        )
+
+        await self._publish_event(step_failed_event)
+
+        # Notify informed agents (EMI pattern) - run async, don't block
+        if self.informed_notifier and step_def.roles and step_def.roles.informed:
+            asyncio.create_task(self._notify_informed_agents_failure(
+                step_def,
+                step_failed_event,
+                execution,
+            ))
 
         logger.error(f"Step '{step_def.name}' failed after all retries: {result.error}")
 
@@ -720,6 +747,44 @@ class ExecutionEngine:
         ))
 
         logger.info(f"Execution {execution.id} completed successfully")
+
+        # Check cost thresholds and generate alerts (E11-03)
+        await self._check_cost_thresholds(execution)
+
+    async def _check_cost_thresholds(
+        self,
+        execution: ProcessExecution,
+    ) -> None:
+        """
+        Check if execution cost exceeds configured thresholds.
+
+        Part of E11-03: Cost Alerts feature.
+        Alerts are persisted by CostAlertService and viewable in the Alerts UI.
+        """
+        if not self.cost_alert_service:
+            return
+
+        if not execution.total_cost or execution.total_cost.amount <= 0:
+            return
+
+        try:
+            # Check per-execution threshold
+            alert = self.cost_alert_service.check_execution_cost(
+                process_id=str(execution.process_id),
+                process_name=execution.process_name,
+                execution_id=str(execution.id),
+                cost=execution.total_cost.amount,
+            )
+
+            if alert:
+                logger.warning(
+                    f"Cost alert triggered for execution {execution.id}: "
+                    f"${execution.total_cost.amount:.2f} exceeded threshold "
+                    f"(alert_id={alert.id}, severity={alert.severity.value})"
+                )
+        except Exception as e:
+            # Don't fail execution if cost alert check fails
+            logger.error(f"Failed to check cost thresholds: {e}")
 
     async def _fail_execution(
         self,
@@ -920,3 +985,101 @@ class ExecutionEngine:
         """Publish a domain event if event bus is configured."""
         if self.event_bus:
             await self.event_bus.publish(event)
+
+    async def _notify_informed_agents(
+        self,
+        step_def: StepDefinition,
+        event: StepCompleted,
+        execution: ProcessExecution,
+    ) -> None:
+        """
+        Notify informed agents about step completion.
+
+        Runs asynchronously to avoid blocking execution.
+        Part of the EMI (Executor/Monitor/Informed) pattern.
+        """
+        if not self.informed_notifier:
+            return
+
+        try:
+            execution_context = {
+                "process_name": execution.process_name,
+                "execution_id": str(execution.id),
+                "triggered_by": execution.triggered_by,
+            }
+
+            results = await self.informed_notifier.notify_step_completed(
+                step_def,
+                event,
+                execution_context,
+            )
+
+            # Log results
+            for result in results:
+                if result.error:
+                    logger.warning(
+                        f"Failed to notify informed agent '{result.agent_name}': {result.error}"
+                    )
+                else:
+                    delivery_methods = []
+                    if result.mcp_delivered:
+                        delivery_methods.append("MCP")
+                    if result.memory_written:
+                        delivery_methods.append("memory")
+                    if delivery_methods:
+                        logger.debug(
+                            f"Notified '{result.agent_name}' via {', '.join(delivery_methods)}"
+                        )
+
+        except Exception as e:
+            # Don't let notification failures affect execution
+            logger.error(f"Error notifying informed agents: {e}")
+
+    async def _notify_informed_agents_failure(
+        self,
+        step_def: StepDefinition,
+        event: StepFailed,
+        execution: ProcessExecution,
+    ) -> None:
+        """
+        Notify informed agents about step failure.
+
+        Runs asynchronously to avoid blocking execution.
+        Part of the EMI (Executor/Monitor/Informed) pattern.
+        """
+        if not self.informed_notifier:
+            return
+
+        try:
+            execution_context = {
+                "process_name": execution.process_name,
+                "execution_id": str(execution.id),
+                "triggered_by": execution.triggered_by,
+            }
+
+            results = await self.informed_notifier.notify_step_failed(
+                step_def,
+                event,
+                execution_context,
+            )
+
+            # Log results
+            for result in results:
+                if result.error:
+                    logger.warning(
+                        f"Failed to notify informed agent '{result.agent_name}' about failure: {result.error}"
+                    )
+                else:
+                    delivery_methods = []
+                    if result.mcp_delivered:
+                        delivery_methods.append("MCP")
+                    if result.memory_written:
+                        delivery_methods.append("memory")
+                    if delivery_methods:
+                        logger.debug(
+                            f"Notified '{result.agent_name}' about failure via {', '.join(delivery_methods)}"
+                        )
+
+        except Exception as e:
+            # Don't let notification failures affect execution
+            logger.error(f"Error notifying informed agents about failure: {e}")

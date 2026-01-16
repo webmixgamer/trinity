@@ -30,6 +30,7 @@ from .enums import (
     StepStatus,
     OnErrorAction,
     ApprovalStatus,
+    AgentRole,
 )
 
 from .entities import (
@@ -37,6 +38,7 @@ from .entities import (
     StepExecution,
     OutputConfig,
     ApprovalRequest,
+    StepRoles,
 )
 
 from .step_configs import (
@@ -100,6 +102,8 @@ from .events import (
     ProcessUpdated,
     ProcessPublished,
     ProcessArchived,
+    # Informed Agent Events (EMI Pattern)
+    InformedNotification,
 )
 
 __all__ = [
@@ -120,11 +124,13 @@ __all__ = [
     "StepStatus",
     "OnErrorAction",
     "ApprovalStatus",
+    "AgentRole",
     # Entities
     "StepDefinition",
     "StepExecution",
     "OutputConfig",
     "ApprovalRequest",
+    "StepRoles",
     # Step Configs
     "StepConfig",
     "AgentTaskConfig",
@@ -180,4 +186,6 @@ __all__ = [
     "ProcessUpdated",
     "ProcessPublished",
     "ProcessArchived",
+    # Informed Agent Events (EMI Pattern)
+    "InformedNotification",
 ]

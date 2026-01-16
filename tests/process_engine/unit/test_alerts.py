@@ -439,3 +439,153 @@ class TestCostAlertService:
         """Test getting an alert that doesn't exist."""
         alert = alert_service.get_alert("nonexistent-id")
         assert alert is None
+
+
+# =============================================================================
+# ExecutionEngine Integration Tests (E11-03)
+# =============================================================================
+
+
+class TestCostAlertEngineIntegration:
+    """Tests for cost alert integration with ExecutionEngine."""
+
+    @pytest.fixture
+    def temp_db_path(self):
+        """Create a temporary database path."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            yield f.name
+        os.unlink(f.name)
+
+    @pytest.fixture
+    def temp_exec_db_path(self):
+        """Create a temporary database path for executions."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            yield f.name
+        os.unlink(f.name)
+
+    @pytest.fixture
+    def alert_service(self, temp_db_path):
+        """Create an alert service with a temporary database."""
+        return CostAlertService(db_path=temp_db_path)
+
+    def test_execution_engine_accepts_cost_alert_service(self, alert_service, temp_exec_db_path):
+        """Test that ExecutionEngine can be initialized with CostAlertService."""
+        from services.process_engine.repositories import SqliteProcessExecutionRepository
+        from services.process_engine.engine import ExecutionEngine
+
+        repo = SqliteProcessExecutionRepository(temp_exec_db_path)
+        engine = ExecutionEngine(
+            execution_repo=repo,
+            cost_alert_service=alert_service,
+        )
+
+        assert engine.cost_alert_service is alert_service
+
+    def test_execution_engine_without_cost_alert_service(self, temp_exec_db_path):
+        """Test that ExecutionEngine works without CostAlertService."""
+        from services.process_engine.repositories import SqliteProcessExecutionRepository
+        from services.process_engine.engine import ExecutionEngine
+
+        repo = SqliteProcessExecutionRepository(temp_exec_db_path)
+        engine = ExecutionEngine(execution_repo=repo)
+
+        assert engine.cost_alert_service is None
+
+    @pytest.mark.asyncio
+    async def test_check_cost_thresholds_no_alert_service(self, temp_exec_db_path):
+        """Test that _check_cost_thresholds handles missing service gracefully."""
+        from services.process_engine.repositories import SqliteProcessExecutionRepository
+        from services.process_engine.engine import ExecutionEngine
+        from services.process_engine.domain import ProcessExecution, ProcessId, ExecutionId, Money, Version
+
+        repo = SqliteProcessExecutionRepository(temp_exec_db_path)
+        engine = ExecutionEngine(execution_repo=repo)
+
+        # Create a mock execution with cost
+        import uuid
+        execution = ProcessExecution(
+            id=ExecutionId(str(uuid.uuid4())),
+            process_id=ProcessId(str(uuid.uuid4())),
+            process_version=Version.initial(),
+            process_name="test-process",
+            input_data={},
+            triggered_by="test",
+            total_cost=Money.from_float(10.0),
+        )
+
+        # Should not raise
+        await engine._check_cost_thresholds(execution)
+
+    @pytest.mark.asyncio
+    async def test_check_cost_thresholds_no_cost(self, alert_service, temp_exec_db_path):
+        """Test that _check_cost_thresholds handles zero cost gracefully."""
+        from services.process_engine.repositories import SqliteProcessExecutionRepository
+        from services.process_engine.engine import ExecutionEngine
+        from services.process_engine.domain import ProcessExecution, ProcessId, ExecutionId, Version
+
+        repo = SqliteProcessExecutionRepository(temp_exec_db_path)
+        engine = ExecutionEngine(
+            execution_repo=repo,
+            cost_alert_service=alert_service,
+        )
+
+        # Create a mock execution without cost
+        import uuid
+        execution = ProcessExecution(
+            id=ExecutionId(str(uuid.uuid4())),
+            process_id=ProcessId(str(uuid.uuid4())),
+            process_version=Version.initial(),
+            process_name="test-process",
+            input_data={},
+            triggered_by="test",
+        )
+
+        # Should not raise or create alert
+        await engine._check_cost_thresholds(execution)
+
+        # No alerts should exist
+        alerts = alert_service.get_alerts()
+        assert len(alerts) == 0
+
+    @pytest.mark.asyncio
+    async def test_check_cost_thresholds_triggers_alert(self, alert_service, temp_exec_db_path):
+        """Test that _check_cost_thresholds triggers alert when threshold exceeded."""
+        from services.process_engine.repositories import SqliteProcessExecutionRepository
+        from services.process_engine.engine import ExecutionEngine
+        from services.process_engine.domain import ProcessExecution, ProcessId, ExecutionId, Money, Version
+
+        repo = SqliteProcessExecutionRepository(temp_exec_db_path)
+        engine = ExecutionEngine(
+            execution_repo=repo,
+            cost_alert_service=alert_service,
+        )
+
+        import uuid
+        process_id = str(uuid.uuid4())
+
+        # Set threshold
+        alert_service.set_threshold(
+            process_id=process_id,
+            threshold_type=ThresholdType.PER_EXECUTION,
+            amount=Decimal("5.00"),
+        )
+
+        # Create execution with cost exceeding threshold
+        execution = ProcessExecution(
+            id=ExecutionId(str(uuid.uuid4())),
+            process_id=ProcessId(process_id),
+            process_version=Version.initial(),
+            process_name="test-process",
+            input_data={},
+            triggered_by="test",
+            total_cost=Money.from_float(10.0),
+        )
+
+        # Check thresholds
+        await engine._check_cost_thresholds(execution)
+
+        # Alert should be created
+        alerts = alert_service.get_alerts()
+        assert len(alerts) == 1
+        assert alerts[0].process_name == "test-process"
+        assert alerts[0].actual_amount == Decimal("10.0")

@@ -11,6 +11,7 @@ from .event_logger import EventLogger
 from .analytics import ProcessAnalytics, ProcessMetrics, TrendData, StepPerformance
 from .alerts import CostAlertService, CostThreshold, CostAlert, ThresholdType, AlertStatus
 from .templates import ProcessTemplateService, ProcessTemplate, ProcessTemplateInfo
+from .informed_notifier import InformedAgentNotifier, NotificationResult
 
 __all__ = [
     "ProcessValidator",
@@ -36,4 +37,6 @@ __all__ = [
     "ProcessTemplateService",
     "ProcessTemplate",
     "ProcessTemplateInfo",
+    "InformedAgentNotifier",
+    "NotificationResult",
 ]

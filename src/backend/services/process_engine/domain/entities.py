@@ -17,7 +17,7 @@ def _utcnow() -> datetime:
     """Get current UTC time in a timezone-aware manner."""
     return datetime.now(timezone.utc)
 
-from .enums import StepType, StepStatus, OnErrorAction, ApprovalStatus
+from .enums import StepType, StepStatus, OnErrorAction, ApprovalStatus, AgentRole
 from .value_objects import StepId, Duration, Money, TokenUsage, RetryPolicy, ErrorPolicy
 from .step_configs import (
     StepConfig,
@@ -29,6 +29,47 @@ from .step_configs import (
     SubProcessConfig,
     parse_step_config,
 )
+
+
+@dataclass
+class StepRoles:
+    """
+    EMI role assignments for a process step.
+
+    Reference: IT1 Section - EMI Pattern (Executor/Monitor/Informed)
+
+    - Executor: The agent that performs the work (exactly one per step)
+    - Monitor: Agents that own the outcome and can intervene
+    - Informed: Agents that receive events for learning/awareness
+    """
+    executor: str  # Required - agent name that performs the work
+    monitors: list[str] = field(default_factory=list)  # Agents that can intervene
+    informed: list[str] = field(default_factory=list)  # Agents that receive notifications
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StepRoles":
+        """Create from dictionary (YAML parsing)."""
+        return cls(
+            executor=data.get("executor", ""),
+            monitors=data.get("monitors", []),
+            informed=data.get("informed", []),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {"executor": self.executor}
+        if self.monitors:
+            result["monitors"] = self.monitors
+        if self.informed:
+            result["informed"] = self.informed
+        return result
+
+    def all_agents(self) -> list[str]:
+        """Return all agents involved in this step (executor + monitors + informed)."""
+        agents = [self.executor] if self.executor else []
+        agents.extend(self.monitors)
+        agents.extend(self.informed)
+        return agents
 
 
 @dataclass
@@ -53,6 +94,7 @@ class StepDefinition:
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy.default)
     error_policy: ErrorPolicy = field(default_factory=ErrorPolicy.default)
     compensation: Optional[CompensationConfig] = None  # Compensation action (rollback)
+    roles: Optional[StepRoles] = None  # EMI role assignments (executor/monitor/informed)
 
     @classmethod
     def from_dict(cls, data: dict) -> StepDefinition:
@@ -138,6 +180,11 @@ class StepDefinition:
         if data.get("compensation"):
             compensation = CompensationConfig.from_dict(data["compensation"])
 
+        # Parse roles (EMI pattern)
+        roles = None
+        if data.get("roles"):
+            roles = StepRoles.from_dict(data["roles"])
+
         return cls(
             id=step_id,
             name=data.get("name", data["id"]),
@@ -148,6 +195,7 @@ class StepDefinition:
             retry_policy=retry_policy,
             error_policy=error_policy,
             compensation=compensation,
+            roles=roles,
         )
 
     def to_dict(self) -> dict:
@@ -211,6 +259,9 @@ class StepDefinition:
 
         if self.compensation:
             result["compensation"] = self.compensation.to_dict()
+
+        if self.roles:
+            result["roles"] = self.roles.to_dict()
 
         return result
 

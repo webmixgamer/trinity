@@ -500,3 +500,38 @@ class ProcessArchived(DomainEvent):
             "version": self.version,
             "archived_by": self.archived_by,
         }
+
+
+# =============================================================================
+# Informed Agent Notification Events (EMI Pattern)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class InformedNotification(DomainEvent):
+    """
+    Notification sent to informed agents about step events.
+
+    Part of the EMI (Executor/Monitor/Informed) pattern.
+    Informed agents receive these notifications for awareness
+    and learning but don't need to take action.
+    """
+    event_type_name: str  # "step_completed", "step_failed"
+    process_name: str
+    execution_id: ExecutionId
+    step_id: StepId
+    step_name: str
+    output_summary: str  # Truncated output for context
+    metadata: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "event_type_name": self.event_type_name,
+            "process_name": self.process_name,
+            "execution_id": str(self.execution_id),
+            "step_id": str(self.step_id),
+            "step_name": self.step_name,
+            "output_summary": self.output_summary,
+            "metadata": self.metadata,
+        }
