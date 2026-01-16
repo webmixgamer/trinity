@@ -441,11 +441,11 @@ ruff check src/backend/services/process_engine/
 
 | Purpose | Location |
 |---------|----------|
-| MVP Backlog | `docs/drafts/PROCESS_DRIVEN_PLATFORM/BACKLOG_MVP.md` |
-| Core Backlog | `docs/drafts/PROCESS_DRIVEN_PLATFORM/BACKLOG_CORE.md` |
-| Architecture | `docs/drafts/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT2.md` |
-| DDD Design | `docs/drafts/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT3.md` |
-| UI/UX Spec | `docs/drafts/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT4.md` |
+| MVP Backlog | `docs/PROCESS_DRIVEN_PLATFORM/BACKLOG_MVP.md` |
+| Core Backlog | `docs/PROCESS_DRIVEN_PLATFORM/BACKLOG_CORE.md` |
+| Architecture | `docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT2.md` |
+| DDD Design | `docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT3.md` |
+| UI/UX Spec | `docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT4.md` |
 
 ### URLs (Local Dev)
 

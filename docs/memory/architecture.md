@@ -108,6 +108,8 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `chat.py` - Agent chat/activity monitoring
 - `schedules.py` - Agent scheduling CRUD and control
 - `git.py` - Git sync endpoints (status, sync, log, pull)
+- `processes.py` - Process definition CRUD, execution control (NEW: 2026-01-16)
+- `process_templates.py` - Process template listing and retrieval (NEW: 2026-01-16)
 
 **Services (`services/`):**
 - `docker_service.py` - Docker container management
@@ -117,6 +119,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `github_service.py` - GitHub API client (repo creation, validation, org detection)
 - `settings_service.py` - Centralized settings retrieval (API keys, ops config)
 - `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
+- `process_engine/` - Process Engine service (NEW: 2026-01-16, see below)
 
 **Logging (`logging_config.py`):**
 - Structured JSON logging for production
@@ -247,6 +250,74 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 ├── .mcp.json.template  # Template with ${VAR} placeholders
 └── .claude/            # Claude Code config
 ```
+
+### Process Engine (`src/backend/services/process_engine/`)
+
+**NEW: 2026-01-16** — BPMN-inspired workflow orchestration for multi-agent processes.
+
+**Architecture:** Domain-Driven Design (DDD) with clean layer separation.
+
+```
+services/process_engine/
+├── domain/              # Core domain model
+│   ├── aggregates.py    # ProcessDefinition, ProcessExecution
+│   ├── entities.py      # StepDefinition, StepRoles, StepExecution
+│   ├── value_objects.py # ProcessId, ExecutionId, Version, StepId
+│   ├── enums.py         # ExecutionStatus, StepType, AgentRole
+│   ├── events.py        # Domain events (ProcessStarted, StepCompleted, etc.)
+│   └── step_configs.py  # Type-specific step configurations
+├── engine/              # Execution engine
+│   ├── execution_engine.py  # Main orchestrator
+│   ├── step_handler.py      # Base handler interface
+│   ├── dependency_resolver.py # Parallel execution planning
+│   └── handlers/            # Step type handlers
+│       ├── agent_task.py    # AI agent execution
+│       ├── human_approval.py # Human-in-the-loop
+│       ├── gateway.py       # Conditional branching
+│       ├── timer.py         # Delay/scheduling
+│       ├── notification.py  # Send notifications
+│       └── sub_process.py   # Nested process calls
+├── repositories/        # Persistence layer
+│   ├── process_definition_repository.py
+│   └── process_execution_repository.py
+├── services/            # Application services
+│   ├── validator.py     # YAML + semantic validation
+│   ├── analytics.py     # Metrics and trends
+│   ├── alerts.py        # Cost threshold alerts
+│   ├── informed_notifier.py # EMI pattern notifications
+│   └── templates.py     # Process template management
+├── events/              # Event infrastructure
+│   └── websocket_publisher.py # Real-time UI updates
+└── schemas/             # JSON Schema for validation
+    └── process-definition.schema.json
+```
+
+**Step Types:**
+
+| Type | Handler | Description |
+|------|---------|-------------|
+| `agent_task` | `AgentTaskHandler` | Execute task via AI agent |
+| `human_approval` | `HumanApprovalHandler` | Pause for human decision |
+| `gateway` | `GatewayHandler` | Conditional branching |
+| `timer` | `TimerHandler` | Delay execution |
+| `notification` | `NotificationHandler` | Send notifications |
+| `sub_process` | `SubProcessHandler` | Call another process |
+
+**Execution State Machine:**
+
+```
+PENDING → RUNNING → COMPLETED
+                 ↘ FAILED
+                 ↘ CANCELLED
+          ↗ PAUSED (approval) → RUNNING
+```
+
+**EMI Role Pattern:**
+- **Executor**: Agent that performs the work (required)
+- **Monitor**: Agents that can intervene (optional)
+- **Informed**: Agents notified of events via NDJSON files (optional)
+
+**Feature Flows:** `docs/memory/feature-flows/process-engine/`
 
 ---
 
@@ -411,6 +482,38 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 | GET | `/oauth/{provider}/authorize` | Start OAuth |
 | GET | `/oauth/{provider}/callback` | OAuth callback |
 | GET | `/api/health` | Health check |
+
+### Process Engine (NEW: 2026-01-16)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes` | List all process definitions |
+| POST | `/api/processes` | Create process from YAML |
+| GET | `/api/processes/{id}` | Get process definition |
+| PUT | `/api/processes/{id}` | Update process definition |
+| DELETE | `/api/processes/{id}` | Delete process |
+| POST | `/api/processes/{id}/publish` | Publish process (make executable) |
+| POST | `/api/processes/{id}/execute` | Start process execution |
+| GET | `/api/executions` | List all executions |
+| GET | `/api/executions/{id}` | Get execution details |
+| POST | `/api/executions/{id}/cancel` | Cancel running execution |
+| GET | `/api/approvals` | List pending approvals |
+| GET | `/api/approvals/{id}` | Get approval details |
+| POST | `/api/approvals/{id}/decide` | Submit approval decision |
+| GET | `/api/process-templates` | List process templates |
+| GET | `/api/process-templates/{id}` | Get template with definition |
+| POST | `/api/process-templates` | Create user template |
+| GET | `/api/processes/{id}/analytics` | Get process metrics |
+| GET | `/api/processes/{id}/trends` | Get execution trends |
+
+**WebSocket Events (Process Engine):**
+- `process_started` - Execution began
+- `step_started` - Step execution began
+- `step_completed` - Step finished successfully
+- `step_failed` - Step failed
+- `process_completed` - Execution finished
+- `process_failed` - Execution failed
+- `approval_required` - Human approval needed
 
 ---
 
@@ -636,6 +739,105 @@ CREATE INDEX idx_shared_folders_consume ON agent_shared_folder_config(consume_en
 - Permission-gated: only agents with permissions (via `agent_permissions`) can mount
 - Container recreation on restart when mount config changes
 - Volume ownership automatically fixed to UID 1000
+
+**process_definitions:** (Phase 14 - Process Engine, NEW: 2026-01-16)
+```sql
+CREATE TABLE process_definitions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    yaml_content TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'draft',       -- draft, published, archived
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(name, version),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+CREATE INDEX idx_process_definitions_name ON process_definitions(name);
+CREATE INDEX idx_process_definitions_status ON process_definitions(status);
+```
+
+**process_executions:** (Phase 14 - Process Engine, NEW: 2026-01-16)
+```sql
+CREATE TABLE process_executions (
+    id TEXT PRIMARY KEY,
+    process_id TEXT NOT NULL,
+    process_name TEXT NOT NULL,
+    process_version INTEGER NOT NULL,
+    status TEXT NOT NULL,              -- pending, running, completed, failed, cancelled, paused
+    triggered_by TEXT NOT NULL,        -- manual, schedule, sub_process, api
+    input_data TEXT,                   -- JSON
+    output_data TEXT,                  -- JSON
+    total_cost REAL DEFAULT 0,
+    started_at TEXT,
+    completed_at TEXT,
+    parent_execution_id TEXT,          -- For sub-processes
+    parent_step_id TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (process_id) REFERENCES process_definitions(id),
+    FOREIGN KEY (parent_execution_id) REFERENCES process_executions(id)
+);
+CREATE INDEX idx_process_executions_process ON process_executions(process_id);
+CREATE INDEX idx_process_executions_status ON process_executions(status);
+CREATE INDEX idx_process_executions_parent ON process_executions(parent_execution_id);
+```
+
+**process_step_executions:** (Phase 14 - Process Engine, NEW: 2026-01-16)
+```sql
+CREATE TABLE process_step_executions (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    step_id TEXT NOT NULL,
+    step_name TEXT NOT NULL,
+    step_type TEXT NOT NULL,           -- agent_task, human_approval, gateway, timer, notification, sub_process
+    status TEXT NOT NULL,              -- pending, running, completed, failed, skipped, waiting
+    agent_name TEXT,
+    input_data TEXT,                   -- JSON
+    output_data TEXT,                  -- JSON
+    cost REAL DEFAULT 0,
+    started_at TEXT,
+    completed_at TEXT,
+    retry_count INTEGER DEFAULT 0,
+    error TEXT,
+    FOREIGN KEY (execution_id) REFERENCES process_executions(id)
+);
+CREATE INDEX idx_step_executions_execution ON process_step_executions(execution_id);
+CREATE INDEX idx_step_executions_status ON process_step_executions(status);
+```
+
+**process_approvals:** (Phase 14 - Process Engine, NEW: 2026-01-16)
+```sql
+CREATE TABLE process_approvals (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    step_id TEXT NOT NULL,
+    status TEXT NOT NULL,              -- pending, approved, rejected, timed_out
+    title TEXT NOT NULL,
+    description TEXT,
+    approvers TEXT,                    -- JSON array
+    timeout_at TEXT,
+    decided_by TEXT,
+    decision TEXT,
+    comment TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (execution_id) REFERENCES process_executions(id)
+);
+CREATE INDEX idx_process_approvals_status ON process_approvals(status);
+CREATE INDEX idx_process_approvals_execution ON process_approvals(execution_id);
+```
+
+**Process Engine Features:**
+- YAML-based process definitions with JSON Schema validation
+- Six step types: agent_task, human_approval, gateway, timer, notification, sub_process
+- Parallel execution based on dependency graph
+- EMI role pattern (Executor/Monitor/Informed) per step
+- Real-time monitoring via WebSocket events
+- Cost tracking and threshold alerts
+- Sub-process support with parent-child linking
 
 ### Redis
 
@@ -931,3 +1133,22 @@ Local and production use the same ports for consistency:
 | `docker/base-image/Dockerfile` | Agent base image |
 | `docker-compose.yml` | Local orchestration |
 | `docker-compose.prod.yml` | Production config |
+
+### Process Engine Files (NEW: 2026-01-16)
+
+| File | Purpose |
+|------|---------|
+| `src/backend/services/process_engine/` | Process Engine service root |
+| `src/backend/services/process_engine/engine/execution_engine.py` | Core orchestration engine |
+| `src/backend/services/process_engine/domain/aggregates.py` | ProcessDefinition, ProcessExecution |
+| `src/backend/services/process_engine/domain/entities.py` | StepDefinition, StepRoles |
+| `src/backend/services/process_engine/services/validator.py` | YAML + semantic validation |
+| `src/backend/services/process_engine/services/analytics.py` | Metrics and trends |
+| `src/backend/routers/processes.py` | Process API endpoints |
+| `src/frontend/src/views/ProcessList.vue` | Process list page |
+| `src/frontend/src/views/ProcessEditor.vue` | YAML editor with preview |
+| `src/frontend/src/views/ProcessExecutionDetail.vue` | Execution monitoring |
+| `src/frontend/src/views/Approvals.vue` | Human approval inbox |
+| `config/process-templates/` | Bundled process templates |
+| `docs/PROCESS_DRIVEN_PLATFORM/` | Design documents |
+| `docs/memory/feature-flows/process-engine/` | Feature flow documentation |

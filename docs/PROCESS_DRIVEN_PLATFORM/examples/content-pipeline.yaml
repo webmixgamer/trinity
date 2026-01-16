@@ -10,7 +10,7 @@
 #   2. Trigger with input: { "topic": "AI in Healthcare" }
 #   3. The process will execute each step in sequence
 #
-# Reference: docs/drafts/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT2.md
+# Reference: docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_THINKING_IT2.md
 
 name: content-pipeline
 version: 1

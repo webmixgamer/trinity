@@ -362,6 +362,33 @@
 
 ---
 
+## Process Engine Flows
+
+> **New (2026-01-16)**: Complete documentation for the Process Engine - BPMN-inspired workflow orchestration with AI agents.
+
+The Process Engine is a major platform feature that enables defining, executing, and monitoring multi-step workflows with AI agents, human approvals, and automated scheduling. See the dedicated documentation folder for comprehensive feature flows:
+
+**Index Document**: [process-engine/README.md](feature-flows/process-engine/README.md)
+
+| Flow | Document | Description |
+|------|----------|-------------|
+| Process Definition | [process-definition.md](feature-flows/process-engine/process-definition.md) | YAML schema, validation, versioning |
+| Process Execution | [process-execution.md](feature-flows/process-engine/process-execution.md) | Execution engine, step handlers, state machine |
+| Process Monitoring | [process-monitoring.md](feature-flows/process-engine/process-monitoring.md) | Real-time UI views, WebSocket events |
+| Human Approval | [human-approval.md](feature-flows/process-engine/human-approval.md) | Approval gates, inbox, timeout handling |
+| Process Scheduling | [process-scheduling.md](feature-flows/process-engine/process-scheduling.md) | Cron triggers, timer steps |
+| Process Analytics | [process-analytics.md](feature-flows/process-engine/process-analytics.md) | Cost tracking, metrics, alerts |
+| Sub-Processes | [sub-processes.md](feature-flows/process-engine/sub-processes.md) | Parent-child linking, breadcrumbs |
+| Agent Roles (EMI) | [agent-roles-emi.md](feature-flows/process-engine/agent-roles-emi.md) | EMI pattern, InformedNotifier |
+| Process Templates | [process-templates.md](feature-flows/process-engine/process-templates.md) | Bundled and user templates |
+
+**Key Entry Points:**
+- **UI**: Process List (`/processes`), Process Editor, Execution Detail, Approvals
+- **API**: `/api/processes/*`, `/api/executions/*`, `/api/approvals/*`, `/api/process-templates/*`
+- **Backend**: `src/backend/services/process_engine/`
+
+---
+
 ## Archived Flows
 
 > **Note**: These flows document features that have been removed, deprecated, or superseded. They are preserved in `feature-flows/archive/` for historical reference.
