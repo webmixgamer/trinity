@@ -214,8 +214,58 @@ class NotificationConfig:
         return result
 
 
+@dataclass(frozen=True)
+class SubProcessConfig:
+    """
+    Configuration for sub_process step type.
+
+    Allows calling another process as a step, enabling composable workflows.
+    The parent process waits for the child to complete and receives its output.
+
+    Reference: BACKLOG_ADVANCED.md - E10-01
+    """
+    process_name: str  # Name of process to call
+    version: Optional[str] = None  # Specific version or None for latest published
+    input_mapping: dict = field(default_factory=dict)  # Map parent context to child input
+    output_key: str = "result"  # Key to store child output in parent context
+    wait_for_completion: bool = True  # Sync (True) vs async (False)
+    timeout: Duration = field(default_factory=lambda: Duration.from_hours(1))
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SubProcessConfig":
+        """Create from dictionary (YAML parsing)."""
+        timeout = data.get("timeout", "1h")
+        if isinstance(timeout, str):
+            timeout = Duration.from_string(timeout)
+        elif isinstance(timeout, int):
+            timeout = Duration.from_seconds(timeout)
+
+        return cls(
+            process_name=data["process_name"],
+            version=data.get("version"),
+            input_mapping=data.get("input_mapping", {}),
+            output_key=data.get("output_key", "result"),
+            wait_for_completion=data.get("wait_for_completion", True),
+            timeout=timeout,
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {
+            "process_name": self.process_name,
+            "output_key": self.output_key,
+            "wait_for_completion": self.wait_for_completion,
+            "timeout": str(self.timeout),
+        }
+        if self.version:
+            result["version"] = self.version
+        if self.input_mapping:
+            result["input_mapping"] = self.input_mapping
+        return result
+
+
 # Type alias for step configuration
-StepConfig = AgentTaskConfig | HumanApprovalConfig | GatewayConfig | TimerConfig | NotificationConfig
+StepConfig = AgentTaskConfig | HumanApprovalConfig | GatewayConfig | TimerConfig | NotificationConfig | SubProcessConfig
 
 
 # =============================================================================
@@ -453,6 +503,7 @@ def parse_step_config(step_type: str, config_data: dict) -> StepConfig:
         "gateway": GatewayConfig.from_dict,
         "timer": TimerConfig.from_dict,
         "notification": NotificationConfig.from_dict,
+        "sub_process": SubProcessConfig.from_dict,
     }
 
     parser = parsers.get(step_type)

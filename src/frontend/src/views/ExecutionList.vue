@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <ProcessSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Header -->
         <div class="flex justify-between items-center mb-6">
           <div>
@@ -16,13 +17,13 @@
           <div class="flex items-center gap-3">
             <!-- Auto-refresh indicator -->
             <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <span 
+              <span
                 class="w-2 h-2 rounded-full"
                 :class="autoRefresh ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
               ></span>
               <span>{{ autoRefresh ? 'Live' : 'Paused' }}</span>
             </div>
-            
+
             <button
               @click="toggleAutoRefresh"
               class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
@@ -175,7 +176,7 @@
                     >
                       <StopIcon class="h-4 w-4" />
                     </button>
-                    
+
                     <!-- Retry button (for failed) -->
                     <button
                       v-if="execution.status === 'failed'"
@@ -185,7 +186,7 @@
                     >
                       <ArrowPathIcon class="h-4 w-4" />
                     </button>
-                    
+
                     <!-- View button -->
                     <router-link
                       :to="`/executions/${execution.id}`"
@@ -250,6 +251,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useExecutionsStore } from '../stores/executions'
 import NavBar from '../components/NavBar.vue'
+import ProcessSubNav from '../components/ProcessSubNav.vue'
 import {
   ArrowPathIcon,
   EyeIcon,

@@ -38,6 +38,7 @@ from services.process_engine.engine import (
     GatewayHandler,
     NotificationHandler,
     TimerHandler,
+    SubProcessHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,13 @@ class StepExecutionSummary(BaseModel):
     """Summary of a step execution."""
     step_id: str
     status: str
+    step_type: Optional[str] = None  # Type of step (agent_task, gateway, sub_process, etc.)
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[StepError] = None
     retry_count: int = 0
     parallel_level: int = 0  # Execution level for parallel visualization
+    cost: Optional[str] = None  # Cost for this step
 
 
 class ExecutionSummary(BaseModel):
@@ -105,6 +108,10 @@ class ExecutionDetail(BaseModel):
     steps: List[StepExecutionSummary]
     has_parallel_steps: bool = False  # True if process has parallel execution
     retry_of: Optional[str] = None  # ID of original execution if this is a retry
+    # Sub-process relationships
+    parent_execution_id: Optional[str] = None  # Parent execution if this is a sub-process
+    parent_step_id: Optional[str] = None  # Step that spawned this sub-process
+    child_execution_ids: List[str] = Field(default_factory=list)  # Child executions
 
 
 class ExecutionListResponse(BaseModel):
@@ -189,6 +196,13 @@ def get_handler_registry() -> StepHandlerRegistry:
         _handler_registry.register(GatewayHandler())
         _handler_registry.register(NotificationHandler())
         _handler_registry.register(TimerHandler())
+
+        # Register SubProcessHandler with required dependencies
+        sub_process_handler = SubProcessHandler(
+            definition_repo=get_definition_repo(),
+            engine_factory=get_execution_engine,
+        )
+        _handler_registry.register(sub_process_handler)
     return _handler_registry
 
 
@@ -505,6 +519,78 @@ async def get_step_output(
     return {"output": output}
 
 
+@router.get("/{execution_id}/costs")
+async def get_execution_costs(
+    execution_id: str,
+    current_user: CurrentUser,
+):
+    """
+    Get cost breakdown for an execution.
+
+    Returns per-step costs and total execution cost.
+    Reference: BACKLOG_ADVANCED.md - E11-01
+    """
+    execution_repo = get_execution_repo()
+
+    try:
+        eid = ExecutionId(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid execution ID format")
+
+    execution = execution_repo.get_by_id(eid)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Build cost breakdown per step
+    step_costs = []
+    for step_id, step_exec in execution.step_executions.items():
+        step_info = {
+            "step_id": step_id,
+            "status": step_exec.status.value,
+            "cost": str(step_exec.cost) if step_exec.cost else None,
+        }
+        # Include token usage if available
+        if step_exec.token_usage:
+            step_info["token_usage"] = step_exec.token_usage.to_dict()
+        step_costs.append(step_info)
+
+    return {
+        "execution_id": str(execution.id),
+        "process_name": execution.process_name,
+        "status": execution.status.value,
+        "total_cost": str(execution.total_cost),
+        "steps": step_costs,
+    }
+
+
+# =============================================================================
+# Analytics Endpoints (E11-02)
+# =============================================================================
+
+
+@router.get("/analytics/steps")
+async def get_step_analytics(
+    current_user: CurrentUser,
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+    limit: int = Query(10, ge=1, le=50, description="Number of steps to return per category"),
+):
+    """
+    Get step-level performance analytics.
+
+    Returns slowest and most expensive steps across all processes.
+    Reference: BACKLOG_ADVANCED.md - E11-02
+    """
+    from services.process_engine.services.analytics import ProcessAnalytics
+
+    definition_repo = get_definition_repo()
+    execution_repo = get_execution_repo()
+
+    analytics = ProcessAnalytics(definition_repo, execution_repo)
+    step_performance = analytics.get_step_performance(days=days, limit=limit)
+
+    return step_performance.to_dict()
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -541,6 +627,12 @@ def _to_detail(
         parallel_levels = parallel_structure.step_levels
         has_parallel = parallel_structure.has_parallel_execution()
 
+    # Build step type lookup from definition
+    step_types: dict[str, str] = {}
+    if definition:
+        for step_def in definition.steps:
+            step_types[str(step_def.id)] = step_def.type.value
+
     steps = []
     for step_id, step_exec in execution.step_executions.items():
         step_error = None
@@ -558,11 +650,13 @@ def _to_detail(
         steps.append(StepExecutionSummary(
             step_id=step_id,
             status=step_exec.status.value,
+            step_type=step_types.get(step_id),
             started_at=step_exec.started_at.isoformat() if step_exec.started_at else None,
             completed_at=step_exec.completed_at.isoformat() if step_exec.completed_at else None,
             error=step_error,
             retry_count=step_exec.retry_count,
             parallel_level=parallel_levels.get(step_id, 0),
+            cost=str(step_exec.cost) if step_exec.cost else None,
         ))
 
     duration = None
@@ -585,4 +679,8 @@ def _to_detail(
         steps=steps,
         has_parallel_steps=has_parallel,
         retry_of=str(execution.retry_of) if execution.retry_of else None,
+        # Sub-process relationships
+        parent_execution_id=str(execution.parent_execution_id) if execution.parent_execution_id else None,
+        parent_step_id=str(execution.parent_step_id) if execution.parent_step_id else None,
+        child_execution_ids=[str(cid) for cid in (execution.child_execution_ids or [])],
     )

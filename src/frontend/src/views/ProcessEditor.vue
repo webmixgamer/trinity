@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <ProcessSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Notification Toast -->
         <div v-if="notification"
           :class="[
@@ -44,7 +45,8 @@
             </div>
           </div>
 
-          <div class="flex items-center gap-3">
+          <!-- Action buttons (hidden during template selection) -->
+          <div v-if="!isNew || !showTemplateSelector" class="flex items-center gap-3">
             <!-- Validate button -->
             <button
               @click="validateProcess"
@@ -114,6 +116,18 @@
               <PlayIcon class="h-4 w-4" />
               Execute
             </button>
+
+            <!-- Save as Template button (only for published) -->
+            <button
+              v-if="!isNew && process?.status === 'published'"
+              @click="showSaveTemplateDialog = true"
+              :disabled="saving"
+              class="px-4 py-2 text-sm font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 disabled:opacity-50 transition-colors flex items-center gap-2"
+              title="Save this process as a reusable template"
+            >
+              <DocumentDuplicateIcon class="h-4 w-4" />
+              Save as Template
+            </button>
           </div>
         </div>
 
@@ -125,6 +139,30 @@
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <span>Loading process...</span>
+          </div>
+        </div>
+
+        <!-- Template Selector (for new processes) -->
+        <div v-else-if="isNew && showTemplateSelector" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+          <TemplateSelector
+            :selected-id="selectedTemplateId"
+            @select="handleTemplateSelect"
+          />
+          <div class="mt-6 flex justify-end gap-3">
+            <button
+              @click="proceedWithTemplate"
+              :disabled="loadingTemplate"
+              class="px-6 py-2.5 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              <span v-if="loadingTemplate" class="flex items-center gap-2">
+                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Loading...
+              </span>
+              <span v-else>Continue</span>
+            </button>
           </div>
         </div>
 
@@ -335,6 +373,115 @@
             </div>
           </div>
         </div>
+
+        <!-- Save as Template Dialog -->
+        <div v-if="showSaveTemplateDialog" class="fixed inset-0 z-50 overflow-y-auto">
+          <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <!-- Backdrop -->
+            <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity" @click="showSaveTemplateDialog = false"></div>
+
+            <!-- Dialog -->
+            <div class="relative bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+              <div class="px-4 pt-5 pb-4 sm:p-6">
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-10 h-10 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                    <DocumentDuplicateIcon class="h-6 w-6 text-teal-600 dark:text-teal-400" />
+                  </div>
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                    Save as Template
+                  </h3>
+                </div>
+
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Template Name <span class="text-red-500">*</span>
+                    </label>
+                    <input
+                      v-model="templateForm.name"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="my-workflow-template"
+                    />
+                    <p class="mt-1 text-xs text-gray-400">Lowercase, no spaces (used as ID)</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Display Name
+                    </label>
+                    <input
+                      v-model="templateForm.displayName"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="My Workflow Template"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      v-model="templateForm.description"
+                      rows="2"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="Describe what this template does..."
+                    ></textarea>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Category
+                    </label>
+                    <select
+                      v-model="templateForm.category"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    >
+                      <option value="general">General</option>
+                      <option value="business">Business</option>
+                      <option value="devops">DevOps</option>
+                      <option value="analytics">Analytics</option>
+                      <option value="support">Support</option>
+                      <option value="content">Content</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tags (comma-separated)
+                    </label>
+                    <input
+                      v-model="templateForm.tags"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      placeholder="workflow, automation, example"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3 bg-gray-50 dark:bg-gray-700/50">
+                <button
+                  @click="saveAsTemplate"
+                  :disabled="!templateForm.name || savingTemplate"
+                  class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg v-if="savingTemplate" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  {{ savingTemplate ? 'Saving...' : 'Save Template' }}
+                </button>
+                <button
+                  @click="showSaveTemplateDialog = false"
+                  class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -345,7 +492,9 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useProcessesStore } from '../stores/processes'
 import NavBar from '../components/NavBar.vue'
+import ProcessSubNav from '../components/ProcessSubNav.vue'
 import YamlEditor from '../components/YamlEditor.vue'
+import TemplateSelector from '../components/process/TemplateSelector.vue'
 import ProcessFlowPreview from '../components/ProcessFlowPreview.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
@@ -379,6 +528,19 @@ const pendingNavigation = ref(null)
 const showExecuteDialog = ref(false)
 const executeInputJson = ref('{}')
 const scheduleTriggerInfo = ref({})
+const showSaveTemplateDialog = ref(false)
+const savingTemplate = ref(false)
+const templateForm = ref({
+  name: '',
+  displayName: '',
+  description: '',
+  category: 'general',
+  tags: '',
+})
+// Template selection for new processes
+const showTemplateSelector = ref(true)
+const selectedTemplateId = ref(null)
+const loadingTemplate = ref(false)
 
 // Computed
 const isNew = computed(() => route.name === 'ProcessNew')
@@ -489,6 +651,34 @@ onBeforeRouteLeave((to, from, next) => {
 })
 
 // Methods
+
+// Template selection handlers
+function handleTemplateSelect(templateId) {
+  selectedTemplateId.value = templateId
+}
+
+async function proceedWithTemplate() {
+  if (selectedTemplateId.value === null) {
+    // Blank process - just hide selector
+    showTemplateSelector.value = false
+    return
+  }
+
+  // Load template content
+  loadingTemplate.value = true
+  try {
+    const response = await api.get(`/api/process-templates/${selectedTemplateId.value}/preview`)
+    yamlContent.value = response.data.yaml_content || defaultYamlTemplate()
+    showTemplateSelector.value = false
+    showNotification(`Loaded template: ${response.data.name}`, 'success')
+  } catch (error) {
+    console.error('Failed to load template:', error)
+    showNotification('Failed to load template', 'error')
+  } finally {
+    loadingTemplate.value = false
+  }
+}
+
 async function loadProcess() {
   loading.value = true
   try {
@@ -656,5 +846,44 @@ function showNotification(message, type = 'success') {
   setTimeout(() => {
     notification.value = null
   }, 3000)
+}
+
+async function saveAsTemplate() {
+  if (!templateForm.value.name) return
+
+  savingTemplate.value = true
+  try {
+    // Parse tags
+    const tags = templateForm.value.tags
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0)
+
+    const response = await api.post('/api/process-templates', {
+      name: templateForm.value.name,
+      display_name: templateForm.value.displayName || templateForm.value.name,
+      description: templateForm.value.description,
+      category: templateForm.value.category,
+      tags: tags,
+      definition_yaml: yamlContent.value,
+    })
+
+    showNotification('Template saved successfully!', 'success')
+    showSaveTemplateDialog.value = false
+
+    // Reset form
+    templateForm.value = {
+      name: '',
+      displayName: '',
+      description: '',
+      category: 'general',
+      tags: '',
+    }
+  } catch (error) {
+    const errorMsg = error.response?.data?.detail || 'Failed to save template'
+    showNotification(errorMsg, 'error')
+  } finally {
+    savingTemplate.value = false
+  }
 }
 </script>

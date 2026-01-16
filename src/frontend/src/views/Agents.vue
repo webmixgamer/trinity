@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <AgentSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Notification Toast -->
         <div v-if="notification"
           :class="[
@@ -258,6 +259,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
+import AgentSubNav from '../components/AgentSubNav.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import { ServerIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline'

@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <ProcessSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Notification Toast -->
         <div v-if="notification"
           :class="[
@@ -227,6 +228,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useProcessesStore } from '../stores/processes'
 import NavBar from '../components/NavBar.vue'
+import ProcessSubNav from '../components/ProcessSubNav.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
   PlusIcon,

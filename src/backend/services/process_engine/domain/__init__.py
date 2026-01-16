@@ -18,6 +18,7 @@ from .value_objects import (
     Version,
     Duration,
     Money,
+    TokenUsage,
     RetryPolicy,
     ErrorPolicy,
 )
@@ -46,6 +47,7 @@ from .step_configs import (
     TimerConfig,
     NotificationConfig,
     CompensationConfig,
+    SubProcessConfig,
     parse_step_config,
     # Trigger configs
     TriggerConfig,
@@ -108,6 +110,7 @@ __all__ = [
     "Version",
     "Duration",
     "Money",
+    "TokenUsage",
     "RetryPolicy",
     "ErrorPolicy",
     # Enums
@@ -130,6 +133,7 @@ __all__ = [
     "TimerConfig",
     "NotificationConfig",
     "CompensationConfig",
+    "SubProcessConfig",
     "parse_step_config",
     # Trigger Configs
     "TriggerConfig",

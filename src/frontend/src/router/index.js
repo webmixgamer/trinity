@@ -93,6 +93,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/alerts',
+    name: 'Alerts',
+    component: () => import('../views/Alerts.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/executions/:id',
     name: 'ProcessExecutionDetail',
     component: () => import('../views/ProcessExecutionDetail.vue'),

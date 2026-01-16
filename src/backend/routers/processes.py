@@ -761,3 +761,163 @@ def _unregister_process_schedules(process_id: ProcessId) -> int:
         logger.error(f"Failed to unregister process schedules: {e}")
 
     return count
+
+
+# =============================================================================
+# Cost Statistics
+# =============================================================================
+
+
+@router.get("/{process_id}/cost-stats")
+async def get_process_cost_stats(
+    process_id: str,
+    current_user: CurrentUser,
+):
+    """
+    Get cost statistics for a process.
+
+    Returns average cost, total cost, and execution count.
+    Reference: BACKLOG_ADVANCED.md - E11-01
+    """
+    definition_repo = get_definition_repo()
+
+    try:
+        pid = ProcessId(process_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid process ID format")
+
+    definition = definition_repo.get_by_id(pid)
+    if not definition:
+        raise HTTPException(status_code=404, detail="Process definition not found")
+
+    # Get executions for this process
+    from .executions import get_execution_repo
+    from decimal import Decimal
+
+    execution_repo = get_execution_repo()
+    executions = execution_repo.list_by_process(pid, limit=1000, offset=0)
+
+    # Calculate statistics
+    execution_count = len(executions)
+    completed_count = 0
+    total_cost = Decimal("0")
+    costs = []
+
+    for execution in executions:
+        if execution.status.value == "completed":
+            completed_count += 1
+            if execution.total_cost and execution.total_cost.amount > 0:
+                total_cost += execution.total_cost.amount
+                costs.append(execution.total_cost.amount)
+
+    # Calculate average
+    avg_cost = Decimal("0")
+    if costs:
+        avg_cost = total_cost / len(costs)
+
+    # Calculate min/max
+    min_cost = min(costs) if costs else Decimal("0")
+    max_cost = max(costs) if costs else Decimal("0")
+
+    return {
+        "process_id": str(definition.id),
+        "process_name": definition.name,
+        "execution_count": execution_count,
+        "completed_count": completed_count,
+        "total_cost": f"${total_cost:.2f}",
+        "average_cost": f"${avg_cost:.2f}",
+        "min_cost": f"${min_cost:.2f}",
+        "max_cost": f"${max_cost:.2f}",
+        "executions_with_cost": len(costs),
+    }
+
+
+# =============================================================================
+# Analytics Endpoints (E11-02)
+# =============================================================================
+
+
+@router.get("/{process_id}/analytics")
+async def get_process_analytics(
+    process_id: str,
+    current_user: CurrentUser,
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+):
+    """
+    Get analytics metrics for a specific process.
+
+    Returns success rate, average duration, average cost, and more.
+    Reference: BACKLOG_ADVANCED.md - E11-02
+    """
+    from .executions import get_execution_repo
+    from services.process_engine.services.analytics import ProcessAnalytics
+
+    try:
+        pid = ProcessId(process_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid process ID format")
+
+    definition_repo = get_repository()
+    execution_repo = get_execution_repo()
+
+    analytics = ProcessAnalytics(definition_repo, execution_repo)
+    metrics = analytics.get_process_metrics(pid, days=days)
+
+    return metrics.to_dict()
+
+
+@router.get("/analytics/trends")
+async def get_process_trends(
+    current_user: CurrentUser,
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+    process_id: Optional[str] = Query(None, description="Filter by process ID"),
+):
+    """
+    Get execution trend data over time.
+
+    Returns daily execution counts, success rates, and costs.
+    Reference: BACKLOG_ADVANCED.md - E11-02
+    """
+    from .executions import get_execution_repo
+    from services.process_engine.services.analytics import ProcessAnalytics
+
+    pid = None
+    if process_id:
+        try:
+            pid = ProcessId(process_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid process ID format")
+
+    definition_repo = get_repository()
+    execution_repo = get_execution_repo()
+
+    analytics = ProcessAnalytics(definition_repo, execution_repo)
+    trends = analytics.get_trend_data(days=days, process_id=pid)
+
+    return trends.to_dict()
+
+
+@router.get("/analytics/all")
+async def get_all_process_analytics(
+    current_user: CurrentUser,
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+):
+    """
+    Get analytics metrics for all published processes.
+
+    Returns a list of metrics per process for the dashboard.
+    Reference: BACKLOG_ADVANCED.md - E11-02
+    """
+    from .executions import get_execution_repo
+    from services.process_engine.services.analytics import ProcessAnalytics
+
+    definition_repo = get_repository()
+    execution_repo = get_execution_repo()
+
+    analytics = ProcessAnalytics(definition_repo, execution_repo)
+    all_metrics = analytics.get_all_process_metrics(days=days)
+
+    return {
+        "processes": [m.to_dict() for m in all_metrics],
+        "days": days,
+    }

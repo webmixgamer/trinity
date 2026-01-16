@@ -18,6 +18,7 @@ from ..domain import (
     ProcessExecution,
     StepDefinition,
     StepId,
+    ExecutionId,
     ExecutionStatus,
     StepStatus,
     StepType,
@@ -141,6 +142,8 @@ class ExecutionEngine:
         definition: ProcessDefinition,
         input_data: Optional[dict[str, Any]] = None,
         triggered_by: str = "manual",
+        parent_execution_id: Optional[ExecutionId] = None,
+        parent_step_id: Optional[StepId] = None,
     ) -> ProcessExecution:
         """
         Start a new process execution.
@@ -148,7 +151,9 @@ class ExecutionEngine:
         Args:
             definition: The process definition to execute
             input_data: Optional input data for the process
-            triggered_by: What triggered this execution (manual, schedule, api)
+            triggered_by: What triggered this execution (manual, schedule, api, sub_process)
+            parent_execution_id: Optional parent execution ID (for sub-processes)
+            parent_step_id: Optional parent step ID that spawned this (for sub-processes)
 
         Returns:
             The completed (or failed) execution
@@ -158,10 +163,22 @@ class ExecutionEngine:
             definition=definition,
             input_data=input_data or {},
             triggered_by=triggered_by,
+            parent_execution_id=parent_execution_id,
+            parent_step_id=parent_step_id,
         )
 
         # Save initial state
         self.execution_repo.save(execution)
+
+        # If this is a sub-process, update parent to track child
+        if parent_execution_id:
+            parent_execution = self.execution_repo.get_by_id(parent_execution_id)
+            if parent_execution:
+                parent_execution.add_child_execution(execution.id)
+                self.execution_repo.save(parent_execution)
+                logger.info(
+                    f"Sub-process execution {execution.id} linked to parent {parent_execution_id}"
+                )
 
         logger.info(f"Starting execution {execution.id} for process '{definition.name}'")
 
@@ -531,6 +548,27 @@ class ExecutionEngine:
 
         # Complete the step
         execution.complete_step(step_id, output)
+
+        # Extract and store cost from output if available
+        step_exec = execution.step_executions[str(step_id)]
+        if output.get("cost"):
+            try:
+                cost = Money.from_string(output["cost"])
+                step_exec.cost = cost
+                # Add to execution total
+                execution.add_cost(cost)
+            except (ValueError, KeyError):
+                pass  # Ignore invalid cost format
+
+        # Extract and store token usage from output if available
+        if output.get("token_usage"):
+            from ..domain import TokenUsage
+            try:
+                token_usage = TokenUsage.from_dict(output["token_usage"])
+                step_exec.token_usage = token_usage
+            except (ValueError, KeyError, TypeError):
+                pass  # Ignore invalid token_usage format
+
         self.execution_repo.save(execution)
 
         # Store output
@@ -538,7 +576,6 @@ class ExecutionEngine:
             self.output_storage.store(execution.id, step_id, output)
 
         # Calculate duration
-        step_exec = execution.step_executions[str(step_id)]
         duration = step_exec.duration
 
         await self._publish_event(StepCompleted(

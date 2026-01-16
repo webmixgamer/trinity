@@ -382,10 +382,15 @@ class ProcessExecution:
     output_data: dict[str, Any] = field(default_factory=dict)
 
     # Tracking
-    triggered_by: str = "manual"  # manual, schedule, api, event, retry
+    triggered_by: str = "manual"  # manual, schedule, api, event, retry, sub_process
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     retry_of: Optional[ExecutionId] = None  # Original execution if this is a retry
+
+    # Sub-process tracking (parent/child relationships)
+    parent_execution_id: Optional[ExecutionId] = None  # Parent execution if this is a child
+    parent_step_id: Optional[StepId] = None  # Step in parent that spawned this
+    child_execution_ids: list[ExecutionId] = field(default_factory=list)  # Child executions
 
     # Observability
     total_cost: Money = field(default_factory=lambda: Money.zero())
@@ -397,15 +402,19 @@ class ProcessExecution:
         triggered_by: str = "manual",
         input_data: Optional[dict[str, Any]] = None,
         retry_of: Optional[ExecutionId] = None,
+        parent_execution_id: Optional[ExecutionId] = None,
+        parent_step_id: Optional[StepId] = None,
     ) -> ProcessExecution:
         """
         Create a new execution for a process definition.
 
         Args:
             definition: The process definition to execute
-            triggered_by: What triggered this execution (manual, schedule, api, retry)
+            triggered_by: What triggered this execution (manual, schedule, api, retry, sub_process)
             input_data: Input data for the execution
             retry_of: If this is a retry, the ID of the original failed execution
+            parent_execution_id: If this is a sub-process, the parent execution ID
+            parent_step_id: If this is a sub-process, the parent step that spawned this
         """
         # Initialize step executions for all steps
         step_executions = {}
@@ -422,6 +431,9 @@ class ProcessExecution:
             input_data=input_data or {},
             triggered_by=triggered_by,
             retry_of=retry_of,
+            parent_execution_id=parent_execution_id,
+            parent_step_id=parent_step_id,
+            child_execution_ids=[],
         )
 
     @property
@@ -559,9 +571,22 @@ class ProcessExecution:
                 return False
         return True
 
+    def add_child_execution(self, child_id: ExecutionId) -> None:
+        """Add a child execution ID to track sub-process calls."""
+        if child_id not in self.child_execution_ids:
+            self.child_execution_ids.append(child_id)
+
+    def is_sub_process(self) -> bool:
+        """Check if this execution is a sub-process (has a parent)."""
+        return self.parent_execution_id is not None
+
+    def has_children(self) -> bool:
+        """Check if this execution has spawned child processes."""
+        return len(self.child_execution_ids) > 0
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
-        return {
+        result = {
             "id": str(self.id),
             "process_id": str(self.process_id),
             "process_version": str(self.process_version),
@@ -581,9 +606,32 @@ class ProcessExecution:
             "retry_of": str(self.retry_of) if self.retry_of else None,
         }
 
+        # Sub-process tracking
+        if self.parent_execution_id:
+            result["parent_execution_id"] = str(self.parent_execution_id)
+        if self.parent_step_id:
+            result["parent_step_id"] = str(self.parent_step_id)
+        if self.child_execution_ids:
+            result["child_execution_ids"] = [str(cid) for cid in self.child_execution_ids]
+
+        return result
+
     @classmethod
     def from_dict(cls, data: dict) -> ProcessExecution:
         """Create from dictionary (deserialization)."""
+        # Parse parent/child relationships
+        parent_execution_id = None
+        if data.get("parent_execution_id"):
+            parent_execution_id = ExecutionId(data["parent_execution_id"])
+
+        parent_step_id = None
+        if data.get("parent_step_id"):
+            parent_step_id = StepId(data["parent_step_id"])
+
+        child_execution_ids = []
+        if data.get("child_execution_ids"):
+            child_execution_ids = [ExecutionId(cid) for cid in data["child_execution_ids"]]
+
         execution = cls(
             id=ExecutionId(data["id"]),
             process_id=ProcessId(data["process_id"]),
@@ -595,6 +643,9 @@ class ProcessExecution:
             triggered_by=data.get("triggered_by", "manual"),
             total_cost=Money.from_string(data.get("total_cost", "$0.00")),
             retry_of=ExecutionId(data["retry_of"]) if data.get("retry_of") else None,
+            parent_execution_id=parent_execution_id,
+            parent_step_id=parent_step_id,
+            child_execution_ids=child_execution_ids,
         )
 
         # Parse step executions

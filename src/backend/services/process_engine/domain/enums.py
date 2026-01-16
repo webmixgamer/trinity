@@ -21,6 +21,7 @@ class StepType(str, Enum):
     GATEWAY = "gateway"  # Stub for Core phase
     TIMER = "timer"  # Stub for Advanced phase
     NOTIFICATION = "notification"  # Stub for Advanced phase
+    SUB_PROCESS = "sub_process"  # Advanced phase - call other processes
 
 
 class ExecutionStatus(str, Enum):

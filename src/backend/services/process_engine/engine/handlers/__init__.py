@@ -9,6 +9,7 @@ from .human_approval import HumanApprovalHandler, ApprovalStore, get_approval_st
 from .gateway import GatewayHandler
 from .notification import NotificationHandler
 from .timer import TimerHandler
+from .sub_process import SubProcessHandler
 
 __all__ = [
     "AgentTaskHandler",
@@ -18,4 +19,5 @@ __all__ = [
     "GatewayHandler",
     "NotificationHandler",
     "TimerHandler",
+    "SubProcessHandler",
 ]

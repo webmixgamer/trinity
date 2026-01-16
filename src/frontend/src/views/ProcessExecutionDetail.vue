@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <ProcessSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Loading state -->
         <div v-if="loading" class="flex justify-center py-12">
           <div class="flex items-center gap-3 text-gray-500 dark:text-gray-400">
@@ -50,6 +51,29 @@
                     >
                       {{ execution.retry_of.substring(0, 8) }}...
                     </router-link>
+                  </span>
+                </p>
+                <!-- Sub-process relationship badge (Called by parent) -->
+                <p v-if="execution.parent_execution_id" class="mt-1 text-sm">
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                    <ArrowUpIcon class="w-3 h-3" />
+                    Called by:
+                    <router-link
+                      :to="`/executions/${execution.parent_execution_id}`"
+                      class="underline hover:text-indigo-900 dark:hover:text-indigo-100"
+                    >
+                      {{ execution.parent_execution_id.substring(0, 8) }}...
+                    </router-link>
+                    <span v-if="execution.parent_step_id" class="text-indigo-500 dark:text-indigo-400">
+                      (step: {{ execution.parent_step_id }})
+                    </span>
+                  </span>
+                </p>
+                <!-- Child executions indicator -->
+                <p v-if="execution.child_execution_ids && execution.child_execution_ids.length > 0" class="mt-1 text-sm">
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300">
+                    <ArrowDownIcon class="w-3 h-3" />
+                    {{ execution.child_execution_ids.length }} child execution{{ execution.child_execution_ids.length > 1 ? 's' : '' }}
                   </span>
                 </p>
               </div>
@@ -309,10 +333,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useExecutionsStore } from '../stores/executions'
 import { useProcessWebSocket } from '../composables/useProcessWebSocket'
 import NavBar from '../components/NavBar.vue'
+import ProcessSubNav from '../components/ProcessSubNav.vue'
 import ExecutionTimeline from '../components/ExecutionTimeline.vue'
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
   ExclamationCircleIcon,
   PlayIcon,
   CheckIcon,

@@ -8,6 +8,9 @@ from .validator import ProcessValidator, ValidationResult, ValidationError, Erro
 from .output_storage import OutputStorage, OutputPath
 from .expression_evaluator import ExpressionEvaluator, EvaluationContext, ExpressionError, ConditionEvaluator
 from .event_logger import EventLogger
+from .analytics import ProcessAnalytics, ProcessMetrics, TrendData, StepPerformance
+from .alerts import CostAlertService, CostThreshold, CostAlert, ThresholdType, AlertStatus
+from .templates import ProcessTemplateService, ProcessTemplate, ProcessTemplateInfo
 
 __all__ = [
     "ProcessValidator",
@@ -21,4 +24,16 @@ __all__ = [
     "ExpressionError",
     "ConditionEvaluator",
     "EventLogger",
+    "ProcessAnalytics",
+    "ProcessMetrics",
+    "TrendData",
+    "StepPerformance",
+    "CostAlertService",
+    "CostThreshold",
+    "CostAlert",
+    "ThresholdType",
+    "AlertStatus",
+    "ProcessTemplateService",
+    "ProcessTemplate",
+    "ProcessTemplateInfo",
 ]

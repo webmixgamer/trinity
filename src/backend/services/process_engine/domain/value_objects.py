@@ -146,7 +146,7 @@ class Version:
         """
         if not value:
             raise ValueError("Version string cannot be empty")
-        
+
         parts = value.split(".")
         if len(parts) == 1:
             return cls(major=int(parts[0]))
@@ -199,7 +199,7 @@ class Duration:
     """
     Represents a time duration for timeouts, delays, etc.
     Stored as seconds internally (with millisecond precision via float).
-    
+
     Supports parsing from human-readable strings:
     - "100ms" = 0.1 seconds
     - "30s" = 30 seconds
@@ -211,7 +211,7 @@ class Duration:
 
     # Pattern for parsing duration strings
     _PATTERN = re.compile(r"^(\d+)(ms|s|m|h|d)$")
-    
+
     # Multipliers for each unit
     _UNITS = {
         "ms": 0.001,
@@ -230,7 +230,7 @@ class Duration:
     def from_string(cls, value: str) -> Duration:
         """
         Parse duration from string.
-        
+
         Examples:
             Duration.from_string("100ms") -> Duration(seconds=0.1)
             Duration.from_string("30s") -> Duration(seconds=30)
@@ -240,13 +240,13 @@ class Duration:
         """
         if not value:
             raise ValueError("Duration string cannot be empty")
-        
+
         value = value.strip().lower()
-        
+
         # Try parsing as just seconds (integer)
         if value.isdigit():
             return cls(seconds=int(value))
-        
+
         # Try parsing with unit suffix
         match = cls._PATTERN.match(value)
         if not match:
@@ -254,18 +254,18 @@ class Duration:
                 f"Invalid duration format '{value}'. "
                 "Use format like '100ms', '30s', '5m', '2h', '1d'"
             )
-        
+
         amount = int(match.group(1))
         unit = match.group(2)
         multiplier = cls._UNITS[unit]
-        
+
         return cls(seconds=amount * multiplier)
 
     @classmethod
     def from_seconds(cls, seconds: float) -> Duration:
         """Create Duration from seconds."""
         return cls(seconds=seconds)
-    
+
     @classmethod
     def from_milliseconds(cls, ms: int) -> Duration:
         """Create Duration from milliseconds."""
@@ -290,17 +290,17 @@ class Duration:
         """Return human-readable representation."""
         if self.seconds == 0:
             return "0s"
-        
+
         # Handle sub-second durations
         if self.seconds < 1:
             ms = int(self.seconds * 1000)
             return f"{ms}ms"
-        
+
         total_seconds = int(self.seconds)
         days, remainder = divmod(total_seconds, 86400)
         hours, remainder = divmod(remainder, 3600)
         minutes, seconds = divmod(remainder, 60)
-        
+
         parts = []
         if days:
             parts.append(f"{int(days)}d")
@@ -310,7 +310,7 @@ class Duration:
             parts.append(f"{int(minutes)}m")
         if seconds:
             parts.append(f"{int(seconds)}s")
-        
+
         return "".join(parts)
 
     def __add__(self, other: Duration) -> Duration:
@@ -349,7 +349,7 @@ class Money:
     """
     Represents a monetary amount with currency.
     Uses Decimal for precise arithmetic.
-    
+
     Reference: IT3 Section 4.3 (Value Objects)
     """
     amount: Decimal
@@ -360,10 +360,10 @@ class Money:
         # Convert amount to Decimal if needed (for frozen dataclass)
         if not isinstance(self.amount, Decimal):
             object.__setattr__(self, "amount", Decimal(str(self.amount)))
-        
+
         if self.amount < 0:
             raise ValueError(f"Money amount cannot be negative: {self.amount}")
-        
+
         if not self.currency or len(self.currency) != 3:
             raise ValueError(f"Currency must be 3-letter code: {self.currency}")
 
@@ -381,7 +381,7 @@ class Money:
     def from_string(cls, value: str, currency: str = "USD") -> Money:
         """
         Parse Money from string.
-        
+
         Examples:
             Money.from_string("1.50") -> Money(amount=Decimal('1.50'))
             Money.from_string("$1.50") -> Money(amount=Decimal('1.50'))
@@ -457,6 +457,78 @@ class Money:
 
 
 # =============================================================================
+# Token Usage & Cost Tracking
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """
+    Tracks token usage from LLM API calls.
+
+    Used to track consumption and calculate costs for agent task steps.
+
+    Reference: BACKLOG_ADVANCED.md - E11-01
+    """
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+    # Optional: model-specific fields
+    model: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """Validate token counts."""
+        if self.input_tokens < 0:
+            raise ValueError(f"input_tokens cannot be negative: {self.input_tokens}")
+        if self.output_tokens < 0:
+            raise ValueError(f"output_tokens cannot be negative: {self.output_tokens}")
+        if self.total_tokens < 0:
+            raise ValueError(f"total_tokens cannot be negative: {self.total_tokens}")
+
+        # Auto-calculate total if not provided
+        if self.total_tokens == 0 and (self.input_tokens > 0 or self.output_tokens > 0):
+            object.__setattr__(self, "total_tokens", self.input_tokens + self.output_tokens)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TokenUsage":
+        """Create TokenUsage from dictionary."""
+        if not data:
+            return cls()
+        return cls(
+            input_tokens=data.get("input_tokens", 0),
+            output_tokens=data.get("output_tokens", 0),
+            total_tokens=data.get("total_tokens", 0),
+            model=data.get("model"),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        result = {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+        }
+        if self.model:
+            result["model"] = self.model
+        return result
+
+    def __add__(self, other: "TokenUsage") -> "TokenUsage":
+        """Add two TokenUsage objects."""
+        if not isinstance(other, TokenUsage):
+            return NotImplemented
+        return TokenUsage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            total_tokens=self.total_tokens + other.total_tokens,
+        )
+
+    def __str__(self) -> str:
+        """Return human-readable representation."""
+        return f"{self.total_tokens} tokens (in: {self.input_tokens}, out: {self.output_tokens})"
+
+
+# =============================================================================
 # Error Handling Policies
 # =============================================================================
 
@@ -480,7 +552,7 @@ class RetryPolicy:
         """Create from dictionary."""
         if not data:
             return cls.default()
-        
+
         return cls(
             max_attempts=data.get("max_attempts", 3),
             initial_delay=Duration.from_string(data.get("initial_delay", "5s")),
@@ -502,7 +574,7 @@ class ErrorPolicy:
     Configuration for handling step failures after retries are exhausted.
     """
     from .enums import OnErrorAction
-    
+
     action: OnErrorAction = OnErrorAction.FAIL_PROCESS
     target_step: Optional[StepId] = None
 
@@ -518,15 +590,15 @@ class ErrorPolicy:
         from .enums import OnErrorAction
         if not data:
             return cls.default()
-        
+
         if isinstance(data, str):
             # Simple format: just the action
             return cls(action=OnErrorAction(data))
-        
+
         target_step = data.get("target_step")
         if target_step:
             target_step = StepId(target_step)
-            
+
         return cls(
             action=OnErrorAction(data.get("action", "fail_process")),
             target_step=target_step,

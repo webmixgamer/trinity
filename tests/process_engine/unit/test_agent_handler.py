@@ -102,9 +102,9 @@ class TestAgentTaskHandler:
     async def test_execute_success(self, handler, sample_context):
         """Successful execution returns output."""
         config = sample_context.step_definition.config
-        
+
         result = await handler.execute(sample_context, config)
-        
+
         assert result.success is True
         assert result.output is not None
         assert "response" in result.output
@@ -114,9 +114,9 @@ class TestAgentTaskHandler:
     async def test_execute_substitutes_input(self, handler, mock_gateway, sample_context):
         """Input variables are substituted in message."""
         config = sample_context.step_definition.config
-        
+
         await handler.execute(sample_context, config)
-        
+
         # Check that the message was substituted
         call_args = mock_gateway.send_message.call_args
         sent_message = call_args.kwargs.get("message") or call_args[1].get("message")
@@ -129,9 +129,9 @@ class TestAgentTaskHandler:
         """Returns failure when agent is unavailable."""
         mock_gateway.check_agent_available.return_value = False
         config = sample_context.step_definition.config
-        
+
         result = await handler.execute(sample_context, config)
-        
+
         assert result.success is False
         assert result.error_code == "AGENT_UNAVAILABLE"
 
@@ -140,9 +140,9 @@ class TestAgentTaskHandler:
         """Returns failure when agent returns error."""
         mock_gateway.send_message.side_effect = AgentTaskError("Connection failed")
         config = sample_context.step_definition.config
-        
+
         result = await handler.execute(sample_context, config)
-        
+
         assert result.success is False
         assert result.error_code == "AGENT_ERROR"
         assert "Connection failed" in result.error
@@ -168,21 +168,21 @@ class TestVariableSubstitution:
                 "message": "Research {{input.topic}} in {{input.language}}",
             }),
         ]
-        
+
         execution = ProcessExecution.create(definition, input_data={
             "topic": "AI",
             "language": "English",
         })
-        
+
         context = StepContext(
             execution=execution,
             step_definition=definition.steps[0],
             step_outputs={},
             input_data=execution.input_data,
         )
-        
+
         await handler.execute(context, definition.steps[0].config)
-        
+
         call_args = mock_gateway.send_message.call_args
         sent_message = call_args.kwargs.get("message") or call_args[1].get("message")
         assert "AI" in sent_message
@@ -200,9 +200,9 @@ class TestVariableSubstitution:
                 "message": "Continue with: {{steps.step-a.output}}",
             }),
         ]
-        
+
         execution = ProcessExecution.create(definition, input_data={})
-        
+
         context = StepContext(
             execution=execution,
             step_definition=definition.steps[0],
@@ -211,9 +211,9 @@ class TestVariableSubstitution:
             },
             input_data={},
         )
-        
+
         await handler.execute(context, definition.steps[0].config)
-        
+
         call_args = mock_gateway.send_message.call_args
         sent_message = call_args.kwargs.get("message") or call_args[1].get("message")
         assert "Research findings about AI" in sent_message
@@ -237,23 +237,30 @@ class TestAgentGateway:
         mock_response.metrics.cost_usd = 0.01
         mock_response.metrics.context_used = 500
         mock_response.metrics.context_max = 8000
-        
+        # Token usage attributes for E11-01 cost tracking
+        mock_response.metrics.input_tokens = 100
+        mock_response.metrics.output_tokens = 50
+        mock_response.metrics.total_tokens = 150
+        mock_response.metrics.model = "gpt-4"
+
         mock_client = MagicMock()
         mock_client.chat = AsyncMock(return_value=mock_response)
-        
+
         def mock_factory(agent_name):
             return mock_client
-        
+
         gateway = AgentGateway(agent_client_factory=mock_factory)
-        
+
         result = await gateway.send_message(
             agent_name="test-agent",
             message="Hello",
             timeout=60.0,
         )
-        
+
         assert result["response"] == "Hello from agent"
         assert result["cost"] is not None
+        assert result["token_usage"] is not None
+        assert result["token_usage"].total_tokens == 150
         mock_client.chat.assert_called_once()
 
     @pytest.mark.asyncio
@@ -261,18 +268,18 @@ class TestAgentGateway:
         """Gateway handles client errors."""
         mock_client = MagicMock()
         mock_client.chat = AsyncMock(side_effect=Exception("Network error"))
-        
+
         def mock_factory(agent_name):
             return mock_client
-        
+
         gateway = AgentGateway(agent_client_factory=mock_factory)
-        
+
         with pytest.raises(AgentTaskError) as exc_info:
             await gateway.send_message(
                 agent_name="test-agent",
                 message="Hello",
             )
-        
+
         assert "Network error" in str(exc_info.value)
 
 
@@ -287,11 +294,11 @@ class TestHandlerRegistration:
     def test_register_with_registry(self):
         """Handler can be registered with registry."""
         from services.process_engine.engine import StepHandlerRegistry
-        
+
         registry = StepHandlerRegistry()
         handler = AgentTaskHandler(gateway=MagicMock())
-        
+
         registry.register(handler)
-        
+
         assert registry.has_handler(StepType.AGENT_TASK)
         assert registry.get(StepType.AGENT_TASK) is handler

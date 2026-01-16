@@ -18,7 +18,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 from .enums import StepType, StepStatus, OnErrorAction, ApprovalStatus
-from .value_objects import StepId, Duration, Money, RetryPolicy, ErrorPolicy
+from .value_objects import StepId, Duration, Money, TokenUsage, RetryPolicy, ErrorPolicy
 from .step_configs import (
     StepConfig,
     AgentTaskConfig,
@@ -26,6 +26,7 @@ from .step_configs import (
     GatewayConfig,
     NotificationConfig,
     CompensationConfig,
+    SubProcessConfig,
     parse_step_config,
 )
 
@@ -107,6 +108,15 @@ class StepDefinition:
                 "subject": data.get("subject", ""),
                 "url": data.get("url"),
             }
+        elif step_type == StepType.SUB_PROCESS:
+            config_data = {
+                "process_name": data["process_name"],
+                "version": data.get("version"),
+                "input_mapping": data.get("input_mapping", {}),
+                "output_key": data.get("output_key", "result"),
+                "wait_for_completion": data.get("wait_for_completion", True),
+                "timeout": data.get("timeout", "1h"),
+            }
         else:
             # Generic config extraction
             config_data = data.get("config", {})
@@ -178,6 +188,15 @@ class StepDefinition:
                 result["subject"] = self.config.subject
             if self.config.url:
                 result["url"] = self.config.url
+        elif self.type == StepType.SUB_PROCESS and isinstance(self.config, SubProcessConfig):
+            result["process_name"] = self.config.process_name
+            if self.config.version:
+                result["version"] = self.config.version
+            if self.config.input_mapping:
+                result["input_mapping"] = self.config.input_mapping
+            result["output_key"] = self.config.output_key
+            result["wait_for_completion"] = self.config.wait_for_completion
+            result["timeout"] = str(self.config.timeout)
         else:
             result["config"] = self.config.to_dict()
 
@@ -211,6 +230,7 @@ class StepExecution:
     output: Optional[dict[str, Any]] = None
     error: Optional[dict[str, Any]] = None
     cost: Optional["Money"] = None  # Cost incurred by this step
+    token_usage: Optional["TokenUsage"] = None  # Token usage from LLM calls
     retry_count: int = 0
 
     @property
@@ -282,6 +302,8 @@ class StepExecution:
             result["error"] = self.error
         if self.cost:
             result["cost"] = str(self.cost)
+        if self.token_usage:
+            result["token_usage"] = self.token_usage.to_dict()
         if self.duration:
             result["duration_seconds"] = self.duration.seconds
 
@@ -295,6 +317,11 @@ class StepExecution:
         if data.get("cost"):
             cost = Money.from_string(data["cost"])
 
+        # Parse token_usage if present
+        token_usage = None
+        if data.get("token_usage"):
+            token_usage = TokenUsage.from_dict(data["token_usage"])
+
         execution = cls(
             step_id=StepId(data["step_id"]),
             status=StepStatus(data["status"]),
@@ -303,6 +330,7 @@ class StepExecution:
             output=data.get("output"),
             error=data.get("error"),
             cost=cost,
+            token_usage=token_usage,
         )
 
         if data.get("started_at"):

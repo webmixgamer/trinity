@@ -140,6 +140,9 @@ class ValidationResult:
 # Type for agent checker function
 AgentChecker = Callable[[str], tuple[bool, bool]]  # Returns (exists, is_running)
 
+# Type for process checker function (for sub_process validation)
+ProcessChecker = Callable[[str, Optional[str]], bool]  # (process_name, version) -> exists_and_published
+
 
 class ProcessValidator:
     """
@@ -161,6 +164,7 @@ class ProcessValidator:
     def __init__(
         self,
         agent_checker: Optional[AgentChecker] = None,
+        process_checker: Optional[ProcessChecker] = None,
     ):
         """
         Initialize validator.
@@ -168,8 +172,11 @@ class ProcessValidator:
         Args:
             agent_checker: Optional function to check if agent exists/is running.
                           Signature: (agent_name: str) -> (exists: bool, is_running: bool)
+            process_checker: Optional function to check if process exists and is published.
+                            Signature: (process_name: str, version: str|None) -> bool
         """
         self.agent_checker = agent_checker
+        self.process_checker = process_checker
 
     def validate_yaml(
         self,
@@ -229,6 +236,14 @@ class ProcessValidator:
         if self.agent_checker and result.is_valid:
             self._check_agents(definition, result)
 
+        # Step 6: Sub-process existence checking (warnings)
+        if self.process_checker and result.is_valid:
+            self._check_sub_processes(definition, result)
+
+        # Step 7: Recursive sub-process detection
+        if result.is_valid:
+            self._check_recursive_sub_processes(definition, result)
+
         return result
 
     def validate_definition(
@@ -255,6 +270,14 @@ class ProcessValidator:
         # Agent checking
         if self.agent_checker and result.is_valid:
             self._check_agents(definition, result)
+
+        # Sub-process existence checking
+        if self.process_checker and result.is_valid:
+            self._check_sub_processes(definition, result)
+
+        # Recursive sub-process detection
+        if result.is_valid:
+            self._check_recursive_sub_processes(definition, result)
 
         return result
 
@@ -380,6 +403,20 @@ class ProcessValidator:
                     result.add_error(
                         message=f"agent_task step missing required field: 'message'",
                         path=f"{path_prefix}.message",
+                    )
+            elif step_type == "sub_process":
+                if "process_name" not in step:
+                    result.add_error(
+                        message=f"sub_process step missing required field: 'process_name'",
+                        path=f"{path_prefix}.process_name",
+                        suggestion="Add 'process_name: my-child-process'",
+                    )
+                # Validate input_mapping if provided
+                input_mapping = step.get("input_mapping")
+                if input_mapping is not None and not isinstance(input_mapping, dict):
+                    result.add_error(
+                        message=f"sub_process 'input_mapping' must be an object",
+                        path=f"{path_prefix}.input_mapping",
                     )
 
     def _validate_trigger_schema(
@@ -526,3 +563,58 @@ class ProcessValidator:
                         message=f"Could not verify agent '{agent_name}'",
                         path=f"steps[{i}].agent",
                     )
+
+    def _check_sub_processes(
+        self,
+        definition: ProcessDefinition,
+        result: ValidationResult,
+    ) -> None:
+        """Check if referenced sub-processes exist and are published."""
+        if not self.process_checker:
+            return
+
+        for i, step in enumerate(definition.steps):
+            if step.type == StepType.SUB_PROCESS:
+                from ..domain import SubProcessConfig
+                if isinstance(step.config, SubProcessConfig):
+                    process_name = step.config.process_name
+                    version = step.config.version
+                    try:
+                        exists = self.process_checker(process_name, version)
+                        if not exists:
+                            version_info = f" (version: {version})" if version else ""
+                            result.add_warning(
+                                message=f"Sub-process '{process_name}'{version_info} not found or not published",
+                                path=f"steps[{i}].process_name",
+                                suggestion=f"Ensure process '{process_name}' exists and is published",
+                            )
+                    except Exception:
+                        result.add_warning(
+                            message=f"Could not verify sub-process '{process_name}'",
+                            path=f"steps[{i}].process_name",
+                        )
+
+    def _check_recursive_sub_processes(
+        self,
+        definition: ProcessDefinition,
+        result: ValidationResult,
+    ) -> None:
+        """
+        Check for direct self-referencing sub-processes.
+
+        Note: This only detects direct self-recursion where a process calls itself.
+        Detecting indirect recursion (A calls B which calls A) requires access to
+        all process definitions and is deferred to runtime.
+        """
+        for i, step in enumerate(definition.steps):
+            if step.type == StepType.SUB_PROCESS:
+                from ..domain import SubProcessConfig
+                if isinstance(step.config, SubProcessConfig):
+                    process_name = step.config.process_name
+                    # Check for direct self-recursion
+                    if process_name == definition.name:
+                        result.add_error(
+                            message=f"Sub-process step references itself (recursive call to '{process_name}')",
+                            path=f"steps[{i}].process_name",
+                            suggestion="Sub-processes cannot call their parent process directly",
+                        )

@@ -1,9 +1,10 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <ProcessSubNav :pending-approvals="pendingCount" />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+      <div class="px-4 sm:px-0">
         <!-- Header -->
         <div class="flex justify-between items-center mb-6">
           <div>
@@ -116,13 +117,13 @@
               </tr>
             </thead>
             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              <tr 
-                v-for="approval in approvals" 
+              <tr
+                v-for="approval in approvals"
                 :key="approval.id"
                 class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <span 
+                  <span
                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                     :class="getStatusClasses(approval.status)"
                   >
@@ -160,7 +161,7 @@
                     >
                       <ArrowTopRightOnSquareIcon class="w-5 h-5" />
                     </router-link>
-                    
+
                     <!-- Approve button (only for pending) -->
                     <button
                       v-if="approval.status === 'pending'"
@@ -171,7 +172,7 @@
                     >
                       <CheckCircleIcon class="w-5 h-5" />
                     </button>
-                    
+
                     <!-- Reject button (only for pending) -->
                     <button
                       v-if="approval.status === 'pending'"
@@ -192,8 +193,8 @@
     </main>
 
     <!-- Reject Modal -->
-    <div 
-      v-if="rejectingApproval" 
+    <div
+      v-if="rejectingApproval"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       @click.self="rejectingApproval = null"
     >
@@ -234,7 +235,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
-import { 
+import ProcessSubNav from '../components/ProcessSubNav.vue'
+import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   CheckCircleIcon,
@@ -253,6 +255,8 @@ const rejectingApproval = ref(null)
 const rejectReason = ref('')
 
 // Computed
+const pendingCount = computed(() => approvals.value.filter(a => a.status === 'pending').length)
+
 const stats = computed(() => {
   const all = approvals.value
   return {
@@ -269,7 +273,7 @@ async function loadApprovals() {
   try {
     const params = new URLSearchParams()
     if (statusFilter.value) params.append('status', statusFilter.value)
-    
+
     const response = await fetch(`/api/approvals?${params}`)
     if (response.ok) {
       const data = await response.json()
@@ -353,7 +357,7 @@ function showRejectModal(approval) {
 
 async function confirmReject() {
   if (!rejectingApproval.value || !rejectReason.value.trim()) return
-  
+
   actionLoading.value = rejectingApproval.value.id
   try {
     const response = await fetch(`/api/approvals/${rejectingApproval.value.id}/reject`, {

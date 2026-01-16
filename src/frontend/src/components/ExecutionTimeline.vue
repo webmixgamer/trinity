@@ -26,8 +26,8 @@
         :key="step.step_id"
         :class="[
           'border rounded-lg transition-all duration-200',
-          expandedStep === step.step_id 
-            ? 'border-indigo-300 dark:border-indigo-700 shadow-md' 
+          expandedStep === step.step_id
+            ? 'border-indigo-300 dark:border-indigo-700 shadow-md'
             : 'border-gray-200 dark:border-gray-700',
           step.status === 'running' ? 'ring-2 ring-blue-400 dark:ring-blue-500' : '',
         ]"
@@ -58,15 +58,23 @@
                 {{ step.status }}
               </span>
               <!-- Gateway indicator -->
-              <span 
+              <span
                 v-if="step.step_type === 'gateway'"
                 class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                 title="Gateway (conditional routing)"
               >
                 ⬡ Gateway
               </span>
+              <!-- Sub-process indicator -->
+              <span
+                v-else-if="step.step_type === 'sub_process'"
+                class="px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300"
+                title="Sub-process (calls another process)"
+              >
+                ⎋ Sub-process
+              </span>
               <!-- Parallel execution indicator -->
-              <span 
+              <span
                 v-else-if="isParallelStep(step)"
                 class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
                 :title="`Parallel group (level ${step.parallel_level})`"
@@ -85,7 +93,7 @@
             <div v-if="getDuration(step)" class="text-sm text-gray-600 dark:text-gray-300 font-mono">
               {{ getDuration(step) }}
             </div>
-            <div 
+            <div
               v-if="maxDuration > 0"
               class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden"
             >
@@ -98,7 +106,7 @@
           </div>
 
           <!-- Expand icon -->
-          <ChevronDownIcon 
+          <ChevronDownIcon
             class="w-5 h-5 text-gray-400 transition-transform duration-200"
             :class="{ 'rotate-180': expandedStep === step.step_id }"
           />
@@ -144,12 +152,12 @@
                   {{ step.error.code }}
                 </span>
               </div>
-              
+
               <!-- Error message -->
               <div class="text-sm text-red-700 dark:text-red-300 font-medium mb-2">
                 {{ step.error.message || 'Unknown error' }}
               </div>
-              
+
               <!-- Retry info -->
               <div v-if="step.retry_count > 0" class="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
                 <div class="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
@@ -187,11 +195,11 @@
                 </svg>
                 <span class="font-medium text-amber-800 dark:text-amber-300">Waiting for Approval</span>
               </div>
-              
+
               <div v-if="approvalLoading === step.step_id" class="text-sm text-gray-600 dark:text-gray-400">
                 Processing...
               </div>
-              
+
               <div v-else class="flex items-center gap-3">
                 <button
                   @click="approveStep(step.step_id)"
@@ -215,7 +223,7 @@
                   Reject
                 </button>
               </div>
-              
+
               <!-- Reject dialog -->
               <div v-if="rejectingStep === step.step_id" class="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rejection reason (required)</label>
@@ -244,6 +252,48 @@
             </div>
           </div>
 
+          <!-- Sub-process execution display -->
+          <div v-if="step.step_type === 'sub_process'" class="mb-4">
+            <div class="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-teal-600 dark:text-teal-400 text-lg">⎋</span>
+                <span class="text-sm font-medium text-teal-800 dark:text-teal-300">Sub-process Call</span>
+              </div>
+              <div v-if="stepOutputs[step.step_id]" class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">Child process:</span>
+                  <span class="px-2 py-0.5 bg-teal-100 dark:bg-teal-800 text-teal-800 dark:text-teal-200 rounded text-sm font-medium">
+                    {{ stepOutputs[step.step_id].child_process_name || 'unknown' }}
+                  </span>
+                  <span v-if="stepOutputs[step.step_id].child_process_version" class="text-xs text-gray-500 dark:text-gray-400">
+                    v{{ stepOutputs[step.step_id].child_process_version }}
+                  </span>
+                </div>
+                <div v-if="stepOutputs[step.step_id].child_execution_id" class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">Execution:</span>
+                  <router-link
+                    :to="`/executions/${stepOutputs[step.step_id].child_execution_id}`"
+                    class="px-2 py-0.5 bg-teal-100 dark:bg-teal-800 text-teal-700 dark:text-teal-300 rounded text-sm hover:bg-teal-200 dark:hover:bg-teal-700 transition-colors"
+                  >
+                    {{ stepOutputs[step.step_id].child_execution_id.substring(0, 8) }}...
+                    <span class="text-xs">→</span>
+                  </router-link>
+                </div>
+                <div v-if="stepOutputs[step.step_id].child_cost" class="text-xs text-gray-600 dark:text-gray-400">
+                  Cost: {{ stepOutputs[step.step_id].child_cost }} |
+                  Duration: {{ formatDurationSeconds(stepOutputs[step.step_id].child_duration_seconds) }}
+                </div>
+              </div>
+              <button
+                v-else
+                @click="loadStepOutput(step.step_id)"
+                class="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300"
+              >
+                Load sub-process details
+              </button>
+            </div>
+          </div>
+
           <!-- Gateway routing display -->
           <div v-if="step.step_type === 'gateway' && step.status === 'completed'" class="mb-4">
             <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
@@ -265,8 +315,8 @@
                 <div v-if="stepOutputs[step.step_id].evaluated_conditions?.length" class="mt-2">
                   <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Evaluated conditions:</div>
                   <div class="space-y-1">
-                    <div 
-                      v-for="(cond, idx) in stepOutputs[step.step_id].evaluated_conditions" 
+                    <div
+                      v-for="(cond, idx) in stepOutputs[step.step_id].evaluated_conditions"
                       :key="idx"
                       class="flex items-center gap-2 text-xs"
                     >
@@ -362,7 +412,7 @@ const emit = defineEmits(['approval-decided'])
 // Computed
 const totalSteps = computed(() => props.steps.length)
 
-const completedSteps = computed(() => 
+const completedSteps = computed(() =>
   props.steps.filter(s => s.status === 'completed' || s.status === 'skipped').length
 )
 
@@ -445,7 +495,7 @@ async function approveStep(stepId) {
     const response = await fetch(`/api/approvals/execution/${props.executionId}/step/${stepId}`)
     if (!response.ok) throw new Error('Approval not found')
     const approval = await response.json()
-    
+
     // Then approve it
     const approveResponse = await fetch(`/api/approvals/${approval.id}/approve`, {
       method: 'POST',
@@ -456,7 +506,7 @@ async function approveStep(stepId) {
       const errorData = await approveResponse.json().catch(() => ({}))
       throw new Error(errorData.detail || 'Failed to approve')
     }
-    
+
     emit('approval-decided', { stepId, decision: 'approved' })
   } catch (error) {
     console.error('Failed to approve:', error)
@@ -473,14 +523,14 @@ function showRejectDialog(stepId) {
 
 async function confirmReject(stepId) {
   if (!rejectReason.value.trim()) return
-  
+
   approvalLoading.value = stepId
   try {
     // First get the approval ID for this step
     const response = await fetch(`/api/approvals/execution/${props.executionId}/step/${stepId}`)
     if (!response.ok) throw new Error('Approval not found')
     const approval = await response.json()
-    
+
     // Then reject it
     const rejectResponse = await fetch(`/api/approvals/${approval.id}/reject`, {
       method: 'POST',
@@ -491,7 +541,7 @@ async function confirmReject(stepId) {
       const errorData = await rejectResponse.json().catch(() => ({}))
       throw new Error(errorData.detail || 'Failed to reject')
     }
-    
+
     rejectingStep.value = null
     rejectReason.value = ''
     emit('approval-decided', { stepId, decision: 'rejected' })
@@ -551,12 +601,12 @@ function getDurationBarColor(status) {
 
 function getDuration(step) {
   if (!step.started_at) return null
-  
+
   const start = new Date(step.started_at)
   const end = step.completed_at ? new Date(step.completed_at) : new Date()
   const diffMs = end - start
   const seconds = Math.floor(diffMs / 1000)
-  
+
   if (seconds < 60) return `${seconds}s`
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
@@ -588,5 +638,13 @@ function formatError(error) {
 function formatOutput(output) {
   if (typeof output === 'string') return output
   return JSON.stringify(output, null, 2)
+}
+
+function formatDurationSeconds(seconds) {
+  if (!seconds) return '-'
+  if (seconds < 60) return `${seconds}s`
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}m ${secs}s`
 }
 </script>
