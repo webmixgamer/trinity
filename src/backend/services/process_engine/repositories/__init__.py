@@ -8,6 +8,7 @@ from .interfaces import ProcessDefinitionRepository, ProcessExecutionRepository,
 from .sqlite_definitions import SqliteProcessDefinitionRepository
 from .sqlite_executions import SqliteProcessExecutionRepository
 from .sqlite_events import SqliteEventRepository
+from .audit import SqliteAuditRepository
 
 __all__ = [
     "ProcessDefinitionRepository",
@@ -16,4 +17,6 @@ __all__ = [
     "SqliteProcessDefinitionRepository",
     "SqliteProcessExecutionRepository",
     "SqliteEventRepository",
+    # Audit (IT5 P1)
+    "SqliteAuditRepository",
 ]

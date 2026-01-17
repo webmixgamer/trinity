@@ -31,6 +31,12 @@ from .enums import (
     OnErrorAction,
     ApprovalStatus,
     AgentRole,
+    # Access Control Enums (IT5 P1)
+    ProcessPermission,
+    ProcessRole,
+    ROLE_PERMISSIONS,
+    role_has_permission,
+    get_role_permissions,
 )
 
 from .entities import (
@@ -130,6 +136,12 @@ __all__ = [
     "OnErrorAction",
     "ApprovalStatus",
     "AgentRole",
+    # Access Control Enums (IT5 P1)
+    "ProcessPermission",
+    "ProcessRole",
+    "ROLE_PERMISSIONS",
+    "role_has_permission",
+    "get_role_permissions",
     # Entities
     "StepDefinition",
     "StepExecution",

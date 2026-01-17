@@ -15,8 +15,10 @@ The backlog is split into phase-based files for easier AI agent consumption:
 | [`BACKLOG_MVP.md`](./BACKLOG_MVP.md) | MVP | E1-E4, E15 | 26 | Sequential processes with basic UI |
 | [`BACKLOG_CORE.md`](./BACKLOG_CORE.md) | Core | E5-E8, E13-E14 | 23 | Parallel, approvals, gateways, triggers |
 | [`BACKLOG_ADVANCED.md`](./BACKLOG_ADVANCED.md) | Advanced | E9-E12, E16 | 13 | Scheduling, sub-processes, analytics |
+| [`BACKLOG_RELIABILITY_IMPROVEMENTS.md`](./BACKLOG_RELIABILITY_IMPROVEMENTS.md) | Reliability | - | 14 | Integration tests, execution recovery |
+| [`BACKLOG_ACCESS_AUDIT.md`](./BACKLOG_ACCESS_AUDIT.md) | Governance | E17-E19 | 9 | RBAC, audit logging, execution limits |
 
-**Total**: 16 Epics, 62 Stories
+**Total**: 19 Epics, 85 Stories
 
 ---
 
@@ -40,6 +42,9 @@ The backlog is split into phase-based files for easier AI agent consumption:
 | **E14** | Notification Step | Core | 2 |
 | **E15** | Event Publishing Infrastructure | MVP | 4 |
 | **E16** | Agent Roles (EMI Pattern) | Advanced | 3 |
+| **E17** | Access Control (RBAC) | Governance | 4 |
+| **E18** | Audit Logging | Governance | 3 |
+| **E19** | Execution Governance | Governance | 2 |
 
 ---
 
@@ -177,3 +182,5 @@ Show only what's needed at each level:
 |------|--------|
 | 2026-01-14 | Split backlog into phase-based files |
 | 2026-01-14 | Created index with conventions and traceability |
+| 2026-01-17 | Added BACKLOG_RELIABILITY_IMPROVEMENTS.md and BACKLOG_ACCESS_AUDIT.md |
+| 2026-01-17 | Added E17-E19 epics for IT5 P1 features |

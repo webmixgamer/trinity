@@ -53,6 +53,7 @@ from routers.approvals import router as approvals_router
 from routers.triggers import router as triggers_router
 from routers.alerts import router as alerts_router
 from routers.process_templates import router as process_templates_router
+from routers.audit import router as audit_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -299,6 +300,7 @@ app.include_router(approvals_router)
 app.include_router(triggers_router)
 app.include_router(alerts_router)
 app.include_router(process_templates_router)
+app.include_router(audit_router)  # IT5 P1: Audit logging
 
 
 # WebSocket endpoint

@@ -5,6 +5,7 @@ Provides REST API endpoints for managing process definitions.
 Part of the Process-Driven Platform feature.
 
 Reference: BACKLOG_MVP.md - E1-04
+Reference: BACKLOG_ACCESS_AUDIT.md - E17-04 (Authorization)
 """
 
 import logging
@@ -26,7 +27,7 @@ from services.process_engine.domain import (
     expand_cron_preset,
 )
 from services.process_engine.repositories import SqliteProcessDefinitionRepository
-from services.process_engine.services import ProcessValidator, ValidationResult
+from services.process_engine.services import ProcessValidator, ValidationResult, ProcessAuthorizationService
 from services.process_engine.events import InMemoryEventBus, get_websocket_publisher
 
 # For process schedule management
@@ -148,6 +149,34 @@ def get_validator() -> ProcessValidator:
     return ProcessValidator(agent_checker=None)
 
 
+# =============================================================================
+# Authorization Service (IT5 P1)
+# =============================================================================
+
+_auth_service: Optional[ProcessAuthorizationService] = None
+
+
+def get_auth_service() -> ProcessAuthorizationService:
+    """Get the process authorization service."""
+    global _auth_service
+    if _auth_service is None:
+        _auth_service = ProcessAuthorizationService()
+    return _auth_service
+
+
+def require_process_permission(permission_check):
+    """
+    Decorator-like function that checks authorization.
+
+    Usage:
+        auth_result = require_process_permission(lambda auth: auth.can_create_process(user))
+        if not auth_result:
+            raise HTTPException(403, detail=auth_result.reason)
+    """
+    auth = get_auth_service()
+    return permission_check(auth)
+
+
 # Event bus for process definition events
 _event_bus: Optional[InMemoryEventBus] = None
 
@@ -186,7 +215,18 @@ async def create_process(
     Create a new process definition from YAML.
 
     The process is created in DRAFT status.
+
+    Requires: PROCESS_CREATE permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_create_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.create", "process", None, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     validator = get_validator()
     result = validator.validate_yaml(request.yaml_content, created_by=current_user.email)
 
@@ -231,7 +271,18 @@ async def list_processes(
     List all process definitions.
 
     Supports filtering by status and name, with pagination.
+
+    Requires: PROCESS_READ permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_read_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.list", "process", None, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     repo = get_repository()
 
     # Parse status filter
@@ -263,7 +314,18 @@ async def get_process(
 ) -> dict:
     """
     Get a single process definition by ID.
+
+    Requires: PROCESS_READ permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_read_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.read", "process", process_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     repo = get_repository()
 
     try:
@@ -288,7 +350,18 @@ async def update_process(
     Update a process definition.
 
     Only DRAFT processes can be updated.
+
+    Requires: PROCESS_UPDATE permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_update_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.update", "process", process_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     repo = get_repository()
 
     try:
@@ -356,7 +429,18 @@ async def delete_process(
     Delete a process definition.
 
     Only DRAFT and ARCHIVED processes can be deleted.
+
+    Requires: PROCESS_DELETE permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_delete_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.delete", "process", process_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     repo = get_repository()
 
     try:
@@ -430,7 +514,18 @@ async def publish_process(
     Publish a draft process definition.
 
     Published processes are immutable and can be executed.
+
+    Requires: PROCESS_PUBLISH permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_publish_process(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "process.publish", "process", process_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     repo = get_repository()
 
     try:

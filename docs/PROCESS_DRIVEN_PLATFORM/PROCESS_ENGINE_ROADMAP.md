@@ -1323,21 +1323,82 @@ Execution Recovery on Startup has been implemented and tested:
 
 ---
 
-## Next Priority: IT5 P1 or Manual Testing
+## Completed: IT5 P1 - Access & Audit ✅
 
-With P0 reliability complete, the next options are:
+> **Reference**: `PROCESS_DRIVEN_THINKING_IT5.md` Section 5 (Access Management)
+> **Implementation**: `BACKLOG_ACCESS_AUDIT.md` (E17, E18, E19)
 
-**Option A: IT5 P1 - Access & Audit**
-1. Role-based permissions (Process Designer, Operator, Viewer, Approver)
-2. Audit logging for all operations
-3. Execution concurrency limits
-4. Basic rate limiting
+Access control, audit logging, and execution governance have been implemented:
 
-**Option B: Phase 1 Manual Testing**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  IT5 P1 - Access & Audit Architecture                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Authorization Flow:                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  API Request → ProcessAuthorizationService → Role-based check        │    │
+│  │                        ↓                                             │    │
+│  │  Roles: DESIGNER | OPERATOR | VIEWER | APPROVER | ADMIN              │    │
+│  │                        ↓                                             │    │
+│  │  Allow or Deny (403 Forbidden)                                       │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  Audit Trail:                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  All state changes → AuditService → SqliteAuditRepository           │    │
+│  │  Query via GET /api/audit (admin only)                               │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  Execution Limits:                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  ExecutionLimitService → Global: 50 concurrent | Per-process: 3      │    │
+│  │  Returns 429 Too Many Requests when exceeded                         │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Details:**
+| Component | Location |
+|-----------|----------|
+| `ProcessPermission` enum | `services/process_engine/domain/enums.py` |
+| `ProcessRole` enum + mappings | `services/process_engine/domain/enums.py` |
+| `ProcessAuthorizationService` | `services/process_engine/services/authorization.py` |
+| `AuditService` + `AuditEntry` | `services/process_engine/services/audit.py` |
+| `SqliteAuditRepository` | `services/process_engine/repositories/audit.py` |
+| `ExecutionLimitService` | `services/process_engine/services/limits.py` |
+| Audit API router | `routers/audit.py` |
+| Unit tests | `tests/process_engine/unit/test_authorization.py` (42 tests) |
+| Unit tests | `tests/process_engine/unit/test_audit.py` (22 tests) |
+
+**IT5 P1 Status:**
+| Feature | Status |
+|---------|--------|
+| Role-based permissions | ✅ (5 roles, 13 permissions) |
+| API authorization middleware | ✅ (All process/execution endpoints protected) |
+| Audit logging | ✅ (Append-only with filters) |
+| Audit query API | ✅ (`GET /api/audit` admin-only) |
+| Execution concurrency limits | ✅ (Global: 50, Per-process: 3) |
+| Limits status endpoint | ✅ (`GET /api/executions/limits/status`) |
+| Basic rate limiting | ⏳ (E19-02 - P2 priority, deferred) |
+
+---
+
+## Next Priority: Phase 1 Manual Testing or IT5 P2
+
+With P0 (Reliability) and P1 (Access & Audit) complete, the next options are:
+
+**Option A: Phase 1 Manual Testing**
 1. Run P1.1 Simple Content Pipeline
 2. Run P1.2 Approval Gate Pipeline
 3. Run P1.3 Scheduled Daily Report
 4. Document discovered bottlenecks
+
+**Option B: IT5 P2 - Performance & Scale**
+1. Checkpointing for recovery
+2. Performance monitoring
+3. Database optimization
 
 ---
 
@@ -1345,6 +1406,8 @@ With P0 reliability complete, the next options are:
 
 | Date | Change |
 |------|--------|
+| 2026-01-17 | Mark IT5 P1 (Access & Audit) as complete |
+| 2026-01-17 | Update Next Priority section with Phase 1 or IT5 P2 options |
 | 2026-01-17 | Mark Execution Recovery (IT5 P0) as complete |
 | 2026-01-17 | Update Next Priority section with options |
 | 2026-01-17 | Add Pre-Phase integration test summary (33 tests) |
