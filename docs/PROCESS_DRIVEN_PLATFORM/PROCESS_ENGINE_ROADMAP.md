@@ -776,6 +776,370 @@ Configure 5 different processes all scheduled for "0 9 * * *" (9am daily).
 
 ---
 
+## Phase 6: In-App Documentation & Onboarding
+
+Build user guidance directly into the Processes UI.
+
+> **Reference**: IT5 Section 3 — User Onboarding Patterns
+
+### P6.1 — Documentation Tab
+
+Add a **"Docs" tab** in the Processes navigation alongside List, Dashboard, Approvals.
+
+| Component | Description |
+|-----------|-------------|
+| **Location** | `/processes/docs` as new route |
+| **Content** | Markdown-rendered guides |
+| **Search** | Full-text search across docs |
+
+**Content Structure:**
+
+```
+Docs Tab
+├── Getting Started
+│   ├── What are Processes?
+│   ├── Your First Process (5-minute tutorial)
+│   └── Understanding Step Types
+├── Step Type Reference
+│   ├── agent_task — AI agent execution
+│   ├── human_approval — Approval gates
+│   ├── gateway — Conditional branching
+│   ├── timer — Delays and waits
+│   ├── notification — Alerts and messages
+│   └── sub_process — Nested workflows
+├── YAML Reference
+│   ├── Process Definition Schema
+│   ├── Variable Interpolation ({{...}})
+│   ├── Trigger Configuration
+│   └── Retry & Error Handling
+├── Patterns & Examples
+│   ├── Sequential Pipeline
+│   ├── Parallel Execution
+│   ├── Approval Workflows
+│   ├── Scheduled Reports
+│   └── Multi-Level Sub-Processes
+└── Troubleshooting
+    ├── Common Errors
+    ├── Why is my step stuck?
+    └── Cost Optimization Tips
+```
+
+**Implementation Notes:**
+- Store docs as `.md` files in `config/process-docs/` or similar
+- Render with `vue-markdown` or similar library
+- Include copy-paste YAML snippets
+- Link from error messages to relevant troubleshooting docs
+
+**Bottlenecks to Watch**:
+- [ ] Docs discoverability (do users find the tab?)
+- [ ] Search effectiveness
+- [ ] Code snippet copy UX
+- [ ] Keeping docs in sync with features
+
+---
+
+### P6.2 — Contextual Help
+
+Add **inline help** throughout the Process Editor and Execution views.
+
+| Location | Help Type | Content |
+|----------|-----------|---------|
+| Step type dropdown | Tooltip | Brief description of each type |
+| YAML editor | Sidebar hints | Schema hints based on cursor position |
+| Validation errors | Links | "Learn more" links to docs |
+| Execution detail | Explainers | "Why is this step waiting?" |
+
+**Examples:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Step Type: [gateway ▾]                                          │
+│            ┌──────────────────────────────────────────────────┐ │
+│            │ Gateway                                          │ │
+│            │ ────────                                         │ │
+│            │ Routes execution to different paths based on     │ │
+│            │ conditions. Like an "if/else" in code.           │ │
+│            │                                                  │ │
+│            │ [See examples →]                                 │ │
+│            └──────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**YAML Editor Sidebar:**
+```
+┌─────────────────────────┬──────────────────────────────────────┐
+│ YAML Editor             │ Help                                 │
+├─────────────────────────┼──────────────────────────────────────┤
+│ steps:                  │ ℹ️ depends_on                         │
+│   - id: analyze         │ ──────────────                       │
+│     type: agent_task    │ List of step IDs that must complete  │
+│     depends_on: [fetch] │ before this step starts.             │
+│     agent: analyst      │                                      │
+│     message: |          │ Example:                             │
+│       Analyze the...    │   depends_on: [step-a, step-b]       │
+│                    ▲    │                                      │
+│              cursor     │ Steps without depends_on run in      │
+│                         │ parallel at process start.           │
+│                         │                                      │
+│                         │ [Full reference →]                   │
+└─────────────────────────┴──────────────────────────────────────┘
+```
+
+**Bottlenecks to Watch**:
+- [ ] Help doesn't obstruct workflow
+- [ ] Cursor-position detection accuracy in YAML
+- [ ] Help panel dismissability
+- [ ] Mobile/narrow screen layout
+
+---
+
+### P6.3 — Empty State Guidance
+
+Provide clear guidance when users encounter empty states.
+
+| Empty State | Current | Improved |
+|-------------|---------|----------|
+| No processes | Generic "No processes" | "Create your first process" CTA + template cards |
+| No executions | "No executions" | "Run this process" button + what to expect |
+| No approvals | "No pending approvals" | Explanation + how approvals work |
+
+**First Process Empty State:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│                         🚀 Create Your First Process                         │
+│                                                                              │
+│  Processes automate multi-step workflows using your AI agents.              │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                     │    │
+│  │   Quick Start Templates                                             │    │
+│  │   ─────────────────────                                             │    │
+│  │                                                                     │    │
+│  │   ┌───────────────┐  ┌───────────────┐  ┌───────────────┐          │    │
+│  │   │ Content       │  │ Data          │  │ Support       │          │    │
+│  │   │ Pipeline      │  │ Report        │  │ Escalation    │          │    │
+│  │   │               │  │               │  │               │          │    │
+│  │   │ Write→Review  │  │ Gather→       │  │ Triage→       │          │    │
+│  │   │ →Publish      │  │ Analyze→Report│  │ Route→Resolve │          │    │
+│  │   │               │  │               │  │               │          │    │
+│  │   │ [Use →]       │  │ [Use →]       │  │ [Use →]       │          │    │
+│  │   └───────────────┘  └───────────────┘  └───────────────┘          │    │
+│  │                                                                     │    │
+│  │   Or: [Create from Scratch]  [Import YAML]                         │    │
+│  │                                                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  📖 New to Processes? [Read the 5-minute guide →]                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Never-Run Process State:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  weekly-sales-report                                          [Edit] [Run]  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│                      ⏸️ This process hasn't been run yet                     │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                     │    │
+│  │   What will happen when you run it:                                 │    │
+│  │                                                                     │    │
+│  │   1. 📥 Gather Data (researcher) ─────────────── ~2-5 min          │    │
+│  │   2. 📊 Analyze Trends (analyst) ─────────────── ~5-10 min         │    │
+│  │   3. 📝 Generate Report (writer) ─────────────── ~3-5 min          │    │
+│  │                                                                     │    │
+│  │   Estimated total: 10-20 minutes                                    │    │
+│  │   Estimated cost: $2-4                                              │    │
+│  │                                                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│                    [▶ Run Now]    [Schedule First Run]                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Bottlenecks to Watch**:
+- [ ] Template cards lead to success (not confusion)
+- [ ] Time/cost estimates accuracy
+- [ ] Users understand "Run" vs "Schedule"
+
+---
+
+### P6.4 — Onboarding Wizard
+
+Optional guided wizard for first-time process creation.
+
+**Trigger**: First visit to Processes section, or "Create Process" with no prior processes.
+
+**Flow:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Step 1 of 4: What do you want to automate?                      [Skip →]   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Choose the type of workflow you want to create:                            │
+│                                                                              │
+│  ○ Content Creation                                                          │
+│    Research → Write → Review → Publish                                       │
+│                                                                              │
+│  ○ Data Processing                                                           │
+│    Collect → Transform → Analyze → Report                                    │
+│                                                                              │
+│  ○ Approval Workflow                                                         │
+│    Request → Review → Approve/Reject → Notify                                │
+│                                                                              │
+│  ○ Customer Operations                                                       │
+│    Receive → Triage → Process → Respond                                      │
+│                                                                              │
+│  ○ Something else (start from scratch)                                       │
+│                                                                              │
+│                                              [Back]  [Next: Choose Agents →] │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Step 2 of 4: Select your agents                                 [Skip →]   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Which agents will perform each step?                                        │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  Step: Research                                                     │    │
+│  │  Agent: [▾ Select agent...]                                         │    │
+│  │         ┌────────────────────────────────┐                          │    │
+│  │         │ researcher        ✓ Running    │                          │    │
+│  │         │ content-agent     ✓ Running    │                          │    │
+│  │         │ data-analyst      ○ Stopped    │                          │    │
+│  │         │ + Create new agent...          │                          │    │
+│  │         └────────────────────────────────┘                          │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ⚠️ Some agents are stopped. Processes work best with running agents.        │
+│                                                                              │
+│                                        [Back]  [Next: Add Approvals? →]      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Step 3 of 4: Human checkpoints                                  [Skip →]   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Do you need human approval at any point?                                    │
+│                                                                              │
+│  ☑ Yes, add an approval step                                                 │
+│                                                                              │
+│    Where should the approval happen?                                         │
+│    ○ After first draft (before publish)                                      │
+│    ○ At the end (final review)                                               │
+│    ○ Let me customize later                                                  │
+│                                                                              │
+│    Who can approve?                                                          │
+│    [editor@company.com                                    ] [+ Add more]     │
+│                                                                              │
+│  ☐ No, fully automated                                                       │
+│                                                                              │
+│                                            [Back]  [Next: Review & Create →] │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Step 4 of 4: Review your process                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Name: [my-content-pipeline                    ]                             │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  Your workflow:                                                     │    │
+│  │                                                                     │    │
+│  │  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐      │    │
+│  │  │ Research │ →  │  Write   │ →  │ Approval │ →  │ Publish  │      │    │
+│  │  │researcher│    │  writer  │    │  Human   │    │publisher │      │    │
+│  │  └──────────┘    └──────────┘    └──────────┘    └──────────┘      │    │
+│  │                                                                     │    │
+│  │  Estimated time: 15-25 minutes                                      │    │
+│  │  Estimated cost: $3-5 (plus approval wait time)                     │    │
+│  │                                                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ☑ Run immediately after creation                                           │
+│  ☐ Set up a schedule                                                        │
+│                                                                              │
+│                                              [Back]  [Create Process →]      │
+│                                                                              │
+│  💡 You can always edit the YAML directly after creation for more options.  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Bottlenecks to Watch**:
+- [ ] Wizard completion rate
+- [ ] Users skip wizard (is it too long?)
+- [ ] Generated YAML quality
+- [ ] Transition from wizard to YAML editor
+
+---
+
+### P6.5 — Interactive Tutorials
+
+In-app interactive tutorials that guide through real actions.
+
+| Tutorial | Trigger | Duration |
+|----------|---------|----------|
+| First Process | New user clicks "Create" | ~3 min |
+| Understanding Execution | First execution completes | ~1 min |
+| Reading Analytics | First visit to Dashboard | ~1 min |
+
+**Implementation**: Spotlight/tooltip system highlighting UI elements.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ProcessEditor.vue                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                         ┌───────────────────┐
+│  ┌────────────────────────────────────────────────┐    │ Tutorial 1/5     │
+│  │                                                │    │ ───────────────── │
+│  │  name: my-first-process                        │ ←──│ This is where you │
+│  │  steps:                                        │    │ define your       │
+│  │    - id: step-1                    ═══════════════▶ │ process in YAML.  │
+│  │      type: agent_task                          │    │                   │
+│  │      agent: my-agent                           │    │ Try changing the  │
+│  │      message: "Hello world"                    │    │ agent name to one │
+│  │                                                │    │ of your agents.   │
+│  │                                                │    │                   │
+│  │                                                │    │ [Next →]          │
+│  └────────────────────────────────────────────────┘    └───────────────────┘
+│                                                                              │
+│  [Validate]  [Save Draft]  [Publish]                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Bottlenecks to Watch**:
+- [ ] Tutorial interrupts workflow
+- [ ] Can't dismiss/skip easily
+- [ ] Tutorial state persists incorrectly
+- [ ] Mobile/touch support
+
+---
+
+### Implementation Priority
+
+| Item | Priority | Effort | Impact |
+|------|----------|--------|--------|
+| P6.3 Empty States | **P0** | Low | High |
+| P6.1 Docs Tab | **P1** | Medium | High |
+| P6.2 Contextual Help | **P1** | Medium | Medium |
+| P6.4 Onboarding Wizard | **P2** | High | Medium |
+| P6.5 Interactive Tutorials | **P3** | High | Low |
+
+**Rationale**: Empty states are quick wins that immediately help new users. Docs tab provides reference material. Contextual help reduces confusion. Wizard and tutorials are nice-to-have polish.
+
+---
+
 ## Bottleneck Categories
 
 ### Architecture Bottlenecks
@@ -804,6 +1168,10 @@ Configure 5 different processes all scheduled for "0 9 * * *" (9am daily).
 | U8 | Cost Awareness | Total cost not visible until done | P3.3 |
 | U9 | Template Syntax | Variable interpolation confusing | P2.1, P2.3 |
 | U10 | Schedule UX | Cron syntax intimidating | P1.3, P5.2 |
+| U11 | Docs Discoverability | Users don't find the documentation | P6.1 |
+| U12 | Empty State Confusion | No guidance when starting fresh | P6.3 |
+| U13 | Wizard Completion | Users abandon onboarding wizard | P6.4 |
+| U14 | Help Intrusiveness | Contextual help disrupts workflow | P6.2, P6.5 |
 
 ---
 
@@ -849,6 +1217,16 @@ Configure 5 different processes all scheduled for "0 9 * * *" (9am daily).
 | P5.1 Agent Competition | ⏳ | ⏳ | - |
 | P5.2 Schedule Collision | ⏳ | ⏳ | - |
 
+### Phase 6 Status (Documentation & Onboarding)
+
+| Item | Designed | Implemented | Issues Found |
+|------|----------|-------------|--------------|
+| P6.1 Docs Tab | ⏳ | ⏳ | - |
+| P6.2 Contextual Help | ⏳ | ⏳ | - |
+| P6.3 Empty States | ⏳ | ⏳ | - |
+| P6.4 Onboarding Wizard | ⏳ | ⏳ | - |
+| P6.5 Interactive Tutorials | ⏳ | ⏳ | - |
+
 ---
 
 ## Issue Log
@@ -873,6 +1251,7 @@ Phase completion requires:
 3. **Phase 3**: Business processes complete with all step types working
 4. **Phase 4**: Stress tests complete, issues documented
 5. **Phase 5**: Multi-process scenarios don't deadlock or starve
+6. **Phase 6**: Users can self-serve documentation, empty states guide action
 
 **Overall Goal**: Identify and document at least 10 actionable bottlenecks for future improvement.
 
@@ -882,4 +1261,5 @@ Phase completion requires:
 
 | Date | Change |
 |------|--------|
+| 2026-01-16 | Add Phase 6: In-app documentation and onboarding (5 items) |
 | 2026-01-16 | Initial roadmap with 5 phases, 14 test processes |
