@@ -1177,6 +1177,28 @@ In-app interactive tutorials that guide through real actions.
 
 ## Implementation Tracking
 
+### Pre-Phase: Integration Test Coverage ✅
+
+> **Completed**: 2026-01-17
+> **Reference**: `BACKLOG_RELIABILITY_IMPROVEMENTS.md`
+
+Before running manual test processes, we established **33 Application Service Integration Tests** covering:
+
+| Area | Tests | Coverage |
+|------|-------|----------|
+| Execution Lifecycle | 4 | Start, complete, fail, cancel |
+| Sequential Execution | 4 | Multi-step, output passing, failure handling |
+| Parallel Execution | 5 | Fork/join, diamond pattern, failure behavior |
+| Error Handling & Retry | 5 | Retry policies, skip_step, backoff |
+| Gateway Routing | 4 | Exclusive routing, conditions, defaults |
+| Timer Steps | 3 | Timer completion, output, dependencies |
+| Event Publishing | 5 | Event sequence, failure events, context |
+| Output Persistence | 3 | Storage, substitution, multi-reference |
+
+**Key**: Tests use real SQLite repos, real handlers, real event bus - only mock external agent HTTP calls.
+
+---
+
 ### Phase 1 Status
 
 | Process | Created | Tested | Issues Found |
@@ -1257,9 +1279,75 @@ Phase completion requires:
 
 ---
 
+---
+
+## Completed: Execution Recovery (IT5 P0) ✅
+
+> **Reference**: `PROCESS_DRIVEN_THINKING_IT5.md` Section 2.3
+> **Implementation**: `BACKLOG_RELIABILITY_IMPROVEMENTS.md` (RI-10 to RI-14)
+
+Execution Recovery on Startup has been implemented and tested:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Recovery Flow (runs on backend startup)                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. Scan for active executions (RUNNING, PENDING, PAUSED)                   │
+│                                                                              │
+│  2. For each execution:                                                      │
+│     ├── Age > 24h?        → MARK_FAILED                                      │
+│     ├── Step RUNNING?     → RETRY_STEP (reset & resume)                      │
+│     └── Otherwise         → RESUME (continue from next step)                 │
+│                                                                              │
+│  3. Emit events and log summary                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Details:**
+| Component | Location |
+|-----------|----------|
+| `ExecutionRecoveryService` | `services/process_engine/services/recovery.py` |
+| Recovery events | `services/process_engine/domain/events.py` |
+| Startup integration | `main.py` lifespan handler |
+| Status endpoint | `GET /api/executions/recovery/status` |
+| Integration tests | `tests/process_engine/integration/test_execution_recovery.py` (12 tests) |
+
+**IT5 P0 Reliability Foundation Status:**
+| Feature | Status |
+|---------|--------|
+| Per-step retry | ✅ (Integration tests verify) |
+| State persistence before transitions | ✅ (Integration tests verify) |
+| Execution recovery on startup | ✅ (This implementation) |
+
+---
+
+## Next Priority: IT5 P1 or Manual Testing
+
+With P0 reliability complete, the next options are:
+
+**Option A: IT5 P1 - Access & Audit**
+1. Role-based permissions (Process Designer, Operator, Viewer, Approver)
+2. Audit logging for all operations
+3. Execution concurrency limits
+4. Basic rate limiting
+
+**Option B: Phase 1 Manual Testing**
+1. Run P1.1 Simple Content Pipeline
+2. Run P1.2 Approval Gate Pipeline
+3. Run P1.3 Scheduled Daily Report
+4. Document discovered bottlenecks
+
+---
+
 ## Document History
 
 | Date | Change |
 |------|--------|
+| 2026-01-17 | Mark Execution Recovery (IT5 P0) as complete |
+| 2026-01-17 | Update Next Priority section with options |
+| 2026-01-17 | Add Pre-Phase integration test summary (33 tests) |
+| 2026-01-17 | Add Next Priority section linking to IT5 P0 |
 | 2026-01-16 | Add Phase 6: In-app documentation and onboarding (5 items) |
 | 2026-01-16 | Initial roadmap with 5 phases, 14 test processes |

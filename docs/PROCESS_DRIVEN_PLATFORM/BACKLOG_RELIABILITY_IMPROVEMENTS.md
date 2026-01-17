@@ -1,9 +1,9 @@
 # Process Engine - Reliability Improvements Backlog
 
 > **Phase**: Reliability
-> **Goal**: Application Service Integration Tests for Process Engine
-> **Stories**: 10
-> **Focus**: Test ExecutionEngine orchestration with real infrastructure, mock only external boundaries
+> **Goal**: Reliability foundation for Process Engine (Integration Tests + Recovery)
+> **Stories**: 14
+> **Focus**: Test ExecutionEngine orchestration with real infrastructure; Execution recovery on startup
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -45,6 +45,8 @@ This backlog implements **Application Service Integration Tests** for the Proces
 | **Sprint 3** | RI-03, RI-04 | Sequential & Parallel Execution |
 | **Sprint 4** | RI-05, RI-06 | Error Handling & Gateways |
 | **Sprint 5** | RI-07, RI-08, RI-09 | Timer, Events, Output |
+| **Sprint 6** | RI-10, RI-11 | Execution Recovery Service |
+| **Sprint 7** | RI-12, RI-13, RI-14 | Recovery Integration & Tests |
 
 ---
 
@@ -271,6 +273,135 @@ This backlog implements **Application Service Integration Tests** for the Proces
 
 ---
 
+## Execution Recovery Stories
+
+> **Reference**: IT5 Section 2.3 (Recovery on Backend Restart)
+
+### RI-10: Recovery Service Core
+
+**As a** platform operator, **I want** interrupted executions to be recovered after restart, **so that** backend restarts don't leave zombie processes.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | L |
+| Priority | P0 |
+| Dependencies | None |
+| Status | ✅ done |
+
+**Acceptance Criteria:**
+- [x] `ExecutionRecoveryService` class with `recover_on_startup()` method
+- [x] `RecoveryAction` enum (RESUME, RETRY_STEP, MARK_FAILED, SKIP)
+- [x] `RecoveryReport` dataclass (resumed, retried, failed, skipped, errors)
+- [x] Age-based recovery determination (24h timeout configurable)
+- [x] `RecoveryConfig` for customization (max_age_hours, dry_run)
+- [x] Location: `src/backend/services/process_engine/services/recovery.py`
+
+**Technical Notes:**
+- Use `list_active()` to find RUNNING/PENDING/PAUSED executions
+- RESUME: Execution was between steps (call `engine.resume()`)
+- RETRY_STEP: Step was RUNNING (reset to PENDING, then resume)
+- MARK_FAILED: Execution > 24h old
+
+---
+
+### RI-11: Recovery Domain Events
+
+**As a** developer, **I want** recovery operations to emit domain events, **so that** I can observe and log recovery behavior.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | S |
+| Priority | P1 |
+| Dependencies | RI-10 |
+| Status | ✅ done |
+
+**Acceptance Criteria:**
+- [x] `ExecutionRecoveryStarted` event (marks scan start)
+- [x] `ExecutionRecovered` event (per execution, includes action)
+- [x] `ExecutionRecoveryFailed` event (when recovery errors)
+- [x] `ExecutionRecoveryCompleted` event (includes summary counts)
+- [x] Events exported from domain module
+- [x] Wire events to EventBus in recovery service
+
+**Technical Notes:**
+- Location: `src/backend/services/process_engine/domain/events.py`
+
+---
+
+### RI-12: Backend Startup Integration
+
+**As a** platform operator, **I want** recovery to run automatically on startup, **so that** I don't have to manually trigger it.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | M |
+| Priority | P0 |
+| Dependencies | RI-10 |
+| Status | ✅ done |
+
+**Acceptance Criteria:**
+- [x] `run_execution_recovery()` function in executions router
+- [x] Called from `main.py` lifespan handler during startup
+- [x] Recovery report logged (INFO level summary)
+- [x] Startup continues even if recovery fails
+- [x] `/api/executions/recovery/status` endpoint for health checks
+- [x] Stores last recovery report for inspection
+
+**Technical Notes:**
+- Location: `src/backend/main.py` (lifespan), `src/backend/routers/executions.py`
+
+---
+
+### RI-13: Recovery Integration Tests
+
+**As a** developer, **I want** integration tests for recovery, **so that** I verify recovery behavior works correctly.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | L |
+| Priority | P0 |
+| Dependencies | RI-10, RI-11 |
+| Status | ✅ done |
+
+**Acceptance Criteria:**
+- [x] `test_execution_recovery.py` with 12 tests:
+  - [x] `test_resume_execution_between_steps` - RESUME action
+  - [x] `test_resume_pending_execution` - PENDING status handling
+  - [x] `test_retry_running_step` - RETRY_STEP action
+  - [x] `test_retry_first_step_running` - First step interrupted
+  - [x] `test_mark_failed_old_execution` - Age timeout (24h)
+  - [x] `test_mark_failed_custom_age_threshold` - Custom threshold
+  - [x] `test_skip_completed_execution` - Terminal state handling
+  - [x] `test_mixed_batch_recovery` - Multiple actions in one scan
+  - [x] `test_recovery_continues_on_error` - Error resilience
+  - [x] `test_recovery_events_emitted` - Event verification
+  - [x] `test_dry_run_mode` - No state modification
+  - [x] `test_last_recovery_report_stored` - Health check support
+
+**Technical Notes:**
+- Location: `tests/process_engine/integration/test_execution_recovery.py`
+- Uses helper to create executions in specific states
+
+---
+
+### RI-14: Recovery Documentation
+
+**As a** developer, **I want** updated documentation, **so that** the recovery feature is discoverable and tracked.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | S |
+| Priority | P2 |
+| Dependencies | RI-10, RI-11, RI-12, RI-13 |
+| Status | ✅ done |
+
+**Acceptance Criteria:**
+- [x] Update this backlog with recovery stories (RI-10 to RI-14)
+- [x] Update `PROCESS_ENGINE_ROADMAP.md` to mark recovery complete
+- [x] Update story counts and sprint plan
+
+---
+
 ## Running the Tests
 
 ```bash
@@ -290,10 +421,12 @@ pytest tests/process_engine/integration/ --cov=services.process_engine.engine
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Total tests | 25+ | ✅ 33 |
-| Test runtime | < 10 seconds | ⚠️ ~90s (includes real async ops) |
+| Integration tests | 25+ | ✅ 33 |
+| Recovery tests | 6+ | ✅ 12 |
+| Total tests | 35+ | ✅ 45 |
+| Test runtime | < 15 seconds | ⚠️ ~100s (includes real async ops) |
 | Test isolation | Each test independent | ✅ Yes |
-| Coverage | Critical paths from PROCESS_ENGINE_ROADMAP.md | ✅ Covered |
+| Coverage | Integration tests + Recovery | ✅ Covered |
 
 **Note**: Test runtime is higher than target due to real execution engine orchestration. Tests use mocked `asyncio.sleep` where possible but still exercise full async event dispatch.
 
@@ -305,3 +438,5 @@ pytest tests/process_engine/integration/ --cov=services.process_engine.engine
 |------|--------|
 | 2026-01-17 | Initial creation - Application Service Integration Tests |
 | 2026-01-17 | All 33 integration tests implemented and passing |
+| 2026-01-17 | Added Execution Recovery stories (RI-10 to RI-14) |
+| 2026-01-17 | Recovery service implemented with 12 tests passing |

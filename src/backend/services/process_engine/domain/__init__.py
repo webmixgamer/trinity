@@ -104,6 +104,11 @@ from .events import (
     ProcessArchived,
     # Informed Agent Events (EMI Pattern)
     InformedNotification,
+    # Recovery Events
+    ExecutionRecoveryStarted,
+    ExecutionRecovered,
+    ExecutionRecoveryFailed,
+    ExecutionRecoveryCompleted,
 )
 
 __all__ = [
@@ -188,4 +193,9 @@ __all__ = [
     "ProcessArchived",
     # Informed Agent Events (EMI Pattern)
     "InformedNotification",
+    # Recovery Events
+    "ExecutionRecoveryStarted",
+    "ExecutionRecovered",
+    "ExecutionRecoveryFailed",
+    "ExecutionRecoveryCompleted",
 ]

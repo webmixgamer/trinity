@@ -72,6 +72,9 @@ from credentials import CredentialManager, CredentialCreate
 # Import process engine WebSocket publisher
 from services.process_engine.events import set_websocket_publisher_broadcast
 
+# Import execution recovery function
+from routers.executions import run_execution_recovery
+
 # Import logging configuration
 from logging_config import setup_logging
 
@@ -220,6 +223,23 @@ async def lifespan(app: FastAPI):
         print("Log archive service started")
     except Exception as e:
         print(f"Error starting log archive service: {e}")
+
+    # Run process execution recovery (IT5 P0 reliability feature)
+    try:
+        recovery_report = await run_execution_recovery()
+        if recovery_report.total_processed > 0:
+            print(
+                f"Execution recovery: "
+                f"resumed={len(recovery_report.resumed)}, "
+                f"retried={len(recovery_report.retried)}, "
+                f"failed={len(recovery_report.failed)}, "
+                f"errors={len(recovery_report.errors)}"
+            )
+        else:
+            print("Execution recovery: no interrupted executions found")
+    except Exception as e:
+        print(f"Error running execution recovery: {e}")
+        # Don't fail startup - recovery is important but not critical
 
     yield
 

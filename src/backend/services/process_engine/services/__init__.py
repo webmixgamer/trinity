@@ -12,6 +12,7 @@ from .analytics import ProcessAnalytics, ProcessMetrics, TrendData, StepPerforma
 from .alerts import CostAlertService, CostThreshold, CostAlert, ThresholdType, AlertStatus
 from .templates import ProcessTemplateService, ProcessTemplate, ProcessTemplateInfo
 from .informed_notifier import InformedAgentNotifier, NotificationResult
+from .recovery import ExecutionRecoveryService, RecoveryAction, RecoveryReport, RecoveryConfig, RecoveryResult
 
 __all__ = [
     "ProcessValidator",
@@ -39,4 +40,9 @@ __all__ = [
     "ProcessTemplateInfo",
     "InformedAgentNotifier",
     "NotificationResult",
+    "ExecutionRecoveryService",
+    "RecoveryAction",
+    "RecoveryReport",
+    "RecoveryConfig",
+    "RecoveryResult",
 ]

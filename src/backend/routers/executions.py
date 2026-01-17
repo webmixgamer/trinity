@@ -234,6 +234,53 @@ def get_execution_engine() -> ExecutionEngine:
 
 
 # =============================================================================
+# Recovery Service
+# =============================================================================
+
+from services.process_engine.services import ExecutionRecoveryService, RecoveryReport
+
+_recovery_service: Optional[ExecutionRecoveryService] = None
+_last_recovery_report: Optional[RecoveryReport] = None
+
+
+def get_recovery_service() -> ExecutionRecoveryService:
+    """Get the execution recovery service."""
+    global _recovery_service
+    if _recovery_service is None:
+        _recovery_service = ExecutionRecoveryService(
+            execution_repo=get_execution_repo(),
+            definition_repo=get_definition_repo(),
+            execution_engine=get_execution_engine(),
+            event_bus=get_event_bus(),
+        )
+    return _recovery_service
+
+
+async def run_execution_recovery() -> RecoveryReport:
+    """
+    Run execution recovery on startup.
+
+    Called from main.py lifespan handler to recover any executions
+    that were interrupted by a previous restart.
+
+    Reference: IT5 Section 2.3 (Recovery on Backend Restart)
+    Reference: BACKLOG_RELIABILITY_IMPROVEMENTS.md - RI-12
+    """
+    global _last_recovery_report
+
+    recovery_service = get_recovery_service()
+    report = await recovery_service.recover_on_startup()
+    _last_recovery_report = report
+
+    return report
+
+
+def get_last_recovery_report() -> Optional[RecoveryReport]:
+    """Get the last recovery report for health checks."""
+    return _last_recovery_report
+
+
+# =============================================================================
 # Endpoints
 # =============================================================================
 
@@ -684,3 +731,43 @@ def _to_detail(
         parent_step_id=str(execution.parent_step_id) if execution.parent_step_id else None,
         child_execution_ids=[str(cid) for cid in (execution.child_execution_ids or [])],
     )
+
+
+# =============================================================================
+# Recovery Status Endpoint
+# =============================================================================
+
+
+@router.get("/recovery/status")
+async def get_recovery_status(current_user: CurrentUser):
+    """
+    Get the status of the last execution recovery scan.
+
+    Useful for health checks and monitoring to verify recovery
+    ran successfully after backend startup.
+
+    Reference: BACKLOG_RELIABILITY_IMPROVEMENTS.md - RI-12
+    """
+    report = get_last_recovery_report()
+
+    if report is None:
+        return {
+            "status": "not_run",
+            "message": "Recovery has not run yet (backend may have just started)",
+        }
+
+    return {
+        "status": "completed",
+        "started_at": report.started_at.isoformat(),
+        "completed_at": report.completed_at.isoformat() if report.completed_at else None,
+        "duration_ms": report.duration_ms,
+        "counts": {
+            "resumed": len(report.resumed),
+            "retried": len(report.retried),
+            "failed": len(report.failed),
+            "skipped": len(report.skipped),
+            "errors": len(report.errors),
+            "total": report.total_processed,
+        },
+        "has_errors": len(report.errors) > 0,
+    }
