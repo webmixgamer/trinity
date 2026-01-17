@@ -1,6 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <AgentSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 py-6 sm:px-0">
@@ -208,6 +209,7 @@ import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watc
 import { useRoute, useRouter } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
+import AgentSubNav from '../components/AgentSubNav.vue'
 
 // Component name for KeepAlive matching
 defineOptions({

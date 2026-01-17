@@ -257,18 +257,31 @@
 | ⏳ | **Event Bus Infrastructure (13.2)** | Redis Streams pub/sub, permission-gated subscriptions, event persistence | HIGH |
 | ⏳ | **Event Handlers & Reactions (13.3)** | Configure automatic agent reactions to events from permitted agents | HIGH |
 
-### Phase 14: Process-Driven Multi-Agent Systems (Future Vision)
-⏳ **Pending** — *Business process orchestration platform*
+### Phase 14: Process Engine (Business Process Orchestration)
+✅ **Completed: 2026-01-16** — *BPMN-inspired workflow orchestration*
 
-> **Concept Document**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+> **Design Documents**: `docs/PROCESS_DRIVEN_PLATFORM/`
+> **Feature Flows**: `docs/memory/feature-flows/process-engine/`
 
-| Status | Item | Description | Priority |
-|--------|------|-------------|----------|
-| ⏳ | **Business Process Definitions (14.1)** | Processes as first-class entities with RACI matrix, triggers, policies | Future |
-| ⏳ | **System Agent as Orchestrator (14.2)** | Conversational process design, testing, and monitoring via System Agent | Future |
-| ⏳ | **Human-in-the-Loop Improvement** | Feedback collection, agent instruction updates, quality tracking | Future |
-| ⏳ | **Process Designer UI** | Visual process builder with RACI matrix editor | Future |
-| ⏳ | **Process Dashboard** | Process monitoring, execution history, metrics | Future |
+| Status | Item | Description | Completed |
+|--------|------|-------------|-----------|
+| ✅ | **Process Definition & Storage (14.1)** | YAML-based definitions with JSON schema validation, versioning | 2026-01-16 |
+| ✅ | **Sequential Execution Engine (14.2)** | Step handlers, state machine, dependency resolution | 2026-01-16 |
+| ✅ | **Process Definition UI (14.3)** | YAML editor with live preview, validation feedback | 2026-01-16 |
+| ✅ | **Execution Monitoring UI (14.4)** | Real-time step progress, WebSocket events, timeline | 2026-01-16 |
+| ✅ | **Parallel Execution (14.5)** | Dependency-based parallel branches | 2026-01-16 |
+| ✅ | **Human Approval Gates (14.6)** | Approval inbox, timeout handling, decision tracking | 2026-01-16 |
+| ✅ | **Conditional Logic/Gateways (14.7)** | Expression evaluation, conditional branching | 2026-01-16 |
+| ✅ | **Timer & Scheduling (14.8)** | Cron triggers, timer steps, timezone support | 2026-01-16 |
+| ✅ | **Sub-Processes (14.9)** | Parent-child linking, input mapping, breadcrumbs | 2026-01-16 |
+| ✅ | **Analytics & Cost Tracking (14.10)** | Metrics, trends, cost alerts | 2026-01-16 |
+| ✅ | **Process Templates (14.11)** | Bundled templates, user templates, template selector | 2026-01-16 |
+| ✅ | **Agent Roles - EMI Pattern (14.12)** | Executor/Monitor/Informed roles, InformedNotifier | 2026-01-16 |
+| ✅ | **Error Handling & Retry (14.13)** | Retry policies, error boundaries | 2026-01-16 |
+| ✅ | **Notification Steps (14.14)** | Notification handler for process events | 2026-01-16 |
+| ✅ | **Event Publishing (14.15)** | WebSocket publisher, domain events | 2026-01-16 |
+| ⏳ | **Process Designer UI (14.16)** | Visual drag-and-drop builder (nice-to-have) | Future |
+| ⏳ | **Human-in-the-Loop Improvement** | Feedback collection, quality tracking | Future |
 
 ### Phase 15: Compliance-Ready Development Methodology
 ⏳ **Pending** — *SOC-2 and ISO-compatible AI development practices*
@@ -311,7 +324,7 @@ Items not yet scheduled. Will be prioritized as needed.
 | **High** | **Event Bus Infrastructure** | 13.2 - Platform-wide pub/sub for agent event broadcasting/subscription |
 | **High** | **Event Handlers & Reactions** | 13.3 - Automatic agent reactions to events from permitted agents |
 | **High** | **Attention Amplification Pattern** | Phase 12 - Cognitive pattern for salience-based event amplification |
-| Medium | **Process-Driven Systems** | 14.1, 14.2 - Business process orchestration (see concept doc) |
+| Medium | **Process Designer UI** | 14.16 - Visual drag-and-drop process builder |
 | Medium | **SOC-2/ISO Compliance Methodology** | 15.* - Extend dev-methodology-template for audit-ready practices |
 | Low | Task DAG Graph Visualization | 9.8 - Visual dependency graph (Vue Flow) - backend ready, UI nice-to-have |
 | Medium | Kubernetes deployment scripts | 10.3 Kubernetes Deployment |
@@ -326,8 +339,9 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-01-16 | Process Engine Completed (Phase 14) | Implemented full BPMN-inspired Process Engine with 15 sprints: YAML definitions, execution engine with 6 step handlers, human approvals, parallel execution, sub-processes, analytics/cost tracking, EMI roles, templates. Deferred Event Bus - using direct WebSocket broadcasting instead. Visual designer deferred (YAML editor with preview sufficient for now). See `docs/PROCESS_DRIVEN_PLATFORM/` and `docs/memory/feature-flows/process-engine/`. |
 | 2026-01-09 | Compliance-Ready Development Methodology (Phase 15) | Extend `dev-methodology-template/` to produce SOC-2 and ISO 27001-compatible development artifacts. The existing methodology (slash commands, memory files, security-check, changelog) maps naturally to compliance controls. Formalizing this enables enterprise adoption and audit-ready AI development practices. |
-| 2026-01-06 | Process-Driven Multi-Agent Vision | Evolution from agent management to business process orchestration. Processes define agents (not vice versa). RACI matrix for role assignment. System Agent as primary interface for design/test/monitor. Human-in-the-loop improvement cycles. See `docs/drafts/PROCESS_DRIVEN_AGENTS.md`. |
+| 2026-01-06 | Process-Driven Multi-Agent Vision | Evolution from agent management to business process orchestration. Processes define agents (not vice versa). RACI matrix for role assignment. System Agent as primary interface for design/test/monitor. Human-in-the-loop improvement cycles. See `docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_AGENTS.md`. |
 | 2026-01-06 | Event Bus with Permission-Gated Subscriptions | Agents subscribe to events from permitted agents only (reuses agent_permissions). Event handlers trigger agent execution like schedules but event-driven. Foundation for process-driven systems. |
 | 2026-01-06 | Horizontal Agent Scalability | Agent pools with N instances for parallel task processing. Load balancing, auto-scaling, shared credentials. Enables high-throughput workflows. |
 | 2025-12-22 | Parallel Headless Execution (12.1) | Two execution modes: Sequential Chat (maintains context with --continue) and Parallel Task (stateless, no lock). Enables orchestrators to spawn N parallel worker tasks. Based on Claude Code headless mode research. |

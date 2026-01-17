@@ -47,6 +47,12 @@ from routers.setup import router as setup_router
 from routers.telemetry import router as telemetry_router
 from routers.logs import router as logs_router
 from routers.agent_dashboard import router as agent_dashboard_router
+from routers.processes import router as processes_router
+from routers.executions import router as executions_router
+from routers.approvals import router as approvals_router
+from routers.triggers import router as triggers_router
+from routers.alerts import router as alerts_router
+from routers.process_templates import router as process_templates_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -62,6 +68,9 @@ from services.log_archive_service import log_archive_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
+
+# Import process engine WebSocket publisher
+from services.process_engine.events import set_websocket_publisher_broadcast
 
 # Import logging configuration
 from logging_config import setup_logging
@@ -105,6 +114,9 @@ scheduler_service.set_broadcast_callback(manager.broadcast)
 
 # Set up activity service WebSocket manager
 activity_service.set_websocket_manager(manager)
+
+# Set up process engine WebSocket publisher
+set_websocket_publisher_broadcast(manager.broadcast)
 
 
 def initialize_github_pat():
@@ -261,6 +273,12 @@ app.include_router(setup_router)
 app.include_router(telemetry_router)
 app.include_router(logs_router)
 app.include_router(agent_dashboard_router)
+app.include_router(processes_router)
+app.include_router(executions_router)
+app.include_router(approvals_router)
+app.include_router(triggers_router)
+app.include_router(alerts_router)
+app.include_router(process_templates_router)
 
 
 # WebSocket endpoint

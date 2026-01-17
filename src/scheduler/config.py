@@ -52,6 +52,11 @@ class SchedulerConfig:
         "AGENT_TIMEOUT", "900"
     )))  # 15 minutes
 
+    # Backend API (for process executions)
+    backend_url: str = field(default_factory=lambda: os.getenv(
+        "BACKEND_URL", "http://backend:8000"
+    ))
+
     # Logging
     log_level: str = field(default_factory=lambda: os.getenv(
         "LOG_LEVEL", "INFO"

@@ -19,7 +19,9 @@
     "@xterm/xterm": "^5.5.0",
     "axios": "^1.7.9",
     "chart.js": "^4.4.7",
+    "js-yaml": "^4.1.1",
     "marked": "^17.0.0",
+    "monaco-editor": "^0.52.0",
     "pinia": "^2.3.0",
     "uplot": "^1.6.32",
     "vue": "^3.5.13",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
+    "@types/js-yaml": "^4.0.9",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",

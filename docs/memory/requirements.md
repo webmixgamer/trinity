@@ -530,21 +530,94 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 
 ---
 
-## 18. Future Vision
+## 18. Process Engine (Business Process Orchestration)
 
-### 18.1 Business Process Definitions
-- **Status**: ⏳ Concept Phase
-- **Description**: Processes as first-class entities orchestrating agent collaboration
-- **Design Doc**: `docs/drafts/PROCESS_DRIVEN_AGENTS.md`
+> **Design Documents**: `docs/PROCESS_DRIVEN_PLATFORM/`
+> **Feature Flows**: `docs/memory/feature-flows/process-engine/`
 
-### 18.2 Human-in-the-Loop Improvement
+### 18.1 Process Definition & Storage
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: YAML-based process definitions with validation and versioning
+- **Key Features**: JSON schema validation, semantic validation, version management
+- **Flow**: `docs/memory/feature-flows/process-engine/process-definition.md`
+
+### 18.2 Process Execution Engine
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Core engine orchestrating step execution with state machine
+- **Key Features**: Step handlers, dependency resolution, parallel branches, retry logic
+- **Flow**: `docs/memory/feature-flows/process-engine/process-execution.md`
+
+### 18.3 Process Monitoring
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Real-time execution monitoring via WebSocket events
+- **Key Features**: Live step progress, execution timeline, breadcrumb navigation
+- **Flow**: `docs/memory/feature-flows/process-engine/process-monitoring.md`
+
+### 18.4 Human Approval Gates
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Human-in-the-loop approval steps within processes
+- **Key Features**: Approval inbox, timeout handling, decision tracking
+- **Flow**: `docs/memory/feature-flows/process-engine/human-approval.md`
+
+### 18.5 Process Scheduling
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Cron-based schedule triggers and timer steps
+- **Key Features**: Cron presets, timezone support, timer delays
+- **Flow**: `docs/memory/feature-flows/process-engine/process-scheduling.md`
+
+### 18.6 Process Analytics & Cost Tracking
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Metrics, trends, and cost threshold alerts
+- **Key Features**: Success rates, duration trends, cost aggregation, alerts
+- **Flow**: `docs/memory/feature-flows/process-engine/process-analytics.md`
+
+### 18.7 Sub-Processes
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Calling other processes as steps with parent-child linking
+- **Key Features**: Input mapping, output capture, breadcrumb navigation
+- **Flow**: `docs/memory/feature-flows/process-engine/sub-processes.md`
+
+### 18.8 Agent Roles (EMI Pattern)
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Executor/Monitor/Informed role assignments for steps
+- **Key Features**: Role matrix UI, InformedAgentNotifier, NDJSON event persistence
+- **Flow**: `docs/memory/feature-flows/process-engine/agent-roles-emi.md`
+
+### 18.9 Process Templates
+- **Status**: ✅ Implemented (2026-01-16)
+- **Description**: Bundled and user-created process templates
+- **Key Features**: Template selector, category filtering, user templates
+- **Flow**: `docs/memory/feature-flows/process-engine/process-templates.md`
+
+### 18.10 Step Types
+The Process Engine supports six step types:
+
+| Step Type | Description | Handler |
+|-----------|-------------|---------|
+| `agent_task` | Execute task via AI agent | `AgentTaskHandler` |
+| `human_approval` | Pause for human decision | `HumanApprovalHandler` |
+| `gateway` | Conditional branching | `GatewayHandler` |
+| `timer` | Delay execution | `TimerHandler` |
+| `notification` | Send notifications | `NotificationHandler` |
+| `sub_process` | Call another process | `SubProcessHandler` |
+
+---
+
+## 19. Future Vision
+
+### 19.1 Human-in-the-Loop Improvement
 - **Status**: ⏳ Concept Phase
 - **Description**: Feedback collection and continuous improvement of agent behavior
 
-### 18.3 Compliance-Ready Methodology
+### 19.2 Compliance-Ready Methodology
 - **Status**: ⏳ Concept Phase
 - **Description**: SOC-2 and ISO 27001-compatible development practices
 - **Location**: `dev-methodology-template/`
+
+### 19.3 Process Designer UI
+- **Status**: ⏳ Concept Phase
+- **Description**: Visual drag-and-drop process builder
+- **Note**: Currently using YAML editor with live preview
 
 ---
 
