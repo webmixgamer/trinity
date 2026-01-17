@@ -1,0 +1,74 @@
+# T4.4 - Skip on Error
+# 
+# Purpose: Validate on_error: skip_step behavior
+# Agent: process-failer, process-echo
+# Expected: Failed step is skipped, process continues
+#
+# Test Validates:
+# - on_error: skip_step works
+# - Process continues after skipped step
+# - Downstream steps can check if upstream was skipped
+
+name: t4.4-skip-on-error
+version: "1.0.0"
+description: "Skip on error test - validates error boundary behavior"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: setup
+    name: Setup
+    type: agent_task
+    agent: process-echo
+    message: "Setting up skip test"
+    timeout: 30s
+
+  - id: optional-step
+    name: Optional Step (may fail)
+    type: agent_task
+    agent: process-failer
+    depends_on:
+      - setup
+    message: "/fail"
+    timeout: 30s
+    on_error: skip_step
+
+  - id: required-step
+    name: Required Step (always runs)
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - setup
+    message: "This step always runs"
+    timeout: 30s
+
+  - id: final-step
+    name: Final Step
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - optional-step
+      - required-step
+    message: |
+      Final results:
+      - Optional step status: {{steps.optional-step.status}}
+      - Required step status: {{steps.required-step.status}}
+    timeout: 30s
+
+# Expected Flow:
+# 1. setup completes
+# 2. optional-step fails but is SKIPPED (not FAILED)
+# 3. required-step runs (no dependency on optional)
+# 4. final-step runs (optional was skipped, not blocking)
+# 5. Execution completes successfully
+
+# Verification Checklist:
+# [ ] setup completes
+# [ ] optional-step fails
+# [ ] optional-step status is SKIPPED (not FAILED)
+# [ ] required-step executes
+# [ ] final-step executes
+# [ ] final-step can see optional-step was skipped
+# [ ] Execution status: COMPLETED (not FAILED)

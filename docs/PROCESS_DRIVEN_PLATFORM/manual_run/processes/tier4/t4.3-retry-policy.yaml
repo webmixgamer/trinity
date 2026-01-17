@@ -1,0 +1,73 @@
+# T4.3 - Retry Policy Works
+# 
+# Purpose: Validate retry policy with exponential backoff
+# Agent: process-failer (with /fail-then-succeed)
+# Expected: Step fails, retries, eventually succeeds
+#
+# Test Validates:
+# - retry configuration is respected
+# - Exponential backoff between retries
+# - Step succeeds after retries
+# - Retry count is tracked
+
+name: t4.3-retry-policy
+version: "1.0.0"
+description: "Retry policy test - validates exponential backoff and retry success"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: setup
+    name: Setup
+    type: agent_task
+    agent: process-echo
+    message: "Setting up retry test"
+    timeout: 30s
+
+  - id: flaky-step
+    name: Flaky Step (fails twice then succeeds)
+    type: agent_task
+    agent: process-failer
+    depends_on:
+      - setup
+    message: "/fail-then-succeed 2"
+    timeout: 30s
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      initial_delay: 2s
+      max_delay: 10s
+      retryable_errors:
+        - AGENT_ERROR
+        - RATE_LIMIT
+
+  - id: after-retry
+    name: After Retry Success
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - flaky-step
+    message: "Flaky step succeeded after retries: {{steps.flaky-step.output.retry_count}}"
+    timeout: 30s
+
+# Expected Flow:
+# 1. setup completes
+# 2. flaky-step attempt 1: FAIL (retry)
+# 3. Wait ~2 seconds
+# 4. flaky-step attempt 2: FAIL (retry)
+# 5. Wait ~4 seconds (exponential)
+# 6. flaky-step attempt 3: SUCCESS
+# 7. after-retry runs
+
+# Verification Checklist:
+# [ ] setup completes
+# [ ] flaky-step fails on first attempt
+# [ ] Retry is attempted after delay
+# [ ] Second attempt fails
+# [ ] Third attempt succeeds
+# [ ] Retry count = 3 in output
+# [ ] after-retry executes
+# [ ] Execution status: COMPLETED
+# [ ] Total time shows backoff delays

@@ -1389,11 +1389,16 @@ Access control, audit logging, and execution governance have been implemented:
 
 With P0 (Reliability) and P1 (Access & Audit) complete, the next options are:
 
-**Option A: Phase 1 Manual Testing**
-1. Run P1.1 Simple Content Pipeline
-2. Run P1.2 Approval Gate Pipeline
-3. Run P1.3 Scheduled Daily Report
-4. Document discovered bottlenecks
+**Option A: Phase 1 Manual Testing** ✅ Infrastructure Ready
+Test cases and agents are prepared in `docs/PROCESS_DRIVEN_PLATFORM/manual_run/`:
+- 22 test cases across 5 tiers (Critical Path, Conditional, Approval, Error, Edge Cases)
+- 3 test agent templates (process-echo, process-worker, process-failer)
+- Results tracking template ready
+
+Steps to execute:
+1. Deploy test agents
+2. Run T1.x through T5.x tests
+3. Document findings in `manual_run/results/`
 
 **Option B: IT5 P2 - Performance & Scale**
 1. Checkpointing for recovery
@@ -1406,6 +1411,7 @@ With P0 (Reliability) and P1 (Access & Audit) complete, the next options are:
 
 | Date | Change |
 |------|--------|
+| 2026-01-17 | Add manual testing infrastructure (22 test cases, 3 test agents) |
 | 2026-01-17 | Mark IT5 P1 (Access & Audit) as complete |
 | 2026-01-17 | Update Next Priority section with Phase 1 or IT5 P2 options |
 | 2026-01-17 | Mark Execution Recovery (IT5 P0) as complete |

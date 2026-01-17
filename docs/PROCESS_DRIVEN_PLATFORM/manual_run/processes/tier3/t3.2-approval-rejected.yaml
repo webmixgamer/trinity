@@ -1,0 +1,90 @@
+# T3.2 - Human Approval - Rejected
+# 
+# Purpose: Validate human approval flow when approval is rejected
+# Agent: process-echo, process-worker
+# Expected: Process takes rejection path, handles rejection gracefully
+#
+# Test Validates:
+# - Rejection flow works
+# - Conditional routing based on rejection
+# - Rejection comment captured
+# - Process completes (not fails) on rejection
+
+name: t3.2-approval-rejected
+version: "1.0.0"
+description: "Human approval test - validates rejection flow"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: draft
+    name: Create Draft
+    type: agent_task
+    agent: process-worker
+    message: "Create a draft document for review"
+    timeout: 60s
+
+  - id: review-approval
+    name: Review Approval
+    type: human_approval
+    depends_on:
+      - draft
+    title: "Draft Review Required"
+    description: "Please review and reject this draft for testing."
+    timeout: 1h
+    approvers:
+      - "test@example.com"
+
+  - id: publish
+    name: Publish (on approve)
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - review-approval
+    condition: "{{steps.review-approval.decision}} == 'approved'"
+    message: "Publishing approved draft"
+    timeout: 30s
+
+  - id: revise
+    name: Revise (on reject)
+    type: agent_task
+    agent: process-worker
+    depends_on:
+      - review-approval
+    condition: "{{steps.review-approval.decision}} == 'rejected'"
+    message: |
+      Revision needed based on feedback:
+      {{steps.review-approval.comment}}
+    timeout: 60s
+
+  - id: notify-author
+    name: Notify Author
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - publish
+      - revise
+    message: |
+      Process complete.
+      Decision: {{steps.review-approval.decision}}
+      Next action: {{steps.revise.status == 'completed' ? 'revise' : 'published'}}
+    timeout: 30s
+
+# Test Procedure:
+# 1. Start execution - pauses at review-approval
+# 2. Submit rejection via API:
+#    POST /api/executions/{id}/steps/review-approval/approve
+#    { "decision": "rejected", "comment": "Needs more detail in section 2" }
+# 3. publish should be SKIPPED
+# 4. revise should execute
+# 5. notify-author completes
+
+# Verification Checklist:
+# [ ] Rejection can be submitted
+# [ ] publish step is SKIPPED (condition false)
+# [ ] revise step executes (condition true)
+# [ ] Rejection comment passed to revise
+# [ ] Process completes successfully
+# [ ] Status is COMPLETED (not FAILED)

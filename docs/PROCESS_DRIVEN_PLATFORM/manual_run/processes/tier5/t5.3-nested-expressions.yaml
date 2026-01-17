@@ -1,0 +1,91 @@
+# T5.3 - Deeply Nested Expressions
+# 
+# Purpose: Test expression evaluator with complex nested paths
+# Agent: process-echo (with /structured), process-worker
+# Expected: Deep path references work correctly
+#
+# Test Validates:
+# - Very deep object paths: {{steps.X.output.a.b.c.d.e}}
+# - Array access if supported: {{steps.X.output.items[0]}}
+# - Mixed expressions in same message
+# - Edge cases in expression evaluation
+
+name: t5.3-nested-expressions
+version: "1.0.0"
+description: "Nested expressions test - validates deep path evaluation"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: generate-deep
+    name: Generate Deep Structure
+    type: agent_task
+    agent: process-echo
+    message: "/structured"
+    timeout: 30s
+
+  - id: generate-worker-data
+    name: Generate Worker Data
+    type: agent_task
+    agent: process-worker
+    message: "Generate detailed analysis report"
+    timeout: 60s
+
+  - id: access-level1
+    name: Access Level 1
+    type: agent_task
+    agent: process-echo
+    depends_on: [generate-deep]
+    message: "Level 1: {{steps.generate-deep.output.level1}}"
+    timeout: 30s
+
+  - id: access-level2
+    name: Access Level 2
+    type: agent_task
+    agent: process-echo
+    depends_on: [generate-deep]
+    message: "Level 2: {{steps.generate-deep.output.level1.level2}}"
+    timeout: 30s
+
+  - id: access-level3
+    name: Access Level 3
+    type: agent_task
+    agent: process-echo
+    depends_on: [generate-deep]
+    message: "Level 3 value: {{steps.generate-deep.output.level1.level2.level3.value}}"
+    timeout: 30s
+
+  - id: multiple-refs
+    name: Multiple References
+    type: agent_task
+    agent: process-echo
+    depends_on: [generate-deep, generate-worker-data]
+    message: |
+      Multiple nested references:
+      - Deep value: {{steps.generate-deep.output.level1.level2.level3.value}}
+      - Worker result: {{steps.generate-worker-data.output.output.result}}
+      - Worker score: {{steps.generate-worker-data.output.output.details.quality_score}}
+      - Worker confidence: {{steps.generate-worker-data.output.output.details.confidence}}
+    timeout: 30s
+
+  - id: final-check
+    name: Final Check
+    type: agent_task
+    agent: process-echo
+    depends_on: [access-level1, access-level2, access-level3, multiple-refs]
+    message: |
+      Expression test complete.
+      All levels accessed successfully.
+      L3 value was: {{steps.access-level3.output.data.echo}}
+    timeout: 30s
+
+# Verification Checklist:
+# [ ] generate-deep returns nested structure
+# [ ] access-level1 gets level1 object
+# [ ] access-level2 gets level2 nested object
+# [ ] access-level3 gets "deep-value" from level3.value
+# [ ] multiple-refs correctly interpolates 4 different paths
+# [ ] No expression evaluation errors
+# [ ] All steps complete successfully

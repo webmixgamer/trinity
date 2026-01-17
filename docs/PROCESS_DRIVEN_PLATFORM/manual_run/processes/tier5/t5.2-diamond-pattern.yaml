@@ -1,0 +1,101 @@
+# T5.2 - Diamond Pattern
+# 
+# Purpose: Validate complex dependency graph with diamond shape
+# Agent: process-echo, process-worker
+# Expected: Fork at top, merge in middle, fork again, final merge
+#
+# Test Validates:
+# - Complex dependency graphs work
+# - Multiple fork/join points
+# - Diamond pattern (A -> B,C -> D)
+# - Nested diamonds
+
+name: t5.2-diamond-pattern
+version: "1.0.0"
+description: "Diamond pattern test - validates complex dependency resolution"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+#      ┌──> B1 ──┐
+# A ──┤          ├──> C ──┤          ├──> E
+#      └──> B2 ──┘       └──> D1 ──┘
+#                        └──> D2 ──┘
+#
+# Double diamond pattern
+
+steps:
+  - id: start
+    name: Start (A)
+    type: agent_task
+    agent: process-echo
+    message: "Diamond start"
+    timeout: 30s
+
+  # First fork
+  - id: branch-b1
+    name: Branch B1
+    type: agent_task
+    agent: process-echo
+    depends_on: [start]
+    message: "Branch B1 processing"
+    timeout: 30s
+
+  - id: branch-b2
+    name: Branch B2
+    type: agent_task
+    agent: process-worker
+    depends_on: [start]
+    message: "Branch B2 processing (worker)"
+    timeout: 60s
+
+  # First merge
+  - id: merge-c
+    name: Merge C
+    type: agent_task
+    agent: process-echo
+    depends_on: [branch-b1, branch-b2]
+    message: |
+      Merged B1 and B2:
+      B1: {{steps.branch-b1.output.status}}
+      B2: {{steps.branch-b2.output.status}}
+    timeout: 30s
+
+  # Second fork
+  - id: branch-d1
+    name: Branch D1
+    type: agent_task
+    agent: process-echo
+    depends_on: [merge-c]
+    message: "Branch D1 from merge"
+    timeout: 30s
+
+  - id: branch-d2
+    name: Branch D2
+    type: agent_task
+    agent: process-echo
+    depends_on: [merge-c]
+    message: "Branch D2 from merge"
+    timeout: 30s
+
+  # Final merge
+  - id: final-e
+    name: Final E
+    type: agent_task
+    agent: process-echo
+    depends_on: [branch-d1, branch-d2]
+    message: |
+      Final merge:
+      D1: {{steps.branch-d1.output.status}}
+      D2: {{steps.branch-d2.output.status}}
+    timeout: 30s
+
+# Verification Checklist:
+# [ ] start (A) completes first
+# [ ] branch-b1 and branch-b2 run in parallel
+# [ ] merge-c waits for both B branches
+# [ ] branch-d1 and branch-d2 run in parallel after merge-c
+# [ ] final-e waits for both D branches
+# [ ] All outputs accessible at each merge point
+# [ ] Execution status: COMPLETED

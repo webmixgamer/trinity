@@ -1,0 +1,59 @@
+# T4.2 - Agent Timeout
+# 
+# Purpose: Validate timeout handling when agent takes too long
+# Agent: process-failer
+# Expected: Step times out, execution fails with timeout error
+#
+# Test Validates:
+# - Step timeout is enforced
+# - Timeout error is captured
+# - Process fails on step timeout
+
+name: t4.2-agent-timeout
+version: "1.0.0"
+description: "Agent timeout test - validates timeout handling"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: setup
+    name: Setup
+    type: agent_task
+    agent: process-echo
+    message: "Setting up timeout test"
+    timeout: 30s
+
+  - id: slow-step
+    name: Slow Step (will timeout)
+    type: agent_task
+    agent: process-failer
+    depends_on:
+      - setup
+    message: "/timeout 120"
+    timeout: 15s  # Short timeout - agent will exceed this
+
+  - id: after-timeout
+    name: After Timeout (should not run)
+    type: agent_task
+    agent: process-echo
+    depends_on:
+      - slow-step
+    message: "This should not execute"
+    timeout: 30s
+
+# Expected Flow:
+# 1. setup completes
+# 2. slow-step starts, agent waits 120 seconds
+# 3. After 15 seconds, step times out
+# 4. Execution fails
+
+# Verification Checklist:
+# [ ] setup completes
+# [ ] slow-step starts and waits
+# [ ] After ~15 seconds, timeout triggers
+# [ ] slow-step status: FAILED
+# [ ] Error code: TIMEOUT
+# [ ] after-timeout never runs
+# [ ] Execution status: FAILED

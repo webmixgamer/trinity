@@ -1,0 +1,70 @@
+# T5.5 - Recovery After Backend Restart
+# 
+# Purpose: Test ExecutionRecoveryService on backend restart
+# Agent: process-failer
+# Expected: Running execution is recovered after restart
+#
+# Test Validates:
+# - In-progress execution survives restart
+# - ExecutionRecoveryService resumes execution
+# - State is preserved correctly
+# - Process completes after recovery
+
+name: t5.5-recovery-test
+version: "1.0.0"
+description: "Recovery test - validates execution recovery after backend restart"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: step1
+    name: Step 1 (complete before restart)
+    type: agent_task
+    agent: process-echo
+    message: "Step 1 completing"
+    timeout: 30s
+
+  - id: slow-step
+    name: Slow Step (restart during this)
+    type: agent_task
+    agent: process-failer
+    depends_on: [step1]
+    message: "/timeout 120"  # Takes 2 minutes
+    timeout: 300s
+
+  - id: step3
+    name: Step 3 (should run after recovery)
+    type: agent_task
+    agent: process-echo
+    depends_on: [slow-step]
+    message: "Step 3 - this should run after recovery"
+    timeout: 30s
+
+# Test Procedure:
+# 1. Start execution
+# 2. Wait for step1 to complete and slow-step to start
+# 3. Restart the backend: docker-compose restart backend
+# 4. Check execution status via API
+# 5. Verify recovery service resumed the execution
+# 6. Wait for completion
+
+# Recovery Behavior:
+# - ExecutionRecoveryService runs on startup
+# - Finds executions in RUNNING state
+# - Determines recovery action (RESUME, RETRY_STEP, MARK_FAILED)
+# - Resumes or retries based on step state
+
+# API to check recovery:
+# GET /api/executions/recovery/status - shows last recovery report
+
+# Verification Checklist:
+# [ ] step1 completes before restart
+# [ ] slow-step is RUNNING when restart happens
+# [ ] Backend restarts successfully
+# [ ] Recovery service finds the execution
+# [ ] Execution is resumed (or step retried)
+# [ ] step3 eventually runs
+# [ ] Execution status: COMPLETED
+# [ ] Recovery status endpoint shows recovery report

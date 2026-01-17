@@ -1,0 +1,81 @@
+# T2.1 - Exclusive Gateway (XOR)
+# 
+# Purpose: Validate exclusive gateway routing - first matching route wins
+# Agent: process-echo (with /numeric command)
+# Expected: Only one route is taken based on condition evaluation
+#
+# Test Validates:
+# - Gateway step type works
+# - Exclusive (XOR) semantics: first match wins
+# - Condition expressions evaluate correctly
+# - Non-matching routes are skipped
+
+name: t2.1-exclusive-gateway
+version: "1.0.0"
+description: "Exclusive gateway test - validates XOR routing based on conditions"
+
+triggers:
+  - type: manual
+    id: manual-start
+
+input:
+  score_value:
+    type: number
+    description: "Score to determine route (use 90 for high, 60 for medium, 30 for low)"
+    default: 90
+
+steps:
+  - id: evaluate
+    name: Evaluate Score
+    type: agent_task
+    agent: process-echo
+    message: "/numeric {{input.score_value}}"
+    timeout: 30s
+
+  - id: route-decision
+    name: Route Decision
+    type: gateway
+    gateway_type: exclusive
+    depends_on:
+      - evaluate
+    routes:
+      - condition: "{{steps.evaluate.output.score}} >= 80"
+        next: high-path
+      - condition: "{{steps.evaluate.output.score}} >= 50"
+        next: medium-path
+      - default: true
+        next: low-path
+
+  - id: high-path
+    name: High Score Path
+    type: agent_task
+    agent: process-echo
+    message: "Processing HIGH score: {{steps.evaluate.output.score}}"
+    timeout: 30s
+
+  - id: medium-path
+    name: Medium Score Path
+    type: agent_task
+    agent: process-echo
+    message: "Processing MEDIUM score: {{steps.evaluate.output.score}}"
+    timeout: 30s
+
+  - id: low-path
+    name: Low Score Path
+    type: agent_task
+    agent: process-echo
+    message: "Processing LOW score: {{steps.evaluate.output.score}}"
+    timeout: 30s
+
+# Test Scenarios:
+# 1. Input score_value=90: Should take high-path
+# 2. Input score_value=60: Should take medium-path
+# 3. Input score_value=30: Should take low-path
+
+# Verification Checklist:
+# [ ] evaluate step returns score in output
+# [ ] Gateway evaluates conditions in order
+# [ ] Only ONE path is taken
+# [ ] Other paths are SKIPPED
+# [ ] Correct path executes based on input
+# [ ] Process completes successfully

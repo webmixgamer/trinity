@@ -98,6 +98,27 @@ The backlog is split into phase-based files for easier AI agent consumption:
 
 ---
 
+## Reference Documents
+
+| Document | Purpose |
+|----------|---------|
+| [`DEVELOPMENT_CONFIDENCE_MODEL.md`](./DEVELOPMENT_CONFIDENCE_MODEL.md) | DDD-based testing philosophy for shipping with confidence |
+| [`DEVELOPMENT_PROCESS.md`](./DEVELOPMENT_PROCESS.md) | Development workflow and conventions |
+| [`PROCESS_ENGINE_ROADMAP.md`](./PROCESS_ENGINE_ROADMAP.md) | Testing phases and implementation tracking |
+| [`BPMN_RESEARCH.md`](./BPMN_RESEARCH.md) | Deep dive into BPMN 2.0 specification and industry landscape |
+| **Manual Testing** | |
+| [`manual_run/README.md`](./manual_run/README.md) | Manual testing agenda with 22 test cases across 5 tiers |
+| [`manual_run/results/`](./manual_run/results/) | Test execution logs and findings |
+| **Thinking Iterations** | |
+| [`PROCESS_DRIVEN_THINKING_IT1.md`](./PROCESS_DRIVEN_THINKING_IT1.md) | IT1: Initial analysis of process-driven vision |
+| [`PROCESS_DRIVEN_THINKING_IT2.md`](./PROCESS_DRIVEN_THINKING_IT2.md) | IT2: Architecture direction (home-grown, BPMN-inspired) |
+| [`PROCESS_DRIVEN_THINKING_IT3.md`](./PROCESS_DRIVEN_THINKING_IT3.md) | IT3: DDD integration (aggregates, events, services) |
+| [`PROCESS_DRIVEN_THINKING_IT4.md`](./PROCESS_DRIVEN_THINKING_IT4.md) | IT4: UI/UX design philosophy |
+| [`PROCESS_DRIVEN_THINKING_IT5.md`](./PROCESS_DRIVEN_THINKING_IT5.md) | IT5: Scale, reliability, enterprise architecture |
+| [`PROCESS_DRIVEN_THINKING_IT6.md`](./PROCESS_DRIVEN_THINKING_IT6.md) | IT6: Maturity assessment & strategic direction |
+
+---
+
 ## Design Principles (from IT4)
 
 These principles should guide all UI/UX decisions:
@@ -184,3 +205,6 @@ Show only what's needed at each level:
 | 2026-01-14 | Created index with conventions and traceability |
 | 2026-01-17 | Added BACKLOG_RELIABILITY_IMPROVEMENTS.md and BACKLOG_ACCESS_AUDIT.md |
 | 2026-01-17 | Added E17-E19 epics for IT5 P1 features |
+| 2026-01-17 | Added Reference Documents section with DEVELOPMENT_CONFIDENCE_MODEL.md |
+| 2026-01-17 | Added BPMN_RESEARCH.md and all Thinking Iteration documents (IT1-IT6) |
+| 2026-01-17 | Added manual_run folder with 22 test cases and 3 test agent templates |
