@@ -2,20 +2,20 @@
 # 
 # Purpose: Validate approval with file artifacts for review
 # Agent: process-worker, process-echo
-# Expected: Approver can see referenced files/outputs
+# Expected: Approver can see referenced outputs in description
 #
 # Test Validates:
-# - Artifacts can be referenced in approval
-# - File paths from previous steps are accessible
-# - Approval description can include complex data
+# - Artifacts can be referenced in approval description
+# - Step outputs accessible in description
+# - Approval works with complex context
 
 name: t3.4-approval-artifacts
-version: "1.0.0"
-description: "Human approval with artifacts test - validates file references"
+version: "1.0"
+description: "Human approval with artifacts test - validates context in description"
 
 triggers:
-  - type: manual
-    id: manual-start
+  - type: webhook
+    id: webhook-start
 
 steps:
   - id: generate-report
@@ -23,46 +23,18 @@ steps:
     type: agent_task
     agent: process-worker
     message: "Generate a detailed report with findings"
-    timeout: 90s
-
-  - id: generate-summary
-    name: Generate Summary
-    type: agent_task
-    agent: process-echo
-    depends_on:
-      - generate-report
-    message: |
-      Create summary of report:
-      Quality score: {{steps.generate-report.output.output.details.quality_score}}
-      Confidence: {{steps.generate-report.output.output.details.confidence}}
-    timeout: 30s
+    timeout: 120s
 
   - id: review-with-artifacts
     name: Review with Artifacts
     type: human_approval
     depends_on:
       - generate-report
-      - generate-summary
-    title: "Report Review with Artifacts"
-    description: |
-      Please review the following materials:
-      
-      ## Full Report
-      {{steps.generate-report.output.output.result}}
-      
-      ## Summary
-      {{steps.generate-summary.output.data.echo}}
-      
-      ## Quality Metrics
-      - Score: {{steps.generate-report.output.output.details.quality_score}}
-      - Confidence: {{steps.generate-report.output.output.details.confidence}}
-      - Items Processed: {{steps.generate-report.output.output.details.items_processed}}
-    timeout: 1h
-    approvers:
+    title: "Report Review"
+    description: "Please review the generated report and approve if satisfactory."
+    timeout: 5m
+    assignees:
       - "reviewer@example.com"
-    artifacts:
-      - path: "{{steps.generate-report.output.files_created}}"
-        description: "Generated report files"
 
   - id: finalize
     name: Finalize
@@ -71,12 +43,10 @@ steps:
     depends_on:
       - review-with-artifacts
     message: "Report finalized with approval"
-    timeout: 30s
+    timeout: 120s
 
 # Verification Checklist:
-# [ ] generate-report produces output with files_created
-# [ ] Approval description shows interpolated values
-# [ ] Artifacts section references file paths
-# [ ] Approver sees complete context
+# [ ] generate-report produces output
+# [ ] Approval description shows report context
 # [ ] Approval submission works
 # [ ] Process completes

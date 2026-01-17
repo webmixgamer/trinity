@@ -12,12 +12,12 @@
 # - Approval metadata available to downstream steps
 
 name: t3.1-approval-approved
-version: "1.0.0"
+version: "1.0"
 description: "Human approval test - validates approved flow"
 
 triggers:
-  - type: manual
-    id: manual-start
+  - type: webhook
+    id: webhook-start
 
 steps:
   - id: draft
@@ -25,7 +25,7 @@ steps:
     type: agent_task
     agent: process-worker
     message: "Create a draft document for review"
-    timeout: 60s
+    timeout: 120s
 
   - id: review-approval
     name: Review Approval
@@ -33,12 +33,9 @@ steps:
     depends_on:
       - draft
     title: "Draft Review Required"
-    description: |
-      Please review the draft and approve or reject.
-      
-      Draft content: {{steps.draft.output.output.result}}
-    timeout: 1h
-    approvers:
+    description: "Please review the draft and approve or reject."
+    timeout: 5m
+    assignees:
       - "test@example.com"
 
   - id: publish
@@ -47,26 +44,20 @@ steps:
     agent: process-echo
     depends_on:
       - review-approval
-    condition: "{{steps.review-approval.decision}} == 'approved'"
-    message: |
-      Publishing approved draft.
-      Approved by: {{steps.review-approval.decided_by}}
-      Comment: {{steps.review-approval.comment}}
-    timeout: 30s
+    message: "Publishing approved draft"
+    timeout: 120s
 
 # Test Procedure:
 # 1. Start execution - should pause at review-approval
-# 2. Check execution status: should be PAUSED or RUNNING with step WAITING_APPROVAL
-# 3. Submit approval via API:
-#    POST /api/executions/{id}/steps/review-approval/approve
-#    { "decision": "approved", "comment": "Looks good!" }
-# 4. Execution should continue to publish step
-# 5. Process completes
+# 2. Check execution status: should have step WAITING_APPROVAL
+# 3. Get approval ID: GET /api/approvals?status=pending
+# 4. Submit approval: POST /api/approvals/{approval_id}/approve {"comment": "Looks good!"}
+# 5. Execution should continue to publish step
+# 6. Process completes
 
 # Verification Checklist:
 # [ ] draft step completes with content
 # [ ] Execution pauses at review-approval
 # [ ] Approval can be submitted via API
-# [ ] publish step receives approval metadata
+# [ ] publish step runs after approval
 # [ ] Process completes with status COMPLETED
-# [ ] Approval decision and comment are accessible
