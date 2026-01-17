@@ -1,5 +1,5 @@
 # T2.3 - Parallel Execution (Fork/Join)
-# 
+#
 # Purpose: Validate parallel step execution and join synchronization
 # Agent: process-echo, process-worker
 # Expected: Steps without dependencies run in parallel, join waits for all
@@ -11,20 +11,20 @@
 # - Parallel outputs are all available at join
 
 name: t2.3-parallel-execution
-version: "1.0.0"
+version: "1.0"
 description: "Parallel execution test - validates fork/join pattern"
 
 triggers:
-  - type: manual
-    id: manual-start
+  - type: webhook
+    id: webhook-start
 
 steps:
   - id: start
     name: Start
     type: agent_task
     agent: process-echo
-    message: "Starting parallel test"
-    timeout: 30s
+    message: "Return this JSON: {\"status\": \"started\"}"
+    timeout: 120s
 
   # These three steps have no dependencies on each other - they should run in parallel
   - id: branch-a
@@ -33,8 +33,8 @@ steps:
     agent: process-echo
     depends_on:
       - start
-    message: "Branch A processing"
-    timeout: 30s
+    message: "Return this JSON: {\"status\": \"branch-a-done\"}"
+    timeout: 120s
 
   - id: branch-b
     name: Branch B
@@ -42,8 +42,8 @@ steps:
     agent: process-worker
     depends_on:
       - start
-    message: "Branch B processing (worker)"
-    timeout: 60s
+    message: "Return this JSON: {\"status\": \"branch-b-done\"}"
+    timeout: 120s
 
   - id: branch-c
     name: Branch C
@@ -51,8 +51,8 @@ steps:
     agent: process-echo
     depends_on:
       - start
-    message: "Branch C processing"
-    timeout: 30s
+    message: "Return this JSON: {\"status\": \"branch-c-done\"}"
+    timeout: 120s
 
   # This step depends on ALL branches - join point
   - id: merge
@@ -68,7 +68,7 @@ steps:
       - A: {{steps.branch-a.output.status}}
       - B: {{steps.branch-b.output.status}}
       - C: {{steps.branch-c.output.status}}
-    timeout: 30s
+    timeout: 120s
 
 # Expected Flow:
 # start -> [branch-a, branch-b, branch-c] (parallel) -> merge

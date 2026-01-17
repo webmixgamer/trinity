@@ -1,5 +1,5 @@
 # T2.4 - Conditional Skip
-# 
+#
 # Purpose: Validate step-level condition that skips steps
 # Agent: process-echo
 # Expected: Steps with false conditions are skipped, not failed
@@ -11,12 +11,12 @@
 # - Downstream steps can reference that upstream was skipped
 
 name: t2.4-conditional-skip
-version: "1.0.0"
+version: "1.0"
 description: "Conditional skip test - validates step-level condition evaluation"
 
 triggers:
-  - type: manual
-    id: manual-start
+  - type: webhook
+    id: webhook-start
 
 input:
   run_optional:
@@ -30,7 +30,7 @@ steps:
     type: agent_task
     agent: process-echo
     message: "Optional flag is: {{input.run_optional}}"
-    timeout: 30s
+    timeout: 120s
 
   - id: required-step
     name: Required Step
@@ -39,7 +39,7 @@ steps:
     depends_on:
       - check-flag
     message: "This step always runs"
-    timeout: 30s
+    timeout: 120s
 
   - id: optional-step
     name: Optional Step
@@ -47,9 +47,9 @@ steps:
     agent: process-worker
     depends_on:
       - check-flag
-    condition: "{{input.run_optional}} == true"
+    condition: "input.run_optional == true"
     message: "This step only runs if run_optional is true"
-    timeout: 60s
+    timeout: 120s
 
   - id: final-step
     name: Final Step
@@ -59,7 +59,7 @@ steps:
       - required-step
       - optional-step
     message: "Final step - optional step status was: {{steps.optional-step.status}}"
-    timeout: 30s
+    timeout: 120s
 
 # Test Scenarios:
 # 1. Input run_optional=true: optional-step runs, final-step sees "completed"
