@@ -11,11 +11,11 @@
 # - Execution status transitions: PENDING -> RUNNING -> COMPLETED
 
 name: t1.1-single-step
-version: "1.0.0"
+version: "1.0"
 description: "Single agent step test - validates basic execution flow"
 
 triggers:
-  - type: manual
+  - type: webhook
     id: manual-start
 
 steps:

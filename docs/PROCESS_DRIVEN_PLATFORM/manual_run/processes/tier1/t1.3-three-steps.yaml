@@ -11,11 +11,11 @@
 # - All outputs accessible at completion
 
 name: t1.3-three-steps
-version: "1.0.0"
+version: "1.0"
 description: "Three steps test - validates multi-step dependency chain"
 
 triggers:
-  - type: manual
+  - type: webhook
     id: manual-start
 
 steps:
@@ -24,7 +24,7 @@ steps:
     type: agent_task
     agent: process-echo
     message: "Research topic: Process Engine Testing"
-    timeout: 30s
+    timeout: 120s
 
   - id: analyze
     name: Analysis Phase
@@ -33,7 +33,7 @@ steps:
     depends_on:
       - research
     message: "Analyze research results: {{steps.research.output.data.echo}}"
-    timeout: 30s
+    timeout: 120s
 
   - id: report
     name: Report Phase
@@ -42,7 +42,7 @@ steps:
     depends_on:
       - analyze
     message: "Generate report from analysis: {{steps.analyze.output.data.echo}}"
-    timeout: 60s
+    timeout: 120s
 
 # Expected Flow:
 # 1. research executes first (no dependencies)

@@ -11,11 +11,11 @@
 # - Expression evaluation: {{steps.step1.output}}
 
 name: t1.2-two-sequential
-version: "1.0.0"
+version: "1.0"
 description: "Two sequential steps test - validates output passing"
 
 triggers:
-  - type: manual
+  - type: webhook
     id: manual-start
 
 steps:

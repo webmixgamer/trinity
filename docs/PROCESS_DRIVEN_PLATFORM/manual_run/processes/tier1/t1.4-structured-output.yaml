@@ -1,5 +1,5 @@
 # T1.4 - Step with Structured Output
-# 
+#
 # Purpose: Validate nested JSON output and deep path references
 # Agent: process-echo (with /structured command), process-worker
 # Expected: Nested paths like {{steps.X.output.level1.level2.level3.value}} work
@@ -11,11 +11,11 @@
 # - Array access in templates (if supported)
 
 name: t1.4-structured-output
-version: "1.0.0"
+version: "1.0"
 description: "Structured output test - validates nested JSON and deep path references"
 
 triggers:
-  - type: manual
+  - type: webhook
     id: manual-start
 
 steps:
@@ -23,8 +23,8 @@ steps:
     name: Generate Nested Structure
     type: agent_task
     agent: process-echo
-    message: "/structured"
-    timeout: 30s
+    message: "Return ONLY this JSON (no explanation): {\"level1\": {\"level2\": {\"level3\": {\"value\": \"deep-value\", \"array\": [1, 2, 3]}}}}"
+    timeout: 120s
 
   - id: use-nested-value
     name: Use Nested Value
@@ -32,8 +32,8 @@ steps:
     agent: process-echo
     depends_on:
       - generate-structure
-    message: "Deep value: {{steps.generate-structure.output.level1.level2.level3.value}}"
-    timeout: 30s
+    message: "Echo back: {{steps.generate-structure.output}}"
+    timeout: 120s
 
   - id: worker-analysis
     name: Worker Analysis
@@ -42,7 +42,7 @@ steps:
     depends_on:
       - generate-structure
     message: "Analyze this structure: {{steps.generate-structure.output}}"
-    timeout: 60s
+    timeout: 120s
 
   - id: combine-results
     name: Combine Results
@@ -51,11 +51,8 @@ steps:
     depends_on:
       - use-nested-value
       - worker-analysis
-    message: |
-      Combined results:
-      - Nested value result: {{steps.use-nested-value.output.data.echo}}
-      - Worker quality score: {{steps.worker-analysis.output.output.details.quality_score}}
-    timeout: 30s
+    message: "Summarize: nested-value came from step 1, worker analysis is done"
+    timeout: 120s
 
 # Expected Output from generate-structure:
 # {

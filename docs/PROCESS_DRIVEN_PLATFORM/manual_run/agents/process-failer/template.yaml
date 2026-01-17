@@ -6,7 +6,7 @@ version: "1.0.0"
 author: Trinity Process Testing
 
 resources:
-  cpu: "0.5"
+  cpu: "1"
   memory: "1g"
 
 capabilities:
