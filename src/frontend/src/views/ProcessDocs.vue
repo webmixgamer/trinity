@@ -1,4 +1,17 @@
 <template>
+  <!-- Notification Toast -->
+  <Teleport to="body">
+    <div
+      v-if="notification"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300"
+      :class="notification.type === 'success'
+        ? 'bg-green-600 text-white'
+        : 'bg-indigo-600 text-white'"
+    >
+      {{ notification.message }}
+    </div>
+  </Teleport>
+
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
     <ProcessSubNav />
@@ -12,7 +25,7 @@
             <div class="mb-4">
               <div class="relative">
                 <MagnifyingGlassIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input 
+                <input
                   type="text"
                   placeholder="Search docs..."
                   class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -24,20 +37,20 @@
             <!-- Navigation Tree -->
             <nav class="space-y-1">
               <div v-for="section in docsIndex?.sections" :key="section.id" class="mb-4">
-                <button 
+                <button
                   @click="toggleSection(section.id)"
                   class="flex items-center justify-between w-full text-left px-2 py-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
                 >
                   <span>{{ section.title }}</span>
-                  <ChevronDownIcon 
-                    class="h-4 w-4 transition-transform" 
+                  <ChevronDownIcon
+                    class="h-4 w-4 transition-transform"
                     :class="{ '-rotate-90': !expandedSections.includes(section.id) }"
                   />
                 </button>
-                
+
                 <div v-if="expandedSections.includes(section.id)" class="ml-2 mt-1 space-y-0.5">
-                  <router-link 
-                    v-for="doc in section.docs" 
+                  <router-link
+                    v-for="doc in section.docs"
                     :key="doc.slug"
                     :to="`/processes/docs/${doc.slug}`"
                     class="block px-3 py-1.5 text-sm rounded-md transition-colors"
@@ -52,11 +65,42 @@
                 </div>
               </div>
             </nav>
+
+            <!-- Restart Onboarding Section -->
+            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2 px-2">Onboarding</p>
+              <button
+                v-if="!showRestartConfirm"
+                @click="showRestartConfirm = true"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+              >
+                <ArrowPathIcon class="h-4 w-4" />
+                Restart Getting Started
+              </button>
+              <!-- Confirmation -->
+              <div v-else class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                <p class="text-sm text-amber-800 dark:text-amber-200 mb-2">Reset your onboarding progress?</p>
+                <div class="flex gap-2">
+                  <button
+                    @click="confirmRestartOnboarding"
+                    class="flex-1 px-2 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded transition-colors"
+                  >
+                    Yes, restart
+                  </button>
+                  <button
+                    @click="showRestartConfirm = false"
+                    class="flex-1 px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </aside>
 
         <!-- Mobile sidebar toggle -->
-        <button 
+        <button
           @click="showMobileSidebar = true"
           class="lg:hidden fixed bottom-4 left-4 z-40 p-3 bg-indigo-600 text-white rounded-full shadow-lg"
         >
@@ -64,7 +108,7 @@
         </button>
 
         <!-- Mobile sidebar overlay -->
-        <div 
+        <div
           v-if="showMobileSidebar"
           class="lg:hidden fixed inset-0 z-50 bg-gray-900/50"
           @click="showMobileSidebar = false"
@@ -76,23 +120,23 @@
                 <XMarkIcon class="h-5 w-5" />
               </button>
             </div>
-            
+
             <nav class="space-y-1">
               <div v-for="section in docsIndex?.sections" :key="section.id" class="mb-4">
-                <button 
+                <button
                   @click="toggleSection(section.id)"
                   class="flex items-center justify-between w-full text-left px-2 py-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300"
                 >
                   <span>{{ section.title }}</span>
-                  <ChevronDownIcon 
-                    class="h-4 w-4 transition-transform" 
+                  <ChevronDownIcon
+                    class="h-4 w-4 transition-transform"
                     :class="{ '-rotate-90': !expandedSections.includes(section.id) }"
                   />
                 </button>
-                
+
                 <div v-if="expandedSections.includes(section.id)" class="ml-2 mt-1 space-y-0.5">
-                  <router-link 
-                    v-for="doc in section.docs" 
+                  <router-link
+                    v-for="doc in section.docs"
                     :key="doc.slug"
                     :to="`/processes/docs/${doc.slug}`"
                     class="block px-3 py-1.5 text-sm rounded-md"
@@ -142,7 +186,7 @@
               </nav>
 
               <!-- Rendered markdown -->
-              <div 
+              <div
                 class="prose prose-indigo dark:prose-invert max-w-none
                   prose-headings:scroll-mt-4
                   prose-h1:text-3xl prose-h1:font-bold prose-h1:mb-6
@@ -165,7 +209,7 @@
 
             <!-- Footer navigation -->
             <div v-if="!loading && !error && (prevDoc || nextDoc)" class="px-8 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-              <router-link 
+              <router-link
                 v-if="prevDoc"
                 :to="`/processes/docs/${prevDoc.slug}`"
                 class="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600"
@@ -174,8 +218,8 @@
                 {{ prevDoc.title }}
               </router-link>
               <div v-else></div>
-              
-              <router-link 
+
+              <router-link
                 v-if="nextDoc"
                 :to="`/processes/docs/${nextDoc.slug}`"
                 class="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600"
@@ -205,9 +249,12 @@ import {
   ExclamationCircleIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowPathIcon,
 } from '@heroicons/vue/24/outline'
+import { useOnboarding } from '../composables/useOnboarding'
 
 const route = useRoute()
+const { resetOnboarding } = useOnboarding()
 
 // State
 const loading = ref(true)
@@ -217,6 +264,7 @@ const markdownContent = ref('')
 const expandedSections = ref(['getting-started']) // Start with first section expanded
 const showMobileSidebar = ref(false)
 const notification = ref(null)
+const showRestartConfirm = ref(false)
 
 // Configure marked for syntax highlighting
 marked.setOptions({
@@ -283,12 +331,19 @@ const showSearchMessage = () => {
   setTimeout(() => notification.value = null, 2000)
 }
 
+const confirmRestartOnboarding = () => {
+  resetOnboarding()
+  showRestartConfirm.value = false
+  notification.value = { message: 'Onboarding checklist has been reset!', type: 'success' }
+  setTimeout(() => notification.value = null, 3000)
+}
+
 const loadIndex = async () => {
   try {
     const response = await fetch('/api/docs/index')
     if (!response.ok) throw new Error('Failed to load docs index')
     docsIndex.value = await response.json()
-    
+
     // Expand section containing current doc
     if (docsIndex.value?.sections) {
       for (const section of docsIndex.value.sections) {
@@ -338,7 +393,7 @@ const loadIndex = async () => {
 const loadContent = async () => {
   loading.value = true
   error.value = null
-  
+
   try {
     const response = await fetch(`/api/docs/content/${currentSlug.value}`)
     if (!response.ok) {
@@ -352,7 +407,7 @@ const loadContent = async () => {
   } catch (e) {
     console.error('Failed to load doc content:', e)
     error.value = e.message
-    
+
     // Show placeholder content for missing docs
     if (e.message.includes('not found')) {
       markdownContent.value = `# ${currentTitle.value || 'Documentation'}
