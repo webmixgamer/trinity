@@ -35,6 +35,7 @@ import {
   ChartBarIcon,
   PlayCircleIcon,
   CheckCircleIcon,
+  BookOpenIcon,
 } from '@heroicons/vue/24/outline'
 
 const props = defineProps({
@@ -58,6 +59,11 @@ const navItems = computed(() => [
     icon: ChartBarIcon,
   },
   {
+    path: '/processes/docs',
+    label: 'Docs',
+    icon: BookOpenIcon,
+  },
+  {
     path: '/executions',
     label: 'Executions',
     icon: PlayCircleIcon,
@@ -73,8 +79,10 @@ const navItems = computed(() => [
 const isActive = (path) => {
   // Exact match for most routes
   if (route.path === path) return true
-  // For processes, also match /processes/new and /processes/:id
-  if (path === '/processes' && route.path.startsWith('/processes/')) return true
+  // For docs, match /processes/docs/*
+  if (path === '/processes/docs' && route.path.startsWith('/processes/docs')) return true
+  // For processes, also match /processes/new and /processes/:id but NOT /processes/docs
+  if (path === '/processes' && route.path.startsWith('/processes/') && !route.path.startsWith('/processes/docs')) return true
   // For executions, also match /executions/:id
   if (path === '/executions' && route.path.startsWith('/executions/')) return true
   return false

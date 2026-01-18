@@ -17,8 +17,9 @@ The backlog is split into phase-based files for easier AI agent consumption:
 | [`BACKLOG_ADVANCED.md`](./BACKLOG_ADVANCED.md) | Advanced | E9-E12, E16 | 13 | Scheduling, sub-processes, analytics |
 | [`BACKLOG_RELIABILITY_IMPROVEMENTS.md`](./BACKLOG_RELIABILITY_IMPROVEMENTS.md) | Reliability | - | 14 | Integration tests, execution recovery |
 | [`BACKLOG_ACCESS_AUDIT.md`](./BACKLOG_ACCESS_AUDIT.md) | Governance | E17-E19 | 9 | RBAC, audit logging, execution limits |
+| [`BACKLOG_ONBOARDING.md`](./BACKLOG_ONBOARDING.md) | MVP+/Core | E20-E24 | 17 | Onboarding, documentation, guided tours |
 
-**Total**: 19 Epics, 85 Stories
+**Total**: 24 Epics, 102 Stories
 
 ---
 
@@ -45,6 +46,11 @@ The backlog is split into phase-based files for easier AI agent consumption:
 | **E17** | Access Control (RBAC) | Governance | 4 |
 | **E18** | Audit Logging | Governance | 3 |
 | **E19** | Execution Governance | Governance | 2 |
+| **E20** | Empty States & Quick Wins | MVP+ | 4 |
+| **E21** | Documentation Tab | MVP+ | 6 |
+| **E22** | Contextual Help | Core | 3 |
+| **E23** | Guided Tours | Core | 3 |
+| **E24** | First Process Wizard | Advanced | 4 |
 
 ---
 
@@ -208,3 +214,4 @@ Show only what's needed at each level:
 | 2026-01-17 | Added Reference Documents section with DEVELOPMENT_CONFIDENCE_MODEL.md |
 | 2026-01-17 | Added BPMN_RESEARCH.md and all Thinking Iteration documents (IT1-IT6) |
 | 2026-01-17 | Added manual_run folder with 22 test cases and 3 test agent templates |
+| 2026-01-18 | Added BACKLOG_ONBOARDING.md with E20-E24 epics (17 stories) for onboarding and documentation |

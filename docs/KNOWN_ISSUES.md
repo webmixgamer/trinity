@@ -28,6 +28,30 @@
 
 ---
 
+### 🟡 Human Approval Timeout Not Enforced
+
+**Status**: KNOWN LIMITATION
+**Priority**: MEDIUM
+**Affects**: Process Engine - human_approval steps
+
+**Symptoms:**
+- Setting `timeout: 5m` on a `human_approval` step does nothing
+- Execution stays paused indefinitely until manual approve/reject
+
+**Cause:**
+- When execution pauses for approval, no background process monitors the timeout
+- Requires a scheduler/cron job to periodically check for timed-out approvals
+
+**Workaround:**
+- Manually approve or reject pending approvals
+- Don't rely on approval timeouts for critical workflows
+
+**Fix Required:**
+- Add background job to check for timed-out approvals
+- Could integrate with existing `src/scheduler/` service
+
+---
+
 ## Resolved Issues
 
 _No resolved issues yet_

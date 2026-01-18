@@ -697,10 +697,160 @@ outputs:
 `
 }
 
+// Quick start templates (matching ProcessList.vue)
+const quickStartTemplates = {
+  'content-pipeline': `name: content-pipeline
+version: "1.0"
+description: A content creation pipeline with research, writing, and review
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: research
+    name: Research Topic
+    type: agent_task
+    agent: researcher
+    message: |
+      Research the following topic thoroughly:
+      {{input.topic}}
+      
+      Provide key facts, statistics, and insights.
+    timeout: 10m
+
+  - id: write
+    name: Write Content
+    type: agent_task
+    depends_on: [research]
+    agent: writer
+    message: |
+      Write engaging content about {{input.topic}} using this research:
+      
+      {{steps.research.output}}
+    timeout: 15m
+
+  - id: review
+    name: Review Content
+    type: agent_task
+    depends_on: [write]
+    agent: editor
+    message: |
+      Review and improve this content:
+      
+      {{steps.write.output}}
+      
+      Check for clarity, accuracy, and engagement.
+    timeout: 10m
+`,
+  'data-report': `name: data-report
+version: "1.0"
+description: Automated data analysis and reporting workflow
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: gather
+    name: Gather Data
+    type: agent_task
+    agent: data-collector
+    message: |
+      Collect and prepare data for analysis.
+      Data source: {{input.data_source}}
+      Time range: {{input.time_range | default:"last 7 days"}}
+    timeout: 10m
+
+  - id: analyze
+    name: Analyze Data
+    type: agent_task
+    depends_on: [gather]
+    agent: analyst
+    message: |
+      Analyze the following data and identify:
+      - Key trends and patterns
+      - Anomalies or outliers
+      - Actionable insights
+      
+      Data: {{steps.gather.output}}
+    timeout: 15m
+
+  - id: report
+    name: Generate Report
+    type: agent_task
+    depends_on: [analyze]
+    agent: writer
+    message: |
+      Create a professional report based on this analysis:
+      
+      {{steps.analyze.output}}
+      
+      Format: Executive summary with key findings.
+    timeout: 10m
+`,
+  'support-escalation': `name: support-escalation
+version: "1.0"
+description: Customer support ticket handling with escalation and approval
+
+triggers:
+  - type: manual
+    id: manual-start
+
+steps:
+  - id: triage
+    name: Triage Ticket
+    type: agent_task
+    agent: support-ai
+    message: |
+      Analyze this support ticket and determine:
+      - Severity (low/medium/high/critical)
+      - Category
+      - Suggested resolution approach
+      
+      Ticket: {{input.ticket}}
+    timeout: 5m
+
+  - id: route
+    name: Route to Specialist
+    type: human_approval
+    depends_on: [triage]
+    title: Review Triage Decision
+    description: |
+      Please review the AI triage decision and approve routing.
+      
+      Severity: {{steps.triage.output.severity}}
+      Recommended action: {{steps.triage.output.recommendation}}
+    timeout: 2h
+
+  - id: resolve
+    name: Generate Resolution
+    type: agent_task
+    depends_on: [route]
+    agent: support-ai
+    message: |
+      Generate a resolution for this ticket based on the approved approach:
+      
+      Original ticket: {{input.ticket}}
+      Triage: {{steps.triage.output}}
+      
+      Provide a helpful, professional response.
+    timeout: 10m
+`
+}
+
 // Lifecycle
 onMounted(async () => {
   if (!isNew.value) {
     await loadProcess()
+  } else {
+    // Check for quick start template from query parameter
+    const templateId = route.query.template
+    if (templateId && quickStartTemplates[templateId]) {
+      yamlContent.value = quickStartTemplates[templateId]
+      showTemplateSelector.value = false
+      showNotification(`Loaded template: ${templateId.replace('-', ' ')}`, 'success')
+    }
   }
   // Fetch available agents for role matrix
   await loadAvailableAgents()

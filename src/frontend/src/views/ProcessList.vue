@@ -193,19 +193,112 @@
           </div>
         </div>
 
-        <!-- Empty state -->
-        <div v-else class="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow">
-          <CubeTransparentIcon class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
-          <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No processes</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new process workflow.</p>
-          <div class="mt-6">
-            <router-link
-              to="/processes/new"
-              class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-            >
-              <PlusIcon class="h-5 w-5 mr-1" />
-              Create Process
-            </router-link>
+        <!-- Enhanced Empty state -->
+        <div v-else class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+          <!-- Hero Section -->
+          <div class="text-center py-12 px-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20">
+            <div class="mx-auto w-20 h-20 bg-indigo-100 dark:bg-indigo-900/50 rounded-2xl flex items-center justify-center mb-6">
+              <CubeTransparentIcon class="h-10 w-10 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+              Create Your First Process
+            </h2>
+            <p class="text-gray-600 dark:text-gray-300 max-w-lg mx-auto">
+              Processes automate multi-step workflows using your AI agents. 
+              Define the steps, set dependencies, and let Trinity orchestrate the execution.
+            </p>
+          </div>
+
+          <!-- Quick Start Templates -->
+          <div class="p-6 border-t border-gray-100 dark:border-gray-700">
+            <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+              Quick Start Templates
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <!-- Content Pipeline Template -->
+              <div 
+                @click="useTemplate('content-pipeline')"
+                class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
+              >
+                <div class="flex items-center mb-2">
+                  <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center mr-3">
+                    <DocumentTextIcon class="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h4 class="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                    Content Pipeline
+                  </h4>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Research → Write → Review
+                </p>
+                <span class="text-xs text-gray-400 dark:text-gray-500">3 steps</span>
+              </div>
+
+              <!-- Data Report Template -->
+              <div 
+                @click="useTemplate('data-report')"
+                class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
+              >
+                <div class="flex items-center mb-2">
+                  <div class="w-8 h-8 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center mr-3">
+                    <ChartBarIcon class="h-4 w-4 text-green-600 dark:text-green-400" />
+                  </div>
+                  <h4 class="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                    Data Report
+                  </h4>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Gather → Analyze → Report
+                </p>
+                <span class="text-xs text-gray-400 dark:text-gray-500">3 steps</span>
+              </div>
+
+              <!-- Support Escalation Template -->
+              <div 
+                @click="useTemplate('support-escalation')"
+                class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
+              >
+                <div class="flex items-center mb-2">
+                  <div class="w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-lg flex items-center justify-center mr-3">
+                    <UserGroupIcon class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <h4 class="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                    Support Escalation
+                  </h4>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Triage → Route → Resolve
+                </p>
+                <span class="text-xs text-gray-400 dark:text-gray-500">3 steps + approval</span>
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">
+              <router-link
+                to="/processes/new"
+                class="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors"
+              >
+                <PlusIcon class="h-5 w-5 mr-2" />
+                Create from Scratch
+              </router-link>
+              <span class="text-gray-400 dark:text-gray-500 text-sm">or</span>
+              <button
+                @click="showImportModal = true"
+                class="inline-flex items-center px-5 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <ArrowUpTrayIcon class="h-5 w-5 mr-2" />
+                Import YAML
+              </button>
+            </div>
+
+            <!-- Help Link -->
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+              New to Processes? 
+              <router-link to="/processes/docs" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+                Read the getting started guide →
+              </router-link>
+            </p>
           </div>
         </div>
 
@@ -221,6 +314,9 @@
         />
       </div>
     </main>
+
+    <!-- Onboarding Checklist -->
+    <OnboardingChecklist />
   </div>
 </template>
 
@@ -230,6 +326,8 @@ import { useProcessesStore } from '../stores/processes'
 import NavBar from '../components/NavBar.vue'
 import ProcessSubNav from '../components/ProcessSubNav.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import OnboardingChecklist from '../components/OnboardingChecklist.vue'
+import { useOnboarding } from '../composables/useOnboarding'
 import {
   PlusIcon,
   PlayIcon,
@@ -241,15 +339,34 @@ import {
   CalendarIcon,
   CubeTransparentIcon,
   ExclamationCircleIcon,
+  DocumentTextIcon,
+  ChartBarIcon,
+  UserGroupIcon,
+  ArrowUpTrayIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 const processesStore = useProcessesStore()
 const notification = ref(null)
 const actionInProgress = ref(null)
 const deleteTarget = ref(null)
 const statusFilter = ref('')
 const scheduleInfo = ref({})
+const showImportModal = ref(false)
+
+// Onboarding tracking
+const { syncWithData } = useOnboarding()
+
+// Use a template to start a new process - templates defined in ProcessEditor.vue
+const useTemplate = (templateId) => {
+  router.push({
+    path: '/processes/new',
+    query: { template: templateId }
+  })
+}
 
 // Computed
 const displayProcesses = computed(() => {
@@ -266,6 +383,13 @@ const displayProcesses = computed(() => {
 onMounted(async () => {
   await processesStore.fetchProcesses()
   await loadScheduleInfo()
+  
+  // Sync onboarding checklist with actual data
+  const hasSchedule = Object.keys(scheduleInfo.value).length > 0
+  syncWithData({
+    processCount: processesStore.processes.length,
+    hasSchedule
+  })
 })
 
 async function loadScheduleInfo() {
