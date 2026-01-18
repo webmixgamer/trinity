@@ -47,7 +47,7 @@ steps:
     message: |
       Research the following topic:
       {{input.topic}}
-      
+
       Provide 3-5 key facts and insights.
     timeout: 5m
 
@@ -59,7 +59,7 @@ steps:
     message: |
       Based on this research:
       {{steps.research.output}}
-      
+
       Create a concise summary in 2-3 sentences.
     timeout: 3m
 

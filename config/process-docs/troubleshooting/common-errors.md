@@ -143,7 +143,7 @@ cron: "0 9 * * *"    # Daily at 9 AM
 # Wrong
 {{steps.Research.output}}  # Capital R
 
-# Correct  
+# Correct
 {{steps.research.output}}
 ```
 
@@ -213,10 +213,10 @@ timeout_action: reject  # Fail the process
 steps:
   - id: first
     ...
-    
+
   - id: second
     depends_on: [first]  # Won't start until 'first' completes
-    
+
   - id: third
     depends_on: [second]
 ```

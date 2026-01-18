@@ -86,7 +86,7 @@ Pauses the process until a human approves or rejects.
   description: |
     Please review the draft report:
     {{steps.draft-report.output}}
-    
+
     Approve to proceed with publication.
   timeout: 24h
 ```
@@ -258,14 +258,14 @@ steps:
 steps:
   - id: start
     ...
-    
+
   - id: path-a
     depends_on: [start]
   - id: path-b
     depends_on: [start]
   - id: path-c
     depends_on: [start]
-    
+
   - id: merge
     depends_on: [path-a, path-b, path-c]
 ```
@@ -278,7 +278,7 @@ steps:
 ```yaml
 # Good
 - id: validate-customer-email
-  
+
 # Avoid
 - id: step1
 ```

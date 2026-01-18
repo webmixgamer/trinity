@@ -36,11 +36,11 @@ async def get_docs_index():
     docs_dir = get_docs_dir()
     if not docs_dir:
         raise HTTPException(status_code=404, detail="Documentation directory not found")
-    
+
     index_path = docs_dir / "index.json"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Documentation index not found")
-    
+
     try:
         with open(index_path, "r") as f:
             return json.load(f)
@@ -54,11 +54,11 @@ async def get_doc_content(slug: str):
     docs_dir = get_docs_dir()
     if not docs_dir:
         raise HTTPException(status_code=404, detail="Documentation directory not found")
-    
+
     # Security: Prevent path traversal
     if ".." in slug or slug.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid document path")
-    
+
     # Try with .md extension
     doc_path = docs_dir / f"{slug}.md"
     if not doc_path.exists():
@@ -66,13 +66,13 @@ async def get_doc_content(slug: str):
         doc_path = docs_dir / slug
         if not doc_path.exists() or not doc_path.suffix == ".md":
             raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Verify the path is still within docs_dir (security)
     try:
         doc_path.resolve().relative_to(docs_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid document path")
-    
+
     try:
         content = doc_path.read_text(encoding="utf-8")
         return JSONResponse(content={"content": content, "slug": slug})
@@ -86,7 +86,7 @@ async def list_docs():
     docs_dir = get_docs_dir()
     if not docs_dir:
         raise HTTPException(status_code=404, detail="Documentation directory not found")
-    
+
     docs = []
     for md_file in docs_dir.rglob("*.md"):
         relative_path = md_file.relative_to(docs_dir)
@@ -96,5 +96,5 @@ async def list_docs():
             "path": str(relative_path),
             "title": md_file.stem.replace("-", " ").title()
         })
-    
+
     return {"documents": docs}

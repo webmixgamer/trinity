@@ -218,7 +218,7 @@ steps:
     title: Content Review Required
     description: |
       Analysis: {{steps.analyze.output}}
-      
+
       Original content: {{input.content}}
     timeout: 48h
     timeout_action: skip

@@ -195,11 +195,11 @@ triggers:
   # Start manually for testing
   - type: manual
     id: manual-test
-  
+
   # External systems via webhook
   - type: webhook
     id: api-trigger
-  
+
   # Automated daily run
   - type: schedule
     id: daily-automation

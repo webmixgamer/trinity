@@ -133,7 +133,7 @@ steps:
   - id: risky-operation
     type: agent_task
     message: Try risky operation
-    
+
   - id: check-result
     type: gateway
     depends_on: [risky-operation]
@@ -142,11 +142,11 @@ steps:
         next: success-path
       - default: true
         next: fallback-path
-        
+
   - id: success-path
     depends_on: [check-result]
     message: Use the successful result
-    
+
   - id: fallback-path
     depends_on: [check-result]
     message: Use fallback approach
@@ -178,12 +178,12 @@ steps:
   - id: create-resource
     type: agent_task
     message: Create cloud resource
-    
+
   - id: configure-resource
     type: agent_task
     depends_on: [create-resource]
     message: Configure the resource
-    
+
   - id: check-configure
     type: gateway
     depends_on: [configure-resource]
@@ -192,12 +192,12 @@ steps:
         next: finalize
       - default: true
         next: rollback
-        
+
   # Success path
   - id: finalize
     depends_on: [check-configure]
     message: Finalize setup
-    
+
   # Compensation path
   - id: rollback
     depends_on: [check-configure]
@@ -266,7 +266,7 @@ For critical workflows, add approval steps before irreversible actions:
   title: Confirm Deletion
   description: |
     About to delete: {{input.resource_name}}
-    
+
     This cannot be undone. Approve to proceed.
 ```
 

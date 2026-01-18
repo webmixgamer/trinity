@@ -138,12 +138,12 @@ Use YAML's `|` for multiline strings with variables.
 ```yaml
 message: |
   Please analyze the following data:
-  
+
   Topic: {{input.topic}}
-  
+
   Previous research:
   {{steps.research.output}}
-  
+
   Provide a detailed analysis covering:
   1. Key findings
   2. Trends
