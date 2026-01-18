@@ -50,9 +50,9 @@
                   <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
                     {{ execution.process_name }}
                   </h1>
-                  <span :class="getStatusClasses(execution.status)" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium">
-                    <span>{{ getStatusIcon(execution.status) }}</span>
-                    <span class="capitalize">{{ execution.status }}</span>
+                  <span :class="getStatusClasses(displayStatus)" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium">
+                    <span>{{ getStatusIcon(displayStatus) }}</span>
+                    <span class="capitalize">{{ displayStatusText }}</span>
                   </span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -100,7 +100,7 @@
             <div class="flex items-center gap-3">
               <!-- WebSocket connection indicator -->
               <div
-                v-if="execution.status === 'running' || execution.status === 'pending'"
+                v-if="execution.status === 'running' || execution.status === 'pending' || execution.status === 'paused'"
                 class="flex items-center gap-2 text-sm"
               >
                 <span
@@ -382,6 +382,26 @@ const executionId = computed(() => route.params.id)
 const events = ref([])
 const breadcrumbs = ref([])  // For nested sub-process navigation
 
+// Check if paused due to waiting_approval
+const hasWaitingApproval = computed(() => {
+  return execution.value?.steps?.some(s => s.status === 'waiting_approval') || false
+})
+
+// Display status (enhanced for approval visibility)
+const displayStatus = computed(() => {
+  if (execution.value?.status === 'paused' && hasWaitingApproval.value) {
+    return 'awaiting_approval'
+  }
+  return execution.value?.status || 'unknown'
+})
+
+const displayStatusText = computed(() => {
+  if (displayStatus.value === 'awaiting_approval') {
+    return 'Awaiting Approval'
+  }
+  return displayStatus.value
+})
+
 // Watch active tab to load events
 watch(activeTab, (newTab) => {
   if (newTab === 'events' && events.value.length === 0) {
@@ -487,10 +507,11 @@ let refreshInterval = null
 onMounted(() => {
   loadExecution()
 
-  // Fallback auto-refresh for running executions (when WS not working)
+  // Fallback auto-refresh for active executions (when WS not working)
+  // Includes 'paused' because it may be waiting for approval
   refreshInterval = setInterval(() => {
     if (!wsConnected.value && execution.value &&
-        (execution.value.status === 'running' || execution.value.status === 'pending')) {
+        (execution.value.status === 'running' || execution.value.status === 'pending' || execution.value.status === 'paused')) {
       loadExecution()
     }
   }, 5000)
@@ -647,6 +668,7 @@ function getStatusIcon(status) {
     failed: '❌',
     cancelled: '⛔',
     paused: '⏸️',
+    awaiting_approval: '🔔',  // Alert bell for approval
   }
   return icons[status] || '❓'
 }
@@ -659,6 +681,7 @@ function getStatusClasses(status) {
     failed: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
     cancelled: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300',
     paused: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
+    awaiting_approval: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 animate-pulse',  // Amber with pulse
   }
   return classes[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
 }

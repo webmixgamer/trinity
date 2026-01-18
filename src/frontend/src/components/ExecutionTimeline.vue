@@ -1,5 +1,30 @@
 <template>
   <div class="execution-timeline">
+    <!-- Approval Alert Banner (prominent, at top) -->
+    <div v-if="stepsNeedingApproval.length > 0" class="mb-4 p-4 bg-amber-100 dark:bg-amber-900/40 border-2 border-amber-400 dark:border-amber-600 rounded-lg animate-pulse-subtle">
+      <div class="flex items-center gap-3">
+        <div class="flex-shrink-0 w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div class="flex-1">
+          <h4 class="text-lg font-semibold text-amber-900 dark:text-amber-100">
+            {{ stepsNeedingApproval.length }} Step{{ stepsNeedingApproval.length > 1 ? 's' : '' }} Waiting for Approval
+          </h4>
+          <p class="text-sm text-amber-800 dark:text-amber-200">
+            {{ stepsNeedingApproval.map(s => s.step_id).join(', ') }}
+          </p>
+        </div>
+        <button 
+          @click="expandedStep = stepsNeedingApproval[0].step_id"
+          class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors"
+        >
+          Review Now →
+        </button>
+      </div>
+    </div>
+
     <!-- Timeline header -->
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">Execution Steps</h3>
@@ -142,8 +167,32 @@
             </div>
           </div>
 
+          <!-- Skipped reason display -->
+          <div v-if="step.status === 'skipped'" class="mb-4">
+            <div class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+                <span class="font-medium text-gray-700 dark:text-gray-300">Step Skipped</span>
+              </div>
+              <div class="text-sm text-gray-600 dark:text-gray-400">
+                <span v-if="step.output?.skipped_reason">{{ step.output.skipped_reason }}</span>
+                <span v-else-if="step.error?.message">{{ step.error.message }}</span>
+                <span v-else-if="step.error?.code === 'APPROVAL_REJECTED'">Approval was rejected</span>
+                <span v-else>Condition not met or error occurred</span>
+              </div>
+              <!-- Show error code if present -->
+              <div v-if="step.error?.code" class="mt-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                  {{ step.error.code }}
+                </span>
+              </div>
+            </div>
+          </div>
+
           <!-- Error display (for failed steps) -->
-          <div v-if="step.error" class="mb-4">
+          <div v-if="step.error && step.status !== 'skipped'" class="mb-4">
             <div class="text-xs font-medium text-red-600 dark:text-red-400 mb-2">Error Details</div>
             <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <!-- Error code badge -->
@@ -414,6 +463,11 @@ const totalSteps = computed(() => props.steps.length)
 
 const completedSteps = computed(() =>
   props.steps.filter(s => s.status === 'completed' || s.status === 'skipped').length
+)
+
+// Steps that need approval (prominent alert)
+const stepsNeedingApproval = computed(() =>
+  props.steps.filter(s => s.status === 'waiting_approval')
 )
 
 const progressPercent = computed(() => {
