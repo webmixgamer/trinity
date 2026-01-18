@@ -373,11 +373,10 @@ function getStatusClasses(status) {
 }
 
 // Enhanced status display for paused executions
+// In list view, steps data isn't loaded, so treat ALL paused as awaiting approval
 function getDisplayStatus(execution) {
-  // Check if paused due to waiting_approval step
   if (execution.status === 'paused') {
-    const hasWaiting = execution.steps?.some(s => s.status === 'waiting_approval')
-    if (hasWaiting) return 'awaiting_approval'
+    return 'awaiting_approval'
   }
   return execution.status
 }
