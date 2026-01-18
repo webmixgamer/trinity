@@ -14,7 +14,7 @@
 |--------|---------|-------|
 | **Sprint 7** | E20-01, E20-02, E21-04 | Quick wins + Getting Started content ✅ |
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
-| **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path |
+| **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help |
 | **Sprint 10** | E23-01, E23-02, E21-03 | Tours + search |
 | **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
@@ -401,7 +401,7 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | MVP+ |
 | Dependencies | E21-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Document: "Sequential Workflows" (~400 words)
@@ -440,7 +440,7 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | MVP+ |
 | Dependencies | E21-05 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Add `notification` step type to step-types.md:
@@ -472,7 +472,7 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | MVP+ |
 | Dependencies | E21-07, E21-08 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Define 3-level learning path in docs:
@@ -821,3 +821,4 @@ E23-01 (Driver.js Integration)
 | 2026-01-18 | Sprint 8 implemented: E21-01, E21-02, E21-05, E21-06 (docs tab, reference content) |
 | 2026-01-18 | Added E20-05: Onboarding UX Polish (context-aware hints, restart from docs) |
 | 2026-01-18 | Added E21-07, E21-08, E21-09: Pattern docs, missing step types, learning path (21 stories total) |
+| 2026-01-18 | Sprint 8.5 implemented: E21-07, E21-08, E21-09 (patterns, step types, tutorials) |
