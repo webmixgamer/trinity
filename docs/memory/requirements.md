@@ -621,6 +621,38 @@ The Process Engine supports six step types:
 
 ---
 
+## 20. Security & Compliance
+
+### 20.1 Audit Trail System (SEC-001)
+- **Status**: ⏳ Pending Implementation
+- **Requirement ID**: SEC-001
+- **Priority**: HIGH
+- **Description**: Comprehensive audit logging for all user and agent actions with full actor attribution. Enables investigation, compliance reporting, and accountability.
+- **Key Features**:
+  - Append-only `audit_log` table with immutability triggers
+  - Full actor attribution (user, agent, MCP client, system)
+  - MCP API key tracking per tool call
+  - Hash chain for tamper evidence (optional compliance mode)
+  - Query API with filters and export (CSV/JSON)
+- **Event Categories**:
+  - `AGENT_LIFECYCLE`: create, start, stop, delete, recreate
+  - `EXECUTION`: task_triggered, chat_started, schedule_triggered
+  - `AUTHENTICATION`: login_success, login_failed, logout
+  - `AUTHORIZATION`: permission_grant, permission_revoke, share, unshare
+  - `CONFIGURATION`: settings_change, resource_limits
+  - `CREDENTIALS`: create, delete, reload
+  - `MCP_OPERATION`: tool_call, key_create, key_revoke
+  - `GIT_OPERATION`: sync, pull, init, commit
+  - `SYSTEM`: startup, shutdown, emergency_stop
+- **Architecture**: `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md`
+- **Implementation Phases**:
+  1. Core infrastructure (table, service, API)
+  2. Backend integration (lifecycle, auth, permissions)
+  3. MCP integration (tool call audit)
+  4. Advanced features (hash chain, export, retention)
+
+---
+
 ## Non-Functional Requirements
 
 ### Performance
@@ -633,7 +665,7 @@ The Process Engine supports six step types:
 - All credentials encrypted at rest (Redis)
 - HTTPS in production (Let's Encrypt)
 - Container isolation (network, filesystem)
-- Audit logging for compliance
+- Comprehensive audit logging via audit_log table (SEC-001)
 
 ### Scalability
 - Support 50+ concurrent agents

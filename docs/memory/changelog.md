@@ -1,3 +1,33 @@
+### 2026-01-18 10:30:00
+📋 **Architecture: Audit Trail System (SEC-001)**
+
+**Requirement**: Comprehensive audit logging for user and agent actions with full actor attribution. Must be able to reconstruct chain of events for investigation.
+
+**Gaps Identified**:
+- Agent lifecycle (create/start/stop/delete) → WebSocket only, no persistence
+- MCP tool calls → console.log only, no audit
+- User logins → nothing tracked
+- Permission changes → nothing tracked
+- Credential operations → nothing tracked
+
+**Solution**: Dedicated append-only `audit_log` table (separate from `agent_activities`):
+- Immutability enforced via SQL triggers
+- Full actor attribution (user, agent, MCP client, system)
+- MCP API key tracking per tool call
+- Optional hash chain for tamper evidence
+- Query API with filters and CSV/JSON export
+
+**Event Types**: AGENT_LIFECYCLE, EXECUTION, AUTHENTICATION, AUTHORIZATION, CONFIGURATION, CREDENTIALS, MCP_OPERATION, GIT_OPERATION, SYSTEM
+
+**Files Created**:
+- `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md` - Full architecture spec
+
+**Files Updated**:
+- `docs/memory/roadmap.md` - Added SEC-001 to Phase 11 as HIGH priority
+- `docs/memory/requirements.md` - Added section 20: Security & Compliance
+
+---
+
 ### 2026-01-15 14:00:00
 🐛 **Fix: Timezone-Aware Timestamp Handling (Critical)**
 
