@@ -99,6 +99,7 @@ test-results/
 test-screenshots/
 tests/reports/*.json
 tests/reports/*.md
+tests/reports/*.html
 !tests/reports/README.md
 
 # Database backups (sensitive)
