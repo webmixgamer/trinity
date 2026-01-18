@@ -3,7 +3,7 @@
 > **Phase**: MVP+ / Core
 > **Goal**: Premium onboarding experience for new users
 > **Epics**: E20, E21, E22, E23, E24
-> **Stories**: 17
+> **Stories**: 21
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -12,8 +12,9 @@
 
 | Sprint | Stories | Focus |
 |--------|---------|-------|
-| **Sprint 7** | E20-01, E20-02, E21-04 | Quick wins + Getting Started content |
-| **Sprint 8** | E21-01, E21-02, E21-05, E21-06 | Docs tab foundation |
+| **Sprint 7** | E20-01, E20-02, E21-04 | Quick wins + Getting Started content ✅ |
+| **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
+| **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help |
 | **Sprint 10** | E23-01, E23-02, E21-03 | Tours + search |
 | **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
@@ -30,6 +31,8 @@ E20-01 (Empty State)
   │                                      └──► E24-02, E24-03, E24-04
   │
   └──► E20-02 (Checklist) ──► E20-04 (First-Run Detection)
+                                  │
+                                  └──► E20-05 (UX Polish) ✅
 
 E21-04 (Getting Started Content)
   │
@@ -37,7 +40,13 @@ E21-04 (Getting Started Content)
                                     │
                                     ├──► E21-03 (Search)
                                     │
-                                    └──► E21-05, E21-06 (Reference Content)
+                                    ├──► E21-05, E21-06 (Reference Content) ✅
+                                    │         │
+                                    │         └──► E21-08 (Missing Step Types)
+                                    │
+                                    └──► E21-07 (Pattern Docs)
+                                              │
+                                              └──► E21-09 (Learning Path)
 
 E21-02 (Docs View)
   │
@@ -168,6 +177,32 @@ E23-01 (Driver.js Integration)
 - Part of `useOnboarding.js` composable
 - Can check `processesStore.processes.length === 0` for process detection
 - Consider backend flag in `system_settings` for multi-device sync (optional)
+
+---
+
+### E20-05: Onboarding UX Polish
+
+**As a** user, **I want** context-aware checklist guidance and ability to restart onboarding, **so that** I get relevant help without confusion.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | S |
+| Priority | P1 |
+| Phase | MVP+ |
+| Dependencies | E20-02 |
+| Status | done |
+
+**Acceptance Criteria:**
+- [x] Show inline hint instead of "Start" when already on target page
+- [x] "Restart Onboarding" button on Docs page sidebar
+- [x] Confirmation dialog before restart
+- [x] Remove hidden keyboard shortcut (replaced by UI option)
+
+**Technical Notes:**
+- Location: `src/frontend/src/components/OnboardingChecklist.vue`
+- Location: `src/frontend/src/views/ProcessDocs.vue`
+- Use existing `resetOnboarding()` from `useOnboarding.js` composable
+- Show "See above ↑" with amber color when on target page instead of "Start →"
 
 ---
 
@@ -353,6 +388,118 @@ E23-01 (Driver.js Integration)
 - Files in `config/process-docs/reference/`
 - Cross-link between documents
 - Include JSON Schema excerpt where helpful
+
+---
+
+### E21-07: Pattern Documentation
+
+**As a** process designer, **I want** documented common patterns with examples, **so that** I can learn from proven workflow designs.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | M |
+| Priority | P1 |
+| Phase | MVP+ |
+| Dependencies | E21-02 |
+| Status | pending |
+
+**Acceptance Criteria:**
+- [ ] Document: "Sequential Workflows" (~400 words)
+  - Linear step chains with depends_on
+  - Data flow between steps
+  - Error handling in chains
+  - Complete YAML example
+- [ ] Document: "Parallel Execution" (~500 words)
+  - Fork/join pattern
+  - Fan-out / fan-in pattern
+  - Diamond pattern with diagram
+  - Aggregating results from parallel steps
+  - YAML examples for each pattern
+- [ ] Document: "Approval Workflows" (~500 words)
+  - Single approval gate
+  - Multi-level approval chains
+  - Conditional paths after approval/rejection
+  - Timeout handling strategies
+  - Complete content review pipeline example
+
+**Technical Notes:**
+- Files in `config/process-docs/patterns/`
+- Create directory if missing
+- Include ASCII diagrams showing flow
+- Cross-link to step-types.md reference
+
+---
+
+### E21-08: Missing Step Types Documentation
+
+**As a** process designer, **I want** documentation for all step types, **so that** I can use the full capability of the process engine.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | S |
+| Priority | P1 |
+| Phase | MVP+ |
+| Dependencies | E21-05 |
+| Status | pending |
+
+**Acceptance Criteria:**
+- [ ] Add `notification` step type to step-types.md:
+  - Purpose: Send alerts/messages to channels
+  - Required fields: channels, message, recipients
+  - Example: Slack notification on completion
+- [ ] Add `sub_process` step type to step-types.md:
+  - Purpose: Invoke nested workflows
+  - Required fields: process (name), input_mapping
+  - Output mapping from child to parent
+  - Example: Customer onboarding calling account setup
+- [ ] Update step types overview table with new types
+- [ ] Add examples showing when to use each
+
+**Technical Notes:**
+- Update existing `config/process-docs/getting-started/step-types.md`
+- Reference the roadmap (PROCESS_ENGINE_ROADMAP.md) for examples
+- Include breadcrumb/navigation concepts for sub_process
+
+---
+
+### E21-09: Progressive Learning Path
+
+**As a** new user, **I want** a structured learning journey, **so that** I can progressively build my process design skills.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | L |
+| Priority | P1 |
+| Phase | MVP+ |
+| Dependencies | E21-07, E21-08 |
+| Status | pending |
+
+**Acceptance Criteria:**
+- [ ] Define 3-level learning path in docs:
+  - Level 1: Getting Started (existing content, reorganized)
+  - Level 2: Intermediate (new tutorials)
+  - Level 3: Advanced (new tutorials)
+- [ ] Create "Second Process" tutorial (~600 words):
+  - Builds on first-process.md
+  - Teaches parallel execution
+  - Introduces variable passing between parallel steps
+- [ ] Create "Adding Human Checkpoints" tutorial (~500 words):
+  - Takes existing process
+  - Adds human_approval step
+  - Shows approval decision handling
+- [ ] Create "Complex Workflows" tutorial (~600 words):
+  - Gateway branching
+  - Multiple conditional paths
+  - Combining patterns
+- [ ] Update docs sidebar to show learning path progression
+- [ ] Add "Next Steps" links connecting tutorials
+
+**Technical Notes:**
+- Files in `config/process-docs/tutorials/` (new directory)
+- Each tutorial should have clear prerequisites
+- Include "What You'll Learn" section at start
+- End with "What's Next" linking to the next tutorial
+- Consider badges/progress indicators in onboarding checklist
 
 ---
 
@@ -672,3 +819,5 @@ E23-01 (Driver.js Integration)
 | 2026-01-18 | Initial onboarding backlog with 17 stories across 5 epics |
 | 2026-01-18 | Sprint 7 implemented: E20-01, E20-02, E21-04 (empty states, checklist, getting started) |
 | 2026-01-18 | Sprint 8 implemented: E21-01, E21-02, E21-05, E21-06 (docs tab, reference content) |
+| 2026-01-18 | Added E20-05: Onboarding UX Polish (context-aware hints, restart from docs) |
+| 2026-01-18 | Added E21-07, E21-08, E21-09: Pattern docs, missing step types, learning path (21 stories total) |
