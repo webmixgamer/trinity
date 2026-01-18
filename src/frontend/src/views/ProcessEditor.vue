@@ -715,7 +715,7 @@ steps:
     message: |
       Research the following topic thoroughly:
       {{input.topic}}
-      
+
       Provide key facts, statistics, and insights.
     timeout: 10m
 
@@ -726,7 +726,7 @@ steps:
     agent: writer
     message: |
       Write engaging content about {{input.topic}} using this research:
-      
+
       {{steps.research.output}}
     timeout: 15m
 
@@ -737,9 +737,9 @@ steps:
     agent: editor
     message: |
       Review and improve this content:
-      
+
       {{steps.write.output}}
-      
+
       Check for clarity, accuracy, and engagement.
     timeout: 10m
 `,
@@ -772,7 +772,7 @@ steps:
       - Key trends and patterns
       - Anomalies or outliers
       - Actionable insights
-      
+
       Data: {{steps.gather.output}}
     timeout: 15m
 
@@ -783,9 +783,9 @@ steps:
     agent: writer
     message: |
       Create a professional report based on this analysis:
-      
+
       {{steps.analyze.output}}
-      
+
       Format: Executive summary with key findings.
     timeout: 10m
 `,
@@ -807,7 +807,7 @@ steps:
       - Severity (low/medium/high/critical)
       - Category
       - Suggested resolution approach
-      
+
       Ticket: {{input.ticket}}
     timeout: 5m
 
@@ -818,7 +818,7 @@ steps:
     title: Review Triage Decision
     description: |
       Please review the AI triage decision and approve routing.
-      
+
       Severity: {{steps.triage.output.severity}}
       Recommended action: {{steps.triage.output.recommendation}}
     timeout: 2h
@@ -830,10 +830,10 @@ steps:
     agent: support-ai
     message: |
       Generate a resolution for this ticket based on the approved approach:
-      
+
       Original ticket: {{input.ticket}}
       Triage: {{steps.triage.output}}
-      
+
       Provide a helpful, professional response.
     timeout: 10m
 `

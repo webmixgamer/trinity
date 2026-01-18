@@ -98,10 +98,10 @@ const STORAGE_KEY = 'trinity_onboarding'
 export function useOnboarding() {
   const authStore = useAuthStore()
   const processesStore = useProcessesStore()
-  
+
   // Load from localStorage
   const getStorageKey = () => `${STORAGE_KEY}_${authStore.user?.id || 'anon'}`
-  
+
   const state = ref({
     dismissed: false,
     tourCompleted: false,
@@ -113,7 +113,7 @@ export function useOnboarding() {
       configureApproval: false
     }
   })
-  
+
   // Load state on init
   const loadState = () => {
     try {
@@ -125,39 +125,39 @@ export function useOnboarding() {
       console.warn('Failed to load onboarding state:', e)
     }
   }
-  
+
   // Save state on change
   watch(state, (newState) => {
     localStorage.setItem(getStorageKey(), JSON.stringify(newState))
   }, { deep: true })
-  
+
   // Auto-detect completed items
   const isFirstRun = computed(() => {
     return processesStore.processes.length === 0 && !state.value.dismissed
   })
-  
+
   const checklistProgress = computed(() => {
     const items = Object.values(state.value.checklist)
     const completed = items.filter(Boolean).length
     return { completed, total: items.length }
   })
-  
+
   const markChecklistItem = (item) => {
     if (item in state.value.checklist) {
       state.value.checklist[item] = true
     }
   }
-  
+
   const dismissOnboarding = () => {
     state.value.dismissed = true
   }
-  
+
   const markTourCompleted = () => {
     state.value.tourCompleted = true
   }
-  
+
   loadState()
-  
+
   return {
     state,
     isFirstRun,
@@ -218,20 +218,20 @@ const navItems = computed(() => [
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
     <ProcessSubNav />
-    
+
     <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
       <div class="flex gap-6">
         <!-- Sidebar -->
         <aside class="w-64 flex-shrink-0">
           <div class="sticky top-6">
             <!-- Search -->
-            <input 
+            <input
               v-model="searchQuery"
-              type="text" 
+              type="text"
               placeholder="Search docs..."
               class="w-full px-3 py-2 border rounded-lg mb-4"
             />
-            
+
             <!-- Navigation Tree -->
             <nav class="space-y-1">
               <div v-for="section in docSections" :key="section.id">
@@ -239,8 +239,8 @@ const navItems = computed(() => [
                   {{ section.title }}
                 </button>
                 <div v-if="expandedSections.includes(section.id)">
-                  <router-link 
-                    v-for="doc in section.docs" 
+                  <router-link
+                    v-for="doc in section.docs"
                     :key="doc.slug"
                     :to="`/processes/docs/${doc.slug}`"
                     class="..."
@@ -252,7 +252,7 @@ const navItems = computed(() => [
             </nav>
           </div>
         </aside>
-        
+
         <!-- Content -->
         <article class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow p-8">
           <div v-if="loading" class="animate-pulse">Loading...</div>
@@ -335,38 +335,38 @@ Add help panel alongside YAML editor:
   <div class="flex">
     <!-- YAML Editor (existing) -->
     <div class="flex-1">
-      <YamlEditor 
-        v-model="yamlContent" 
+      <YamlEditor
+        v-model="yamlContent"
         @cursor-change="onCursorChange"
       />
     </div>
-    
+
     <!-- Help Panel (new) -->
     <aside v-if="showHelpPanel" class="w-80 border-l p-4">
       <div class="flex justify-between items-center mb-4">
         <h3 class="font-medium">Help</h3>
         <button @click="showHelpPanel = false">×</button>
       </div>
-      
+
       <div v-if="currentHelp">
         <h4 class="font-semibold text-sm mb-2">{{ currentHelp.title }}</h4>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
           {{ currentHelp.description }}
         </p>
-        
+
         <div v-if="currentHelp.example" class="bg-gray-100 dark:bg-gray-700 p-2 rounded text-xs">
           <pre>{{ currentHelp.example }}</pre>
         </div>
-        
-        <router-link 
+
+        <router-link
           v-if="currentHelp.docsLink"
-          :to="currentHelp.docsLink" 
+          :to="currentHelp.docsLink"
           class="text-indigo-600 text-sm mt-3 inline-block"
         >
           Learn more →
         </router-link>
       </div>
-      
+
       <div v-else class="text-sm text-gray-500">
         Place your cursor in the YAML to see contextual help.
       </div>
@@ -436,7 +436,7 @@ import { useOnboarding } from './useOnboarding'
 
 export function useTour() {
   const { markTourCompleted, state } = useOnboarding()
-  
+
   const driverInstance = driver({
     showProgress: true,
     animate: true,
@@ -446,10 +446,10 @@ export function useTour() {
       markTourCompleted()
     }
   })
-  
+
   const startProcessesTour = () => {
     if (state.value.tourCompleted) return
-    
+
     driverInstance.setSteps([
       {
         element: '.processes-header',
@@ -492,10 +492,10 @@ export function useTour() {
         }
       }
     ])
-    
+
     driverInstance.drive()
   }
-  
+
   return {
     startProcessesTour
   }
@@ -514,7 +514,7 @@ const { isFirstRun } = useOnboarding()
 
 onMounted(async () => {
   await processesStore.fetchProcesses()
-  
+
   // Start tour for first-time users
   if (isFirstRun.value) {
     nextTick(() => {
@@ -545,21 +545,21 @@ describe('useOnboarding', () => {
   beforeEach(() => {
     localStorage.clear()
   })
-  
+
   it('initializes with default state', () => {
     const { state } = useOnboarding()
     expect(state.value.dismissed).toBe(false)
     expect(state.value.tourCompleted).toBe(false)
   })
-  
+
   it('persists state to localStorage', () => {
     const { markChecklistItem, state } = useOnboarding()
     markChecklistItem('createProcess')
-    
+
     const stored = JSON.parse(localStorage.getItem('trinity_onboarding_anon'))
     expect(stored.checklist.createProcess).toBe(true)
   })
-  
+
   it('computes isFirstRun correctly', () => {
     // Mock processesStore with empty processes
     const { isFirstRun } = useOnboarding()

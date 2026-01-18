@@ -204,7 +204,7 @@
               Create Your First Process
             </h2>
             <p class="text-gray-600 dark:text-gray-300 max-w-lg mx-auto">
-              Processes automate multi-step workflows using your AI agents. 
+              Processes automate multi-step workflows using your AI agents.
               Define the steps, set dependencies, and let Trinity orchestrate the execution.
             </p>
           </div>
@@ -216,7 +216,7 @@
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <!-- Content Pipeline Template -->
-              <div 
+              <div
                 @click="useTemplate('content-pipeline')"
                 class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
               >
@@ -235,7 +235,7 @@
               </div>
 
               <!-- Data Report Template -->
-              <div 
+              <div
                 @click="useTemplate('data-report')"
                 class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
               >
@@ -254,7 +254,7 @@
               </div>
 
               <!-- Support Escalation Template -->
-              <div 
+              <div
                 @click="useTemplate('support-escalation')"
                 class="group border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all"
               >
@@ -294,7 +294,7 @@
 
             <!-- Help Link -->
             <p class="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
-              New to Processes? 
+              New to Processes?
               <router-link to="/processes/docs" class="text-indigo-600 dark:text-indigo-400 hover:underline">
                 Read the getting started guide →
               </router-link>
@@ -383,7 +383,7 @@ const displayProcesses = computed(() => {
 onMounted(async () => {
   await processesStore.fetchProcesses()
   await loadScheduleInfo()
-  
+
   // Sync onboarding checklist with actual data
   const hasSchedule = Object.keys(scheduleInfo.value).length > 0
   syncWithData({
