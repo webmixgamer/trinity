@@ -19,6 +19,24 @@
       ]
     },
     {
+      "id": "tutorials",
+      "title": "Tutorials",
+      "docs": [
+        {
+          "slug": "tutorials/second-process",
+          "title": "Parallel Execution"
+        },
+        {
+          "slug": "tutorials/human-checkpoints",
+          "title": "Adding Human Checkpoints"
+        },
+        {
+          "slug": "tutorials/complex-workflows",
+          "title": "Complex Workflows"
+        }
+      ]
+    },
+    {
       "id": "reference",
       "title": "Reference",
       "docs": [
