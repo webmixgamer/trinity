@@ -36,6 +36,150 @@ MAX_CREDENTIALS = 100
 MAX_FILES = 1000
 
 
+# =============================================================================
+# Safe Tar Extraction Utilities
+# =============================================================================
+
+def _is_path_within(base: Path, target: Path) -> bool:
+    """
+    Check if target path is within base directory.
+    
+    Uses Path.resolve() to handle symlinks and normalize paths.
+    Returns True if target is inside base (or is base itself).
+    """
+    try:
+        # resolve() normalizes the path and resolves symlinks
+        # We use strict=False because target may not exist yet during extraction
+        base_resolved = base.resolve()
+        target_resolved = target.resolve()
+        
+        # Check if target starts with base path
+        return str(target_resolved).startswith(str(base_resolved) + "/") or \
+               target_resolved == base_resolved
+    except (OSError, ValueError):
+        return False
+
+
+def _validate_tar_member(member: tarfile.TarInfo, base_dir: Path) -> tuple[bool, str]:
+    """
+    Validate a tar archive member for safe extraction.
+    
+    Checks:
+    - Destination path stays within base_dir
+    - No absolute paths
+    - Symlinks/hardlinks only point within base_dir
+    - No special file types (devices, FIFOs)
+    
+    Args:
+        member: The tar archive member to validate
+        base_dir: The base directory for extraction
+        
+    Returns:
+        Tuple of (is_valid, error_message). If valid, error_message is empty.
+    """
+    member_name = member.name
+    
+    # Reject absolute paths
+    if member_name.startswith('/'):
+        return False, f"Absolute path not allowed: {member_name}"
+    
+    # Reject path traversal in member name
+    if '..' in member_name.split('/'):
+        return False, f"Path traversal not allowed: {member_name}"
+    
+    # Calculate the destination path
+    dest_path = base_dir / member_name
+    
+    # Verify destination stays within base_dir
+    if not _is_path_within(base_dir, dest_path):
+        return False, f"Path escapes extraction directory: {member_name}"
+    
+    # Reject special file types (devices, FIFOs)
+    if member.ischr() or member.isblk():
+        return False, f"Device files not allowed: {member_name}"
+    if member.isfifo():
+        return False, f"FIFO files not allowed: {member_name}"
+    
+    # Validate symlinks
+    if member.issym():
+        linkname = member.linkname
+        
+        # Reject absolute symlink targets
+        if linkname.startswith('/'):
+            return False, f"Absolute symlink target not allowed: {member_name} -> {linkname}"
+        
+        # Calculate where the symlink would point
+        # Symlink is relative to the directory containing it
+        link_dir = dest_path.parent
+        link_target = (link_dir / linkname).resolve()
+        
+        # Verify symlink target stays within base_dir
+        if not _is_path_within(base_dir, link_target):
+            return False, f"Symlink escapes extraction directory: {member_name} -> {linkname}"
+    
+    # Validate hardlinks
+    if member.islnk():
+        linkname = member.linkname
+        
+        # Reject absolute hardlink targets
+        if linkname.startswith('/'):
+            return False, f"Absolute hardlink target not allowed: {member_name} -> {linkname}"
+        
+        # Hardlink target is relative to archive root (base_dir)
+        link_target = base_dir / linkname
+        
+        # Verify hardlink target stays within base_dir
+        if not _is_path_within(base_dir, link_target):
+            return False, f"Hardlink escapes extraction directory: {member_name} -> {linkname}"
+    
+    return True, ""
+
+
+def _safe_extract_tar(tar: tarfile.TarFile, dest_dir: Path, max_files: int) -> None:
+    """
+    Safely extract a tar archive with full validation.
+    
+    Validates all members before extraction and raises HTTPException
+    if any member fails validation.
+    
+    Args:
+        tar: Open tarfile object
+        dest_dir: Destination directory for extraction
+        max_files: Maximum number of files allowed
+        
+    Raises:
+        HTTPException: If archive validation fails
+    """
+    members = tar.getmembers()
+    
+    # Check file count
+    if len(members) > max_files:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"Archive exceeds maximum file count of {max_files}",
+                "code": "TOO_MANY_FILES"
+            }
+        )
+    
+    # Validate all members before extraction
+    safe_members = []
+    for member in members:
+        is_valid, error_msg = _validate_tar_member(member, dest_dir)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": f"Invalid archive: {error_msg}",
+                    "code": "INVALID_ARCHIVE"
+                }
+            )
+        safe_members.append(member)
+    
+    # Extract validated members
+    tar.extractall(dest_dir, members=safe_members)
+
+
 async def deploy_local_agent_logic(
     body: DeployLocalRequest,
     current_user: User,
@@ -101,28 +245,11 @@ async def deploy_local_agent_logic(
         temp_dir = Path(tempfile.mkdtemp(prefix="trinity-deploy-"))
         try:
             with tarfile.open(fileobj=BytesIO(archive_bytes), mode='r:gz') as tar:
-                # Security: Check for path traversal
-                for member in tar.getmembers():
-                    if member.name.startswith('/') or '..' in member.name:
-                        raise HTTPException(
-                            status_code=400,
-                            detail={
-                                "error": "Invalid archive: contains path traversal",
-                                "code": "INVALID_ARCHIVE"
-                            }
-                        )
-
-                # Check file count
-                if len(tar.getmembers()) > MAX_FILES:
-                    raise HTTPException(
-                        status_code=400,
-                        detail={
-                            "error": f"Archive exceeds maximum file count of {MAX_FILES}",
-                            "code": "TOO_MANY_FILES"
-                        }
-                    )
-
-                tar.extractall(temp_dir)
+                # Security: Safe extraction with full validation
+                # - Validates paths stay within temp_dir
+                # - Blocks symlinks/hardlinks pointing outside
+                # - Rejects device files and FIFOs
+                _safe_extract_tar(tar, temp_dir, MAX_FILES)
         except tarfile.TarError as e:
             raise HTTPException(
                 status_code=400,
