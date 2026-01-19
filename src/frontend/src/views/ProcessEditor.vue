@@ -117,6 +117,18 @@
               Execute
             </button>
 
+            <!-- Archive button (only for published) -->
+            <button
+              v-if="!isNew && process?.status === 'published'"
+              @click="showArchiveConfirm = true"
+              :disabled="saving"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors flex items-center gap-2"
+              title="Archive this process (stops executions, preserves history)"
+            >
+              <ArchiveBoxIcon class="h-4 w-4" />
+              Archive
+            </button>
+
             <!-- Save as Template button (only for published) -->
             <button
               v-if="!isNew && process?.status === 'published'"
@@ -427,6 +439,18 @@
           @cancel="showUnsavedWarning = false"
         />
 
+        <!-- Archive confirmation modal -->
+        <ConfirmDialog
+          v-if="showArchiveConfirm"
+          :visible="true"
+          title="Archive Process"
+          :message="`Are you sure you want to archive '${process?.name}'? This will stop all scheduled executions. The process can be restored later.`"
+          confirm-text="Archive"
+          variant="warning"
+          @confirm="archiveProcess"
+          @cancel="showArchiveConfirm = false"
+        />
+
         <!-- Execute Process Dialog -->
         <div v-if="showExecuteDialog" class="fixed inset-0 z-50 overflow-y-auto">
           <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
@@ -667,6 +691,7 @@ import {
   ClockIcon,
   QuestionMarkCircleIcon,
   CodeBracketIcon,
+  ArchiveBoxIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 import jsyaml from 'js-yaml'
@@ -696,6 +721,7 @@ const detectedInputs = ref([])
 const scheduleTriggerInfo = ref({})
 const showSaveTemplateDialog = ref(false)
 const savingTemplate = ref(false)
+const showArchiveConfirm = ref(false)
 const templateForm = ref({
   name: '',
   displayName: '',
@@ -1213,6 +1239,20 @@ async function publishProcess() {
     await loadProcess()
   } catch (error) {
     showNotification(error.response?.data?.detail || 'Failed to publish', 'error')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function archiveProcess() {
+  showArchiveConfirm.value = false
+  saving.value = true
+  try {
+    await api.post(`/api/processes/${route.params.id}/archive`)
+    showNotification('Process archived!', 'success')
+    await loadProcess()
+  } catch (error) {
+    showNotification(error.response?.data?.detail || 'Failed to archive', 'error')
   } finally {
     saving.value = false
   }
