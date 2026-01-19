@@ -1072,7 +1072,18 @@ async function proceedWithTemplate() {
   loadingTemplate.value = true
   try {
     const response = await api.get(`/api/process-templates/${selectedTemplateId.value}/preview`)
-    yamlContent.value = response.data.yaml_content || defaultYamlTemplate()
+    let content = response.data.yaml_content || defaultYamlTemplate()
+    
+    // Replace template placeholders with sensible defaults
+    // Generate a unique name from the template id
+    const templateName = selectedTemplateId.value.split(':').pop() || 'my-process'
+    const timestamp = Date.now().toString(36).slice(-4)
+    const processName = `${templateName}-${timestamp}`
+    
+    // Replace {{name}} placeholder with generated name
+    content = content.replace(/\{\{name\}\}/g, processName)
+    
+    yamlContent.value = content
     showTemplateSelector.value = false
     showNotification(`Loaded template: ${response.data.name}`, 'success')
   } catch (error) {
