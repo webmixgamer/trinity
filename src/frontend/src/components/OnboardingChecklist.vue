@@ -272,9 +272,9 @@ const requiredItems = computed(() => [
   {
     id: 'createProcess',
     label: 'Create your first process',
-    description: 'Define a workflow with steps and agents',
+    description: 'Use the wizard to define your workflow',
     completed: state.value?.checklist.createProcess || false,
-    link: '/processes/new',
+    link: '/processes/wizard',
     icon: null
   },
   {
@@ -392,7 +392,7 @@ const handleItemClick = (item, index) => {
     if (item.id === 'runExecution') {
       showHintToast('Click the Play button (▶️) on a published process to execute it!')
     } else if (item.id === 'createProcess') {
-      showHintToast('Click the "Create Process" button above to start creating your process!')
+      showHintToast('Follow the wizard steps above to create your first process!')
     } else if (item.id === 'monitorExecution') {
       showHintToast('View your running executions and monitor their progress here!')
     }

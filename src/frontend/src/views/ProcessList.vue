@@ -276,13 +276,19 @@
             <!-- Actions -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">
               <router-link
+                to="/processes/wizard"
+                class="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition-all"
+              >
+                <SparklesIcon class="h-5 w-5 mr-2" />
+                Use Wizard (Recommended)
+              </router-link>
+              <router-link
                 to="/processes/new"
-                class="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors"
+                class="inline-flex items-center px-5 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 <PlusIcon class="h-5 w-5 mr-2" />
                 Create from Scratch
               </router-link>
-              <span class="text-gray-400 dark:text-gray-500 text-sm">or</span>
               <button
                 @click="showImportModal = true"
                 class="inline-flex items-center px-5 py-2.5 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -343,6 +349,7 @@ import {
   ChartBarIcon,
   UserGroupIcon,
   ArrowUpTrayIcon,
+  SparklesIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 

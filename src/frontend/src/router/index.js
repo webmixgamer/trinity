@@ -87,6 +87,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/processes/wizard',
+    name: 'ProcessWizard',
+    component: () => import('../views/ProcessWizard.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/processes/:id',
     name: 'ProcessEdit',
     component: () => import('../views/ProcessEditor.vue'),
