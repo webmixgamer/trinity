@@ -60,8 +60,8 @@
             <!-- Check for YAML code blocks -->
             <div v-if="hasYamlBlock(msg.content)" class="space-y-3">
               <div v-for="(part, i) in parseMessageParts(msg.content)" :key="i">
-                <!-- Text content -->
-                <p v-if="part.type === 'text'" class="whitespace-pre-wrap text-sm">{{ part.content }}</p>
+                <!-- Text content with markdown -->
+                <div v-if="part.type === 'text'" class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(part.content)"></div>
 
                 <!-- YAML code block -->
                 <div v-else-if="part.type === 'yaml'" class="relative">
@@ -82,8 +82,8 @@
               </div>
             </div>
 
-            <!-- Plain text message -->
-            <p v-else class="whitespace-pre-wrap text-sm">{{ msg.content }}</p>
+            <!-- Plain text message with markdown -->
+            <div v-else class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(msg.content)"></div>
           </div>
         </div>
       </div>
@@ -142,7 +142,14 @@
 <script setup>
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { SparklesIcon, PaperAirplaneIcon, ArrowRightIcon } from '@heroicons/vue/24/outline'
+import { marked } from 'marked'
 import api from '../api'
+
+// Configure marked for simple output
+marked.setOptions({
+  breaks: true,
+  gfm: true
+})
 
 // Props and emits
 const emit = defineEmits(['apply-yaml'])
@@ -165,30 +172,33 @@ const suggestedPrompts = [
 ]
 
 // Process creation context - prepended to first message
-const PROCESS_ASSISTANT_CONTEXT = `You are helping the user create a process definition for the Trinity Process Engine.
+const PROCESS_ASSISTANT_CONTEXT = `You are a friendly Process Assistant helping users create workflow automations.
 
-IMPORTANT INSTRUCTIONS:
-1. Ask clarifying questions to understand their workflow needs
-2. Suggest appropriate patterns (sequential steps, parallel execution, human approvals)
-3. When ready, generate valid YAML that follows the process engine schema
-4. Always wrap YAML in \`\`\`yaml code blocks
-5. Use realistic step names and helpful comments
-6. Include appropriate triggers (manual, schedule, or webhook)
-7. You can check available agents using your Trinity MCP tools if the user asks
+CONVERSATION STYLE:
+- Be warm and conversational, like a helpful colleague
+- Ask ONE question at a time, don't overwhelm with lists
+- Keep responses concise (2-3 sentences max unless generating YAML)
+- Build understanding gradually through back-and-forth dialogue
+- Don't use markdown bold (**text**) - just write naturally
 
-YAML SCHEMA REFERENCE:
-- name: string (required, kebab-case)
-- version: "1.0" format
-- description: string
-- trigger: { type: manual|schedule|webhook }
-- steps: array of step definitions
-- Step types: agent_task, human_approval, gateway, notification, sub_process
-- Each step needs: id, name, type, and type-specific config
-- Use depends_on: [step_id] for sequential execution
+APPROACH:
+1. First, understand what they want to accomplish in simple terms
+2. Then ask about who/what should do the work (which agents)
+3. Then ask if humans need to approve anything
+4. Finally, generate the YAML when you have enough info
 
-Now, help the user create their process. Start by understanding what they want to automate.
+YAML RULES (when generating):
+- Wrap in \`\`\`yaml code blocks
+- Use kebab-case for names
+- Version format: "1.0"
+- Step types: agent_task, human_approval, gateway, notification
+- Use depends_on: [step_id] for ordering
 
-User's request: `
+Example good response: "That sounds like a content review workflow! Who typically reviews the content - is it one person or a team?"
+
+Example bad response: "**Great!** Here are the options: - Option 1... - Option 2..."
+
+User's message: `
 
 // Check system agent status on mount
 onMounted(async () => {
@@ -307,6 +317,12 @@ function parseMessageParts(content) {
 // Apply YAML to editor
 function applyYaml(yaml) {
   emit('apply-yaml', yaml)
+}
+
+// Render markdown to HTML
+function renderMarkdown(text) {
+  if (!text) return ''
+  return marked(text)
 }
 
 // Auto-resize textarea
