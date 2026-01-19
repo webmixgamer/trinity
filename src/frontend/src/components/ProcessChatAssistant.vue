@@ -433,7 +433,7 @@ async function sendMessage() {
     if (messages.value.length === 1) {
       messageToSend = PROCESS_ASSISTANT_CONTEXT + userMessage
     }
-    
+
     // Add process status context when relevant
     if (props.processStatus === 'published') {
       messageToSend = `[CONTEXT: This is a PUBLISHED process - it's read-only. To make changes, the user must click "New Version" to create an editable draft copy first.]\n\n` + messageToSend
