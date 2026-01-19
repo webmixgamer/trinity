@@ -56,7 +56,7 @@ steps:
     agent: your-agent-name  # Replace with your agent
     message: |
       Write a {{input.content_type}} about: {{input.topic}}
-      
+
       Requirements:
       - Length: {{input.word_count | default:500}} words
       - Tone: {{input.tone | default:"professional"}}
@@ -72,24 +72,24 @@ steps:
     title: "Review: {{input.topic}}"
     description: |
       ## Content for Review
-      
+
       **Type**: {{input.content_type}}
       **Topic**: {{input.topic}}
-      
+
       ---
-      
+
       {{steps.generate-draft.output}}
-      
+
       ---
-      
+
       ## Review Checklist
-      
+
       Please verify:
       - [ ] Content is accurate
       - [ ] Tone is appropriate
       - [ ] No spelling/grammar errors
       - [ ] Call to action is clear
-      
+
       **Approve** to publish, or **Reject** with feedback for revision.
     timeout: 24h
     timeout_action: skip
@@ -114,9 +114,9 @@ steps:
     agent: your-agent-name
     message: |
       Format and publish this approved content:
-      
+
       {{steps.generate-draft.output}}
-      
+
       Add appropriate formatting for {{input.platform | default:"blog"}}.
     timeout: 5m
 
@@ -127,13 +127,13 @@ steps:
     agent: your-agent-name
     message: |
       Revise this content based on reviewer feedback:
-      
+
       ## Original Draft
       {{steps.generate-draft.output}}
-      
+
       ## Reviewer Feedback
       {{steps.editorial-review.output.comments}}
-      
+
       Address all feedback and improve the content.
     timeout: 10m
 
@@ -215,10 +215,10 @@ Give reviewers context:
 description: |
   ## What to Review
   {{steps.draft.output}}
-  
+
   ## Context
   This is for {{input.audience}}.
-  
+
   ## Decision Criteria
   - Accurate information
   - Appropriate tone
@@ -262,7 +262,7 @@ Use the feedback in revision steps:
 message: |
   Address this feedback:
   {{steps.editorial-review.output.comments}}
-  
+
   From reviewer: {{steps.editorial-review.output.approved_by}}
 ```
 
@@ -287,7 +287,7 @@ steps:
     title: "Manager Approval"
     description: |
       Peer review passed by: {{steps.peer-review.output.approved_by}}
-      
+
       Content: {{steps.draft.output}}
     timeout: 48h
 

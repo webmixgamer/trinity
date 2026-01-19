@@ -58,16 +58,16 @@ steps:
     depends_on: [research-academic, research-news, research-social]
     message: |
       Combine research from multiple sources:
-      
+
       Academic findings:
       {{steps.research-academic.output}}
-      
+
       News coverage:
       {{steps.research-news.output}}
-      
+
       Social discussions:
       {{steps.research-social.output}}
-      
+
       Create a comprehensive summary.
 ```
 
@@ -182,13 +182,13 @@ steps:
     agent: coordinator
     message: |
       Compare the two analysis approaches:
-      
+
       Approach A concluded:
       {{steps.analysis-a.output}}
-      
+
       Approach B concluded:
       {{steps.analysis-b.output}}
-      
+
       Identify agreements, disagreements, and synthesize.
 ```
 
@@ -205,7 +205,7 @@ Step B: [==================]                (18 min)
 Step C: [==========]                        (10 min)
                           |
                           └─ Merge waits until Step B completes
-                             
+
 Merge:                    [====]            (starts at 18 min)
 ```
 
@@ -320,7 +320,7 @@ name: multi-perspective-analysis
 description: |
   Analyzes input from 3 perspectives in parallel:
   - Technical feasibility (tech-agent)
-  - Market viability (market-agent)  
+  - Market viability (market-agent)
   - Financial impact (finance-agent)
   Results are synthesized into a single recommendation.
 ```
@@ -370,16 +370,16 @@ steps:
     agent: report-compiler
     message: |
       Compile the final report from these sections:
-      
+
       ## Executive Summary
       {{steps.executive-summary.output}}
-      
+
       ## Technical Analysis
       {{steps.technical-analysis.output}}
-      
+
       ## Financial Projections
       {{steps.financial-projections.output}}
-      
+
       ## Recommendations
       {{steps.recommendations.output}}
 

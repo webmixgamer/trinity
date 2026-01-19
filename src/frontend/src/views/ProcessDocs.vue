@@ -72,7 +72,7 @@
               <button
                 v-if="!showRestartConfirm"
                 @click="showRestartConfirm = true"
-                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors font-medium"
               >
                 <ArrowPathIcon class="h-4 w-4" />
                 Restart Getting Started
@@ -152,6 +152,17 @@
                 </div>
               </div>
             </nav>
+
+            <!-- Mobile: Restart Onboarding -->
+            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                @click="confirmRestartOnboarding(); showMobileSidebar = false"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors"
+              >
+                <ArrowPathIcon class="h-4 w-4" />
+                Restart Getting Started
+              </button>
+            </div>
           </aside>
         </div>
 

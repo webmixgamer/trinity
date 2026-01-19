@@ -240,7 +240,7 @@ Sends alerts and messages to external channels like Slack, email, or PagerDuty.
   channels: [slack]
   message: |
     🚨 Analysis Complete
-    
+
     Results: {{steps.analysis.output.summary}}
     Priority: {{steps.analysis.output.priority}}
   recipients: ["#engineering-alerts"]
@@ -282,7 +282,7 @@ Sends alerts and messages to external channels like Slack, email, or PagerDuty.
   channels: [email]
   message: |
     Subject: Weekly Report Ready
-    
+
     The weekly report has been generated.
     See attached: {{steps.report.output.url}}
   recipients: ["team@company.com", "manager@company.com"]
@@ -306,10 +306,10 @@ Sends alerts and messages to external channels like Slack, email, or PagerDuty.
   channels: [slack, email]
   message: |
     ✅ Campaign Launch Complete
-    
+
     Campaign: {{input.campaign_name}}
     Status: Live
-  recipients: 
+  recipients:
     - "#marketing-team"
     - "stakeholders@company.com"
 ```

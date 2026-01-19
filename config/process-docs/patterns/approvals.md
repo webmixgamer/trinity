@@ -49,14 +49,14 @@ steps:
     title: Editorial Review Required
     description: |
       Please review this blog post draft:
-      
+
       {{steps.draft.output}}
-      
+
       Check for:
       - Accuracy of information
       - Tone and voice consistency
       - Grammar and clarity
-      
+
       Approve to publish, or reject with feedback.
     timeout: 24h
 
@@ -101,9 +101,9 @@ After an approval step, access the decision in subsequent steps:
   depends_on: [approval-step]
   message: |
     The reviewer {{steps.approval-step.output.decision}}.
-    
+
     Comments: {{steps.approval-step.output.comments | default:"No comments"}}
-    
+
     Approved by: {{steps.approval-step.output.approved_by}}
 ```
 
@@ -143,9 +143,9 @@ steps:
     agent: writer
     message: |
       Revise the draft based on feedback:
-      
+
       Original: {{steps.draft.output}}
-      
+
       Feedback: {{steps.review.output.comments}}
 ```
 
@@ -181,7 +181,7 @@ steps:
     description: |
       Budget Request Details:
       {{steps.create-request.output}}
-      
+
       Please review and approve or reject.
     timeout: 48h
 
@@ -200,9 +200,9 @@ steps:
     description: |
       Budget Request (Manager Approved):
       {{steps.create-request.output}}
-      
+
       Manager notes: {{steps.manager-approval.output.comments}}
-      
+
       Final approval required.
     timeout: 72h
 
@@ -221,8 +221,8 @@ steps:
     message: |
       Execute approved budget allocation:
       {{steps.create-request.output}}
-      
-      Approved by: 
+
+      Approved by:
       - Manager: {{steps.manager-approval.output.approved_by}}
       - Director: {{steps.director-approval.output.approved_by}}
 
@@ -301,20 +301,20 @@ Provide reviewers with comprehensive information:
   description: |
     ## Project Overview
     {{input.description}}
-    
+
     ## Analysis Summary
     {{steps.analysis.output}}
-    
+
     ## Risk Assessment
     {{steps.risk-assessment.output}}
-    
+
     ## Cost Estimate
     {{steps.cost-estimate.output}}
-    
+
     ---
-    
+
     **Decision Required**: Approve to proceed with project initiation.
-    
+
     **Approval Criteria**:
     - [ ] Risk level is acceptable
     - [ ] Budget is within limits
@@ -331,16 +331,16 @@ Provide reviewers with comprehensive information:
 # ✅ Good: Clear context and decision criteria
 description: |
   Please review this marketing email before it's sent to 50,000 subscribers.
-  
+
   Email content:
   {{steps.draft-email.output}}
-  
+
   Check for:
   - Brand voice consistency
   - No spelling/grammar errors
   - Links work correctly
   - Unsubscribe link present
-  
+
   Approve to send, or reject with specific feedback.
 
 # ❌ Bad: Vague
@@ -397,16 +397,16 @@ steps:
     title: "Peer Review: {{input.document_type}}"
     description: |
       ## Document for Peer Review
-      
+
       {{steps.create-document.output}}
-      
+
       ---
-      
+
       Please review for:
       - Technical accuracy
       - Clarity of explanation
       - Completeness
-      
+
       Provide detailed feedback if rejecting.
     timeout: 48h
 
@@ -424,10 +424,10 @@ steps:
     agent: document-writer
     message: |
       Revise the document based on peer feedback:
-      
+
       Original document:
       {{steps.create-document.output}}
-      
+
       Feedback to address:
       {{steps.peer-review.output.comments}}
 
@@ -437,14 +437,14 @@ steps:
     title: "Re-review: Revised Document"
     description: |
       ## Revised Document
-      
+
       {{steps.revise-document.output}}
-      
+
       ---
-      
+
       Previous feedback:
       {{steps.peer-review.output.comments}}
-      
+
       Please verify feedback was addressed.
     timeout: 24h
 
@@ -453,13 +453,13 @@ steps:
     title: "Final Approval: {{input.document_type}}"
     description: |
       ## Document Ready for Final Approval
-      
+
       {{steps.create-document.output}}
-      
+
       ---
-      
+
       Peer review: Approved
-      
+
       Please provide final sign-off for publication.
     timeout: 24h
 

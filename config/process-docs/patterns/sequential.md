@@ -48,7 +48,7 @@ steps:
     message: |
       Write an article based on this research:
       {{steps.research.output}}
-      
+
       Target audience: {{input.audience}}
       Tone: {{input.tone | default:"professional"}}
     timeout: 15m
@@ -71,7 +71,7 @@ steps:
     message: |
       Format and publish this content:
       {{steps.edit.output}}
-      
+
       Platform: {{input.platform | default:"blog"}}
     timeout: 5m
 
@@ -183,7 +183,7 @@ Match timeouts to expected duration plus buffer:
 - id: quick-validation
   timeout: 1m  # Fast operation
 
-- id: complex-analysis  
+- id: complex-analysis
   timeout: 15m  # May take longer
 
 - id: external-api-call

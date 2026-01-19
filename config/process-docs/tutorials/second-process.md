@@ -56,7 +56,7 @@ steps:
     agent: your-agent-name  # Replace with your agent
     message: |
       Prepare an analysis brief for: {{input.topic}}
-      
+
       Identify:
       - Key questions to answer
       - Relevant data points to gather
@@ -71,10 +71,10 @@ steps:
     agent: your-agent-name
     message: |
       Analyze from a TECHNICAL perspective:
-      
+
       Context: {{steps.prepare.output}}
       Topic: {{input.topic}}
-      
+
       Focus on:
       - Technical feasibility
       - Implementation complexity
@@ -88,10 +88,10 @@ steps:
     agent: your-agent-name
     message: |
       Analyze from a MARKET perspective:
-      
+
       Context: {{steps.prepare.output}}
       Topic: {{input.topic}}
-      
+
       Focus on:
       - Market size and trends
       - Competitive landscape
@@ -105,10 +105,10 @@ steps:
     agent: your-agent-name
     message: |
       Analyze from a FINANCIAL perspective:
-      
+
       Context: {{steps.prepare.output}}
       Topic: {{input.topic}}
-      
+
       Focus on:
       - Cost estimates
       - Revenue potential
@@ -123,16 +123,16 @@ steps:
     agent: your-agent-name
     message: |
       Create a comprehensive analysis report combining all perspectives:
-      
+
       ## Technical Analysis
       {{steps.technical-analysis.output}}
-      
+
       ## Market Analysis
       {{steps.market-analysis.output}}
-      
+
       ## Financial Analysis
       {{steps.financial-analysis.output}}
-      
+
       Synthesize into:
       1. Executive summary (3 sentences)
       2. Key findings from each perspective

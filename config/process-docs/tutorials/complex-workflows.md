@@ -59,18 +59,18 @@ steps:
   # ═══════════════════════════════════════════════════════════
   # PHASE 1: Analysis
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: analyze-ticket
     name: Analyze Ticket
     type: agent_task
     agent: your-agent-name  # Replace with your agent
     message: |
       Analyze this support ticket and determine its complexity:
-      
+
       **Subject**: {{input.subject}}
       **Description**: {{input.description}}
       **Customer Tier**: {{input.customer_tier | default:"standard"}}
-      
+
       Respond with a JSON object:
       {
         "complexity": "simple" | "medium" | "complex",
@@ -84,7 +84,7 @@ steps:
   # ═══════════════════════════════════════════════════════════
   # PHASE 2: Routing Gateway
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: complexity-router
     name: Route by Complexity
     type: gateway
@@ -102,18 +102,18 @@ steps:
   # ═══════════════════════════════════════════════════════════
   # PHASE 3A: Simple Ticket Path (Automated)
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: auto-resolve
     name: Auto-Resolve Ticket
     type: agent_task
     agent: your-agent-name
     message: |
       Generate a helpful response for this simple support ticket:
-      
+
       **Summary**: {{steps.analyze-ticket.output.summary}}
       **Category**: {{steps.analyze-ticket.output.category}}
       **Suggested Response**: {{steps.analyze-ticket.output.suggested_response}}
-      
+
       Create a polished, friendly response that resolves the issue.
     timeout: 3m
 
@@ -124,9 +124,9 @@ steps:
     channels: [email]
     message: |
       Subject: Re: {{input.subject}}
-      
+
       {{steps.auto-resolve.output}}
-      
+
       ---
       This response was generated automatically.
       If you need further assistance, please reply to this email.
@@ -135,21 +135,21 @@ steps:
   # ═══════════════════════════════════════════════════════════
   # PHASE 3B: Medium Ticket Path (Human Review)
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: draft-response
     name: Draft Response
     type: agent_task
     agent: your-agent-name
     message: |
       Draft a response for this medium-complexity ticket:
-      
+
       **Original Ticket**:
       Subject: {{input.subject}}
       Description: {{input.description}}
-      
+
       **Analysis**:
       {{steps.analyze-ticket.output}}
-      
+
       Create a thorough, helpful draft response.
     timeout: 5m
 
@@ -163,15 +163,15 @@ steps:
       **Customer**: {{input.customer_email}}
       **Tier**: {{input.customer_tier | default:"standard"}}
       **Sentiment**: {{steps.analyze-ticket.output.sentiment}}
-      
+
       ## Original Request
       {{input.description}}
-      
+
       ## Proposed Response
       {{steps.draft-response.output}}
-      
+
       ---
-      
+
       **Approve** to send this response, or **Reject** with edits.
     timeout: 4h
     timeout_action: skip
@@ -194,7 +194,7 @@ steps:
     channels: [email]
     message: |
       Subject: Re: {{input.subject}}
-      
+
       {{steps.draft-response.output}}
     recipients: ["{{input.customer_email}}"]
 
@@ -204,34 +204,34 @@ steps:
     agent: your-agent-name
     message: |
       Revise this response based on reviewer feedback:
-      
+
       **Original Draft**:
       {{steps.draft-response.output}}
-      
+
       **Reviewer Feedback**:
       {{steps.human-review.output.comments}}
-      
+
       Create an improved response addressing the feedback.
     timeout: 5m
 
   # ═══════════════════════════════════════════════════════════
   # PHASE 3C: Complex Ticket Path (Specialist Escalation)
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: specialist-escalation
     name: Escalate to Specialist
     type: notification
     channels: [slack]
     message: |
       🚨 *Complex Ticket Escalation*
-      
+
       *Subject*: {{input.subject}}
       *Customer*: {{input.customer_email}} ({{input.customer_tier | default:"standard"}})
       *Category*: {{steps.analyze-ticket.output.category}}
       *Sentiment*: {{steps.analyze-ticket.output.sentiment}}
-      
+
       *Summary*: {{steps.analyze-ticket.output.summary}}
-      
+
       Please assign a specialist to handle this ticket.
     recipients: ["#support-escalations"]
 
@@ -254,7 +254,7 @@ steps:
   # ═══════════════════════════════════════════════════════════
   # PHASE 4: Closure (All paths converge here)
   # ═══════════════════════════════════════════════════════════
-  
+
   - id: close-ticket
     name: Close Ticket
     type: agent_task
@@ -262,10 +262,10 @@ steps:
     agent: your-agent-name
     message: |
       Mark this support ticket as handled:
-      
+
       Subject: {{input.subject}}
       Resolution Path: Completed via intelligent routing
-      
+
       Generate a brief internal note about the resolution.
     timeout: 2m
 
@@ -345,7 +345,7 @@ Available comparison operators:
 # Equality
 "{{value}} == 'expected'"
 
-# Inequality  
+# Inequality
 "{{value}} != 'unwanted'"
 
 # Numeric comparisons
