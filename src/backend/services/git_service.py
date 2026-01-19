@@ -332,6 +332,8 @@ async def initialize_git_in_container(
         'git config --global user.name "Trinity Agent"',
         'git config --global init.defaultBranch main',
         'git init',
+        f'git remote get-url origin >/dev/null 2>&1 && '
+        f'git remote set-url origin https://oauth2:{github_pat}@github.com/{github_repo}.git || '
         f'git remote add origin https://oauth2:{github_pat}@github.com/{github_repo}.git',
         'git add .',
         'git commit -m "Initial commit from Trinity Agent" || echo "Nothing to commit"',

@@ -86,6 +86,16 @@
 - 🩷 MCP (pink) - Tasks triggered via MCP client
 - 🟣 Scheduled (purple) - Cron-scheduled tasks
 - 🩵 Agent-Triggered (cyan) - Agent-to-agent calls
+### 2026-01-19 10:00:00
+🐛 **Fix: Git Sync Sets Upstream on First Push**
+
+**Problem**: Initial push from agent server failed when branch had no upstream, requiring manual `git push -u`.
+
+**Fix**: Set upstream explicitly on normal push using current branch name.
+
+**File Modified**: `docker/base-image/agent_server/routers/git.py`
+
+**Impact**: First-time pushes succeed without manual intervention.
 
 ---
 
