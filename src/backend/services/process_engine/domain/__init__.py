@@ -59,6 +59,7 @@ from .step_configs import (
     parse_step_config,
     # Trigger configs
     TriggerConfig,
+    ManualTriggerConfig,
     WebhookTriggerConfig,
     ScheduleTriggerConfig,
     parse_trigger_config,

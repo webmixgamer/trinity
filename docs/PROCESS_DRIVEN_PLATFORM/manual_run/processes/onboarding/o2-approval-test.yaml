@@ -27,9 +27,9 @@ steps:
     title: Review Generated Content
     description: |
       Please review the AI-generated content:
-      
+
       {{steps.prepare.output}}
-      
+
       Approve if the content is appropriate, or reject to regenerate.
     timeout: 1h
 

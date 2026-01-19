@@ -1,5 +1,5 @@
 <template>
-  <div 
+  <div
     class="editor-help-panel h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden transition-all duration-300"
     :class="{ 'w-0 opacity-0': !visible }"
   >
@@ -44,9 +44,9 @@
           <!-- Required -->
           <div v-if="helpContent.required !== undefined" class="flex items-center gap-2">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-16">Required</span>
-            <span 
-              :class="helpContent.required 
-                ? 'text-red-600 dark:text-red-400' 
+            <span
+              :class="helpContent.required
+                ? 'text-red-600 dark:text-red-400'
                 : 'text-gray-500 dark:text-gray-400'"
               class="text-xs font-medium"
             >
@@ -66,8 +66,8 @@
           <div v-if="helpContent.options" class="flex items-start gap-2">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-16 mt-0.5">Options</span>
             <div class="flex flex-wrap gap-1">
-              <code 
-                v-for="opt in helpContent.options" 
+              <code
+                v-for="opt in helpContent.options"
                 :key="opt"
                 class="text-xs px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 rounded text-indigo-700 dark:text-indigo-300"
               >

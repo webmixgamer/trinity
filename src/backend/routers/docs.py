@@ -62,7 +62,7 @@ async def get_doc_content(slug: str):
     # Check if slug already has an extension
     doc_path = None
     is_json = False
-    
+
     if slug.endswith('.json'):
         # JSON file requested directly
         doc_path = docs_dir / slug
@@ -79,7 +79,7 @@ async def get_doc_content(slug: str):
             if json_path.exists():
                 doc_path = json_path
                 is_json = True
-    
+
     if not doc_path or not doc_path.exists():
         raise HTTPException(status_code=404, detail="Document not found")
 

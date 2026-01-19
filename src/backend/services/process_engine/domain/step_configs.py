@@ -380,6 +380,37 @@ class WebhookTriggerConfig:
         return result
 
 
+@dataclass(frozen=True)
+class ManualTriggerConfig:
+    """
+    Configuration for manual triggers.
+
+    Allows processes to be started manually via UI or API.
+    This is the simplest trigger type - just a marker that manual start is allowed.
+    """
+    id: str  # Unique trigger ID
+    enabled: bool = True
+    description: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ManualTriggerConfig":
+        """Create from dictionary (YAML parsing)."""
+        return cls(
+            id=data.get("id", ""),
+            enabled=data.get("enabled", True),
+            description=data.get("description", ""),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "type": "manual",
+            "id": self.id,
+            "enabled": self.enabled,
+            "description": self.description,
+        }
+
+
 # =============================================================================
 # Cron Presets
 # =============================================================================
@@ -463,7 +494,7 @@ class ScheduleTriggerConfig:
 
 
 # Type alias for trigger configurations
-TriggerConfig = WebhookTriggerConfig | ScheduleTriggerConfig
+TriggerConfig = ManualTriggerConfig | WebhookTriggerConfig | ScheduleTriggerConfig
 
 
 def parse_trigger_config(trigger_data: dict) -> TriggerConfig:
@@ -478,7 +509,9 @@ def parse_trigger_config(trigger_data: dict) -> TriggerConfig:
     """
     trigger_type = trigger_data.get("type", "webhook")
 
-    if trigger_type == "webhook":
+    if trigger_type == "manual":
+        return ManualTriggerConfig.from_dict(trigger_data)
+    elif trigger_type == "webhook":
         return WebhookTriggerConfig.from_dict(trigger_data)
     elif trigger_type == "schedule":
         return ScheduleTriggerConfig.from_dict(trigger_data)

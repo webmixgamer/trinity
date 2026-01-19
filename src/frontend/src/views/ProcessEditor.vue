@@ -889,7 +889,7 @@ onMounted(async () => {
   }
   // Fetch available agents for role matrix
   await loadAvailableAgents()
-  
+
   // Load editor help data
   await loadEditorHelp()
 })
@@ -928,17 +928,17 @@ async function loadEditorHelp() {
 // Handle cursor context changes from YamlEditor
 function handleCursorContext(context) {
   if (!editorHelpData.value) return
-  
+
   // Try to find help for the current path
   let helpKey = context.path
   let help = editorHelpData.value[helpKey]
-  
+
   // If not found, try progressively shorter paths
   while (!help && helpKey.includes('.')) {
     helpKey = helpKey.split('.').slice(0, -1).join('.')
     help = editorHelpData.value[helpKey]
   }
-  
+
   // Fall back to default
   currentHelpContent.value = help || editorHelpData.value.default || null
 }

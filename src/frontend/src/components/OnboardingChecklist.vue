@@ -125,7 +125,7 @@
         <li class="border-t border-gray-200 dark:border-gray-700 my-2"></li>
 
         <!-- Optional items label -->
-        <li 
+        <li
           class="text-xs px-2"
           :class="allRequiredComplete ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 opacity-50'"
         >
@@ -138,8 +138,8 @@
           :key="item.id"
           class="flex items-start gap-3 p-2 rounded-lg transition-colors"
           :class="[
-            item.completed 
-              ? 'bg-green-50 dark:bg-green-900/20' 
+            item.completed
+              ? 'bg-green-50 dark:bg-green-900/20'
               : allRequiredComplete
                 ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 : 'opacity-40'
@@ -164,7 +164,7 @@
             >
               {{ item.label }}
             </p>
-            <p 
+            <p
               class="text-xs"
               :class="item.completed || allRequiredComplete
                 ? 'text-gray-500 dark:text-gray-400'
