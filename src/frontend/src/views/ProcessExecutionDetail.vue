@@ -603,6 +603,10 @@ async function loadEvents() {
 }
 
 async function handleCancel() {
+  if (!execution.value?.id) {
+    console.error('Cannot cancel: execution not loaded')
+    return
+  }
   actionInProgress.value = true
   try {
     await executionsStore.cancelExecution(execution.value.id)
@@ -615,6 +619,10 @@ async function handleCancel() {
 }
 
 async function handleRetry() {
+  if (!execution.value?.id) {
+    console.error('Cannot retry: execution not loaded')
+    return
+  }
   actionInProgress.value = true
   try {
     const newExecution = await executionsStore.retryExecution(execution.value.id)
