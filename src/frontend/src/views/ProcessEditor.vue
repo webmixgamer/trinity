@@ -266,7 +266,7 @@
           <div v-show="activeTab === 'chat'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <!-- Chat Assistant -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[600px]">
-              <ProcessChatAssistant 
+              <ProcessChatAssistant
                 :validation-errors="validationErrors"
                 :current-yaml="yamlContent"
                 :selected-text="editorSelectedText"

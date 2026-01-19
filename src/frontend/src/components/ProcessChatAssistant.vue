@@ -253,33 +253,33 @@ function extractYaml(content) {
 async function typeMessage(fullContent) {
   typingMessage.value = ''
   typingIndex.value = 0
-  
+
   // Split by words but keep whitespace
   const words = fullContent.split(/(\s+)/)
-  
+
   for (let i = 0; i < words.length; i++) {
     typingMessage.value += words[i]
     typingIndex.value = i
     scrollToBottom()
-    
+
     // Check for YAML and emit live updates to editor
     const yaml = extractYaml(typingMessage.value)
     if (yaml) {
       emit('yaml-update', yaml)
     }
-    
+
     // Faster for whitespace, slower for actual words
     const delay = words[i].trim() ? 30 : 5
     await new Promise(resolve => setTimeout(resolve, delay))
   }
-  
+
   // Done typing - add to messages and clear typing state
   messages.value.push({
     role: 'assistant',
     content: fullContent
   })
   typingMessage.value = null
-  
+
   // Final YAML emit
   const finalYaml = extractYaml(fullContent)
   if (finalYaml) {
@@ -343,6 +343,11 @@ APPROACH:
 2. Then ask about who/what should do the work (which agents)
 3. Then ask if humans need to approve anything
 4. Finally, generate the YAML when you have enough info
+
+BE PROACTIVE WITH EDITS:
+- When users ask to change something, IMMEDIATELY show the updated YAML
+- Don't ask "want me to show you?" - just show the change
+- Briefly explain what you changed, then include the full updated YAML
 
 YAML RULES (when generating):
 - Wrap in \`\`\`yaml code blocks
@@ -453,7 +458,7 @@ function sendSuggestedPrompt(prompt) {
 function askForHelp() {
   const errorList = props.validationErrors.join('\n- ')
   const yamlPreview = props.currentYaml ? props.currentYaml.slice(0, 500) : ''
-  
+
   inputMessage.value = `I have validation errors in my process YAML. Can you help me fix them?
 
 Errors:
@@ -467,7 +472,7 @@ ${yamlPreview ? `Current YAML (first 500 chars):\n\`\`\`yaml\n${yamlPreview}\n\`
 function askAboutSelection(action) {
   const selected = props.selectedText
   if (!selected) return
-  
+
   if (action === 'explain') {
     inputMessage.value = `Can you explain what this part of the YAML does?
 
