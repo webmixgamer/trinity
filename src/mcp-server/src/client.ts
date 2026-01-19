@@ -16,6 +16,18 @@ import type {
   AgentTemplateInfo,
 } from "./types.js";
 
+/**
+ * Debug logging utility - only logs in development mode
+ * Set DEBUG_MCP_CLIENT=true or NODE_ENV=development to enable
+ */
+const DEBUG = process.env.DEBUG_MCP_CLIENT === 'true' || process.env.NODE_ENV === 'development';
+
+function debugLog(...args: any[]) {
+  if (DEBUG) {
+    console.log('[DEBUG]', ...args);
+  }
+}
+
 export class TrinityClient {
   private baseUrl: string;
   private token?: string;
@@ -106,7 +118,11 @@ export class TrinityClient {
       headers["Content-Type"] = "application/json";
     }
 
-    console.log(`[CLIENT] ${method} ${path} - Token: ${this.token.substring(0, 20)}... (length: ${this.token.length})`);
+    // Security: Log requests without exposing tokens in production
+    // In development, token presence is logged for debugging; in production, only basic info
+    if (DEBUG) {
+      debugLog(`[CLIENT] ${method} ${path} - Auth: ${this.token ? 'present' : 'missing'}`);
+    }
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,

@@ -69,6 +69,7 @@
 | ✅ | **OWASP Security Hardening** | Fixed 7/14 OWASP Top 10:2025 issues - SECRET_KEY, password hashing, Redis auth, WebSocket auth, CORS, error sanitization. Completed 2025-12-23. | **HIGH** |
 | ✅ | **Web Terminal for System Agent (11.5)** | Browser-based xterm.js terminal with PTY forwarding via Docker exec. Full Claude Code TUI. Admin-only, no SSH exposure. Completed 2025-12-25. | **HIGH** |
 | ✅ | **Dedicated Scheduler Service (11.6)** | **Completed 2026-01-13**: Standalone scheduler in `src/scheduler/`. Redis distributed locks, 71 tests, Docker deployment. See `docs/memory/feature-flows/scheduler-service.md`. | **HIGH** |
+| ⏳ | **Audit Trail System (SEC-001)** | Comprehensive audit logging for user/agent actions with full actor attribution. Append-only `audit_log` table, MCP tool call tracking, hash chain for tamper evidence. See `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md`. | **HIGH** |
 | ⏳ | System Manifest UI | Upload YAML, view deployment results, group agents by system prefix | MEDIUM |
 | ⏳ | A2A Protocol Support | Agent discovery and negotiation across boundaries | LOW |
 | ⏳ | Agent collaboration execution tracking | Extend schedule_executions | LOW |
