@@ -246,7 +246,7 @@
               </div>
             </div>
 
-            <!-- Help Panel (collapsible) -->
+            <!-- Help Panel - Desktop (side panel) -->
             <EditorHelpPanel
               v-if="showHelpPanel"
               :visible="showHelpPanel"
@@ -256,6 +256,31 @@
               style="height: 530px;"
             />
           </div>
+
+          <!-- Help Panel - Mobile (slide-over drawer) -->
+          <Teleport to="body">
+            <Transition name="slide-over">
+              <div
+                v-if="showHelpPanel"
+                class="xl:hidden fixed inset-0 z-50"
+              >
+                <!-- Backdrop -->
+                <div
+                  class="absolute inset-0 bg-black/50"
+                  @click="toggleHelpPanel"
+                />
+                <!-- Panel -->
+                <div class="absolute right-0 top-0 h-full w-80 max-w-full">
+                  <EditorHelpPanel
+                    :visible="true"
+                    :help-content="currentHelpContent"
+                    @close="toggleHelpPanel"
+                    class="h-full"
+                  />
+                </div>
+              </div>
+            </Transition>
+          </Teleport>
 
           <!-- Roles Tab Content -->
           <div v-show="activeTab === 'roles'" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden p-6">
@@ -559,7 +584,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, Teleport, Transition } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useProcessesStore } from '../stores/processes'
 import NavBar from '../components/NavBar.vue'
@@ -1250,3 +1275,23 @@ function handleRolesUpdate(rolesMap) {
   }
 }
 </script>
+
+<style scoped>
+/* Slide-over transition for mobile help panel */
+.slide-over-enter-active,
+.slide-over-leave-active {
+  transition: opacity 0.2s ease;
+}
+.slide-over-enter-active > div:last-child,
+.slide-over-leave-active > div:last-child {
+  transition: transform 0.3s ease;
+}
+.slide-over-enter-from,
+.slide-over-leave-to {
+  opacity: 0;
+}
+.slide-over-enter-from > div:last-child,
+.slide-over-leave-to > div:last-child {
+  transform: translateX(100%);
+}
+</style>

@@ -137,13 +137,21 @@ defineEmits(['close'])
 
 <style scoped>
 .editor-help-panel {
-  min-width: 280px;
-  max-width: 320px;
+  width: 100%;
+}
+
+/* Desktop: constrain width */
+@media (min-width: 1280px) {
+  .editor-help-panel {
+    min-width: 280px;
+    max-width: 320px;
+  }
 }
 
 .editor-help-panel.w-0 {
   min-width: 0;
   max-width: 0;
+  width: 0;
   padding: 0;
 }
 </style>
