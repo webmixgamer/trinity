@@ -115,10 +115,24 @@ export function useOnboarding() {
   // Methods
   const markChecklistItem = (item) => {
     if (!state.value) return
-    if (item in state.value.checklist) {
-      state.value.checklist[item] = true
-      saveState()
+    if (!(item in state.value.checklist)) return
+
+    // Enforce ordering: can't complete a step if previous required steps aren't done
+    const requiredOrder = ['createProcess', 'runExecution', 'monitorExecution']
+    const itemIndex = requiredOrder.indexOf(item)
+
+    if (itemIndex > 0) {
+      // Check all previous required steps are complete
+      for (let i = 0; i < itemIndex; i++) {
+        if (!state.value.checklist[requiredOrder[i]]) {
+          // Previous step not complete, mark that one instead
+          return
+        }
+      }
     }
+
+    state.value.checklist[item] = true
+    saveState()
   }
 
   // Mark step complete and celebrate - expands checklist and highlights next step
@@ -189,14 +203,16 @@ export function useOnboarding() {
 
     if (!state.value) return
 
+    // Mark steps in order - each step requires the previous to be complete
     if (processCount > 0 && !state.value.checklist.createProcess) {
       state.value.checklist.createProcess = true
     }
-    if (executionCount > 0 && !state.value.checklist.runExecution) {
+    // Only mark runExecution if createProcess is done
+    if (executionCount > 0 && state.value.checklist.createProcess && !state.value.checklist.runExecution) {
       state.value.checklist.runExecution = true
     }
-    if (executionCount > 0 && !state.value.checklist.monitorExecution) {
-      // If they've run an execution, they've likely monitored it too
+    // Only mark monitorExecution if runExecution is done
+    if (executionCount > 0 && state.value.checklist.runExecution && !state.value.checklist.monitorExecution) {
       state.value.checklist.monitorExecution = true
     }
     if (hasSchedule && !state.value.checklist.setupSchedule) {

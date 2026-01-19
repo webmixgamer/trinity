@@ -677,7 +677,9 @@ function getErrorHelp(step) {
 
   const errorHelp = {
     AGENT_UNAVAILABLE: {
-      explanation: `The agent "${step.agent || 'specified'}" may not exist, or it might be stopped. Make sure the agent is created and running.`,
+      explanation: step.agent
+        ? `The agent "${step.agent}" may not exist, or it might be stopped. Make sure the agent is created and running.`
+        : 'The agent may not exist, or it might be stopped. Make sure the agent is created and running.',
       link: '/agents',
       linkText: 'Go to Agents page'
     },
