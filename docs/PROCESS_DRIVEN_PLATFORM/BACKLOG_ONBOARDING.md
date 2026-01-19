@@ -15,7 +15,7 @@
 | **Sprint 7** | E20-01, E20-02, E21-04 | Quick wins + Getting Started content ✅ |
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
-| **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help |
+| **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
 | **Sprint 10** | E23-01, E23-02, E21-03 | Tours + search |
 | **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
 
@@ -137,10 +137,10 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | MVP+ |
 | Dependencies | E20-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] 3 template cards displayed in empty state:
+- [x] 3 template cards displayed in empty state:
   - Content Pipeline (research → write → review)
   - Data Report (gather → analyze → report)
   - Support Escalation (triage → route → resolve)
@@ -165,10 +165,10 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | MVP+ |
 | Dependencies | E20-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Composable provides `isFirstRun` computed property
+- [x] Composable provides `isFirstRun` computed property
 - [ ] Detects: no processes created yet, onboarding not dismissed
 - [ ] Exposes methods: `markOnboardingComplete()`, `resetOnboarding()`
 - [ ] Works with localStorage + optional API backup
@@ -519,10 +519,10 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | Core |
 | Dependencies | E21-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Collapsible help panel on right side of editor
+- [x] Collapsible help panel on right side of editor
 - [ ] Panel shows help for current cursor position
 - [ ] Detects YAML key path (e.g., `steps[0].depends_on`)
 - [ ] Shows: field description, type, required/optional, example
@@ -575,10 +575,10 @@ E23-01 (Driver.js Integration)
 | Priority | P1 |
 | Phase | Core |
 | Dependencies | None |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Each execution status has explanatory text:
+- [x] Each execution status has explanatory text:
   - PENDING: "Waiting to start..."
   - RUNNING: "Execution in progress"
   - PAUSED: "Awaiting human approval" + link to Approvals
@@ -822,3 +822,4 @@ E23-01 (Driver.js Integration)
 | 2026-01-18 | Added E20-05: Onboarding UX Polish (context-aware hints, restart from docs) |
 | 2026-01-18 | Added E21-07, E21-08, E21-09: Pattern docs, missing step types, learning path (21 stories total) |
 | 2026-01-18 | Sprint 8.5 implemented: E21-07, E21-08, E21-09 (patterns, step types, tutorials) |
+| 2026-01-19 | Sprint 9 implemented: E20-03, E20-04, E22-01, E22-03 (template cards, first-run detection, editor help, status explainers) |
