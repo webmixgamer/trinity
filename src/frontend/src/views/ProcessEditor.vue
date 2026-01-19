@@ -436,27 +436,88 @@
             <!-- Dialog -->
             <div class="relative bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
               <div class="px-4 pt-5 pb-4 sm:p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                  Execute Process
-                </h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  Enter input data as JSON (optional):
-                </p>
-                <textarea
-                  v-model="executeInputJson"
-                  rows="6"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder='{"score": 85}'
-                ></textarea>
-                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                  Access input values in your process using <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">input.fieldName</code>
-                </p>
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                    <PlayIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                      Execute Process
+                    </h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ process?.name }} v{{ process?.version }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- No inputs required -->
+                <div v-if="detectedInputs.length === 0 && !showAdvancedInput" class="text-center py-6">
+                  <CheckCircleIcon class="h-12 w-12 text-emerald-500 mx-auto mb-3" />
+                  <p class="text-gray-600 dark:text-gray-300 font-medium">No inputs required</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">This process is ready to run</p>
+                </div>
+
+                <!-- Smart Input Form -->
+                <div v-else-if="!showAdvancedInput" class="space-y-4">
+                  <p class="text-sm text-gray-600 dark:text-gray-400">
+                    This process expects the following inputs:
+                  </p>
+                  <div v-for="input in detectedInputs" :key="input.name" class="space-y-1">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ formatInputLabel(input.name) }}
+                      <span v-if="input.required" class="text-red-500">*</span>
+                    </label>
+                    <input
+                      v-if="input.type === 'text'"
+                      v-model="executeInputValues[input.name]"
+                      type="text"
+                      :placeholder="input.placeholder"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                    <textarea
+                      v-else
+                      v-model="executeInputValues[input.name]"
+                      :placeholder="input.placeholder"
+                      rows="3"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                    <p v-if="input.usedIn" class="text-xs text-gray-400 dark:text-gray-500">
+                      Used in: {{ input.usedIn }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Advanced JSON Input -->
+                <div v-else class="space-y-2">
+                  <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Enter input data as JSON:
+                  </p>
+                  <textarea
+                    v-model="executeInputJson"
+                    rows="6"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder='{"field": "value"}'
+                  ></textarea>
+                </div>
+
+                <!-- Toggle Advanced Mode -->
+                <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    @click="showAdvancedInput = !showAdvancedInput"
+                    class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
+                  >
+                    <CodeBracketIcon class="h-4 w-4" />
+                    {{ showAdvancedInput ? 'Use form input' : 'Show as JSON (advanced)' }}
+                  </button>
+                </div>
               </div>
+
               <div class="px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3 bg-gray-50 dark:bg-gray-700/50">
                 <button
                   @click="confirmExecute"
-                  class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+                  class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
                 >
+                  <PlayIcon class="h-4 w-4" />
                   Execute
                 </button>
                 <button
@@ -605,6 +666,7 @@ import {
   ClipboardDocumentIcon,
   ClockIcon,
   QuestionMarkCircleIcon,
+  CodeBracketIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 import jsyaml from 'js-yaml'
@@ -628,6 +690,9 @@ const showUnsavedWarning = ref(false)
 const pendingNavigation = ref(null)
 const showExecuteDialog = ref(false)
 const executeInputJson = ref('{}')
+const showAdvancedInput = ref(false)
+const executeInputValues = ref({})
+const detectedInputs = ref([])
 const scheduleTriggerInfo = ref({})
 const showSaveTemplateDialog = ref(false)
 const savingTemplate = ref(false)
@@ -1131,20 +1196,101 @@ async function publishProcess() {
 }
 
 function executeProcess() {
-  // Show input dialog instead of executing directly
+  // Detect input variables from YAML
+  detectedInputs.value = detectInputVariables(yamlContent.value)
+
+  // Initialize form values
+  executeInputValues.value = {}
+  detectedInputs.value.forEach(input => {
+    executeInputValues.value[input.name] = ''
+  })
+
+  // Reset state
   executeInputJson.value = '{}'
+  showAdvancedInput.value = false
   showExecuteDialog.value = true
+}
+
+// Detect {{input.xxx}} patterns in YAML
+function detectInputVariables(yaml) {
+  const inputs = []
+  const seen = new Set()
+
+  // Match {{input.xxx}} patterns
+  const regex = /\{\{\s*input\.(\w+)\s*\}\}/g
+  let match
+
+  // Parse YAML to get step context
+  let parsed = null
+  try {
+    parsed = jsyaml.load(yaml)
+  } catch {
+    // Ignore parse errors
+  }
+
+  while ((match = regex.exec(yaml)) !== null) {
+    const name = match[1]
+    if (!seen.has(name)) {
+      seen.add(name)
+
+      // Find which step uses this input
+      let usedIn = null
+      if (parsed?.steps) {
+        for (const step of parsed.steps) {
+          const stepStr = JSON.stringify(step)
+          if (stepStr.includes(`input.${name}`)) {
+            usedIn = step.name || step.id
+            break
+          }
+        }
+      }
+
+      // Determine input type - use textarea for longer content hints
+      const isLongContent = ['content', 'message', 'text', 'description', 'body', 'ticket', 'query'].some(
+        hint => name.toLowerCase().includes(hint)
+      )
+
+      inputs.push({
+        name,
+        type: isLongContent ? 'textarea' : 'text',
+        placeholder: `Enter ${formatInputLabel(name).toLowerCase()}...`,
+        usedIn,
+        required: true // All detected inputs are considered required
+      })
+    }
+  }
+
+  return inputs
+}
+
+// Format input name to human-readable label
+function formatInputLabel(name) {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, l => l.toUpperCase())
 }
 
 async function confirmExecute() {
   try {
-    // Parse the JSON input
+    // Build input data
     let inputData = {}
-    try {
-      inputData = JSON.parse(executeInputJson.value || '{}')
-    } catch (e) {
-      showNotification('Invalid JSON input', 'error')
-      return
+
+    if (showAdvancedInput.value) {
+      // Parse JSON from textarea
+      try {
+        inputData = JSON.parse(executeInputJson.value || '{}')
+      } catch (e) {
+        showNotification('Invalid JSON input', 'error')
+        return
+      }
+    } else {
+      // Build from form values
+      for (const [key, value] of Object.entries(executeInputValues.value)) {
+        if (value !== undefined && value !== '') {
+          inputData[key] = value
+        }
+      }
     }
 
     showExecuteDialog.value = false
