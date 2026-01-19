@@ -71,10 +71,10 @@
           :key="item.id"
           class="flex items-start gap-3 p-2 rounded-lg transition-colors"
           :class="[
-            item.completed 
-              ? 'bg-green-50 dark:bg-green-900/20' 
-              : isCurrentStep(index) 
-                ? 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700' 
+            item.completed
+              ? 'bg-green-50 dark:bg-green-900/20'
+              : isCurrentStep(index)
+                ? 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700'
                 : 'opacity-50',
             !item.completed && item.link && isCurrentStep(index) ? 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/30' : ''
           ]"
@@ -101,7 +101,7 @@
             >
               {{ item.label }}
             </p>
-            <p 
+            <p
               class="text-xs"
               :class="isCurrentStep(index) || item.completed
                 ? 'text-gray-500 dark:text-gray-400'
@@ -125,14 +125,25 @@
         <li class="border-t border-gray-200 dark:border-gray-700 my-2"></li>
 
         <!-- Optional items label -->
-        <li class="text-xs text-gray-500 dark:text-gray-400 px-2">Optional</li>
+        <li 
+          class="text-xs px-2"
+          :class="allRequiredComplete ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 opacity-50'"
+        >
+          Optional
+        </li>
 
         <!-- Optional items -->
         <li
           v-for="item in optionalItems"
           :key="item.id"
           class="flex items-start gap-3 p-2 rounded-lg transition-colors"
-          :class="item.completed ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'"
+          :class="[
+            item.completed 
+              ? 'bg-green-50 dark:bg-green-900/20' 
+              : allRequiredComplete
+                ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                : 'opacity-40'
+          ]"
         >
           <div
             class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
@@ -147,11 +158,20 @@
               class="text-sm font-medium"
               :class="item.completed
                 ? 'text-green-700 dark:text-green-400 line-through'
-                : 'text-gray-900 dark:text-white'"
+                : allRequiredComplete
+                  ? 'text-gray-900 dark:text-white'
+                  : 'text-gray-500 dark:text-gray-400'"
             >
               {{ item.label }}
             </p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ item.description }}</p>
+            <p 
+              class="text-xs"
+              :class="item.completed || allRequiredComplete
+                ? 'text-gray-500 dark:text-gray-400'
+                : 'text-gray-400 dark:text-gray-500'"
+            >
+              {{ item.description }}
+            </p>
           </div>
         </li>
       </ul>
@@ -220,6 +240,11 @@ const progressPercent = computed(() => {
   return Math.round((progress.value.completed / progress.value.total) * 100)
 })
 
+// Check if all required steps are complete
+const allRequiredComplete = computed(() => {
+  return progress.value.requiredCompleted >= progress.value.required
+})
+
 // Checklist item definitions
 const requiredItems = computed(() => [
   {
@@ -283,12 +308,12 @@ const isCurrentStep = (index) => {
 
 const isOnTargetPage = (item) => {
   if (!item.link) return false
-  
+
   const currentPath = router.currentRoute.value.path
   const onPage = currentPath === item.link || currentPath.startsWith(item.link + '/')
-  
+
   if (!onPage) return false
-  
+
   // Only show "See above" if prerequisites are met
   // Otherwise the hint doesn't make sense
   if (item.id === 'runExecution') {
@@ -299,7 +324,7 @@ const isOnTargetPage = (item) => {
     // Can only monitor if there's an execution (runExecution completed)
     return state.value?.checklist.runExecution === true
   }
-  
+
   return true
 }
 
