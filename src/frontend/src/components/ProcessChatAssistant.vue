@@ -18,6 +18,26 @@
       </div>
     </div>
 
+    <!-- Validation Errors Banner -->
+    <div v-if="validationErrors.length > 0" class="mx-4 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1">
+          <p class="text-sm font-medium text-red-700 dark:text-red-400">
+            {{ validationErrors.length }} validation error{{ validationErrors.length > 1 ? 's' : '' }} found
+          </p>
+          <p class="text-xs text-red-600 dark:text-red-500 mt-0.5">
+            {{ validationErrors[0] }}{{ validationErrors.length > 1 ? ` (+${validationErrors.length - 1} more)` : '' }}
+          </p>
+        </div>
+        <button
+          @click="askForHelp"
+          class="flex-shrink-0 text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+        >
+          Help me fix
+        </button>
+      </div>
+    </div>
+
     <!-- Messages area -->
     <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
       <!-- Welcome message -->
@@ -152,6 +172,16 @@ marked.setOptions({
 })
 
 // Props and emits
+const props = defineProps({
+  validationErrors: {
+    type: Array,
+    default: () => []
+  },
+  currentYaml: {
+    type: String,
+    default: ''
+  }
+})
 const emit = defineEmits(['apply-yaml'])
 
 // State
@@ -193,6 +223,20 @@ YAML RULES (when generating):
 - Version format: "1.0"
 - Step types: agent_task, human_approval, gateway, notification
 - Use depends_on: [step_id] for ordering
+
+CRITICAL - agent_task step format (DO NOT nest in config):
+  - id: my-step
+    name: "My Step"
+    type: agent_task
+    agent: "agent-name"     # Required, at step level
+    message: "Task message" # Required, at step level
+
+CRITICAL - human_approval step format:
+  - id: review
+    name: "Review Step"
+    type: human_approval
+    approvers: ["email@example.com"]
+    timeout_hours: 24
 
 Example good response: "That sounds like a content review workflow! Who typically reviews the content - is it one person or a team?"
 
@@ -274,6 +318,20 @@ async function sendMessage() {
 // Send suggested prompt
 function sendSuggestedPrompt(prompt) {
   inputMessage.value = `I want to ${prompt.toLowerCase()}`
+  sendMessage()
+}
+
+// Ask for help with validation errors
+function askForHelp() {
+  const errorList = props.validationErrors.join('\n- ')
+  const yamlPreview = props.currentYaml ? props.currentYaml.slice(0, 500) : ''
+  
+  inputMessage.value = `I have validation errors in my process YAML. Can you help me fix them?
+
+Errors:
+- ${errorList}
+
+${yamlPreview ? `Current YAML (first 500 chars):\n\`\`\`yaml\n${yamlPreview}\n\`\`\`` : ''}`
   sendMessage()
 }
 

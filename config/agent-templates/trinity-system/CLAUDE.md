@@ -430,6 +430,8 @@ Step types: `agent_task`, `human_approval`, `gateway`, `notification`, `sub_proc
 
 ### YAML Schema Reference
 
+CRITICAL: Fields go directly in the step, NOT nested in a "config" block!
+
 ```yaml
 name: my-process-name        # Required, kebab-case
 version: "1.0"               # Major.minor format
@@ -437,37 +439,28 @@ description: "What this does"
 
 trigger:
   type: manual               # manual | schedule | webhook
-  # For schedule:
-  # schedule: "0 9 * * 1-5"  # Cron expression
 
 steps:
   - id: step-1
     name: "First Step"
     type: agent_task
-    config:
-      agent_id: "my-agent"
-      message: "Do something with {{input.data}}"
-    outputs:
-      - name: result
-        source: "{{response}}"
+    agent: "my-agent"        # Required - directly in step
+    message: "Do something"  # Required - directly in step
 
   - id: step-2
     name: "Approval Gate"
     type: human_approval
-    depends_on: [step-1]     # Runs after step-1
-    config:
-      approvers: ["admin@example.com"]
-      timeout_hours: 24
-      message: "Review result: {{steps.step-1.outputs.result}}"
+    depends_on: [step-1]
+    approvers: ["admin@example.com"]  # Directly in step
+    timeout_hours: 24
 
   - id: step-3
     name: "Notify Team"
     type: notification
     depends_on: [step-2]
-    config:
-      channel: email
-      recipients: ["team@example.com"]
-      message: "Process completed!"
+    channel: email
+    recipients: ["team@example.com"]
+    message: "Process completed!"
 ```
 
 ### Workflow Patterns
