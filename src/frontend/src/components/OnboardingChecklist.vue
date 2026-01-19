@@ -67,20 +67,26 @@
       <ul class="space-y-2">
         <!-- Required items -->
         <li
-          v-for="item in requiredItems"
+          v-for="(item, index) in requiredItems"
           :key="item.id"
           class="flex items-start gap-3 p-2 rounded-lg transition-colors"
           :class="[
-            item.completed ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50',
-            !item.completed && item.link ? 'cursor-pointer' : ''
+            item.completed 
+              ? 'bg-green-50 dark:bg-green-900/20' 
+              : isCurrentStep(index) 
+                ? 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700' 
+                : 'opacity-50',
+            !item.completed && item.link && isCurrentStep(index) ? 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/30' : ''
           ]"
-          @click="handleItemClick(item)"
+          @click="handleItemClick(item, index)"
         >
           <div
             class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
             :class="item.completed
               ? 'bg-green-500 text-white'
-              : 'border-2 border-gray-300 dark:border-gray-600'"
+              : isCurrentStep(index)
+                ? 'border-2 border-indigo-500 dark:border-indigo-400'
+                : 'border-2 border-gray-300 dark:border-gray-600'"
           >
             <CheckIcon v-if="item.completed" class="h-3 w-3" />
           </div>
@@ -89,15 +95,24 @@
               class="text-sm font-medium"
               :class="item.completed
                 ? 'text-green-700 dark:text-green-400 line-through'
-                : 'text-gray-900 dark:text-white'"
+                : isCurrentStep(index)
+                  ? 'text-gray-900 dark:text-white'
+                  : 'text-gray-500 dark:text-gray-400'"
             >
               {{ item.label }}
             </p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ item.description }}</p>
+            <p 
+              class="text-xs"
+              :class="isCurrentStep(index) || item.completed
+                ? 'text-gray-500 dark:text-gray-400'
+                : 'text-gray-400 dark:text-gray-500'"
+            >
+              {{ item.description }}
+            </p>
           </div>
           <span
-            v-if="!item.completed && item.link"
-            class="flex-shrink-0 text-xs"
+            v-if="!item.completed && item.link && isCurrentStep(index)"
+            class="flex-shrink-0 text-xs font-medium"
             :class="isOnTargetPage(item)
               ? 'text-amber-600 dark:text-amber-400'
               : 'text-indigo-600 dark:text-indigo-400'"
@@ -253,6 +268,19 @@ const dismiss = () => {
   dismissOnboarding()
 }
 
+// Find the index of the first incomplete required item (the "current" step)
+const currentStepIndex = computed(() => {
+  const items = requiredItems.value
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].completed) return i
+  }
+  return -1 // All completed
+})
+
+const isCurrentStep = (index) => {
+  return index === currentStepIndex.value
+}
+
 const isOnTargetPage = (item) => {
   if (!item.link) return false
   
@@ -294,7 +322,7 @@ const showHintToast = (message) => {
   }, 5000)
 }
 
-const handleItemClick = (item) => {
+const handleItemClick = (item, index) => {
   if (item.completed) {
     return // Already completed, no action needed
   }
@@ -303,8 +331,13 @@ const handleItemClick = (item) => {
     return // No link defined
   }
 
+  // Only allow clicking on the current step
+  if (!isCurrentStep(index)) {
+    return // Not the current step, ignore click
+  }
+
   // If already on the target page, provide feedback
-  if (router.currentRoute.value.path === item.link) {
+  if (isOnTargetPage(item)) {
     // Show helpful hints based on the item
     if (item.id === 'runExecution') {
       showHintToast('Click the Play button (▶️) on a published process to execute it!')
