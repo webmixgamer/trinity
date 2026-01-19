@@ -208,6 +208,18 @@
             <div class="border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <nav class="flex -mb-px">
                 <button
+                  @click="activeTab = 'chat'"
+                  :class="[
+                    'px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5',
+                    activeTab === 'chat'
+                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+                  ]"
+                >
+                  <SparklesIcon class="h-4 w-4" />
+                  Chat
+                </button>
+                <button
                   @click="activeTab = 'editor'"
                   :class="[
                     'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
@@ -247,6 +259,33 @@
               >
                 <QuestionMarkCircleIcon class="h-5 w-5" />
               </button>
+            </div>
+          </div>
+
+          <!-- Chat Tab Content -->
+          <div v-show="activeTab === 'chat'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Chat Assistant -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[600px]">
+              <ProcessChatAssistant @apply-yaml="handleApplyYamlFromChat" />
+            </div>
+            
+            <!-- Live YAML Preview -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+              <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">YAML Preview</h3>
+                <span v-if="yamlContent !== defaultYamlTemplate()" class="text-xs text-green-600 dark:text-green-400">
+                  Modified
+                </span>
+              </div>
+              <div class="p-4">
+                <YamlEditor
+                  v-model="yamlContent"
+                  :validation-errors="validationErrors"
+                  height="500px"
+                  @save="saveProcess"
+                  @change="handleChange"
+                />
+              </div>
             </div>
           </div>
 
@@ -702,6 +741,7 @@ import TemplateSelector from '../components/process/TemplateSelector.vue'
 import RoleMatrix from '../components/process/RoleMatrix.vue'
 import ProcessFlowPreview from '../components/ProcessFlowPreview.vue'
 import EditorHelpPanel from '../components/EditorHelpPanel.vue'
+import ProcessChatAssistant from '../components/ProcessChatAssistant.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
   ArrowLeftIcon,
@@ -758,8 +798,8 @@ const showTemplateSelector = ref(true)
 const selectedTemplateId = ref(null)
 const loadingTemplate = ref(false)
 
-// Editor tabs
-const activeTab = ref('editor')
+// Editor tabs - default to 'chat' for new processes, 'editor' for existing
+const activeTab = ref('chat')
 const availableAgents = ref([])
 
 // Help panel state
@@ -1160,6 +1200,9 @@ async function loadProcess() {
     process.value = data
     yamlContent.value = data.yaml_content || defaultYamlTemplate()
     hasUnsavedChanges.value = false
+    
+    // Switch to editor tab for existing processes
+    activeTab.value = 'editor'
 
     // Load schedule trigger info for published processes
     if (data.status === 'published') {
@@ -1192,6 +1235,23 @@ function handleChange() {
   hasUnsavedChanges.value = true
   // Clear validation on edit
   validationErrors.value = []
+}
+
+// Handle YAML from chat assistant
+function handleApplyYamlFromChat(yaml) {
+  // Check for unsaved changes
+  if (hasUnsavedChanges.value && yamlContent.value !== defaultYamlTemplate()) {
+    if (!confirm('This will replace your current YAML. Continue?')) {
+      return
+    }
+  }
+  
+  yamlContent.value = yaml
+  hasUnsavedChanges.value = true
+  showNotification('YAML applied from chat assistant!', 'success')
+  
+  // Switch to editor tab to show the result
+  activeTab.value = 'editor'
 }
 
 async function validateProcess() {
