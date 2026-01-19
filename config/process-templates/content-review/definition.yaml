@@ -23,19 +23,22 @@ steps:
 
   - id: check-quality
     name: Check Quality Score
-    type: condition
+    type: gateway
     depends_on:
       - analyze-content
-    condition: "{{steps.analyze-content.output.quality_score}} >= 80"
-    on_true: auto-approve
-    on_false: manual-review
+    gateway_type: exclusive
+    routes:
+      - condition: "{{steps.analyze-content.output.quality_score}} >= 80"
+        target: auto-approve
+    default_route: manual-review
 
   - id: manual-review
     name: Manual Review Required
-    type: user_task
+    type: human_approval
     depends_on:
       - check-quality
-    prompt: |
+    title: "Content Review Required"
+    description: |
       The content did not meet auto-approval threshold.
 
       Analysis Results:
@@ -44,11 +47,9 @@ steps:
       Quality Score: {{steps.analyze-content.output.quality_score}}
 
       Please review and decide whether to approve or reject.
-    options:
-      - approve
-      - reject
-      - request-changes
-    assignee: content-reviewer
+    assignees:
+      - content-reviewer
+    timeout: 24h
 
   - id: auto-approve
     name: Auto Approve
