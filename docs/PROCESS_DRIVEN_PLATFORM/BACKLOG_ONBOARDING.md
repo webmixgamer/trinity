@@ -17,7 +17,7 @@
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
 | **Sprint 10** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard ✅ |
-| **Sprint 11** | E25-01, E25-02, E25-03, E25-04 | Process Creation Chat Assistant |
+| **Sprint 11** | E25-01, E25-02, E25-03, E25-04 | Process Creation Chat Assistant ✅ |
 
 ---
 
@@ -677,7 +677,7 @@ E24 (Wizard) ◄─────────────────────�
 | Priority | P1 |
 | Phase | Advanced |
 | Dependencies | E24-01 |
-| Status | todo |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Chat panel component with message list and input
@@ -705,7 +705,7 @@ E24 (Wizard) ◄─────────────────────�
 | Priority | P1 |
 | Phase | Advanced |
 | Dependencies | E25-01 |
-| Status | todo |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] System agent prompt extended with "Process Creation Assistant" mode
@@ -733,7 +733,7 @@ E24 (Wizard) ◄─────────────────────�
 | Priority | P1 |
 | Phase | Advanced |
 | Dependencies | E25-02 |
-| Status | todo |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Assistant generates complete, valid YAML based on conversation
@@ -760,7 +760,7 @@ E24 (Wizard) ◄─────────────────────�
 | Priority | P1 |
 | Phase | Advanced |
 | Dependencies | E25-03 |
-| Status | todo |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] "Apply to Editor" button appears when YAML is generated
@@ -793,3 +793,4 @@ E24 (Wizard) ◄─────────────────────�
 | 2026-01-19 | Removed E22-02 (Smart Tooltips) - covered by existing help features (16 stories total) |
 | 2026-01-19 | Sprint 10 implemented: E24-01, E24-02, E24-03, E24-04 (First Process Wizard) - ALL STORIES COMPLETE |
 | 2026-01-19 | Added Epic E25: Process Creation Chat Assistant (4 stories, 20 total) |
+| 2026-01-19 | Sprint 11 implemented: E25-01, E25-02, E25-03, E25-04 (Chat Assistant) - ALL 20 STORIES COMPLETE |

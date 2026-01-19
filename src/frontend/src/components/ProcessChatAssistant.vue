@@ -7,10 +7,10 @@
         <span class="font-medium text-gray-900 dark:text-white">Process Assistant</span>
       </div>
       <div class="flex items-center gap-2">
-        <span 
+        <span
           class="text-xs px-2 py-0.5 rounded-full"
-          :class="systemAgentStatus === 'running' 
-            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
+          :class="systemAgentStatus === 'running'
+            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
             : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'"
         >
           {{ systemAgentStatus === 'running' ? 'Connected' : 'Connecting...' }}
@@ -31,7 +31,7 @@
         <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto mb-4">
           Describe what you want to automate, and I'll help you build it step by step.
         </p>
-        
+
         <!-- Suggested prompts -->
         <div class="flex flex-wrap justify-center gap-2 mt-4">
           <button
@@ -53,7 +53,7 @@
             <p class="whitespace-pre-wrap text-sm">{{ msg.content }}</p>
           </div>
         </div>
-        
+
         <!-- Assistant message -->
         <div v-else class="flex justify-start">
           <div class="max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl rounded-bl-sm px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -62,7 +62,7 @@
               <div v-for="(part, i) in parseMessageParts(msg.content)" :key="i">
                 <!-- Text content -->
                 <p v-if="part.type === 'text'" class="whitespace-pre-wrap text-sm">{{ part.content }}</p>
-                
+
                 <!-- YAML code block -->
                 <div v-else-if="part.type === 'yaml'" class="relative">
                   <div class="bg-gray-900 rounded-lg overflow-hidden">
@@ -81,7 +81,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- Plain text message -->
             <p v-else class="whitespace-pre-wrap text-sm">{{ msg.content }}</p>
           </div>
@@ -199,7 +199,7 @@ onMounted(async () => {
     systemAgentStatus.value = 'unavailable'
     console.error('Failed to check system agent status:', e)
   }
-  
+
   // Focus input
   inputRef.value?.focus()
 })
@@ -207,39 +207,39 @@ onMounted(async () => {
 // Send message to system agent
 async function sendMessage() {
   if (!inputMessage.value.trim() || loading.value) return
-  
+
   const userMessage = inputMessage.value.trim()
   inputMessage.value = ''
   error.value = null
-  
+
   // Reset textarea height
   if (inputRef.value) {
     inputRef.value.style.height = 'auto'
   }
-  
+
   // Add user message to chat
   messages.value.push({
     role: 'user',
     content: userMessage
   })
-  
+
   // Scroll to bottom
   await nextTick()
   scrollToBottom()
-  
+
   loading.value = true
-  
+
   try {
     // Build message with context for first message
     let messageToSend = userMessage
     if (messages.value.length === 1) {
       messageToSend = PROCESS_ASSISTANT_CONTEXT + userMessage
     }
-    
+
     const response = await api.post('/api/agents/trinity-system/chat', {
       message: messageToSend
     })
-    
+
     // Add assistant response
     messages.value.push({
       role: 'assistant',
@@ -278,7 +278,7 @@ function parseMessageParts(content) {
   const regex = /```ya?ml\n?([\s\S]*?)```/gi
   let lastIndex = 0
   let match
-  
+
   while ((match = regex.exec(content)) !== null) {
     // Add text before this match
     if (match.index > lastIndex) {
@@ -287,12 +287,12 @@ function parseMessageParts(content) {
         parts.push({ type: 'text', content: text })
       }
     }
-    
+
     // Add YAML block
     parts.push({ type: 'yaml', content: match[1].trim() })
     lastIndex = match.index + match[0].length
   }
-  
+
   // Add remaining text
   if (lastIndex < content.length) {
     const text = content.slice(lastIndex).trim()
@@ -300,7 +300,7 @@ function parseMessageParts(content) {
       parts.push({ type: 'text', content: text })
     }
   }
-  
+
   return parts
 }
 

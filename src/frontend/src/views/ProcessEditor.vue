@@ -268,7 +268,7 @@
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[600px]">
               <ProcessChatAssistant @apply-yaml="handleApplyYamlFromChat" />
             </div>
-            
+
             <!-- Live YAML Preview -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
               <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -1200,7 +1200,7 @@ async function loadProcess() {
     process.value = data
     yamlContent.value = data.yaml_content || defaultYamlTemplate()
     hasUnsavedChanges.value = false
-    
+
     // Switch to editor tab for existing processes
     activeTab.value = 'editor'
 
@@ -1245,11 +1245,11 @@ function handleApplyYamlFromChat(yaml) {
       return
     }
   }
-  
+
   yamlContent.value = yaml
   hasUnsavedChanges.value = true
   showNotification('YAML applied from chat assistant!', 'success')
-  
+
   // Switch to editor tab to show the result
   activeTab.value = 'editor'
 }
