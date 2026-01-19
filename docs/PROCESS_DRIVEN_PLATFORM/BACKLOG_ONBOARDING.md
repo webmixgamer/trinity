@@ -16,7 +16,7 @@
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
-| **Sprint 10** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard (future) |
+| **Sprint 10** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard ✅ |
 
 ---
 
@@ -550,16 +550,16 @@ E21-02 (Docs View)
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E20-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] New view/route: `/processes/wizard`
-- [ ] Multi-step wizard shell with:
+- [x] New view/route: `/processes/wizard`
+- [x] Multi-step wizard shell with:
   - Step indicator (1 of 4)
   - Back/Next navigation
   - Cancel option with confirmation
-- [ ] Wizard state managed in component (not persisted)
-- [ ] Final step generates YAML and saves process
+- [x] Wizard state managed in component (not persisted)
+- [x] Final step generates YAML and saves process
 
 **Technical Notes:**
 - New view: `src/frontend/src/views/ProcessWizard.vue`
@@ -578,17 +578,17 @@ E21-02 (Docs View)
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E24-01 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Step 1 shows goal options:
+- [x] Step 1 shows goal options:
   - Content Creation (research → write → review)
   - Data Processing (collect → analyze → report)
   - Approval Workflow (request → review → notify)
   - Custom (start from scratch)
-- [ ] Each option shows brief description and step count
-- [ ] Selection stored in wizard state
-- [ ] "Custom" skips to minimal template
+- [x] Each option shows brief description and step count
+- [x] Selection stored in wizard state
+- [x] "Custom" skips to minimal template
 
 **Technical Notes:**
 - Options map to process templates
@@ -606,15 +606,15 @@ E21-02 (Docs View)
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E24-02 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
-- [ ] Step 2 shows steps from selected template
-- [ ] Each step has agent dropdown
-- [ ] Dropdown shows available agents with status (running/stopped)
-- [ ] Warning if agent is stopped
-- [ ] Option to create new agent (links out)
-- [ ] Agents stored in wizard state
+- [x] Step 2 shows steps from selected template
+- [x] Each step has agent dropdown
+- [x] Dropdown shows available agents with status (running/stopped)
+- [x] Warning if agent is stopped
+- [x] Option to create new agent (links out)
+- [x] Agents stored in wizard state
 
 **Technical Notes:**
 - Fetch agents from `/api/agents`
@@ -633,7 +633,7 @@ E21-02 (Docs View)
 | Priority | P2 |
 | Phase | Advanced |
 | Dependencies | E24-03 |
-| Status | pending |
+| Status | done |
 
 **Acceptance Criteria:**
 - [ ] Step 4 shows:
@@ -641,9 +641,9 @@ E21-02 (Docs View)
   - Visual workflow diagram
   - Estimated duration (if computable)
   - Generated YAML preview (collapsible)
-- [ ] "Create Process" button saves and redirects
-- [ ] Option: "Run immediately after creation" checkbox
-- [ ] Success message with link to new process
+- [x] "Create Process" button saves and redirects
+- [x] Option: "Run immediately after creation" checkbox
+- [x] Success message with link to new process
 
 **Technical Notes:**
 - Generate YAML from wizard state
@@ -666,3 +666,4 @@ E21-02 (Docs View)
 | 2026-01-19 | Removed Epic E23 (Guided Tours) - functionality covered by onboarding checklist |
 | 2026-01-19 | Removed E21-03 (Docs Search) - not needed with small doc set |
 | 2026-01-19 | Removed E22-02 (Smart Tooltips) - covered by existing help features (16 stories total) |
+| 2026-01-19 | Sprint 10 implemented: E24-01, E24-02, E24-03, E24-04 (First Process Wizard) - ALL STORIES COMPLETE |
