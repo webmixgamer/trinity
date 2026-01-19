@@ -170,7 +170,7 @@
         <div v-else class="space-y-4">
           <!-- View tabs -->
           <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-            <div class="border-b border-gray-200 dark:border-gray-700">
+            <div class="border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <nav class="flex -mb-px">
                 <button
                   @click="activeTab = 'editor'"
@@ -198,35 +198,63 @@
                   </span>
                 </button>
               </nav>
+              <!-- Help panel toggle -->
+              <button
+                v-if="activeTab === 'editor'"
+                @click="toggleHelpPanel"
+                :class="[
+                  'mr-3 p-2 rounded-lg transition-colors',
+                  showHelpPanel
+                    ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ]"
+                title="Toggle help panel"
+              >
+                <QuestionMarkCircleIcon class="h-5 w-5" />
+              </button>
             </div>
           </div>
 
           <!-- Editor Tab Content -->
-          <div v-show="activeTab === 'editor'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <!-- YAML Editor -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-              <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">YAML Definition</h3>
+          <div v-show="activeTab === 'editor'" class="flex gap-4">
+            <!-- Main editor area -->
+            <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <!-- YAML Editor -->
+              <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                <div class="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                  <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">YAML Definition</h3>
+                </div>
+                <div class="p-4">
+                  <YamlEditor
+                    v-model="yamlContent"
+                    :validation-errors="validationErrors"
+                    height="450px"
+                    @save="saveProcess"
+                    @change="handleChange"
+                    @cursor-context="handleCursorContext"
+                  />
+                </div>
               </div>
-              <div class="p-4">
-                <YamlEditor
-                  v-model="yamlContent"
+
+              <!-- Flow Preview -->
+              <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                <ProcessFlowPreview
+                  :yaml-content="yamlContent"
                   :validation-errors="validationErrors"
                   height="450px"
-                  @save="saveProcess"
-                  @change="handleChange"
                 />
               </div>
             </div>
 
-            <!-- Flow Preview -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-              <ProcessFlowPreview
-                :yaml-content="yamlContent"
-                :validation-errors="validationErrors"
-                height="450px"
-              />
-            </div>
+            <!-- Help Panel (collapsible) -->
+            <EditorHelpPanel
+              v-if="showHelpPanel"
+              :visible="showHelpPanel"
+              :help-content="currentHelpContent"
+              @close="toggleHelpPanel"
+              class="hidden xl:block"
+              style="height: 530px;"
+            />
           </div>
 
           <!-- Roles Tab Content -->
@@ -540,6 +568,7 @@ import YamlEditor from '../components/YamlEditor.vue'
 import TemplateSelector from '../components/process/TemplateSelector.vue'
 import RoleMatrix from '../components/process/RoleMatrix.vue'
 import ProcessFlowPreview from '../components/ProcessFlowPreview.vue'
+import EditorHelpPanel from '../components/EditorHelpPanel.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
   ArrowLeftIcon,
@@ -550,6 +579,7 @@ import {
   LinkIcon,
   ClipboardDocumentIcon,
   ClockIcon,
+  QuestionMarkCircleIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 import jsyaml from 'js-yaml'
@@ -589,6 +619,11 @@ const loadingTemplate = ref(false)
 // Editor tabs
 const activeTab = ref('editor')
 const availableAgents = ref([])
+
+// Help panel state
+const showHelpPanel = ref(localStorage.getItem('trinity_editor_help') !== 'hidden')
+const editorHelpData = ref(null)
+const currentHelpContent = ref(null)
 
 // Computed
 const isNew = computed(() => route.name === 'ProcessNew')
@@ -854,6 +889,9 @@ onMounted(async () => {
   }
   // Fetch available agents for role matrix
   await loadAvailableAgents()
+  
+  // Load editor help data
+  await loadEditorHelp()
 })
 
 async function loadAvailableAgents() {
@@ -863,6 +901,52 @@ async function loadAvailableAgents() {
   } catch (error) {
     console.warn('Failed to load agents:', error)
   }
+}
+
+// Load editor help data
+async function loadEditorHelp() {
+  try {
+    const response = await fetch('/api/docs/content/editor-help.json')
+    if (response.ok) {
+      const data = await response.json()
+      // JSON content is returned directly from the API
+      editorHelpData.value = data
+    }
+  } catch (error) {
+    console.warn('Failed to load editor help data:', error)
+    // Fallback to default help
+    editorHelpData.value = {
+      default: {
+        title: 'YAML Process Definition',
+        description: 'Define automated workflows using YAML. Click on any field to see contextual help.',
+        docs_link: '/processes/docs/getting-started/what-are-processes'
+      }
+    }
+  }
+}
+
+// Handle cursor context changes from YamlEditor
+function handleCursorContext(context) {
+  if (!editorHelpData.value) return
+  
+  // Try to find help for the current path
+  let helpKey = context.path
+  let help = editorHelpData.value[helpKey]
+  
+  // If not found, try progressively shorter paths
+  while (!help && helpKey.includes('.')) {
+    helpKey = helpKey.split('.').slice(0, -1).join('.')
+    help = editorHelpData.value[helpKey]
+  }
+  
+  // Fall back to default
+  currentHelpContent.value = help || editorHelpData.value.default || null
+}
+
+// Toggle help panel visibility
+function toggleHelpPanel() {
+  showHelpPanel.value = !showHelpPanel.value
+  localStorage.setItem('trinity_editor_help', showHelpPanel.value ? 'visible' : 'hidden')
 }
 
 // Navigation guard for unsaved changes

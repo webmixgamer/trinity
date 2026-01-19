@@ -16,7 +16,7 @@
             {{ stepsNeedingApproval.map(s => s.step_id).join(', ') }}
           </p>
         </div>
-        <button 
+        <button
           @click="expandedStep = stepsNeedingApproval[0].step_id"
           class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors"
         >
@@ -79,7 +79,11 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <span class="font-medium text-gray-900 dark:text-white truncate">{{ step.step_id }}</span>
-              <span :class="getStatusBadgeClasses(step.status)" class="px-2 py-0.5 rounded text-xs font-medium capitalize">
+              <span
+                :class="getStatusBadgeClasses(step.status)"
+                class="px-2 py-0.5 rounded text-xs font-medium capitalize cursor-help"
+                :title="getStepStatusExplanation(step)"
+              >
                 {{ step.status }}
               </span>
               <!-- Gateway indicator -->
@@ -642,6 +646,25 @@ function getStatusBadgeClasses(status) {
     waiting_approval: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
   }
   return classes[status] || 'bg-gray-100 text-gray-600'
+}
+
+// Step status explanations for tooltips
+function getStepStatusExplanation(step) {
+  const explanations = {
+    pending: 'Queued and waiting to start',
+    running: 'Currently being executed by an agent',
+    completed: 'Finished successfully',
+    failed: step.error ? `Failed: ${step.error.substring(0, 100)}${step.error.length > 100 ? '...' : ''}` : 'Failed with an error',
+    skipped: step.skip_reason || 'Skipped based on gateway condition or dependency failure',
+    waiting_approval: 'Paused for human approval',
+  }
+
+  // Add dependency info for pending/waiting steps
+  if (step.status === 'pending' && step.depends_on?.length > 0) {
+    return `Waiting for: ${step.depends_on.join(', ')}`
+  }
+
+  return explanations[step.status] || 'Unknown status'
 }
 
 function getDurationBarColor(status) {

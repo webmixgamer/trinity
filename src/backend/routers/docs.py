@@ -50,7 +50,7 @@ async def get_docs_index():
 
 @router.get("/content/{slug:path}")
 async def get_doc_content(slug: str):
-    """Get documentation content by slug."""
+    """Get documentation content by slug (supports .md and .json files)."""
     docs_dir = get_docs_dir()
     if not docs_dir:
         raise HTTPException(status_code=404, detail="Documentation directory not found")
@@ -59,13 +59,29 @@ async def get_doc_content(slug: str):
     if ".." in slug or slug.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid document path")
 
-    # Try with .md extension
-    doc_path = docs_dir / f"{slug}.md"
-    if not doc_path.exists():
-        # Maybe the slug already includes the extension
+    # Check if slug already has an extension
+    doc_path = None
+    is_json = False
+    
+    if slug.endswith('.json'):
+        # JSON file requested directly
         doc_path = docs_dir / slug
-        if not doc_path.exists() or not doc_path.suffix == ".md":
-            raise HTTPException(status_code=404, detail="Document not found")
+        is_json = True
+    elif slug.endswith('.md'):
+        # Markdown file with extension
+        doc_path = docs_dir / slug
+    else:
+        # Try with .md extension first (default)
+        doc_path = docs_dir / f"{slug}.md"
+        if not doc_path.exists():
+            # Try .json extension
+            json_path = docs_dir / f"{slug}.json"
+            if json_path.exists():
+                doc_path = json_path
+                is_json = True
+    
+    if not doc_path or not doc_path.exists():
+        raise HTTPException(status_code=404, detail="Document not found")
 
     # Verify the path is still within docs_dir (security)
     try:
@@ -75,6 +91,9 @@ async def get_doc_content(slug: str):
 
     try:
         content = doc_path.read_text(encoding="utf-8")
+        if is_json:
+            # Return JSON content directly
+            return JSONResponse(content=json.loads(content))
         return JSONResponse(content={"content": content, "slug": slug})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read document: {str(e)}")

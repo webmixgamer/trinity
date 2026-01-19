@@ -6,6 +6,13 @@ const STORAGE_KEY = 'trinity_onboarding'
 // Shared state across all component instances
 const state = ref(null)
 const initialized = ref(false)
+// Track data counts for first-run detection
+const dataState = ref({
+  processCount: 0,
+  executionCount: 0,
+  hasSchedule: false,
+  hasApproval: false
+})
 
 export function useOnboarding() {
   const authStore = useAuthStore()
@@ -36,6 +43,7 @@ export function useOnboarding() {
     dismissed: false,
     tourCompleted: false,
     checklistMinimized: false,
+    onboardingCompletedAt: null, // Timestamp when onboarding was completed
     checklist: {
       createProcess: false,
       runExecution: false,
@@ -61,9 +69,24 @@ export function useOnboarding() {
   }, { deep: true })
 
   // Computed properties
+
+  // True if user hasn't dismissed onboarding AND hasn't created any processes yet
   const isFirstRun = computed(() => {
     if (!state.value) return false
+    // First run = not dismissed AND (no processes OR checklist items incomplete)
+    return !state.value.dismissed && dataState.value.processCount === 0
+  })
+
+  // True if onboarding should show (not dismissed, regardless of process count)
+  const shouldShowOnboarding = computed(() => {
+    if (!state.value) return false
     return !state.value.dismissed
+  })
+
+  // True if onboarding has been completed (all required items done)
+  const hasCompletedOnboarding = computed(() => {
+    if (!state.value) return false
+    return !!state.value.onboardingCompletedAt
   })
 
   const checklistProgress = computed(() => {
@@ -102,6 +125,14 @@ export function useOnboarding() {
     saveState()
   }
 
+  // Mark onboarding as fully complete (all required items done)
+  const markOnboardingComplete = () => {
+    if (!state.value) return
+    state.value.onboardingCompletedAt = new Date().toISOString()
+    state.value.dismissed = true
+    saveState()
+  }
+
   const markTourCompleted = () => {
     if (!state.value) return
     state.value.tourCompleted = true
@@ -121,6 +152,9 @@ export function useOnboarding() {
 
   // Auto-detect completion based on API data
   const syncWithData = ({ processCount = 0, executionCount = 0, hasSchedule = false, hasApproval = false }) => {
+    // Update data state for first-run detection
+    dataState.value = { processCount, executionCount, hasSchedule, hasApproval }
+
     if (!state.value) return
 
     if (processCount > 0 && !state.value.checklist.createProcess) {
@@ -140,6 +174,13 @@ export function useOnboarding() {
       state.value.checklist.configureApproval = true
     }
 
+    // Auto-mark complete if all required items are done
+    if (checklistProgress.value.requiredCompleted >= checklistProgress.value.required) {
+      if (!state.value.onboardingCompletedAt) {
+        state.value.onboardingCompletedAt = new Date().toISOString()
+      }
+    }
+
     saveState()
   }
 
@@ -148,11 +189,15 @@ export function useOnboarding() {
 
   return {
     state: computed(() => state.value),
+    dataState: computed(() => dataState.value),
     isFirstRun,
+    shouldShowOnboarding,
+    hasCompletedOnboarding,
     checklistProgress,
     isChecklistComplete,
     markChecklistItem,
     dismissOnboarding,
+    markOnboardingComplete,
     markTourCompleted,
     toggleChecklistMinimized,
     resetOnboarding,

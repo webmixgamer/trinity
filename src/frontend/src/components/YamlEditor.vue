@@ -102,7 +102,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'change', 'save'])
+const emit = defineEmits(['update:modelValue', 'change', 'save', 'cursor-context'])
 
 const editorContainer = ref(null)
 const copied = ref(false)
@@ -186,6 +186,12 @@ const initMonaco = async () => {
       emit('save')
     })
 
+    // Listen for cursor position changes to provide contextual help
+    editor.onDidChangeCursorPosition((e) => {
+      const context = getCursorContext(e.position.lineNumber)
+      emit('cursor-context', context)
+    })
+
     // Apply validation errors
     updateMarkers()
     
@@ -260,6 +266,55 @@ const goToLine = (line) => {
   editor.revealLineInCenter(line)
   editor.setPosition({ lineNumber: line, column: 1 })
   editor.focus()
+}
+
+// Determine cursor context by analyzing the YAML structure
+const getCursorContext = (lineNumber) => {
+  if (!editor) return { path: 'default', line: lineNumber }
+  
+  const content = editor.getValue()
+  const lines = content.split('\n')
+  
+  if (lineNumber > lines.length) return { path: 'default', line: lineNumber }
+  
+  // Build context path by looking at indentation levels
+  const currentLine = lines[lineNumber - 1] || ''
+  const currentIndent = currentLine.search(/\S/)
+  
+  // Extract key from current line
+  const keyMatch = currentLine.match(/^\s*-?\s*(\w+)\s*:/)
+  const currentKey = keyMatch ? keyMatch[1] : null
+  
+  // Walk backwards to build full path
+  const pathParts = []
+  if (currentKey) pathParts.unshift(currentKey)
+  
+  let prevIndent = currentIndent
+  for (let i = lineNumber - 2; i >= 0; i--) {
+    const line = lines[i]
+    const indent = line.search(/\S/)
+    
+    // Skip empty lines or comments
+    if (indent < 0 || line.trim().startsWith('#')) continue
+    
+    // If we find a less indented line, it's a parent
+    if (indent < prevIndent) {
+      const parentMatch = line.match(/^\s*-?\s*(\w+)\s*:/)
+      if (parentMatch) {
+        pathParts.unshift(parentMatch[1])
+        prevIndent = indent
+      }
+    }
+    
+    // Stop at root level
+    if (indent === 0 && pathParts.length > 0) break
+  }
+  
+  return {
+    path: pathParts.join('.') || 'default',
+    line: lineNumber,
+    key: currentKey
+  }
 }
 
 // Lifecycle
