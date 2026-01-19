@@ -65,6 +65,6 @@ steps:
 
 outputs:
   - name: approval_status
-    value: "{{steps.manual-review.output.decision || 'auto-approved'}}"
+    source: "{{steps.manual-review.output.decision || 'auto-approved'}}"
   - name: analysis_summary
-    value: "{{steps.analyze-content.output.analysis}}"
+    source: "{{steps.analyze-content.output.analysis}}"
