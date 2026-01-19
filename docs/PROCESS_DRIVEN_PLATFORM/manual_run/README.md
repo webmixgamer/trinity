@@ -33,6 +33,7 @@ manual_run/
 │   ├── process-worker/       # Standard agent for realistic tests
 │   └── process-failer/       # Agent for error testing
 ├── processes/                # Process definition YAML files
+│   ├── onboarding/          # Onboarding feature tests (O1-O6)
 │   ├── tier1/               # Critical path tests (T1.1-T1.4)
 │   ├── tier2/               # Conditional logic tests (T2.1-T2.4)
 │   ├── tier3/               # Human approval tests (T3.1-T3.4)
