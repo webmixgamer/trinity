@@ -160,7 +160,7 @@
             :selected-id="selectedTemplateId"
             @select="handleTemplateSelect"
           />
-          
+
           <!-- Wizard suggestion -->
           <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between">
@@ -182,7 +182,7 @@
               </router-link>
             </div>
           </div>
-          
+
           <div class="mt-6 flex justify-end gap-3">
             <button
               @click="proceedWithTemplate"

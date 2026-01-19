@@ -2,8 +2,8 @@
 
 > **Phase**: MVP+ / Core
 > **Goal**: Premium onboarding experience for new users
-> **Epics**: E20, E21, E22, E24
-> **Stories**: 16
+> **Epics**: E20, E21, E22, E24, E25
+> **Stories**: 20
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -17,6 +17,7 @@
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
 | **Sprint 10** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard ✅ |
+| **Sprint 11** | E25-01, E25-02, E25-03, E25-04 | Process Creation Chat Assistant |
 
 ---
 
@@ -48,6 +49,14 @@ E21-04 (Getting Started Content)
 E21-02 (Docs View)
   │
   └──► E22-01 (Editor Help Panel) ──► E22-03 (Status Explainers)
+
+E24 (Wizard) ◄────────────────────────────────────────────┐
+  │                                                        │
+  └──► E25-01 (Chat Panel UI) ──► E25-02 (System Agent Prompt)
+                                        │
+                                        └──► E25-03 (YAML Generation)
+                                                  │
+                                                  └──► E25-04 (Apply to Editor)
 ```
 
 ---
@@ -652,6 +661,122 @@ E21-02 (Docs View)
 
 ---
 
+## Epic E25: Process Creation Chat Assistant
+
+> Conversational AI assistance for process creation, powered by the Trinity System Agent.
+
+---
+
+### E25-01: Chat Panel UI Component
+
+**As a** new user, **I want** a chat interface for process creation, **so that** I can describe what I want in natural language.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | M |
+| Priority | P1 |
+| Phase | Advanced |
+| Dependencies | E24-01 |
+| Status | todo |
+
+**Acceptance Criteria:**
+- [ ] Chat panel component with message list and input
+- [ ] Toggle between Chat and Editor views (or side-by-side on desktop)
+- [ ] Messages show user vs assistant styling
+- [ ] Loading indicator while waiting for response
+- [ ] Auto-scroll to latest message
+- [ ] Responsive layout (full-screen on mobile, side panel on desktop)
+- [ ] Entry point from wizard and process list empty state
+
+**Technical Notes:**
+- Location: `src/frontend/src/components/ProcessChatAssistant.vue`
+- Reuse existing chat styling from agent chat UI
+- Store conversation in component state (no persistence needed initially)
+
+---
+
+### E25-02: System Agent Process Creation Prompt
+
+**As a** system, **I want** the System Agent to understand process creation requests, **so that** it can guide users through creating workflows.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | M |
+| Priority | P1 |
+| Phase | Advanced |
+| Dependencies | E25-01 |
+| Status | todo |
+
+**Acceptance Criteria:**
+- [ ] System agent prompt extended with "Process Creation Assistant" mode
+- [ ] Understands process concepts: steps, agents, triggers, gateways, approvals
+- [ ] Can ask clarifying questions about user's workflow needs
+- [ ] Knows available step types and when to use them
+- [ ] Can list available agents via MCP tools
+- [ ] Suggests appropriate patterns (sequential, parallel, approval workflows)
+
+**Technical Notes:**
+- Location: `config/agent-templates/trinity-system/CLAUDE.md`
+- Add new section for process creation assistance
+- Include YAML schema reference in prompt
+- Use special prefix/context when routing from process chat
+
+---
+
+### E25-03: YAML Generation from Conversation
+
+**As a** user, **I want** the assistant to generate valid process YAML, **so that** I can create processes without learning the syntax.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | M |
+| Priority | P1 |
+| Phase | Advanced |
+| Dependencies | E25-02 |
+| Status | todo |
+
+**Acceptance Criteria:**
+- [ ] Assistant generates complete, valid YAML based on conversation
+- [ ] YAML appears in a code block in chat
+- [ ] Generated YAML follows all schema rules (valid step types, etc.)
+- [ ] Includes helpful comments in generated YAML
+- [ ] Can iterate and modify based on user feedback
+- [ ] Validates generated YAML before presenting (catches common errors)
+
+**Technical Notes:**
+- System agent should output YAML in markdown code blocks
+- Frontend parses code blocks to detect YAML
+- Consider validation step before showing "Apply" button
+
+---
+
+### E25-04: Apply YAML to Editor Integration
+
+**As a** user, **I want** to apply generated YAML to the editor, **so that** I can review, modify, and save it.
+
+| Attribute | Value |
+|-----------|-------|
+| Size | S |
+| Priority | P1 |
+| Phase | Advanced |
+| Dependencies | E25-03 |
+| Status | todo |
+
+**Acceptance Criteria:**
+- [ ] "Apply to Editor" button appears when YAML is generated
+- [ ] Clicking button populates the YAML editor with generated content
+- [ ] Confirmation if editor has unsaved changes
+- [ ] Smooth transition from chat to editor view
+- [ ] Success toast: "Process YAML applied to editor"
+- [ ] User can continue chatting to make further changes
+
+**Technical Notes:**
+- Emit event to parent component with YAML content
+- ProcessEditor watches for incoming YAML from chat
+- Consider "diff" view if editor already has content
+
+---
+
 ## Document History
 
 | Date | Change |
@@ -667,3 +792,4 @@ E21-02 (Docs View)
 | 2026-01-19 | Removed E21-03 (Docs Search) - not needed with small doc set |
 | 2026-01-19 | Removed E22-02 (Smart Tooltips) - covered by existing help features (16 stories total) |
 | 2026-01-19 | Sprint 10 implemented: E24-01, E24-02, E24-03, E24-04 (First Process Wizard) - ALL STORIES COMPLETE |
+| 2026-01-19 | Added Epic E25: Process Creation Chat Assistant (4 stories, 20 total) |
