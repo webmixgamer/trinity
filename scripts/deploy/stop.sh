@@ -9,7 +9,7 @@ echo "Trinity Agent Platform - Stopping"
 echo "====================================="
 echo ""
 
-docker-compose down
+docker compose down
 
 echo ""
 echo "✅ All services stopped"

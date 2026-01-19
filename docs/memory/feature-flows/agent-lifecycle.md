@@ -1,6 +1,12 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2025-12-31 - Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
+> **Updated**: 2026-01-14 - **Security Fixes**:
+> - **Auth on Lifecycle Endpoints (HIGH)**: `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` now use `AuthorizedAgentByName` dependency instead of plain `get_current_user` - prevents unauthorized users from starting/stopping agents they don't own
+> - **Container Security Consistency (HIGH)**: All container creation paths now ALWAYS apply baseline security (`cap_drop=['ALL']`, AppArmor, noexec tmpfs). Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py` for consistent security settings.
+>
+> **Previous (2026-01-12)**: Database Batch Queries (N+1 Fix): `get_accessible_agents()` now uses `db.get_all_agent_metadata()` batch query - reduced from 8-10 queries per agent to 2 total queries. Combined with Docker stats optimization for <50ms response time.
+>
+> **Previous (2025-12-31)**: Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
 
 ## Overview
 Complete lifecycle management for Trinity agents: create, start, stop, and delete Docker containers with credential injection, network isolation, Trinity meta-prompt injection, and WebSocket broadcasts.
@@ -119,7 +125,7 @@ The agent router uses a **thin router + service layer** architecture:
 
 | Module | Lines | Key Functions |
 |--------|-------|---------------|
-| `helpers.py` | ~200 | `get_accessible_agents()`, `get_next_version_name()`, `check_shared_folder_mounts_match()` |
+| `helpers.py` | ~200 | `get_accessible_agents()` (uses batch query), `get_next_version_name()`, `check_shared_folder_mounts_match()` |
 | `lifecycle.py` | 221 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` |
 | `crud.py` | 507 | `create_agent_internal()` |
 | `terminal.py` | 342 | `TerminalSessionManager` class |
@@ -222,16 +228,22 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     # Broadcast WebSocket (line 298-302), audit log (line 304-311)
 ```
 
-#### Start Agent (`src/backend/routers/agents.py:320-357`)
+#### Start Agent (`src/backend/routers/agents.py:315-339`)
 ```python
 @router.post("/{agent_name}/start")
-async def start_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
-    # Use service function for core start logic (line 323-324)
+async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
+    """
+    Start an agent.
+
+    Note: Uses AuthorizedAgentByName dependency which checks user has access to agent
+    (owner, shared user, or admin). This prevents unauthorized users from starting
+    agents they don't own.
+    """
     result = await start_agent_internal(agent_name)
     trinity_status = result.get("trinity_injection", "unknown")
 
-    # Broadcast WebSocket with injection status (line 327-331)
-    # Audit log with injection status (line 333-341)
+    # Broadcast WebSocket with injection status
+    # Return start result with Trinity injection status
 ```
 
 **Service Function** (`src/backend/services/agent_service/lifecycle.py:53-97`):
@@ -328,17 +340,34 @@ async def inject_trinity_prompt(
 **Container Recreation** (`src/backend/services/agent_service/lifecycle.py:99-221`):
 Handles recreating containers with updated volume mounts and environment variables. Uses `get_anthropic_api_key()` from settings service (line 118).
 
-#### Stop Agent (`src/backend/routers/agents.py:360-397`)
+#### Stop Agent (`src/backend/routers/agents.py:342-360`)
 ```python
 @router.post("/{agent_name}/stop")
-async def stop_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+async def stop_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
+    """
+    Stop an agent.
+
+    Note: Uses AuthorizedAgentByName dependency for authorization check.
+    """
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     container.stop()
 
-    # Broadcast WebSocket (line 370-374), audit log (line 376-383)
+    # Broadcast WebSocket, return stop result
+```
+
+#### Get Agent Logs (`src/backend/routers/agents.py:367-383`)
+```python
+@router.get("/{agent_name}/logs")
+async def get_agent_logs_endpoint(agent_name: AuthorizedAgentByName, request: Request, tail: int = 100):
+    """
+    Get agent container logs.
+
+    Note: Uses AuthorizedAgentByName dependency - users can only view logs
+    for agents they have access to.
+    """
 ```
 
 ### Docker Service (`src/backend/services/docker_service.py`)
@@ -348,10 +377,13 @@ async def stop_agent_endpoint(agent_name: str, request: Request, current_user: U
 | Function | Line | Purpose |
 |----------|------|---------|
 | `get_agent_container()` | 18-28 | Get container by name from Docker API |
-| `get_agent_status_from_container()` | 31-71 | Convert Docker container to AgentStatus model |
-| `list_all_agents()` | 74-86 | List all containers with `trinity.platform=agent` label |
-| `get_agent_by_name()` | 89-94 | Get specific agent status |
-| `get_next_available_port()` | 109-132 | Find next SSH port (2290+) |
+| `get_agent_status_from_container()` | 31-83 | Convert Docker container to AgentStatus model (full metadata) |
+| `list_all_agents()` | 86-98 | List all containers with full metadata (slower, uses `container.attrs`) |
+| `list_all_agents_fast()` | 101-159 | **Fast listing using labels only** - avoids slow Docker API calls (~50ms vs 2-3s) |
+| `get_agent_by_name()` | 162-167 | Get specific agent status |
+| `get_next_available_port()` | 182-205 | Find next SSH port (2222+) - uses `list_all_agents_fast()` |
+
+> **Performance Note (2026-01-12)**: `list_all_agents_fast()` was added to optimize agent listing. It extracts data ONLY from container labels, avoiding expensive Docker operations like `container.attrs`, `container.image`, and `container.stats()`. This reduced `/api/agents` response time from ~2-3s to <50ms.
 
 **Status Normalization (line 38-44):**
 ```python
@@ -368,6 +400,50 @@ else:
 ---
 
 ## Database Layer (`src/backend/db/agents.py`)
+
+### Batch Metadata Query (N+1 Fix) - Added 2026-01-12
+
+**Problem**: `get_accessible_agents()` was making 8-10 database queries PER agent, totaling 160-200 queries for 20 agents.
+
+**Solution**: `get_all_agent_metadata()` (lines 467-529) fetches ALL agent metadata in a SINGLE JOIN query:
+
+```python
+def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
+    """
+    Single query that joins all related tables:
+    - agent_ownership (owner, is_system, autonomy_enabled, resource limits)
+    - users (owner username/email)
+    - agent_git_config (GitHub repo/branch)
+    - agent_sharing (share access check)
+
+    Returns dict keyed by agent_name.
+    """
+```
+
+**Usage in `get_accessible_agents()` (helpers.py:83-153)**:
+```python
+# Before (N+1 problem):
+for agent in all_agents:
+    can_access = db.can_user_access_agent(...)     # 2-4 queries
+    owner = db.get_agent_owner(...)                 # 1 query
+    is_shared = db.is_agent_shared_with_user(...)   # 2 queries
+    autonomy = db.get_autonomy_enabled(...)         # 1 query
+    git_config = db.get_git_config(...)             # 1 query
+    limits = db.get_resource_limits(...)            # 1 query
+
+# After (batch query):
+all_metadata = db.get_all_agent_metadata(user_email)  # 1 query for ALL
+for agent in all_agents:
+    metadata = all_metadata.get(agent_name)           # dict lookup
+```
+
+**Result**: Database queries reduced from 160-200 to 2 per `/api/agents` request.
+
+**Exposed on DatabaseManager** (`database.py:845-850`):
+```python
+def get_all_agent_metadata(self, user_email: str = None):
+    return self._agent_ops.get_all_agent_metadata(user_email)
+```
 
 ### Tables
 
@@ -439,14 +515,54 @@ CREATE TABLE agent_mcp_api_keys (
 | `trinity.created` | Creation timestamp (ISO format) |
 | `trinity.template` | Template used (empty string if none) |
 
-### Security Options (line 640-644)
+### Container Security Constants (`src/backend/services/agent_service/lifecycle.py:31-59`)
+
+**2026-01-14 Security Fix**: All container creation paths now use centralized capability constants for consistent security.
+
 ```python
-security_opt=['no-new-privileges:true', 'apparmor:docker-default'],
+# Restricted mode capabilities - minimum for agent operation (default)
+RESTRICTED_CAPABILITIES = [
+    'NET_BIND_SERVICE',  # Bind to ports < 1024
+    'SETGID', 'SETUID',  # Change user/group (for su/sudo)
+    'CHOWN',             # Change file ownership
+    'SYS_CHROOT',        # Use chroot
+    'AUDIT_WRITE',       # Write to audit log
+]
+
+# Full capabilities mode - adds package installation support
+FULL_CAPABILITIES = RESTRICTED_CAPABILITIES + [
+    'DAC_OVERRIDE',      # Bypass file permission checks (needed for apt)
+    'FOWNER',            # Bypass permission checks on file owner
+    'FSETID',            # Don't clear setuid/setgid bits
+    'KILL',              # Send signals to processes
+    'MKNOD',             # Create special files
+    'NET_RAW',           # Use raw sockets (ping, etc.)
+    'SYS_PTRACE',        # Trace processes (debugging)
+]
+```
+
+### Security Options (Applied Consistently)
+
+All container creation paths (`crud.py`, `lifecycle.py`, `system_agent_service.py`) now apply:
+
+```python
+# Always apply AppArmor for additional sandboxing
+security_opt=['apparmor:docker-default'],
+# Always drop ALL capabilities first (defense in depth)
 cap_drop=['ALL'],
-cap_add=['NET_BIND_SERVICE'],
+# Add back only the capabilities needed for the mode
+cap_add=FULL_CAPABILITIES if full_capabilities else RESTRICTED_CAPABILITIES,
 read_only=False,
+# Always apply noexec,nosuid to /tmp for security
 tmpfs={'/tmp': 'noexec,nosuid,size=100m'}
 ```
+
+**Files Using These Constants**:
+| File | Line | Usage |
+|------|------|-------|
+| `services/agent_service/crud.py` | 464 | Agent creation |
+| `services/agent_service/lifecycle.py` | 361 | Container recreation |
+| `services/system_agent_service.py` | 260 | System agent creation |
 
 ### Network Isolation (line 645)
 - Network: `trinity-agent-network` (Docker network)
@@ -636,7 +752,7 @@ await log_audit_event(
 
 ---
 
-**Last Updated**: 2025-12-31
+**Last Updated**: 2026-01-14
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with service layer architecture and Trinity meta-prompt injection
 
@@ -646,6 +762,9 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | **Security Bug Fixes (HIGH)**: (1) **Missing Auth on Lifecycle Endpoints**: Changed `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency instead of plain `get_current_user`. This ensures users can only start/stop/view logs for agents they have access to. (2) **Container Security Consistency**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. All container creation paths (`crud.py:464`, `lifecycle.py:361`, `system_agent_service.py:260`) now ALWAYS apply baseline security: `cap_drop=['ALL']`, AppArmor profile, `noexec,nosuid` on tmpfs. Previously some paths had inconsistent security settings. |
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added `get_all_agent_metadata()` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables. Rewrote `get_accessible_agents()` in `helpers.py:83-153` to use batch query instead of 8-10 individual queries per agent. Exposed on `DatabaseManager` (`database.py:845-850`). Database queries reduced from 160-200 to 2 per request. Orphaned agents (Docker-only, no DB record) now only visible to admin. |
+| 2026-01-12 | **Docker Stats Optimization**: Added `list_all_agents_fast()` function (docker_service.py:101-159) that extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.image`, `container.stats()`). Updated `get_next_available_port()` to use fast version. Performance: `/api/agents` reduced from ~2-3s to <50ms. |
 | 2025-12-31 | **Settings service and AgentClient refactoring**: (1) API key retrieval now uses `services/settings_service.py` instead of importing from `routers/settings.py`. Updated `lifecycle.py:16` and `crud.py:29`. (2) Trinity injection now uses centralized `AgentClient.inject_trinity_prompt()` from `services/agent_client.py:278-344` with built-in retry logic (max_retries=3, retry_delay=2.0s). Updated `lifecycle.py:17,44-50`. (3) Updated line numbers in crud.py (now 507 lines) and lifecycle.py (now 221 lines). |
 | 2025-12-30 | **Line number verification**: Updated all line numbers after composable refactoring. Frontend lifecycle methods now in `composables/useAgentLifecycle.js`. Updated router line numbers to match current 842-line agents.py. |
 | 2025-12-27 | **Service layer refactoring**: Updated all references to new modular architecture. Business logic moved from `routers/agents.py` to `services/agent_service/` modules (lifecycle.py, crud.py, helpers.py). Router reduced from 2928 to 786 lines. |

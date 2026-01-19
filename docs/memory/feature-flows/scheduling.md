@@ -18,6 +18,7 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 - Manual trigger for testing
 - WebSocket real-time updates
 - Queue-aware execution (429 on queue full)
+- **Make Repeatable** - Create schedule from existing task execution (2026-01-12)
 
 **Refactored (2025-12-31):**
 - Access control via `AuthorizedAgent` dependency (not inline checks)
@@ -105,6 +106,45 @@ schedules                         validate cron expression          INSERT agent
 - `src/backend/database.py:1067-1117` - db.create_schedule()
 - `src/backend/services/scheduler_service.py:510-513` - add_schedule()
 - `src/backend/services/scheduler_service.py:111-143` - _add_job() APScheduler integration
+
+### 1b. Make Repeatable Flow (Create Schedule from Task)
+
+**User Action:** Click calendar icon on completed task in Tasks tab → Fill remaining form fields → Click "Create"
+
+```
+Frontend                          Frontend                          Frontend
+--------                          --------                          --------
+TasksPanel.vue:251-261           AgentDetail.vue:583-594           SchedulesPanel.vue:790-802
+User clicks calendar icon        handleCreateSchedule()            watch(initialMessage)
+makeRepeatable(task)             - Set schedulePrefillMessage      - Detect new message
+emit('create-schedule', msg)     - Switch to 'schedules' tab       - Pre-fill formData.message
+                                                                   - Open create form modal
+```
+
+**Data Flow:**
+1. User clicks calendar icon on a task row in TasksPanel.vue
+2. `makeRepeatable(task)` emits `create-schedule` event with `task.message`
+3. AgentDetail.vue `handleCreateSchedule(message)` handler:
+   - Sets `schedulePrefillMessage` ref to the message
+   - Switches `activeTab` to `'schedules'`
+   - Clears prefill after 100ms delay (allows reuse)
+4. SchedulesPanel.vue receives `initialMessage` prop
+5. Watch on `initialMessage` (with `immediate: true`) fires:
+   - Pre-fills `formData.message` with the task message
+   - Resets other form fields (name, cron_expression, description, timezone)
+   - Opens create form (`showCreateForm = true`)
+6. User fills in schedule name, cron expression, and submits (uses same Create Schedule Flow above)
+
+**Files:**
+- `src/frontend/src/components/TasksPanel.vue:251-261` - Calendar button in action row
+- `src/frontend/src/components/TasksPanel.vue:451` - `defineEmits(['create-schedule'])`
+- `src/frontend/src/components/TasksPanel.vue:654-657` - `makeRepeatable(task)` function
+- `src/frontend/src/views/AgentDetail.vue:84` - `@create-schedule="handleCreateSchedule"` event binding
+- `src/frontend/src/views/AgentDetail.vue:148` - `:initial-message="schedulePrefillMessage"` prop
+- `src/frontend/src/views/AgentDetail.vue:261` - `schedulePrefillMessage` ref
+- `src/frontend/src/views/AgentDetail.vue:583-594` - `handleCreateSchedule(message)` handler
+- `src/frontend/src/components/SchedulesPanel.vue:487-490` - `initialMessage` prop definition
+- `src/frontend/src/components/SchedulesPanel.vue:790-802` - Watch handler for `initialMessage`
 
 ### 2. Schedule Execution Flow (Automatic)
 
@@ -356,8 +396,8 @@ CREATE TABLE schedule_executions (
     schedule_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
     status TEXT NOT NULL,                -- pending, running, success, failed
-    started_at TEXT NOT NULL,
-    completed_at TEXT,
+    started_at TEXT NOT NULL,            -- UTC timestamp with 'Z' suffix
+    completed_at TEXT,                   -- UTC timestamp with 'Z' suffix
     duration_ms INTEGER,
     message TEXT NOT NULL,               -- The message that was sent
     response TEXT,                       -- Agent's response (truncated to 10KB)
@@ -371,6 +411,8 @@ CREATE TABLE schedule_executions (
     FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
 );
 ```
+
+> **Timezone Note (2026-01-15)**: All timestamps (`started_at`, `completed_at`, `last_run_at`, `next_run_at`) are stored as UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ---
 
@@ -775,6 +817,8 @@ See: `activity-stream.md` for complete details
 ---
 
 ## Status
+**Updated 2026-01-15** - Added timezone handling note for UTC timestamps with 'Z' suffix
+**Updated 2026-01-12** - Added "Make Repeatable" flow documentation - create schedule from existing task via calendar icon in Tasks tab
 **Updated 2026-01-11** - Execution record created BEFORE activity tracking for proper `related_execution_id` linkage. Manual trigger now has full activity tracking with queue integration.
 **Updated 2025-01-02** - Scheduler now uses `AgentClient.task()` instead of `AgentClient.chat()` for raw log format compatibility with execution log viewer
 **Updated 2025-12-31** - Documented access control dependencies and AgentClient service (Plan 02/03 refactoring)
@@ -788,6 +832,8 @@ See: `activity-stream.md` for complete details
 - **Integrates With**:
   - Execution Queue (`execution-queue.md`) - All scheduled executions go through queue (Added 2025-12-06)
   - Activity Stream (`activity-stream.md`) - Schedule activities tracked persistently
+- **Upstream**:
+  - Tasks Tab (`tasks-tab.md`) - "Make Repeatable" button emits `create-schedule` event to pre-fill schedule creation form (Added 2026-01-12)
 - **Related**:
   - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal ([agent-terminal.md](agent-terminal.md))
   - MCP Orchestration (`mcp-orchestration.md`) - All three sources share the queue

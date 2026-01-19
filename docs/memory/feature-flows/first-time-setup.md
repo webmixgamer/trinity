@@ -192,21 +192,49 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
 
 ### Database Layer
 
-#### User Password Update
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/users.py:129-146`
+#### User Password Update (Upsert Pattern)
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/users.py:129-161`
 
 ```python
 def update_user_password(self, username: str, hashed_password: str) -> bool:
-    """Update user's password hash."""
+    """Update user's password hash, creating the user if it doesn't exist.
+
+    For the admin user during first-time setup, this will create the user
+    if it doesn't exist yet.
+
+    Args:
+        username: The username to update
+        hashed_password: The bcrypt-hashed password
+
+    Returns:
+        True if the user was updated or created successfully
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         now = datetime.utcnow().isoformat()
+
+        # Try to update existing user
         cursor.execute("""
             UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ?
         """, (hashed_password, now, username))
         conn.commit()
+
+        if cursor.rowcount > 0:
+            return True
+
+        # User doesn't exist - create it (for admin user during first-time setup)
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, role, email, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (username, hashed_password, 'admin', username, now, now))
+        conn.commit()
         return cursor.rowcount > 0
 ```
+
+**Upsert Logic**:
+1. First attempts UPDATE on existing user
+2. If UPDATE affects 0 rows (user doesn't exist), performs INSERT
+3. New admin users are created with role='admin' and username as email
 
 #### Settings Storage
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/settings.py:60-83`
@@ -590,3 +618,12 @@ UPDATE users SET password_hash = 'changeme' WHERE username = 'admin';
 - **Agent Lifecycle**: Uses stored API key via `get_anthropic_api_key()`
 - **System Agent**: Uses stored API key for trinity-system operations
 - **Authentication**: Login blocked until setup completed
+
+---
+
+## Revision History
+
+| Date | Change | Details |
+|------|--------|---------|
+| 2025-12-23 | Initial documentation | First-time setup and API key configuration flows |
+| 2026-01-14 | Bug fix: Admin user upsert | Fixed `update_user_password()` to create admin user if it doesn't exist. Previously, on fresh deployment with empty ADMIN_PASSWORD env var, the UPDATE query affected 0 rows but setup_completed was still set to true, leaving users unable to login. The method now uses an upsert pattern: UPDATE first, then INSERT if no rows affected. See `src/backend/db/users.py:129-161`. |

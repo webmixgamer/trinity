@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-11 (Fixed execution ID extraction from activity.related_execution_id)
+> **Last Updated**: 2026-01-15 (Added timezone-aware timestamp handling)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
 
@@ -19,10 +19,11 @@ The Dashboard offers two views for monitoring the agent fleet:
 ### Switching Views
 
 1. User navigates to Dashboard (`/`)
-2. Toggle buttons in header: `[Graph] [Timeline]`
-3. Click "Timeline" to switch to Timeline view
-4. **Graph canvas is hidden** - only Timeline shows
-5. View preference persisted in localStorage (`trinity-dashboard-view`)
+2. **Timeline is the default view** for new users (no localStorage preference)
+3. Toggle buttons in header: `[Graph] [Timeline]`
+4. Click "Graph" to switch to Graph view if desired
+5. **Graph canvas is hidden** - only Timeline shows when active
+6. View preference persisted in localStorage (`trinity-dashboard-view`)
 
 ### Timeline View Features
 
@@ -152,8 +153,9 @@ props.events.forEach((event, index) => {
   }
 
   // Add activity box for the executing agent
+  // NOTE: Use getTimestampMs() for timezone-aware parsing (handles missing 'Z' suffix)
   agentActivityMap.get(event.source_agent).push({
-    time: new Date(event.timestamp).getTime(),
+    time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
     type: 'execution',
     activityType: event.activity_type,
     triggeredBy: event.triggered_by,
@@ -195,11 +197,12 @@ Activity bars are colored by what triggered them, not the activity type:
 | In Progress | Amber | `#f59e0b` | - | Currently running |
 | `schedule` | Purple | `#8b5cf6` | `#c4b5fd` | Scheduled executions |
 | `agent` | Cyan | `#06b6d4` | `#67e8f9` | Agent-triggered (called by another agent) |
+| `mcp` | Pink | `#ec4899` | `#f9a8d4` | MCP executions (via Claude Code) |
 | `manual`/`user` | Green | `#22c55e` | `#86efac` | Manual task executions |
 | Default | Blue | `#3b82f6` | `#93c5fd` | Unknown trigger type |
 
 ```javascript
-// ReplayTimeline.vue:841-868
+// ReplayTimeline.vue:880-916
 function getBarColor(activity) {
   if (activity.hasError) return '#ef4444'  // Red for errors
   if (activity.isInProgress) return '#f59e0b'  // Amber for in-progress
@@ -218,8 +221,13 @@ function getBarColor(activity) {
     return activity.active ? '#06b6d4' : '#67e8f9'
   }
 
+  // MCP executions (user via Claude Code MCP client) -> Pink
+  if (triggeredBy === 'mcp') {
+    return activity.active ? '#ec4899' : '#f9a8d4'
+  }
+
   // Manual/user executions -> Green
-  if (triggeredBy === 'manual' || triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  if (triggeredBy === 'manual' || triggeredBy === 'user') {
     return activity.active ? '#22c55e' : '#86efac'
   }
 
@@ -251,7 +259,7 @@ const communicationArrows = computed(() => {
     // Only process collaboration events (those with target_agent)
     if (!event.target_agent) return null
 
-    const time = new Date(event.timestamp).getTime()
+    const time = getTimestampMs(event.timestamp)  // Timezone-aware parsing
 
     // Check if target agent has an activity box near this time
     const targetRanges = agentActivityTimeRanges.get(event.target_agent)
@@ -277,14 +285,18 @@ const communicationArrows = computed(() => {
 
 ### 6. Legend Display
 
-The legend shows the three execution trigger types:
+The legend shows the four execution trigger types:
 
 ```html
-<!-- ReplayTimeline.vue:68-81 -->
+<!-- ReplayTimeline.vue:68-85 -->
 <div class="hidden sm:flex items-center space-x-3">
   <span title="Manual task executions">
     <span class="w-2 h-2 rounded" style="background-color: #22c55e"></span>
     <span>Manual</span>
+  </span>
+  <span title="MCP executions (via Claude Code)">
+    <span class="w-2 h-2 rounded" style="background-color: #ec4899"></span>
+    <span>MCP</span>
   </span>
   <span title="Scheduled task executions">
     <span class="w-2 h-2 rounded" style="background-color: #8b5cf6"></span>
@@ -322,16 +334,66 @@ const params = {
 Activity bars show width proportional to execution duration:
 
 ```javascript
-// ReplayTimeline.vue:595-607
-const durationMs = event.duration_ms || 30000  // Default 30s when null
+// ReplayTimeline.vue:614-621
 const minBarWidth = 12  // Minimum width for visibility
-
 let barWidth = minBarWidth
-if (act.durationMs > 0) {
+if (effectiveDuration > 0) {
   // Convert duration to pixels: (durationMs / totalMs) * gridWidth
-  barWidth = Math.max(minBarWidth, (act.durationMs / duration.value) * actualGridWidth.value)
+  barWidth = Math.max(minBarWidth, (effectiveDuration / duration.value) * actualGridWidth.value)
 }
 ```
+
+### 8a. Real-Time In-Progress Bar Extension
+
+**Added 2026-01-13**: In-progress task bars now grow in real-time as the task executes.
+
+**Implementation** (`ReplayTimeline.vue:568-612`):
+
+1. **Store start timestamp**: Each activity stores `startTimestamp` for dynamic calculation:
+```javascript
+import { getTimestampMs } from '@/utils/timestamps'
+
+const startTimestamp = getTimestampMs(event.timestamp)  // Timezone-aware
+agentActivityMap.get(event.source_agent).push({
+  time: startTimestamp,
+  startTimestamp, // Store for dynamic duration calculation
+  // ...
+})
+```
+
+2. **Dynamic duration calculation**: For in-progress tasks, elapsed time is calculated from start:
+```javascript
+// ReplayTimeline.vue:606-612
+let effectiveDuration = act.durationMs
+if (act.isInProgress && act.startTimestamp) {
+  // For in-progress tasks, calculate elapsed time from start
+  // This will update every second as currentNow updates
+  effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+}
+```
+
+3. **Reactive timer**: A 1-second interval updates `currentNow` ref (`ReplayTimeline.vue:371, 399`):
+```javascript
+const currentNow = ref(Date.now())
+// Updated every second in the timer interval
+currentNow.value = Date.now()
+```
+
+4. **Bar properties update** (`ReplayTimeline.vue:629, 631`):
+```javascript
+return {
+  // ...
+  durationMs: effectiveDuration, // Use effective duration for tooltips
+  isEstimated: act.isEstimated && !act.isInProgress, // Not estimated if calculating live
+  // ...
+}
+```
+
+**Behavior**:
+- On task start: Amber bar appears with minimum width (12px)
+- Every second: Bar grows as `effectiveDuration` increases
+- Tooltip shows live elapsed time like "In Progress - 45.3s"
+- On task complete: Bar snaps to final size from actual `duration_ms`
 
 ### 9. NOW Marker at 90% Viewport Position
 
@@ -433,6 +495,7 @@ function getBarTooltip(activity) {
 **Action**: Trigger different execution types and view in Timeline
 **Expected**:
 - Manual tasks show as **green** boxes
+- MCP tasks show as **pink** boxes
 - Scheduled tasks show as **purple** boxes
 - Agent-triggered tasks show as **cyan** boxes
 - Errors show as **red** boxes
@@ -440,8 +503,8 @@ function getBarTooltip(activity) {
 
 **Verify**:
 - [x] Colors match the legend in header
-- [x] Legend shows "Manual", "Scheduled", "Agent-Triggered"
-- [x] Tooltips show correct execution type
+- [x] Legend shows "Manual", "MCP", "Scheduled", "Agent-Triggered"
+- [x] Tooltips show correct execution type (e.g., "MCP Task")
 
 #### 3. Collaboration Arrows
 **Action**: Have Agent A call Agent B via MCP
@@ -491,6 +554,20 @@ function getBarTooltip(activity) {
 - [x] New events appear without page refresh
 - [x] Colors applied correctly to new events
 
+#### 6a. In-Progress Bar Real-Time Extension (Added 2026-01-13)
+**Action**: Start a long-running task and observe the timeline
+**Expected**:
+- Amber bar appears at task start with minimum width
+- Bar grows every second as task continues
+- Tooltip updates to show live elapsed time (e.g., "In Progress - 45.3s")
+- When task completes, bar snaps to final width based on actual duration
+
+**Verify**:
+- [x] Bar width increases visibly every second
+- [x] Tooltip shows accurate live elapsed time
+- [x] Bar not marked as "estimated" (tilde removed) while in progress
+- [x] Final size uses actual `duration_ms` from completion event
+
 #### 7. Now Marker Positioning
 **Action**: Wait and observe "Now" marker
 **Expected**:
@@ -518,6 +595,7 @@ function getBarTooltip(activity) {
 
 ### Edge Cases
 - [x] 0 agents: Empty timeline with just "Now" marker
+- [x] 0 events: Timeline grid visible with all agent rows, ready for live events (fixed 2026-01-15)
 - [x] Agent with no executions: Row visible but no boxes
 - [x] Collaboration without target execution: Arrow not drawn
 - [x] Multiple rapid collaborations: Each gets own arrow if box exists
@@ -552,11 +630,17 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-15 | **Critical Fix**: Timezone-aware timestamp handling - All timestamps now use UTC with 'Z' suffix. Frontend uses `parseUTC()` and `getTimestampMs()` utilities. Events display at correct positions regardless of server/user timezone difference. See `docs/TIMEZONE_HANDLING.md` |
+| 2026-01-15 | **Fix**: MCP executions now appear on Timeline - Fixed API field mismatch (`timeline` → `activities`) and activity `triggered_by` (`user` → `mcp` for MCP calls) |
+| 2026-01-15 | **Fix**: Timeline now visible even with no events - `timelineStart`/`timelineEnd` always provide valid time range based on `timeRangeHours`, enabling live event streaming |
+| 2026-01-13 | **UX**: Timeline is now the default view for new users; header logo is clickable and navigates to Dashboard |
+| 2026-01-13 | **Feature**: In-progress bars now extend in real-time - bars grow every second as tasks execute, tooltips show live elapsed time |
 | 2026-01-11 | **Fix**: Frontend network.js now correctly reads `related_execution_id` from top-level activity field (was only checking details) |
 | 2026-01-11 | **Docs**: Clarified execution ID handling - navigation uses Database ID (from `related_execution_id`), not Queue ID |
 | 2026-01-11 | **UX**: Click opens Execution Detail page in new tab instead of same-tab navigation |
 | 2026-01-10 | **Feature**: Click-to-navigate - Click execution bar to view details |
 | 2026-01-10 | **Major**: Execution-only boxes - collaboration events only create arrows, not boxes |
+| 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`) with "MCP Task" tooltip prefix; legend now shows 4 execution types |
 | 2026-01-10 | **Major**: Trigger-based color coding - Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered |
 | 2026-01-10 | **Major**: Arrow validation - 30-second tolerance window, prevents floating arrows |
 | 2026-01-10 | **Fix**: Source agent mapping - execution events use `agent_name`, collaboration events use `details.source_agent` |

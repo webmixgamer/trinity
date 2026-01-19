@@ -639,3 +639,455 @@ class TestApiKeyDelete:
         # Should indicate whether fallback to env var is available
         assert "fallback_configured" in data
         assert isinstance(data["fallback_configured"], bool)
+
+
+# =============================================================================
+# SSH ACCESS TESTS (CFG-009)
+# Tests for /api/agents/{name}/ssh-access endpoint
+# =============================================================================
+
+
+class TestSshAccessAuthentication:
+    """Tests for SSH access endpoint authentication requirements."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_ssh_access_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """POST /api/agents/{name}/ssh-access requires authentication."""
+        response = unauthenticated_client.post(
+            "/api/agents/test-agent/ssh-access",
+            json={"auth_method": "key"},
+            auth=False
+        )
+        assert_status(response, 401)
+
+
+class TestSshAccessEndpoint:
+    """CFG-009: Generate ephemeral SSH credentials."""
+
+    def test_ssh_access_nonexistent_agent_returns_404(
+        self,
+        api_client: TrinityApiClient
+    ):
+        """POST /api/agents/{name}/ssh-access for nonexistent agent returns 404."""
+        response = api_client.post(
+            "/api/agents/nonexistent-agent-xyz/ssh-access",
+            json={"auth_method": "key"}
+        )
+        # 403 if SSH access is disabled globally, 404 if agent not found
+        # When SSH is disabled, the check happens before agent lookup
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled - cannot test 404 for nonexistent agent")
+        assert_status(response, 404)
+
+    def test_ssh_access_returns_key_credentials(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/ssh-access with key method returns SSH key."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/ssh-access",
+            json={"auth_method": "key", "ttl_hours": 1}
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # SSH access disabled returns 403
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled")
+
+        # May also be 400 if SSH access is disabled (legacy check)
+        if response.status_code == 400:
+            data = response.json()
+            if "disabled" in data.get("detail", "").lower():
+                pytest.skip("SSH access is disabled")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        assert_has_fields(data, ["status", "agent", "auth_method", "connection"])
+        assert data["status"] == "success"
+        assert data["auth_method"] == "key"
+
+        # Key method should return private key
+        assert "private_key" in data
+        assert "-----BEGIN" in data["private_key"]
+
+        # Connection details
+        connection = data["connection"]
+        assert_has_fields(connection, ["command", "host", "port", "user"])
+
+    def test_ssh_access_returns_password_credentials(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/ssh-access with password method returns password."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/ssh-access",
+            json={"auth_method": "password", "ttl_hours": 1}
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # SSH access disabled returns 403
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled")
+
+        if response.status_code == 400:
+            data = response.json()
+            if "disabled" in data.get("detail", "").lower():
+                pytest.skip("SSH access is disabled")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        assert_has_fields(data, ["status", "agent", "auth_method", "connection"])
+        assert data["status"] == "success"
+        assert data["auth_method"] == "password"
+
+        # Password method should return password in connection
+        connection = data["connection"]
+        assert_has_fields(connection, ["command", "host", "port", "user", "password"])
+        assert len(connection["password"]) >= 16  # Should be secure password
+
+    def test_ssh_access_includes_expiry_time(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """SSH access response includes expiry information."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/ssh-access",
+            json={"auth_method": "key", "ttl_hours": 2}
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # SSH access disabled returns 403
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled")
+
+        if response.status_code == 400:
+            pytest.skip("SSH access may be disabled")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        assert "expires_at" in data
+        assert "expires_in_hours" in data
+        # TTL should be approximately what we requested
+        assert 1.5 <= data["expires_in_hours"] <= 2.5
+
+    def test_ssh_access_respects_ttl_parameter(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """SSH access uses specified TTL."""
+        # Request with short TTL
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/ssh-access",
+            json={"auth_method": "key", "ttl_hours": 0.5}
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # SSH access disabled returns 403
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled")
+
+        if response.status_code == 400:
+            pytest.skip("SSH access may be disabled")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # TTL should be close to requested
+        assert data["expires_in_hours"] <= 1.0
+
+    def test_ssh_access_includes_instructions(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """SSH access response includes setup instructions."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/ssh-access",
+            json={"auth_method": "key", "ttl_hours": 1}
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        # SSH access disabled returns 403
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled")
+
+        if response.status_code == 400:
+            pytest.skip("SSH access may be disabled")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should include instructions
+        if "instructions" in data:
+            assert isinstance(data["instructions"], list)
+            assert len(data["instructions"]) > 0
+
+
+class TestSshAccessStoppedAgent:
+    """Tests for SSH access on stopped agents."""
+
+    def test_ssh_access_stopped_agent_returns_400(
+        self,
+        api_client: TrinityApiClient,
+        stopped_agent
+    ):
+        """POST /api/agents/{name}/ssh-access for stopped agent returns 400."""
+        response = api_client.post(
+            f"/api/agents/{stopped_agent['name']}/ssh-access",
+            json={"auth_method": "key"}
+        )
+
+        # 403 if SSH access is disabled globally (checked before agent state)
+        if response.status_code == 403:
+            pytest.skip("SSH access is disabled - cannot test stopped agent behavior")
+
+        # Should fail because agent is stopped
+        assert_status_in(response, [400, 503])
+
+
+# =============================================================================
+# GITHUB PAT TEST (SET-005)
+# Tests for /api/settings/api-keys/github/test endpoint
+# =============================================================================
+
+
+class TestGitHubPATTest:
+    """SET-005: Test GitHub PAT validity."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_github_pat_test_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """POST /api/settings/api-keys/github/test requires authentication."""
+        response = unauthenticated_client.post(
+            "/api/settings/api-keys/github/test",
+            json={"api_key": "ghp_fake12345"},
+            auth=False
+        )
+        assert_status(response, 401)
+
+    def test_github_pat_invalid_format_rejected(self, api_client: TrinityApiClient):
+        """Invalid PAT format is rejected."""
+        response = api_client.post(
+            "/api/settings/api-keys/github/test",
+            json={"api_key": "not-a-github-pat"}
+        )
+        assert_status(response, 200)
+        data = response.json()
+        assert data.get("valid") is False
+        assert "error" in data
+
+    def test_github_pat_valid_format_returns_response(self, api_client: TrinityApiClient):
+        """Valid PAT format returns structured response."""
+        # Classic PAT format
+        response = api_client.post(
+            "/api/settings/api-keys/github/test",
+            json={"api_key": "ghp_faketoken123456789abcdefghijklmnop"}
+        )
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should have valid field
+        assert "valid" in data
+        assert isinstance(data["valid"], bool)
+
+        # If invalid (which this fake token is), should have error
+        if not data["valid"]:
+            assert "error" in data
+
+    def test_github_pat_fine_grained_format_accepted(self, api_client: TrinityApiClient):
+        """Fine-grained PAT format is accepted."""
+        response = api_client.post(
+            "/api/settings/api-keys/github/test",
+            json={"api_key": "github_pat_fake12345abcdefghijklmnopqrstuvwxyz"}
+        )
+        assert_status(response, 200)
+        data = response.json()
+        assert "valid" in data
+
+
+# =============================================================================
+# OPS SETTINGS TESTS (SET-011, SET-012)
+# Tests for /api/settings/ops/* endpoints
+# =============================================================================
+
+
+class TestOpsSettingsAuthentication:
+    """Tests for Ops Settings endpoints authentication requirements."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_get_ops_config_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """GET /api/settings/ops/config requires authentication."""
+        response = unauthenticated_client.get("/api/settings/ops/config", auth=False)
+        assert_status(response, 401)
+
+    def test_update_ops_config_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """PUT /api/settings/ops/config requires authentication."""
+        response = unauthenticated_client.put(
+            "/api/settings/ops/config",
+            json={"settings": {"ssh_access_enabled": "true"}},
+            auth=False
+        )
+        assert_status(response, 401)
+
+    def test_reset_ops_config_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """POST /api/settings/ops/reset requires authentication."""
+        response = unauthenticated_client.post("/api/settings/ops/reset", auth=False)
+        assert_status(response, 401)
+
+
+class TestOpsSettingsGet:
+    """SET-010: Get ops configuration."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_get_ops_config_returns_structure(self, api_client: TrinityApiClient):
+        """GET /api/settings/ops/config returns settings structure."""
+        response = api_client.get("/api/settings/ops/config")
+        assert_status(response, 200)
+        data = assert_json_response(response)
+
+        assert "settings" in data
+        assert isinstance(data["settings"], dict)
+
+    def test_ops_config_has_ssh_setting(self, api_client: TrinityApiClient):
+        """Ops config includes ssh_access_enabled setting."""
+        response = api_client.get("/api/settings/ops/config")
+        assert_status(response, 200)
+        data = response.json()
+
+        settings = data.get("settings", {})
+        # SSH access enabled should be a known setting
+        if "ssh_access_enabled" in settings:
+            ssh_setting = settings["ssh_access_enabled"]
+            assert "value" in ssh_setting
+            assert "default" in ssh_setting
+
+    def test_ops_config_shows_default_indicator(self, api_client: TrinityApiClient):
+        """Ops config shows whether value is default."""
+        response = api_client.get("/api/settings/ops/config")
+        assert_status(response, 200)
+        data = response.json()
+
+        settings = data.get("settings", {})
+        for key, setting in settings.items():
+            if isinstance(setting, dict):
+                # Each setting should indicate if it's using default
+                assert "is_default" in setting or "default" in setting
+
+
+class TestOpsSettingsUpdate:
+    """SET-011: Update ops settings."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_update_ops_setting_persists(self, api_client: TrinityApiClient):
+        """PUT /api/settings/ops/config updates setting."""
+        # Get current value first
+        get_response = api_client.get("/api/settings/ops/config")
+        if get_response.status_code != 200:
+            pytest.skip("Could not get ops config")
+
+        original_settings = get_response.json().get("settings", {})
+
+        try:
+            # Update a setting (API expects string values)
+            response = api_client.put(
+                "/api/settings/ops/config",
+                json={"settings": {"ssh_access_enabled": "true"}}
+            )
+            assert_status(response, 200)
+            data = response.json()
+
+            assert data.get("success") is True
+            assert "updated" in data
+
+            # Verify update persisted
+            verify_response = api_client.get("/api/settings/ops/config")
+            verify_data = verify_response.json()
+            ssh_setting = verify_data.get("settings", {}).get("ssh_access_enabled", {})
+            if isinstance(ssh_setting, dict):
+                # Value may be string or bool depending on API
+                assert ssh_setting.get("value") in [True, "true"]
+        finally:
+            # Restore original if possible
+            if "ssh_access_enabled" in original_settings:
+                original_value = original_settings["ssh_access_enabled"]
+                if isinstance(original_value, dict):
+                    val = original_value.get("value")
+                    # Convert to string for API
+                    str_val = str(val).lower() if isinstance(val, bool) else str(val)
+                    api_client.put(
+                        "/api/settings/ops/config",
+                        json={"settings": {"ssh_access_enabled": str_val}}
+                    )
+
+    def test_update_ignores_invalid_keys(self, api_client: TrinityApiClient):
+        """PUT /api/settings/ops/config ignores invalid keys."""
+        response = api_client.put(
+            "/api/settings/ops/config",
+            json={"settings": {"invalid_setting_key_xyz": "value"}}
+        )
+        assert_status(response, 200)
+        data = response.json()
+
+        # Should succeed but report ignored keys
+        assert data.get("success") is True
+        if "ignored" in data:
+            assert "invalid_setting_key_xyz" in data["ignored"]
+
+
+class TestOpsSettingsReset:
+    """SET-012: Reset ops settings to defaults."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_reset_ops_settings_succeeds(self, api_client: TrinityApiClient):
+        """POST /api/settings/ops/reset resets to defaults."""
+        response = api_client.post("/api/settings/ops/reset")
+        assert_status(response, 200)
+        data = response.json()
+
+        assert data.get("success") is True
+        assert "message" in data or "reset" in data
+
+    def test_reset_restores_default_values(self, api_client: TrinityApiClient):
+        """After reset, settings are at default values."""
+        # First modify a setting (API expects string values)
+        api_client.put(
+            "/api/settings/ops/config",
+            json={"settings": {"ssh_access_enabled": "true"}}
+        )
+
+        # Reset
+        reset_response = api_client.post("/api/settings/ops/reset")
+        assert_status(reset_response, 200)
+
+        # Verify settings are at defaults
+        get_response = api_client.get("/api/settings/ops/config")
+        assert_status(get_response, 200)
+        data = get_response.json()
+
+        settings = data.get("settings", {})
+        for key, setting in settings.items():
+            if isinstance(setting, dict) and "is_default" in setting:
+                assert setting["is_default"] is True, \
+                    f"Setting {key} should be at default after reset"

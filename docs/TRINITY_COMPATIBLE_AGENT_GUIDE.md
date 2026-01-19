@@ -19,12 +19,14 @@
 9. [Inter-Agent Collaboration](#inter-agent-collaboration)
 10. [Shared Folders](#shared-folders)
 11. [Custom Metrics](#custom-metrics)
-12. [Memory Management](#memory-management)
-13. [Content Folder Convention](#content-folder-convention)
-14. [Compatibility Checklist](#compatibility-checklist)
-15. [Migration Guide](#migration-guide)
-16. [Best Practices](#best-practices)
-17. [Autonomous Agent Design](#autonomous-agent-design)
+12. [Agent Dashboard](#agent-dashboard)
+13. [Memory Management](#memory-management)
+14. [Content Folder Convention](#content-folder-convention)
+15. [Package Persistence](#package-persistence)
+16. [Compatibility Checklist](#compatibility-checklist)
+17. [Migration Guide](#migration-guide)
+18. [Best Practices](#best-practices)
+19. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -138,7 +140,7 @@ OTHER_VAR=value
 
 ### 5. `.gitignore` (Required)
 
-Must exclude secrets and large content:
+Must exclude secrets, instance-specific files, and large content:
 
 ```gitignore
 # Credentials - NEVER COMMIT
@@ -151,9 +153,23 @@ credentials.json
 # Large generated content - DO NOT COMMIT
 content/
 
-# Claude Code session data
+# Instance-specific directories - DO NOT COMMIT
+.npm/
+.ssh/
+.trinity/
+.cache/
+
+# Instance-specific files - DO NOT COMMIT
+.claude.json
+.claude.json.backup
+.sudo_as_admin_successful
+
+# Claude Code - commit commands/skills/agents, exclude runtime data
 .claude/projects/
 .claude/statsig/
+.claude/todos/
+.claude/debug/
+# Keep: .claude/commands/, .claude/skills/, .claude/agents/, settings.local.json
 
 # Temporary files
 *.log
@@ -166,6 +182,18 @@ content/
 !.env.example
 !.mcp.json.template
 ```
+
+**What to commit from `.claude/`:**
+- ✅ `.claude/commands/` - Slash commands
+- ✅ `.claude/skills/` - Skills
+- ✅ `.claude/agents/` - Sub-agents
+- ✅ `.claude/settings.local.json` - Claude Code settings
+
+**What NOT to commit from `.claude/`:**
+- ❌ `.claude/projects/` - Session data
+- ❌ `.claude/statsig/` - Analytics
+- ❌ `.claude/todos/` - Temporary todo lists
+- ❌ `.claude/debug/` - Debug logs
 
 ---
 
@@ -328,22 +356,19 @@ shared_folders:
 
 # === CUSTOM METRICS ===
 # Agent-specific KPIs displayed in Trinity UI
+# See "Custom Metrics" section for complete documentation
 metrics:
   - name: metric_name             # Required: internal identifier (snake_case)
     type: counter                 # Required: counter|gauge|percentage|status|duration|bytes
     label: "Display Label"        # Required: shown in UI
     description: "What this tracks"  # Optional: tooltip
-    icon: "chart"                 # Optional: heroicons name
-    unit: "items"                 # Optional: unit label
-    warning_threshold: 80         # Optional (percentage): yellow if below
-    critical_threshold: 50        # Optional (percentage): red if below
+    unit: "items"                 # Optional: unit label (gauge type)
+    warning_threshold: 80         # Optional (percentage type): yellow if below
+    critical_threshold: 50        # Optional (percentage type): red if below
     values:                       # Required for status type only
-      - value: "active"
-        color: "green"
-        label: "Active"
-      - value: "idle"
-        color: "gray"
-        label: "Idle"
+      - value: "active"           # Value written to metrics.json
+        color: "green"            # green|red|yellow|gray|blue|orange
+        label: "Active"           # Display label in UI
 ```
 
 ---
@@ -538,34 +563,319 @@ cat /home/developer/shared-in/agent-a/report.txt
 
 ## Custom Metrics
 
-Agents can define custom metrics displayed in the Trinity UI.
+Agents can define custom KPIs displayed in the Trinity UI Metrics tab. This enables domain-specific observability beyond generic tool call counts.
 
 ### Metric Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `counter` | Monotonically increasing | Posts published: 42 |
-| `gauge` | Value that can go up/down | Active tasks: 3 |
-| `percentage` | 0-100 with progress bar | Goal progress: 75% |
-| `status` | Enum/state value | Status: Active |
-| `duration` | Time in seconds | Uptime: 2h 15m |
-| `bytes` | Size in bytes | Memory: 1.2 MB |
+| Type | Description | Display | Example |
+|------|-------------|---------|---------|
+| `counter` | Monotonically increasing | Large number | "42 Messages" |
+| `gauge` | Value that can go up/down | Number + optional unit | "12.5 Avg Words" |
+| `percentage` | 0-100 with progress bar | Colored bar | "75% Success" |
+| `status` | Enum/state value | Colored badge | "Active", "Idle" |
+| `duration` | Time in seconds | Formatted time | "2h 15m" |
+| `bytes` | Size in bytes | Formatted size | "1.2 MB" |
 
 ### How It Works
 
 1. Define metrics in `template.yaml` under `metrics:`
-2. Agent writes values to `workspace/metrics.json`
-3. Trinity UI displays metrics in the Metrics tab
+2. Agent writes values to `metrics.json` in workspace
+3. Trinity UI displays metrics in the Metrics tab (auto-refresh every 30 seconds)
+4. **Agent must be running** for metrics to be visible
+
+### File Locations
+
+The agent server reads from the agent's working directory (`/home/developer/`):
+- **Definitions**: `/home/developer/template.yaml`
+- **Values**: `/home/developer/metrics.json`
+
+### template.yaml Metric Definitions
+
+```yaml
+metrics:
+  # Counter - monotonically increasing value
+  - name: messages_processed        # Internal identifier (snake_case)
+    type: counter
+    label: "Messages"               # Display label
+    description: "Total messages"   # Tooltip text
+
+  # Gauge - value that goes up and down
+  - name: avg_response_time
+    type: gauge
+    label: "Avg Response"
+    unit: "ms"                      # Optional unit label
+
+  # Percentage - with color thresholds
+  - name: success_rate
+    type: percentage
+    label: "Success Rate"
+    warning_threshold: 80           # Yellow if below 80%
+    critical_threshold: 50          # Red if below 50%
+
+  # Status - enum with colored badges
+  - name: current_state
+    type: status
+    label: "State"
+    values:                         # Required for status type
+      - value: "active"             # The value in metrics.json
+        color: "green"              # green, red, yellow, gray, blue, orange
+        label: "Active"             # Display label
+      - value: "idle"
+        color: "gray"
+        label: "Idle"
+      - value: "error"
+        color: "red"
+        label: "Error"
+
+  # Duration - time in seconds
+  - name: last_cycle_duration
+    type: duration
+    label: "Last Cycle"
+    description: "Duration of last processing cycle"
+
+  # Bytes - size in bytes
+  - name: cache_size
+    type: bytes
+    label: "Cache Size"
+```
 
 ### metrics.json Format
 
+Your agent writes current values to `metrics.json`:
+
 ```json
 {
-  "posts_published": 42,
-  "goal_progress": 75,
-  "current_status": "active"
+  "messages_processed": 42,
+  "avg_response_time": 125.5,
+  "success_rate": 87.5,
+  "current_state": "active",
+  "last_cycle_duration": 120,
+  "cache_size": 1048576,
+  "last_updated": "2025-12-10T10:30:00Z"
 }
 ```
+
+**Notes:**
+- Keys must match the `name` field in template.yaml
+- `last_updated` is optional but recommended (shown as "Updated X ago" in UI)
+- Values are read when the Metrics tab is viewed or refreshed
+
+### Complete Example
+
+**template.yaml:**
+```yaml
+name: research-agent
+display_name: Research Agent
+description: Autonomous researcher
+
+resources:
+  cpu: "1"
+  memory: "2g"
+
+metrics:
+  - name: research_cycles
+    type: counter
+    label: "Research Cycles"
+    description: "Total research cycles completed"
+
+  - name: findings_discovered
+    type: counter
+    label: "Findings"
+    description: "Total findings discovered"
+
+  - name: research_status
+    type: status
+    label: "Status"
+    values:
+      - value: "active"
+        color: "green"
+        label: "Researching"
+      - value: "idle"
+        color: "gray"
+        label: "Idle"
+
+  - name: last_cycle_duration
+    type: duration
+    label: "Last Cycle"
+```
+
+**Updating metrics in your agent:**
+```bash
+# In a script or via Claude Code
+cat > /home/developer/metrics.json << 'EOF'
+{
+  "research_cycles": 5,
+  "findings_discovered": 23,
+  "research_status": "idle",
+  "last_cycle_duration": 180,
+  "last_updated": "2025-12-10T10:30:00Z"
+}
+EOF
+```
+
+**In CLAUDE.md instructions:**
+```markdown
+## Metrics Tracking
+
+After each research cycle, update metrics.json:
+- Increment `research_cycles`
+- Update `findings_discovered` count
+- Set `research_status` to "active" during work, "idle" when done
+- Record `last_cycle_duration` in seconds
+```
+
+---
+
+## Agent Dashboard
+
+Agents can define a custom dashboard displayed in the Trinity UI Dashboard tab.
+
+### File Location
+
+Save the dashboard configuration to **`/home/developer/dashboard.yaml`** — the root of the agent's working directory.
+
+If the file does not exist, no dashboard will be displayed.
+
+### Basic Structure
+
+```yaml
+title: "My Agent Dashboard"
+refresh: 30                    # Auto-refresh interval (seconds, min 5)
+
+sections:
+  - title: "Status"
+    layout: grid               # 'grid' or 'list'
+    columns: 3                 # 1-4 columns
+    widgets:
+      - type: metric
+        label: "Total Tasks"
+        value: 42
+        trend: up
+
+      - type: status
+        label: "System"
+        value: "Healthy"
+        color: green           # green, red, yellow, gray, blue, orange
+
+      - type: progress
+        label: "Disk Usage"
+        value: 75
+        color: yellow
+```
+
+### Widget Types
+
+| Type | Required Fields | Description |
+|------|----------------|-------------|
+| `metric` | label, value | Number with optional trend (up/down) |
+| `status` | label, value, color | Colored badge |
+| `progress` | label, value | Progress bar (0-100) |
+| `text` | **content** | Plain text (NOT `text` or `value`) |
+| `markdown` | **content** | Rendered markdown |
+| `table` | columns, rows | Tabular data |
+| `list` | **items** | Bullet/numbered list (NOT `values` or `list`) |
+| `link` | label, **url** | Clickable link (NOT `href`) |
+| `image` | src, alt | Image display |
+| `divider` | - | Horizontal line |
+| `spacer` | - | Vertical space |
+
+### Widget Examples (All Types)
+
+**IMPORTANT**: Use exact field names shown below. Common mistakes:
+- `text` widget requires `content` (not `text`, `value`, or `label`)
+- `list` widget requires `items` (not `values`, `list`, or `content`)
+- `link` widget requires `url` (not `href` or `link`)
+
+```yaml
+widgets:
+  # METRIC - numeric value with optional trend
+  - type: metric
+    label: "Total Tasks"        # Required
+    value: 42                   # Required (number)
+    trend: up                   # Optional: up, down
+    trend_value: "+12%"         # Optional
+    unit: "tasks"               # Optional
+    description: "Since start"  # Optional
+
+  # STATUS - colored badge
+  - type: status
+    label: "System Status"      # Required
+    value: "Healthy"            # Required (string)
+    color: green                # Required: green, red, yellow, gray, blue, orange, purple
+
+  # PROGRESS - progress bar (0-100)
+  - type: progress
+    label: "Disk Usage"         # Required
+    value: 75                   # Required (0-100)
+    color: yellow               # Optional: green, red, yellow, blue
+
+  # TEXT - plain text (NOT 'text' or 'value'!)
+  - type: text
+    content: "This is plain text"  # Required - MUST use 'content'
+    size: md                       # Optional: xs, sm, md, lg
+    color: gray                    # Optional
+    align: center                  # Optional: left, center, right
+
+  # MARKDOWN - rendered markdown
+  - type: markdown
+    content: "**Bold** and *italic* text"  # Required - MUST use 'content'
+
+  # TABLE - tabular data
+  - type: table
+    title: "Recent Events"      # Optional
+    columns:                    # Required
+      - { key: date, label: Date }
+      - { key: event, label: Event }
+    rows:                       # Required
+      - { date: "2024-01-01", event: "Started" }
+      - { date: "2024-01-02", event: "Completed" }
+    max_rows: 5                 # Optional
+
+  # LIST - bullet or numbered list (NOT 'values'!)
+  - type: list
+    title: "Tasks"              # Optional
+    items:                      # Required - MUST use 'items'
+      - "Task 1"
+      - "Task 2"
+      - "Task 3"
+    style: bullet               # Optional: bullet, number, none
+    max_items: 10               # Optional
+
+  # LINK - clickable link (NOT 'href'!)
+  - type: link
+    label: "Documentation"      # Required
+    url: "https://example.com"  # Required - MUST use 'url'
+    external: true              # Optional: opens in new tab
+    style: button               # Optional: 'button' or omit for text link
+    color: blue                 # Optional
+
+  # IMAGE - image display
+  - type: image
+    src: "/files/chart.png"     # Required (or full URL)
+    alt: "Chart description"    # Required
+    caption: "Weekly metrics"   # Optional
+
+  # DIVIDER - horizontal line
+  - type: divider
+
+  # SPACER - vertical space
+  - type: spacer
+    size: lg                    # Optional: sm (8px), md (16px), lg (32px)
+```
+
+### Updating Dashboard Data
+
+Your agent updates the dashboard by rewriting `dashboard.yaml`. Use dynamic values:
+
+```yaml
+widgets:
+  - type: metric
+    label: "Processed"
+    value: 127              # Update this value in your agent
+    description: "Last run: 2 min ago"
+```
+
+**Note**: Agent must be running for dashboard to display. See `docs/memory/feature-flows/agent-dashboard.md` for complete schema.
 
 ---
 
@@ -638,6 +948,86 @@ When exporting data, save to `content/exports/`.
 |-----------|---------------|---------|
 | `outputs/` | ✅ Yes | Small files you want versioned (reports, summaries) |
 | `content/` | ❌ No | Large files that shouldn't be in Git (videos, audio) |
+
+---
+
+## Package Persistence
+
+When agents install system packages (via `apt-get`, `npm install -g`, etc.), those packages are lost when the container is updated. Trinity provides a setup script convention to handle this.
+
+### How It Works
+
+1. When an agent installs a system package, it also appends the command to `~/.trinity/setup.sh`
+2. On container start, Trinity runs this script automatically
+3. Packages are reinstalled, surviving image updates
+
+### Setup Script Location
+
+```
+/home/developer/.trinity/setup.sh
+```
+
+This file lives in the persistent workspace volume and survives container recreation.
+
+### Usage Pattern
+
+When installing packages, always add them to the setup script:
+
+```bash
+# Install the package
+sudo apt-get install -y ffmpeg
+
+# Remember it for future container starts
+mkdir -p ~/.trinity
+echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
+```
+
+### Pre-configuring in Templates
+
+Templates can ship with a pre-defined `setup.sh`:
+
+```
+my-agent/
+├── .trinity/
+│   └── setup.sh          # Pre-defined package installations
+├── template.yaml
+└── CLAUDE.md
+```
+
+Example `setup.sh` for a video processing agent:
+
+```bash
+#!/bin/bash
+# Package persistence script - runs on every container start
+
+# System packages
+sudo apt-get update -qq
+sudo apt-get install -y -qq ffmpeg imagemagick
+
+# Global npm packages
+npm install -g typescript ts-node
+
+# Python packages (user-space)
+pip install --user opencv-python moviepy
+```
+
+### What Goes Where
+
+| Package Type | Persists Automatically? | Setup Script Needed? |
+|--------------|------------------------|---------------------|
+| `pip install --user` | ✅ Yes (in ~/.local) | No |
+| `npm install` (local) | ✅ Yes (in node_modules/) | No |
+| `go install` | ✅ Yes (in ~/go/) | No |
+| `apt-get install` | ❌ No | Yes |
+| `npm install -g` | ❌ No | Yes |
+| System-level configs | ❌ No | Yes |
+
+### Best Practices
+
+1. **Prefer user-space installs**: `pip install --user`, local `npm install` when possible
+2. **Keep setup.sh idempotent**: Use `-y` flags, check if already installed
+3. **Minimize apt-get**: Each install adds startup time
+4. **Document dependencies**: List required packages in README.md
 
 ---
 
@@ -771,6 +1161,11 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
+| 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
+| 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |
+| 2026-01-12 | Updated .gitignore: added instance-specific files (.npm, .ssh, .trinity, .cache, .claude.json, .sudo_as_admin_successful); clarified what to commit vs exclude from .claude/ directory |
+| 2026-01-12 | Added Package Persistence section with setup.sh convention for surviving container updates |
 | 2026-01-12 | Simplified guide: removed Platform Injection, Testing Locally, Troubleshooting, Registering with Trinity, Multi-Agent Systems sections; Made memory/ optional; Added docs/ best practice |
 | 2026-01-01 | Added Autonomous Agent Design section with lifecycle overview; Reference to detailed guide |
 | 2025-12-30 | Documented Source Mode (default) vs Working Branch Mode (legacy) in Git Configuration; Removed Task DAG/workplan content (feature removed 2025-12-23) |

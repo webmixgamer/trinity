@@ -194,7 +194,8 @@ class AgentClient:
     async def task(
         self,
         message: str,
-        timeout: float = None
+        timeout: float = None,
+        execution_id: Optional[str] = None
     ) -> AgentChatResponse:
         """
         Execute a stateless task on the agent (no conversation context).
@@ -209,6 +210,7 @@ class AgentClient:
         Args:
             message: Task prompt to execute
             timeout: Request timeout (default: 15 minutes)
+            execution_id: Optional execution ID for process registry (enables termination and live streaming)
 
         Returns:
             AgentChatResponse with parsed metrics and raw execution log
@@ -219,9 +221,13 @@ class AgentClient:
         """
         timeout = timeout or self.CHAT_TIMEOUT
 
+        payload = {"message": message, "timeout_seconds": int(timeout)}
+        if execution_id:
+            payload["execution_id"] = execution_id
+
         response = await self.post(
             "/api/task",
-            json={"message": message, "timeout_seconds": int(timeout)},
+            json=payload,
             timeout=timeout + 10  # Add buffer to agent timeout
         )
 

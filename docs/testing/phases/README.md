@@ -44,7 +44,7 @@ The monolithic `UI_INTEGRATION_TEST.md` has been **split into individual phase f
 |---|------|------|---|
 | 0 | Setup | 5 min | Services, clean slate |
 | 1 | Authentication | 5 min | Login, session, token |
-| 2 | Agent Creation | 30 min | **GitHub templates**, 8 agents, **default permissions** |
+| 2 | Agent Creation | 30 min | **local templates**, 3 agents, **default permissions** |
 | 3 | Context Validation | 10 min | **CRITICAL: context %, progress bar** |
 | 4 | State Persistence | 10 min | File I/O, counter.txt, state |
 | 5 | Agent Collaboration + Permissions | 25 min | Trinity MCP, delegation, Pillar II, **permissions UI + enforcement** |
@@ -52,7 +52,7 @@ The monolithic `UI_INTEGRATION_TEST.md` has been **split into individual phase f
 | 8 | Execution Queue | 15 min | Concurrency, 429, queue ordering |
 | 9 | File Browser | 10 min | Tree structure, download, security |
 | 10 | Error Handling | 10 min | Failures, recovery, cascading |
-| 11 | Multi-Agent | 10 min | Dashboard with 8 agents |
+| 11 | Multi-Agent | 10 min | Dashboard with 3 agents |
 | 12 | Cleanup | 5 min | Delete all agents, clean slate |
 
 **Total**: ~175 minutes (~3 hours) for full suite
@@ -62,10 +62,10 @@ The monolithic `UI_INTEGRATION_TEST.md` has been **split into individual phase f
 ## Critical Validations (Every Phase)
 
 ### GitHub Templates (MANDATORY)
-All agents MUST be created from `github:abilityai/test-agent-*`:
+All agents MUST be created from `local:test-*`:
 ```bash
 docker inspect agent-test-echo --format='{{index .Config.Labels "trinity.template"}}'
-# Expected: github:abilityai/test-agent-echo ✅
+# Expected: local:test-echo ✅
 # NOT: local:test-echo ❌ (PHASE FAILS)
 ```
 
@@ -93,7 +93,7 @@ All files in `docs/testing/phases/`:
 | **README.md** | This file - quick reference |
 | **PHASE_00_SETUP.md** | Prerequisites, services, templates |
 | **PHASE_01_AUTHENTICATION.md** | Login, session, token, user profile |
-| **PHASE_02_AGENT_CREATION.md** | Create 8 agents from GitHub |
+| **PHASE_02_AGENT_CREATION.md** | Create 3 agents from GitHub |
 | **PHASE_03_CONTEXT_VALIDATION.md** | Context %, progress bar (CRITICAL) |
 | **PHASE_04_STATE_PERSISTENCE.md** | File I/O, counter operations |
 | **PHASE_05_AGENT_COLLABORATION.md** | Trinity MCP, delegation, **Permissions system** |
@@ -101,7 +101,7 @@ All files in `docs/testing/phases/`:
 | **PHASE_08_EXECUTION_QUEUE.md** | Concurrency, 429, queue ordering |
 | **PHASE_09_FILE_BROWSER.md** | Tree structure, download, security |
 | **PHASE_10_ERROR_HANDLING.md** | Failures, recovery, cascading |
-| **PHASE_11_MULTI_AGENT_DASHBOARD.md** | Dashboard with 8 agents |
+| **PHASE_11_MULTI_AGENT_DASHBOARD.md** | Dashboard with 3 agents |
 | **PHASE_12_CLEANUP.md** | Delete all agents, clean slate |
 | **PHASE_13_SETTINGS.md** | Trinity Prompt, Email Whitelist, API Keys |
 | **PHASE_14_OPENTELEMETRY.md** | OTel metrics, Observability UI |
@@ -129,7 +129,7 @@ PHASE_00 ✅ PASSED
    ↓
 PHASE_01 ✅ PASSED
    ↓
-PHASE_02 ✅ PASSED (GitHub templates verified)
+PHASE_02 ✅ PASSED (local templates verified)
    ↓
 PHASE_03 ⚠️ BUG FOUND: Context stuck at 0%
    ↓ (continues despite bug)
@@ -147,7 +147,7 @@ Each phase **requires previous phases to PASS**:
 ```
 Phase 0 → All services running
 Phase 1 → Logged in with valid token
-Phase 2 → 8 agents created (GitHub templates)
+Phase 2 → 3 agents created (local templates)
 Phase 3 → Context tracking status known
 Phase 4 → test-counter working
 Phase 5 → test-delegator working
@@ -219,16 +219,16 @@ Check each agent:
 ```bash
 # test-echo
 docker inspect agent-test-echo --format='{{index .Config.Labels "trinity.template"}}'
-# Expected: github:abilityai/test-agent-echo ✅
+# Expected: local:test-echo ✅
 
 # test-counter
 docker inspect agent-test-counter --format='{{index .Config.Labels "trinity.template"}}'
-# Expected: github:abilityai/test-agent-counter ✅
+# Expected: local:test-counter ✅
 
 # All others...
 ```
 
-**If any show `local:`**: Phase 2 FAILS - requires GitHub templates.
+**If any show `local:`**: Phase 2 FAILS - requires local templates.
 
 ---
 
@@ -270,7 +270,7 @@ If time-constrained, skip optional phases:
 ## Testing with Different Environments
 
 ### Local Development
-- URL: `http://localhost:3000`
+- URL: `http://localhost`
 - Backend: `http://localhost:8000`
 - Credentials: `admin / YOUR_PASSWORD` (from `.env`)
 

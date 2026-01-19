@@ -4,6 +4,9 @@ python_files = test_*.py
 python_classes = Test*
 python_functions = test_*
 
+# Python path for imports
+pythonpath = ../src
+
 # Default options for normal runs
 addopts = -v --tb=short
 

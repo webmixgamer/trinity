@@ -161,7 +161,7 @@ export function useGitSync(agentRef, agentsStore, showNotification) {
   const startGitStatusPolling = () => {
     if (!hasGitSync.value) return
     loadGitStatus() // Load immediately
-    gitStatusInterval = setInterval(loadGitStatus, 30000) // Then every 30 seconds
+    gitStatusInterval = setInterval(loadGitStatus, 60000) // Then every 60 seconds
   }
 
   const stopGitStatusPolling = () => {

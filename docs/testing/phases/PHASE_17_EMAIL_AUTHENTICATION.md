@@ -68,7 +68,7 @@ curl http://localhost:8000/api/settings/email-whitelist \
 ### Step 1: Navigate to Login Page
 
 **Action**:
-- Open http://localhost:3000 in incognito/private window
+- Open http://localhost in incognito/private window
 - Clear any existing session
 
 **Expected**:

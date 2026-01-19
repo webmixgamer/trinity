@@ -11,6 +11,7 @@ These endpoints are admin-only and intended for platform operations.
 """
 import os
 import logging
+import concurrent.futures
 from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -19,7 +20,7 @@ import httpx
 from models import User
 from database import db
 from dependencies import get_current_user
-from services.docker_service import get_agent_container, docker_client, list_all_agents
+from services.docker_service import get_agent_container, docker_client, list_all_agents_fast
 from services.agent_client import get_agent_client
 from db.agents import SYSTEM_AGENT_NAME
 
@@ -51,7 +52,7 @@ async def get_fleet_status(
     - Last activity time
     - System agent flag
     """
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     fleet_status = []
     context_stats = {}
@@ -129,7 +130,7 @@ async def get_fleet_health(
     - Container errors
     - No activity for > 30 minutes (for running agents)
     """
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     # Health thresholds (from settings or defaults)
     context_warning = 75
@@ -236,7 +237,7 @@ async def restart_fleet(
     """
     require_admin(current_user)
 
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     results = []
     successes = 0
@@ -340,7 +341,7 @@ async def stop_fleet(
     """
     require_admin(current_user)
 
-    agents = list_all_agents()
+    agents = list_all_agents_fast()
 
     results = []
     successes = 0
@@ -555,7 +556,7 @@ async def resume_all_schedules(
     # If no specific method, get all schedules
     if not schedules:
         all_schedules = []
-        agents = list_all_agents()
+        agents = list_all_agents_fast()
         for agent in agents:
             agent_schedules = db.list_agent_schedules(agent.name)
             all_schedules.extend([s for s in agent_schedules if not s.enabled])
@@ -587,6 +588,22 @@ async def resume_all_schedules(
     }
 
 
+def _stop_agent_container(agent_name: str, timeout: int = 10) -> dict:
+    """
+    Stop a single agent container. Used for parallel stopping.
+
+    Returns a dict with result info.
+    """
+    try:
+        container = get_agent_container(agent_name)
+        if container:
+            container.stop(timeout=timeout)
+            return {"agent": agent_name, "result": "stopped"}
+        return {"agent": agent_name, "result": "not_found"}
+    except Exception as e:
+        return {"agent": agent_name, "result": "error", "error": str(e)}
+
+
 @router.post("/emergency-stop")
 async def emergency_stop(
     request: Request,
@@ -596,6 +613,8 @@ async def emergency_stop(
     Emergency stop: Pause all schedules and stop all non-system agents.
 
     Admin-only. Use for runaway costs or critical issues.
+
+    Agents are stopped in parallel using a thread pool for faster response time.
     """
     require_admin(current_user)
 
@@ -616,8 +635,11 @@ async def emergency_stop(
         except Exception as e:
             results["errors"].append(f"Schedule {schedule.id}: {e}")
 
-    # 2. Stop all non-system agents
-    agents = list_all_agents()
+    # 2. Stop all non-system agents IN PARALLEL
+    agents = list_all_agents_fast()
+
+    # Filter to running non-system agents
+    agents_to_stop = []
     for agent in agents:
         agent_name = agent.name
         status = agent.status
@@ -629,13 +651,27 @@ async def emergency_stop(
             continue
 
         if status == "running":
-            try:
-                container = get_agent_container(agent_name)
-                if container:
-                    container.stop(timeout=10)  # Shorter timeout for emergency
-                    results["agents_stopped"] += 1
-            except Exception as e:
-                results["errors"].append(f"Agent {agent_name}: {e}")
+            agents_to_stop.append(agent_name)
+
+    # Stop agents in parallel using thread pool (Docker SDK is synchronous)
+    if agents_to_stop:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {
+                executor.submit(_stop_agent_container, agent_name, 10): agent_name
+                for agent_name in agents_to_stop
+            }
+
+            # Wait for all with a timeout (60 seconds should be plenty for parallel stops)
+            for future in concurrent.futures.as_completed(futures, timeout=60):
+                agent_name = futures[future]
+                try:
+                    result = future.result()
+                    if result["result"] == "stopped":
+                        results["agents_stopped"] += 1
+                    elif result["result"] == "error":
+                        results["errors"].append(f"Agent {agent_name}: {result.get('error', 'unknown error')}")
+                except Exception as e:
+                    results["errors"].append(f"Agent {agent_name}: {e}")
 
     return {
         "success": True,

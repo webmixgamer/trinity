@@ -12,6 +12,7 @@ from typing import Optional, List, Dict
 
 from .connection import get_db_connection
 from db_models import Schedule, ScheduleCreate, ScheduleExecution, AgentGitConfig
+from utils.helpers import utc_now_iso, to_utc_iso, parse_iso_timestamp
 
 
 class ScheduleOperations:
@@ -40,10 +41,11 @@ class ScheduleOperations:
             timezone=row["timezone"],
             description=row["description"],
             owner_id=row["owner_id"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-            last_run_at=datetime.fromisoformat(row["last_run_at"]) if row["last_run_at"] else None,
-            next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None
+            # Use parse_iso_timestamp to handle both 'Z' and non-'Z' timestamps
+            created_at=parse_iso_timestamp(row["created_at"]),
+            updated_at=parse_iso_timestamp(row["updated_at"]),
+            last_run_at=parse_iso_timestamp(row["last_run_at"]) if row["last_run_at"] else None,
+            next_run_at=parse_iso_timestamp(row["next_run_at"]) if row["next_run_at"] else None
         )
 
     @staticmethod
@@ -55,8 +57,9 @@ class ScheduleOperations:
             schedule_id=row["schedule_id"],
             agent_name=row["agent_name"],
             status=row["status"],
-            started_at=datetime.fromisoformat(row["started_at"]),
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            # Use parse_iso_timestamp to handle both 'Z' and non-'Z' timestamps
+            started_at=parse_iso_timestamp(row["started_at"]),
+            completed_at=parse_iso_timestamp(row["completed_at"]) if row["completed_at"] else None,
             duration_ms=row["duration_ms"],
             message=row["message"],
             response=row["response"],
@@ -81,8 +84,9 @@ class ScheduleOperations:
             instance_id=row["instance_id"],
             source_branch=row["source_branch"] if "source_branch" in row_keys else "main",
             source_mode=bool(row["source_mode"]) if "source_mode" in row_keys else False,
-            created_at=datetime.fromisoformat(row["created_at"]),
-            last_sync_at=datetime.fromisoformat(row["last_sync_at"]) if row["last_sync_at"] else None,
+            # Use parse_iso_timestamp to handle both 'Z' and non-'Z' timestamps
+            created_at=parse_iso_timestamp(row["created_at"]),
+            last_sync_at=parse_iso_timestamp(row["last_sync_at"]) if row["last_sync_at"] else None,
             last_commit_sha=row["last_commit_sha"],
             sync_enabled=bool(row["sync_enabled"]),
             sync_paths=row["sync_paths"]
@@ -103,7 +107,7 @@ class ScheduleOperations:
             return None
 
         schedule_id = self._generate_id()
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -224,7 +228,7 @@ class ScheduleOperations:
                 return schedule
 
             set_clauses.append("updated_at = ?")
-            params.append(datetime.utcnow().isoformat())
+            params.append(utc_now_iso())
             params.append(schedule_id)
 
             cursor.execute(f"""
@@ -263,7 +267,7 @@ class ScheduleOperations:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE agent_schedules SET enabled = ?, updated_at = ? WHERE id = ?
-            """, (1 if enabled else 0, datetime.utcnow().isoformat(), schedule_id))
+            """, (1 if enabled else 0, utc_now_iso(), schedule_id))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -272,7 +276,7 @@ class ScheduleOperations:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             updates = ["updated_at = ?"]
-            params = [datetime.utcnow().isoformat()]
+            params = [utc_now_iso()]
 
             if last_run_at:
                 updates.append("last_run_at = ?")
@@ -312,7 +316,7 @@ class ScheduleOperations:
     def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual") -> Optional[ScheduleExecution]:
         """Create a new execution record for a manual/API-triggered task (no schedule)."""
         execution_id = self._generate_id()
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -344,7 +348,7 @@ class ScheduleOperations:
     def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule") -> Optional[ScheduleExecution]:
         """Create a new execution record for a scheduled task."""
         execution_id = self._generate_id()
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -395,8 +399,9 @@ class ScheduleOperations:
             if not row:
                 return False
 
-            started_at = datetime.fromisoformat(row["started_at"])
-            completed_at = datetime.utcnow()
+            # Use parse_iso_timestamp to handle both 'Z' and non-'Z' timestamps
+            started_at = parse_iso_timestamp(row["started_at"])
+            completed_at = parse_iso_timestamp(utc_now_iso())
             duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
             cursor.execute("""
@@ -406,7 +411,7 @@ class ScheduleOperations:
                 WHERE id = ?
             """, (
                 status,
-                completed_at.isoformat(),
+                to_utc_iso(completed_at),  # Use UTC with 'Z' suffix
                 duration_ms,
                 response,
                 error,
@@ -524,7 +529,7 @@ class ScheduleOperations:
             source_mode: If True, track source_branch directly without creating a working branch
         """
         config_id = self._generate_id()
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()
         sync_paths_json = json.dumps(sync_paths) if sync_paths else json.dumps(["memory/", "outputs/", "CLAUDE.md", ".claude/"])
 
         with get_db_connection() as conn:
@@ -565,7 +570,7 @@ class ScheduleOperations:
 
     def update_git_sync(self, agent_name: str, commit_sha: str) -> bool:
         """Update git sync timestamp and commit SHA after successful sync."""
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""

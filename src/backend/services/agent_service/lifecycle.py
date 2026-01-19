@@ -5,6 +5,7 @@ Contains functions for starting, stopping, and reconfiguring agents.
 """
 import logging
 import docker
+import httpx
 
 from fastapi import HTTPException
 
@@ -18,6 +19,44 @@ from services.agent_client import get_agent_client
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match, check_full_capabilities_match
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Container Security Capability Sets
+# =============================================================================
+# These define the Linux capabilities granted to agent containers.
+# Security principle: Always drop ALL caps, then add back only what's needed.
+
+# Restricted mode capabilities - minimum for agent operation (default)
+RESTRICTED_CAPABILITIES = [
+    'NET_BIND_SERVICE',  # Bind to ports < 1024
+    'SETGID', 'SETUID',  # Change user/group (for su/sudo)
+    'CHOWN',             # Change file ownership
+    'SYS_CHROOT',        # Use chroot
+    'AUDIT_WRITE',       # Write to audit log
+]
+
+# Full capabilities mode - adds package installation support
+# Used when agents need apt-get, pip install, etc.
+FULL_CAPABILITIES = RESTRICTED_CAPABILITIES + [
+    'DAC_OVERRIDE',      # Bypass file permission checks (needed for apt)
+    'FOWNER',            # Bypass permission checks on file owner
+    'FSETID',            # Don't clear setuid/setgid bits
+    'KILL',              # Send signals to processes
+    'MKNOD',             # Create special files
+    'NET_RAW',           # Use raw sockets (ping, etc.)
+    'SYS_PTRACE',        # Trace processes (debugging)
+]
+
+# These capabilities are NEVER granted - they pose significant security risks
+# Listed for documentation; we achieve this by always using cap_drop=['ALL']
+PROHIBITED_CAPABILITIES = [
+    'SYS_ADMIN',         # Mount filesystems, configure namespace - too powerful
+    'NET_ADMIN',         # Network administration - could escape container
+    'SYS_RAWIO',         # Raw I/O access - direct hardware access
+    'SYS_MODULE',        # Load kernel modules - kernel compromise
+    'SYS_BOOT',          # Reboot system
+]
 
 
 async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
@@ -48,6 +87,87 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
         max_retries=max_retries,
         retry_delay=retry_delay
     )
+
+
+async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, retry_delay: float = 2.0) -> dict:
+    """
+    Inject assigned credentials into a running agent.
+
+    This is called after agent startup to push any credentials that were
+    assigned to this agent in the Credentials tab.
+
+    Args:
+        agent_name: Name of the agent
+        max_retries: Number of retries for connection
+        retry_delay: Seconds between retries
+
+    Returns:
+        dict with injection status
+    """
+    import os
+    import asyncio
+    from credentials import CredentialManager
+
+    # Initialize credential manager
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+    credential_manager = CredentialManager(redis_url)
+
+    # Get the agent owner from database
+    owner = db.get_agent_owner(agent_name)
+    if not owner:
+        logger.warning(f"No owner found for agent {agent_name}, skipping credential injection")
+        return {"status": "skipped", "reason": "no_owner"}
+
+    # Extract owner username - get_agent_owner returns a dict with 'owner_username' key
+    owner_username = owner.get("owner_username")
+    if not owner_username:
+        logger.warning(f"No owner_username in owner data for agent {agent_name}, skipping credential injection")
+        return {"status": "skipped", "reason": "no_owner_username"}
+
+    # Get assigned credentials
+    credentials = credential_manager.get_assigned_credential_values(agent_name, owner_username)
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, owner_username)
+
+    if not credentials and not file_credentials:
+        logger.debug(f"No assigned credentials for agent {agent_name} (owner: {owner_username})")
+        return {"status": "skipped", "reason": "no_credentials"}
+
+    logger.info(f"Injecting {len(credentials)} credentials and {len(file_credentials)} files into agent {agent_name} (owner: {owner_username})")
+
+    # Push to agent with retries
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"http://agent-{agent_name}:8000/api/credentials/update",
+                    json={
+                        "credentials": credentials,
+                        "mcp_config": None,
+                        "files": file_credentials if file_credentials else None
+                    },
+                    timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    return {
+                        "status": "success",
+                        "credential_count": len(credentials),
+                        "file_count": len(file_credentials)
+                    }
+                else:
+                    last_error = f"Agent returned status {response.status_code}"
+                    logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
+
+        except httpx.RequestError as e:
+            last_error = str(e)
+            logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+
+    logger.error(f"Failed to inject credentials into agent {agent_name} after {max_retries} attempts: {last_error}")
+    return {"status": "failed", "error": last_error}
 
 
 async def start_agent_internal(agent_name: str) -> dict:
@@ -91,10 +211,16 @@ async def start_agent_internal(agent_name: str) -> dict:
     trinity_result = await inject_trinity_meta_prompt(agent_name)
     trinity_status = trinity_result.get("status", "unknown")
 
+    # Inject assigned credentials from the Credentials page
+    credentials_result = await inject_assigned_credentials(agent_name)
+    credentials_status = credentials_result.get("status", "unknown")
+
     return {
         "message": f"Agent {agent_name} started",
         "trinity_injection": trinity_status,
-        "trinity_result": trinity_result
+        "trinity_result": trinity_result,
+        "credentials_injection": credentials_status,
+        "credentials_result": credentials_result
     }
 
 
@@ -214,9 +340,11 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
                 except docker.errors.NotFound:
                     pass
 
-    # Create new container
-    # Security: If full_capabilities=True, use Docker defaults (apt-get works)
-    # Otherwise use restricted mode (secure default)
+    # Create new container with security settings
+    # Security principle: ALWAYS apply baseline security, even in full_capabilities mode
+    # - Always drop ALL caps, then add back only what's needed
+    # - Always apply AppArmor profile
+    # - Always apply noexec,nosuid to /tmp
     new_container = docker_client.containers.run(
         image,
         detach=True,
@@ -225,11 +353,15 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
         volumes=volumes,
         environment=env_vars,
         labels=labels,
-        security_opt=['apparmor:docker-default'] if not full_capabilities else [],
-        cap_drop=[] if full_capabilities else ['ALL'],
-        cap_add=[] if full_capabilities else ['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
+        # Always apply AppArmor for additional sandboxing
+        security_opt=['apparmor:docker-default'],
+        # Always drop ALL capabilities first (defense in depth)
+        cap_drop=['ALL'],
+        # Add back only the capabilities needed for the mode
+        cap_add=FULL_CAPABILITIES if full_capabilities else RESTRICTED_CAPABILITIES,
         read_only=False,
-        tmpfs={'/tmp': 'size=100m'} if full_capabilities else {'/tmp': 'noexec,nosuid,size=100m'},
+        # Always apply noexec,nosuid to /tmp for security
+        tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
         network='trinity-agent-network',
         mem_limit=memory,
         cpu_count=int(cpu)

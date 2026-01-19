@@ -311,7 +311,11 @@ async def get_agent_executions(
     name: AuthorizedAgent,
     limit: int = 50
 ):
-    """Get all executions for an agent across all schedules."""
+    """Get all executions for an agent across all schedules.
+
+    Note: The AuthorizedAgent dependency validates both agent existence (via db.get_agent_owner)
+    and user access. This returns 404 if agent not found, 403 if no access, or execution list.
+    """
     executions = db.get_agent_executions(name, limit=limit)
     return [ExecutionResponse(**e.model_dump()) for e in executions]
 

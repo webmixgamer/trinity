@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 
-from services.docker_service import docker_client, list_all_agents
+from services.docker_service import docker_client, list_all_agents_fast
 
 # Module-level executor for Docker operations (blocking calls)
 # Limited to 4 workers to avoid overwhelming Docker daemon
@@ -122,8 +122,8 @@ async def get_container_stats():
         raise HTTPException(status_code=503, detail="Docker not available")
 
     try:
-        # Get all running agent containers
-        agents = list_all_agents()
+        # Get all running agent containers - use fast version (only need names)
+        agents = list_all_agents_fast()
         running_agents = [a for a in agents if a.status == "running"]
 
         if not running_agents:

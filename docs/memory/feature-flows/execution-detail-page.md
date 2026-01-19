@@ -12,9 +12,34 @@ As an agent operator, I want to open execution details in a dedicated page so th
 
 | Entry Point | File | Line | Description |
 |-------------|------|------|-------------|
-| TasksPanel | `src/frontend/src/components/TasksPanel.vue` | 207-217 | External link icon on execution row |
+| TasksPanel (Live) | `src/frontend/src/components/TasksPanel.vue` | 213-232 | **Running tasks**: Green "Live" button with pulsing dot |
+| TasksPanel (Details) | `src/frontend/src/components/TasksPanel.vue` | 213-232 | **Completed tasks**: External link icon |
 | ReplayTimeline | `src/frontend/src/components/ReplayTimeline.vue` | 767-785 | Click on execution bar |
 | Direct URL | N/A | N/A | Navigate to `/agents/{name}/executions/{id}` |
+
+### Live Button for Running Tasks (2026-01-13)
+
+For running tasks, the TasksPanel shows a green "Live" button with an animated pulsing dot, enabling users to navigate to the Execution Detail page to monitor real-time progress.
+
+**Visibility Condition** (line 214):
+```vue
+v-if="!task.id.startsWith('local-') || task.execution_id"
+```
+
+- **Server executions**: `task.id` is the database UUID (e.g., `abc123XYZ789...`) - always shown
+- **Local pending tasks**: `task.id` is `local-xxx` - shown only after `execution_id` is obtained from process registry (~2 seconds after task starts)
+
+**Route Parameter Logic** (line 215):
+```vue
+:to="{ name: 'ExecutionDetail', params: {
+  name: agentName,
+  executionId: task.id.startsWith('local-') ? task.execution_id : task.id
+}}"
+```
+
+**Visual Styling** (lines 216-221, 224-228):
+- Running tasks: Green background (`bg-green-50 dark:bg-green-900/20`), green text, "Live" label with pulsing dot
+- Completed tasks: Gray text with indigo hover state, external link icon only
 
 ---
 
@@ -135,22 +160,43 @@ function parseExecutionLog(log) {
 
 ### Navigation Entry Points
 
-#### TasksPanel.vue (Lines 207-217)
+#### TasksPanel.vue (Lines 213-232)
 
-External link icon navigates to ExecutionDetail page:
+The router-link navigates to ExecutionDetail page with context-aware styling:
 
 ```vue
+<!-- Open Execution Detail Page (Live for running, Details for completed) -->
+<!-- For server executions: task.id IS the database UUID -->
+<!-- For local tasks: task.id is 'local-xxx', must use task.execution_id instead -->
 <router-link
-  v-if="!task.id.startsWith('local-')"
-  :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id } }"
-  class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
-  title="Open execution details"
+  v-if="!task.id.startsWith('local-') || task.execution_id"
+  :to="{ name: 'ExecutionDetail', params: {
+    name: agentName,
+    executionId: task.id.startsWith('local-') ? task.execution_id : task.id
+  }}"
+  :class="[
+    'p-1.5 rounded transition-colors flex items-center space-x-1',
+    task.status === 'running'
+      ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20'
+      : 'text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+  ]"
+  :title="task.status === 'running' ? 'View live execution' : 'Open execution details'"
 >
+  <!-- Live indicator for running tasks -->
+  <span v-if="task.status === 'running'" class="flex items-center">
+    <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse mr-1"></span>
+    <span class="text-xs font-medium">Live</span>
+  </span>
   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
   </svg>
 </router-link>
 ```
+
+**Key Features:**
+- **Running tasks**: Shows green "Live" badge with animated pulsing dot
+- **Completed tasks**: Shows gray external link icon
+- **Local task handling**: Uses `task.execution_id` (from process registry) instead of `task.id` for local pending tasks
 
 #### ReplayTimeline.vue (Lines 767-785)
 
@@ -402,6 +448,7 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Added "Live" button for running tasks in TasksPanel (lines 213-232). Green badge with animated pulsing dot navigates to Execution Detail for live monitoring. Explicit ID logic: server executions use `task.id`, local pending tasks use `task.execution_id` from process registry. |
 | 2026-01-11 | Clarified Database Execution ID format (`token_urlsafe(16)`) vs Queue Execution ID (UUID). Navigation uses Database ID from `task_execution_id` in chat response. |
 | 2026-01-10 | Initial implementation - dedicated execution detail page with metadata cards, timestamps, task input, error panel, response summary, and full transcript |
 

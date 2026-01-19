@@ -18,6 +18,7 @@ capabilities:
   - schedule-control
   - fleet-operations
   - platform-alerting
+  - compliance-auditing
 
 mcp_servers: []
 
@@ -57,6 +58,14 @@ slash_commands:
   - name: /ops/executions/status
     description: Get detailed status of a specific execution
     arguments: "<execution-id>"
+  # Compliance & Auditing
+  - name: /ops/compatibility-audit
+    description: Audit all agents for Trinity compatibility via self-diagnostics
+  - name: /ops/service-check
+    description: Request agents to validate their runtime setup (read-only diagnostic)
+  # Dashboard & Reporting
+  - name: /ops/update-dashboard
+    description: Update dashboard.yaml with current platform metrics
 
 metrics:
   - name: agents_managed

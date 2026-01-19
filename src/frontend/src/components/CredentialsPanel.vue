@@ -25,7 +25,7 @@
             <span class="ml-2 text-sm font-normal text-gray-500">({{ filteredAssignedCredentials.length }})</span>
           </h3>
           <button
-            v-if="hasChanges && agentStatus === 'running'"
+            v-if="agentStatus === 'running' && assignedCredentials.length > 0"
             @click="applyToAgent"
             :disabled="applying"
             class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -36,6 +36,12 @@
             </svg>
             {{ applying ? 'Applying...' : 'Apply to Agent' }}
           </button>
+          <span
+            v-else-if="agentStatus !== 'running' && assignedCredentials.length > 0"
+            class="text-sm text-yellow-600 dark:text-yellow-400"
+          >
+            Start agent to apply
+          </span>
         </div>
 
         <div v-if="filteredAssignedCredentials.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">

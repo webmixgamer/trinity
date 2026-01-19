@@ -483,6 +483,10 @@ const props = defineProps({
   agentName: {
     type: String,
     required: true
+  },
+  initialMessage: {
+    type: String,
+    default: ''
   }
 })
 
@@ -782,6 +786,20 @@ function summarizeToolInput(tool) {
 watch(() => props.agentName, () => {
   loadSchedules()
 })
+
+// Watch for initial message to pre-fill create form
+watch(() => props.initialMessage, (newMessage) => {
+  if (newMessage) {
+    // Pre-fill the form and open create modal
+    formData.value.message = newMessage
+    formData.value.name = ''
+    formData.value.cron_expression = ''
+    formData.value.description = ''
+    formData.value.timezone = 'UTC'
+    formData.value.enabled = true
+    showCreateForm.value = true
+  }
+}, { immediate: true })
 
 onMounted(() => {
   loadSchedules()

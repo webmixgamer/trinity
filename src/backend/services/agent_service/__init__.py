@@ -15,6 +15,7 @@ from .helpers import (
 )
 from .lifecycle import (
     inject_trinity_meta_prompt,
+    inject_assigned_credentials,
     start_agent_internal,
     recreate_container_with_updated_config,
 )
@@ -57,6 +58,9 @@ from .queue import (
 from .metrics import (
     get_agent_metrics_logic,
 )
+from .dashboard import (
+    get_agent_dashboard_logic,
+)
 from .stats import (
     get_agents_context_stats_logic,
     get_agent_stats_logic,
@@ -82,6 +86,7 @@ __all__ = [
     "check_api_key_env_matches",
     # Lifecycle
     "inject_trinity_meta_prompt",
+    "inject_assigned_credentials",
     "start_agent_internal",
     "recreate_container_with_updated_config",
     # CRUD
@@ -115,6 +120,8 @@ __all__ = [
     "force_release_agent_logic",
     # Metrics
     "get_agent_metrics_logic",
+    # Dashboard
+    "get_agent_dashboard_logic",
     # Stats
     "get_agents_context_stats_logic",
     "get_agent_stats_logic",

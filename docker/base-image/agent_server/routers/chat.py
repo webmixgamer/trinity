@@ -4,15 +4,18 @@ Chat endpoints for the agent server.
 Now supports multiple runtimes (Claude Code, Gemini CLI) via runtime adapter.
 """
 import json
+import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import StreamingResponse
 
 from ..models import ChatRequest, ModelRequest, ParallelTaskRequest
 from ..state import agent_state
 from ..services.claude_code import get_execution_lock
 from ..services.runtime_adapter import get_runtime
+from ..services.process_registry import get_process_registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -117,7 +120,8 @@ async def execute_task(request: ParallelTaskRequest):
         allowed_tools=request.allowed_tools,
         system_prompt=request.system_prompt,
         timeout_seconds=request.timeout_seconds or 300,
-        max_turns=request.max_turns
+        max_turns=request.max_turns,
+        execution_id=request.execution_id  # Use provided ID for process registry (enables termination)
     )
 
     logger.info(f"[Task] Task {session_id} completed successfully")
@@ -232,6 +236,142 @@ async def clear_chat_history():
         }
     }
 
+
+# ============================================================================
+# Execution Termination Endpoints
+# ============================================================================
+
+@router.post("/api/executions/{execution_id}/terminate")
+async def terminate_execution(execution_id: str):
+    """
+    Terminate a running execution by ID.
+
+    Sends SIGINT for graceful termination, then SIGKILL if needed.
+    This allows Claude Code to finish its current operation gracefully.
+    """
+    registry = get_process_registry()
+    result = registry.terminate(execution_id)
+
+    if result["success"]:
+        logger.info(f"[Terminate] Execution {execution_id} terminated successfully")
+        return {"status": "terminated", "execution_id": execution_id}
+    elif result["reason"] == "not_found":
+        raise HTTPException(status_code=404, detail="Execution not found")
+    elif result["reason"] == "already_finished":
+        return {"status": "already_finished", "execution_id": execution_id, "returncode": result.get("returncode")}
+    else:
+        raise HTTPException(status_code=500, detail=result.get("error", "Termination failed"))
+
+
+@router.get("/api/executions/running")
+async def list_running_executions():
+    """
+    List all currently running executions.
+
+    Returns execution_id, start time, and metadata for each running process.
+    """
+    registry = get_process_registry()
+    return {"executions": registry.list_running()}
+
+
+@router.get("/api/executions/{execution_id}/status")
+async def get_execution_status(execution_id: str):
+    """
+    Get status of a specific execution.
+
+    Returns running state, return code (if finished), and metadata.
+    """
+    registry = get_process_registry()
+    status = registry.get_status(execution_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return status
+
+
+# ============================================================================
+# Live Execution Streaming Endpoints
+# ============================================================================
+
+@router.get("/api/executions/{execution_id}/stream")
+async def stream_execution_log(execution_id: str):
+    """
+    Stream execution log entries via Server-Sent Events (SSE).
+
+    Sends log entries in real-time as they are produced by Claude Code.
+    If the execution is already running, first sends all buffered entries,
+    then streams new ones.
+
+    SSE Event format:
+    - data: JSON-encoded log entry from Claude Code
+    - Final message: {"type": "stream_end"}
+
+    Note: This endpoint has no authentication - security is handled by the
+    backend proxy which validates user access before proxying to agent.
+    """
+    registry = get_process_registry()
+
+    # Check if execution exists
+    if not registry.is_execution_running(execution_id):
+        # Try to get buffered logs for recently completed execution
+        buffered = registry.get_buffered_logs(execution_id)
+        if buffered is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        # Return buffered logs as static stream (for completed executions)
+        async def static_generator():
+            for entry in buffered:
+                yield f"data: {json.dumps(entry)}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+
+        return StreamingResponse(
+            static_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    # Subscribe to live stream
+    queue = registry.subscribe_logs(execution_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    async def event_generator():
+        """Generate SSE events from the log queue."""
+        try:
+            while True:
+                try:
+                    # Wait for next entry with timeout (allows checking if client disconnected)
+                    entry = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                    yield f"data: {json.dumps(entry)}\n\n"
+
+                    # Check if stream ended
+                    if entry.get("type") == "stream_end":
+                        break
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    yield ": keepalive\n\n"
+        finally:
+            # Unsubscribe when client disconnects
+            registry.unsubscribe_logs(execution_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+# ============================================================================
+# WebSocket Endpoints
+# ============================================================================
 
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):

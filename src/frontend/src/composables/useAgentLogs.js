@@ -42,7 +42,7 @@ export function useAgentLogs(agentRef, agentsStore) {
   // Watch for auto-refresh toggle
   watch(autoRefreshLogs, (enabled) => {
     if (enabled) {
-      logsRefreshInterval = setInterval(refreshLogs, 10000)
+      logsRefreshInterval = setInterval(refreshLogs, 15000)
     } else {
       if (logsRefreshInterval) {
         clearInterval(logsRefreshInterval)

@@ -2,7 +2,95 @@
 Utility helper functions for the Trinity backend.
 """
 import re
+from datetime import datetime, timezone
 from typing import List, Tuple
+
+
+# =============================================================================
+# Timezone-Aware Timestamp Utilities
+# =============================================================================
+#
+# IMPORTANT: All timestamps in Trinity MUST be stored and transmitted as UTC
+# with the 'Z' suffix to ensure consistent behavior across timezones.
+#
+# Use these functions instead of datetime.utcnow().isoformat() directly.
+# =============================================================================
+
+def utc_now() -> datetime:
+    """
+    Get current UTC time as timezone-aware datetime.
+
+    Returns:
+        datetime with UTC timezone info
+    """
+    return datetime.now(timezone.utc)
+
+
+def utc_now_iso() -> str:
+    """
+    Get current UTC time as ISO 8601 string with 'Z' suffix.
+
+    ALWAYS use this instead of datetime.utcnow().isoformat() to ensure
+    JavaScript correctly interprets timestamps as UTC.
+
+    Returns:
+        ISO timestamp like "2026-01-15T10:30:00.123456Z"
+
+    Example:
+        >>> utc_now_iso()
+        '2026-01-15T10:30:00.123456Z'
+    """
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+
+def to_utc_iso(dt: datetime) -> str:
+    """
+    Convert a datetime to UTC ISO 8601 string with 'Z' suffix.
+
+    If the datetime is naive (no timezone), it's assumed to be UTC.
+    If it has a timezone, it's converted to UTC first.
+
+    Args:
+        dt: datetime object (naive or timezone-aware)
+
+    Returns:
+        ISO timestamp with 'Z' suffix
+    """
+    if dt.tzinfo is None:
+        # Naive datetime - assume UTC
+        return dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    else:
+        # Convert to UTC
+        utc_dt = dt.astimezone(timezone.utc)
+        return utc_dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+
+def parse_iso_timestamp(timestamp: str) -> datetime:
+    """
+    Parse an ISO timestamp string to datetime.
+
+    Handles timestamps with or without timezone info:
+    - "2026-01-15T10:30:00Z" -> UTC
+    - "2026-01-15T10:30:00+00:00" -> UTC
+    - "2026-01-15T10:30:00" -> assumes UTC (adds UTC timezone)
+
+    Args:
+        timestamp: ISO 8601 timestamp string
+
+    Returns:
+        timezone-aware datetime in UTC
+    """
+    # Handle 'Z' suffix
+    if timestamp.endswith('Z'):
+        timestamp = timestamp[:-1] + '+00:00'
+
+    dt = datetime.fromisoformat(timestamp)
+
+    # If naive, assume UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt
 
 
 def parse_env_content(content: str) -> List[Tuple[str, str]]:

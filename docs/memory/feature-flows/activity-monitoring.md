@@ -16,7 +16,7 @@ As an agent operator, I want to see what tools Claude is using in real-time so t
 | Persistence | Lost on container restart | Permanent |
 | Scope | Current session only | All sessions, all time |
 | Granularity | Tool-level with full I/O | Activity-level with metadata |
-| Polling | 2-second HTTP polling | Database queries + WebSocket |
+| Polling | 5-second HTTP polling | Database queries + WebSocket |
 | Purpose | Real-time debugging | Analytics, audit, history |
 | Access | Per-agent endpoint | Cross-agent timeline queries |
 | Performance | Fast (in-memory) | Indexed queries |
@@ -65,7 +65,7 @@ async getActivityDetail(name, toolId) {
 ```javascript
 const startActivityPolling = () => {
   loadSessionActivity()  // Load immediately
-  activityRefreshInterval = setInterval(loadSessionActivity, 2000)  // Every 2 seconds
+  activityRefreshInterval = setInterval(loadSessionActivity, 5000)  // Every 5 seconds
 }
 ```
 
@@ -234,7 +234,7 @@ stderr_output, return_code = await loop.run_in_executor(
 ---
 
 ## Side Effects
-- **No WebSocket**: Uses polling (2-second interval)
+- **No WebSocket**: Uses polling (5-second interval)
 - **No Database**: Activity stored in-memory on agent container
 - **No Audit Log**: Activity is ephemeral
 
@@ -293,6 +293,7 @@ curl http://localhost:8000/api/agents/test-agent/activity/tool_123 \
 
 | Date | Changes |
 |------|---------|
+| 2026-01-12 | **Polling interval optimization**: Changed from 2-second to 5-second polling interval for reduced API load. Updated composable `useSessionActivity.js:117`. |
 | 2025-12-30 | **Updated line numbers**: Backend chat.py activity endpoints now at lines 681-790 (moved due to code additions). Updated agent-server references from monolithic `agent-server.py` to modular `agent_server/` package structure. |
 | 2025-12-02 | Initial documentation |
 

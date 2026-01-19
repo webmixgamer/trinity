@@ -2,6 +2,8 @@
 
 > **Phase 11.1 & 11.2** - Platform operations manager with privileged access
 >
+> **Updated 2026-01-13**: UI Consolidation - System agent now uses standard `AgentDetail.vue` instead of dedicated `SystemAgent.vue`. Accessible via `/agents/trinity-system` with full tab access including Schedules. Admin-only visibility on Agents page with purple ring and "SYSTEM" badge.
+>
 > **Updated 2026-01-09**: Added Schedule & Execution Management slash commands and `GET /api/ops/schedules` endpoint
 >
 > **Updated 2025-12-31**: Added AgentClient service pattern for HTTP communication
@@ -103,66 +105,73 @@ The Internal System Agent (`trinity-system`) is an auto-deployed, deletion-prote
 | `src/backend/services/agent_client.py` | Centralized agent HTTP client |
 | `src/backend/routers/settings.py` | Ops settings (OPS_SETTINGS_DEFAULTS) |
 | `src/backend/db/agents.py` | SYSTEM_AGENT_NAME constant, is_system checks |
-| `src/frontend/src/views/SystemAgent.vue` | **System Agent UI** - dedicated ops interface |
-| `src/frontend/src/components/NavBar.vue` | System link in navbar (admin-only) |
-| `src/frontend/src/router/index.js` | `/system-agent` route |
+| `src/frontend/src/views/AgentDetail.vue` | **System Agent UI** - uses standard agent detail with tab filtering (lines 414-448) |
+| `src/frontend/src/views/Agents.vue` | System agent display on Agents page (admin-only, purple ring, SYSTEM badge, lines 46-75) |
+| `src/frontend/src/stores/agents.js` | `systemAgent` getter (line 25-27), `sortedAgentsWithSystem` getter (line 39-41) |
+| `src/frontend/src/router/index.js` | `/system-agent` redirects to `/agents/trinity-system` (lines 77-81) |
 
 ## Frontend UI
 
-### Route
-- **Path**: `/system-agent`
-- **Access**: Admin-only (requires `role: "admin"`)
-- **NavBar**: Purple "System" link with CPU icon (visible to admins)
+### Route (Updated 2026-01-13)
+- **Path**: `/agents/trinity-system` (legacy `/system-agent` redirects here)
+- **Access**: Admin-only visibility on Agents page; full access on AgentDetail.vue
+- **NavBar**: "System" link removed - access via Agents page or direct URL
 
-### Components
+### UI Consolidation (2026-01-13)
 
-The `SystemAgent.vue` view provides a dedicated, ops-focused interface:
+The dedicated `SystemAgent.vue` has been removed. The system agent now uses the standard `AgentDetail.vue` with tab filtering:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    System Agent Header                               │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  [CPU Icon]  System Agent                    [running] [Restart]│  │
-│  │              Platform Operations Manager                        │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                       │
-│  │ Total  │ │Running │ │Stopped │ │ Issues │  <- Fleet Overview    │
-│  │   12   │ │   8    │ │   4    │ │   1    │                       │
-│  └────────┘ └────────┘ └────────┘ └────────┘                       │
-│                                                                      │
-│  ┌──────────────────┐  ┌────────────────────────────────────────┐  │
-│  │  Quick Actions   │  │     Operations Console                  │  │
-│  │                  │  │  ┌──────────────────────────────────┐   │  │
-│  │ [Emergency Stop] │  │  │ [/ops/status] [/ops/health] [...] │   │  │
-│  │ [Restart All]    │  │  └──────────────────────────────────┘   │  │
-│  │ [Pause Scheds]   │  │                                         │  │
-│  │ [Resume Scheds]  │  │  Chat messages appear here...           │  │
-│  │ [Refresh Status] │  │                                         │  │
-│  │                  │  │  [Enter command...              ] [Send]│  │
-│  └──────────────────┘  └────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+**Agents Page Display** (`src/frontend/src/views/Agents.vue`):
+- Lines 271-304: Admin check on mount (`GET /api/users/me`)
+- Lines 274-279: `displayAgents` computed - includes system agent for admins via `sortedAgentsWithSystem`
+- Lines 46-57: System agent card styling - purple ring (`ring-2 ring-purple-500/50`), purple border
+- Lines 69-75: "SYSTEM" badge next to agent name
 
-### Features
+**Store Changes** (`src/frontend/src/stores/agents.js`):
+- Lines 24-27: `systemAgent` getter - finds agent with `is_system: true`
+- Lines 38-41: `sortedAgentsWithSystem` getter - pins system agent at top of list
+- Lines 43-76: `_getSortedAgents()` helper - conditionally includes system agent
 
-| Feature | Description |
-|---------|-------------|
-| **Clean Header** | White/gray header with SYSTEM badge, consistent with rest of platform |
-| **Fleet Overview Cards** | Total, Running, Stopped, Issues counts |
-| **Quick Actions** | Emergency Stop, Restart All, Pause/Resume Schedules (muted styling) |
-| **Operations Console** | Chat interface for ops commands |
-| **Quick Command Buttons** | One-click `/ops/status`, `/ops/health`, `/ops/schedules` |
-| **Auto-refresh** | Polls status every 10 seconds |
+**AgentDetail Tab Filtering** (`src/frontend/src/views/AgentDetail.vue`):
+- Lines 414-448: `visibleTabs` computed property
+- Lines 427-430: Hides Sharing/Permissions tabs for system agent (not applicable)
+- Line 433: Schedules tab always visible (including for system agent)
+- Lines 442-445: Hides Folders/Public Links tabs for system agent
 
-### Design Decisions
+**Available Tabs for System Agent**:
+| Tab | Visible | Purpose |
+|-----|---------|---------|
+| Info | Yes | Agent metadata and template info |
+| Tasks | Yes | Manual task execution and history |
+| Dashboard | Yes | Agent-defined dashboard (if configured) |
+| Terminal | Yes | **Primary ops interface** - Claude Code TUI for `/ops/` commands |
+| Logs | Yes | Container logs |
+| Credentials | Yes | MCP API key and credentials |
+| Schedules | Yes | System agent scheduled tasks |
+| Git | Yes (if configured) | Git sync status |
+| Files | Yes | File browser |
+| Sharing | **No** | Not applicable (system agent) |
+| Permissions | **No** | Not applicable (system agent has full access) |
+| Folders | **No** | Not applicable (system agent) |
+| Public Links | **No** | Not applicable (system agent) |
 
-1. **Simplified Layout**: Unlike regular `AgentDetail.vue` with many tabs, this is a single-page ops dashboard
-2. **Consistent Styling**: Uses same muted color palette as rest of platform (no aggressive colors)
-3. **Quick Actions**: One-click buttons for common operations (no need to type commands)
-4. **Fleet Focus**: Shows aggregate stats, not individual agent details
-5. **Admin-Only**: Protected route - only admins can access
-6. **Blue Theme**: Chat bubbles and send button use blue (matching system color scheme)
+**Router Redirect** (`src/frontend/src/router/index.js`):
+- Lines 77-81: `/system-agent` redirects to `/agents/trinity-system`
+
+### Deleted Files (2026-01-13)
+| File | Lines | Reason |
+|------|-------|--------|
+| `src/frontend/src/views/SystemAgent.vue` | 782 | Replaced by AgentDetail.vue with tab filtering |
+| `src/frontend/src/components/SystemAgentTerminal.vue` | ~350 | Terminal functionality now uses standard TerminalPanelContent.vue |
+
+### Design Rationale
+
+1. **Unified Experience**: System agent uses same UI patterns as regular agents
+2. **Full Feature Access**: Schedules tab now available (was missing in old UI)
+3. **Reduced Maintenance**: One component instead of two parallel implementations
+4. **Tab Filtering**: Irrelevant tabs (Sharing, Permissions, Folders) hidden via computed property
+5. **Admin-Only Visibility**: System agent only appears on Agents page for admin users
+6. **Visual Distinction**: Purple ring and "SYSTEM" badge clearly identify the system agent
 
 ## API Endpoints
 
@@ -395,14 +404,14 @@ GET /api/ops/fleet/status
        │
        ▼
 ┌──────────────────────────────────────┐
-│ routers/ops.py:40-116                │
+│ routers/ops.py:40-100                │
 │ get_fleet_status()                   │
 └────────┬─────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────────┐
-│ list_all_agents()                    │
-│ Get all agent containers             │
+│ list_all_agents_fast()  (line 54)    │
+│ Get agents from labels only (~50ms)  │
 └────────┬─────────────────────────────┘
          │
          ▼
@@ -451,7 +460,9 @@ class AgentSessionInfo:
 - Uses `client.get_session()` at lines 167-169
 - Classifies context usage: critical (>90%), warning (>75%), healthy
 
-### 3. Emergency Stop Flow
+### 3. Emergency Stop Flow (Parallel Execution - 2026-01-14)
+
+**Performance Improvement**: Emergency stop now uses `ThreadPoolExecutor(max_workers=10)` to stop agents in parallel instead of sequentially. This significantly reduces the time to halt a large fleet during emergencies.
 
 ```
 POST /api/ops/emergency-stop
@@ -464,11 +475,14 @@ POST /api/ops/emergency-stop
 └────────┬─────────────────────────┘
          │
          ▼
-┌──────────────────────────────────┐
-│ 2. Stop all non-system agents    │
-│    - Skip trinity-system         │
-│    - container.stop(timeout=10)  │
-└────────┬─────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ 2. Stop all non-system agents IN PARALLEL            │
+│    - Filter to running non-system agents             │
+│    - ThreadPoolExecutor(max_workers=10)              │
+│    - _stop_agent_container() helper for each         │
+│    - container.stop(timeout=10) per agent            │
+│    - 60-second timeout for all futures               │
+└────────┬─────────────────────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────┐
@@ -478,6 +492,32 @@ POST /api/ops/emergency-stop
 │    - errors: [...]               │
 └──────────────────────────────────┘
 ```
+
+**Implementation** (`src/backend/routers/ops.py:591-682`):
+
+```python
+def _stop_agent_container(agent_name: str, timeout: int = 10) -> dict:
+    """Stop a single agent container. Used for parallel stopping."""
+    try:
+        container = get_agent_container(agent_name)
+        if container:
+            container.stop(timeout=timeout)
+            return {"agent": agent_name, "result": "stopped"}
+        return {"agent": agent_name, "result": "not_found"}
+    except Exception as e:
+        return {"agent": agent_name, "result": "error", "error": str(e)}
+
+# In emergency_stop():
+with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    futures = {
+        executor.submit(_stop_agent_container, agent_name, 10): agent_name
+        for agent_name in agents_to_stop
+    }
+    for future in concurrent.futures.as_completed(futures, timeout=60):
+        # Process results
+```
+
+**Why Parallel**: Docker SDK `container.stop()` is synchronous and waits for the container to stop (up to timeout). With 20 agents at 10-second timeout each, sequential stopping would take 200+ seconds. Parallel stopping with 10 workers reduces this to ~20-30 seconds.
 
 ### 4. Cost Monitoring Flow (OTel Access)
 
@@ -825,6 +865,48 @@ echo $TRINITY_MCP_API_KEY  # Should show the key
 curl -s http://backend:8000/api/ops/costs \
   -H "Authorization: Bearer $TRINITY_MCP_API_KEY"
 ```
+
+## Report Storage
+
+All ops reports are saved to organized directories in the system agent's workspace:
+
+```
+~/reports/
+├── fleet/              # /ops/status reports
+├── health/             # /ops/health reports
+├── costs/              # /ops/costs reports
+├── compliance/         # /ops/compatibility-audit reports
+├── service-checks/     # /ops/service-check reports
+├── schedules/          # /ops/schedules/list reports
+└── executions/         # /ops/executions/list reports
+```
+
+**Naming Convention**: `YYYY-MM-DD_HHMM.md` (e.g., `2026-01-13_1430.md`)
+
+**Workflow**:
+1. Command generates report following instructions
+2. Creates directory if needed: `mkdir -p ~/reports/{type}`
+3. Saves with timestamp: `~/reports/{type}/YYYY-MM-DD_HHMM.md`
+4. Outputs to chat for immediate viewing
+5. Confirms save location
+
+**Finding Latest Report**:
+```bash
+ls -1 ~/reports/fleet/ | tail -1
+```
+
+**gitignored**: The `reports/` directory is excluded from Git sync.
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-14 | **Emergency Stop Parallel Execution (LOW)**: Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)` in `routers/ops.py:591-682`. Added `_stop_agent_container()` helper function for thread pool execution. Reduces emergency stop time from 200+ seconds (sequential) to 20-30 seconds for a 20-agent fleet. Uses 60-second timeout for all futures with `concurrent.futures.as_completed()`. |
+| 2026-01-13 | **Report Storage**: Added organized report storage in `~/reports/` with subdirectories per report type. All slash commands now save reports with timestamped filenames. Added `.gitignore` to exclude reports from sync. |
+| 2026-01-13 | **UI Consolidation**: Removed dedicated `SystemAgent.vue` (782 lines) and `SystemAgentTerminal.vue` (~350 lines). System agent now uses standard `AgentDetail.vue` with tab filtering (`visibleTabs` computed, lines 414-448). Added `systemAgent` and `sortedAgentsWithSystem` getters to `agents.js` store (lines 25-27, 39-41). System agent visible on Agents page for admins only with purple ring and "SYSTEM" badge (Agents.vue lines 46-75). `/system-agent` route redirects to `/agents/trinity-system`. Schedules tab now available for system agent. |
+| 2026-01-12 | **Docker Stats Optimization**: Updated fleet status flow - `list_all_agents_fast()` now used at ops.py:54 instead of `list_all_agents()`. Avoids slow Docker API calls for better dashboard performance (~50ms vs 2-3s). |
+| 2026-01-09 | Added Schedule & Execution Management slash commands and `GET /api/ops/schedules` endpoint |
+| 2025-12-31 | Added AgentClient service pattern for HTTP communication |
 
 ## Related Documents
 

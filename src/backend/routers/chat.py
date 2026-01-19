@@ -4,6 +4,7 @@ Agent chat and activity routes for the Trinity backend.
 Includes execution queue integration to prevent parallel execution on the same agent.
 """
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import StreamingResponse
 import httpx
 import json
 import logging
@@ -216,11 +217,13 @@ async def chat_with_agent(
     )
 
     # Track chat start activity
+    # triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls, "user" for UI chat
+    activity_triggered_by = "agent" if x_source_agent else ("mcp" if x_via_mcp else "user")
     chat_activity_id = await activity_service.track_activity(
         agent_name=name,
         activity_type=ActivityType.CHAT_START,
         user_id=current_user.id,
-        triggered_by="agent" if x_source_agent else "user",
+        triggered_by=activity_triggered_by,
         parent_activity_id=collaboration_activity_id,  # Link to collaboration if agent-initiated
         related_execution_id=task_execution_id,  # Database execution ID for structured queries
         details={
@@ -485,12 +488,14 @@ async def execute_parallel_task(
 
     try:
         # Build payload for agent's /api/task endpoint
+        # Pass execution_id so agent uses it for process registry (enables termination tracking)
         payload = {
             "message": request.message,
             "model": request.model,
             "allowed_tools": request.allowed_tools,
             "system_prompt": request.system_prompt,
-            "timeout_seconds": request.timeout_seconds
+            "timeout_seconds": request.timeout_seconds,
+            "execution_id": execution_id  # Database execution ID for process registry
         }
 
         start_time = datetime.utcnow()
@@ -557,16 +562,23 @@ async def execute_parallel_task(
             }
         )
 
+        # Add database execution ID to response for frontend tracking
+        response_data["task_execution_id"] = execution_id
+
         return response_data
 
     except httpx.TimeoutException:
-        # Update execution record with timeout failure
+        # Update execution record with timeout failure - but NOT if already cancelled
         if execution_id:
-            db.update_execution_status(
-                execution_id=execution_id,
-                status="failed",
-                error=f"Task execution timed out after {request.timeout_seconds} seconds"
-            )
+            existing = db.get_execution(execution_id)
+            if existing and existing.status == "cancelled":
+                logger.info(f"Execution {execution_id} already cancelled, not overwriting with timeout status")
+            else:
+                db.update_execution_status(
+                    execution_id=execution_id,
+                    status="failed",
+                    error=f"Task execution timed out after {request.timeout_seconds} seconds"
+                )
 
         await activity_service.complete_activity(
             activity_id=task_activity_id,
@@ -593,13 +605,18 @@ async def execute_parallel_task(
                     error_msg = e.response.text[:500]
         logger.error(f"Failed to execute parallel task on {name}: {error_msg}")
 
-        # Update execution record with failure
+        # Update execution record with failure - but NOT if already cancelled (terminated by user)
         if execution_id:
-            db.update_execution_status(
-                execution_id=execution_id,
-                status="failed",
-                error=error_msg
-            )
+            # Check if execution was already cancelled (terminated by user)
+            existing = db.get_execution(execution_id)
+            if existing and existing.status == "cancelled":
+                logger.info(f"Execution {execution_id} already cancelled, not overwriting with failed status")
+            else:
+                db.update_execution_status(
+                    execution_id=execution_id,
+                    status="failed",
+                    error=error_msg
+                )
 
         await activity_service.complete_activity(
             activity_id=task_activity_id,
@@ -1050,3 +1067,191 @@ async def close_chat_session(
         return {"status": "closed", "session_id": session_id}
     else:
         raise HTTPException(status_code=500, detail="Failed to close session")
+
+
+# ============================================================================
+# Execution Termination Routes
+# ============================================================================
+
+@router.post("/{name}/executions/{execution_id}/terminate")
+async def terminate_agent_execution(
+    name: str,
+    execution_id: str,
+    task_execution_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Terminate a running execution on an agent.
+
+    Proxies the termination request to the agent container and clears
+    the execution queue state if successful.
+
+    Args:
+        name: Agent name
+        execution_id: The execution ID to terminate (from process registry)
+        task_execution_id: Optional database execution ID to update status
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    try:
+        # Proxy termination request to agent container
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"http://agent-{name}:8000/api/executions/{execution_id}/terminate"
+            )
+
+        result = response.json()
+
+        # Handle different termination outcomes
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Execution not found in agent")
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=result.get("detail", "Termination failed")
+            )
+
+        # Clear queue state if termination succeeded
+        if result.get("status") in ["terminated", "already_finished"]:
+            queue = get_execution_queue()
+            await queue.force_release(name)
+            logger.info(f"[Terminate] Released queue for agent '{name}' after terminating execution {execution_id}")
+
+            # Update database execution record if provided
+            if task_execution_id:
+                db.update_execution_status(
+                    execution_id=task_execution_id,
+                    status="cancelled",
+                    error="Execution terminated by user"
+                )
+                logger.info(f"[Terminate] Updated database execution {task_execution_id} to cancelled")
+
+        # Track termination activity
+        await activity_service.track_activity(
+            agent_name=name,
+            activity_type=ActivityType.EXECUTION_CANCELLED,
+            user_id=current_user.id,
+            triggered_by="user",
+            related_execution_id=task_execution_id,
+            details={
+                "execution_id": execution_id,
+                "task_execution_id": task_execution_id,
+                "status": result.get("status"),
+                "returncode": result.get("returncode")
+            }
+        )
+
+        return result
+
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to agent '{name}'"
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Timeout connecting to agent '{name}'"
+        )
+
+
+@router.get("/{name}/executions/running")
+async def get_agent_running_executions(
+    name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get list of running executions on an agent.
+
+    Returns execution IDs, start times, and metadata for running processes.
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        return {"executions": []}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"http://agent-{name}:8000/api/executions/running"
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError:
+        return {"executions": []}
+
+
+# ============================================================================
+# Live Execution Streaming Routes
+# ============================================================================
+
+@router.get("/{name}/executions/{execution_id}/stream")
+async def stream_execution_log(
+    name: str,
+    execution_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Stream execution log entries via Server-Sent Events (SSE).
+
+    Proxies the SSE stream from the agent container to the frontend.
+    Validates user access before starting the stream.
+
+    SSE Event format:
+    - data: JSON-encoded log entry from Claude Code
+    - Final message: {"type": "stream_end"}
+
+    Use this endpoint for live monitoring of running executions.
+    """
+    container = get_agent_container(name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    async def proxy_stream():
+        """Proxy SSE stream from agent container."""
+        agent_url = f"http://agent-{name}:8000/api/executions/{execution_id}/stream"
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", agent_url) as response:
+                    if response.status_code == 404:
+                        # Execution not found - send error and close
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+                        return
+
+                    if response.status_code != 200:
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Agent returned {response.status_code}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+                        return
+
+                    # Stream through data from agent
+                    async for chunk in response.aiter_text():
+                        yield chunk
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to connect to agent'})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+        except Exception as e:
+            logger.error(f"[Stream] Error streaming from agent {name}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+
+    return StreamingResponse(
+        proxy_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

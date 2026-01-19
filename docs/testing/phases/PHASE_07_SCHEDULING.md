@@ -21,7 +21,7 @@
 
 ### Step 1: Navigate to test-scheduler
 **Action**:
-- Go to http://localhost:3000/agents
+- Go to http://localhost/agents
 - Click test-scheduler
 - Wait for detail page to load
 

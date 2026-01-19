@@ -1,3 +1,804 @@
+### 2026-01-15 14:00:00
+🐛 **Fix: Timezone-Aware Timestamp Handling (Critical)**
+
+**Problem**: Dashboard Timeline showed executions at wrong times when server runs in different timezone than user. Events appearing hours in the past/future.
+
+**Root Cause**: Backend timestamps stored without timezone indicator (`"2026-01-15T10:30:00"`), causing JavaScript to interpret them as local time instead of UTC.
+
+**Solution**: Comprehensive timezone handling across the stack:
+
+**Backend Changes**:
+- Added `utc_now_iso()`, `to_utc_iso()`, `parse_iso_timestamp()` utilities to `src/backend/utils/helpers.py`
+- All timestamps now include 'Z' suffix (e.g., `"2026-01-15T10:30:00Z"`)
+- Updated `db/activities.py` and `db/schedules.py` to use new utilities
+- Updated `models.py` Pydantic serializers to output UTC with 'Z' suffix
+
+**Frontend Changes**:
+- Added `parseUTC()`, `getTimestampMs()`, `formatLocalTime()` utilities to `src/frontend/src/utils/timestamps.js`
+- Updated composables `useFormatters.js` with timezone-aware parsing
+- Updated `network.js` store to use timestamp utilities
+- Updated `ReplayTimeline.vue` to correctly parse UTC timestamps
+
+**Documentation**:
+- Added comprehensive guide: `docs/TIMEZONE_HANDLING.md`
+
+**Files Modified**:
+- `src/backend/utils/helpers.py` - Added timestamp utilities
+- `src/backend/db/activities.py` - Use UTC with 'Z' suffix
+- `src/backend/db/schedules.py` - Use UTC with 'Z' suffix
+- `src/backend/models.py` - Updated Pydantic serializers
+- `src/frontend/src/utils/timestamps.js` - New timestamp utilities
+- `src/frontend/src/composables/useFormatters.js` - Added timezone-aware parsing
+- `src/frontend/src/stores/network.js` - Use timestamp utilities
+- `src/frontend/src/components/ReplayTimeline.vue` - Use timestamp utilities
+
+**Impact**: Timeline events now display at correct positions regardless of server/user timezone difference.
+
+---
+
+### 2026-01-15 12:35:00
+✨ **Enhancement: Distinct Color for MCP Executions on Timeline**
+
+**Change**: MCP executions (via Claude Code MCP client) now have their own distinct **pink/rose** color on the Dashboard Timeline, making them easily distinguishable from manual tasks.
+
+**Updates**:
+- Color: Pink (#ec4899 active, #f9a8d4 inactive) for `triggered_by='mcp'`
+- Tooltip: Shows "MCP Task" prefix instead of generic "Task"
+- Legend: Added "MCP" entry with pink color dot
+
+**Files Modified**:
+- `src/frontend/src/components/ReplayTimeline.vue:73-76` - Legend entry
+- `src/frontend/src/components/ReplayTimeline.vue:899-902` - Color logic
+- `src/frontend/src/components/ReplayTimeline.vue:926-927` - Tooltip prefix
+
+**Visual**:
+- 🟢 Manual (green) - Tasks triggered from UI
+- 🩷 MCP (pink) - Tasks triggered via MCP client
+- 🟣 Scheduled (purple) - Cron-scheduled tasks
+- 🩵 Agent-Triggered (cyan) - Agent-to-agent calls
+
+---
+
+### 2026-01-15 11:45:00
+🐛 **Fix: MCP Executions Not Appearing on Dashboard Timeline**
+
+**Problem**: Executions triggered via MCP showed in Tasks tab but NOT on Timeline view.
+
+**Root Causes**:
+1. **API field mismatch**: Backend returned `"timeline"` field, frontend expected `"activities"` (introduced Jan 11)
+2. **Activity triggered_by mismatch**: Task execution used `triggered_by="mcp"`, but activity creation used `triggered_by="user"`, which frontend filters out
+
+**Fixes**:
+- Backend: Changed `/api/activities/timeline` response from `"timeline"` to `"activities"` field
+- Backend: Activity creation now uses `triggered_by="mcp"` for user MCP calls (matching task execution)
+- Frontend: Updated filter comment to document MCP support
+
+**Files Modified**:
+- `src/backend/routers/agents.py:633` - API response field name
+- `src/backend/routers/chat.py:221` - Activity triggered_by logic
+- `src/frontend/src/stores/network.js:161` - Filter comment
+
+**Impact**: All execution types (scheduled, manual, MCP) now consistently appear on Dashboard Timeline.
+
+---
+
+### 2026-01-15 09:30:00
+🐛 **Fix: Dashboard Timeline Visible Even With No Events**
+
+**Problem**: Timeline view was hidden/empty when there were no historical events in the selected time range, preventing users from seeing live events as they streamed in.
+
+**Root Cause**: `timelineStart` and `timelineEnd` computed properties in `network.js` returned `null` when `historicalCollaborations` was empty, causing ReplayTimeline to render nothing.
+
+**Fix**: Changed computed properties to always provide a valid time range:
+- `timelineStart` = now - timeRangeHours (e.g., 24h ago)
+- `timelineEnd` = now (always current time for live mode)
+
+**File Modified**: `src/frontend/src/stores/network.js:94-111`
+
+**Impact**: Timeline grid is now always visible with all agent rows, ready to show live events via WebSocket even when there's no historical data.
+
+---
+
+### 2026-01-14 13:15:00
+🐛 **Security Fix: Multiple Bug Fixes from Best Practices Audit**
+
+Implemented 5 bug fixes from the security audit (docs/bugs/BUG_FIX_REQUIREMENTS.md):
+
+**Bug 1: Execution Queue Race Conditions (HIGH)**
+- Fixed `submit()` to use atomic `SET NX EX` for slot acquisition
+- Fixed `complete()` to use Lua script for atomic pop-and-set
+- Replaced `KEYS` with `SCAN` in `get_all_busy_agents()` for production safety
+- File: `src/backend/services/execution_queue.py`
+
+**Bug 2: Missing Auth on Lifecycle Endpoints (HIGH)**
+- Changed `start_agent_endpoint` to use `AuthorizedAgentByName` dependency
+- Changed `stop_agent_endpoint` to use `AuthorizedAgentByName` dependency
+- Changed `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency
+- File: `src/backend/routers/agents.py:315-384`
+
+**Bug 3: Container Security Inconsistency (HIGH)**
+- Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants
+- Fixed ALL container creation paths to ALWAYS apply baseline security:
+  - Always use `cap_drop=['ALL']` then add back specific caps
+  - Always apply AppArmor profile
+  - Always apply `noexec,nosuid` to /tmp
+- Files modified:
+  - `src/backend/services/agent_service/lifecycle.py` - Container recreation
+  - `src/backend/services/agent_service/crud.py` - Initial container creation
+  - `src/backend/services/system_agent_service.py` - System agent creation
+
+**Bug 4: Executions 404 for Non-Existent Agent (LOW)**
+- Verified `AuthorizedAgent` dependency already checks existence via `db.get_agent_owner()`
+- Added clarifying docstring to endpoint
+- File: `src/backend/routers/schedules.py:309-320`
+
+**Bug 5: Test Client Headers Bug (LOW)**
+- Verified already fixed - `kwargs.pop('headers', {})` prevents double passing
+- File: `tests/utils/api_client.py`
+
+**Bug 6: Emergency Stop Timeout (LOW)**
+- Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)`
+- Reduced worst-case time from N*10s to ~20s for many agents
+- Added helper function `_stop_agent_container()` for thread pool
+- File: `src/backend/routers/ops.py:591-682`
+
+---
+
+### 2026-01-14 12:35:00
+🧪 **Test: Updated Phase 3 Context Validation**
+
+**Change**: Rewrote Phase 3 test to not test context via Terminal (which bypasses context tracking).
+
+**New Test Focus**:
+- Validates Tasks panel functionality instead
+- Documents that context tracking only works for `/api/chat` (not Terminal or Tasks)
+- Provides optional API-based test for verifying context tracking
+
+**File Modified**: `docs/testing/phases/PHASE_03_CONTEXT_VALIDATION.md`
+
+---
+
+### 2026-01-14 12:30:00
+🐛 **Fix: Public Links URL Generation (CRITICAL)**
+
+**Problem**: Public links were generated with wrong port (3000 instead of 80), making them non-functional in Docker deployment.
+
+**Root Cause**: Default `FRONTEND_URL` in `config.py` was `http://localhost:3000` (Vite dev server port), but Docker Compose serves frontend on port 80.
+
+**Fix**: Changed default to `http://localhost` (port 80, standard HTTP).
+
+**Files Modified**:
+- `src/backend/config.py:41` - Changed default FRONTEND_URL from port 3000 to port 80
+- `docs/memory/feature-flows/public-agent-links.md` - Updated configuration example
+
+**Impact**: Public shareable links now work correctly in Docker deployments.
+
+---
+
+### 2026-01-14 12:25:00
+📝 **Documented: Context Tracking Design Limitation**
+
+**Issue from UI Test**: Context tracking stuck at 0% when using Terminal mode.
+
+**Root Cause Analysis**: Terminal mode runs Claude Code directly via PTY (docker exec), bypassing the `/api/chat` endpoint that tracks context. This is by design, not a bug.
+
+**Context Tracking Works For**:
+- `/api/chat` - Session-based chat (tracks context per turn)
+- Scheduled tasks that use conversational context
+
+**Context Tracking Does Not Work For**:
+- Terminal mode (PTY bypass, direct Claude TUI access)
+- `/api/task` endpoint (stateless, no session context)
+
+**Note**: The test report incorrectly identified this as "only counting input_tokens, not cached tokens". The actual issue is architectural - Terminal bypasses the context tracking system entirely.
+
+---
+
+### 2026-01-14 12:20:00
+✅ **Validated: UI Tab Navigation Working Correctly**
+
+**Issue from UI Test**: Report claimed "UI Tab Navigation Broken" in Phases 7, 22.
+
+**Investigation**: Manually tested all 13 tabs (Info, Tasks, Dashboard, Terminal, Logs, Credentials, Sharing, Permissions, Schedules, Git, Files, Folders, Public Links) using Playwright.
+
+**Result**: All tabs navigate correctly. Click handlers work, content switches properly.
+
+**Conclusion**: Test failure was likely a timing/automation issue, not an actual bug. Tabs with horizontal scroll may require proper viewport handling in automated tests.
+
+---
+
+### 2026-01-13 23:15:00
+🔧 **Scheduler Migration Complete - Embedded Scheduler Disabled**
+
+**Change**: Disabled the old embedded scheduler in the backend, completing the migration to the dedicated scheduler service.
+
+**Files Modified**:
+- `src/backend/main.py:196-203` - Removed `scheduler_service.initialize()` call
+- `src/backend/main.py:214-215` - Removed `scheduler_service.shutdown()` call
+
+**Architecture**:
+- Schedule execution now handled exclusively by `trinity-scheduler` container
+- Backend still imports `scheduler_service` for manual trigger functionality
+- CRUD operations update database; dedicated scheduler reloads from DB
+
+**Test Results**: 71/71 scheduler tests passed (100%)
+
+**Impact**:
+- No more duplicate schedule executions from multiple uvicorn workers
+- Redis distributed locking prevents race conditions
+- Clean separation of concerns: backend = API, scheduler = execution
+
+---
+
+### 2026-01-13 21:00:06
+🐳 **Dedicated Scheduler Service - Implementation Complete**
+
+**Problem Solved**: Multiple uvicorn workers caused duplicate schedule executions (each worker ran its own APScheduler).
+
+**Solution**: Standalone scheduler service with Redis distributed locking.
+
+**New Components**:
+- `src/scheduler/` - Python service (config, models, database, agent_client, locking, service, main)
+- `docker/scheduler/` - Dockerfile, requirements.txt, docker-compose.test.yml
+- `tests/scheduler_tests/` - 71 unit tests (all passing)
+- `docs/memory/feature-flows/scheduler-service.md` - Feature flow documentation
+
+**Key Features**:
+- Single-instance design prevents duplicates
+- Redis lock: `scheduler:lock:schedule:{id}` with 600s TTL, auto-renewal at 300s
+- Agent HTTP client with 15-min timeout to `/api/task`
+- Health endpoints: `/health`, `/status`
+- Redis pub/sub events: `schedule_execution_started`, `schedule_execution_completed`
+
+**Integration Tested**:
+- Docker build ✅
+- Redis connection ✅
+- Database operations ✅
+- Cron scheduling ✅
+- Execution tracking ✅
+
+---
+
+### 2026-01-13 23:00:00
+🎨 **UX: Dashboard Default View & Clickable Logo**
+
+**Changes**:
+1. **Header logo now clickable** - Trinity logo and title navigate to Dashboard (`/`)
+2. **Timeline is now the default view** - New users see Timeline view instead of Graph
+
+**Files Modified**:
+- `src/frontend/src/components/NavBar.vue:6-9` - Logo wrapped in `<router-link to="/">`
+- `src/frontend/src/stores/network.js:53-55` - `isTimelineMode` defaults to `true` if no localStorage preference
+- `docs/memory/feature-flows/dashboard-timeline-view.md` - Updated user journey and revision history
+
+---
+
+### 2026-01-13 22:30:00
+🔬 **Research: Dedicated Scheduler Service Architecture**
+
+**Problem Identified**: Production runs with `--workers 2` (docker-compose.prod.yml:72), causing each worker to initialize its own APScheduler instance with in-memory job store. Result: **duplicate schedule executions**.
+
+**Root Cause Analysis**:
+- APScheduler 3.x has no inter-process coordination
+- MemoryJobStore is not shared between workers
+- Each worker fires the same scheduled jobs independently
+
+**Research Conducted**:
+- APScheduler 4.0: Built-in distributed scheduling via `RedisEventBroker` + shared data stores
+- Distributed locking: `python-redis-lock` with auto-renewal for long executions
+- Architecture patterns: Dedicated scheduler service vs embedded scheduler
+
+**Solution Options Documented**:
+1. **Phase 1 (Immediate)**: Add distributed lock to `_execute_schedule()` OR single worker mode
+2. **Phase 2 (Proper)**: Separate scheduler into dedicated container service
+3. **Phase 3 (Future)**: Migrate to APScheduler 4.0 when stable
+
+**Files Created**:
+- `docs/requirements/DEDICATED_SCHEDULER_SERVICE.md` - Full implementation spec with code examples
+
+**Files Modified**:
+- `docs/memory/roadmap.md` - Added bug to priority queue, added 11.6 Dedicated Scheduler Service
+
+**Sources**:
+- [APScheduler 4.0 API](https://apscheduler.readthedocs.io/en/master/api.html)
+- [APScheduler Migration Guide](https://apscheduler.readthedocs.io/en/master/migration.html)
+- [Redis Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)
+- [python-redis-lock Docs](https://python-redis-lock.readthedocs.io/en/latest/readme.html)
+
+---
+
+### 2026-01-13 21:30:00
+📝 **Docs: Dashboard Widget Field Names**
+
+**Problem**: Agents building dashboards were using incorrect field names, causing validation errors:
+- `text` widgets using `text`/`value`/`label` instead of `content`
+- `list` widgets using `values`/`list` instead of `items`
+- `link` widgets using `href` instead of `url`
+
+**Solution**: Updated `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md`:
+- Added complete examples for ALL 11 widget types (was only 3)
+- Highlighted required field names in bold in the table
+- Added "IMPORTANT" warning box with common field name mistakes
+- Each widget example includes inline comments showing which fields are required
+
+**Files Modified**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Agent Dashboard section expanded
+
+---
+
+### 2026-01-13 20:45:00
+📝 **Docs: Session Management Feature Flow**
+- Updated `docs/memory/feature-flows/persistent-chat-tracking.md` with Session Management section
+- Documented user stories: EXEC-019 (list sessions), EXEC-020 (view session), EXEC-021 (close session)
+- Added backend endpoints with request/response examples
+- Added database layer methods table with line numbers
+- Added access control matrix (user vs admin)
+- Added comprehensive testing section with 6 test cases + edge cases
+- Note: Backend API complete, frontend UI not yet implemented
+
+**Key Files**:
+- `src/backend/routers/chat.py:967-1067` - Session endpoints
+- `src/backend/db/chat.py:145-245` - Database operations
+
+---
+
+### 2026-01-13 13:34:57
+✨ **Feature: Live Button in Tasks Panel**
+- Added "Live" button for running tasks in TasksPanel
+- Green pulsing badge indicates streaming is available
+- Navigates to ExecutionDetail page with live streaming
+- Uses explicit ID logic: server tasks use `task.id`, local tasks use `task.execution_id`
+- Key file: `src/frontend/src/components/TasksPanel.vue`
+
+---
+
+### 2026-01-13 18:00:00
+📡 **Feature: Live Execution Streaming**
+
+**Problem**: Execution logs were only available after task completion. For long-running tasks (10+ minutes), users had no visibility into progress and couldn't make informed decisions about termination.
+
+**Solution**: Real-time streaming of Claude Code execution logs to the Execution Detail page via Server-Sent Events (SSE).
+
+**Key Features**:
+- Live streaming indicator with animated pulse
+- Auto-scroll with toggle control
+- Stop button integration during streaming
+- Late joiner support (buffered entries sent on subscribe)
+- Graceful stream end on execution completion
+- Fallback to static log on connection failure
+
+**Technical Implementation**:
+- Agent Server: ProcessRegistry extended with log queues and pub/sub methods
+- Agent Server: New `/api/executions/{id}/stream` SSE endpoint
+- Backend: Proxy endpoint with auth validation
+- Frontend: Fetch-based SSE reader (not EventSource, due to header limitations)
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/process_registry.py` - Added log streaming infrastructure
+- `docker/base-image/agent_server/services/claude_code.py` - Publish entries as they arrive
+- `docker/base-image/agent_server/routers/chat.py` - Added SSE streaming endpoint
+- `src/backend/routers/chat.py` - Added proxy streaming endpoint
+- `src/frontend/src/views/ExecutionDetail.vue` - Streaming UI with live indicator
+
+**Spec**: `docs/requirements/LIVE_EXECUTION_STREAMING.md`
+
+---
+
+### 2026-01-13 14:30:00
+📁 **Feature: System Agent Report Storage**
+
+**Enhancement**: System agent now saves all generated reports to organized directories for historical tracking.
+
+**Report Storage Structure**:
+```
+~/reports/
+├── fleet/              # /ops/status reports
+├── health/             # /ops/health reports
+├── costs/              # /ops/costs reports
+├── compliance/         # /ops/compatibility-audit reports
+├── service-checks/     # /ops/service-check reports
+├── schedules/          # /ops/schedules/list reports
+└── executions/         # /ops/executions/list reports
+```
+
+**Naming Convention**: `YYYY-MM-DD_HHMM.md` (e.g., `2026-01-13_1430.md`)
+
+**Files Modified**:
+- `config/agent-templates/trinity-system/CLAUDE.md` - Added "Report Storage" section with directory structure and workflow
+- `config/agent-templates/trinity-system/.claude/commands/ops/status.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/health.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/costs.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/compatibility-audit.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/service-check.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/schedules/list.md` - Added save instructions
+- `config/agent-templates/trinity-system/.claude/commands/ops/executions/list.md` - Added save instructions
+
+**Files Created**:
+- `config/agent-templates/trinity-system/.gitignore` - Excludes reports/, dashboard.yaml, metrics.json, credentials
+
+**Result**: Reports are now persisted for historical review. Latest report found by sorting filenames alphabetically.
+
+---
+
+### 2026-01-13 12:30:00
+🔧 **Refactor: System Agent UI Consolidation**
+
+**Problem**: System agent (`trinity-system`) had a dedicated `/system-agent` page with limited functionality - no Schedules tab. Regular agents had better feature parity.
+
+**Solution**: Consolidated system agent into the regular agents interface:
+- System agent now appears in Agents list (pinned at top, admin-only visibility)
+- System agent uses `AgentDetail.vue` with full tab access including **Schedules**
+- Purple ring and "SYSTEM" badge distinguish system agent visually
+- Tabs hidden for system agent: Sharing, Permissions, Folders, Public Links (not applicable)
+- Tabs shown: Info, Tasks, Dashboard, Terminal, Logs, Credentials, **Schedules**, Git, Files
+
+**Files Modified**:
+- `src/frontend/src/stores/agents.js` - Added `systemAgent` getter, `sortedAgentsWithSystem` getter, `_getSortedAgents()` internal function
+- `src/frontend/src/views/Agents.vue` - Added admin check, `displayAgents` computed, system agent visual styling
+- `src/frontend/src/views/AgentDetail.vue` - Updated `visibleTabs` to hide irrelevant tabs for system agent
+- `src/frontend/src/components/NavBar.vue` - Removed "System" link
+- `src/frontend/src/router/index.js` - Changed `/system-agent` route to redirect to `/agents/trinity-system`
+
+**Files Deleted**:
+- `src/frontend/src/views/SystemAgent.vue` - 782 lines (consolidated into AgentDetail)
+- `src/frontend/src/components/SystemAgentTerminal.vue` - ~350 lines (uses standard TerminalPanelContent)
+
+**Result**: System agent now has full feature parity with regular agents, including scheduling capabilities.
+
+---
+
+### 2026-01-13 09:45:00
+📝 **Docs: Requirements.md Cleanup & Restructure**
+
+**Problem**: requirements.md was bloated (1820 lines) with duplicate section numbers, misleading section names, excessive implementation details, and stale entries.
+
+**Issues Fixed**:
+1. **Duplicate Section 12** - Multi-Runtime renumbered to Section 14
+2. **Misleading names** - "In Progress Features" (mostly complete) and "Planned Features" (mostly removed) reorganized into logical groups
+3. **Confusing Phase labels** - Removed "Phase 12.x" references from Section 11 items
+4. **Stale entry** - Updated "Agent Custom Metrics" to "Agent Dashboard" (implemented 2026-01-12)
+5. **Excessive detail** - Condensed completed features from 20-50 lines to 3-5 lines each
+6. **Removed features** - Collapsed to 2-3 lines with removal date/reason
+
+**New Structure** (18 sections, ~560 lines):
+1. Core Agent Management
+2. Authentication & Authorization
+3. Credential Management
+4. Template System
+5. Agent Chat & Terminal
+6. Activity Monitoring
+7. MCP Server
+8. Infrastructure (+ Vector Logging)
+9. Agent Collaboration (+ Timeline View, Replay Timeline)
+10. Scheduling & Autonomy
+11. GitHub Integration
+12. Platform Operations (+ System Agent UI)
+13. Content & File Management (+ Tasks Tab, Execution Log/Detail)
+14. Multi-Runtime Support
+15. Public Access
+16. Advanced Features (+ Local Deploy, Agents Page UI, Dark Mode)
+17. Planned Features
+18. Future Vision
+
+**Cross-check with feature-flows.md**: All 48 documented flows now have corresponding requirements entries.
+
+**Result**: Document reduced from ~1820 to ~560 lines (69% reduction) while ensuring complete alignment with feature-flows.md.
+
+**Files Modified**:
+- `docs/memory/requirements.md` - Complete restructure
+
+---
+
+### 2026-01-13 08:19:28
+✨ **Feature: Execution Termination Status Persistence**
+
+**Problem**: When a task was terminated, the "cancelled" status was being overwritten by "failed" with "Task returned empty response" error. The termination correctly updated the DB to "cancelled", but the /task endpoint's error handler subsequently overwrote it.
+
+**Solution**:
+1. Backend now passes database `execution_id` to agent's process registry (same ID for both)
+2. Termination endpoint accepts `task_execution_id` param to update database
+3. Error handlers check if execution already "cancelled" before overwriting with "failed"
+4. Added orange "cancelled" status styling in UI (distinct from red "failed")
+
+**Files Modified**:
+- `src/backend/routers/chat.py` - Pass execution_id to agent, check cancelled status before overwrite
+- `docker/base-image/agent_server/models.py` - Add execution_id to ParallelTaskRequest
+- `docker/base-image/agent_server/routers/chat.py` - Pass execution_id to runtime
+- `docker/base-image/agent_server/services/claude_code.py` - Use provided execution_id for process registry
+- `docker/base-image/agent_server/services/runtime_adapter.py` - Add execution_id param to interface
+- `docker/base-image/agent_server/services/gemini_runtime.py` - Add execution_id param
+- `src/frontend/src/components/TasksPanel.vue` - Pass task_execution_id on terminate, add cancelled styling
+
+---
+
+### 2026-01-13 08:17:00
+✨ **Feature: Clickable Agent Names in Dashboard**
+
+**Enhancement**: Agent names on the Dashboard graph are now clickable links to their detail pages.
+
+**Files Modified**:
+- `src/frontend/src/components/AgentNode.vue` - Add click handler, hover styles, nodrag class to agent name
+
+---
+
+### 2026-01-13 07:55:07
+🔧 **Fix: Trinity MCP Lost on Credential Reload**
+
+**Problem**: Agents with `.mcp.json.template` (like ruby-internal) lost Trinity MCP entry when credentials were reloaded. The credential update endpoint regenerated `.mcp.json` from template, overwriting the Trinity MCP that was injected at startup.
+
+**Solution**: Re-inject Trinity MCP after any `.mcp.json` regeneration by calling `inject_trinity_mcp_if_configured()` - the same function used at agent startup. This ensures consistent behavior and single source of truth for Trinity MCP injection.
+
+**Files Modified**:
+- `docker/base-image/agent_server/routers/credentials.py` - Import and call `inject_trinity_mcp_if_configured()` after writing `.mcp.json`
+
+---
+
+### 2026-01-12 21:30:00
+✨ **Feature: Execution Termination**
+
+**Problem**: Users had no way to stop runaway executions or incorrect agent behavior once started.
+
+**Solution**: Implemented full execution termination flow across all layers:
+
+**Agent Container (docker/base-image/agent_server/)**:
+- New `services/process_registry.py` - Thread-safe registry tracking subprocess handles by execution_id
+- Modified `services/claude_code.py` - Registers/unregisters processes in both `execute_claude_code()` and `execute_headless_task()`
+- New endpoints in `routers/chat.py`:
+  - `POST /api/executions/{execution_id}/terminate` - SIGINT then SIGKILL
+  - `GET /api/executions/running` - List running processes
+  - `GET /api/executions/{execution_id}/status` - Check specific execution
+
+**Backend (src/backend/)**:
+- New proxy endpoints in `routers/chat.py`:
+  - `POST /api/agents/{name}/executions/{execution_id}/terminate` - Proxies to agent, clears queue
+  - `GET /api/agents/{name}/executions/running` - Lists agent's running executions
+- Added `EXECUTION_CANCELLED` to `ActivityType` enum in `models.py`
+
+**Frontend (src/frontend/)**:
+- Stop button in `TasksPanel.vue` for running tasks
+- Fetches running executions to get `execution_id` for termination
+- Graceful UI feedback with spinner during termination
+
+**Termination Flow**:
+1. Frontend calls backend proxy endpoint
+2. Backend forwards to agent container
+3. Agent sends SIGINT (graceful), waits 5s, then SIGKILL if needed
+4. Backend clears execution queue state
+5. Activity tracked as EXECUTION_CANCELLED
+
+**Files Modified**:
+- `docker/base-image/agent_server/services/process_registry.py` (new)
+- `docker/base-image/agent_server/services/claude_code.py`
+- `docker/base-image/agent_server/routers/chat.py`
+- `docker/base-image/agent_server/models.py`
+- `src/backend/routers/chat.py`
+- `src/backend/models.py`
+- `src/frontend/src/components/TasksPanel.vue`
+
+---
+
+### 2026-01-12 20:45:00
+⚡ **Performance: Frontend Polling Optimization**
+
+**Problem**: AgentDetail page generated ~50 requests/minute from concurrent polling loops, overwhelming backend with multiple users/tabs.
+
+**Solution**: Increased polling intervals while maintaining acceptable UX:
+
+| Composable | Before | After | Reduction |
+|------------|--------|-------|-----------|
+| `useSessionActivity.js` | 2s | 5s | -60% |
+| `useAgentStats.js` | 5s | 10s | -50% |
+| `useAgentLogs.js` | 10s | 15s | -33% |
+| `useGitSync.js` | 30s | 60s | -50% |
+| **Total requests/min** | ~50 | ~20 | **-60%** |
+
+**Result**: Per-page polling reduced from ~50 to ~20 requests/minute. With 5 users and 2 tabs each: 500 → 200 req/min saved.
+
+**Files Modified**:
+- `src/frontend/src/composables/useSessionActivity.js:117` - 2000ms → 5000ms
+- `src/frontend/src/composables/useAgentStats.js:4,59` - MAX_POINTS 60→30, 5000ms → 10000ms
+- `src/frontend/src/composables/useAgentLogs.js:45` - 10000ms → 15000ms
+- `src/frontend/src/composables/useGitSync.js:164` - 30000ms → 60000ms
+
+**Note**: Sparkline history still shows 5 minutes (30 samples × 10s = 300s).
+
+---
+
+### 2026-01-12 20:20:00
+⚡ **Performance: Database Batch Queries (N+1 Fix)**
+
+**Problem**: `get_accessible_agents()` was making 8-10 database queries PER agent:
+- `can_user_access_agent()` - 2-4 queries
+- `get_agent_owner()` - 1 query (redundant)
+- `is_agent_shared_with_user()` - 2 queries
+- `get_autonomy_enabled()` - 1 query
+- `get_git_config()` - 1 query
+- `get_resource_limits()` - 1 query
+
+With 20 agents: **160-200 database queries** per `/api/agents` request.
+
+**Solution**: Added `get_all_agent_metadata()` batch query that JOINs all related tables in ONE query:
+- `agent_ownership` - owner, is_system, autonomy_enabled, resource limits
+- `users` - owner username/email
+- `agent_git_config` - GitHub repo/branch
+- `agent_sharing` - share access check (with user's email)
+
+**Result**: Database queries reduced from **160-200 to 2** per request.
+
+**Files Modified**:
+- `src/backend/db/agents.py:467-529` - Added `get_all_agent_metadata()` batch query
+- `src/backend/database.py:845-850` - Exposed method on DatabaseManager
+- `src/backend/services/agent_service/helpers.py:83-153` - Rewrote `get_accessible_agents()` to use batch
+
+**Combined with Docker stats optimization**: `/api/agents` now responds in <50ms (was 2-3s).
+
+---
+
+### 2026-01-12 20:10:00
+⚡ **Performance: Docker Stats Optimization - Fast Agent List**
+
+**Problem**: The `/api/agents` endpoint was slow (~2-3s with multiple agents) due to Docker API calls for container metadata.
+
+**Solution**: Added `list_all_agents_fast()` function that extracts agent info ONLY from container labels, avoiding slow operations like:
+- `container.attrs` (full Docker inspect API call)
+- `container.image` (image metadata lookup)
+- `container.stats()` (CPU sampling - 2+ seconds per container)
+
+**Result**: Response time reduced from ~2-3s to **<50ms** for agent list endpoints.
+
+**Files Modified**:
+- `src/backend/services/docker_service.py:101-159` - Added `list_all_agents_fast()` function
+- `src/backend/services/agent_service/helpers.py:14-17,92` - Use fast version in `get_accessible_agents()`
+- `src/backend/main.py:26,177` - Use fast version at startup
+- `src/backend/routers/ops.py:22,54,132,239,343,558,620` - Use fast version in ops endpoints
+- `src/backend/routers/telemetry.py:16,126` - Use fast version in telemetry
+
+**Note**: Per-agent stats (CPU, memory) still available via `/api/agents/{name}/stats` (~1s due to Docker sampling).
+
+---
+
+### 2026-01-12 18:15:00
+🐛 **Fix: Credential Injection Bug - Passing Dict Instead of Username**
+
+**Problem**: Credentials assigned to agents were not being injected on restart despite the previous fix. The `.env` file was not being created.
+
+**Root Cause**: In `inject_assigned_credentials()`, the code was passing the entire `owner` dict from `db.get_agent_owner()` to `credential_manager.get_assigned_credential_values()` and `get_assigned_file_credentials()`. However, these methods expect `user_id` as a string (e.g., "admin"), not a dict. The ownership verification in `get_credential()` was comparing strings to dicts, which always failed silently, resulting in empty credentials being returned.
+
+```python
+# BROKEN - owner is a dict like {"owner_username": "admin", ...}
+credentials = credential_manager.get_assigned_credential_values(agent_name, owner)
+
+# FIXED - extract the username string
+owner_username = owner.get("owner_username")
+credentials = credential_manager.get_assigned_credential_values(agent_name, owner_username)
+```
+
+**Solution**:
+1. Extract `owner_username` from the dict before passing to credential methods
+2. Add validation in case `owner_username` is missing
+3. Add logging to show owner username in credential injection messages
+4. Fix import of `CredentialManager` (was trying to import non-existent `credential_manager` singleton)
+5. Update `/api/agents/{name}/start` endpoint to include `credentials_injection` and `credentials_result` in response
+
+**Files Modified**:
+- `src/backend/services/agent_service/lifecycle.py:69-92` - Fix owner_username extraction and import
+- `src/backend/routers/agents.py:315-335` - Include credential injection status in start response
+
+**Verification**:
+```bash
+# Stop agent and start via API
+curl -X POST /api/agents/demo-fleet-ruby/start
+# Response includes: "credentials_injection": "success", "credentials_result": {"status": "success", "credential_count": 2}
+
+# Check agent .env file
+docker exec agent-demo-fleet-ruby cat /home/developer/.env
+# Shows: API_KEY="value1"
+```
+
+---
+
+### 2026-01-12 18:00:00
+📚 **Docs: Expanded Custom Metrics Documentation**
+
+Significantly expanded the Custom Metrics section in `TRINITY_COMPATIBLE_AGENT_GUIDE.md`:
+
+**Added**:
+- File locations: where agent server looks for `template.yaml` and `metrics.json`
+- Complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes)
+- `percentage` type with `warning_threshold` and `critical_threshold` fields
+- `status` type with `values` array showing value/color/label structure
+- Available colors for status badges: green, red, yellow, gray, blue, orange
+- `metrics.json` format with `last_updated` optional field
+- Complete working example showing template.yaml → metrics.json → CLAUDE.md integration
+- Note that agent must be running for metrics to be visible
+- Note about auto-refresh every 30 seconds
+
+**Updated**:
+- Removed unused `icon` field from schema (not implemented in frontend)
+- Added cross-reference to detailed Custom Metrics section from schema
+
+**Files Modified**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Expanded Custom Metrics section
+
+---
+
+### 2026-01-12 17:30:00
+🐛 **Fix: Credential Injection on Agent Restart**
+
+**Problem**: Credentials assigned via the Credentials tab were NOT being injected when an agent was restarted. Credentials were only injected at agent creation time.
+
+**Root Cause**:
+1. `start_agent_internal()` only started the container and injected the Trinity meta-prompt - it did NOT fetch or inject assigned credentials
+2. The "Apply to Agent" button was only visible when `hasChanges` was true, which reset on page refresh
+
+**Solution**:
+1. Added `inject_assigned_credentials()` function to `lifecycle.py` that:
+   - Gets the agent owner from the database
+   - Fetches assigned credentials from Redis via credential_manager
+   - Pushes credentials to the running agent via internal API
+   - Includes retry logic for agent startup delays
+
+2. Modified `start_agent_internal()` to call `inject_assigned_credentials()` after starting the container
+
+3. Fixed the "Apply to Agent" button visibility in `CredentialsPanel.vue`:
+   - Changed from `v-if="hasChanges && agentStatus === 'running'"`
+   - To `v-if="agentStatus === 'running' && assignedCredentials.length > 0"`
+   - Added "Start agent to apply" hint when agent is stopped
+
+**Files Modified**:
+- `src/backend/services/agent_service/lifecycle.py:54-121` - Added `inject_assigned_credentials()` function
+- `src/backend/services/agent_service/lifecycle.py:165-167` - Call credential injection in `start_agent_internal()`
+- `src/backend/services/agent_service/__init__.py` - Export new function
+- `src/frontend/src/components/CredentialsPanel.vue:27-44` - Fix button visibility logic
+
+**Verification**:
+1. Create credentials in the Credentials page
+2. Assign them to an agent via Agent Detail → Credentials tab
+3. Stop and restart the agent
+4. Credentials are now automatically injected on start
+
+---
+
+### 2026-01-12 16:00:00
+📦 **Feature: Package Persistence & Version Tracking**
+
+**Problem**: When agent containers are recreated (due to base image updates or config changes), system packages installed via `apt-get` or `npm install -g` are lost. Users had to manually reinstall packages each time.
+
+**Solution**: Added `~/.trinity/setup.sh` convention - a persistent setup script that runs on container start to reinstall packages.
+
+**Package Persistence**:
+1. `startup.sh` now runs `~/.trinity/setup.sh` if it exists
+2. Agents are instructed (via Trinity CLAUDE.md injection) to append install commands to this script
+3. Templates can ship with pre-defined `setup.sh` for known dependencies
+4. Documented in `TRINITY_COMPATIBLE_AGENT_GUIDE.md`
+
+**Version Tracking**:
+1. Base image Dockerfile now includes `trinity.base-image-version` label
+2. Container labels store version at creation time
+3. `AgentStatus` model includes `base_image_version` field
+4. Frontend can compare agent version vs current platform version
+
+**Files Modified**:
+- `docker/base-image/startup.sh` - Run setup.sh on start
+- `docker/base-image/Dockerfile` - Add VERSION arg and label
+- `docker/base-image/agent_server/routers/trinity.py` - Inject package persistence instructions
+- `src/backend/models.py` - Add base_image_version to AgentStatus
+- `src/backend/services/docker_service.py` - Extract version from container/image labels
+- `src/backend/services/agent_service/crud.py` - Add version label, get_platform_version helper
+- `src/backend/main.py` - Fix version endpoint path resolution
+- `docker-compose.yml` - Mount VERSION file into backend container
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Added Package Persistence section
+
+**Usage**:
+```bash
+# In agent terminal - install and persist
+sudo apt-get install -y ffmpeg
+mkdir -p ~/.trinity
+echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
+```
+
+---
+
 ### 2026-01-12 14:30:00
 🔐 **Feature: Full Capabilities Mode for Container Software Installation**
 

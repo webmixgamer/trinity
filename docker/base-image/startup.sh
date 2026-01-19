@@ -263,6 +263,15 @@ if [ "${ENABLE_AGENT_UI}" = "true" ]; then
     python3 /app/agent-server.py &
 fi
 
+# === Persistent Setup Script ===
+# Run user/agent setup script if exists (reinstalls packages after container recreation)
+# This allows agents to persist apt-get, npm -g, and other system-level packages
+if [ -f "/home/developer/.trinity/setup.sh" ]; then
+    echo "Running persistent setup script to restore packages..."
+    chmod +x /home/developer/.trinity/setup.sh
+    bash /home/developer/.trinity/setup.sh 2>&1 || echo "Warning: setup.sh had errors (continuing startup)"
+fi
+
 # === Content Folder Convention ===
 # Create content/ directory for large generated assets (videos, audio, images, exports)
 # These files persist across restarts but are NOT synced to GitHub

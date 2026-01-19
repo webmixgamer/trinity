@@ -416,6 +416,16 @@ const getChangeStatusClass = (status) => {
   }
 }
 
+// Reload when agent name changes (navigating between agents)
+watch(() => props.agentName, (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    // Reset state for new agent
+    gitStatus.value = null
+    gitLog.value = null
+    loadGitStatus()
+  }
+})
+
 // Watch for agent status changes
 watch(() => props.agentStatus, (newStatus) => {
   if (newStatus === 'running') {

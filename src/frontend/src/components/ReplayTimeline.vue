@@ -70,6 +70,10 @@
             <span class="w-2 h-2 rounded" style="background-color: #22c55e"></span>
             <span>Manual</span>
           </span>
+          <span class="flex items-center space-x-1" title="MCP executions (via Claude Code)">
+            <span class="w-2 h-2 rounded" style="background-color: #ec4899"></span>
+            <span>MCP</span>
+          </span>
           <span class="flex items-center space-x-1" title="Scheduled task executions">
             <span class="w-2 h-2 rounded" style="background-color: #8b5cf6"></span>
             <span>Scheduled</span>
@@ -342,6 +346,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { parseUTC, getTimestampMs, formatLocalTime } from '@/utils/timestamps'
 
 const router = useRouter()
 
@@ -488,9 +493,10 @@ function handleWheel(event) {
 }
 
 // Parse timeline bounds - extend to "now" for live mode
-const startTime = computed(() => props.timelineStart ? new Date(props.timelineStart).getTime() : 0)
+// Use getTimestampMs to correctly parse UTC timestamps from backend
+const startTime = computed(() => props.timelineStart ? getTimestampMs(props.timelineStart) : 0)
 const endTime = computed(() => {
-  const eventEnd = props.timelineEnd ? new Date(props.timelineEnd).getTime() : 0
+  const eventEnd = props.timelineEnd ? getTimestampMs(props.timelineEnd) : 0
   if (props.isLiveMode) {
     return Math.max(eventEnd, currentNow.value)
   }
@@ -565,8 +571,11 @@ const agentRows = computed(() => {
     const isEstimated = !event.duration_ms
 
     // Add activity box for the executing agent
+    // Use getTimestampMs to correctly parse UTC timestamp from backend
+    const startTimestamp = getTimestampMs(event.timestamp)
     agentActivityMap.get(event.source_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: startTimestamp,
+      startTimestamp, // Store for dynamic duration calculation
       type: 'execution',
       eventIndex: index,
       hasError,
@@ -601,13 +610,21 @@ const agentRows = computed(() => {
       const chronoIndex = props.events.length - 1 - act.eventIndex
       const active = chronoIndex < props.currentEventIndex
 
+      // Calculate effective duration - for in-progress tasks, use elapsed time
+      let effectiveDuration = act.durationMs
+      if (act.isInProgress && act.startTimestamp) {
+        // For in-progress tasks, calculate elapsed time from start
+        // This will update every second as currentNow updates
+        effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+      }
+
       // Calculate bar width based on duration
       // duration.value is total timeline span in ms, actualGridWidth is pixels
       const minBarWidth = 12  // Minimum width for visibility
       let barWidth = minBarWidth
-      if (act.durationMs > 0) {
+      if (effectiveDuration > 0) {
         // Convert duration to pixels: (durationMs / totalMs) * gridWidth
-        barWidth = Math.max(minBarWidth, (act.durationMs / duration.value) * actualGridWidth.value)
+        barWidth = Math.max(minBarWidth, (effectiveDuration / duration.value) * actualGridWidth.value)
       }
 
       return {
@@ -616,9 +633,9 @@ const agentRows = computed(() => {
         active,
         type: act.type,
         hasError: act.hasError,
-        durationMs: act.durationMs,
+        durationMs: effectiveDuration, // Use effective duration for tooltips
         isInProgress: act.isInProgress,
-        isEstimated: act.isEstimated,
+        isEstimated: act.isEstimated && !act.isInProgress, // Not estimated if we're calculating live
         // Activity type info for color coding
         activityType: act.activityType,
         triggeredBy: act.triggeredBy,
@@ -701,7 +718,8 @@ const communicationArrows = computed(() => {
 
     if (sourceIndex === undefined || targetIndex === undefined) return null
 
-    const time = new Date(event.timestamp).getTime()
+    // Use getTimestampMs to correctly parse UTC timestamp from backend
+    const time = getTimestampMs(event.timestamp)
 
     // Check if target agent has an activity box near this time
     // The target agent should have a triggered execution
@@ -823,7 +841,8 @@ function getSuccessRateClass(rate) {
 
 function formatLastExecution(timestamp) {
   if (!timestamp) return ''
-  const date = new Date(timestamp)
+  // Use parseUTC to correctly parse UTC timestamp from backend
+  const date = parseUTC(timestamp)
   const now = new Date()
   const diff = now - date
 
@@ -886,8 +905,13 @@ function getBarColor(activity) {
     return activity.active ? '#06b6d4' : '#67e8f9'
   }
 
+  // MCP executions (user via Claude Code MCP client) → Pink/Rose
+  if (triggeredBy === 'mcp') {
+    return activity.active ? '#ec4899' : '#f9a8d4'
+  }
+
   // Manual/user executions → Green
-  if (triggeredBy === 'manual' || triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  if (triggeredBy === 'manual' || triggeredBy === 'user') {
     return activity.active ? '#22c55e' : '#86efac'
   }
 
@@ -908,9 +932,11 @@ function getBarTooltip(activity) {
     prefix = activity.scheduleName ? `Scheduled: ${activity.scheduleName}` : 'Scheduled Task'
   } else if (triggeredBy === 'agent') {
     prefix = 'Agent-Triggered Task'
+  } else if (triggeredBy === 'mcp') {
+    prefix = 'MCP Task'
   } else if (triggeredBy === 'manual') {
     prefix = 'Manual Task'
-  } else if (triggeredBy === 'user' || activityType?.startsWith('chat_')) {
+  } else if (triggeredBy === 'user') {
     prefix = 'Task'
   } else {
     prefix = 'Execution'

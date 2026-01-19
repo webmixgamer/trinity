@@ -126,6 +126,7 @@
           :class="{
             'bg-yellow-50/50 dark:bg-yellow-900/10': task.status === 'running',
             'bg-red-50/30 dark:bg-red-900/10': task.status === 'failed',
+            'bg-orange-50/30 dark:bg-orange-900/10': task.status === 'cancelled',
             'ring-2 ring-indigo-500 ring-inset bg-indigo-50/50 dark:bg-indigo-900/20': isHighlightedTask(task.id)
           }"
         >
@@ -139,6 +140,7 @@
                     'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
                     task.status === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
                     task.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                    task.status === 'cancelled' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' :
                     task.status === 'running' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' :
                     'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                   ]"
@@ -148,6 +150,7 @@
                       'w-1.5 h-1.5 mr-1.5 rounded-full',
                       task.status === 'success' ? 'bg-green-500' :
                       task.status === 'failed' ? 'bg-red-500' :
+                      task.status === 'cancelled' ? 'bg-orange-500' :
                       task.status === 'running' ? 'bg-yellow-500 animate-pulse' :
                       'bg-gray-500'
                     ]"
@@ -204,13 +207,25 @@
 
             <!-- Right side: Actions -->
             <div class="flex items-center space-x-2 ml-4">
-              <!-- Open Execution Detail Page -->
+              <!-- Open Execution Detail Page (Live for running, Details for completed) -->
+              <!-- For server executions: task.id IS the database UUID -->
+              <!-- For local tasks: task.id is 'local-xxx', must use task.execution_id instead -->
               <router-link
-                v-if="!task.id.startsWith('local-')"
-                :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id } }"
-                class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
-                title="Open execution details"
+                v-if="!task.id.startsWith('local-') || task.execution_id"
+                :to="{ name: 'ExecutionDetail', params: { name: agentName, executionId: task.id.startsWith('local-') ? task.execution_id : task.id } }"
+                :class="[
+                  'p-1.5 rounded transition-colors flex items-center space-x-1',
+                  task.status === 'running'
+                    ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20'
+                    : 'text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                ]"
+                :title="task.status === 'running' ? 'View live execution' : 'Open execution details'"
               >
+                <!-- Live indicator for running tasks -->
+                <span v-if="task.status === 'running'" class="flex items-center">
+                  <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse mr-1"></span>
+                  <span class="text-xs font-medium">Live</span>
+                </span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
@@ -236,6 +251,23 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </button>
+              <!-- Stop Button (for running tasks) -->
+              <button
+                v-if="task.status === 'running' && task.execution_id"
+                @click="terminateTask(task)"
+                :disabled="terminatingTaskId === task.id"
+                class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors disabled:opacity-50"
+                title="Stop execution"
+              >
+                <svg v-if="terminatingTaskId === task.id" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                </svg>
+              </button>
               <!-- Re-run Button -->
               <button
                 v-if="task.status !== 'running'"
@@ -246,6 +278,17 @@
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+              <!-- Make Repeatable Button -->
+              <button
+                v-if="task.status !== 'running'"
+                @click="makeRepeatable(task)"
+                class="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded transition-colors"
+                title="Create schedule from this task"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </button>
               <!-- Expand/Collapse Button -->
@@ -437,6 +480,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['create-schedule'])
+
 const authStore = useAuthStore()
 
 // State
@@ -449,12 +494,16 @@ const taskLoading = ref(false)
 const releaseLoading = ref(false)
 const clearLoading = ref(false)
 const expandedTaskId = ref(null)
+const terminatingTaskId = ref(null)
 
 // Execution log modal state
 const showLogModal = ref(false)
 const logData = ref(null)
 const logLoading = ref(false)
 const logError = ref(null)
+
+// Running executions from agent (for termination)
+const runningExecutions = ref([])
 
 // Polling interval
 let pollInterval = null
@@ -471,7 +520,29 @@ const allTasks = computed(() => {
     // Only show if not already in executions (to avoid duplicates after refresh)
     return !executions.value.some(e => e.message === p.message && e.started_at === p.started_at)
   })
-  return [...pending, ...executions.value]
+
+  // Enhance running tasks with execution_id from runningExecutions
+  const enhanceWithExecutionId = (task) => {
+    if (task.status !== 'running' || task.execution_id) {
+      return task
+    }
+    // Try to match by message preview (first 100 chars match metadata.message_preview)
+    const messagePreview = task.message.substring(0, 100)
+    const match = runningExecutions.value.find(e =>
+      e.metadata?.message_preview === messagePreview ||
+      e.metadata?.message_preview?.startsWith(messagePreview.substring(0, 50))
+    )
+    if (match) {
+      return { ...task, execution_id: match.execution_id }
+    }
+    // If only one running execution, assume it's this task
+    if (runningExecutions.value.length === 1) {
+      return { ...task, execution_id: runningExecutions.value[0].execution_id }
+    }
+    return task
+  }
+
+  return [...pending.map(enhanceWithExecutionId), ...executions.value.map(enhanceWithExecutionId)]
 })
 
 // Computed stats (from server executions only)
@@ -540,6 +611,7 @@ function scrollToHighlightedTask() {
 async function loadQueueStatus() {
   if (props.agentStatus !== 'running') {
     queueStatus.value = null
+    runningExecutions.value = []
     return
   }
   try {
@@ -547,8 +619,35 @@ async function loadQueueStatus() {
       headers: authStore.authHeader
     })
     queueStatus.value = response.data
+
+    // Fetch running executions for termination support if:
+    // 1. Queue is busy (scheduled/queued tasks), OR
+    // 2. We have local running tasks (manual tasks via /task endpoint bypass queue)
+    const hasLocalRunningTasks = pendingTasks.value.some(t => t.status === 'running')
+    if (response.data.is_busy || hasLocalRunningTasks) {
+      await loadRunningExecutions()
+    } else {
+      runningExecutions.value = []
+    }
   } catch (error) {
     console.error('Failed to load queue status:', error)
+  }
+}
+
+// Load running executions from agent (for termination)
+async function loadRunningExecutions() {
+  if (props.agentStatus !== 'running') {
+    runningExecutions.value = []
+    return
+  }
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/executions/running`, {
+      headers: authStore.authHeader
+    })
+    runningExecutions.value = response.data.executions || []
+  } catch (error) {
+    console.error('Failed to load running executions:', error)
+    runningExecutions.value = []
   }
 }
 
@@ -579,6 +678,11 @@ async function runNewTask() {
   pendingTasks.value.unshift(localTask)
   newTaskMessage.value = ''
   taskLoading.value = true
+
+  // Poll for running executions shortly after task starts (gives agent time to register process)
+  // This enables the Stop button to appear while task is running
+  setTimeout(() => loadQueueStatus(), 500)
+  setTimeout(() => loadQueueStatus(), 2000)  // Second poll in case first was too early
 
   const startMs = Date.now()
 
@@ -638,6 +742,11 @@ function rerunTask(task) {
   runNewTask()
 }
 
+// Create schedule from task (make repeatable)
+function makeRepeatable(task) {
+  emit('create-schedule', task.message)
+}
+
 // Copy task message to clipboard
 async function copyTaskMessage(task) {
   try {
@@ -651,6 +760,44 @@ async function copyTaskMessage(task) {
 // Toggle task expansion
 function toggleTaskExpand(taskId) {
   expandedTaskId.value = expandedTaskId.value === taskId ? null : taskId
+}
+
+// Terminate a running task
+async function terminateTask(task) {
+  if (!task.execution_id) {
+    console.error('No execution_id available for termination')
+    return
+  }
+
+  terminatingTaskId.value = task.id
+
+  try {
+    // Pass task_execution_id as query param so backend can update database record
+    await axios.post(
+      `/api/agents/${props.agentName}/executions/${task.execution_id}/terminate?task_execution_id=${task.execution_id}`,
+      {},
+      { headers: authStore.authHeader }
+    )
+
+    // Update task status locally while we wait for refresh
+    const idx = pendingTasks.value.findIndex(t => t.id === task.id)
+    if (idx !== -1) {
+      pendingTasks.value[idx].status = 'cancelled'
+      pendingTasks.value[idx].error = 'Execution terminated by user'
+    }
+
+    // Refresh data to get updated status
+    await loadAllData()
+  } catch (error) {
+    console.error('Failed to terminate task:', error)
+    // Show error in task if possible
+    const idx = pendingTasks.value.findIndex(t => t.id === task.id)
+    if (idx !== -1) {
+      pendingTasks.value[idx].error = error.response?.data?.detail || 'Failed to terminate'
+    }
+  } finally {
+    terminatingTaskId.value = null
+  }
 }
 
 // View execution log

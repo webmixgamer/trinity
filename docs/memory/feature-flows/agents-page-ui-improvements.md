@@ -1,8 +1,8 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: ✅ Implemented (2025-12-07, Enhanced 2026-01-09)
-> **Tested**: ✅ All features verified working
-> **Last Updated**: 2026-01-09
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13)
+> **Tested**: All features verified working
+> **Last Updated**: 2026-01-13 - System Agent Display: System agent now visible on Agents page for admin users only. Pinned at top with purple ring and "SYSTEM" badge. Uses standard AgentDetail.vue with tab filtering instead of dedicated SystemAgent.vue. Added `systemAgent`, `sortedAgentsWithSystem` getters and `displayAgents` computed to conditionally show system agent.
 
 ## Overview
 
@@ -42,7 +42,7 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 - **Offline**: Gray dot (`#9ca3af`) + "Offline" label
 
 **Implementation**:
-- Call `GET /api/agents/context-stats` on mount and poll every 5 seconds
+- Call `GET /api/agents/context-stats` on mount and poll every 10 seconds
 - Parse `activityState` field from response
 - Reuse CSS animation from AgentNode.vue:
 ```css
@@ -124,7 +124,7 @@ startContextPolling() {
   this.fetchContextStats()
   this.contextPollingInterval = setInterval(() => {
     this.fetchContextStats()
-  }, 5000)
+  }, 10000)  // Every 10 seconds
 },
 
 stopContextPolling() {
@@ -432,7 +432,7 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
      - Returns `{ success, enabled, schedulesUpdated }`
 
 3. **Updated Polling** (lines 578-594):
-   - `startContextPolling()` now also calls `fetchExecutionStats()` on mount and every 5 seconds
+   - `startContextPolling()` now also calls `fetchExecutionStats()` on mount and every 10 seconds
    - Both `fetchContextStats()` and `fetchExecutionStats()` run in parallel
 
 #### Helper Functions (`Agents.vue` script section)
@@ -485,6 +485,10 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
 User loads /agents page
     └── onMounted() [Agents.vue:269-272]
         ├── agentsStore.fetchAgents() → GET /api/agents
+        │   └── Backend: get_accessible_agents() [helpers.py:83-153]
+        │       ├── list_all_agents_fast() - Docker labels only (no stats)
+        │       └── db.get_all_agent_metadata() - Single JOIN query for all metadata
+        │           └── Returns: owner, is_system, autonomy, limits, git config, share access
         └── agentsStore.startContextPolling() [agents.js:578-594]
             ├── fetchContextStats() → GET /api/agents/context-stats
             ├── fetchExecutionStats() → GET /api/agents/execution-stats
@@ -496,6 +500,20 @@ User toggles autonomy switch
             └── PUT /api/agents/{name}/autonomy
                 └── Updates agent.autonomy_enabled locally
 ```
+
+### Performance (2026-01-12)
+
+The `/api/agents` endpoint benefits from two optimizations:
+
+1. **Docker Stats Optimization**: `list_all_agents_fast()` (docker_service.py:101-159) extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.stats()`).
+
+2. **Database Batch Queries (N+1 Fix)**: `db.get_all_agent_metadata()` (db/agents.py:467-529) fetches all metadata in a SINGLE JOIN query instead of 8-10 queries per agent.
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Docker API calls | Full inspect per agent | Labels only |
+| Database queries | 160-200 (20 agents) | 2 total |
+| Response time | ~2-3 seconds | <50ms |
 
 ### Files Modified
 
@@ -530,7 +548,7 @@ User toggles autonomy switch
 | 1 | View agent with tasks | See "X tasks · Y% · $Z · Nm ago" |
 | 2 | View agent without tasks | See "No tasks (24h)" |
 | 3 | Verify success rate colors | Green ≥80%, yellow 50-79%, red <50% |
-| 4 | Wait 5 seconds | Stats auto-refresh |
+| 4 | Wait 10 seconds | Stats auto-refresh |
 
 #### Context Progress Bar
 | Step | Action | Expected Result |
@@ -550,6 +568,115 @@ User toggles autonomy switch
 
 ---
 
+## Enhancement: System Agent Display (2026-01-13)
+
+### Overview
+
+System agent (`trinity-system`) is now visible on the Agents page for admin users only. Previously, the system agent had a dedicated `/system-agent` page with `SystemAgent.vue`. This has been consolidated - the system agent now uses the standard agent card on the Agents page and `AgentDetail.vue` for the detail view.
+
+### Changes Made
+
+#### Store Changes (`src/frontend/src/stores/agents.js`)
+
+| Getter/Function | Lines | Purpose |
+|-----------------|-------|---------|
+| `systemAgent` | 25-27 | Returns the agent with `is_system: true` or null |
+| `sortedAgentsWithSystem` | 39-41 | Returns sorted agents with system agent pinned at top |
+| `_getSortedAgents(includeSystem)` | 43-76 | Helper that conditionally includes system agent |
+
+**Implementation:**
+```javascript
+// Line 25-27: systemAgent getter
+systemAgent() {
+  return this.agents.find(agent => agent.is_system) || null
+}
+
+// Line 39-41: sortedAgentsWithSystem getter
+sortedAgentsWithSystem() {
+  return this._getSortedAgents(true)
+}
+
+// Lines 70-74: Pin system agent at top
+if (includeSystem && this.systemAgent) {
+  return [this.systemAgent, ...sorted]
+}
+```
+
+#### View Changes (`src/frontend/src/views/Agents.vue`)
+
+1. **Admin Check** (lines 271, 288-305):
+   - `isAdmin` ref initialized to `false`
+   - On mount, fetches `/api/users/me` to check if `role === 'admin'`
+   - Used to conditionally show system agent
+
+2. **Display Agents Computed** (lines 274-279):
+   ```javascript
+   const displayAgents = computed(() => {
+     if (isAdmin.value) {
+       return agentsStore.sortedAgentsWithSystem
+     }
+     return agentsStore.sortedAgents
+   })
+   ```
+
+3. **System Agent Card Styling** (lines 46-57):
+   ```vue
+   :class="[
+     'bg-white dark:bg-gray-800 rounded-xl border shadow-lg p-5',
+     agent.is_system
+       ? 'ring-2 ring-purple-500/50 border-purple-300 dark:border-purple-700'
+       : agent.status === 'running'
+         ? 'border-gray-200/60 dark:border-gray-700/50'
+         : 'border-gray-200 dark:border-gray-700 opacity-75'
+   ]"
+   ```
+
+4. **SYSTEM Badge** (lines 69-75):
+   ```vue
+   <span
+     v-if="agent.is_system"
+     class="ml-2 px-1.5 py-0.5 text-xs font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
+   >
+     SYSTEM
+   </span>
+   ```
+
+#### Router Changes (`src/frontend/src/router/index.js`)
+
+- Lines 77-81: Legacy `/system-agent` redirects to `/agents/trinity-system`
+  ```javascript
+  {
+    path: '/system-agent',
+    redirect: '/agents/trinity-system'
+  }
+  ```
+
+#### NavBar Changes (`src/frontend/src/components/NavBar.vue`)
+
+- "System" link removed from navigation bar
+- System agent accessed via Agents page or direct URL `/agents/trinity-system`
+
+### Visual Design
+
+| Aspect | Regular Agent | System Agent |
+|--------|---------------|--------------|
+| Border | Gray border | Purple ring + purple border |
+| Badge | (none) | "SYSTEM" badge (purple) |
+| Position | Sorted by sortBy setting | Always pinned at top |
+| Visibility | All users | Admin users only |
+
+### Testing Steps
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Login as admin user | See system agent at top of Agents page |
+| 2 | Login as regular user | System agent NOT visible |
+| 3 | Navigate to `/system-agent` | Redirects to `/agents/trinity-system` |
+| 4 | Click system agent card | Opens AgentDetail with filtered tabs |
+| 5 | Verify system agent styling | Purple ring, "SYSTEM" badge visible |
+
+---
+
 ## References
 
 > Line numbers verified 2026-01-09
@@ -560,3 +687,17 @@ User toggles autonomy switch
   - Lines 138-141: GET /context-stats endpoint
   - Lines 144-165: GET /execution-stats endpoint
   - Lines 775-790: PUT /{name}/autonomy endpoint
+- **Backend helpers**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/helpers.py`
+  - Lines 83-153: `get_accessible_agents()` with batch query optimization
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-13 | **System Agent Display**: System agent now visible on Agents page for admin users only. Added `systemAgent` getter (agents.js:25-27), `sortedAgentsWithSystem` getter (agents.js:39-41), `displayAgents` computed (Agents.vue:274-279), admin check on mount (Agents.vue:288-305). System agent card has purple ring (`ring-2 ring-purple-500/50`) and "SYSTEM" badge (Agents.vue:46-75). Legacy `/system-agent` route redirects to `/agents/trinity-system`. Removed "System" link from NavBar. |
+| 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s for reduced API load. Updated all polling interval references and test cases. |
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added Performance section documenting `get_accessible_agents()` optimization. Now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) for single JOIN query. Database queries reduced from 160-200 to 2 per request. Combined with Docker stats optimization for <50ms response. Updated Data Flow diagram. |
+| 2026-01-09 | **Dashboard Parity**: Major UI overhaul - grid layout, autonomy toggle, execution stats row, context bar always visible. Added `fetchExecutionStats()` and `toggleAutonomy()` to agents.js store. |
+| 2025-12-07 | Initial implementation with sorting, activity state indicators, context progress bars. |

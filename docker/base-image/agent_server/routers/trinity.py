@@ -114,6 +114,21 @@ You can collaborate with other agents using the Trinity MCP tools:
 **Note**: You can only communicate with agents you have been granted permission to access.
 Use `list_agents` to discover your available collaborators.
 
+### Package Persistence
+
+When installing system packages (apt-get, npm -g, etc.), add them to your setup script so they persist across container updates:
+
+```bash
+# Install package
+sudo apt-get install -y ffmpeg
+
+# Add to persistent setup script
+mkdir -p ~/.trinity
+echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
+```
+
+This script runs automatically on container start. Always update it when installing system-level packages.
+
 ### Trinity System Prompt
 
 Additional platform instructions are available in `.trinity/prompt.md`.

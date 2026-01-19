@@ -127,21 +127,36 @@ class UserOperations:
             return self.get_user_by_username(username)
 
     def update_user_password(self, username: str, hashed_password: str) -> bool:
-        """Update user's password hash.
+        """Update user's password hash, creating the user if it doesn't exist.
+
+        For the admin user during first-time setup, this will create the user
+        if it doesn't exist yet.
 
         Args:
             username: The username to update
             hashed_password: The bcrypt-hashed password
 
         Returns:
-            True if the user was found and updated, False otherwise
+            True if the user was updated or created successfully
         """
         with get_db_connection() as conn:
             cursor = conn.cursor()
             now = datetime.utcnow().isoformat()
+
+            # Try to update existing user
             cursor.execute("""
                 UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ?
             """, (hashed_password, now, username))
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                return True
+
+            # User doesn't exist - create it (for admin user during first-time setup)
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, role, email, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (username, hashed_password, 'admin', username, now, now))
             conn.commit()
             return cursor.rowcount > 0
 

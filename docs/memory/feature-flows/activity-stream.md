@@ -520,10 +520,14 @@ if details:
 
 **Duration Calculation** (`db/activities.py:88-90`)
 ```python
-started_at = datetime.fromisoformat(row[0])
-completed_at = datetime.utcnow()
+from utils.helpers import parse_iso_timestamp, utc_now
+
+started_at = parse_iso_timestamp(row[0])  # Timezone-aware UTC parsing
+completed_at = utc_now()  # Timezone-aware UTC now
 duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 ```
+
+> **Timezone Note (2026-01-15)**: All timestamps use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md) for details on using `utc_now_iso()`, `parse_iso_timestamp()` and frontend equivalents `parseUTC()`, `getTimestampMs()`.
 
 ---
 
@@ -871,7 +875,7 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 ## Implementation Notes
 
 **Date**: 2025-12-02
-**Last Updated**: 2025-12-30
+**Last Updated**: 2026-01-15
 **Requirement**: 9.7 - Unified Activity Stream
 **Implemented By**: Feature implementation commit
 **Related Docs**:

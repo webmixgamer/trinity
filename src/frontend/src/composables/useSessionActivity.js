@@ -114,7 +114,7 @@ export function useSessionActivity(agentRef, agentsStore) {
 
   const startActivityPolling = () => {
     loadSessionActivity() // Load immediately
-    activityRefreshInterval = setInterval(loadSessionActivity, 2000) // Then every 2 seconds
+    activityRefreshInterval = setInterval(loadSessionActivity, 5000) // Then every 5 seconds
   }
 
   const stopActivityPolling = () => {

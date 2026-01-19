@@ -1,6 +1,12 @@
 # OpenTelemetry Collector Configuration for Trinity
 # Receives metrics from Claude Code agents and exports to Prometheus format
 
+extensions:
+  # Health check endpoint at :13133 for external monitoring
+  # Note: Docker healthcheck removed - distroless image has no shell/curl
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
 receivers:
   otlp:
     protocols:
@@ -46,6 +52,7 @@ exporters:
     sampling_thereafter: 200
 
 service:
+  extensions: [health_check]
   pipelines:
     metrics:
       receivers: [otlp]

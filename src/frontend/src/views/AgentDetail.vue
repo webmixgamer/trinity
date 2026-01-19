@@ -1,6 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
+    <AgentSubNav />
 
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 py-6 sm:px-0">
@@ -34,6 +35,7 @@
             :memory-history="memoryHistory"
             :resource-limits="resourceLimits"
             :has-git-sync="hasGitSync"
+            :git-status="gitStatus"
             :git-loading="gitLoading"
             :git-syncing="gitSyncing"
             :git-pulling="gitPulling"
@@ -80,12 +82,12 @@
 
             <!-- Tasks Tab Content -->
             <div v-if="activeTab === 'tasks'" class="p-6">
-              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" />
+              <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" @create-schedule="handleCreateSchedule" />
             </div>
 
-            <!-- Metrics Tab Content -->
-            <div v-if="activeTab === 'metrics'" class="p-6">
-              <MetricsPanel :agent-name="agent.name" :agent-status="agent.status" />
+            <!-- Dashboard Tab Content -->
+            <div v-if="activeTab === 'dashboard'" class="p-6">
+              <DashboardPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
             <!-- Terminal Tab Content -->
@@ -144,7 +146,7 @@
 
             <!-- Schedules Tab Content -->
             <div v-if="activeTab === 'schedules'" class="p-6">
-              <SchedulesPanel :agent-name="agent.name" />
+              <SchedulesPanel :agent-name="agent.name" :initial-message="schedulePrefillMessage" />
             </div>
 
             <!-- Git Tab Content -->
@@ -207,6 +209,7 @@ import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watc
 import { useRoute, useRouter } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
+import AgentSubNav from '../components/AgentSubNav.vue'
 
 // Component name for KeepAlive matching
 defineOptions({
@@ -222,7 +225,7 @@ import SchedulesPanel from '../components/SchedulesPanel.vue'
 import TasksPanel from '../components/TasksPanel.vue'
 import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
-import MetricsPanel from '../components/MetricsPanel.vue'
+import DashboardPanel from '../components/DashboardPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
 import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 
@@ -257,6 +260,7 @@ const error = ref('')
 const activeTab = ref('info')
 const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
+const schedulePrefillMessage = ref('')
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -408,22 +412,26 @@ const {
   resetSessionActivity
 } = useSessionActivity(agent, agentsStore)
 
-// Computed tabs based on agent permissions
+// Computed tabs based on agent permissions and system agent status
 const visibleTabs = computed(() => {
+  const isSystem = agent.value?.is_system
+
   const tabs = [
     { id: 'info', label: 'Info' },
     { id: 'tasks', label: 'Tasks' },
-    { id: 'metrics', label: 'Metrics' },
+    { id: 'dashboard', label: 'Dashboard' },
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
     { id: 'credentials', label: 'Credentials' }
   ]
 
-  if (agent.value?.can_share) {
+  // Sharing/Permissions - hide for system agent (system agent has full access)
+  if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'sharing', label: 'Sharing' })
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
+  // Schedules - show for all agents including system
   tabs.push({ id: 'schedules', label: 'Schedules' })
 
   if (hasGitSync.value) {
@@ -432,7 +440,8 @@ const visibleTabs = computed(() => {
 
   tabs.push({ id: 'files', label: 'Files' })
 
-  if (agent.value?.can_share) {
+  // Folders and Public Links - hide for system agent
+  if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'folders', label: 'Folders' })
     tabs.push({ id: 'public-links', label: 'Public Links' })
   }
@@ -574,6 +583,19 @@ const handleInfoItemClick = ({ type, text }) => {
   nextTick(() => {
     setTimeout(() => {
       taskPrefillMessage.value = ''
+    }, 100)
+  })
+}
+
+// Handle create schedule from Tasks tab - switch to Schedules tab with prefilled message
+const handleCreateSchedule = (message) => {
+  // Set the prefill message and switch to Schedules tab
+  schedulePrefillMessage.value = message
+  activeTab.value = 'schedules'
+  // Clear the prefill after a short delay so it can be used again
+  nextTick(() => {
+    setTimeout(() => {
+      schedulePrefillMessage.value = ''
     }, 100)
   })
 }

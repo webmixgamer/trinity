@@ -3,10 +3,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex">
-          <div class="flex-shrink-0 flex items-center">
+          <router-link to="/" class="flex-shrink-0 flex items-center hover:opacity-80 transition-opacity">
             <img src="../assets/trinity-logo.svg" alt="Trinity Logo" class="h-8 w-8 mr-2" />
             <h1 class="text-xl font-bold text-gray-900 dark:text-white">Trinity</h1>
-          </div>
+          </router-link>
           <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
             <router-link
               to="/"
@@ -18,16 +18,16 @@
             <router-link
               to="/agents"
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/agents' || $route.path.startsWith('/agents/') }"
+              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': isAgentSection }"
             >
               Agents
             </router-link>
             <router-link
-              to="/files"
+              to="/processes"
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/files' }"
+              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': isProcessSection }"
             >
-              Files
+              Processes
             </router-link>
             <router-link
               to="/credentials"
@@ -37,26 +37,11 @@
               Credentials
             </router-link>
             <router-link
-              to="/templates"
-              class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/templates' }"
-            >
-              Templates
-            </router-link>
-            <router-link
               to="/api-keys"
               class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/api-keys' }"
             >
               Keys
-            </router-link>
-            <router-link
-              v-if="isAdmin"
-              to="/system-agent"
-              class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/system-agent' }"
-            >
-              System
             </router-link>
             <router-link
               v-if="isAdmin"
@@ -69,6 +54,23 @@
           </div>
         </div>
         <div class="flex items-center space-x-4">
+          <!-- Cost Alerts Notification -->
+          <router-link
+            to="/alerts"
+            class="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+            title="Cost Alerts"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <span
+              v-if="alertsStore.activeCount > 0"
+              class="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white transform bg-red-500 rounded-full"
+            >
+              {{ alertsStore.activeCount > 99 ? '99+' : alertsStore.activeCount }}
+            </span>
+          </router-link>
+
           <!-- WebSocket Status -->
           <span class="text-sm text-gray-500 dark:text-gray-400">
             <span class="inline-block h-2 w-2 rounded-full mr-1" :class="isConnected ? 'bg-green-400' : 'bg-gray-400 dark:bg-gray-600'"></span>
@@ -187,17 +189,37 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
+import { useAlertsStore } from '../stores/alerts'
 import { useWebSocket } from '../utils/websocket'
 import axios from 'axios'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
+const alertsStore = useAlertsStore()
 const { isConnected } = useWebSocket()
 
 // Check if user is admin (fetch from backend)
 const userRole = ref(null)
 const isAdmin = computed(() => userRole.value === 'admin')
+
+// Check if currently in agent section (for highlighting nav)
+const route = router.currentRoute
+const isAgentSection = computed(() => {
+  const path = route.value.path
+  return path.startsWith('/agents') ||
+         path === '/files' ||
+         path === '/templates'
+})
+
+// Check if currently in process section (for highlighting nav)
+const isProcessSection = computed(() => {
+  const path = route.value.path
+  return path.startsWith('/processes') ||
+         path.startsWith('/process-dashboard') ||
+         path.startsWith('/executions') ||
+         path.startsWith('/approvals')
+})
 
 // Theme management
 const themeTitle = computed(() => {
@@ -225,6 +247,9 @@ onMounted(async () => {
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
 
+  // Start polling for alerts
+  alertsStore.startPolling(60000)
+
   // Fetch user role from backend
   try {
     const response = await axios.get('/api/users/me', {
@@ -238,6 +263,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  alertsStore.stopPolling()
 })
 
 const toggleUserMenu = () => {

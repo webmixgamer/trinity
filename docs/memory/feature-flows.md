@@ -3,6 +3,115 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-15)**: Timezone-Aware Timestamp Handling:
+> - All feature flows with timestamp handling updated to reference [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md)
+> - Backend: Uses `utc_now_iso()`, `to_utc_iso()`, `parse_iso_timestamp()` from `utils/helpers.py` - timestamps include 'Z' suffix
+> - Frontend: Uses `parseUTC()`, `getTimestampMs()` from `@/utils/timestamps.js` - handles missing 'Z' suffix for backward compatibility
+> - Updated flows: **activity-stream.md**, **execution-queue.md**, **scheduling.md**, **agent-network.md**
+> - Fix: Dashboard Timeline events now display at correct positions regardless of server/client timezone difference
+>
+> **Updated (2026-01-14)**: Security Bug Fixes (4 HIGH, 1 LOW):
+> - **execution-queue.md**: Race Condition Fixes - `submit()` uses atomic `SET NX EX`, `complete()` uses Lua script for atomic pop-and-set, `get_all_busy_agents()` uses `SCAN` instead of blocking `KEYS`
+> - **agent-lifecycle.md**: Auth on Lifecycle Endpoints - `start`, `stop`, `logs` endpoints now use `AuthorizedAgentByName` dependency
+> - **agent-lifecycle.md + container-capabilities.md**: Container Security Consistency - Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants, all creation paths now apply baseline security
+> - **internal-system-agent.md**: Emergency Stop Parallel Execution - Uses `ThreadPoolExecutor(max_workers=10)` for faster fleet halt (20-30s vs 200+s)
+>
+> **Previous (2026-01-13)**: Dedicated Scheduler Service:
+> - **scheduler-service.md**: New standalone scheduler service replacing embedded backend scheduler
+> - Fixes duplicate execution bug in multi-worker deployments (was: each uvicorn worker ran its own APScheduler)
+> - Source: `src/scheduler/` (main.py, service.py, config.py, models.py, database.py, agent_client.py, locking.py)
+> - Docker: `docker/scheduler/` (Dockerfile, requirements.txt, docker-compose.test.yml)
+> - Tests: `tests/scheduler_tests/` (8 test files: config, cron, database, locking, agent_client, service, conftest)
+> - Key features: Single-instance design, Redis distributed locks, event publishing, health endpoints
+> - Lock pattern: `scheduler:lock:schedule:{schedule_id}` with auto-renewal every 300s (half of 600s TTL)
+> - Agent communication: HTTP POST to `/api/task` via AgentClient with 15-min timeout
+> - Related: scheduling.md (backend CRUD API), autonomy-mode.md (execution gating)
+>
+> **Updated (2026-01-13)**: Host Telemetry Monitoring (OBS-011, OBS-012):
+> - **host-telemetry.md**: New feature flow for infrastructure health monitoring
+> - Host stats: CPU, memory, disk usage via psutil in Dashboard header
+> - Container stats: Aggregate CPU/memory across running agents (API only)
+> - Frontend: `HostTelemetry.vue` with sparkline charts via uPlot, 5s polling
+> - Backend: `routers/telemetry.py` - `/api/telemetry/host`, `/api/telemetry/containers`
+> - Performance: Container stats use parallel ThreadPoolExecutor + `list_all_agents_fast()`
+> - Files: HostTelemetry.vue (194 lines), SparklineChart.vue (148 lines), telemetry.py (174 lines)
+>
+> **Updated (2026-01-13)**: Live Button for Running Tasks:
+> - **execution-detail-page.md**: Added "Live" button entry point from TasksPanel (lines 213-232)
+> - Green badge with animated pulsing dot appears for running tasks
+> - Navigates to Execution Detail page for real-time monitoring
+> - Explicit ID logic: server executions use `task.id`, local pending tasks use `task.execution_id` from process registry
+> - **execution-termination.md**: Added Live button as additional entry point alongside Stop button
+> - **LIVE_EXECUTION_STREAMING.md**: Marked FR4 (Entry Point from Running Task) as implemented
+> - Files: TasksPanel.vue (213-232)
+>
+> **Updated (2026-01-13)**: System Agent UI Consolidation:
+> - **system-agent-ui.md**: Archived - dedicated `/system-agent` page removed
+> - **internal-system-agent.md**: Updated Frontend UI section with new AgentDetail.vue tab filtering, Agents.vue system agent display, and store getters
+> - **agents-page-ui-improvements.md**: Added "System Agent Display" enhancement section with store changes, view changes, and testing steps
+> - System agent (`trinity-system`) now uses standard `AgentDetail.vue` with full tab access including **Schedules**
+> - System agent pinned at top of Agents page (admin-only visibility) with purple ring and "SYSTEM" badge
+> - Tabs hidden for system agent: Sharing, Permissions, Folders, Public Links (not applicable)
+> - Files deleted: `SystemAgent.vue` (782 lines), `SystemAgentTerminal.vue` (~350 lines)
+> - `/system-agent` route now redirects to `/agents/trinity-system`
+> - Key line numbers: AgentDetail.vue `visibleTabs` (414-448), Agents.vue admin check (288-305), agents.js getters (25-27, 39-41)
+>
+> **Updated (2026-01-13)**: System Agent Report Storage:
+> - **internal-system-agent.md**: Added Report Storage section documenting organized report directories
+> - Reports saved to `~/reports/{fleet,health,costs,compliance,service-checks,schedules,executions}/`
+> - Naming convention: `YYYY-MM-DD_HHMM.md` for timestamped reports
+> - All `/ops/` slash commands updated with "Save Report" instructions
+> - New `.gitignore` in template to exclude `reports/` from sync
+>
+> **Updated (2026-01-12)**: Execution Termination Feature:
+> - **execution-termination.md**: New feature flow for stopping running executions
+> - Stop button in Tasks panel (`TasksPanel.vue:239-255`) for running tasks with `execution_id`
+> - Process Registry (`agent_server/services/process_registry.py`) - thread-safe subprocess tracking
+> - Agent endpoints: `POST /api/executions/{id}/terminate`, `GET /api/executions/running`
+> - Backend proxy: `POST /api/agents/{name}/executions/{id}/terminate` with queue release
+> - Signal flow: SIGINT (graceful, 5s timeout) -> SIGKILL (force)
+> - New `EXECUTION_CANCELLED` activity type for audit trail
+> - Process registration in `claude_code.py` for both chat and task executions
+> - Updated flows: execution-queue.md, tasks-tab.md
+>
+> **Updated (2026-01-12)**: Make Repeatable Feature:
+> - **tasks-tab.md**: Added "Make Repeatable" button (calendar icon) to create schedule from task execution
+> - **scheduling.md**: Added "Make Repeatable" flow (Section 1b) with `initialMessage` prop and pre-fill behavior
+> - Frontend files: TasksPanel.vue (251-261, 451, 654-657), AgentDetail.vue (84, 148, 261, 583-594), SchedulesPanel.vue (487-490, 790-802)
+> - User flow: Click calendar icon on task -> Tab switches to Schedules -> Create form opens with message pre-filled
+>
+> **Updated (2026-01-12)**: Frontend Polling Optimization:
+> - Reduced polling frequency across all composables to lower API load:
+>   - `useSessionActivity.js:117`: Activity polling changed from 2s to 5s
+>   - `useAgentStats.js:4,59`: Stats polling changed from 5s to 10s, MAX_POINTS from 60 to 30 (still 5 min of history)
+>   - `useAgentLogs.js:45`: Logs auto-refresh changed from 10s to 15s
+>   - `useGitSync.js:164`: Git status polling changed from 30s to 60s
+> - Feature flows updated: activity-monitoring.md, agent-logs-telemetry.md, github-sync.md, agent-network.md, agents-page-ui-improvements.md, activity-stream-collaboration-tracking.md
+>
+> **Updated (2026-01-12)**: Database Batch Queries (N+1 Fix):
+> - **New method**: `db.get_all_agent_metadata(user_email)` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables
+> - **Updated function**: `get_accessible_agents()` in `helpers.py:83-153` - was 8-10 queries per agent, now 2 total queries
+> - **Exposed on DatabaseManager**: `database.py:845-850`
+> - **Result**: Database queries reduced from 160-200 to 2 per `/api/agents` request
+> - **Orphaned agents**: Docker-only containers (no DB record) now only visible to admin
+> - **Feature flows updated**: agent-lifecycle.md, agent-network.md, agents-page-ui-improvements.md
+>
+> **Updated (2026-01-12)**: Docker Stats Optimization:
+> - **Performance**: `/api/agents` response time reduced from ~2-3s to <50ms
+> - **New function**: `list_all_agents_fast()` in `services/docker_service.py:101-159` - extracts data ONLY from container labels
+> - **Avoids slow operations**: `container.attrs`, `container.image`, `container.stats()` (2+ seconds per container)
+> - **Updated files**: `helpers.py:17,92,167` (`get_accessible_agents`, `get_agents_by_prefix`), `main.py:26,177` (startup), `ops.py:22` (fleet ops), `telemetry.py:16,126` (container stats)
+> - **Feature flows updated**: agent-lifecycle.md, agent-network.md, internal-system-agent.md
+
+> **Updated (2026-01-12)**: Agent Dashboard feature:
+> - **agent-dashboard.md**: New feature flow for agent-defined dashboard system replacing Metrics tab
+> - Dashboard tab renders `DashboardPanel.vue` component with 11 widget types
+> - Agent defines `dashboard.yaml` in `~/` or `~/workspace/` with declarative layout
+> - Backend: `/api/agent-dashboard/{name}` (routers/agent_dashboard.py) -> `services/agent_service/dashboard.py`
+> - Agent Server: `/api/dashboard` (agent_server/routers/dashboard.py) reads and validates YAML
+> - Widget types: metric, status, progress, text, markdown, table, list, link, image, divider, spacer
+> - Auto-refresh based on `config.refresh` (default 30s, min 5s)
+
 > **Updated (2026-01-11)**: Execution ID Tracking System:
 > - **execution-queue.md**: Documented two ID systems - Queue ID (UUID, Redis, 10-min TTL) vs Database ID (`token_urlsafe(16)`, SQLite, permanent)
 > - **execution-detail-page.md**: Clarified navigation uses Database Execution ID from `task_execution_id` in chat response
@@ -119,7 +228,7 @@
 > - **agent-network.md**: Updated with execution stats display on Agent Cards
 > - New `GET /api/agents/execution-stats` endpoint documented (agents.py:140-161)
 > - Database layer: `get_all_agents_execution_stats()` in db/schedules.py:445-489
-> - Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s
+> - Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 10s
 > - AgentNode.vue: Compact stats row showing "12 tasks - 92% - $0.45 - 2m ago" (lines 86-103)
 >
 > **Updated (2025-12-31)**: Execution Log Viewer feature flow documented:
@@ -204,29 +313,33 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **service layer: lifecycle.py, crud.py**, frontend: useAgentLifecycle.js composable (Updated 2025-12-30) |
+| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
-| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format (Updated 2025-01-02) |
+| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
+| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
+| **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels |
 | MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 21 MCP tools for external agent management, including `get_agent_info` for template metadata access (Updated 2026-01-03) |
+| **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - **refactored**: GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency (Updated 2025-12-31) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP (Implemented 2025-11-29) |
-| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability (Implemented 2025-12-01) |
+| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
-| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - includes execution stats display on Agent Cards (Updated 2026-01-01) |
-| **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport (Updated 2026-01-10) |
-| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-10) |
+| Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` + `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
+| **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport (Updated 2026-01-15) |
+| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-15) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
-| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **service layer: queue.py** - scheduler uses AgentClient.task() for raw log format (Updated 2025-01-02) |
-| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design (Implemented 2025-12-07, **Dashboard Parity 2026-01-09**) |
+| **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **2026-01-14 Race Condition Fixes**: Atomic `SET NX EX` for slot acquisition, Lua script for atomic pop-and-set, `SCAN` instead of `KEYS`. Service layer: queue.py, scheduler uses AgentClient.task() for raw log format |
+| **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
+| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top), `displayAgents` computed, admin check on mount (Updated 2026-01-13) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
 | **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |
@@ -235,21 +348,51 @@
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
-| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. Ops-only scope. **2026-01-09**: Schedule & Execution Management via slash commands (`/ops/schedules/*`, `/ops/executions/*`). **2025-12-31**: AgentClient service pattern. **2025-12-21**: OTel access fix (Req 11.1, 11.2) |
-| **System Agent UI** | High | [system-agent-ui.md](feature-flows/system-agent-ui.md) | Admin-only `/system-agent` page with fleet overview cards, quick actions (Emergency Stop, Restart All, Pause/Resume Schedules), and Operations Console chat interface (Req 11.3 - Created 2025-12-20) |
+| **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-14**: Emergency stop uses parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
-| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history with re-run capability, all execution types use raw log format (Updated 2025-01-02) |
+| **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
-| **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel icon, Timeline click (Implemented 2026-01-10) |
+| **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
+| **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - **2026-01-14**: Added RESTRICTED/FULL_CAPABILITIES constants for consistent security across all container creation paths. System-wide setting + per-agent API, automatic recreation on start (CFG-004) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
+| **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
+| **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
+| **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
+
+---
+
+## Process Engine Flows
+
+> **New (2026-01-16)**: Complete documentation for the Process Engine - BPMN-inspired workflow orchestration with AI agents.
+
+The Process Engine is a major platform feature that enables defining, executing, and monitoring multi-step workflows with AI agents, human approvals, and automated scheduling. See the dedicated documentation folder for comprehensive feature flows:
+
+**Index Document**: [process-engine/README.md](feature-flows/process-engine/README.md)
+
+| Flow | Document | Description |
+|------|----------|-------------|
+| Process Definition | [process-definition.md](feature-flows/process-engine/process-definition.md) | YAML schema, validation, versioning |
+| Process Execution | [process-execution.md](feature-flows/process-engine/process-execution.md) | Execution engine, step handlers, state machine |
+| Process Monitoring | [process-monitoring.md](feature-flows/process-engine/process-monitoring.md) | Real-time UI views, WebSocket events |
+| Human Approval | [human-approval.md](feature-flows/process-engine/human-approval.md) | Approval gates, inbox, timeout handling |
+| Process Scheduling | [process-scheduling.md](feature-flows/process-engine/process-scheduling.md) | Cron triggers, timer steps |
+| Process Analytics | [process-analytics.md](feature-flows/process-engine/process-analytics.md) | Cost tracking, metrics, alerts |
+| Sub-Processes | [sub-processes.md](feature-flows/process-engine/sub-processes.md) | Parent-child linking, breadcrumbs |
+| Agent Roles (EMI) | [agent-roles-emi.md](feature-flows/process-engine/agent-roles-emi.md) | EMI pattern, InformedNotifier |
+| Process Templates | [process-templates.md](feature-flows/process-engine/process-templates.md) | Bundled and user templates |
+
+**Key Entry Points:**
+- **UI**: Process List (`/processes`), Process Editor, Execution Detail, Approvals
+- **API**: `/api/processes/*`, `/api/executions/*`, `/api/approvals/*`, `/api/process-templates/*`
+- **Backend**: `src/backend/services/process_engine/`
 
 ---
 
@@ -263,6 +406,7 @@
 | Agent Chat | DEPRECATED | [archive/agent-chat.md](feature-flows/archive/agent-chat.md) | UI replaced by Agent Terminal (2025-12-25) - API docs merged into execution-queue.md |
 | Agent Vector Memory | REMOVED | [archive/vector-memory.md](feature-flows/archive/vector-memory.md) | Platform-injected vector memory removed (2025-12-24) - templates should define their own |
 | Agent Network Replay Mode | SUPERSEDED | [archive/agent-network-replay-mode.md](feature-flows/archive/agent-network-replay-mode.md) | VCR-style replay replaced by Dashboard Timeline View and replay-timeline.md (2026-01-04) |
+| System Agent UI | CONSOLIDATED | [archive/system-agent-ui.md](feature-flows/archive/system-agent-ui.md) | Dedicated `/system-agent` page removed (2026-01-13) - system agent now uses regular AgentDetail.vue with full tab access including Schedules |
 
 ---
 
@@ -272,6 +416,14 @@
 |----------|---------|
 | [TRINITY_COMPATIBLE_AGENT_GUIDE.md](../TRINITY_COMPATIBLE_AGENT_GUIDE.md) | **Single-agent guide** — Creating Trinity-compatible agents, template structure, Four Pillars, planning system |
 | [MULTI_AGENT_SYSTEM_GUIDE.md](../MULTI_AGENT_SYSTEM_GUIDE.md) | **Multi-agent guide** — Building coordinated multi-agent systems, architecture patterns, shared folders, deployment |
+
+---
+
+## Requirements Specs (Implemented)
+
+| Document | Priority | Status | Description |
+|----------|----------|--------|-------------|
+| [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | **IMPLEMENTED** | Standalone scheduler service - fixes duplicate execution bug with multiple workers, Redis distributed locks, single-instance design. See [scheduler-service.md](feature-flows/scheduler-service.md) (Implemented 2026-01-13) |
 
 ---
 

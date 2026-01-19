@@ -1,6 +1,6 @@
 # Feature: Dashboard Replay Timeline
 
-> **Last Updated**: 2026-01-04
+> **Last Updated**: 2026-01-15 (Added pink color for MCP executions)
 
 ## Overview
 
@@ -237,13 +237,15 @@ const agentRows = computed(() => {
   // Group events by agent
   const agentActivityMap = new Map()
 
+  // NOTE: Use getTimestampMs() for timezone-aware parsing (handles missing 'Z' suffix)
+  // See docs/TIMEZONE_HANDLING.md for details
   props.events.forEach((event, index) => {
     // Source agent activity
     if (!agentActivityMap.has(event.source_agent)) {
       agentActivityMap.set(event.source_agent, [])
     }
     agentActivityMap.get(event.source_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
       type: 'send',
       eventIndex: index
     })
@@ -253,7 +255,7 @@ const agentRows = computed(() => {
       agentActivityMap.set(event.target_agent, [])
     }
     agentActivityMap.get(event.target_agent).push({
-      time: new Date(event.timestamp).getTime(),
+      time: getTimestampMs(event.timestamp),  // from @/utils/timestamps
       type: 'receive',
       eventIndex: index
     })
@@ -309,6 +311,57 @@ const agentRows = computed(() => {
 - Active bars: `#3b82f6` (blue-500) at 100% opacity
 - Inactive bars: `#93c5fd` (blue-300) at 70% opacity
 
+#### 5a. Real-Time In-Progress Bar Extension (Added 2026-01-13)
+
+In-progress task bars now grow in real-time as the task executes, providing live visual feedback.
+
+**Implementation** (`ReplayTimeline.vue:568-612`):
+
+1. **Store start timestamp**: Activities store `startTimestamp` for dynamic duration calculation:
+```javascript
+import { getTimestampMs } from '@/utils/timestamps'
+
+const startTimestamp = getTimestampMs(event.timestamp)  // Timezone-aware
+agentActivityMap.get(event.source_agent).push({
+  time: startTimestamp,
+  startTimestamp, // Store for dynamic duration calculation
+  isInProgress: event.status === 'started',
+  // ...
+})
+```
+
+2. **Dynamic duration calculation**: For in-progress tasks, elapsed time updates every second:
+```javascript
+// ReplayTimeline.vue:606-612
+let effectiveDuration = act.durationMs
+if (act.isInProgress && act.startTimestamp) {
+  // For in-progress tasks, calculate elapsed time from start
+  // This will update every second as currentNow updates
+  effectiveDuration = Math.max(1000, currentNow.value - act.startTimestamp)
+}
+```
+
+3. **Reactive timer**: A `currentNow` ref updates every second (`ReplayTimeline.vue:371, 399`):
+```javascript
+const currentNow = ref(Date.now())
+// Updated every second in setInterval
+currentNow.value = Date.now()
+```
+
+4. **Bar properties**: Updated to use effective duration (`ReplayTimeline.vue:629, 631`):
+```javascript
+return {
+  durationMs: effectiveDuration, // Live elapsed time for tooltips
+  isEstimated: act.isEstimated && !act.isInProgress, // Not estimated while live
+}
+```
+
+**Visual Behavior**:
+- Task starts: Amber bar with minimum width (12px)
+- Every second: Bar grows as `effectiveDuration` increases
+- Tooltip: Shows live time like "In Progress - 45.3s"
+- Task completes: Bar snaps to final size from actual `duration_ms`
+
 #### 6. Blinking Execution Indicator (Lines 178-186)
 
 ```vue
@@ -347,7 +400,7 @@ const communicationArrows = computed(() => {
 
     if (sourceIndex === undefined || targetIndex === undefined) return null
 
-    const time = new Date(event.timestamp).getTime()
+    const time = getTimestampMs(event.timestamp)  // Timezone-aware parsing
     const x = ((time - startTime.value) / duration.value) * actualGridWidth.value
 
     const y1 = sourceIndex * rowHeight + rowHeight / 2
@@ -789,6 +842,15 @@ onUnmounted(() => {
 | 2 | Pause playback | Pulsing stops |
 | 3 | Stop playback | All dots return to static state |
 
+#### Test Case 8: In-Progress Bar Real-Time Extension (Added 2026-01-13)
+| Step | Action | Expected |
+|------|--------|----------|
+| 1 | Start a long-running task | Amber bar appears with minimum width |
+| 2 | Wait 5-10 seconds | Bar visibly grows wider each second |
+| 3 | Hover over bar | Tooltip shows live elapsed time (e.g., "In Progress - 8.2s") |
+| 4 | Wait for task completion | Bar snaps to final width, color changes based on result |
+| 5 | Hover after completion | Tooltip shows actual duration (no tilde prefix) |
+
 ---
 
 ## Related Flows
@@ -807,6 +869,9 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Timezone-aware timestamps**: Code examples updated to use `getTimestampMs()` from `@/utils/timestamps`. Ensures events display at correct positions regardless of server/user timezone. See `docs/TIMEZONE_HANDLING.md` |
+| 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`); updated Visual Elements Summary with trigger-based color scheme |
+| 2026-01-13 | **Feature**: In-progress bars now extend in real-time - added `startTimestamp` storage, dynamic `effectiveDuration` calculation, and 1-second reactive updates |
 | 2026-01-04 | Initial documentation of ReplayTimeline component |
 
 ---
@@ -822,8 +887,13 @@ onUnmounted(() => {
 
 | Element | Color | Purpose |
 |---------|-------|---------|
-| Activity bars (active) | `#3b82f6` (blue-500) | Events at/before cursor |
-| Activity bars (inactive) | `#93c5fd` (blue-300) | Events after cursor |
+| Activity bars (manual) | `#22c55e` (green-500) | Manual task executions |
+| Activity bars (MCP) | `#ec4899` (pink-500) | MCP executions via Claude Code |
+| Activity bars (scheduled) | `#8b5cf6` (purple-500) | Scheduled task executions |
+| Activity bars (agent-triggered) | `#06b6d4` (cyan-500) | Agent-triggered executions |
+| Activity bars (in-progress) | `#f59e0b` (amber-500) | Currently running tasks (grows in real-time) |
+| Activity bars (error) | `#ef4444` (red-500) | Failed executions |
+| Activity bars (inactive) | Lighter variant | Events after cursor (30% opacity reduction) |
 | Communication arrows (active) | `#06b6d4` (cyan-500) | Active connections |
 | Communication arrows (inactive) | `#67e8f9` (cyan-300) | Future connections |
 | Playback cursor | `#ef4444` (red-500) | Current playback position |

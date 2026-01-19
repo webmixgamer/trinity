@@ -25,7 +25,11 @@
       <!-- Header with name, runtime badge, system badge, and status dot -->
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center flex-1 mr-2 min-w-0">
-          <div class="text-gray-900 dark:text-white font-bold text-base truncate" :title="data.label">
+          <div
+            class="nodrag text-gray-900 dark:text-white font-bold text-base truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+            :title="data.label"
+            @click="viewDetails"
+          >
             {{ data.label }}
           </div>
           <!-- Runtime badge (Claude/Gemini) -->
@@ -338,7 +342,11 @@ const cpuDisplay = computed(() => {
 })
 
 function viewDetails() {
-  router.push(`/agents/${props.data.label}`)
+  if (isSystemAgent.value) {
+    router.push('/system-agent')
+  } else {
+    router.push(`/agents/${props.data.label}`)
+  }
 }
 
 // Handle autonomy toggle

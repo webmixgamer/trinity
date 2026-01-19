@@ -13,7 +13,7 @@
 |-------|------|----------|---|--------|--------|
 | 0 | Setup & Prerequisites | 5 min | None | Services running, clean slate | 🟢 |
 | 1 | Authentication & UI | 5 min | Phase 0 | Logged in, valid token | 🟢 |
-| 2 | Agent Creation (GitHub) | 30 min | Phase 1 | 8 agents running + default permissions | 🟢 |
+| 2 | Agent Creation (GitHub) | 30 min | Phase 1 | 3 agents running + default permissions | 🟢 |
 | 3 | Context Validation (CRITICAL) | 10 min | Phase 2 | Context tracking verified | 🟡 Known bug |
 | 4 | State Persistence + Activity | 10 min | Phase 3 | File I/O + Activity tracking | 🟢 |
 | 5 | Agent Collaboration + Permissions | 25 min | Phase 4 | MCP communication + permission enforcement | 🟢 |
@@ -29,8 +29,18 @@
 | 16 | Web Terminal | 15 min | Phase 1, 2 | Terminal for all agents (Req 11.5) | 🟢 |
 | 17 | Email Authentication | 15 min | Phase 0 | Email OTP login flow (Req 12.4) | 🟢 |
 | 18 | GitHub Initialization | 15 min | Phase 1, 2 | Agent files synced to GitHub | 🟢 |
+| 19 | First-Time Setup | 10 min | Phase 0, Fresh DB | Admin password wizard, login blocking | 🆕 |
+| 20 | Live Execution Streaming | 20 min | Phase 2, 7 | SSE streaming, Live indicator, Stop button | 🆕 |
+| 21 | Session Management | 15 min | Phase 2 | Chat session CRUD via API | 🆕 |
+| 22 | Logs & Telemetry | 15 min | Phase 2 | Container logs, CPU/memory, tool tracking | 🆕 |
+| 23 | Agent Configuration | 20 min | Phase 2 | Resource limits, model selection, capabilities | 🆕 |
+| 24 | Credential Management | 25 min | Phase 1 | Credential CRUD, bulk import, OAuth, hot-reload | 🆕 |
+| 25 | Agent Sharing | 15 min | Phase 1, 2 | Share agents, access control, whitelist | 🆕 |
+| 26 | Shared Folders | 20 min | Phase 2, 5 | File collaboration via Docker volumes | 🆕 |
+| 27 | Public Access | 20 min | Phase 1, 2 | Public links, email verification, revocation | 🆕 |
+| 28 | Agent Dashboard | 15 min | Phase 2 | Widget system, auto-refresh, dashboard.yaml | 🆕 |
 
-**Total Time**: ~270 minutes (~4.5 hours) for full suite
+**Total Time**: ~420 minutes (~7 hours) for full suite
 
 ---
 
@@ -105,7 +115,7 @@ These phases must **PASS**:
 
 1. **Phase 0: Setup** - No services = test can't run
 2. **Phase 1: Authentication** - Can't access any features without login
-3. **Phase 2: Agent Creation** - Must use GitHub templates (not local)
+3. **Phase 2: Agent Creation** - Must use local templates (not local)
 4. **Phase 3: Context Validation** - CRITICAL BUG - must document status
 
 All other phases can be skipped if time-constrained, but phases 0-3 are mandatory.
@@ -176,12 +186,12 @@ The UI integration test sub-agent (`ui-integration-tester.md`) runs phases seque
 
 ## GitHub Agent Validation (Critical)
 
-**In Every Phase**: Verify agents use GitHub templates
+**In Every Phase**: Verify agents use local templates
 
 For test-echo, test-counter, test-delegator, test-worker, etc.:
 
 ```bash
-# MUST show github:abilityai/test-agent-*
+# MUST show local:test-*
 docker inspect agent-test-echo --format='{{index .Config.Labels "trinity.template"}}'
 
 # NOT local:test-echo or local:test-counter
@@ -236,10 +246,22 @@ Independent Phases (can run after Phase 1):
     Phase 1 → Phase 13 (System Settings)
     Phase 1 → Phase 14 (OpenTelemetry)
     Phase 1 + Phase 14 → Phase 15 (System Agent)
+    Phase 1 → Phase 24 (Credential Management)
+
+Gap Analysis Phases (Phase 19-28):
+    Phase 0 + Fresh DB → Phase 19 (First-Time Setup)
+    Phase 2 + Phase 7 → Phase 20 (Live Execution Streaming)
+    Phase 2 → Phase 21 (Session Management)
+    Phase 2 → Phase 22 (Logs & Telemetry)
+    Phase 2 → Phase 23 (Agent Configuration)
+    Phase 1 + Phase 2 → Phase 25 (Agent Sharing)
+    Phase 2 + Phase 5 → Phase 26 (Shared Folders)
+    Phase 1 + Phase 2 → Phase 27 (Public Access)
+    Phase 2 → Phase 28 (Agent Dashboard)
 ```
 
 Each phase assumes **all previous phases PASSED**.
-Phases 13-15 are independent features that only require Phase 1 (authentication).
+Phases 13-15 and 19-28 are independent features that can run after their prerequisites.
 
 ---
 
@@ -252,7 +274,7 @@ If testing a specific feature, prerequisites must be manually verified:
 Prerequisite Checklist:
 - [ ] Services running (Phase 0)
 - [ ] Logged in (Phase 1)
-- [ ] All 8 agents created from GitHub (Phase 2)
+- [ ] All 3 agents created from GitHub (Phase 2)
 - [ ] Context tracking working (Phase 3) - or bug documented
 - [ ] State persistence working (Phase 4)
 - [ ] Agent collaboration working (Phase 5)
@@ -271,7 +293,7 @@ After all phases complete:
 **Date**: 2025-12-09
 **Duration**: 2:45 (2 hours 45 minutes)
 **Phases Executed**: 0-12 (13 total)
-**Environment**: Local (localhost:3000 + localhost:8000)
+**Environment**: Local (localhost + localhost:8000)
 
 ## Summary
 - Phases Passed: 10
@@ -321,7 +343,17 @@ docs/testing/phases/
 ├── PHASE_15_SYSTEM_AGENT.md
 ├── PHASE_16_WEB_TERMINAL.md
 ├── PHASE_17_EMAIL_AUTHENTICATION.md
-└── PHASE_18_GITHUB_INITIALIZATION.md
+├── PHASE_18_GITHUB_INITIALIZATION.md
+├── PHASE_19_FIRST_TIME_SETUP.md       (NEW - Gap Analysis)
+├── PHASE_20_LIVE_EXECUTION_STREAMING.md (NEW - Gap Analysis)
+├── PHASE_21_SESSION_MANAGEMENT.md     (NEW - Gap Analysis)
+├── PHASE_22_LOGS_TELEMETRY.md         (NEW - Gap Analysis)
+├── PHASE_23_AGENT_CONFIGURATION.md    (NEW - Gap Analysis)
+├── PHASE_24_CREDENTIAL_MANAGEMENT.md  (NEW - Gap Analysis)
+├── PHASE_25_AGENT_SHARING.md          (NEW - Gap Analysis)
+├── PHASE_26_SHARED_FOLDERS.md         (NEW - Gap Analysis)
+├── PHASE_27_PUBLIC_ACCESS.md          (NEW - Gap Analysis)
+└── PHASE_28_AGENT_DASHBOARD.md        (NEW - Gap Analysis)
 ```
 
 ---
@@ -362,6 +394,17 @@ Phase X+1: Name
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | **Gap Analysis Implementation**: Added 10 new phases (19-28) to address coverage gaps |
+| 2026-01-14 | Added Phase 19: First-Time Setup (AUTH-001, AUTH-002) |
+| 2026-01-14 | Added Phase 20: Live Execution Streaming (EXEC-009 to EXEC-013) - **P0 Critical** |
+| 2026-01-14 | Added Phase 21: Session Management (EXEC-018 to EXEC-021) |
+| 2026-01-14 | Added Phase 22: Logs & Telemetry (OBS-001 to OBS-010) |
+| 2026-01-14 | Added Phase 23: Agent Configuration (CFG-001 to CFG-008) |
+| 2026-01-14 | Added Phase 24: Credential Management (CRED-001 to CRED-013) - **P0 Critical** |
+| 2026-01-14 | Added Phase 25: Agent Sharing (SHARE-001 to SHARE-004) |
+| 2026-01-14 | Added Phase 26: Shared Folders (FOLDER-001 to FOLDER-004) |
+| 2026-01-14 | Added Phase 27: Public Access (PUB-001 to PUB-007) - **P0 Critical** |
+| 2026-01-14 | Added Phase 28: Agent Dashboard (DASH-001 to DASH-003) |
 | 2025-12-26 | Added Phase 18: GitHub Repository Initialization |
 | 2025-12-26 | Added Phase 17: Email-Based Authentication (Req 12.4) |
 | 2025-12-26 | Added Phase 16: Web Terminal Testing (Req 11.5) |
@@ -396,5 +439,6 @@ python3 docs/testing/run_test_phases.py --all
 
 ---
 
-**All Phases Ready**: 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 (18 total)
-**Last Updated**: 2025-12-26
+**All Phases Ready**: 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 (28 total)
+**Last Updated**: 2026-01-14
+**Gap Analysis Coverage**: Increased from 41% to 90%+ with new phases

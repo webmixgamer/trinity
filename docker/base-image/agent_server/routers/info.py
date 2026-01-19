@@ -84,28 +84,16 @@ async def get_template_info():
     Get template metadata from template.yaml if available.
     Returns information about what this agent is, its capabilities, commands, etc.
     """
-    home_dir = Path("/home/developer")
-
-    # Check multiple possible locations for template.yaml
-    template_paths = [
-        home_dir / "template.yaml",
-        home_dir / "workspace" / "template.yaml",
-        Path("/template") / "template.yaml",
-    ]
-
+    template_path = Path("/home/developer/template.yaml")
     template_data = None
-    template_path = None
 
-    for path in template_paths:
-        if path.exists():
-            template_path = path
-            try:
-                import yaml
-                with open(path) as f:
-                    template_data = yaml.safe_load(f)
-                break
-            except Exception as e:
-                logger.warning(f"Failed to read template.yaml at {path}: {e}")
+    if template_path.exists():
+        try:
+            import yaml
+            with open(template_path) as f:
+                template_data = yaml.safe_load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read template.yaml: {e}")
 
     if not template_data:
         # Return basic info from environment if no template.yaml
@@ -152,18 +140,9 @@ async def get_template_info():
     }
 
 
-def find_template_yaml() -> Optional[Path]:
-    """Find template.yaml in possible locations."""
-    home_dir = Path("/home/developer")
-    template_paths = [
-        home_dir / "template.yaml",
-        home_dir / "workspace" / "template.yaml",
-        Path("/template") / "template.yaml",
-    ]
-    for path in template_paths:
-        if path.exists():
-            return path
-    return None
+def get_template_path() -> Path:
+    """Get the fixed path to template.yaml."""
+    return Path("/home/developer/template.yaml")
 
 
 @router.get("/api/metrics")
@@ -179,9 +158,9 @@ async def get_metrics():
     - values: Current metric values from metrics.json
     - last_updated: Timestamp from metrics.json (if available)
     """
-    # 1. Find and read template.yaml for metric definitions
-    template_path = find_template_yaml()
-    if not template_path:
+    # 1. Read template.yaml for metric definitions
+    template_path = get_template_path()
+    if not template_path.exists():
         return {
             "has_metrics": False,
             "message": "No template.yaml found"
@@ -206,26 +185,20 @@ async def get_metrics():
         }
 
     # 2. Read current values from metrics.json
-    home_dir = Path("/home/developer")
-    metrics_paths = [
-        home_dir / "metrics.json",
-        home_dir / "workspace" / "metrics.json",
-    ]
+    metrics_path = Path("/home/developer/metrics.json")
 
     values: Dict[str, Any] = {}
     last_updated: Optional[str] = None
 
-    for metrics_path in metrics_paths:
-        if metrics_path.exists():
-            try:
-                data = json.loads(metrics_path.read_text())
-                last_updated = data.pop("last_updated", None)
-                values = data
-                break
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse metrics.json: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to read metrics.json: {e}")
+    if metrics_path.exists():
+        try:
+            data = json.loads(metrics_path.read_text())
+            last_updated = data.pop("last_updated", None)
+            values = data
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse metrics.json: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to read metrics.json: {e}")
 
     return {
         "has_metrics": True,

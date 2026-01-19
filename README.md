@@ -4,6 +4,8 @@
 
 Unlike reactive chatbots ("System 1" AI), Deep Agents operate with deliberative reasoning ("System 2" AI): they decompose goals into task graphs, persist memory across sessions, delegate to specialized sub-agents, and recover from failures autonomously.
 
+[![Watch the Demo](https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/SWpNphnuPpQ)
+
 ## The Four Pillars of Deep Agency
 
 Trinity implements four foundational capabilities that transform simple AI assistants into autonomous agents:
@@ -20,20 +22,24 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
 - **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
 - **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
+- **Package Persistence** — Installed packages survive container recreation via `~/.trinity/setup.sh`
+- **Base Image Versioning** — Track agent versions and detect when updates are available
 
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
-- **MCP Integration** — 16 tools for external agent orchestration via Model Context Protocol
+- **MCP Integration** — 21 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
 - **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
+- **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
+- **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
 ### Operations
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
 - **Credential Management** — Redis-backed secrets with hot-reload capability
-- **Scheduling** — Cron-based automation for recurring agent tasks
+- **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Browser** — Browse and download agent workspace files via web UI
@@ -77,20 +83,20 @@ cp .env.example .env
 
 On first launch, Trinity will guide you through initial setup:
 
-1. Open http://localhost:3000 — you'll be redirected to the setup wizard
+1. Open http://localhost — you'll be redirected to the setup wizard
 2. Set your **admin password** (minimum 8 characters)
 3. Log in with username `admin` and your new password
 4. Go to **Settings** → **API Keys** to configure your Anthropic API key
 
 ### Access
 
-- **Web UI**: http://localhost:3000
+- **Web UI**: http://localhost
 - **API Docs**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
 
 ### Create Your First Agent
 
-1. Open http://localhost:3000
+1. Open http://localhost
 2. Click **Create Agent**
 3. Enter a name and select a template (or leave blank for a basic agent)
 4. Click **Create**
@@ -104,10 +110,13 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 │                       Trinity Platform                           │
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (Vue.js)  │  Backend (FastAPI)  │  MCP Server         │
-│     Port 3000       │     Port 8000       │    Port 8080        │
+│      Port 80        │     Port 8000       │    Port 8080        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Redis (secrets)    │  SQLite (data)      │  Vector (logs)      │
-│   Internal only     │   /data volume      │    Port 8686        │
+│  Scheduler Service  │  Redis (secrets +   │  SQLite (data)      │
+│    Port 8001        │   distributed locks)│   /data volume      │
+├─────────────────────────────────────────────────────────────────┤
+│  Vector (logs)      │                                           │
+│    Port 8686        │                                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Agent Containers                              │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────────────┐    │
@@ -125,11 +134,13 @@ trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   └── mcp-server/       # Trinity MCP server (16 tools)
+│   ├── mcp-server/       # Trinity MCP server (21 tools)
+│   └── scheduler/        # Dedicated scheduler service (Redis locks)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
 │   ├── backend/          # Backend Dockerfile
-│   └── frontend/         # Frontend Dockerfile
+│   ├── frontend/         # Frontend Dockerfile
+│   └── scheduler/        # Scheduler Dockerfile
 ├── config/
 │   ├── agent-templates/  # Pre-configured agent templates
 │   ├── vector.yaml       # Vector log aggregation config
@@ -221,6 +232,7 @@ Trinity includes an MCP server for external orchestration of agents:
 |------|-------------|
 | `list_agents` | List all agents with status |
 | `get_agent` | Get detailed agent information |
+| `get_agent_info` | Get agent template metadata (capabilities, commands, etc.) |
 | `create_agent` | Create a new agent from template |
 | `start_agent` | Start a stopped agent |
 | `stop_agent` | Stop a running agent |

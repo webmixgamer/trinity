@@ -79,6 +79,7 @@ class ExecutionMetadata(BaseModel):
     num_turns: Optional[int] = None
     tool_count: int = 0
     session_id: Optional[str] = None
+    execution_id: Optional[str] = None  # Unique ID for process registry (termination)
     # Token tracking for context window
     input_tokens: int = 0
     output_tokens: int = 0
@@ -219,6 +220,7 @@ class ParallelTaskRequest(BaseModel):
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
     timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
     max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
+    execution_id: Optional[str] = None  # Database execution ID (used for process registry if provided)
 
 
 class ParallelTaskResponse(BaseModel):

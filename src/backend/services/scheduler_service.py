@@ -270,8 +270,9 @@ class SchedulerService:
         try:
             # Send task to agent using AgentClient (stateless execution)
             # Uses /api/task for raw Claude Code execution log format
+            # Pass execution_id for process registry (enables termination and live streaming)
             client = get_agent_client(schedule.agent_name)
-            task_response = await client.task(schedule.message)
+            task_response = await client.task(schedule.message, execution_id=execution.id)
 
             # Update execution status with parsed response
             db.update_execution_status(
@@ -478,8 +479,9 @@ class SchedulerService:
         try:
             # Send task to agent using AgentClient (stateless execution)
             # Uses /api/task for raw Claude Code execution log format
+            # Pass execution_id for process registry (enables termination and live streaming)
             client = get_agent_client(schedule.agent_name)
-            task_response = await client.task(schedule.message)
+            task_response = await client.task(schedule.message, execution_id=execution_id)
 
             db.update_execution_status(
                 execution_id=execution_id,

@@ -17,7 +17,7 @@ if [ ! -f .env ]; then
 fi
 
 echo "Starting services..."
-docker-compose up -d
+docker compose up -d
 
 echo ""
 echo "Waiting for services to be ready..."
@@ -28,15 +28,23 @@ echo "====================================="
 echo "Trinity Agent Platform - Ready!"
 echo "====================================="
 echo ""
+# Read FRONTEND_PORT from .env or use default
+FRONTEND_PORT=${FRONTEND_PORT:-$(grep -E '^FRONTEND_PORT=' .env 2>/dev/null | cut -d'=' -f2 || echo "80")}
+FRONTEND_PORT=${FRONTEND_PORT:-80}
+
 echo "Access points:"
-echo "  - Web UI:       http://localhost (login: admin/password)"
+if [ "$FRONTEND_PORT" = "80" ]; then
+    echo "  - Web UI:       http://localhost (login: admin/password)"
+else
+    echo "  - Web UI:       http://localhost:$FRONTEND_PORT (login: admin/password)"
+fi
 echo "  - Backend API:  http://localhost:8000/docs"
 echo "  - MCP Server:   http://localhost:8080/mcp"
 echo ""
 echo "To view logs:"
-echo "  docker-compose logs -f"
+echo "  docker compose logs -f"
 echo ""
 echo "To stop services:"
-echo "  docker-compose down"
+echo "  docker compose down"
 echo ""
 

@@ -23,7 +23,7 @@ import httpx
 from config import CORS_ORIGINS, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
 from models import User
 from dependencies import get_current_user
-from services.docker_service import docker_client, list_all_agents
+from services.docker_service import docker_client, list_all_agents_fast
 
 # Import routers
 from routers.auth import router as auth_router
@@ -46,6 +46,13 @@ from routers.public import router as public_router
 from routers.setup import router as setup_router
 from routers.telemetry import router as telemetry_router
 from routers.logs import router as logs_router
+from routers.agent_dashboard import router as agent_dashboard_router
+from routers.processes import router as processes_router
+from routers.executions import router as executions_router
+from routers.approvals import router as approvals_router
+from routers.triggers import router as triggers_router
+from routers.alerts import router as alerts_router
+from routers.process_templates import router as process_templates_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -61,6 +68,9 @@ from services.log_archive_service import log_archive_service
 
 # Import credentials manager for GitHub PAT initialization
 from credentials import CredentialManager, CredentialCreate
+
+# Import process engine WebSocket publisher
+from services.process_engine.events import set_websocket_publisher_broadcast
 
 # Import logging configuration
 from logging_config import setup_logging
@@ -104,6 +114,9 @@ scheduler_service.set_broadcast_callback(manager.broadcast)
 
 # Set up activity service WebSocket manager
 activity_service.set_websocket_manager(manager)
+
+# Set up process engine WebSocket publisher
+set_websocket_publisher_broadcast(manager.broadcast)
 
 
 def initialize_github_pat():
@@ -173,7 +186,7 @@ async def lifespan(app: FastAPI):
 
     if docker_client:
         try:
-            agents = list_all_agents()
+            agents = list_all_agents_fast()  # Fast startup - no slow Docker API calls
             print(f"Found {len(agents)} existing Trinity agent containers")
             for agent in agents:
                 print(f"  - Agent: {agent.name} (status: {agent.status}, ssh_port: {agent.port})")
@@ -192,12 +205,14 @@ async def lifespan(app: FastAPI):
     else:
         print("Docker not available - running in demo mode")
 
-    # Initialize the scheduler
-    try:
-        scheduler_service.initialize()
-        print("Scheduler service initialized")
-    except Exception as e:
-        print(f"Error initializing scheduler: {e}")
+    # NOTE: Embedded scheduler DISABLED (2026-01-13)
+    # Schedule execution is now handled by the dedicated scheduler service (trinity-scheduler container)
+    # which uses Redis distributed locking to prevent duplicate executions.
+    # The scheduler_service module is still imported for:
+    # - Manual trigger functionality (trigger_schedule)
+    # - CRUD sync with APScheduler jobs (no-op when not initialized)
+    # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
+    print("Embedded scheduler disabled - using dedicated scheduler service (trinity-scheduler)")
 
     # Initialize log archive service
     try:
@@ -208,12 +223,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown the scheduler
-    try:
-        scheduler_service.shutdown()
-        print("Scheduler service shutdown")
-    except Exception as e:
-        print(f"Error shutting down scheduler: {e}")
+    # NOTE: Embedded scheduler shutdown removed - scheduler runs in dedicated container
+    # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
 
     # Shutdown log archive service
     try:
@@ -261,6 +272,13 @@ app.include_router(public_router)
 app.include_router(setup_router)
 app.include_router(telemetry_router)
 app.include_router(logs_router)
+app.include_router(agent_dashboard_router)
+app.include_router(processes_router)
+app.include_router(executions_router)
+app.include_router(approvals_router)
+app.include_router(triggers_router)
+app.include_router(alerts_router)
+app.include_router(process_templates_router)
 
 
 # WebSocket endpoint
@@ -327,11 +345,16 @@ async def get_version():
     import os
     from pathlib import Path
 
-    # Read version from VERSION file
-    version_file = Path(__file__).parent.parent.parent / "VERSION"
+    # Read version from VERSION file (check multiple locations)
     version = "unknown"
-    if version_file.exists():
-        version = version_file.read_text().strip()
+    version_paths = [
+        Path("/app/VERSION"),  # In container (mounted)
+        Path(__file__).parent.parent.parent / "VERSION",  # Development
+    ]
+    for version_file in version_paths:
+        if version_file.exists():
+            version = version_file.read_text().strip()
+            break
 
     return {
         "version": version,

@@ -313,19 +313,26 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
 # ============================================================================
 
 @router.post("/{agent_name}/start")
-async def start_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Start an agent."""
     try:
         result = await start_agent_internal(agent_name)
         trinity_status = result.get("trinity_injection", "unknown")
+        credentials_status = result.get("credentials_injection", "unknown")
+        credentials_result = result.get("credentials_result", {})
 
         if manager:
             await manager.broadcast(json.dumps({
                 "event": "agent_started",
-                "data": {"name": agent_name, "trinity_injection": trinity_status}
+                "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
             }))
 
-        return {"message": f"Agent {agent_name} started", "trinity_injection": trinity_status}
+        return {
+            "message": f"Agent {agent_name} started",
+            "trinity_injection": trinity_status,
+            "credentials_injection": credentials_status,
+            "credentials_result": credentials_result
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -333,7 +340,7 @@ async def start_agent_endpoint(agent_name: str, request: Request, current_user: 
 
 
 @router.post("/{agent_name}/stop")
-async def stop_agent_endpoint(agent_name: str, request: Request, current_user: User = Depends(get_current_user)):
+async def stop_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Stop an agent."""
     container = get_agent_container(agent_name)
     if not container:
@@ -359,10 +366,9 @@ async def stop_agent_endpoint(agent_name: str, request: Request, current_user: U
 
 @router.get("/{agent_name}/logs")
 async def get_agent_logs_endpoint(
-    agent_name: str,
+    agent_name: AuthorizedAgentByName,
     request: Request,
-    tail: int = 100,
-    current_user: User = Depends(get_current_user)
+    tail: int = 100
 ):
     """Get agent container logs."""
     container = get_agent_container(agent_name)
@@ -624,7 +630,7 @@ async def get_activity_timeline(
         "start_time": start_time,
         "end_time": end_time,
         "activity_types": types_list,
-        "timeline": filtered_activities
+        "activities": filtered_activities  # Frontend expects "activities" (fixed 2026-01-15)
     }
 
 

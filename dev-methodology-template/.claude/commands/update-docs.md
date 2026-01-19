@@ -30,9 +30,9 @@ Update project documentation after making changes.
    - Update architecture diagram if needed
 
 4. If feature behavior changed:
-   - Check if feature flow exists in `docs/memory/feature-flows/`
-   - Update existing flow document if it exists
-   - Note if a new flow document is needed
+   - Use the `feature-flow-analyzer` agent to update impacted feature flows
+   - Example: `Task tool with subagent_type=feature-flow-analyzer`
+   - The agent will automatically analyze and update relevant flow documents in `docs/memory/feature-flows/`
 
 5. If feature scope changed:
    - Update `docs/memory/requirements.md`

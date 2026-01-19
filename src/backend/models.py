@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from enum import Enum
 
+from utils.helpers import to_utc_iso
+
 
 class AgentConfig(BaseModel):
     """Configuration for creating a new agent."""
@@ -42,10 +44,12 @@ class AgentStatus(BaseModel):
     container_id: Optional[str] = None
     template: Optional[str] = None
     runtime: Optional[str] = "claude-code"  # "claude-code" or "gemini-cli"
+    base_image_version: Optional[str] = None  # Version of trinity-agent-base image
 
     class Config:
         json_encoders = {
-            datetime: lambda v: v.isoformat()
+            # Use to_utc_iso to ensure 'Z' suffix for frontend compatibility
+            datetime: lambda v: to_utc_iso(v) if v else None
         }
 
 
@@ -129,6 +133,9 @@ class ActivityType(str, Enum):
 
     # Collaboration activities
     AGENT_COLLABORATION = "agent_collaboration"
+
+    # Execution control activities
+    EXECUTION_CANCELLED = "execution_cancelled"
 
     # Future activity types (not yet implemented)
     FILE_ACCESS = "file_access"
@@ -220,7 +227,8 @@ class Execution(BaseModel):
 
     class Config:
         json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
+            # Use to_utc_iso to ensure 'Z' suffix for frontend compatibility
+            datetime: lambda v: to_utc_iso(v) if v else None
         }
 
 

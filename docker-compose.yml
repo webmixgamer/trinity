@@ -36,9 +36,11 @@ services:
       - LOG_ARCHIVE_ENABLED=${LOG_ARCHIVE_ENABLED:-true}
       - LOG_CLEANUP_HOUR=${LOG_CLEANUP_HOUR:-3}
       - LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
+      - TRINITY_DB_PATH=/data/trinity.db
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
+      - ./VERSION:/app/VERSION:ro  # Platform version for agent container labels
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - agent-configs:/agent-configs
@@ -72,7 +74,7 @@ services:
     image: trinity-frontend:latest
     container_name: trinity-frontend
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT:-80}:80"
     volumes:
       - ./src/frontend:/app
       - /app/node_modules
@@ -138,6 +140,44 @@ services:
       - NET_BIND_SERVICE
     restart: unless-stopped
 
+  # Scheduler - dedicated service for cron-based agent task execution
+  # Prevents duplicate executions that occurred with multiple backend workers
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    container_name: trinity-scheduler
+    restart: unless-stopped
+    environment:
+      - DATABASE_PATH=/data/trinity.db
+      - REDIS_URL=redis://redis:6379
+      - HEALTH_PORT=8001
+      - LOG_LEVEL=${SCHEDULER_LOG_LEVEL:-INFO}
+      - LOCK_TIMEOUT=600
+      - AGENT_TIMEOUT=900
+      - PUBLISH_EVENTS=true
+    volumes:
+      - trinity-data:/data
+    depends_on:
+      redis:
+        condition: service_started
+      backend:
+        condition: service_started
+    networks:
+      - trinity-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 1
+
   # Vector - centralized log aggregation from all containers
   vector:
     image: timberio/vector:0.43.1-alpine
@@ -172,6 +212,7 @@ services:
       - "4317:4317"   # gRPC receiver (OTLP)
       - "4318:4318"   # HTTP receiver (OTLP)
       - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check endpoint
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:

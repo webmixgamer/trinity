@@ -78,6 +78,14 @@ Time Window: Last {hours} hours
 3. **Failure Detection**: Identify agents with recent failures
 4. **Capacity Planning**: Understand execution patterns
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/executions`
+2. Save with timestamp: `~/reports/executions/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/executions/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Execution history is retained for auditing

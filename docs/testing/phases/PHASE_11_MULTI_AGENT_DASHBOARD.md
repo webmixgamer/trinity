@@ -2,7 +2,7 @@
 
 > **Purpose**: Validate dashboard, agent coordination, and system-wide monitoring
 > **Duration**: ~10 minutes
-> **Assumes**: Phase 10 PASSED (all 8 agents created and tested individually)
+> **Assumes**: Phase 10 PASSED (all 3 agents created and tested individually)
 > **Output**: Multi-agent dashboard and coordination verified
 
 ---
@@ -10,7 +10,7 @@
 ## Background
 
 **System-Wide View**:
-- Dashboard shows all 8 agents in coordinated view
+- Dashboard shows all 3 agents in coordinated view
 - Agent relationships and communication visible
 - System health and metrics
 - Context usage across all agents
@@ -21,7 +21,7 @@
 
 ### Step 1: Navigate to Dashboard
 **Action**:
-- Go to http://localhost:3000/ (home/dashboard)
+- Go to http://localhost/ (home/dashboard)
 - Wait 3 seconds for page load
 
 **Expected**:
@@ -32,7 +32,7 @@
 - [ ] Layout stable (not jumping around)
 
 **Verify**:
-- [ ] All 8 agents visible:
+- [ ] All 3 agents visible:
   - test-echo
   - test-counter
   - test-delegator
@@ -77,7 +77,7 @@ test-echo
 Status: Running
 Context: [X]%
 Created: [date]
-Template: github:abilityai/test-agent-echo
+Template: local:test-echo
 ```
 
 **Verify**:
@@ -85,7 +85,7 @@ Template: github:abilityai/test-agent-echo
 - [ ] Status shown
 - [ ] Context % shown
 - [ ] Creation date shown
-- [ ] Template shown as github:abilityai/test-agent-echo
+- [ ] Template shown as local:test-echo
 
 ---
 
@@ -113,7 +113,7 @@ Template: github:abilityai/test-agent-echo
 ### Step 5: Check Agent Context Distribution
 **Action**:
 - Look at context % displayed for each agent
-- Compare values across all 8 agents
+- Compare values across all 3 agents
 
 **Expected Context Distribution** (approximate):
 ```
@@ -151,7 +151,7 @@ test-error: 10-20% (from Phase 10 error handling)
 - [ ] System uptime: [time since start]
 
 **Verify**:
-- [ ] Counts accurate (8 agents total)
+- [ ] Counts accurate (3 agents total)
 - [ ] All running (no stopped agents)
 - [ ] Context sum makes sense
 - [ ] Uptime reasonable
@@ -232,9 +232,68 @@ All agents coordinated successfully
 
 ---
 
+## Test: Timeline View
+
+### Step 10: Switch to Timeline View
+**Action**:
+- Click "Timeline" button (next to "Graph" button)
+- Wait 2 seconds for timeline to render
+
+**Expected**:
+- [ ] Timeline view loads
+- [ ] Agent rows visible (one row per agent)
+- [ ] Time scale visible (x-axis)
+- [ ] Legend shows 4 execution types
+
+**Verify Legend Colors**:
+- [ ] 🟢 Manual (green #22c55e) - Manual task executions
+- [ ] 🩷 MCP (pink #ec4899) - MCP executions via Claude Code
+- [ ] 🟣 Scheduled (purple #8b5cf6) - Scheduled task executions
+- [ ] 🩵 Agent-Triggered (cyan #06b6d4) - Agent-to-agent calls
+
+---
+
+### Step 11: Verify Timeline Execution Bars
+**Action**:
+- Look for colored bars on agent rows
+- Hover over bars to see tooltips
+
+**Expected Bar Colors**:
+- Green bars = Manual tasks (triggered from UI Tasks tab)
+- Pink bars = MCP tasks (triggered via Claude Code MCP client)
+- Purple bars = Scheduled tasks (triggered by cron schedules)
+- Cyan bars = Agent-triggered tasks (agent-to-agent delegation)
+
+**Expected Tooltips**:
+- "Manual Task - Xs" for manual executions
+- "MCP Task - Xs" for MCP executions
+- "Scheduled: [name] - Xs" for scheduled executions
+- "Agent-Triggered Task - Xs" for delegation executions
+
+**Verify**:
+- [ ] At least one execution bar visible (from previous tests)
+- [ ] Bar colors match legend
+- [ ] Tooltips show correct prefix
+- [ ] Hover shows duration
+
+---
+
+### Step 12: Test Zoom Controls
+**Action**:
+- Use zoom slider or +/- buttons
+- Zoom in and out
+
+**Expected**:
+- [ ] Zoom in shows more detail (wider bars)
+- [ ] Zoom out shows more time range
+- [ ] Zoom level indicator updates (e.g., "100%", "50%")
+- [ ] Timeline remains responsive
+
+---
+
 ## Test: Historical Data and Trends
 
-### Step 10: Check Historical Metrics (if available)
+### Step 13: Check Historical Metrics (if available)
 **Action**:
 - Look for historical graph or trend view
 - Check context % growth over time
@@ -278,14 +337,14 @@ All agents coordinated successfully
 ## Critical Validations
 
 ### GitHub Templates Verified
-**Validation**: All 8 agents use correct templates
+**Validation**: All 3 agents use correct templates
 
 ```bash
 # Quick validation script
 for agent in test-echo test-counter test-delegator test-worker test-scheduler test-queue test-files test-error; do
   template=$(docker inspect agent-$agent --format='{{index .Config.Labels "trinity.template"}}')
   echo "$agent: $template"
-  # All should show: github:abilityai/test-agent-*
+  # All should show: local:test-*
 done
 ```
 
@@ -311,16 +370,16 @@ docker ps | grep agent-test | wc -l
 ## Success Criteria
 
 Phase 11 is **PASSED** when:
-- ✅ Dashboard loads with all 8 agents visible
-- ✅ All 8 agents show "Running" status (green)
+- ✅ Dashboard loads with all 3 agents visible
+- ✅ All 3 agents show "Running" status (green)
 - ✅ Each agent displays context % (non-zero)
 - ✅ Communication edges visible between delegator and others
 - ✅ Edge labels show message counts
-- ✅ System metrics panel shows 8/8 agents running
+- ✅ System metrics panel shows 8/3 agents running
 - ✅ Multi-agent coordination workflow completes successfully
 - ✅ Dashboard updates in real-time during activity
 - ✅ All agents remain responsive
-- ✅ All agents use GitHub templates (github:abilityai/test-agent-*)
+- ✅ All agents use local templates (local:test-*)
 - ✅ No agent shows errors or warnings
 - ✅ Context distribution reasonable across all agents
 
@@ -365,4 +424,4 @@ Once Phase 11 is **PASSED**, proceed to:
 ---
 
 **Status**: 🟢 Multi-agent dashboard & coordination validated
-**Last Updated**: 2025-12-09
+**Last Updated**: 2026-01-15

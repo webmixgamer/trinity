@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional, List, Dict
 
 from .connection import get_db_connection
+from utils.helpers import utc_now_iso, to_utc_iso, parse_iso_timestamp
 
 
 class ActivityOperations:
@@ -41,7 +42,7 @@ class ActivityOperations:
         from models import ActivityType, ActivityState
 
         activity_id = str(uuid.uuid4())
-        now = datetime.utcnow().isoformat()
+        now = utc_now_iso()  # Use UTC with 'Z' suffix for frontend compatibility
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -85,8 +86,9 @@ class ActivityOperations:
             if not row:
                 return False
 
-            started_at = datetime.fromisoformat(row[0])
-            completed_at = datetime.utcnow()
+            # Use parse_iso_timestamp to handle both 'Z' and non-'Z' timestamps
+            started_at = parse_iso_timestamp(row[0])
+            completed_at = parse_iso_timestamp(utc_now_iso())
             duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
             # Merge existing details with new details
@@ -104,7 +106,7 @@ class ActivityOperations:
                 WHERE id = ?
             """, (
                 status,
-                completed_at.isoformat(),
+                to_utc_iso(completed_at),  # Use UTC with 'Z' suffix
                 duration_ms,
                 json.dumps(existing_details) if existing_details else None,
                 error,

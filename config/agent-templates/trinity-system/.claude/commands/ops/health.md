@@ -52,6 +52,14 @@ Generated: {timestamp}
 | No activity >30 min (running) | Warning | Check if stuck |
 | No activity >60 min (running) | Critical | Likely stuck, restart |
 
+## Save Report
+
+After generating the report:
+
+1. Create directory if needed: `mkdir -p ~/reports/health`
+2. Save with timestamp: `~/reports/health/YYYY-MM-DD_HHMM.md`
+3. Confirm: "Report saved to ~/reports/health/YYYY-MM-DD_HHMM.md"
+
 ## Notes
 
 - Skip trinity-system (yourself) from health checks

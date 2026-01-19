@@ -1,6 +1,6 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-01-01
+> **Last Updated**: 2026-01-15 - Timezone-aware timestamps: All timestamps now use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -61,7 +61,7 @@ Main dashboard view component with integrated Agent Network visualization.
 - Lines 530-535: `resetLayout()` - Clears localStorage positions and refits view
 - Lines 537-539: `onNodeDragStop()` - Saves node positions to localStorage
 - Lines 541-553: `getNodeColor()` - Maps agent status to minimap colors
-- Lines 555-563: `formatTime()` - Human-readable relative timestamps
+- Lines 555-563: `formatTime()` - Human-readable relative timestamps (uses `parseUTC()` from `@/utils/timestamps`)
 - Lines 565-605: Replay mode handlers (toggleMode, handlePlay, handlePause, handleStop, etc.)
 
 #### AgentNode.vue (`src/frontend/src/components/AgentNode.vue`)
@@ -171,6 +171,8 @@ Fetches all agents and converts to Vue Flow nodes with grid layout.
 
 ##### fetchHistoricalCollaborations() (Lines 118-177)
 ```javascript
+import { getTimestampMs } from '@/utils/timestamps'
+
 async function fetchHistoricalCollaborations(hours = null) {
   const hoursToQuery = hours || timeRangeHours.value
 
@@ -187,12 +189,13 @@ async function fetchHistoricalCollaborations(hours = null) {
   const response = await axios.get('/api/activities/timeline', { params })
 
   // Parse activities into communication events
+  // Note: Timestamps from backend include 'Z' suffix for UTC
   const collaborations = response.data.activities
     .filter(activity => activity.details)
     .map(activity => ({
       source_agent: details.source_agent,
       target_agent: details.target_agent,
-      timestamp: activity.started_at,
+      timestamp: activity.started_at,  // UTC with 'Z' suffix
       activity_id: activity.id,
       status: activity.activity_state,
       duration_ms: activity.duration_ms
@@ -345,12 +348,12 @@ async function fetchExecutionStats() {
 ```
 
 ##### startContextPolling() / stopContextPolling() (Lines 660-686)
-- Polls every 5 seconds for context stats AND execution stats
+- Polls every 10 seconds for context stats AND execution stats
 - Calls both `fetchContextStats()` and `fetchExecutionStats()` on each poll
 - Automatically starts on dashboard mount, stops on unmount
 
 ##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
-- Polls every 10 seconds for agent list changes
+- Polls every 15 seconds for agent list changes
 - Detects new/deleted agents and updates graph
 
 ##### toggleAutonomy() (Lines 993-1030)
@@ -470,6 +473,8 @@ def set_websocket_manager(manager):
 
 #### broadcast_collaboration_event() (Lines 91-103)
 ```python
+from utils.helpers import utc_now_iso
+
 async def broadcast_collaboration_event(source_agent: str, target_agent: str, action: str = "chat"):
     """Broadcast agent collaboration event to all WebSocket clients."""
     if _websocket_manager:
@@ -478,10 +483,12 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
             "source_agent": source_agent,
             "target_agent": target_agent,
             "action": action,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": utc_now_iso()  # UTC with 'Z' suffix
         }
         await _websocket_manager.broadcast(json.dumps(event))
 ```
+
+> **Timezone Note (2026-01-15)**: All WebSocket event timestamps use `utc_now_iso()` which includes 'Z' suffix. Frontend uses `parseUTC()` from `@/utils/timestamps` to correctly parse these. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 #### Agent-to-Agent Detection (Lines 106-142)
 ```python
@@ -619,6 +626,32 @@ Returns JSON:
 6. Log audit event
 
 ## Data Layer
+
+### Agent List Optimization (2026-01-12)
+
+The Dashboard loads agents via `GET /api/agents` which uses `get_accessible_agents()` from `helpers.py:83-153`.
+
+**Performance Optimizations Applied**:
+
+1. **Docker Stats Optimization**: Uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations.
+
+2. **Database Batch Queries (N+1 Fix)**: Uses `db.get_all_agent_metadata(user_email)` (db/agents.py:467-529) - single JOIN query across all related tables instead of 8-10 queries per agent.
+
+**Before/After**:
+| Metric | Before | After |
+|--------|--------|-------|
+| Docker API calls | Full `container.attrs` per agent | Labels only |
+| Database queries | 160-200 (for 20 agents) | 2 total |
+| Response time | ~2-3 seconds | <50ms |
+
+**Batch Query Returns** (per agent):
+- `owner_id`, `owner_username`, `owner_email`
+- `is_system`, `autonomy_enabled`, `use_platform_api_key`
+- `memory_limit`, `cpu_limit`
+- `github_repo`, `github_branch`
+- `is_shared_with_user` (boolean)
+
+**Note**: Orphaned agents (exist in Docker but not in DB) are only visible to admin users.
 
 ### LocalStorage Persistence
 
@@ -1132,14 +1165,14 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 **Functions** (Lines 563-619):
 ```javascript
 fetchContextStats()        // Fetch stats from backend, update node data (563-591)
-startContextPolling()      // Start 5-second interval polling (593-607)
+startContextPolling()      // Start 10-second interval polling (593-607)
 stopContextPolling()       // Clear interval on unmount (609-619)
 ```
 
 **Polling Strategy**:
 - Starts on dashboard mount
-- Polls every 5 seconds for context stats
-- Polls every 10 seconds for agent list refresh
+- Polls every 10 seconds for context stats
+- Polls every 15 seconds for agent list refresh
 - Updates node data reactively
 - Stops on dashboard unmount
 
@@ -1268,9 +1301,9 @@ onUnmounted(() => {
 
 ### Performance Considerations
 
-**Polling Frequency**: 5 seconds
+**Polling Frequency**: 10 seconds (context/execution stats), 15 seconds (agent list)
 - Balance between freshness and API load
-- 12 requests/minute for typical dashboard usage
+- 6 context requests/minute + 4 agent refresh requests/minute
 - Async/await prevents request queuing
 
 **Context Fetch Optimization**:
@@ -1371,7 +1404,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 - Agent nodes now correctly show Active/Idle/Offline status
 - Pulsing green dots for active agents
 - Context progress bars display with color coding (green/yellow/orange/red)
-- Activity state updates every 5 seconds via polling
+- Activity state updates every 10 seconds via polling
 
 #### Issue #3: Time Range Selector Purpose Unclear
 **Problem**: "Time Range:" label ambiguous - users unclear what it controls
@@ -1396,6 +1429,10 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-15 | **Timezone-aware timestamps**: All timestamps now use UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. Frontend uses `parseUTC()` and `getTimestampMs()` from `@/utils/timestamps.js`. Added timezone notes to WebSocket events and timestamp parsing sections. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md). |
+| 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s. Agent list refresh changed from 10s to 15s. Updated polling strategy documentation and performance considerations. |
+| 2026-01-12 | **Database Batch Queries (N+1 Fix)**: `get_accessible_agents()` (helpers.py:83-153) now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) - single JOIN query instead of 8-10 queries per agent. Database queries reduced from 160-200 to 2 per request. Added Agent List Optimization section to Data Layer. Orphaned agents (Docker-only) only visible to admin. |
+| 2026-01-12 | **Docker Stats Optimization**: Backend agent listing now uses `list_all_agents_fast()` (docker_service.py:101-159) which extracts data ONLY from container labels, avoiding slow Docker operations. Performance: `/api/agents` reduced from ~2-3s to <50ms. Helpers.py `get_accessible_agents()` updated at line 92. |
 | 2026-01-03 | **Autonomy Toggle Switch**: Added interactive toggle switch to AgentNode cards (lines 62-96). Replaces static "AUTO" badge with clickable toggle showing "AUTO/Manual" label. Toggle calls `networkStore.toggleAutonomy()` (lines 993-1030) to enable/disable all agent schedules. Amber styling when enabled, gray when disabled. |
 | 2026-01-01 | **Execution Stats Display**: Added task execution metrics to AgentNode cards. New `GET /api/agents/execution-stats` endpoint (agents.py:140-161). Database aggregation in `db/schedules.py:445-489`. Frontend: `fetchExecutionStats()` in network.js:622-658, polled every 5s with context stats. AgentNode shows compact row: "12 tasks - 92% - $0.45 - 2m ago" with color-coded success rate. |
 | 2025-12-19 | **Documentation Update**: Updated all line number references for Dashboard.vue, AgentNode.vue, network.js, agents.py, chat.py, and main.py. Added dark mode styling documentation. Verified store rename (collaborations.js to network.js). Updated file path references. |

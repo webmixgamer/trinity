@@ -28,8 +28,21 @@ from services.template_service import (
 from services import git_service
 from services.settings_service import get_anthropic_api_key, get_github_pat, get_agent_full_capabilities
 from utils.helpers import sanitize_agent_name
+from .lifecycle import RESTRICTED_CAPABILITIES, FULL_CAPABILITIES
 
 logger = logging.getLogger(__name__)
+
+
+def get_platform_version() -> str:
+    """Get the current Trinity platform version from VERSION file."""
+    version_paths = [
+        Path("/app/VERSION"),  # In container
+        Path(__file__).parent.parent.parent.parent.parent / "VERSION",  # Development
+    ]
+    for version_path in version_paths:
+        if version_path.exists():
+            return version_path.read_text().strip()
+    return "unknown"
 
 
 async def create_agent_internal(
@@ -418,6 +431,11 @@ async def create_agent_internal(
             # Get system-wide full_capabilities setting (not per-agent)
             full_capabilities = get_agent_full_capabilities()
 
+            # Create container with security settings
+            # Security principle: ALWAYS apply baseline security, even in full_capabilities mode
+            # - Always drop ALL caps, then add back only what's needed
+            # - Always apply AppArmor profile
+            # - Always apply noexec,nosuid to /tmp
             container = docker_client.containers.run(
                 config.base_image,
                 detach=True,
@@ -435,15 +453,18 @@ async def create_agent_internal(
                     'trinity.created': datetime.now().isoformat(),
                     'trinity.template': config.template or '',
                     'trinity.agent-runtime': config.runtime or 'claude-code',
-                    'trinity.full-capabilities': str(full_capabilities).lower()
+                    'trinity.full-capabilities': str(full_capabilities).lower(),
+                    'trinity.base-image-version': get_platform_version()
                 },
-                # Security: If full_capabilities=True, use Docker defaults (apt-get works)
-                # Otherwise use restricted mode (secure default)
-                security_opt=['apparmor:docker-default'] if not full_capabilities else [],
-                cap_drop=[] if full_capabilities else ['ALL'],
-                cap_add=[] if full_capabilities else ['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
+                # Always apply AppArmor for additional sandboxing
+                security_opt=['apparmor:docker-default'],
+                # Always drop ALL capabilities first (defense in depth)
+                cap_drop=['ALL'],
+                # Add back only the capabilities needed for the mode
+                cap_add=FULL_CAPABILITIES if full_capabilities else RESTRICTED_CAPABILITIES,
                 read_only=False,
-                tmpfs={'/tmp': 'size=100m'} if full_capabilities else {'/tmp': 'noexec,nosuid,size=100m'},
+                # Always apply noexec,nosuid to /tmp for security
+                tmpfs={'/tmp': 'noexec,nosuid,size=100m'},
                 network='trinity-agent-network',
                 mem_limit=config.resources.get('memory', '4Gi'),
                 cpu_count=int(config.resources.get('cpu', '2'))
