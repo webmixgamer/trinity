@@ -7,6 +7,14 @@
         <span class="font-medium text-gray-900 dark:text-white">Process Assistant</span>
       </div>
       <div class="flex items-center gap-2">
+        <button
+          v-if="messages.length > 0"
+          @click="clearChat"
+          class="text-xs px-2 py-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+          title="Clear conversation"
+        >
+          Clear
+        </button>
         <span
           class="text-xs px-2 py-0.5 rounded-full"
           :class="systemAgentStatus === 'running'
@@ -184,6 +192,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['apply-yaml'])
 
+// LocalStorage key for chat persistence
+const STORAGE_KEY = 'trinity_process_assistant_chat'
+
 // State
 const messages = ref([])
 const inputMessage = ref('')
@@ -192,6 +203,39 @@ const error = ref(null)
 const systemAgentStatus = ref('connecting')
 const messagesContainer = ref(null)
 const inputRef = ref(null)
+
+// Load chat from localStorage
+function loadChat() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const data = JSON.parse(saved)
+      messages.value = data.messages || []
+    }
+  } catch (e) {
+    console.error('Failed to load chat from localStorage:', e)
+  }
+}
+
+// Save chat to localStorage
+function saveChat() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      messages: messages.value,
+      updatedAt: new Date().toISOString()
+    }))
+  } catch (e) {
+    console.error('Failed to save chat to localStorage:', e)
+  }
+}
+
+// Clear chat history
+function clearChat() {
+  if (confirm('Clear conversation history? This cannot be undone.')) {
+    messages.value = []
+    localStorage.removeItem(STORAGE_KEY)
+  }
+}
 
 // Suggested prompts for empty state
 const suggestedPrompts = [
@@ -246,6 +290,9 @@ User's message: `
 
 // Check system agent status on mount
 onMounted(async () => {
+  // Load previous conversation
+  loadChat()
+  
   try {
     const response = await api.get('/api/system-agent/status')
     systemAgentStatus.value = response.data.status === 'running' ? 'running' : 'stopped'
@@ -325,7 +372,7 @@ function sendSuggestedPrompt(prompt) {
 function askForHelp() {
   const errorList = props.validationErrors.join('\n- ')
   const yamlPreview = props.currentYaml ? props.currentYaml.slice(0, 500) : ''
-  
+
   inputMessage.value = `I have validation errors in my process YAML. Can you help me fix them?
 
 Errors:
@@ -400,6 +447,10 @@ function scrollToBottom() {
 // Watch for new messages and auto-scroll
 watch(messages, () => {
   nextTick(() => scrollToBottom())
+  // Persist to localStorage
+  if (messages.value.length > 0) {
+    saveChat()
+  }
 }, { deep: true })
 </script>
 
