@@ -650,11 +650,22 @@ function getStatusBadgeClasses(status) {
 
 // Step status explanations for tooltips
 function getStepStatusExplanation(step) {
+  // Get error message - handle both string and object formats
+  let errorMsg = 'Failed with an error'
+  if (step.error) {
+    if (typeof step.error === 'string') {
+      errorMsg = `Failed: ${step.error.substring(0, 100)}${step.error.length > 100 ? '...' : ''}`
+    } else if (step.error.message) {
+      const msg = step.error.message
+      errorMsg = `Failed: ${msg.substring(0, 100)}${msg.length > 100 ? '...' : ''}`
+    }
+  }
+
   const explanations = {
     pending: 'Queued and waiting to start',
     running: 'Currently being executed by an agent',
     completed: 'Finished successfully',
-    failed: step.error ? `Failed: ${step.error.substring(0, 100)}${step.error.length > 100 ? '...' : ''}` : 'Failed with an error',
+    failed: errorMsg,
     skipped: step.skip_reason || 'Skipped based on gateway condition or dependency failure',
     waiting_approval: 'Paused for human approval',
   }
