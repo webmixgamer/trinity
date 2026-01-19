@@ -3,7 +3,7 @@
 > **Phase**: MVP+ / Core
 > **Goal**: Premium onboarding experience for new users
 > **Epics**: E20, E21, E22, E24
-> **Stories**: 17
+> **Stories**: 16
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -16,8 +16,7 @@
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
-| **Sprint 10** | E22-02 | Smart tooltips (optional) |
-| **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
+| **Sprint 10** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard (future) |
 
 ---
 
@@ -48,9 +47,7 @@ E21-04 (Getting Started Content)
 
 E21-02 (Docs View)
   │
-  └──► E22-01 (Editor Help Panel) ──► E22-02 (Tooltips)
-                                            │
-                                            └──► E22-03 (Status Explainers)
+  └──► E22-01 (Editor Help Panel) ──► E22-03 (Status Explainers)
 ```
 
 ---
@@ -505,33 +502,6 @@ E21-02 (Docs View)
 
 ---
 
-### E22-02: Smart Tooltips Composable
-
-**As a** developer, **I want** a reusable tooltip system, **so that** I can add contextual help throughout the UI.
-
-| Attribute | Value |
-|-----------|-------|
-| Size | M |
-| Priority | P2 |
-| Phase | Core |
-| Dependencies | E22-01 |
-| Status | pending |
-
-**Acceptance Criteria:**
-- [ ] Composable: `useContextualHelp.js`
-- [ ] Method: `registerHelpTrigger(element, helpKey)` - attach help to element
-- [ ] Method: `showHelp(helpKey)` - programmatically show help
-- [ ] Help content loaded from JSON config
-- [ ] Tooltip appears on hover/focus with delay
-- [ ] Tooltip dismissible, doesn't block interaction
-
-**Technical Notes:**
-- New composable: `src/frontend/src/composables/useContextualHelp.js`
-- Content file: `config/process-docs/tooltips.json`
-- Consider using existing tooltip library or custom implementation
-
----
-
 ### E22-03: Execution Status Explainers
 
 **As a** user monitoring executions, **I want** explanations for each status, **so that** I understand what's happening and what to do.
@@ -694,4 +664,5 @@ E21-02 (Docs View)
 | 2026-01-18 | Sprint 8.5 implemented: E21-07, E21-08, E21-09 (patterns, step types, tutorials) |
 | 2026-01-19 | Sprint 9 implemented: E20-03, E20-04, E22-01, E22-03 (template cards, first-run detection, editor help, status explainers) |
 | 2026-01-19 | Removed Epic E23 (Guided Tours) - functionality covered by onboarding checklist |
-| 2026-01-19 | Removed E21-03 (Docs Search) - not needed with small doc set (17 stories total) |
+| 2026-01-19 | Removed E21-03 (Docs Search) - not needed with small doc set |
+| 2026-01-19 | Removed E22-02 (Smart Tooltips) - covered by existing help features (16 stories total) |
