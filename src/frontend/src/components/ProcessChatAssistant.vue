@@ -116,8 +116,8 @@
         </div>
       </div>
 
-      <!-- Loading indicator -->
-      <div v-if="loading" class="flex justify-start">
+      <!-- Loading indicator (waiting for API) -->
+      <div v-if="loading && !typingMessage" class="flex justify-start">
         <div class="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
           <div class="flex items-center gap-2">
             <div class="flex space-x-1">
@@ -127,6 +127,14 @@
             </div>
             <span class="text-sm text-gray-500 dark:text-gray-400">Thinking...</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Typing animation (assistant response appearing) -->
+      <div v-if="typingMessage !== null" class="flex justify-start animate-fade-in">
+        <div class="max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl rounded-bl-sm px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(typingMessage)"></div>
+          <span class="inline-block w-1 h-4 ml-1 bg-indigo-500 animate-pulse"></span>
         </div>
       </div>
 
@@ -203,6 +211,34 @@ const error = ref(null)
 const systemAgentStatus = ref('connecting')
 const messagesContainer = ref(null)
 const inputRef = ref(null)
+const typingMessage = ref(null) // Currently typing assistant message
+const typingIndex = ref(0)
+
+// Typing animation - reveals text word by word
+async function typeMessage(fullContent) {
+  typingMessage.value = ''
+  typingIndex.value = 0
+  
+  // Split by words but keep whitespace
+  const words = fullContent.split(/(\s+)/)
+  
+  for (let i = 0; i < words.length; i++) {
+    typingMessage.value += words[i]
+    typingIndex.value = i
+    scrollToBottom()
+    
+    // Faster for whitespace, slower for actual words
+    const delay = words[i].trim() ? 30 : 5
+    await new Promise(resolve => setTimeout(resolve, delay))
+  }
+  
+  // Done typing - add to messages and clear typing state
+  messages.value.push({
+    role: 'assistant',
+    content: fullContent
+  })
+  typingMessage.value = null
+}
 
 // Load chat from localStorage
 function loadChat() {
@@ -292,7 +328,7 @@ User's message: `
 onMounted(async () => {
   // Load previous conversation
   loadChat()
-  
+
   try {
     const response = await api.get('/api/system-agent/status')
     systemAgentStatus.value = response.data.status === 'running' ? 'running' : 'stopped'
@@ -341,11 +377,9 @@ async function sendMessage() {
       message: messageToSend
     })
 
-    // Add assistant response
-    messages.value.push({
-      role: 'assistant',
-      content: response.data.response
-    })
+    // Stop showing "Thinking..." and start typing animation
+    loading.value = false
+    await typeMessage(response.data.response)
   } catch (err) {
     console.error('Chat error:', err)
     if (err.response?.status === 503) {
