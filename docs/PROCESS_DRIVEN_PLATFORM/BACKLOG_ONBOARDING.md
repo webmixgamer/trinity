@@ -3,7 +3,7 @@
 > **Phase**: MVP+ / Core
 > **Goal**: Premium onboarding experience for new users
 > **Epics**: E20, E21, E22, E24
-> **Stories**: 18
+> **Stories**: 17
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -16,7 +16,7 @@
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
-| **Sprint 10** | E21-03, E22-02 | Docs search + tooltips |
+| **Sprint 10** | E22-02 | Smart tooltips (optional) |
 | **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
 
 ---
@@ -37,8 +37,6 @@ E20-01 (Empty State)
 E21-04 (Getting Started Content)
   │
   └──► E21-01 (Docs Route) ──► E21-02 (Docs View)
-                                    │
-                                    ├──► E21-03 (Search)
                                     │
                                     ├──► E21-05, E21-06 (Reference Content) ✅
                                     │         │
@@ -260,33 +258,6 @@ E21-02 (Docs View)
 - Markdown library: `marked` + `highlight.js` (or `vue-markdown-render`)
 - Content loaded from static files or API
 - Consider lazy-loading content per section
-
----
-
-### E21-03: Documentation Search
-
-**As a** user, **I want** to search documentation, **so that** I can quickly find relevant information.
-
-| Attribute | Value |
-|-----------|-------|
-| Size | M |
-| Priority | P2 |
-| Phase | MVP+ |
-| Dependencies | E21-02 |
-| Status | pending |
-
-**Acceptance Criteria:**
-- [ ] Search input at top of docs sidebar
-- [ ] Fuzzy search across all doc titles and content
-- [ ] Results show matching doc title + snippet
-- [ ] Click result navigates to that doc
-- [ ] Keyboard shortcut (Cmd/Ctrl+K) to focus search
-- [ ] "No results" state with suggestions
-
-**Technical Notes:**
-- Client-side search using pre-built index
-- Consider `fuse.js` for fuzzy matching
-- Index built at build time or on first load
 
 ---
 
@@ -722,4 +693,5 @@ E21-02 (Docs View)
 | 2026-01-18 | Added E21-07, E21-08, E21-09: Pattern docs, missing step types, learning path (21 stories total) |
 | 2026-01-18 | Sprint 8.5 implemented: E21-07, E21-08, E21-09 (patterns, step types, tutorials) |
 | 2026-01-19 | Sprint 9 implemented: E20-03, E20-04, E22-01, E22-03 (template cards, first-run detection, editor help, status explainers) |
-| 2026-01-19 | Removed Epic E23 (Guided Tours) - functionality covered by onboarding checklist (18 stories total) |
+| 2026-01-19 | Removed Epic E23 (Guided Tours) - functionality covered by onboarding checklist |
+| 2026-01-19 | Removed E21-03 (Docs Search) - not needed with small doc set (17 stories total) |
