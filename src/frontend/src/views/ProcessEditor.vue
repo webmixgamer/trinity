@@ -713,7 +713,9 @@ const activeTab = ref('editor')
 const availableAgents = ref([])
 
 // Help panel state
-const showHelpPanel = ref(localStorage.getItem('trinity_editor_help') !== 'hidden')
+// On mobile (< xl breakpoint), default to hidden; on desktop, respect localStorage or show by default
+const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1280
+const showHelpPanel = ref(isDesktop && localStorage.getItem('trinity_editor_help') !== 'hidden')
 const editorHelpData = ref(null)
 const currentHelpContent = ref(null)
 
