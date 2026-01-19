@@ -59,11 +59,6 @@ const navItems = computed(() => [
     icon: ChartBarIcon,
   },
   {
-    path: '/processes/docs',
-    label: 'Docs',
-    icon: BookOpenIcon,
-  },
-  {
     path: '/executions',
     label: 'Executions',
     icon: PlayCircleIcon,
@@ -73,6 +68,11 @@ const navItems = computed(() => [
     label: 'Approvals',
     icon: CheckCircleIcon,
     badge: props.pendingApprovals,
+  },
+  {
+    path: '/processes/docs',
+    label: 'Docs',
+    icon: BookOpenIcon,
   },
 ])
 
