@@ -211,6 +211,28 @@
                 {{ step.error.message || 'Unknown error' }}
               </div>
 
+              <!-- Contextual help based on error code -->
+              <div v-if="getErrorHelp(step)" class="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div class="flex items-start gap-2">
+                  <svg class="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div class="text-sm">
+                    <p class="text-blue-700 dark:text-blue-300">{{ getErrorHelp(step).explanation }}</p>
+                    <router-link
+                      v-if="getErrorHelp(step).link"
+                      :to="getErrorHelp(step).link"
+                      class="inline-flex items-center gap-1 mt-2 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                    >
+                      {{ getErrorHelp(step).linkText }}
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </router-link>
+                  </div>
+                </div>
+              </div>
+
               <!-- Retry info -->
               <div v-if="step.retry_count > 0" class="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
                 <div class="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
@@ -649,6 +671,46 @@ function getStatusBadgeClasses(status) {
 }
 
 // Step status explanations for tooltips
+// Get contextual help for specific error codes
+function getErrorHelp(step) {
+  if (!step.error?.code) return null
+
+  const errorHelp = {
+    AGENT_UNAVAILABLE: {
+      explanation: `The agent "${step.agent || 'specified'}" may not exist, or it might be stopped. Make sure the agent is created and running.`,
+      link: '/agents',
+      linkText: 'Go to Agents page'
+    },
+    AGENT_TIMEOUT: {
+      explanation: 'The agent took too long to respond. This could be due to a complex task or the agent being overloaded. Consider increasing the timeout or simplifying the task.',
+      link: null,
+      linkText: null
+    },
+    APPROVAL_TIMEOUT: {
+      explanation: 'The approval request expired before a decision was made. You may want to retry the execution or adjust the timeout setting.',
+      link: '/processes/docs/tutorials/human-checkpoints',
+      linkText: 'Learn about approval timeouts'
+    },
+    APPROVAL_REJECTED: {
+      explanation: 'A human reviewer rejected this step. Review the rejection reason and consider adjusting the process or input data.',
+      link: null,
+      linkText: null
+    },
+    INVALID_INPUT: {
+      explanation: 'The input data provided to this step was invalid. Check the process definition and ensure all required inputs are provided correctly.',
+      link: '/processes/docs/reference/variables',
+      linkText: 'Learn about input variables'
+    },
+    DEPENDENCY_FAILED: {
+      explanation: 'A previous step that this step depends on has failed. Fix the upstream error first, then retry the execution.',
+      link: null,
+      linkText: null
+    }
+  }
+
+  return errorHelp[step.error.code] || null
+}
+
 function getStepStatusExplanation(step) {
   // Get error message - handle both string and object formats
   let errorMsg = 'Failed with an error'
