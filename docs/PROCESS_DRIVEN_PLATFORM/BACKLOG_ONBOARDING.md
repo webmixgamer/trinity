@@ -2,8 +2,8 @@
 
 > **Phase**: MVP+ / Core
 > **Goal**: Premium onboarding experience for new users
-> **Epics**: E20, E21, E22, E23, E24
-> **Stories**: 21
+> **Epics**: E20, E21, E22, E24
+> **Stories**: 18
 > **Reference**: See [`BACKLOG_INDEX.md`](./BACKLOG_INDEX.md) for conventions
 
 ---
@@ -16,7 +16,7 @@
 | **Sprint 8** | E21-01, E21-02, E21-05, E21-06, E20-05 | Docs tab foundation ✅ |
 | **Sprint 8.5** | E21-07, E21-08, E21-09 | Pattern docs + Learning path ✅ |
 | **Sprint 9** | E22-01, E22-03, E20-03, E20-04 | Contextual help ✅ |
-| **Sprint 10** | E23-01, E23-02, E21-03 | Tours + search |
+| **Sprint 10** | E21-03, E22-02 | Docs search + tooltips |
 | **Sprint 11** | E24-01, E24-02, E24-03, E24-04 | First Process Wizard |
 
 ---
@@ -53,10 +53,6 @@ E21-02 (Docs View)
   └──► E22-01 (Editor Help Panel) ──► E22-02 (Tooltips)
                                             │
                                             └──► E22-03 (Status Explainers)
-
-E23-01 (Driver.js Integration)
-  │
-  └──► E23-02 (First Tour) ──► E23-03 (Mini-Tours)
 ```
 
 ---
@@ -597,103 +593,6 @@ E23-01 (Driver.js Integration)
 
 ---
 
-## Epic E23: Guided Tours
-
-> Interactive walkthroughs for key user journeys.
-
----
-
-### E23-01: Tour Library Integration (Driver.js)
-
-**As a** developer, **I want** a tour library integrated, **so that** I can create guided walkthroughs.
-
-| Attribute | Value |
-|-----------|-------|
-| Size | S |
-| Priority | P2 |
-| Phase | Core |
-| Dependencies | None |
-| Status | pending |
-
-**Acceptance Criteria:**
-- [ ] Driver.js installed and configured
-- [ ] Wrapper composable: `useTour.js`
-- [ ] Tour styling matches Trinity theme (colors, dark mode)
-- [ ] Tours can be triggered programmatically
-- [ ] Tour progress saved to prevent repeat showing
-
-**Technical Notes:**
-- Install: `npm install driver.js`
-- New composable: `src/frontend/src/composables/useTour.js`
-- CSS customization for Trinity theme
-- LocalStorage for tour completion state
-
----
-
-### E23-02: First-Time User Tour
-
-**As a** new user, **I want** a guided tour of the Processes section, **so that** I understand the key areas.
-
-| Attribute | Value |
-|-----------|-------|
-| Size | M |
-| Priority | P2 |
-| Phase | Core |
-| Dependencies | E23-01 |
-| Status | pending |
-
-**Acceptance Criteria:**
-- [ ] Tour triggers on first visit to `/processes` with no processes
-- [ ] Tour steps:
-  1. Welcome message explaining Processes
-  2. Highlight "Create Process" button
-  3. Point to Dashboard tab
-  4. Point to Executions tab
-  5. Point to Approvals tab
-  6. Point to Docs tab (if implemented)
-- [ ] "Skip tour" option
-- [ ] "Don't show again" checkbox
-- [ ] Tour completion marked in localStorage
-
-**Technical Notes:**
-- Trigger in `ProcessList.vue` on mount
-- Check `isFirstRun` from `useOnboarding.js`
-- Tour steps reference DOM elements by selector or ref
-
----
-
-### E23-03: Feature Discovery Mini-Tours
-
-**As a** user exploring features, **I want** contextual mini-tours, **so that** I learn about features when I first encounter them.
-
-| Attribute | Value |
-|-----------|-------|
-| Size | M |
-| Priority | P3 |
-| Phase | Core |
-| Dependencies | E23-02 |
-| Status | pending |
-
-**Acceptance Criteria:**
-- [ ] Mini-tour: First time opening Process Editor
-  - Highlight YAML area
-  - Highlight Preview panel
-  - Highlight Validate button
-- [ ] Mini-tour: First execution completes
-  - Highlight timeline view
-  - Explain step statuses
-- [ ] Mini-tour: First approval pending
-  - Highlight Approvals tab badge
-  - Explain approval workflow
-- [ ] Each mini-tour shows only once
-
-**Technical Notes:**
-- Trigger based on user actions + localStorage flags
-- Shorter than main tour (2-3 steps max)
-- Can be implemented incrementally
-
----
-
 ## Epic E24: First Process Wizard
 
 > Guided wizard for creating first process without YAML knowledge.
@@ -823,3 +722,4 @@ E23-01 (Driver.js Integration)
 | 2026-01-18 | Added E21-07, E21-08, E21-09: Pattern docs, missing step types, learning path (21 stories total) |
 | 2026-01-18 | Sprint 8.5 implemented: E21-07, E21-08, E21-09 (patterns, step types, tutorials) |
 | 2026-01-19 | Sprint 9 implemented: E20-03, E20-04, E22-01, E22-03 (template cards, first-run detection, editor help, status explainers) |
+| 2026-01-19 | Removed Epic E23 (Guided Tours) - functionality covered by onboarding checklist (18 stories total) |
