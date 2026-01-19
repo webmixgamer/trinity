@@ -114,11 +114,16 @@
               {{ item.label }}
             </p>
             <p
-              class="text-xs"
+              class="text-xs flex items-center gap-1"
               :class="isCurrentStep(index) || item.completed
                 ? 'text-gray-500 dark:text-gray-400'
                 : 'text-gray-400 dark:text-gray-500'"
             >
+              <component
+                v-if="item.icon"
+                :is="item.icon"
+                class="h-3 w-3 flex-shrink-0"
+              />
               {{ item.description }}
             </p>
           </div>
@@ -217,6 +222,7 @@ import {
   ChevronDownIcon,
   SparklesIcon
 } from '@heroicons/vue/24/solid'
+import { PlayIcon } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
 const showHint = ref(false)
@@ -268,21 +274,24 @@ const requiredItems = computed(() => [
     label: 'Create your first process',
     description: 'Define a workflow with steps and agents',
     completed: state.value?.checklist.createProcess || false,
-    link: '/processes/new'
+    link: '/processes/new',
+    icon: null
   },
   {
     id: 'runExecution',
     label: 'Run a process execution',
     description: 'Execute your process and see it in action',
     completed: state.value?.checklist.runExecution || false,
-    link: '/processes'
+    link: '/processes',
+    icon: PlayIcon
   },
   {
     id: 'monitorExecution',
     label: 'Monitor an execution',
     description: 'View progress and step outputs',
     completed: state.value?.checklist.monitorExecution || false,
-    link: '/executions'
+    link: '/executions',
+    icon: null
   }
 ])
 
