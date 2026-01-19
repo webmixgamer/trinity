@@ -583,10 +583,12 @@ import {
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 import jsyaml from 'js-yaml'
+import { useOnboarding } from '../composables/useOnboarding'
 
 const route = useRoute()
 const router = useRouter()
 const processesStore = useProcessesStore()
+const { celebrateCompletion } = useOnboarding()
 
 // State
 const loading = ref(false)
@@ -1074,6 +1076,8 @@ async function saveProcess() {
       const created = await processesStore.createProcess(yamlContent.value)
       showNotification('Process created successfully!', 'success')
       hasUnsavedChanges.value = false
+      // Celebrate completing the "create process" onboarding step
+      celebrateCompletion('createProcess')
       router.push(`/processes/${created.id}`)
     } else {
       await processesStore.updateProcess(route.params.id, yamlContent.value)
@@ -1121,6 +1125,8 @@ async function confirmExecute() {
     showExecuteDialog.value = false
     const execution = await processesStore.executeProcess(route.params.id, inputData)
     showNotification('Execution started!', 'success')
+    // Celebrate completing the "run execution" onboarding step
+    celebrateCompletion('runExecution')
     // Navigate to execution detail
     router.push(`/executions/${execution.id}`)
   } catch (error) {

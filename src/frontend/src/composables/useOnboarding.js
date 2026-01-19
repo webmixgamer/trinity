@@ -13,6 +13,8 @@ const dataState = ref({
   hasSchedule: false,
   hasApproval: false
 })
+// Celebration state - triggers animation in checklist
+const celebrateStep = ref(null)
 
 export function useOnboarding() {
   const authStore = useAuthStore()
@@ -119,6 +121,36 @@ export function useOnboarding() {
     }
   }
 
+  // Mark step complete and celebrate - expands checklist and highlights next step
+  const celebrateCompletion = (item) => {
+    if (!state.value) return
+
+    // Mark the item as complete
+    if (item in state.value.checklist && !state.value.checklist[item]) {
+      state.value.checklist[item] = true
+
+      // Expand the checklist if minimized
+      state.value.checklistMinimized = false
+
+      // Trigger celebration animation
+      celebrateStep.value = item
+
+      // Clear celebration after animation
+      setTimeout(() => {
+        celebrateStep.value = null
+      }, 3000)
+
+      saveState()
+    }
+  }
+
+  // Expand the checklist (used when user should see next steps)
+  const expandChecklist = () => {
+    if (!state.value) return
+    state.value.checklistMinimized = false
+    saveState()
+  }
+
   const dismissOnboarding = () => {
     if (!state.value) return
     state.value.dismissed = true
@@ -190,12 +222,15 @@ export function useOnboarding() {
   return {
     state: computed(() => state.value),
     dataState: computed(() => dataState.value),
+    celebrateStep: computed(() => celebrateStep.value),
     isFirstRun,
     shouldShowOnboarding,
     hasCompletedOnboarding,
     checklistProgress,
     isChecklistComplete,
     markChecklistItem,
+    celebrateCompletion,
+    expandChecklist,
     dismissOnboarding,
     markOnboardingComplete,
     markTourCompleted,

@@ -26,7 +26,10 @@
   <div
     v-if="showChecklist"
     class="fixed bottom-4 right-4 z-[9999] w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-300"
-    :class="{ 'h-auto': !isMinimized, 'h-14': isMinimized }"
+    :class="[
+      { 'h-auto': !isMinimized, 'h-14': isMinimized },
+      isCelebrating ? 'ring-2 ring-green-400 ring-offset-2 animate-celebrate' : ''
+    ]"
   >
     <!-- Header -->
     <div
@@ -46,6 +49,15 @@
           :class="{ 'rotate-180': isMinimized }"
         />
       </div>
+    </div>
+
+    <!-- Celebration Banner -->
+    <div
+      v-if="isCelebrating && !isMinimized"
+      class="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-4 py-2 flex items-center gap-2"
+    >
+      <span class="text-lg">🎉</span>
+      <span class="text-sm font-medium">Great job! Here's your next step:</span>
     </div>
 
     <!-- Content -->
@@ -213,11 +225,15 @@ let hintTimeout = null
 
 const {
   state,
+  celebrateStep,
   checklistProgress,
   isChecklistComplete,
   dismissOnboarding,
   toggleChecklistMinimized
 } = useOnboarding()
+
+// Track if we're currently celebrating
+const isCelebrating = computed(() => !!celebrateStep.value)
 
 onUnmounted(() => {
   if (hintTimeout) {
@@ -388,5 +404,20 @@ const handleItemClick = (item, index) => {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+@keyframes celebrate {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 25px 50px -12px rgba(74, 222, 128, 0.4);
+  }
+}
+
+.animate-celebrate {
+  animation: celebrate 0.6s ease-in-out 2;
 }
 </style>

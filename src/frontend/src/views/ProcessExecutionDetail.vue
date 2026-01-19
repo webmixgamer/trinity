@@ -381,10 +381,12 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
+import { useOnboarding } from '../composables/useOnboarding'
 
 const route = useRoute()
 const router = useRouter()
 const executionsStore = useExecutionsStore()
+const { markChecklistItem } = useOnboarding()
 
 // State
 const loading = ref(false)
@@ -546,6 +548,8 @@ async function loadExecution() {
     }
     // Build breadcrumb chain for nested sub-process navigation
     await buildBreadcrumbs()
+    // Mark onboarding item as complete when viewing an execution
+    markChecklistItem('monitorExecution')
   } catch (error) {
     console.error('Failed to load execution:', error)
     execution.value = null
