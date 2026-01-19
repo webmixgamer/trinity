@@ -270,6 +270,7 @@
                 :validation-errors="validationErrors"
                 :current-yaml="yamlContent"
                 :selected-text="editorSelectedText"
+                :process-status="process?.status || 'draft'"
                 @yaml-update="handleYamlUpdate"
               />
             </div>

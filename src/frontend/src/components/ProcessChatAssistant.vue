@@ -225,6 +225,10 @@ const props = defineProps({
   selectedText: {
     type: String,
     default: ''
+  },
+  processStatus: {
+    type: String,
+    default: 'draft'
   }
 })
 const emit = defineEmits(['yaml-update'])
@@ -349,6 +353,11 @@ BE PROACTIVE WITH EDITS:
 - Don't ask "want me to show you?" - just show the change
 - Briefly explain what you changed, then include the full updated YAML
 
+PROCESS STATUS AWARENESS:
+- If you receive [CONTEXT: PUBLISHED process], the process is read-only
+- Tell the user: "This process is published. Click 'New Version' to create an editable draft, then I can help you make changes."
+- Don't offer to edit published processes directly
+
 YAML RULES (when generating):
 - Wrap in \`\`\`yaml code blocks
 - Use kebab-case for names
@@ -423,6 +432,13 @@ async function sendMessage() {
     let messageToSend = userMessage
     if (messages.value.length === 1) {
       messageToSend = PROCESS_ASSISTANT_CONTEXT + userMessage
+    }
+    
+    // Add process status context when relevant
+    if (props.processStatus === 'published') {
+      messageToSend = `[CONTEXT: This is a PUBLISHED process - it's read-only. To make changes, the user must click "New Version" to create an editable draft copy first.]\n\n` + messageToSend
+    } else if (props.processStatus === 'archived') {
+      messageToSend = `[CONTEXT: This is an ARCHIVED process - it cannot be edited or executed.]\n\n` + messageToSend
     }
 
     const response = await api.post('/api/agents/trinity-system/chat', {
