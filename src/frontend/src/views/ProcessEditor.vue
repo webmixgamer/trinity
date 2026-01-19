@@ -988,6 +988,14 @@ onMounted(async () => {
   await loadEditorHelp()
 })
 
+// Watch for route changes (e.g., after creating a process or browser navigation)
+watch(() => route.params.id, async (newId, oldId) => {
+  if (newId && newId !== oldId && !process.value) {
+    // Only reload if we don't already have the process data
+    await loadProcess()
+  }
+})
+
 async function loadAvailableAgents() {
   try {
     const response = await api.get('/api/agents')
@@ -1181,6 +1189,8 @@ async function saveProcess() {
       hasUnsavedChanges.value = false
       // Celebrate completing the "create process" onboarding step
       celebrateCompletion('createProcess')
+      // Set process data before redirect so UI updates correctly
+      process.value = created
       router.push(`/processes/${created.id}`)
     } else {
       await processesStore.updateProcess(route.params.id, yamlContent.value)
