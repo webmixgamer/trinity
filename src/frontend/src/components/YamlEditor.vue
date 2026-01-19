@@ -102,7 +102,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'change', 'save', 'cursor-context'])
+const emit = defineEmits(['update:modelValue', 'change', 'save', 'cursor-context', 'selection-change'])
 
 const editorContainer = ref(null)
 const copied = ref(false)
@@ -190,6 +190,17 @@ const initMonaco = async () => {
     editor.onDidChangeCursorPosition((e) => {
       const context = getCursorContext(e.position.lineNumber)
       emit('cursor-context', context)
+    })
+
+    // Listen for selection changes
+    editor.onDidChangeCursorSelection((e) => {
+      const selection = e.selection
+      if (!selection.isEmpty()) {
+        const selectedText = editor.getModel().getValueInRange(selection)
+        emit('selection-change', selectedText)
+      } else {
+        emit('selection-change', '')
+      }
     })
 
     // Apply validation errors

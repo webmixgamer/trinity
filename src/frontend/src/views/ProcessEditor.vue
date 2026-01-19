@@ -266,10 +266,11 @@
           <div v-show="activeTab === 'chat'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <!-- Chat Assistant -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[600px]">
-              <ProcessChatAssistant
+              <ProcessChatAssistant 
                 :validation-errors="validationErrors"
                 :current-yaml="yamlContent"
-                @apply-yaml="handleApplyYamlFromChat"
+                :selected-text="editorSelectedText"
+                @yaml-update="handleYamlUpdate"
               />
             </div>
 
@@ -288,6 +289,7 @@
                   height="500px"
                   @save="saveProcess"
                   @change="handleChange"
+                  @selection-change="handleEditorSelection"
                 />
               </div>
             </div>
@@ -779,6 +781,7 @@ const yamlContent = ref(defaultYamlTemplate())
 const validationErrors = ref([])
 const notification = ref(null)
 const hasUnsavedChanges = ref(false)
+const editorSelectedText = ref('')
 const showUnsavedWarning = ref(false)
 const pendingNavigation = ref(null)
 const showExecuteDialog = ref(false)
@@ -1242,20 +1245,15 @@ function handleChange() {
 }
 
 // Handle YAML from chat assistant
-function handleApplyYamlFromChat(yaml) {
-  // Check for unsaved changes
-  if (hasUnsavedChanges.value && yamlContent.value !== defaultYamlTemplate()) {
-    if (!confirm('This will replace your current YAML. Continue?')) {
-      return
-    }
-  }
-
+// Handle live YAML updates from chat (auto-sync as typing)
+function handleYamlUpdate(yaml) {
   yamlContent.value = yaml
   hasUnsavedChanges.value = true
-  showNotification('YAML applied from chat assistant!', 'success')
+}
 
-  // Switch to editor tab to show the result
-  activeTab.value = 'editor'
+// Handle selection changes from YAML editor
+function handleEditorSelection(selection) {
+  editorSelectedText.value = selection
 }
 
 async function validateProcess() {

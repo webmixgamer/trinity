@@ -46,6 +46,34 @@
       </div>
     </div>
 
+    <!-- Selected Text Banner -->
+    <div v-if="selectedText" class="mx-4 mt-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-indigo-700 dark:text-indigo-400">
+            Selected code
+          </p>
+          <p class="text-xs text-indigo-600 dark:text-indigo-500 mt-0.5 font-mono truncate">
+            {{ selectedText.slice(0, 50) }}{{ selectedText.length > 50 ? '...' : '' }}
+          </p>
+        </div>
+        <div class="flex gap-1 flex-shrink-0">
+          <button
+            @click="askAboutSelection('explain')"
+            class="text-xs px-2 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800 rounded transition-colors"
+          >
+            Explain
+          </button>
+          <button
+            @click="askAboutSelection('edit')"
+            class="text-xs px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
+          >
+            Edit this
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Messages area -->
     <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
       <!-- Welcome message -->
@@ -96,13 +124,10 @@
                   <div class="bg-gray-900 rounded-lg overflow-hidden">
                     <div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
                       <span class="text-xs text-gray-400 font-mono">process.yaml</span>
-                      <button
-                        @click="applyYaml(part.content)"
-                        class="flex items-center gap-1 text-xs px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
-                      >
-                        <ArrowRightIcon class="h-3 w-3" />
-                        Apply to Editor
-                      </button>
+                      <span class="flex items-center gap-1 text-xs px-2 py-1 text-green-400">
+                        <CheckIcon class="h-3 w-3" />
+                        Auto-synced
+                      </span>
                     </div>
                     <pre class="p-3 text-sm text-gray-100 overflow-x-auto"><code>{{ part.content }}</code></pre>
                   </div>
@@ -177,7 +202,7 @@
 
 <script setup>
 import { ref, nextTick, onMounted, watch } from 'vue'
-import { SparklesIcon, PaperAirplaneIcon, ArrowRightIcon } from '@heroicons/vue/24/outline'
+import { SparklesIcon, PaperAirplaneIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { marked } from 'marked'
 import api from '../api'
 
@@ -196,9 +221,13 @@ const props = defineProps({
   currentYaml: {
     type: String,
     default: ''
+  },
+  selectedText: {
+    type: String,
+    default: ''
   }
 })
-const emit = defineEmits(['apply-yaml'])
+const emit = defineEmits(['yaml-update'])
 
 // LocalStorage key for chat persistence
 const STORAGE_KEY = 'trinity_process_assistant_chat'
@@ -214,6 +243,12 @@ const inputRef = ref(null)
 const typingMessage = ref(null) // Currently typing assistant message
 const typingIndex = ref(0)
 
+// Extract YAML from content
+function extractYaml(content) {
+  const match = content.match(/```ya?ml\n?([\s\S]*?)```/i)
+  return match ? match[1].trim() : null
+}
+
 // Typing animation - reveals text word by word
 async function typeMessage(fullContent) {
   typingMessage.value = ''
@@ -227,6 +262,12 @@ async function typeMessage(fullContent) {
     typingIndex.value = i
     scrollToBottom()
     
+    // Check for YAML and emit live updates to editor
+    const yaml = extractYaml(typingMessage.value)
+    if (yaml) {
+      emit('yaml-update', yaml)
+    }
+    
     // Faster for whitespace, slower for actual words
     const delay = words[i].trim() ? 30 : 5
     await new Promise(resolve => setTimeout(resolve, delay))
@@ -238,6 +279,12 @@ async function typeMessage(fullContent) {
     content: fullContent
   })
   typingMessage.value = null
+  
+  // Final YAML emit
+  const finalYaml = extractYaml(fullContent)
+  if (finalYaml) {
+    emit('yaml-update', finalYaml)
+  }
 }
 
 // Load chat from localStorage
@@ -406,13 +453,36 @@ function sendSuggestedPrompt(prompt) {
 function askForHelp() {
   const errorList = props.validationErrors.join('\n- ')
   const yamlPreview = props.currentYaml ? props.currentYaml.slice(0, 500) : ''
-
+  
   inputMessage.value = `I have validation errors in my process YAML. Can you help me fix them?
 
 Errors:
 - ${errorList}
 
 ${yamlPreview ? `Current YAML (first 500 chars):\n\`\`\`yaml\n${yamlPreview}\n\`\`\`` : ''}`
+  sendMessage()
+}
+
+// Ask about selected code
+function askAboutSelection(action) {
+  const selected = props.selectedText
+  if (!selected) return
+  
+  if (action === 'explain') {
+    inputMessage.value = `Can you explain what this part of the YAML does?
+
+\`\`\`yaml
+${selected}
+\`\`\``
+  } else if (action === 'edit') {
+    inputMessage.value = `I want to modify this part of my process:
+
+\`\`\`yaml
+${selected}
+\`\`\`
+
+What would you like me to change?`
+  }
   sendMessage()
 }
 
@@ -454,10 +524,6 @@ function parseMessageParts(content) {
 }
 
 // Apply YAML to editor
-function applyYaml(yaml) {
-  emit('apply-yaml', yaml)
-}
-
 // Render markdown to HTML
 function renderMarkdown(text) {
   if (!text) return ''
