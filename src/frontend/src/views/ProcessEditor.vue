@@ -160,6 +160,29 @@
             :selected-id="selectedTemplateId"
             @select="handleTemplateSelect"
           />
+          
+          <!-- Wizard suggestion -->
+          <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                  <SparklesIcon class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">New to processes?</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">Use our guided wizard to create your first process step-by-step</p>
+                </div>
+              </div>
+              <router-link
+                to="/processes/wizard"
+                class="px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors flex items-center gap-2"
+              >
+                <SparklesIcon class="h-4 w-4" />
+                Use Wizard
+              </router-link>
+            </div>
+          </div>
+          
           <div class="mt-6 flex justify-end gap-3">
             <button
               @click="proceedWithTemplate"
@@ -692,6 +715,7 @@ import {
   QuestionMarkCircleIcon,
   CodeBracketIcon,
   ArchiveBoxIcon,
+  SparklesIcon,
 } from '@heroicons/vue/24/outline'
 import api from '../api'
 import jsyaml from 'js-yaml'
