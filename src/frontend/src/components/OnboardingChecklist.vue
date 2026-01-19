@@ -254,7 +254,25 @@ const dismiss = () => {
 }
 
 const isOnTargetPage = (item) => {
-  return item.link && router.currentRoute.value.path === item.link
+  if (!item.link) return false
+  
+  const currentPath = router.currentRoute.value.path
+  const onPage = currentPath === item.link || currentPath.startsWith(item.link + '/')
+  
+  if (!onPage) return false
+  
+  // Only show "See above" if prerequisites are met
+  // Otherwise the hint doesn't make sense
+  if (item.id === 'runExecution') {
+    // Can only run if a process exists (createProcess completed)
+    return state.value?.checklist.createProcess === true
+  }
+  if (item.id === 'monitorExecution') {
+    // Can only monitor if there's an execution (runExecution completed)
+    return state.value?.checklist.runExecution === true
+  }
+  
+  return true
 }
 
 const navigateTo = (path) => {
