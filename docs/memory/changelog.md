@@ -1,3 +1,52 @@
+### 2026-01-20 21:15:00
+📚 **Documentation: Audit Trail Architecture Updated for Process Engine**
+
+**Summary**: Updated SEC-001 (Audit Trail Architecture) to acknowledge the Process Engine's existing audit system.
+
+**Changes**:
+- Added "Process Engine Audit (Implemented 2026-01-16)" section documenting:
+  - `AuditService` in `services/process_engine/services/audit.py`
+  - `SqliteAuditRepository` in `services/process_engine/repositories/audit.py`
+  - 18 audit actions covering process lifecycle, execution, approvals, admin
+- Updated "Relationship to Existing Systems" diagram to show 4 data systems:
+  - `audit_log` (NEW) - Platform audit for agents, auth, MCP, credentials
+  - `audit_entries` (PROCESS ENGINE) - Process workflow audit
+  - `agent_activities` - Runtime observability
+  - Vector logs - Container debugging
+- Added "Audit System Boundaries" table with scope, storage, retention
+- Added "Why Two Audit Systems?" rationale (separation of concerns, DB isolation, query optimization)
+
+**Decision**: Platform audit and Process audit remain separate for clear boundaries. Future unified query API can aggregate both for compliance reporting.
+
+**File Modified**: `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md`
+
+---
+
+### 2026-01-20 20:55:00
+📚 **Documentation: Demo Fleet Command Updated**
+
+**Summary**: Comprehensive update to `/create-demo-agent-fleet` command with complete setup instructions.
+
+**New Sections Added**:
+- **Step-by-step setup guide** for Acme Consulting fleet (6 steps)
+- **Process template deployment** - How to create processes from bundled templates
+- **Schedule configuration** - API calls for setting up recurring automation
+- **Autonomy mode** - Enabling automatic schedule execution
+- **Building demo history** - Running initial tasks to populate timeline
+- **Verification checklist** - Commands to verify everything works
+
+**API Reference**:
+- Quick reference table for all relevant endpoints
+- Token acquisition and authentication flow
+- Both MCP and curl/API examples throughout
+
+**Demo Checklist**:
+- 7-item verification checklist for complete setup
+
+**File Modified**: `.claude/commands/create-demo-agent-fleet.md`
+
+---
+
 ### 2026-01-20 10:30:00
 📚 **Documentation: README.md Updated for Recent Features**
 
