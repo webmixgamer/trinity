@@ -388,6 +388,7 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Sub-Processes | [sub-processes.md](feature-flows/process-engine/sub-processes.md) | Parent-child linking, breadcrumbs |
 | Agent Roles (EMI) | [agent-roles-emi.md](feature-flows/process-engine/agent-roles-emi.md) | EMI pattern, InformedNotifier |
 | Process Templates | [process-templates.md](feature-flows/process-engine/process-templates.md) | Bundled and user templates |
+| **Onboarding & Docs** | [onboarding-documentation.md](feature-flows/process-engine/onboarding-documentation.md) | Process Wizard, Docs page, Help panel, Chat assistant, Onboarding checklist |
 
 **Key Entry Points:**
 - **UI**: Process List (`/processes`), Process Editor, Execution Detail, Approvals
