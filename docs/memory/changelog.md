@@ -1,3 +1,31 @@
+### 2026-01-20 10:30:00
+📚 **Documentation: README.md Updated for Recent Features**
+
+**Summary**: Updated README.md to document major features added since Process Engine completion.
+
+**New Sections Added**:
+- **Process Engine** - Full section with YAML example, step types table, AI assistant documentation
+- **Process Engine Features** in Features list - 7 bullet points covering workflows, step types, approvals, templates
+
+**Features Documented**:
+- Dashboard Timeline View (execution visualization with color coding)
+- Host Telemetry (real-time CPU/memory/disk monitoring)
+- Agent Dashboard (custom dashboards via `dashboard.yaml`)
+- Live Execution Streaming (real-time log streaming)
+- Execution Termination (stop running tasks)
+- File Manager (renamed from File Browser, with preview capabilities)
+
+**Project Structure Updates**:
+- Added `services/process_engine/` under backend
+- Added `config/process-templates/` and `config/process-docs/`
+
+**Documentation Links**:
+- Added Process Engine Design docs link
+
+**File Modified**: `README.md`
+
+---
+
 ### 2026-01-19 18:00:00
 ✨ **Feature: Premium Onboarding & Process Creation Chat Assistant**
 
