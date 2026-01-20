@@ -129,3 +129,4 @@ src/backend/config/agent-templates/test-*/
 config/agent-templates/**/memory/
 config/agent-templates/**/outputs/
 config/agent-templates/**/metrics.json
+.playwright-mcp/
