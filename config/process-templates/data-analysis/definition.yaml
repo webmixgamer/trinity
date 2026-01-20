@@ -1,5 +1,5 @@
 name: "{{name}}"
-version: "1.0.0"
+version: "1.0"
 description: "Automated data analysis and reporting workflow"
 
 triggers:
@@ -53,6 +53,6 @@ steps:
 
 outputs:
   - name: report
-    value: "{{steps.generate-report.output}}"
+    source: "{{steps.generate-report.output}}"
   - name: key_insights
-    value: "{{steps.analyze-data.output.insights}}"
+    source: "{{steps.analyze-data.output.insights}}"

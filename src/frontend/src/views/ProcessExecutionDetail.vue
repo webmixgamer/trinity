@@ -50,9 +50,21 @@
                   <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
                     {{ execution.process_name }}
                   </h1>
-                  <span :class="getStatusClasses(execution.status)" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium">
-                    <span>{{ getStatusIcon(execution.status) }}</span>
-                    <span class="capitalize">{{ execution.status }}</span>
+                  <span
+                    :class="getStatusClasses(displayStatus)"
+                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium cursor-help group relative"
+                    :title="getStatusExplanation(displayStatus)"
+                  >
+                    <span>{{ getStatusIcon(displayStatus) }}</span>
+                    <span class="capitalize">{{ displayStatusText }}</span>
+                    <InformationCircleIcon class="w-4 h-4 opacity-60 group-hover:opacity-100" />
+                    <!-- Tooltip -->
+                    <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 text-xs font-normal text-white bg-gray-900 dark:bg-gray-700 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                      {{ getStatusExplanation(displayStatus) }}
+                      <span v-if="displayStatus === 'paused' || displayStatus === 'awaiting_approval'" class="block mt-1 text-indigo-300">
+                        → Go to Approvals page
+                      </span>
+                    </span>
                   </span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -100,7 +112,7 @@
             <div class="flex items-center gap-3">
               <!-- WebSocket connection indicator -->
               <div
-                v-if="execution.status === 'running' || execution.status === 'pending'"
+                v-if="execution.status === 'running' || execution.status === 'pending' || execution.status === 'paused'"
                 class="flex items-center gap-2 text-sm"
               >
                 <span
@@ -367,11 +379,14 @@ import {
   UserIcon,
   HomeIcon,
   ChevronRightIcon,
+  InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
+import { useOnboarding } from '../composables/useOnboarding'
 
 const route = useRoute()
 const router = useRouter()
 const executionsStore = useExecutionsStore()
+const { markChecklistItem } = useOnboarding()
 
 // State
 const loading = ref(false)
@@ -381,6 +396,26 @@ const actionInProgress = ref(false)
 const executionId = computed(() => route.params.id)
 const events = ref([])
 const breadcrumbs = ref([])  // For nested sub-process navigation
+
+// Check if paused due to waiting_approval
+const hasWaitingApproval = computed(() => {
+  return execution.value?.steps?.some(s => s.status === 'waiting_approval') || false
+})
+
+// Display status (enhanced for approval visibility)
+const displayStatus = computed(() => {
+  if (execution.value?.status === 'paused' && hasWaitingApproval.value) {
+    return 'awaiting_approval'
+  }
+  return execution.value?.status || 'unknown'
+})
+
+const displayStatusText = computed(() => {
+  if (displayStatus.value === 'awaiting_approval') {
+    return 'Awaiting Approval'
+  }
+  return displayStatus.value
+})
 
 // Watch active tab to load events
 watch(activeTab, (newTab) => {
@@ -487,10 +522,11 @@ let refreshInterval = null
 onMounted(() => {
   loadExecution()
 
-  // Fallback auto-refresh for running executions (when WS not working)
+  // Fallback auto-refresh for active executions (when WS not working)
+  // Includes 'paused' because it may be waiting for approval
   refreshInterval = setInterval(() => {
     if (!wsConnected.value && execution.value &&
-        (execution.value.status === 'running' || execution.value.status === 'pending')) {
+        (execution.value.status === 'running' || execution.value.status === 'pending' || execution.value.status === 'paused')) {
       loadExecution()
     }
   }, 5000)
@@ -512,6 +548,8 @@ async function loadExecution() {
     }
     // Build breadcrumb chain for nested sub-process navigation
     await buildBreadcrumbs()
+    // Mark onboarding item as complete when viewing an execution
+    markChecklistItem('monitorExecution')
   } catch (error) {
     console.error('Failed to load execution:', error)
     execution.value = null
@@ -565,6 +603,10 @@ async function loadEvents() {
 }
 
 async function handleCancel() {
+  if (!execution.value?.id) {
+    console.error('Cannot cancel: execution not loaded')
+    return
+  }
   actionInProgress.value = true
   try {
     await executionsStore.cancelExecution(execution.value.id)
@@ -577,6 +619,10 @@ async function handleCancel() {
 }
 
 async function handleRetry() {
+  if (!execution.value?.id) {
+    console.error('Cannot retry: execution not loaded')
+    return
+  }
   actionInProgress.value = true
   try {
     const newExecution = await executionsStore.retryExecution(execution.value.id)
@@ -647,6 +693,7 @@ function getStatusIcon(status) {
     failed: '❌',
     cancelled: '⛔',
     paused: '⏸️',
+    awaiting_approval: '🔔',  // Alert bell for approval
   }
   return icons[status] || '❓'
 }
@@ -659,8 +706,40 @@ function getStatusClasses(status) {
     failed: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
     cancelled: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300',
     paused: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
+    awaiting_approval: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 animate-pulse',  // Amber with pulse
   }
   return classes[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+}
+
+// Status explanations for tooltips
+function getStatusExplanation(status) {
+  const explanations = {
+    pending: 'Waiting to start. The execution is queued and will begin shortly.',
+    running: 'Execution in progress. Steps are being processed by agents.',
+    completed: 'All steps finished successfully. View step outputs below.',
+    failed: 'Execution stopped due to an error. Check step details for more information.',
+    cancelled: 'Execution was manually cancelled before completion.',
+    paused: 'Awaiting human approval. Check the Approvals page to continue.',
+    awaiting_approval: 'A step requires your approval before continuing. Go to Approvals to review.',
+  }
+  return explanations[status] || 'Unknown status'
+}
+
+// Step-level status explanations
+function getStepStatusExplanation(status, stepData = {}) {
+  const explanations = {
+    pending: 'Waiting to start',
+    waiting: stepData.depends_on?.length
+      ? `Waiting for: ${stepData.depends_on.join(', ')}`
+      : 'Waiting for dependencies to complete',
+    running: 'Currently executing',
+    completed: 'Finished successfully',
+    failed: stepData.error ? `Error: ${stepData.error}` : 'Failed with an error',
+    skipped: stepData.skip_reason || 'Skipped based on gateway condition',
+    cancelled: 'Cancelled before execution',
+    awaiting_approval: 'Waiting for human approval',
+  }
+  return explanations[status] || 'Unknown status'
 }
 
 function formatDateTime(dateStr) {

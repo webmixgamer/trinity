@@ -1,5 +1,5 @@
 name: "{{name}}"
-version: "1.0.0"
+version: "1.0"
 description: "Customer support ticket handling with AI triage and human escalation"
 
 triggers:
@@ -125,8 +125,8 @@ steps:
 
 outputs:
   - name: ticket_analysis
-    value: "{{steps.analyze-ticket.output}}"
+    source: "{{steps.analyze-ticket.output}}"
   - name: response_status
-    value: "{{steps.send-response.output.status}}"
+    source: "{{steps.send-response.output.status}}"
   - name: escalated
-    value: "{{steps.escalation-approval.output.decision | default('not-escalated')}}"
+    source: "{{steps.escalation-approval.output.decision | default('not-escalated')}}"

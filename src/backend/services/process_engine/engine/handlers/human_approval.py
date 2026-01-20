@@ -120,6 +120,16 @@ class HumanApprovalHandler(StepHandler):
         existing = self.approval_store.get_by_execution_step(execution_id, step_id)
         if existing:
             if existing.is_pending():
+                # Check if deadline has passed
+                if existing.deadline and datetime.now(timezone.utc) > existing.deadline:
+                    logger.info(f"Approval deadline passed for step '{step_id}', auto-rejecting")
+                    # Mark as timed out
+                    existing.reject("SYSTEM", "Approval timed out - deadline exceeded")
+                    self.approval_store.save(existing)
+                    return StepResult.fail(
+                        f"Approval timed out after deadline: {existing.deadline.isoformat()}",
+                        error_code="APPROVAL_TIMEOUT",
+                    )
                 # Still waiting for approval
                 logger.info(f"Approval still pending for step '{step_id}'")
                 return StepResult.wait({"approval_id": existing.id})

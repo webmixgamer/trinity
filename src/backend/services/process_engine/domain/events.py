@@ -535,3 +535,90 @@ class InformedNotification(DomainEvent):
             "output_summary": self.output_summary,
             "metadata": self.metadata,
         }
+
+
+# =============================================================================
+# Execution Recovery Events
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ExecutionRecoveryStarted(DomainEvent):
+    """
+    Emitted when the recovery scan begins on backend startup.
+
+    Reference: IT5 Section 2.3 (Recovery on Backend Restart)
+    Reference: BACKLOG_RELIABILITY_IMPROVEMENTS.md - RI-11
+    """
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class ExecutionRecovered(DomainEvent):
+    """
+    Emitted when a single execution is recovered after restart.
+
+    Contains the action taken (resume, retry_step, mark_failed).
+    """
+    execution_id: ExecutionId
+    process_id: ProcessId
+    process_name: str
+    action: str  # "resume", "retry_step", "mark_failed"
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "process_id": str(self.process_id),
+            "process_name": self.process_name,
+            "action": self.action,
+        }
+
+
+@dataclass(frozen=True)
+class ExecutionRecoveryFailed(DomainEvent):
+    """
+    Emitted when recovery of a single execution fails.
+    """
+    execution_id: ExecutionId
+    error_message: str
+    action_attempted: str  # "resume", "retry_step", "mark_failed"
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "execution_id": str(self.execution_id),
+            "error_message": self.error_message,
+            "action_attempted": self.action_attempted,
+        }
+
+
+@dataclass(frozen=True)
+class ExecutionRecoveryCompleted(DomainEvent):
+    """
+    Emitted when the full recovery scan completes.
+
+    Contains summary counts of all recovery operations.
+    """
+    resumed_count: int
+    retried_count: int
+    failed_count: int  # Executions marked as failed due to age
+    skipped_count: int  # Already terminal, no action needed
+    error_count: int  # Recovery attempts that errored
+    duration_ms: int
+
+    def to_dict(self) -> dict:
+        return {
+            **super().to_dict(),
+            "resumed_count": self.resumed_count,
+            "retried_count": self.retried_count,
+            "failed_count": self.failed_count,
+            "skipped_count": self.skipped_count,
+            "error_count": self.error_count,
+            "duration_ms": self.duration_ms,
+            "total_processed": self.resumed_count + self.retried_count + self.failed_count + self.skipped_count,
+        }

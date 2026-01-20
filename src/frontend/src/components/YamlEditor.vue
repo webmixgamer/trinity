@@ -33,7 +33,7 @@
     </div>
 
     <!-- Editor container -->
-    <div 
+    <div
       ref="editorContainer"
       class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
       :style="{ height: height }"
@@ -102,7 +102,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'change', 'save'])
+const emit = defineEmits(['update:modelValue', 'change', 'save', 'cursor-context', 'selection-change'])
 
 const editorContainer = ref(null)
 const copied = ref(false)
@@ -110,11 +110,11 @@ let editor = null
 let monaco = null
 
 // Separate errors and warnings
-const errors = computed(() => 
+const errors = computed(() =>
   props.validationErrors.filter(e => e.level === 'error' || !e.level)
 )
 
-const warnings = computed(() => 
+const warnings = computed(() =>
   props.validationErrors.filter(e => e.level === 'warning')
 )
 
@@ -130,7 +130,7 @@ const initMonaco = async () => {
   try {
     // Dynamic import Monaco
     monaco = await import('monaco-editor')
-    
+
     if (!editorContainer.value) return
 
     // Define custom YAML theme for dark mode
@@ -186,9 +186,26 @@ const initMonaco = async () => {
       emit('save')
     })
 
+    // Listen for cursor position changes to provide contextual help
+    editor.onDidChangeCursorPosition((e) => {
+      const context = getCursorContext(e.position.lineNumber)
+      emit('cursor-context', context)
+    })
+
+    // Listen for selection changes
+    editor.onDidChangeCursorSelection((e) => {
+      const selection = e.selection
+      if (!selection.isEmpty()) {
+        const selectedText = editor.getModel().getValueInRange(selection)
+        emit('selection-change', selectedText)
+      } else {
+        emit('selection-change', '')
+      }
+    })
+
     // Apply validation errors
     updateMarkers()
-    
+
   } catch (error) {
     console.error('Failed to load Monaco Editor:', error)
   }
@@ -197,7 +214,7 @@ const initMonaco = async () => {
 // Update editor markers from validation errors
 const updateMarkers = () => {
   if (!editor || !monaco) return
-  
+
   const model = editor.getModel()
   if (!model) return
 
@@ -211,8 +228,8 @@ const updateMarkers = () => {
     endLineNumber: error.line || 1,
     endColumn: model.getLineMaxColumn(error.line || 1),
     message: error.message,
-    severity: error.level === 'warning' 
-      ? monaco.MarkerSeverity.Warning 
+    severity: error.level === 'warning'
+      ? monaco.MarkerSeverity.Warning
       : monaco.MarkerSeverity.Error,
   }))
 
@@ -262,10 +279,59 @@ const goToLine = (line) => {
   editor.focus()
 }
 
+// Determine cursor context by analyzing the YAML structure
+const getCursorContext = (lineNumber) => {
+  if (!editor) return { path: 'default', line: lineNumber }
+
+  const content = editor.getValue()
+  const lines = content.split('\n')
+
+  if (lineNumber > lines.length) return { path: 'default', line: lineNumber }
+
+  // Build context path by looking at indentation levels
+  const currentLine = lines[lineNumber - 1] || ''
+  const currentIndent = currentLine.search(/\S/)
+
+  // Extract key from current line
+  const keyMatch = currentLine.match(/^\s*-?\s*(\w+)\s*:/)
+  const currentKey = keyMatch ? keyMatch[1] : null
+
+  // Walk backwards to build full path
+  const pathParts = []
+  if (currentKey) pathParts.unshift(currentKey)
+
+  let prevIndent = currentIndent
+  for (let i = lineNumber - 2; i >= 0; i--) {
+    const line = lines[i]
+    const indent = line.search(/\S/)
+
+    // Skip empty lines or comments
+    if (indent < 0 || line.trim().startsWith('#')) continue
+
+    // If we find a less indented line, it's a parent
+    if (indent < prevIndent) {
+      const parentMatch = line.match(/^\s*-?\s*(\w+)\s*:/)
+      if (parentMatch) {
+        pathParts.unshift(parentMatch[1])
+        prevIndent = indent
+      }
+    }
+
+    // Stop at root level
+    if (indent === 0 && pathParts.length > 0) break
+  }
+
+  return {
+    path: pathParts.join('.') || 'default',
+    line: lineNumber,
+    key: currentKey
+  }
+}
+
 // Lifecycle
 onMounted(() => {
   checkDarkMode()
-  
+
   // Watch for dark mode changes
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -274,12 +340,12 @@ onMounted(() => {
       }
     })
   })
-  
+
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['class'],
   })
-  
+
   initMonaco()
 })
 
