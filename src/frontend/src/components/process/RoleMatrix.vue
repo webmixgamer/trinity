@@ -225,11 +225,14 @@ const newAgentName = ref('');
 const localRoles = ref({});
 
 // Initialize local roles from props
+// Uses step.agent as default executor if roles.executor not explicitly set
 watch(() => props.steps, (newSteps) => {
   const roles = {};
   newSteps.forEach(step => {
+    // For agent_task steps, use step.agent as default executor if no explicit roles.executor
+    const defaultExecutor = step.type === 'agent_task' ? (step.agent || '') : '';
     roles[step.id] = {
-      executor: step.roles?.executor || '',
+      executor: step.roles?.executor || defaultExecutor,
       monitors: [...(step.roles?.monitors || [])],
       informed: [...(step.roles?.informed || [])],
     };

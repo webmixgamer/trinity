@@ -844,6 +844,7 @@ const parsedSteps = computed(() => {
       id: step.id,
       name: step.name || step.id,
       type: step.type,
+      agent: step.agent || null,  // Include agent for default executor
       roles: step.roles || null,
     }))
   } catch {

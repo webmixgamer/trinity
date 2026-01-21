@@ -1,3 +1,24 @@
+### 2026-01-21 09:30:00
+🐛 **Fix: RoleMatrix Shows Correct Executor from Step Agent**
+
+**Problem**: Process Editor's Role Matrix showed "No executor" warnings for all steps, even when agents were properly defined in the YAML configuration.
+
+**Root Cause**: Two separate concepts for agent assignment:
+- `step.agent` - The agent that executes the task (defined in YAML, used at runtime)
+- `step.roles.executor` - EMI pattern role assignment (optional, what RoleMatrix displayed)
+
+RoleMatrix only checked `roles.executor`, ignoring the actual `agent` field.
+
+**Fix**:
+- `ProcessEditor.vue`: Pass `step.agent` to RoleMatrix via `parsedSteps`
+- `RoleMatrix.vue`: Use `step.agent` as default executor for `agent_task` steps when `roles.executor` is not explicitly set
+
+**Files Modified**:
+- `src/frontend/src/views/ProcessEditor.vue`
+- `src/frontend/src/components/process/RoleMatrix.vue`
+
+---
+
 ### 2026-01-20 21:15:00
 📚 **Documentation: Audit Trail Architecture Updated for Process Engine**
 
