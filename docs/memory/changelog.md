@@ -1,3 +1,44 @@
+### 2026-01-21 12:15:00
+✅ **Verified: Security Bugs Already Fixed (AL-H1, AL-H2, AL-H3)**
+
+**Summary**: Validated that the HIGH priority security bugs from the audit report have already been fixed.
+
+**Bugs Verified Fixed**:
+
+1. **Missing Auth on Lifecycle Endpoints (AL-H1, AL-H2)**
+   - `start_agent` (line 316), `stop_agent` (line 343), `get_logs` (line 368) all use `AuthorizedAgentByName` dependency
+   - `AuthorizedAgentByName` calls `db.can_user_access_agent()` to verify authorization
+   - Files: `routers/agents.py`, `dependencies.py:228-255`
+
+2. **Container Security Inconsistency (AL-H3)**
+   - Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`
+   - Both container creation paths (`crud.py`) and recreation (`lifecycle.py`) use same constants
+   - Security settings ALWAYS applied: `cap_drop=['ALL']`, `apparmor:docker-default`, `tmpfs noexec,nosuid`
+   - Files: `lifecycle.py:343-368`, `crud.py:31,462-464`
+
+**Roadmap Updated**: Both bugs marked as ✅ Fixed
+
+---
+
+### 2026-01-21 11:45:00
+✅ **Verified: Execution Queue Race Conditions Already Fixed**
+
+**Summary**: Validated that the execution queue race conditions (EQ-H1, EQ-H2, EQ-M1 from audit report) were already fixed on 2026-01-14.
+
+**Fixes Verified**:
+1. **`submit()` race condition** (EQ-H1): Uses atomic `SET NX EX` for slot acquisition - prevents two concurrent requests from acquiring the same execution slot
+2. **`complete()` race condition** (EQ-H2): Uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice
+3. **`get_all_busy_agents()` blocking** (EQ-M1): Uses `SCAN` instead of `KEYS` - avoids blocking Redis on large datasets
+
+**Validation**:
+- Reviewed `src/backend/services/execution_queue.py` (lines 67-84 Lua script, 165-170 atomic submit, 295-308 SCAN)
+- Ran all 20 execution queue tests - **all passed**
+- Feature flow documentation already updated (`docs/memory/feature-flows/execution-queue.md`)
+
+**Roadmap Updated**: Bug marked as ✅ Fixed 2026-01-14
+
+---
+
 ### 2026-01-21 09:30:00
 🐛 **Fix: RoleMatrix Shows Correct Executor from Step Agent**
 
