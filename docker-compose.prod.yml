@@ -51,7 +51,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
+      - ./config/process-templates:/agent-configs/process-templates:ro
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
+      - ./config/process-docs:/app/config/process-docs:ro
       - agent-configs:/agent-configs
       - ${TRINITY_DATA_PATH:-./trinity-data}:/data
     depends_on:
