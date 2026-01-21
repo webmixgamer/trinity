@@ -316,15 +316,18 @@
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
+| **Credentials Page** | Medium | [credentials-page.md](feature-flows/credentials-page.md) | Global credential management UI at `/credentials` - create, view, delete, bulk import. Redis-backed storage with service/type auto-detection from key names (Created 2026-01-21) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
+| **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels |
 | MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 21 MCP tools for external agent management, including `get_agent_info` for template metadata access (Updated 2026-01-03) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
+| **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - **refactored**: GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency (Updated 2025-12-31) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
@@ -355,6 +358,7 @@
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
+| **Admin Login** | High | [admin-login.md](feature-flows/admin-login.md) | Password-based admin authentication - fixed "admin" username, bcrypt password verification, JWT with mode=admin, 7-day token expiry, localStorage persistence, requires setup completion (Created 2026-01-21) |
 | **Tasks Tab** | High | [tasks-tab.md](feature-flows/tasks-tab.md) | Unified task execution UI in Agent Detail - trigger manual tasks, monitor queue, view history, **Stop button** for running tasks, **Make Repeatable** for schedules (Updated 2026-01-12) |
 | **Execution Log Viewer** | Medium | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Tasks panel modal for viewing Claude Code execution transcripts - all execution types (scheduled/manual/user/MCP) now produce parseable logs (Updated 2026-01-10) |
 | **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
@@ -366,6 +370,7 @@
 | **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
 | **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
 | **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
+| **Alerts Page** | Medium | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts for process executions - NavBar badge with 60s polling, filter by status, dismiss alerts, severity levels (warning/critical), threshold types (per_execution/daily/weekly). Service: CostAlertService, DB: trinity_alerts.db (Created 2026-01-21) |
 
 ---
 
@@ -389,6 +394,8 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Agent Roles (EMI) | [agent-roles-emi.md](feature-flows/process-engine/agent-roles-emi.md) | EMI pattern, InformedNotifier |
 | Process Templates | [process-templates.md](feature-flows/process-engine/process-templates.md) | Bundled and user templates |
 | **Onboarding & Docs** | [onboarding-documentation.md](feature-flows/process-engine/onboarding-documentation.md) | Process Wizard, Docs page, Help panel, Chat assistant, Onboarding checklist |
+| **Execution List Page** | [execution-list-page.md](feature-flows/execution-list-page.md) | `/executions` route - list all executions with filters, stats, pagination, auto-refresh (Created 2026-01-21) |
+| **Process Dashboard** | [process-dashboard.md](feature-flows/process-dashboard.md) | `/process-dashboard` route - analytics overview with metrics cards, trend charts, process health, step performance (Created 2026-01-21) |
 
 **Key Entry Points:**
 - **UI**: Process List (`/processes`), Process Editor, Execution Detail, Approvals
