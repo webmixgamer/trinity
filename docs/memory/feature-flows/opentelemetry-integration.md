@@ -49,7 +49,7 @@ As a platform operator, I want agents to export standardized metrics so that I c
 
 ### Environment Variables
 
-**File**: `.env.example` (lines 98-112)
+**File**: `.env.example` (lines 95-112)
 
 ```bash
 # Enable OpenTelemetry metrics export from Claude Code agents
@@ -86,7 +86,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 ### Agent Creation - Environment Injection
 
-**File**: `src/backend/services/agent_service/crud.py` (lines 247-254)
+**File**: `src/backend/services/agent_service/crud.py` (lines 308-316)
 
 ```python
 # OpenTelemetry Configuration (enabled by default)
@@ -113,7 +113,7 @@ if os.getenv('OTEL_ENABLED', '1') == '1':
 
 ### OTEL Collector Service
 
-**File**: `docker-compose.yml` (lines 165-185)
+**File**: `docker-compose.yml` (lines 207-228)
 
 **CRITICAL**: Must use `contrib` image version 0.120.0+ for `deltatocumulative` processor. Claude Code exports delta metrics, but Prometheus requires cumulative.
 
@@ -128,6 +128,7 @@ otel-collector:
     - "4317:4317"   # gRPC receiver (OTLP)
     - "4318:4318"   # HTTP receiver (OTLP)
     - "8889:8889"   # Prometheus metrics exporter
+    - "13133:13133" # Health check endpoint
   volumes:
     - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro  # Note: contrib path
   networks:
@@ -191,6 +192,7 @@ exporters:
     sampling_thereafter: 200
 
 service:
+  extensions: [health_check]
   pipelines:
     metrics:
       receivers: [otlp]
@@ -204,6 +206,9 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug]
+  telemetry:
+    logs:
+      level: info
 ```
 
 ---
@@ -404,7 +409,7 @@ Existing agents keep their OTel config until restarted.
 ### Remove Collector
 
 1. Stop collector: `docker-compose stop otel-collector`
-2. Remove from `docker-compose.yml` (lines 132-151)
+2. Remove from `docker-compose.yml` (lines 207-228)
 3. Agents will log export warnings but continue working
 
 ---
@@ -440,16 +445,18 @@ Existing agents keep their OTel config until restarted.
 
 | File | Change |
 |------|--------|
-| `src/backend/services/agent_service/crud.py` | OTel env var injection (lines 247-254) |
-| `src/backend/routers/observability.py` | New file - metrics API endpoints (257 lines) |
-| `src/backend/main.py` | Added observability router import (line 41) and registration (line 231) |
-| `docker-compose.yml` | Added otel-collector service (lines 150-169) |
-| `config/otel-collector.yaml` | New file - collector configuration |
-| `.env.example` | Added OTel environment variables (lines 98-112) |
+| `src/backend/services/agent_service/crud.py` | OTel env var injection (lines 308-316) |
+| `src/backend/services/system_agent_service.py` | OTel env var injection for system agents (lines 191-198) |
+| `src/backend/routers/observability.py` | Metrics API endpoints (257 lines) |
+| `src/backend/routers/ops.py` | Cost endpoint powered by OTel (lines 728-869) |
+| `src/backend/main.py` | Added observability router import (line 41) and registration (line 289) |
+| `docker-compose.yml` | Added otel-collector service (lines 207-228) |
+| `config/otel-collector.yaml` | Collector configuration with health_check extension (73 lines) |
+| `.env.example` | OTel environment variables (lines 95-112) |
 | `docs/DEPLOYMENT.md` | Added OpenTelemetry section |
-| `src/frontend/src/stores/observability.js` | New file - Pinia store for observability state (269 lines) |
-| `src/frontend/src/components/ObservabilityPanel.vue` | New file - collapsible metrics panel (186 lines) |
-| `src/frontend/src/views/Dashboard.vue` | Added OTel imports (lines 437, 440, 449), header stats (lines 39-61), panel (line 422), lifecycle (line 508) |
+| `src/frontend/src/stores/observability.js` | Pinia store for observability state (268 lines) |
+| `src/frontend/src/components/ObservabilityPanel.vue` | Collapsible metrics panel (185 lines) |
+| `src/frontend/src/views/Dashboard.vue` | OTel imports (lines 357, 371), header stats (lines 35-56), panel (line 340), lifecycle (lines 430-431) |
 
 ---
 
@@ -460,6 +467,8 @@ Existing agents keep their OTel config until restarted.
 **File**: `src/backend/routers/observability.py`
 
 #### GET /api/observability/metrics (lines 140-218)
+
+**File**: `src/backend/routers/observability.py` (257 lines total)
 
 Fetches and parses Prometheus metrics from the OTel Collector.
 
@@ -478,7 +487,7 @@ async def get_observability_metrics(
     """
 ```
 
-**Business Logic** (lines 23-137):
+**Business Logic** (lines 23-137 in `src/backend/routers/observability.py`):
 1. `parse_prometheus_metrics()` - Parses Prometheus text format into structured dict
 2. `calculate_totals()` - Aggregates metrics across all models
 
@@ -487,7 +496,7 @@ async def get_observability_metrics(
 - Returns `{available: false, error: "..."}` on connection/timeout errors
 - Non-blocking - dashboard continues to work if collector unavailable
 
-#### GET /api/observability/status (lines 221-256)
+#### GET /api/observability/status (lines 221-257)
 
 Quick status check without full metrics parsing.
 
@@ -534,7 +543,7 @@ async def get_observability_status(
 
 **File**: `src/backend/main.py`
 - Import: line 41
-- Registration: line 231
+- Registration: line 289
 
 ```python
 from routers.observability import router as observability_router
@@ -546,7 +555,7 @@ app.include_router(observability_router)
 
 ### Frontend State Management
 
-**File**: `src/frontend/src/stores/observability.js` (269 lines)
+**File**: `src/frontend/src/stores/observability.js` (268 lines)
 
 #### State (lines 5-39)
 
@@ -574,7 +583,7 @@ export const useObservabilityStore = defineStore('observability', {
 })
 ```
 
-#### Getters (lines 41-149)
+#### Getters (lines 41-148)
 
 | Getter | Purpose |
 |--------|---------|
@@ -587,7 +596,7 @@ export const useObservabilityStore = defineStore('observability', {
 | `linesBreakdown` | Added/removed breakdown |
 | `hasData` | `total_cost > 0 || total_tokens > 0 || sessions > 0` |
 
-#### Actions (lines 151-266)
+#### Actions (lines 151-267)
 
 | Action | Purpose |
 |--------|---------|
@@ -605,16 +614,17 @@ export const useObservabilityStore = defineStore('observability', {
 
 **File**: `src/frontend/src/views/Dashboard.vue`
 
-#### Imports (lines 437, 440, 449)
+#### Imports (lines 357, 371)
 
 ```javascript
 import { useObservabilityStore } from '@/stores/observability'
-import ObservabilityPanel from '@/components/ObservabilityPanel.vue'
 
 const observabilityStore = useObservabilityStore()
 ```
 
-#### Header Stats (lines 39-61)
+**Note**: `ObservabilityPanel` component is imported and used directly in the template.
+
+#### Header Stats (lines 35-56)
 
 OTel metrics display in the compact header alongside agent counts:
 
@@ -642,14 +652,14 @@ OTel metrics display in the compact header alongside agent counts:
 </span>
 ```
 
-#### Panel Integration (line 422)
+#### Panel Integration (line 340)
 
 ```html
 <!-- Observability Panel (bottom-left, only when OTel enabled) -->
 <ObservabilityPanel v-if="observabilityStore.enabled" />
 ```
 
-#### Lifecycle (lines 507-508)
+#### Lifecycle (lines 430-431)
 
 ```javascript
 onMounted(async () => {
@@ -663,7 +673,7 @@ onMounted(async () => {
 
 ### Observability Panel Component
 
-**File**: `src/frontend/src/components/ObservabilityPanel.vue` (186 lines)
+**File**: `src/frontend/src/components/ObservabilityPanel.vue` (185 lines)
 
 #### Template Structure (lines 1-161)
 
@@ -709,7 +719,11 @@ const observabilityStore = useObservabilityStore()
 const isExpanded = ref(false)
 
 const formatLastUpdated = computed(() => {
-  // "just now" | "Xm ago" | time
+  if (!observabilityStore.lastUpdated) return 'never'
+  const diff = Date.now() - observabilityStore.lastUpdated.getTime()
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  return observabilityStore.lastUpdated.toLocaleTimeString()
 })
 
 onMounted(() => {
@@ -812,4 +826,14 @@ curl http://localhost:8889/metrics | grep trinity_claude_code
 
 ---
 
-**Last Updated**: 2025-12-30 (Line numbers verified)
+**Last Updated**: 2026-01-23 (Line numbers verified)
+
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Updated line numbers for crud.py (308-316), docker-compose.yml (207-228), observability.py, main.py (289), Dashboard.vue (357, 371, 35-56, 340, 430-431), ObservabilityPanel.vue (185 lines). Added system_agent_service.py and ops.py to files modified. Added health_check endpoint port 13133 to docker-compose. Updated otel-collector.yaml to show health_check extension and telemetry config. |
+| 2025-12-30 | Line numbers verified |
+| 2025-12-20 | Initial Phase 1, 2, and 2.5 implementation complete |

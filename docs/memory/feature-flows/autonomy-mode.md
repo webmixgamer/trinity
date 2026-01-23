@@ -7,8 +7,8 @@ Autonomy Mode enables or disables all scheduled tasks for an agent with a single
 As an agent owner, I want to toggle autonomous operation for my agent so that I can quickly enable or disable all scheduled tasks without managing each schedule individually.
 
 ## Entry Points
-- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:62-96` - Toggle switch with "AUTO/Manual" label
-- **Agent Detail UI**: `src/frontend/src/views/AgentDetail.vue:137-160` - AUTO/Manual toggle button in header
+- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:66-100` - Toggle switch with "AUTO/Manual" label
+- **Agent Detail UI**: `src/frontend/src/components/AgentHeader.vue:134-157` - AUTO/Manual toggle button in header
 - **API**: `GET /api/agents/autonomy-status` - Bulk status for dashboard
 - **API**: `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
 - **API**: `PUT /api/agents/{name}/autonomy` - Toggle autonomy on/off
@@ -21,22 +21,40 @@ As an agent owner, I want to toggle autonomous operation for my agent so that I 
 
 **File**: `src/frontend/src/components/AgentNode.vue`
 
-#### Toggle Switch (lines 62-96)
+#### Toggle Switch (lines 66-100)
 The Dashboard agent tiles include an inline toggle switch for quick autonomy control:
 ```vue
 <!-- Autonomy toggle switch with label (not for system agent) -->
 <div v-if="!isSystemAgent" class="flex items-center gap-1.5">
-  <span :class="autonomyEnabled ? 'text-amber-600' : 'text-gray-400'">
+  <span
+    :class="[
+      'text-xs font-medium transition-colors',
+      autonomyEnabled
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-gray-400 dark:text-gray-500'
+    ]"
+  >
     {{ autonomyEnabled ? 'AUTO' : 'Manual' }}
   </span>
   <button
     @click="handleAutonomyToggle"
     :disabled="autonomyLoading"
-    :class="autonomyEnabled ? 'bg-amber-500' : 'bg-gray-200'"
+    :class="[
+      'nodrag relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2',
+      autonomyEnabled
+        ? 'bg-amber-500 focus:ring-amber-500'
+        : 'bg-gray-200 dark:bg-gray-600 focus:ring-gray-400',
+      autonomyLoading ? 'opacity-50 cursor-wait' : ''
+    ]"
     role="switch"
     :aria-checked="autonomyEnabled"
   >
-    <span :class="autonomyEnabled ? 'translate-x-4' : 'translate-x-0'" />
+    <span
+      :class="[
+        'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+        autonomyEnabled ? 'translate-x-4' : 'translate-x-0'
+      ]"
+    />
   </button>
 </div>
 ```
@@ -47,10 +65,12 @@ The Dashboard agent tiles include an inline toggle switch for quick autonomy con
 - Disabled state with opacity when API call in progress
 - Tooltips explain the current state and action
 
-#### Toggle Handler (lines 317-330)
+#### Toggle Handler (lines 352-365)
 ```javascript
 async function handleAutonomyToggle(event) {
-  event.stopPropagation() // Prevent card drag
+  // Stop propagation to prevent card drag
+  event.stopPropagation()
+
   if (autonomyLoading.value || isSystemAgent.value) return
 
   autonomyLoading.value = true
@@ -62,7 +82,7 @@ async function handleAutonomyToggle(event) {
 }
 ```
 
-#### Computed Property (lines 189-191)
+#### Computed Property (lines 224-227)
 ```javascript
 const autonomyEnabled = computed(() => {
   return props.data.autonomy_enabled === true
@@ -73,23 +93,31 @@ const autonomyEnabled = computed(() => {
 
 **File**: `src/frontend/src/stores/network.js`
 
-#### Toggle Autonomy Action (lines 993-1030)
+#### Toggle Autonomy Action (lines 1172-1209)
 ```javascript
 async function toggleAutonomy(agentName) {
+  // Find the node to get current state
   const node = nodes.value.find(n => n.id === agentName)
-  if (!node) return { success: false, error: 'Agent not found' }
+  if (!node) {
+    console.error('[Network] Agent not found:', agentName)
+    return { success: false, error: 'Agent not found' }
+  }
 
-  const newState = !node.data.autonomy_enabled
+  const currentState = node.data.autonomy_enabled
+  const newState = !currentState
 
   try {
+    const token = localStorage.getItem('token')
     const response = await axios.put(
       `/api/agents/${agentName}/autonomy`,
       { enabled: newState },
       { headers: { Authorization: `Bearer ${token}` } }
     )
 
-    // Update the node data reactively
+    // Update the node data
     node.data.autonomy_enabled = newState
+
+    console.log(`[Network] Autonomy ${newState ? 'enabled' : 'disabled'} for ${agentName}`)
 
     return {
       success: true,
@@ -97,15 +125,20 @@ async function toggleAutonomy(agentName) {
       schedulesUpdated: response.data.schedules_updated
     }
   } catch (error) {
-    return { success: false, error: error.response?.data?.detail }
+    console.error('[Network] Failed to toggle autonomy:', error)
+    return {
+      success: false,
+      error: error.response?.data?.detail || 'Failed to update autonomy mode'
+    }
   }
 }
 ```
 
-#### Node Conversion (lines 305-327)
+#### Node Conversion (lines 347-366)
 The store passes `autonomy_enabled` from agent data to dashboard nodes:
 ```javascript
 regularAgents.forEach((agent, index) => {
+  // ...
   result.push({
     id: agent.name,
     type: 'agent',
@@ -122,26 +155,9 @@ regularAgents.forEach((agent, index) => {
 
 **File**: `src/frontend/src/views/AgentDetail.vue`
 
-#### Toggle Button (lines 137-160)
-```vue
-<template v-if="!agent.is_system && agent.can_share">
-  <button
-    @click="toggleAutonomy"
-    :disabled="autonomyLoading"
-    :class="[
-      'inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors',
-      agent.autonomy_enabled
-        ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/70'
-        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-    ]"
-    :title="agent.autonomy_enabled ? 'Autonomy Mode ON - Scheduled tasks are running' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
-  >
-    {{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}
-  </button>
-</template>
-```
+The AgentDetail view delegates the autonomy toggle to AgentHeader component.
 
-#### Toggle Handler (lines 1401-1441)
+#### Toggle Handler (lines 322-360)
 ```javascript
 const autonomyLoading = ref(false)
 
@@ -186,6 +202,32 @@ async function toggleAutonomy() {
 }
 ```
 
+### Agent Header Component (AgentHeader.vue)
+
+**File**: `src/frontend/src/components/AgentHeader.vue`
+
+#### Toggle Button (lines 134-157)
+```vue
+<template v-if="!agent.is_system && agent.can_share">
+  <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+  <button
+    @click="$emit('toggle-autonomy')"
+    :disabled="autonomyLoading"
+    :class="[
+      'inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors',
+      agent.autonomy_enabled
+        ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/70'
+        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+    ]"
+    :title="agent.autonomy_enabled ? 'Autonomy Mode ON - Scheduled tasks are running' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
+  >
+    <svg v-if="autonomyLoading" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" ...></svg>
+    <svg v-else class="w-3.5 h-3.5 mr-1.5" ...></svg>
+    {{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}
+  </button>
+</template>
+```
+
 ---
 
 ## Backend Layer
@@ -194,7 +236,7 @@ async function toggleAutonomy() {
 
 **File**: `src/backend/routers/agents.py`
 
-#### Bulk Status Endpoint (lines 168-174)
+#### Bulk Status Endpoint (lines 168-173)
 ```python
 @router.get("/autonomy-status")
 async def get_all_autonomy_status(
@@ -204,7 +246,7 @@ async def get_all_autonomy_status(
     return await get_all_autonomy_status_logic(current_user)
 ```
 
-#### Per-Agent Status Endpoint (lines 766-773)
+#### Per-Agent Status Endpoint (lines 772-778)
 ```python
 @router.get("/{agent_name}/autonomy")
 async def get_agent_autonomy_status(
@@ -215,7 +257,7 @@ async def get_agent_autonomy_status(
     return await get_autonomy_status_logic(agent_name, current_user)
 ```
 
-#### Toggle Endpoint (lines 775-791)
+#### Toggle Endpoint (lines 781-796)
 ```python
 @router.put("/{agent_name}/autonomy")
 async def set_agent_autonomy_status(
@@ -239,7 +281,7 @@ async def set_agent_autonomy_status(
 
 **File**: `src/backend/services/agent_service/autonomy.py`
 
-#### Get Status Logic (lines 20-49)
+#### Get Status Logic (lines 21-50)
 ```python
 async def get_autonomy_status_logic(
     agent_name: str,
@@ -269,7 +311,7 @@ async def get_autonomy_status_logic(
     }
 ```
 
-#### Set Status Logic (lines 52-117)
+#### Set Status Logic (lines 53-117)
 ```python
 async def set_autonomy_status_logic(
     agent_name: str,
@@ -327,7 +369,7 @@ async def set_autonomy_status_logic(
 
 > **Note**: The service uses `scheduler_service.enable_schedule()` and `scheduler_service.disable_schedule()` (not `db.set_schedule_enabled()` directly) to ensure schedules are synced to APScheduler immediately. This was fixed in 2026-01-11.
 
-#### Bulk Status Logic (lines 115-138)
+#### Bulk Status Logic (lines 120-143)
 ```python
 async def get_all_autonomy_status_logic(
     current_user: User
@@ -356,7 +398,7 @@ async def get_all_autonomy_status_logic(
 
 **File**: `src/backend/database.py`
 
-#### agent_ownership Table (lines 294-302)
+#### agent_ownership Table (lines 328-338)
 ```sql
 CREATE TABLE agent_ownership (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -366,6 +408,8 @@ CREATE TABLE agent_ownership (
     is_system INTEGER DEFAULT 0,
     use_platform_api_key INTEGER DEFAULT 1,
     autonomy_enabled INTEGER DEFAULT 0,
+    memory_limit TEXT,
+    cpu_limit TEXT,
     FOREIGN KEY (owner_id) REFERENCES users(id)
 )
 ```
@@ -373,12 +417,12 @@ CREATE TABLE agent_ownership (
 #### Migration (lines 219-227)
 ```python
 def _migrate_agent_ownership_autonomy(cursor, conn):
-    """Add autonomy_enabled column to agent_ownership table."""
+    """Add autonomy_enabled column to agent_ownership table for autonomous scheduling control."""
     cursor.execute("PRAGMA table_info(agent_ownership)")
     columns = {row[1] for row in cursor.fetchall()}
 
     if "autonomy_enabled" not in columns:
-        print("Adding autonomy_enabled column to agent_ownership...")
+        print("Adding autonomy_enabled column to agent_ownership for autonomous scheduling...")
         cursor.execute("ALTER TABLE agent_ownership ADD COLUMN autonomy_enabled INTEGER DEFAULT 0")
         conn.commit()
 ```
@@ -387,10 +431,10 @@ def _migrate_agent_ownership_autonomy(cursor, conn):
 
 **File**: `src/backend/db/agents.py`
 
-#### get_autonomy_enabled (lines 325-336)
+#### get_autonomy_enabled (lines 330-341)
 ```python
 def get_autonomy_enabled(self, agent_name: str) -> bool:
-    """Check if autonomy mode is enabled for agent."""
+    """Check if autonomy mode is enabled for agent (scheduled tasks run automatically)."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -403,7 +447,7 @@ def get_autonomy_enabled(self, agent_name: str) -> bool:
         return False  # Default to disabled
 ```
 
-#### set_autonomy_enabled (lines 338-347)
+#### set_autonomy_enabled (lines 343-352)
 ```python
 def set_autonomy_enabled(self, agent_name: str, enabled: bool) -> bool:
     """Set whether autonomy mode is enabled for agent."""
@@ -417,7 +461,7 @@ def set_autonomy_enabled(self, agent_name: str, enabled: bool) -> bool:
         return cursor.rowcount > 0
 ```
 
-#### get_all_agents_autonomy_status (lines 349-357)
+#### get_all_agents_autonomy_status (lines 354-362)
 ```python
 def get_all_agents_autonomy_status(self) -> Dict[str, bool]:
     """Get autonomy status for all agents (for dashboard display)."""
@@ -435,17 +479,20 @@ def get_all_agents_autonomy_status(self) -> Dict[str, bool]:
 ## Side Effects
 
 ### Schedule Toggling
-When autonomy is toggled, all schedules for the agent are enabled/disabled:
+When autonomy is toggled, all schedules for the agent are enabled/disabled via `scheduler_service`:
 ```python
 schedules = db.list_agent_schedules(agent_name)
 for schedule in schedules:
-    db.set_schedule_enabled(schedule.id, enabled)
+    if enabled:
+        scheduler_service.enable_schedule(schedule.id)
+    else:
+        scheduler_service.disable_schedule(schedule.id)
 ```
 
 ### Scheduler Enforcement
 The scheduler service double-checks autonomy before executing any schedule:
 
-**File**: `src/backend/services/scheduler_service.py`
+**File**: `src/backend/services/scheduler_service.py` (lines 182-189)
 
 ```python
 async def _execute_schedule(self, schedule_id: str):
@@ -464,6 +511,25 @@ async def _execute_schedule(self, schedule_id: str):
 ```
 
 This provides defense-in-depth: even if a schedule is somehow enabled in the database, it won't execute unless the agent's autonomy is also enabled.
+
+### Scheduler Service Methods
+
+**File**: `src/backend/services/scheduler_service.py` (lines 587-598)
+
+```python
+def enable_schedule(self, schedule_id: str):
+    """Enable a schedule and add it to the scheduler."""
+    schedule = db.get_schedule(schedule_id)
+    if schedule:
+        db.set_schedule_enabled(schedule_id, True)
+        schedule.enabled = True
+        self._add_job(schedule)
+
+def disable_schedule(self, schedule_id: str):
+    """Disable a schedule and remove it from the scheduler."""
+    db.set_schedule_enabled(schedule_id, False)
+    self._remove_job(schedule_id)
+```
 
 ### Logging
 Server-side logging when autonomy state changes:
@@ -555,30 +621,30 @@ Response:
 2. **Dashboard Toggle Immediate Effect**
    - Action: Toggle autonomy on an agent with schedules
    - Expected: Schedules are immediately enabled/disabled in the backend
-   - Verify: Open Agent Detail → Schedules tab, confirm schedule states match
+   - Verify: Open Agent Detail -> Schedules tab, confirm schedule states match
 
 3. **Toggle from Agent Detail**
    - Action: Open agent detail page, click "Manual" button
    - Expected: Button changes to "AUTO", success notification shows schedule count
    - Verify: Refresh page - state persists
 
-3. **Disable Autonomy**
+4. **Disable Autonomy**
    - Action: Click "AUTO" button on an agent with autonomy enabled
    - Expected: Button changes to "Manual", schedules paused notification
    - Verify: Check Schedules tab - all schedules should be disabled
 
-4. **System Agent Exclusion**
+5. **System Agent Exclusion**
    - Action: Navigate to trinity-system agent
    - Expected: No autonomy toggle button visible
    - Verify: API call returns 403 for system agent
 
-5. **Non-Owner Access**
+6. **Non-Owner Access**
    - Action: As non-owner, try to toggle autonomy on shared agent
    - Expected: Toggle button not visible (only visible if can_share)
    - Verify: Direct API call returns 403
 
 ### Status
-- Working (2026-01-03)
+- Working (2026-01-23)
 
 ---
 
@@ -594,6 +660,7 @@ Response:
 
 | Date | Change |
 |------|--------|
-| 2026-01-03 | **Dashboard Toggle Switch**: Replaced static "AUTO" badge with interactive toggle switch. Users can now enable/disable autonomy directly from Dashboard agent tiles. Added `toggleAutonomy()` action to network.js store (lines 993-1030). Toggle includes "AUTO/Manual" label with amber/gray styling. |
+| 2026-01-23 | **Line Number Update**: Verified and updated all line numbers against current codebase. AgentNode.vue toggle at lines 66-100 (handler 352-365). AgentHeader.vue toggle at lines 134-157. network.js toggleAutonomy at lines 1172-1209. AgentDetail.vue handler at lines 322-360. Router endpoints at lines 168, 772, 781. autonomy.py logic unchanged. db/agents.py operations at lines 330-362. scheduler_service methods at lines 587-598. |
+| 2026-01-03 | **Dashboard Toggle Switch**: Replaced static "AUTO" badge with interactive toggle switch. Users can now enable/disable autonomy directly from Dashboard agent tiles. Added `toggleAutonomy()` action to network.js store. Toggle includes "AUTO/Manual" label with amber/gray styling. |
 | 2026-01-03 | Added scheduler enforcement section - scheduler now double-checks autonomy before executing |
 | 2026-01-01 | Initial documentation of Autonomy Mode feature |

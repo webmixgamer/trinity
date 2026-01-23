@@ -9,6 +9,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-01-23 | Updated line numbers: ssh_service.py, agents.py, agents.ts, client.ts, types.ts |
 | 2026-01-02 | Fixed password setting (sed → usermod), improved host detection |
 | 2026-01-02 | Added UI toggle in Settings.vue for ssh_access_enabled |
 | 2026-01-02 | Initial documentation |
@@ -26,7 +27,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 
 ### Tool Definition
 
-**agents.ts** (`src/mcp-server/src/tools/agents.ts:338-373`)
+**agents.ts** (`src/mcp-server/src/tools/agents.ts:383-420`)
 
 ```typescript
 getAgentSshAccess: {
@@ -35,6 +36,7 @@ getAgentSshAccess: {
     "Generate ephemeral SSH credentials for direct terminal access to an agent container. " +
     "Supports two auth methods: 'key' (save private key locally) or 'password' (one-liner with sshpass). " +
     "Credentials expire automatically (default: 4 hours). Agent must be running. " +
+    "Ideal for Tailscale/VPN environments where you need direct SSH access. " +
     "IMPORTANT: For key auth, save the private key immediately - it cannot be retrieved again.",
   parameters: z.object({
     agent_name: z.string().describe("Name of the agent to access"),
@@ -47,9 +49,13 @@ getAgentSshAccess: {
       .enum(["key", "password"])
       .optional()
       .default("key")
-      .describe("Authentication method: 'key' for SSH key pair, 'password' for sshpass one-liner"),
+      .describe("Authentication method: 'key' for SSH key pair (more secure, requires saving key file), 'password' for one-liner with sshpass (convenient, requires sshpass installed)"),
   }),
-  execute: async ({ agent_name, ttl_hours = 4, auth_method = "key" }, context) => {
+  execute: async (
+    { agent_name, ttl_hours = 4, auth_method = "key" }: { agent_name: string; ttl_hours?: number; auth_method?: "key" | "password" },
+    context?: { session?: McpAuthContext }
+  ) => {
+    const authContext = context?.session;
     const apiClient = getClient(authContext);
     const response = await apiClient.createSshAccess(agent_name, ttl_hours, auth_method);
     return JSON.stringify(response, null, 2);
@@ -59,7 +65,7 @@ getAgentSshAccess: {
 
 ### Client Method
 
-**client.ts** (`src/mcp-server/src/client.ts:286-296`)
+**client.ts** (`src/mcp-server/src/client.ts:314-324`)
 
 ```typescript
 async createSshAccess(
@@ -77,7 +83,7 @@ async createSshAccess(
 
 ### Type Definitions
 
-**types.ts** (`src/mcp-server/src/types.ts:84-103`)
+**types.ts** (`src/mcp-server/src/types.ts:116-135`)
 
 ```typescript
 export interface SshConnectionInfo {
@@ -106,9 +112,9 @@ export interface SshAccessResponse {
 
 ### Endpoint
 
-**agents.py** (`src/backend/routers/agents.py:905-1072`)
+**agents.py** (`src/backend/routers/agents.py:999-1166`)
 
-#### Request Model (Line 905)
+#### Request Model (Line 999)
 
 ```python
 class SshAccessRequest(BaseModel):
@@ -117,7 +123,7 @@ class SshAccessRequest(BaseModel):
     auth_method: str = "key"  # "key" for SSH key, "password" for ephemeral password
 ```
 
-#### POST /{agent_name}/ssh-access (Line 911)
+#### POST /{agent_name}/ssh-access (Line 1005)
 
 ```python
 @router.post("/{agent_name}/ssh-access")
@@ -171,7 +177,7 @@ async def create_ssh_access(
 
 **ssh_service.py** (`src/backend/services/ssh_service.py`)
 
-#### Configuration (Lines 29-35)
+#### Configuration (Lines 30-35)
 
 ```python
 SSH_ACCESS_DEFAULT_TTL_HOURS = int(os.getenv("SSH_ACCESS_DEFAULT_TTL_HOURS", "4"))
@@ -180,7 +186,7 @@ SSH_ACCESS_CLEANUP_INTERVAL = int(os.getenv("SSH_ACCESS_CLEANUP_INTERVAL", "900"
 SSH_ACCESS_PREFIX = "ssh_access:"  # Redis key prefix
 ```
 
-#### Key Generation (Lines 44-82)
+#### Key Generation (Lines 44-82) - SshService.generate_ssh_keypair()
 
 ```python
 def generate_ssh_keypair(self, agent_name: str) -> Dict[str, str]:
@@ -210,7 +216,7 @@ def generate_ssh_keypair(self, agent_name: str) -> Dict[str, str]:
     }
 ```
 
-#### Key Injection (Lines 84-130)
+#### Key Injection (Lines 84-130) - SshService.inject_ssh_key()
 
 ```python
 def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
@@ -235,7 +241,7 @@ def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
     return True
 ```
 
-#### Password Generation (Lines 132-144)
+#### Password Generation (Lines 132-144) - SshService.generate_password()
 
 ```python
 def generate_password(self, length: int = 24) -> str:
@@ -245,7 +251,7 @@ def generate_password(self, length: int = 24) -> str:
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 ```
 
-#### Password Setting (Lines 146-198)
+#### Password Setting (Lines 146-204) - SshService.set_container_password()
 
 ```python
 def set_container_password(self, agent_name: str, password: str) -> bool:
@@ -285,7 +291,7 @@ def set_container_password(self, agent_name: str, password: str) -> bool:
     return True
 ```
 
-#### Redis Metadata Storage (Lines 267-312)
+#### Redis Metadata Storage (Lines 273-318) - SshService.store_credential_metadata()
 
 ```python
 def store_credential_metadata(
@@ -316,10 +322,15 @@ def store_credential_metadata(
 
     # Store with TTL - Redis auto-expires
     ttl_seconds = int(ttl_hours * 3600)
-    self.redis_client.setex(redis_key, ttl_seconds, json.dumps(metadata))
+    self.redis_client.setex(
+        redis_key,
+        ttl_seconds,
+        json.dumps(metadata)
+    )
+    logger.info(f"Stored SSH {auth_type} metadata: {redis_key} (TTL: {ttl_hours}h)")
 ```
 
-#### Host Detection (Lines 479-553)
+#### Host Detection (Lines 479-553) - get_ssh_host()
 
 ```python
 def get_ssh_host() -> str:
@@ -378,13 +389,15 @@ def get_ssh_host() -> str:
 
 Redis handles metadata expiry automatically via `setex()`. When TTL expires, the key is deleted.
 
-### Proactive Container Cleanup (Lines 354-399)
+### Proactive Container Cleanup (Lines 360-405) - SshService.cleanup_expired_credentials()
 
 ```python
 def cleanup_expired_credentials(self) -> int:
     """
     Clean up expired SSH credentials from containers.
     Called periodically by background task.
+    Redis TTL handles metadata cleanup automatically,
+    but we need to remove credentials from containers.
     """
     cleaned = 0
     pattern = f"{SSH_ACCESS_PREFIX}*"
@@ -393,24 +406,31 @@ def cleanup_expired_credentials(self) -> int:
     for redis_key in self.redis_client.keys(pattern):
         ttl = self.redis_client.ttl(redis_key)
 
+        # If TTL is very low or negative, credential is about to expire
         if ttl is not None and 0 <= ttl <= 60:
-            data = self.redis_client.get(redis_key)
-            if data:
-                metadata = json.loads(data)
-                agent_name = metadata.get("agent_name")
-                auth_type = metadata.get("auth_type", "key")
-                credential_id = metadata.get("credential_id")
+            try:
+                data = self.redis_client.get(redis_key)
+                if data:
+                    metadata = json.loads(data)
+                    agent_name = metadata.get("agent_name")
+                    auth_type = metadata.get("auth_type", "key")
+                    credential_id = metadata.get("credential_id") or metadata.get("comment")
 
-                if auth_type == "password":
-                    self.clear_container_password(agent_name)
-                else:
-                    self.remove_ssh_key(agent_name, credential_id)
-                cleaned += 1
+                    if agent_name and credential_id:
+                        if auth_type == "password":
+                            self.clear_container_password(agent_name)
+                        else:
+                            self.remove_ssh_key(agent_name, credential_id)
+                        cleaned += 1
+            except Exception as e:
+                logger.warning(f"Error during credential cleanup for {redis_key}: {e}")
 
+    if cleaned > 0:
+        logger.info(f"Cleaned up {cleaned} expired SSH credentials")
     return cleaned
 ```
 
-### Key Removal (Lines 230-265)
+### Key Removal (Lines 236-271) - SshService.remove_ssh_key()
 
 ```python
 def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
@@ -428,7 +448,7 @@ def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
     return True
 ```
 
-### Password Clearing (Lines 200-228)
+### Password Clearing (Lines 206-234) - SshService.clear_container_password()
 
 ```python
 def clear_container_password(self, agent_name: str) -> bool:
@@ -442,7 +462,7 @@ def clear_container_password(self, agent_name: str) -> bool:
     return True
 ```
 
-### Agent Stop/Delete Cleanup (Lines 427-470)
+### Agent Stop/Delete Cleanup (Lines 433-476) - SshService.cleanup_agent_credentials()
 
 ```python
 def cleanup_agent_credentials(self, agent_name: str) -> int:
@@ -452,21 +472,28 @@ def cleanup_agent_credentials(self, agent_name: str) -> int:
 
     has_password_creds = False
     for key in redis_keys:
-        data = self.redis_client.get(key)
-        if data:
-            metadata = json.loads(data)
-            auth_type = metadata.get("auth_type", "key")
-            credential_id = metadata.get("credential_id")
+        try:
+            data = self.redis_client.get(key)
+            if data:
+                metadata = json.loads(data)
+                auth_type = metadata.get("auth_type", "key")
+                credential_id = metadata.get("credential_id") or metadata.get("comment")
 
-            if auth_type == "password":
-                has_password_creds = True
-            elif credential_id:
-                self.remove_ssh_key(agent_name, credential_id)
+                if auth_type == "password":
+                    has_password_creds = True
+                elif credential_id:
+                    self.remove_ssh_key(agent_name, credential_id)
+        except Exception as e:
+            logger.warning(f"Error cleaning up credential {key}: {e}")
 
         self.redis_client.delete(key)
 
+    # Clear password once if any password credentials existed
     if has_password_creds:
         self.clear_container_password(agent_name)
+
+    if redis_keys:
+        logger.info(f"Cleaned up {len(redis_keys)} SSH credentials for agent {agent_name}")
 
     return len(redis_keys)
 ```
@@ -477,7 +504,7 @@ def cleanup_agent_credentials(self, agent_name: str) -> int:
 
 ### Ops Setting Definition
 
-**settings_service.py** (`src/backend/services/settings_service.py:32,45`)
+**settings_service.py** (`src/backend/services/settings_service.py:32, 45`)
 
 ```python
 OPS_SETTINGS_DEFAULTS = {
@@ -509,12 +536,17 @@ curl -X PUT /api/settings/ops/config \
 
 ### Linux Capabilities
 
-**crud.py:447-448** and **lifecycle.py:220-221**
+**lifecycle.py** (`src/backend/services/agent_service/lifecycle.py:31-37`)
 
 ```python
-# Required for SSH privilege separation
-cap_drop=['ALL'],
-cap_add=['NET_BIND_SERVICE', 'SETGID', 'SETUID', 'CHOWN', 'SYS_CHROOT', 'AUDIT_WRITE'],
+# Restricted mode capabilities - minimum for agent operation (default)
+RESTRICTED_CAPABILITIES = [
+    'NET_BIND_SERVICE',  # Bind to ports < 1024
+    'SETGID', 'SETUID',  # Change user/group (for su/sudo)
+    'CHOWN',             # Change file ownership
+    'SYS_CHROOT',        # Use chroot
+    'AUDIT_WRITE',       # Write to audit log
+]
 ```
 
 | Capability | Purpose |
@@ -543,18 +575,18 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
 ```
 1. MCP Client calls get_agent_ssh_access(agent_name, ttl_hours=4, auth_method="key")
    |
-2. MCP Tool (agents.ts:359) -> apiClient.createSshAccess()
+2. MCP Tool (agents.ts:406-419) -> apiClient.createSshAccess()
    |
-3. POST /api/agents/{name}/ssh-access (agents.py:911)
-   |-- Check ssh_access_enabled ops setting (lines 937-942)
+3. POST /api/agents/{name}/ssh-access (agents.py:1005)
+   |-- Check ssh_access_enabled ops setting (lines 1031-1036)
    |   └── 403 if disabled
-   |-- Check can_user_access_agent (line 945)
+   |-- Check can_user_access_agent (line 1039)
    |   └── 403 if no access
-   |-- Get container, verify running (lines 948-958)
+   |-- Get container, verify running (lines 1042-1052)
    |   └── 404 if not found, 400 if not running
-   |-- Validate TTL (0.1-24 hours) (lines 961-965)
-   |-- Get SSH port from container labels (lines 972-974)
-   |-- Get host (SSH_HOST env or Tailscale or localhost) (line 977)
+   |-- Validate TTL (0.1-24 hours) (lines 1054-1059)
+   |-- Get SSH port from container labels (lines 1066-1068)
+   |-- Get host (SSH_HOST env or Tailscale or localhost) (line 1071)
    |
 4. Key Generation (ssh_service.py:44-82)
    |-- Generate ED25519 private key
@@ -567,7 +599,7 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
    |-- docker exec: printf >> /home/developer/.ssh/authorized_keys
    |-- docker exec: chmod 600 authorized_keys
    |
-6. Store Metadata in Redis (ssh_service.py:267-312)
+6. Store Metadata in Redis (ssh_service.py:273-318)
    |-- Key: ssh_access:{agent_name}:{comment}
    |-- TTL: ttl_hours * 3600 seconds
    |-- Value: { agent_name, credential_id, auth_type, created_at, expires_at, created_by, public_key }
@@ -603,9 +635,9 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
 4. Password Generation (ssh_service.py:132-144)
    |-- Generate 24-char alphanumeric password
    |
-5. Password Setting (ssh_service.py:146-198)
+5. Password Setting (ssh_service.py:146-204)
    |-- Generate SHA-512 hash with crypt.mksalt()
-   |-- docker exec: sed /etc/shadow (update developer password)
+   |-- docker exec: usermod -p 'encrypted' developer (set password)
    |-- docker exec: sed /etc/ssh/sshd_config (enable PasswordAuthentication)
    |-- docker exec: pkill sshd && /usr/sbin/sshd (restart daemon)
    |
@@ -744,4 +776,4 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
 - Container restart during credential lifetime (credentials lost)
 
 ### Status
-:construction: Not Tested
+Not Tested

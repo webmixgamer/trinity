@@ -1,6 +1,6 @@
 # Feature: Activity Stream Collaboration Tracking
 
-**Last Updated**: 2025-12-30
+**Last Updated**: 2026-01-23
 
 ## Overview
 End-to-end tracking of agent-to-agent collaborations from MCP tool invocation through database persistence, real-time WebSocket broadcasting, and historical visualization in the Dashboard with replay capabilities.
@@ -19,14 +19,16 @@ As a platform administrator, I want to track and visualize all agent collaborati
 ### MCP Client Implementation
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts`
 
-#### chat() Method (Lines 288-320)
+#### chat() Method (Lines 336-378)
 Accepts optional `sourceAgent` parameter for collaboration tracking:
 
 ```typescript
 async chat(name: string, message: string, sourceAgent?: string): Promise<ChatResponse | { error: string; queue_status: "busy" | "queue_full"; retry_after: number; agent: string; details?: Record<string, unknown> }> {
+  // Prepare headers
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(this.token && { Authorization: `Bearer ${this.token}` }),
+    "X-Via-MCP": "true",  // Always mark as MCP call for task tracking
   };
 
   // Add X-Source-Agent header for collaboration tracking
@@ -51,7 +53,18 @@ async chat(name: string, message: string, sourceAgent?: string): Promise<ChatRes
 Extracts source agent from auth context and passes to client:
 
 ```typescript
-execute: async ({ agent_name, message }, context) => {
+execute: async (
+  {
+    agent_name,
+    message,
+    parallel,
+    model,
+    allowed_tools,
+    system_prompt,
+    timeout_seconds,
+  },
+  context
+) => {
   // Get auth context from FastMCP session
   const authContext = requireApiKey ? context?.session : undefined;
 
@@ -66,7 +79,7 @@ execute: async ({ agent_name, message }, context) => {
 
   // Log successful collaboration (Lines 224-227)
   if (authContext?.scope === "agent") {
-    console.log(`[Agent Collaboration] ${authContext.agentName} -> ${agent_name}`);
+    console.log(`[Agent Collaboration] ${authContext.agentName} -> ${agent_name} (${parallel ? 'parallel' : 'sequential'})`);
   }
 
   // Pass source agent for collaboration tracking (Lines 229-230)
@@ -87,8 +100,9 @@ execute: async ({ agent_name, message }, context) => {
 ### Chat Router with Activity Tracking
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py`
 
-#### WebSocket Manager Injection (Lines 84-88)
+#### WebSocket Manager Injection (Lines 81-88)
 ```python
+# WebSocket manager (injected from main.py)
 _websocket_manager = None
 
 def set_websocket_manager(manager):
@@ -112,6 +126,8 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
             "timestamp": datetime.utcnow().isoformat()
         }
         await _websocket_manager.broadcast(json.dumps(event))
+    else:
+        print(f"[Warning] WebSocket manager not set, skipping collaboration broadcast")
 ```
 
 **Event Schema**:
@@ -121,18 +137,19 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
 - `action`: "chat" (default)
 - `timestamp`: ISO 8601 timestamp
 
-#### Chat Endpoint with Activity Detection (Lines 106-400)
+#### Chat Endpoint with Activity Detection (Lines 106-416)
 ```python
 @router.post("/{name}/chat")
 async def chat_with_agent(
     name: str,
     request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
-    x_source_agent: Optional[str] = Header(None)  # Key detection header
+    x_source_agent: Optional[str] = Header(None),
+    x_via_mcp: Optional[str] = Header(None)
 ):
 ```
 
-**Detection Logic** (Lines 163-193):
+**Detection Logic** (Lines 186-210):
 ```python
 # Broadcast collaboration event if this is agent-to-agent communication
 collaboration_activity_id = None
@@ -149,36 +166,40 @@ if x_source_agent:
         activity_type=ActivityType.AGENT_COLLABORATION,
         user_id=current_user.id,
         triggered_by="agent",
+        related_execution_id=task_execution_id,  # Database execution ID for structured queries
         details={
             "source_agent": x_source_agent,
             "target_agent": name,
             "action": "chat",
             "message_preview": request.message[:100],
-            "execution_id": execution.id,
+            "execution_id": task_execution_id,  # Also in details for WebSocket events
             "queue_status": queue_result
         }
     )
 ```
 
-**Parent-Child Activity Tracking** (Lines 195-210):
+**Parent-Child Activity Tracking** (Lines 219-235):
 ```python
 # Track chat start activity
+# triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls, "user" for UI chat
+activity_triggered_by = "agent" if x_source_agent else ("mcp" if x_via_mcp else "user")
 chat_activity_id = await activity_service.track_activity(
     agent_name=name,
     activity_type=ActivityType.CHAT_START,
     user_id=current_user.id,
-    triggered_by="agent" if x_source_agent else "user",
+    triggered_by=activity_triggered_by,
     parent_activity_id=collaboration_activity_id,  # Link to collaboration if agent-initiated
+    related_execution_id=task_execution_id,  # Database execution ID for structured queries
     details={
         "message_preview": request.message[:100],
         "source_agent": x_source_agent,
-        "execution_id": execution.id,
+        "execution_id": task_execution_id,  # Also in details for WebSocket events
         "queue_status": queue_result
     }
 )
 ```
 
-**Activity Completion** (Lines 280-295):
+**Activity Completion** (Lines 330-341):
 ```python
 # Complete collaboration activity if this was agent-to-agent
 if collaboration_activity_id:
@@ -189,23 +210,33 @@ if collaboration_activity_id:
             "related_chat_message_id": assistant_message.id,
             "response_length": len(response_data.get("response", "")),
             "execution_time_ms": execution_time_ms,
-            "execution_id": execution.id
+            "execution_id": task_execution_id  # Use database execution ID, not queue ID
         }
+    )
+```
+
+**Error Handling for Collaboration Activities** (Lines 401-407):
+```python
+# Complete collaboration activity on failure (was missing - caused activities to stay in "started" state)
+if collaboration_activity_id:
+    await activity_service.complete_activity(
+        activity_id=collaboration_activity_id,
+        status="failed",
+        error=error_msg
     )
 ```
 
 **Hierarchy**:
 ```
 AGENT_COLLABORATION (source agent)
-  └── CHAT_START (target agent)
-      └── TOOL_CALL (each tool used)
+  |-- CHAT_START (target agent)
+      |-- TOOL_CALL (each tool used)
 ```
 
 ### Activity Service
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py`
 
 #### track_activity() Method (Lines 46-107)
-> Note: Line numbers verified 2025-12-30
 Central service for creating activity records:
 
 ```python
@@ -228,6 +259,8 @@ async def track_activity(
         parent_activity_id=parent_activity_id,
         user_id=user_id,
         triggered_by=triggered_by,
+        related_chat_message_id=related_chat_message_id,
+        related_execution_id=related_execution_id,
         details=details
     )
 
@@ -249,7 +282,6 @@ async def track_activity(
 **Returns**: UUID of created activity for linking child activities.
 
 #### complete_activity() Method (Lines 109-159)
-> Note: Line numbers verified 2025-12-30
 Marks activity as completed or failed:
 
 ```python
@@ -274,7 +306,6 @@ async def complete_activity(
 ```
 
 #### Action Description Generator (Lines 214-244)
-> Note: Line numbers verified 2025-12-30
 Human-readable activity descriptions:
 
 ```python
@@ -289,7 +320,6 @@ def _get_action_description(self, activity_type: ActivityType, details: Optional
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/activities.py`
 
 #### Timeline Endpoint (Lines 15-55)
-> Note: Line numbers verified 2025-12-30
 Cross-agent activity timeline with access control:
 
 ```python
@@ -344,12 +374,11 @@ async def get_activity_timeline(
 ### Activity Operations
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py`
 
-#### create_activity() (Lines 39-71)
-> Note: Line numbers verified 2025-12-30
+#### create_activity() (Lines 40-72)
 ```python
 def create_activity(self, activity: 'ActivityCreate') -> str:
     activity_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = utc_now_iso()  # Use UTC with 'Z' suffix for frontend compatibility
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -364,8 +393,7 @@ def create_activity(self, activity: 'ActivityCreate') -> str:
     return activity_id
 ```
 
-#### get_activities_in_range() (Lines 152-183)
-> Note: Line numbers verified 2025-12-30
+#### get_activities_in_range() (Lines 154-185)
 ```python
 def get_activities_in_range(self, start_time: Optional[str] = None,
                             end_time: Optional[str] = None,
@@ -392,28 +420,28 @@ def get_activities_in_range(self, start_time: Optional[str] = None,
 ```
 
 ### agent_activities Table Schema
-**Location**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py` (Lines 421-441)
+**Location**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py` (Lines 475-497)
 
 ```sql
 CREATE TABLE agent_activities (
     id TEXT PRIMARY KEY,                -- UUID
     agent_name TEXT NOT NULL,           -- Agent the activity belongs to
     activity_type TEXT NOT NULL,        -- 'agent_collaboration', 'chat_start', 'tool_call', etc.
-    activity_state TEXT DEFAULT 'started', -- 'started', 'completed', 'failed'
+    activity_state TEXT NOT NULL,       -- 'started', 'completed', 'failed'
     parent_activity_id TEXT,            -- Link to parent activity (nullable)
     started_at TEXT NOT NULL,           -- ISO 8601 timestamp
     completed_at TEXT,                  -- When activity finished
     duration_ms INTEGER,                -- Execution time
     user_id INTEGER,                    -- User who triggered (nullable)
-    triggered_by TEXT DEFAULT 'user',   -- 'user', 'agent', 'schedule', 'system'
-    related_chat_message_id INTEGER,    -- FK to chat_messages
+    triggered_by TEXT NOT NULL,         -- 'user', 'agent', 'schedule', 'system', 'mcp'
+    related_chat_message_id TEXT,       -- FK to chat_messages
     related_execution_id TEXT,          -- FK to schedule_executions
     details TEXT,                       -- JSON metadata
     error TEXT,                         -- Error message if failed
-    created_at TEXT NOT NULL            -- Record creation timestamp
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for efficient querying (database.py lines 574-580)
+-- Indexes for efficient querying (database.py lines 629-635)
 CREATE INDEX idx_activities_agent ON agent_activities(agent_name, created_at DESC);
 CREATE INDEX idx_activities_type ON agent_activities(activity_type);
 CREATE INDEX idx_activities_state ON agent_activities(activity_state);
@@ -431,13 +459,13 @@ CREATE INDEX idx_activities_execution ON agent_activities(related_execution_id);
   "activity_type": "agent_collaboration",
   "activity_state": "completed",
   "parent_activity_id": null,
-  "started_at": "2025-12-02T15:30:45.123456",
-  "completed_at": "2025-12-02T15:30:48.456789",
+  "started_at": "2025-12-02T15:30:45.123456Z",
+  "completed_at": "2025-12-02T15:30:48.456789Z",
   "duration_ms": 3333,
   "user_id": 1,
   "triggered_by": "agent",
-  "related_chat_message_id": 456,
-  "related_execution_id": null,
+  "related_chat_message_id": "msg-uuid-456",
+  "related_execution_id": "exec-uuid-123",
   "details": {
     "source_agent": "research-agent",
     "target_agent": "writing-agent",
@@ -448,7 +476,7 @@ CREATE INDEX idx_activities_execution ON agent_activities(related_execution_id);
     "execution_id": "exec-uuid-123"
   },
   "error": null,
-  "created_at": "2025-12-02T15:30:45.123456"
+  "created_at": "2025-12-02T15:30:45.123456Z"
 }
 ```
 
@@ -457,25 +485,30 @@ CREATE INDEX idx_activities_execution ON agent_activities(related_execution_id);
 ### Network Store
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js`
 
-#### State Variables (Lines 40-46)
+#### State Variables (Lines 45-52)
 ```javascript
-const historicalCollaborations = ref([])  // Persistent data from Activity Stream
+const historicalCollaborations = ref([]) // Persistent data from Activity Stream
 const totalCollaborationCount = ref(0)
 const timeRangeHours = ref(24)            // Default to last 24 hours
 const isLoadingHistory = ref(false)
 const contextStats = ref({})              // Map of agent name -> context stats
+const executionStats = ref({})            // Map of agent name -> execution stats
 ```
 
-#### Replay Mode State (Lines 51-56)
+#### View Mode / Replay State (Lines 55-63)
 ```javascript
-const isReplayMode = ref(false)
+// View mode state (graph vs timeline) - default to timeline, persist to localStorage
+const savedViewMode = localStorage.getItem('trinity-dashboard-view')
+const isTimelineMode = ref(savedViewMode ? savedViewMode === 'timeline' : true)
 const isPlaying = ref(false)
 const replaySpeed = ref(10) // 10x default
 const currentEventIndex = ref(0)
 const replayInterval = ref(null)
+const replayStartTime = ref(null)
+const replayElapsedMs = ref(0)
 ```
 
-#### fetchHistoricalCollaborations() Method (Lines 118-165)
+#### fetchHistoricalCollaborations() Method (Lines 131-222)
 Fetches collaboration history from Activity Stream API:
 
 ```javascript
@@ -489,45 +522,53 @@ async function fetchHistoricalCollaborations(hours = null) {
     const startTime = new Date()
     startTime.setHours(startTime.getHours() - hoursToQuery)
 
+    // Fetch ALL execution types (not just collaborations)
     const params = {
-      activity_types: 'agent_collaboration',
+      activity_types: 'agent_collaboration,schedule_start,schedule_end,chat_start,chat_end',
       start_time: startTime.toISOString(),
       limit: 500
     }
 
     const response = await axios.get('/api/activities/timeline', { params })
 
-    // Parse activities into collaboration events
-    const collaborations = response.data.activities
-      .filter(activity => activity.details)
-      .map(activity => {
-        const details = typeof activity.details === 'string'
-          ? JSON.parse(activity.details)
-          : activity.details
+    // Parse activities into timeline events
+    const events = response.data.activities
+      .filter(activity => {
+        // Skip activities without details
+        if (!activity.details) return false
 
-        return {
-          source_agent: details.source_agent || activity.agent_name,
-          target_agent: details.target_agent,
-          timestamp: activity.started_at || activity.created_at,
-          activity_id: activity.id,
-          status: activity.activity_state,
-          duration_ms: activity.duration_ms
+        // Filter out regular user chats (keep automated executions only)
+        if (activity.activity_type && activity.activity_type.startsWith('chat_')) {
+          const details = typeof activity.details === 'string'
+            ? JSON.parse(activity.details)
+            : activity.details || {}
+
+          // Keep: agent-initiated, mcp-triggered, schedule-triggered, or manual tasks (parallel_mode)
+          // Skip: regular user chat sessions (triggered_by='user' without parallel_mode)
+          if (activity.triggered_by === 'user' && !details.parallel_mode) {
+            return false
+          }
         }
+
+        return true
       })
-      .filter(c => c !== null && c.target_agent)
+      .map(activity => {
+        // ... event parsing logic
+      })
 
-    historicalCollaborations.value = collaborations
-    totalCollaborationCount.value = collaborations.length
+    historicalCollaborations.value = events
+    totalCollaborationCount.value = events.length
 
-    // Create initial inactive edges from historical data
-    createHistoricalEdges(collaborations)
+    // Create initial inactive edges from collaboration events only
+    const collaborationEvents = events.filter(e => e.target_agent)
+    createHistoricalEdges(collaborationEvents)
   } finally {
     isLoadingHistory.value = false
   }
 }
 ```
 
-#### createHistoricalEdges() Method (Lines 167-236)
+#### createHistoricalEdges() Method (Lines 224-292)
 Creates inactive edges with collaboration counts:
 
 ```javascript
@@ -540,10 +581,13 @@ function createHistoricalEdges(collaborations) {
     // ... edge aggregation logic
   })
 
+  // Clear existing collaboration edges before rebuilding
+  collaborationEdges.value = []
+
   // Create inactive edges for all historical collaborations
   edgeMap.forEach((edgeData, edgeId) => {
-    if (sourceExists && targetExists && !existingEdge) {
-      edges.value.push({
+    if (sourceExists && targetExists) {
+      collaborationEdges.value.push({
         id: edgeId,
         source: edgeData.source,
         target: edgeData.target,
@@ -554,6 +598,13 @@ function createHistoricalEdges(collaborations) {
           stroke: '#cbd5e1',
           strokeWidth: 2,
           opacity: 0.5,
+          transition: 'all 0.5s ease-in-out'
+        },
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#cbd5e1',
+          width: 15,
+          height: 15
         },
         label: edgeData.count > 1 ? `${edgeData.count}x` : undefined,
         data: {
@@ -571,11 +622,13 @@ function createHistoricalEdges(collaborations) {
 - **Inactive** (historical): Gray (#cbd5e1), 2px width, 50% opacity, count label
 - **Active** (real-time): Cyan gradient, 3px width, 100% opacity, animated flow with glow
 
-#### Real-Time Event Handling (Lines 340-360)
+#### Real-Time Event Handling (Lines 431-456)
 Merges real-time events with historical data:
 
 ```javascript
 function handleCollaborationEvent(event) {
+  console.log('[Collaboration] Received event:', event)
+
   // Add to in-memory history (for real-time feed)
   collaborationHistory.value.unshift(event)
   if (collaborationHistory.value.length > 100) {
@@ -601,18 +654,25 @@ function handleCollaborationEvent(event) {
 }
 ```
 
-#### Replay Mode Functions (Lines 689-830)
+#### Replay Mode Functions (Lines 864-1107)
 Complete replay functionality with timeline scrubbing:
 
 ```javascript
-function setReplayMode(mode) {
-  isReplayMode.value = mode
-  if (mode) {
-    disconnectWebSocket()
-    stopContextPolling()
+function setViewMode(mode) {
+  const isTimeline = mode === 'timeline'
+  isTimelineMode.value = isTimeline
+  localStorage.setItem('trinity-dashboard-view', mode)
+
+  // Keep WebSocket and polling active in BOTH views for live updates
+  // Timeline view now shows live events, so we need real-time data
+  if (isTimeline) {
+    // Entering timeline mode - stop any active replay playback
+    stopReplay()
+    console.log('[Collaboration] Switched to Timeline view (live mode)')
   } else {
-    connectWebSocket()
-    startContextPolling()
+    // Entering graph mode
+    stopReplay()
+    console.log('[Collaboration] Switched to Graph view')
   }
 }
 
@@ -624,10 +684,42 @@ function jumpToTime(targetTimestamp) { ... }
 function jumpToEvent(index) { ... }
 ```
 
-### Dashboard UI
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue` (720 lines total)
+#### Context and Execution Stats Polling (Lines 770-838)
+```javascript
+// Start polling context and execution stats every 5 seconds
+function startContextPolling() {
+  if (contextPollingInterval.value) {
+    clearInterval(contextPollingInterval.value)
+  }
 
-#### Header Statistics (Lines 8-57)
+  // Fetch immediately
+  fetchContextStats()
+  fetchExecutionStats()
+
+  // Then poll every 5 seconds
+  contextPollingInterval.value = setInterval(() => {
+    fetchContextStats()
+    fetchExecutionStats()
+  }, 5000)
+
+  console.log('[Collaboration] Started context polling (every 5s)')
+}
+
+// Start polling agent list every 10 seconds (for new/deleted agents)
+function startAgentRefresh() {
+  // Poll every 10 seconds
+  agentRefreshInterval.value = setInterval(async () => {
+    // ... agent list refresh logic
+  }, 10000)
+
+  console.log('[Collaboration] Started agent refresh polling (every 10s)')
+}
+```
+
+### Dashboard UI
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue` (751 lines total)
+
+#### Header Statistics (Lines 8-61)
 ```html
 <div class="flex items-center space-x-3 text-xs text-gray-500">
   <span>{{ agents.length }} agents</span>
@@ -637,10 +729,10 @@ function jumpToEvent(index) { ... }
 </div>
 ```
 
-#### Mode Toggle (Lines 62-82)
-Toggle between Live and Replay modes with styled buttons.
+#### Mode Toggle (Lines 66-85)
+Toggle between Graph and Timeline modes with styled buttons.
 
-#### Time Range Filter (Lines 84-96)
+#### Time Range Filter (Lines 87-98)
 ```html
 <select v-model="selectedTimeRange" @change="onTimeRangeChange">
   <option :value="1">1h</option>
@@ -651,19 +743,43 @@ Toggle between Live and Replay modes with styled buttons.
 </select>
 ```
 
-#### Replay Controls Panel (Lines 120-230)
-Complete playback controls with timeline scrubber when in replay mode.
+#### Timeline View Component (Lines 141-164)
+```html
+<ReplayTimeline
+  v-if="isTimelineMode"
+  :agents="agents"
+  :nodes="nodes"
+  :events="historicalCollaborations"
+  :timeline-start="timelineStart"
+  :timeline-end="timelineEnd"
+  :current-event-index="currentEventIndex"
+  :total-events="totalEvents"
+  :total-duration="totalDuration"
+  :replay-elapsed-ms="replayElapsedMs"
+  :replay-speed="replaySpeed"
+  :is-playing="isPlaying"
+  :context-stats="contextStats"
+  :execution-stats="executionStats"
+  :is-live-mode="true"
+  :time-range-hours="selectedTimeRange"
+  @play="handlePlay"
+  @pause="handlePause"
+  @stop="handleStop"
+  @speed-change="handleSpeedChange"
+  @toggle-autonomy="handleToggleAutonomy"
+/>
+```
 
-#### History Panel (Lines 330-400)
+#### History Panel (Lines 275-337)
 Split into "Live Feed" and "Historical" sections with collapsible UI.
 
-#### Component Lifecycle (Lines 460-490)
+#### Component Lifecycle (Lines 414-443)
 ```javascript
 onMounted(async () => {
   // 1. Fetch agents first
   await networkStore.fetchAgents()
 
-  // 2. Fetch historical collaboration data from Activity Stream
+  // 2. Fetch historical communication data from Activity Stream
   await networkStore.fetchHistoricalCommunications()
 
   // 3. Connect WebSocket for real-time updates
@@ -675,7 +791,10 @@ onMounted(async () => {
   // 5. Start polling for agent list updates
   networkStore.startAgentRefresh()
 
-  // 6. Fit view after initial load
+  // 6. Initialize observability (checks if OTel is enabled)
+  await observabilityStore.fetchStatus()
+
+  // 7. Fit view after initial load
   setTimeout(() => {
     fitView({ padding: 0.2, duration: 800 })
   }, 100)
@@ -714,7 +833,7 @@ Broadcast when activity state changes:
   "action": "Collaborating with: writing-agent",
   "timestamp": "2025-12-02T15:30:48.456789",
   "details": {
-    "related_chat_message_id": 456,
+    "related_chat_message_id": "msg-uuid-456",
     "response_length": 1024,
     "execution_time_ms": 3333
   },
@@ -798,8 +917,8 @@ await log_audit_event(
 - **Lazy Loading**: Historical data fetched only when dashboard opens
 - **Pagination**: Limited to 15 events in history panel (scrollable)
 - **Edge Deduplication**: Single edge per agent pair, count label shows frequency
-- **Context Polling**: Every 10 seconds for context stats and activity state
-- **Agent Refresh**: Every 15 seconds for agent list updates
+- **Context Polling**: Every 5 seconds for context stats and activity state
+- **Agent Refresh**: Every 10 seconds for agent list updates
 
 ### Scalability Limits
 - **Tested**: 50 agents, 100 collaborations/hour
@@ -876,11 +995,11 @@ WHERE a1.activity_type = 'agent_collaboration'
 
 | Step | Action | Expected Result | Verification |
 |------|--------|-----------------|--------------|
-| 1 | Switch to Replay mode | WebSocket disconnects, polling stops | Console logs |
+| 1 | Switch to Timeline mode | View switches, live events shown | Visual confirmation |
 | 2 | Click Play | Events replay with edge animations | Visual confirmation |
 | 3 | Adjust speed to 20x | Playback speeds up | Events flow faster |
 | 4 | Click timeline | Jumps to clicked position | Event index updates |
-| 5 | Switch to Live mode | WebSocket reconnects, polling resumes | Real-time updates work |
+| 5 | Switch to Graph mode | Graph view displayed | Real-time updates work |
 
 **Status**: Working (2025-12-19)
 
@@ -948,14 +1067,14 @@ WHERE a1.activity_type = 'agent_collaboration'
 ## References
 
 ### Code Files
-> Line numbers verified 2025-12-30
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py:106-400` - Chat endpoint with collaboration tracking
+> Line numbers verified 2026-01-23
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/chat.py:106-416` - Chat endpoint with collaboration tracking
 - `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/activities.py:15-55` - Timeline endpoint
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py:46-248` - Activity service
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py:39-191` - Activity database operations
-- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js:1-830` - Network store (830 lines total)
-- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue:1-720` - Dashboard (720 lines total)
-- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts:288-320` - MCP client chat method
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/activity_service.py:46-244` - Activity service
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/activities.py:40-185` - Activity database operations
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/network.js:1-1283` - Network store (1283 lines total)
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Dashboard.vue:1-751` - Dashboard (751 lines total)
+- `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/client.ts:336-378` - MCP client chat method
 - `/Users/eugene/Dropbox/trinity/trinity/src/mcp-server/src/tools/chat.ts:132-270` - MCP chat_with_agent tool
 
 ### Documentation
@@ -969,5 +1088,7 @@ WHERE a1.activity_type = 'agent_collaboration'
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Full verification and update**: Verified all line numbers against current codebase. Updated chat.py references (endpoint now 106-416 with new execution queue, X-Via-MCP header support). Updated network.js references (now 1283 lines with execution stats, view mode state). Updated Dashboard.vue references (now 751 lines). Added triggered_by="mcp" for user MCP calls. Updated MCP client references (chat method now 336-378 with X-Via-MCP header). Noted error handling for collaboration activity completion on failure (Lines 401-407). |
 | 2026-01-12 | **Polling interval optimization**: Context polling changed from 5s to 10s, agent refresh changed from 10s to 15s. Updated Frontend Optimization section. |
+| 2025-12-30 | Line numbers verified. Updated activity service and database references. |
 | 2025-12-19 | Initial documentation |

@@ -1,6 +1,6 @@
 # Feature: Web Terminal for Agents
 
-> **Updated**: 2025-12-30 - Verified line numbers. Terminal session management in `services/agent_service/terminal.py`. Frontend uses `composables/useAgentTerminal.js`.
+> **Updated**: 2026-01-23 - Verified line numbers across all layers. Database schema uses `agent_ownership` table (not separate `agent_api_key_settings`). Added WebGL/Canvas renderer documentation. No audit logging for terminal sessions.
 
 ## Overview
 
@@ -14,11 +14,11 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:375-493` - Terminal tab (auto-connects when agent running)
-- **UI**: `src/frontend/src/views/AgentDetail.vue:446-480` - API key authentication toggle (when agent stopped)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:93-121` - Terminal tab (uses v-show for persistent WebSocket)
+- **UI**: `src/frontend/src/components/TerminalPanelContent.vue:53-87` - API key authentication toggle (when agent stopped)
 - **API**: `GET /api/agents/{agent_name}/api-key-setting` - Get current API key setting
 - **API**: `PUT /api/agents/{agent_name}/api-key-setting` - Update API key setting (owner only)
-- **API**: `WS /api/agents/{agent_name}/terminal?mode=claude|bash|gemini` - Terminal WebSocket connection
+- **API**: `WS /api/agents/{agent_name}/terminal?mode=claude|bash|gemini&model=<model>` - Terminal WebSocket connection
 
 ---
 
@@ -28,13 +28,15 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
 
 #### AgentDetail.vue (Parent)
 - **File**: `src/frontend/src/views/AgentDetail.vue`
-- **Terminal Tab**: Lines 375-493 - Terminal embedded in tab panel with fullscreen support
-- **State** (via `useAgentTerminal` composable at line 1231-1240):
+- **Terminal Tab**: Lines 93-121 - Terminal embedded in tab panel with fullscreen support (uses `v-show` to keep WebSocket connected when switching tabs)
+- **State** (via `useAgentTerminal` composable at line 287-296):
   - `isTerminalFullscreen` ref controls fullscreen mode
   - `terminalRef` ref for calling terminal methods
+- **State** (via `useAgentSettings` composable at line 371-382):
   - `apiKeySetting` ref for API key authentication mode
   - `apiKeySettingLoading` ref for loading state
-- **Event Handlers** (from composable):
+  - `currentModel` ref for selected model
+- **Event Handlers** (from composables):
   - `onTerminalConnected()` - Shows success notification
   - `onTerminalDisconnected()` - Shows info notification
   - `onTerminalError()` - Shows error notification
@@ -43,7 +45,23 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
   - `loadApiKeySetting()` - Fetches current API key setting
   - `updateApiKeySetting(usePlatformKey)` - Updates API key setting
 
-**API Key Authentication Toggle** (Lines 446-480):
+#### TerminalPanelContent.vue (Container Component)
+- **File**: `src/frontend/src/components/TerminalPanelContent.vue` (166 lines)
+- **Purpose**: Wrapper that shows either AgentTerminal (when running) or stopped state UI with API key toggle
+- **Props**:
+  - `agentName: String` (required) - Agent identifier
+  - `agentStatus: String` - "running" or "stopped"
+  - `runtime: String` - "claude-code" or "gemini-cli"
+  - `model: String` - Model to use (e.g., "sonnet", "gemini-2.5-flash")
+  - `isFullscreen: Boolean` - Fullscreen state
+  - `canShare: Boolean` - Whether user is owner (controls API key toggle visibility)
+  - `apiKeySetting: Object` - Current API key setting
+  - `apiKeySettingLoading: Boolean` - Loading state
+  - `actionLoading: Boolean` - Start button loading state
+- **Emits**: `toggle-fullscreen`, `connected`, `disconnected`, `error`, `start-agent`, `update-api-key-setting`
+- **Lines 53-87**: API Key Authentication toggle UI (owner-only, when agent stopped)
+
+**API Key Authentication Toggle** (Lines 53-87):
 When agent is stopped, the Terminal tab shows an authentication toggle (owner-only control):
 - **Use Platform API Key** (default): Agent uses Trinity's configured Anthropic API key
   - Platform key injected as `ANTHROPIC_API_KEY` environment variable
@@ -54,54 +72,42 @@ When agent is stopped, the Terminal tab shows an authentication toggle (owner-on
   - User must run `claude login` in terminal to authenticate with their own subscription
   - Usage counts against user's personal Claude subscription
 
-```vue
-<div class="space-y-2">
-  <label>
-    <input type="radio" :checked="apiKeySetting.use_platform_api_key" @change="updateApiKeySetting(true)" />
-    Use Platform API Key
-    <p class="text-xs text-gray-500">Claude uses Trinity's configured Anthropic API key</p>
-  </label>
-  <label>
-    <input type="radio" :checked="!apiKeySetting.use_platform_api_key" @change="updateApiKeySetting(false)" />
-    Authenticate in Terminal
-    <p class="text-xs text-gray-500">Run "claude login" after starting to use your own subscription</p>
-  </label>
-</div>
-```
-
 **Important**: Changing this setting requires agent restart. Container is recreated with/without `ANTHROPIC_API_KEY` env var. The UI shows `restart_required: true` badge when setting changed but not yet applied.
 
-**Data Flow**:
-1. Agent owner toggles radio button
-2. `updateApiKeySetting(usePlatformKey)` calls `PUT /api/agents/{agent_name}/api-key-setting`
-3. Backend updates `agent_api_key_settings` table
-4. Returns `{restart_required: true, message: "Setting updated. Restart the agent to apply changes."}`
-5. Owner restarts agent
-6. `start_agent()` reads setting and conditionally injects `ANTHROPIC_API_KEY`
-
 #### AgentTerminal.vue (Terminal Component)
-- **File**: `src/frontend/src/components/AgentTerminal.vue`
-- **Props**:
+- **File**: `src/frontend/src/components/AgentTerminal.vue` (526 lines)
+- **Props** (lines 102-127):
   - `agentName: String` (required) - Name of the agent to connect to
   - `autoConnect: Boolean` (default: true) - Auto-connect on mount
   - `showFullscreenToggle: Boolean` (default: false) - Show fullscreen button
   - `isFullscreen: Boolean` (default: false) - Current fullscreen state
+  - `runtime: String` (default: 'claude-code') - Runtime type for mode label
+  - `model: String` (default: '') - Model parameter for CLI
 - **Emits**: `connected`, `disconnected`, `error`, `toggle-fullscreen`
-- **Exposes**: `connect()`, `disconnect()`, `focus()`, `fit()`
+- **Exposes** (lines 499-504): `connect()`, `disconnect()`, `focus()`, `fit()`
 
 **Key References**:
 | Ref | Type | Purpose |
 |-----|------|---------|
 | `terminalContainer` | HTMLElement | xterm.js mount point |
-| `selectedMode` | 'claude' \| 'bash' | Terminal mode |
+| `selectedMode` | 'cli' \| 'bash' | Terminal mode (cli maps to claude or gemini) |
 | `connectionStatus` | 'connected' \| 'connecting' \| 'disconnected' | WebSocket state |
 | `errorMessage` | string | Error display |
 
-**WebSocket Connection**:
+**Mode Toggle** (Lines 16-41):
+- `cli` mode: Maps to `claude` or `gemini` based on `runtime` prop
+- `bash` mode: Direct bash shell
+- Mode can only be changed when disconnected
+
+**WebSocket Connection** (Lines 300-390):
 ```javascript
 // Build WebSocket URL with agent name
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-const wsUrl = `${protocol}//${location.host}/api/agents/${encodeURIComponent(props.agentName)}/terminal?mode=${selectedMode.value}`
+// Map 'cli' mode to the appropriate runtime command (claude or gemini)
+const terminalMode = selectedMode.value === 'cli' ? (isGemini.value ? 'gemini' : 'claude') : 'bash'
+// Include model parameter if specified
+const modelParam = props.model ? `&model=${encodeURIComponent(props.model)}` : ''
+const wsUrl = `${protocol}//${location.host}/api/agents/${encodeURIComponent(props.agentName)}/terminal?mode=${terminalMode}${modelParam}`
 
 ws = new WebSocket(wsUrl)
 ws.binaryType = 'arraybuffer'
@@ -121,13 +127,34 @@ ws.onopen = () => {
 | `resize` | Client -> Server | `{type: "resize", cols: 80, rows: 24}` |
 | Binary | Both | Raw terminal I/O |
 
+**Rendering** (Lines 184-213):
+- Uses WebGL renderer for GPU acceleration (primary)
+- Falls back to Canvas renderer if WebGL unavailable
+- DOM renderer as final fallback
+
+### Composables
+
+#### useAgentTerminal.js
+- **File**: `src/frontend/src/composables/useAgentTerminal.js` (48 lines)
+- **Purpose**: Terminal fullscreen and keyboard handling
+- **Returns**: `isTerminalFullscreen`, `terminalRef`, `toggleTerminalFullscreen`, `handleTerminalKeydown`, `onTerminalConnected`, `onTerminalDisconnected`, `onTerminalError`
+
+#### useAgentSettings.js
+- **File**: `src/frontend/src/composables/useAgentSettings.js` (127 lines)
+- **Purpose**: API key, model, and resource settings management
+- **API Key Methods** (lines 26-50): `loadApiKeySetting()`, `updateApiKeySetting(usePlatformKey)`
+- **Model Methods** (lines 52-76): `loadModelInfo()`, `changeModel()`
+- **Resource Methods** (lines 78-110): `loadResourceLimits()`, `updateResourceLimits()`
+
 ### Dependencies
 
 ```json
 {
   "@xterm/xterm": "^5.5.0",
   "@xterm/addon-fit": "^0.10.0",
-  "@xterm/addon-web-links": "^0.11.0"
+  "@xterm/addon-web-links": "^0.11.0",
+  "@xterm/addon-webgl": "^0.19.0",
+  "@xterm/addon-canvas": "^0.7.0"
 }
 ```
 
@@ -135,19 +162,19 @@ ws.onopen = () => {
 
 ## Backend Layer
 
-### Architecture (Post-Refactoring)
+### Architecture
 
 The terminal feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:827-841` | WebSocket endpoint definition |
-| Service | `src/backend/services/agent_service/terminal.py` (342 lines) | Session management, PTY handling |
-| Service | `src/backend/services/agent_service/api_key.py` | API key setting logic |
+| Router | `src/backend/routers/agents.py:1173-1184` | WebSocket endpoint definition |
+| Service | `src/backend/services/agent_service/terminal.py` (320 lines) | Session management, PTY handling |
+| Service | `src/backend/services/agent_service/api_key.py` (85 lines) | API key setting logic |
 
 ### API Key Setting Endpoints
 
-- **Router**: `src/backend/routers/agents.py:802-820`
+- **Router**: `src/backend/routers/agents.py:747-765`
 - **Service**: `src/backend/services/agent_service/api_key.py`
 
 #### GET `/api/agents/{agent_name}/api-key-setting`
@@ -158,21 +185,25 @@ Returns current API key authentication setting for an agent.
 ```python
 @router.get("/{agent_name}/api-key-setting")
 async def get_agent_api_key_setting(agent_name: str, ...) -> dict:
-    """
-    Get the API key setting for an agent.
+    """Get the API key setting for an agent."""
+    return await get_agent_api_key_setting_logic(agent_name, current_user)
+```
 
-    Returns whether the agent uses the platform API key or relies on
-    terminal-based authentication.
-    """
+**Service Logic** (`api_key.py:18-46`):
+```python
+async def get_agent_api_key_setting_logic(agent_name: str, current_user: User) -> dict:
     if not db.can_user_access_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="You don't have permission to access this agent")
 
     container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
     use_platform_key = db.get_use_platform_api_key(agent_name)
 
     # Check if current container matches the setting
     container.reload()
-    env_matches = _check_api_key_env_matches(container, agent_name)
+    env_matches = check_api_key_env_matches(container, agent_name)
 
     return {
         "agent_name": agent_name,
@@ -192,38 +223,27 @@ Updates the API key setting. **Owner-only endpoint** - only the agent owner can 
 
 **Authentication**: Must be agent owner (checked via `db.can_user_share_agent()`)
 
+**Service Logic** (`api_key.py:49-84`):
 ```python
-@router.put("/{agent_name}/api-key-setting")
-async def update_agent_api_key_setting(agent_name: str, body: dict, ...) -> dict:
-    """
-    Update the API key setting for an agent.
-
-    Body:
-    - use_platform_api_key: True to use Trinity's platform key, False to require terminal auth
-
-    Note: Changes require agent restart to take effect.
-    """
+async def update_agent_api_key_setting_logic(agent_name: str, body: dict, current_user: User, request: Request) -> dict:
     # Only owner can modify this setting
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="Only the owner can modify API key settings")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     use_platform_key = body.get("use_platform_api_key")
     if use_platform_key is None:
         raise HTTPException(status_code=400, detail="use_platform_api_key is required")
 
-    # Update setting in database
+    # Update setting
     db.set_use_platform_api_key(agent_name, bool(use_platform_key))
-
-    await log_audit_event(
-        event_type="agent_settings",
-        action="update_api_key_setting",
-        user_id=current_user.username,
-        agent_name=agent_name,
-        details={"use_platform_api_key": use_platform_key}
-    )
 
     return {
         "status": "updated",
+        "agent_name": agent_name,
         "use_platform_api_key": use_platform_key,
         "restart_required": True,
         "message": "Setting updated. Restart the agent to apply changes."
@@ -250,11 +270,11 @@ async def update_agent_api_key_setting(agent_name: str, body: dict, ...) -> dict
 
 ### WebSocket Endpoint
 
-- **Router**: `src/backend/routers/agents.py:827-841`
+- **Router**: `src/backend/routers/agents.py:1173-1184`
 - **Service**: `src/backend/services/agent_service/terminal.py`
 - **Query Params**:
   - `mode: str` (default: "claude") - "claude", "gemini", or "bash"
-  - `model: str` (default: None) - Optional model override (e.g., "gemini-2.5-flash")
+  - `model: str` (default: None) - Optional model override (e.g., "gemini-2.5-flash", "sonnet")
 
 ```python
 @router.websocket("/{agent_name}/terminal")
@@ -274,7 +294,7 @@ async def agent_terminal(
     )
 ```
 
-### TerminalSessionManager Class (`services/agent_service/terminal.py:21-342`)
+### TerminalSessionManager Class (`services/agent_service/terminal.py:20-320`)
 
 The terminal session management is encapsulated in the `TerminalSessionManager` class:
 
@@ -290,11 +310,11 @@ class TerminalSessionManager:
 ```
 
 **Key Methods:**
-- `_check_and_register_session()` (line 33-50): Check/register session with 5-minute timeout
-- `_unregister_session()` (line 52-56): Remove session from tracking
-- `handle_terminal_session()` (line 58-342): Main WebSocket handler
+- `_check_and_register_session()` (line 32-49): Check/register session with 5-minute timeout
+- `_unregister_session()` (line 51-55): Remove session from tracking
+- `handle_terminal_session()` (line 57-320): Main WebSocket handler
 
-### Authentication Flow (terminal.py:84-148)
+### Authentication Flow (terminal.py:84-147)
 
 ```python
 # Step 1: Wait for auth message (10 second timeout)
@@ -316,7 +336,7 @@ if not db.can_user_access_agent(user_email, agent_name) and user_role != "admin"
     return
 ```
 
-### Session Limiting (terminal.py:33-56)
+### Session Limiting (terminal.py:32-55)
 
 ```python
 def _check_and_register_session(self, user_email: str, agent_name: str, timeout_seconds: int = 300) -> bool:
@@ -335,12 +355,12 @@ def _check_and_register_session(self, user_email: str, agent_name: str, timeout_
         return True
 ```
 
-### Docker Exec Creation (terminal.py:194-228)
+### Docker Exec Creation (terminal.py:186-220)
 
 ```python
 # Build command based on mode (supports claude, gemini, bash)
 if mode == "claude":
-    cmd = ["claude"]
+    cmd = ["claude", "--dangerously-skip-permissions"]
     if model:
         cmd.extend(["--model", model])
 elif mode == "gemini":
@@ -370,7 +390,46 @@ docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
 
-**Note**: The `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` environment variable is set during container creation, not in the exec environment. The API key setting determines whether these env vars are injected when the container starts.
+**Note**: Claude mode includes `--dangerously-skip-permissions` flag to bypass interactive permission prompts in the TUI. The `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` environment variable is set during container creation, not in the exec environment. The API key setting determines whether these env vars are injected when the container starts.
+
+### PTY Forwarding (terminal.py:227-286)
+
+Bidirectional forwarding uses asyncio socket coroutines for proper async I/O:
+
+```python
+loop = asyncio.get_event_loop()
+
+async def read_from_docker():
+    """Read from Docker socket using asyncio sock_recv (no thread pool)."""
+    while True:
+        data = await loop.sock_recv(docker_socket, 16384)
+        if not data:
+            break
+        await websocket.send_bytes(data)
+
+async def read_from_websocket():
+    """Read from WebSocket, send to Docker socket."""
+    while True:
+        message = await websocket.receive()
+        if message["type"] == "websocket.disconnect":
+            break
+
+        if "text" in message:
+            # Check for resize control message
+            try:
+                ctrl = json.loads(message["text"])
+                if ctrl.get("type") == "resize":
+                    docker_client.api.exec_resize(exec_id, height=ctrl["rows"], width=ctrl["cols"])
+                    continue
+            except json.JSONDecodeError:
+                pass
+            await loop.sock_sendall(docker_socket, message["text"].encode())
+        elif "bytes" in message:
+            await loop.sock_sendall(docker_socket, message["bytes"])
+
+# Run both tasks concurrently
+await asyncio.gather(read_from_docker(), read_from_websocket(), return_exceptions=True)
+```
 
 ---
 
@@ -378,88 +437,72 @@ docker_socket.setblocking(False)
 
 ### Database Schema
 
-**Table**: `agent_api_key_settings`
+The API key setting is stored in the `agent_ownership` table (not a separate table):
+
+**Table**: `agent_ownership`
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `agent_name` | TEXT PRIMARY KEY | Agent identifier |
-| `use_platform_api_key` | INTEGER | 1 = use platform key, 0 = terminal auth |
-| `updated_at` | TEXT | ISO timestamp of last update |
+| `owner_email` | TEXT | Owner's email |
+| `use_platform_api_key` | INTEGER | 1 = use platform key (default), 0 = terminal auth |
+| ... | ... | Other ownership fields |
 
 **Default**: New agents default to `use_platform_api_key = 1` (True)
 
 ### Database Operations
 
-**File**: `src/backend/database.py`
+**File**: `src/backend/db/agents.py`
 
-| Method | Purpose |
-|--------|---------|
-| `get_use_platform_api_key(agent_name)` | Returns boolean - whether agent uses platform key |
-| `set_use_platform_api_key(agent_name, use_platform)` | Updates setting, creates record if not exists |
+| Method | Line | Purpose |
+|--------|------|---------|
+| `get_use_platform_api_key(agent_name)` | 302-313 | Returns boolean - whether agent uses platform key |
+| `set_use_platform_api_key(agent_name, use_platform)` | 315-324 | Updates setting in agent_ownership table |
 
-**Implementation**:
+**Implementation** (`db/agents.py:302-324`):
 ```python
 def get_use_platform_api_key(self, agent_name: str) -> bool:
-    """Get API key setting for agent. Defaults to True if not set."""
-    result = self.execute_query(
-        "SELECT use_platform_api_key FROM agent_api_key_settings WHERE agent_name = ?",
-        (agent_name,)
-    )
-    return bool(result[0][0]) if result else True
+    """Check if agent should use platform API key (default: True)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(use_platform_api_key, 1) as use_platform_api_key
+            FROM agent_ownership WHERE agent_name = ?
+        """, (agent_name,))
+        row = cursor.fetchone()
+        if row:
+            return bool(row["use_platform_api_key"])
+        return True  # Default to using platform key
 
-def set_use_platform_api_key(self, agent_name: str, use_platform: bool):
-    """Set API key setting for agent."""
-    self.execute_query("""
-        INSERT INTO agent_api_key_settings (agent_name, use_platform_api_key, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(agent_name) DO UPDATE SET
-            use_platform_api_key = excluded.use_platform_api_key,
-            updated_at = excluded.updated_at
-    """, (agent_name, 1 if use_platform else 0, datetime.utcnow().isoformat()))
+def set_use_platform_api_key(self, agent_name: str, use_platform_key: bool) -> bool:
+    """Set whether agent should use platform API key."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE agent_ownership SET use_platform_api_key = ?
+            WHERE agent_name = ?
+        """, (1 if use_platform_key else 0, agent_name))
+        conn.commit()
+        return cursor.rowcount > 0
 ```
 
 ---
 
 ## Side Effects
 
-### Audit Logging
+### Session Logging
 
-**API Key Setting Update**:
+Terminal sessions are logged via Python logger (not audit events):
+
+**Session Start** (`terminal.py:225`):
 ```python
-await log_audit_event(
-    event_type="agent_settings",
-    action="update_api_key_setting",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    details={"use_platform_api_key": use_platform_key}
-)
+logger.info(f"Terminal session started for {user_email}@{agent_name} (mode: {mode})")
 ```
 
-**Terminal Session Start**:
+**Session End** (`terminal.py:316-319`):
 ```python
-await log_audit_event(
-    event_type="terminal_session",
-    action="start",
-    user_id=user_email,
-    agent_name=agent_name,
-    details={"mode": mode}
-)
-```
-
-**Terminal Session End**:
-```python
-session_duration = (datetime.utcnow() - session_start).total_seconds()
-
-await log_audit_event(
-    event_type="terminal_session",
-    action="end",
-    user_id=user_email,
-    agent_name=agent_name,
-    details={
-        "mode": mode,
-        "duration_seconds": session_duration
-    }
-)
+if session_duration:
+    logger.info(f"Terminal session ended for {user_email}@{agent_name} (duration: {session_duration:.1f}s)")
 ```
 
 ### Container Recreation
@@ -478,12 +521,12 @@ When API key setting is changed and agent is restarted:
 
 | Error Case | WebSocket Code | Message |
 |------------|----------------|---------|
-| Missing auth message | 4001 | "Expected auth message" |
+| Missing auth message | 4001 | "Expected auth message first" |
 | Missing token | 4001 | "Token required" |
 | Invalid token | 4001 | "Invalid token" |
 | No agent access | 4003 | "You don't have access to this agent" |
 | Auth timeout (10s) | 4001 | "Authentication timeout" |
-| Invalid auth JSON | 4001 | "Invalid auth format" |
+| Invalid auth JSON | 4001 | "Invalid JSON in auth message" |
 | Existing session | 4002 | "You already have an active terminal session for this agent" |
 | Container not found | 4004 | "Agent '{name}' container not found" |
 | Container not running | 4004 | "Agent '{name}' is not running" |
@@ -505,9 +548,10 @@ When API key setting is changed and agent is restarted:
 2. **Session Limit**: One terminal per user per agent prevents resource exhaustion
 3. **Stale Session Cleanup**: 5-minute timeout prevents orphaned session blocking
 4. **No SSH Exposure**: Uses internal Docker network, no port forwarding to host
-5. **Audit Trail**: Full session logging with duration tracking
+5. **Session Logging**: Full session logging with duration tracking (via Python logger)
 6. **Binary Transport**: Raw PTY data sent as binary WebSocket frames
 7. **TERM Environment**: Sets `TERM=xterm-256color` for proper TUI rendering
+8. **Permission Skip**: Claude mode uses `--dangerously-skip-permissions` for non-interactive operation
 
 ---
 
@@ -554,7 +598,7 @@ User Click          WebSocket          Backend           Docker
 
 - **Related**: [web-terminal.md](web-terminal.md) - System Agent terminal (similar implementation)
 - **Upstream**: [agent-lifecycle.md](agent-lifecycle.md) - Agent must be running
-- **Upstream**: [email-authentication.md](email-authentication.md) - JWT token creation (replaces auth0-authentication.md)
+- **Upstream**: [email-authentication.md](email-authentication.md) - JWT token creation
 - **Replaces**: [agent-chat.md](agent-chat.md) - Previous chat-based interaction (now deprecated)
 
 ---
@@ -598,48 +642,58 @@ User Click          WebSocket          Backend           Docker
    - Expected: Bash shell prompt appears
    - Verify: Can run `ls`, `pwd`, `whoami` commands
 
-7. **Shared Agent Access**
+7. **Gemini CLI Mode** (for gemini-cli runtime agents)
+   - Action: Create agent with gemini-cli runtime, connect terminal
+   - Expected: CLI mode shows "Gemini CLI" label, connects to gemini command
+   - Verify: Gemini CLI interface loads
+
+8. **Shared Agent Access**
    - Action: Navigate to an agent shared with you by another user
    - Expected: Terminal tab visible and functional
    - Verify: Can connect and execute commands
 
-8. **Session Limit**
+9. **Session Limit**
    - Action: Open second browser tab, try to connect to same agent
    - Expected: Error "You already have an active terminal session for this agent"
    - Verify: First session remains connected
 
-9. **Stopped Agent**
-   - Action: Navigate to agent detail page with agent stopped
-   - Expected: Terminal shows "Agent is not running" with Start button
-   - Verify: Clicking Start starts agent, terminal then auto-connects
+10. **Stopped Agent**
+    - Action: Navigate to agent detail page with agent stopped
+    - Expected: Terminal shows "Agent is not running" with Start button
+    - Verify: Clicking Start starts agent, terminal then auto-connects
 
-10. **API Key Setting Toggle (Owner Only)**
-   - Action: As agent owner, navigate to terminal tab with agent stopped
-   - Expected: See "Authentication" section with two radio buttons
-   - Verify: Can toggle between "Use Platform API Key" and "Authenticate in Terminal"
+11. **API Key Setting Toggle (Owner Only)**
+    - Action: As agent owner, navigate to terminal tab with agent stopped
+    - Expected: See "Authentication" section with two radio buttons
+    - Verify: Can toggle between "Use Platform API Key" and "Authenticate in Terminal"
 
-11. **Change API Key Setting**
-   - Action: Toggle "Authenticate in Terminal" radio button
-   - Expected: Setting updates, shows "Restart required" badge
-   - Verify: API call to `PUT /api/agents/{name}/api-key-setting` succeeds
+12. **Change API Key Setting**
+    - Action: Toggle "Authenticate in Terminal" radio button
+    - Expected: Setting updates, shows "Restart required" badge
+    - Verify: API call to `PUT /api/agents/{name}/api-key-setting` succeeds
 
-12. **Restart with Terminal Auth**
-   - Action: Start agent after changing to "Authenticate in Terminal"
-   - Expected: Agent starts, terminal connects
-   - Action: Type `claude` in terminal
-   - Expected: Prompt to run `claude login` (no API key injected)
-   - Verify: Container has no `ANTHROPIC_API_KEY` environment variable
+13. **Restart with Terminal Auth**
+    - Action: Start agent after changing to "Authenticate in Terminal"
+    - Expected: Agent starts, terminal connects
+    - Action: Type `claude` in terminal
+    - Expected: Prompt to run `claude login` (no API key injected)
+    - Verify: Container has no `ANTHROPIC_API_KEY` environment variable
 
-13. **Restart with Platform Key**
-   - Action: Stop agent, toggle back to "Use Platform API Key", restart
-   - Expected: Agent starts, Claude commands work immediately
-   - Verify: Container has `ANTHROPIC_API_KEY` environment variable set
+14. **Restart with Platform Key**
+    - Action: Stop agent, toggle back to "Use Platform API Key", restart
+    - Expected: Agent starts, Claude commands work immediately
+    - Verify: Container has `ANTHROPIC_API_KEY` environment variable set
 
-14. **Non-Owner Cannot Change Setting**
-   - Action: As non-owner user with shared access, view terminal tab
-   - Expected: API key setting UI not visible (agent.can_share is false for non-owners)
-   - Action: Attempt direct API call `PUT /api/agents/{name}/api-key-setting`
-   - Expected: 403 "Only the owner can modify API key settings"
+15. **Non-Owner Cannot Change Setting**
+    - Action: As non-owner user with shared access, view terminal tab
+    - Expected: API key setting UI not visible (canShare is false for non-owners)
+    - Action: Attempt direct API call `PUT /api/agents/{name}/api-key-setting`
+    - Expected: 403 "Only the owner can modify API key settings"
+
+16. **Tab Switching Preserves Connection**
+    - Action: Connect to terminal, switch to another tab, switch back
+    - Expected: Terminal still connected (uses v-show not v-if)
+    - Verify: No reconnection needed, session preserved
 
 ### Edge Cases
 
@@ -654,17 +708,20 @@ User Click          WebSocket          Backend           Docker
 No cleanup required - sessions terminate automatically on disconnect.
 
 ### Status
-**Testing Status**: ✅ Tested (as of 2025-12-26)
+**Testing Status**: Verified 2026-01-23
 
 **Verified Features**:
 - Terminal connection and PTY forwarding
-- Claude Code TUI rendering
+- Claude Code TUI rendering with WebGL/Canvas acceleration
 - Fullscreen mode toggle
 - Session limiting (1 per user per agent)
 - Access control (owner, shared, admin)
-- **NEW**: Per-agent API key control toggle (Req 11.7)
-- **NEW**: Owner-only API key setting modification
-- **NEW**: Container recreation on API key setting change
+- Per-agent API key control toggle (Req 11.7)
+- Owner-only API key setting modification
+- Container recreation on API key setting change
+- Mode toggle (Claude/Gemini/Bash)
+- Model parameter support
+- Tab switching preserves connection (v-show)
 
 ---
 
@@ -672,8 +729,9 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
-| 2025-12-30 | **Line number verification**: Verified and updated all line numbers. Added Gemini runtime support to terminal modes. Updated WebSocket query params documentation. |
-| 2025-12-27 | **Service layer refactoring**: Terminal session management moved to `services/agent_service/terminal.py`. API key logic moved to `api_key.py`. Router reduced to thin endpoint definitions. |
+| 2026-01-23 | **Line number verification**: Updated all line numbers. Corrected database schema (uses `agent_ownership` table, not separate table). Added WebGL/Canvas renderer documentation. Clarified no audit logging for terminal sessions (uses Python logger). Added `--dangerously-skip-permissions` flag documentation. Added Gemini CLI test case. Added tab switching preservation note. |
+| 2025-12-30 | Line number verification. Added Gemini runtime support to terminal modes. Updated WebSocket query params documentation. |
+| 2025-12-27 | Service layer refactoring: Terminal session management moved to `services/agent_service/terminal.py`. API key logic moved to `api_key.py`. Router reduced to thin endpoint definitions. |
 | 2025-12-25 | Initial implementation - replaced Chat tab with Terminal tab |
 | 2025-12-25 | Added fullscreen toggle with ESC key to exit |
 | 2025-12-26 | Added per-agent API key control (Req 11.7) - owner can choose platform key vs terminal auth |

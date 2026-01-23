@@ -1,3 +1,72 @@
+### 2026-01-23 16:00:00
+📝 **Docs: Updated Testing Agents Feature Flow**
+
+**Summary**: Major update to testing-agents.md feature flow with accurate test counts and comprehensive test suite structure.
+
+**File Modified**:
+- `docs/memory/feature-flows/testing-agents.md`
+  - Updated test count from 474+ to 1460+ tests across 84 files
+  - Added process_engine tests (737 tests in 41 files: 32 unit + 9 integration)
+  - Added scheduler_tests (71 tests in 6 files)
+  - Updated config.py line numbers (GITHUB_TEMPLATES: line 91, ALL_GITHUB_TEMPLATES: line 164)
+  - Added detailed test file listing with test counts per file
+  - Added pytest configuration section with pyproject.toml contents
+  - Added Test Categories Summary table
+  - Added comprehensive test directory tree structure
+  - Updated Key Source Files table with line counts
+  - Added revision history entry for 2026-01-23
+
+**Test Suite Statistics (2026-01-23)**:
+- Backend API tests: 34 files, 638 tests
+- Agent Server tests: 3 files, 14 tests
+- Scheduler tests: 6 files, 71 tests
+- Process Engine Unit: 32 files, 692 tests
+- Process Engine Integration: 9 files, 45 tests
+- **Total**: 84 files, 1460+ tests
+
+**Key Implementation Files Verified**:
+- `/Users/eugene/Dropbox/trinity/trinity/tests/conftest.py` (368 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/pyproject.toml` (lines 1-16 pytest config)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/config.py` (165 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/templates.py` (220 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/template_service.py` (381 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/main.py` (88 lines)
+
+---
+
+### 2026-01-23 15:00:00
+📝 **Docs: Updated Agent Logs & Telemetry Feature Flow**
+
+**Summary**: Verified and updated agent logs/telemetry feature flow with correct line numbers, composable documentation, and discovered UI/code mismatch.
+
+**File Modified**:
+- `docs/memory/feature-flows/agent-logs-telemetry.md`
+  - Updated logs endpoint line numbers (367-383, was 404-430)
+  - Updated stats endpoint line numbers (386-393, was 433-440)
+  - Added AgentHeader.vue stats display documentation (lines 172-235)
+  - Added composable file locations and code snippets
+  - Documented useAgentStats.js (lines 4, 56-60) and useAgentLogs.js (lines 35-40, 43-52)
+  - Added LogsPanel.vue component details (lines 6, 8, 12-17, 19, 25-30)
+  - Removed audit logging note (no longer present in logs endpoint)
+  - Added Known Issues section for UI/code mismatch
+  - Added revision history entry for 2026-01-23
+
+**Known Issue Discovered**:
+- `LogsPanel.vue:20` displays "Auto-refresh (10s)"
+- `useAgentLogs.js:45` uses 15000ms (15 seconds) interval
+- Minor UX inconsistency, no functional impact
+
+**Key Implementation Files**:
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py:367-393`
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/stats.py:123-184`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/LogsPanel.vue`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentHeader.vue:172-235`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/composables/useAgentStats.js`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/composables/useAgentLogs.js`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js:183-189,276-282`
+
+---
+
 ### 2026-01-23 14:00:00
 📝 **Docs: Updated Vector Logging Feature Flow**
 

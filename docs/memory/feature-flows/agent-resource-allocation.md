@@ -9,13 +9,14 @@ As an agent owner, I want to configure memory and CPU allocation for my agents s
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-01-23 | Updated line numbers for all components; AgentHeader gear icons at 224 and 247; ResourceModal extracted to separate component; useAgentSettings composable at 78-110 |
 | 2026-01-02 | Initial documentation |
 
 ---
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:225,243` - Gear icon button in agent header (shown when agent.can_share)
+- **UI**: `src/frontend/src/components/AgentHeader.vue:224,247` - Gear icon button in agent header (shown when agent.can_share)
 - **API GET**: `GET /api/agents/{name}/resources` - Fetch current limits
 - **API PUT**: `PUT /api/agents/{name}/resources` - Update limits
 
@@ -25,31 +26,46 @@ As an agent owner, I want to configure memory and CPU allocation for my agents s
 
 ### Components
 
+**AgentHeader.vue** (`src/frontend/src/components/AgentHeader.vue`)
+
+| Line | Element | Description |
+|------|---------|-------------|
+| 222-232 | Gear button (running state) | `@click="$emit('open-resource-modal')"` - next to sparklines |
+| 245-255 | Gear button (stopped state) | `@click="$emit('open-resource-modal')"` - next to "Created X ago" |
+| 192 | CPU limit display | Shows `resourceLimits.current_cpu` |
+| 208 | Memory limit display | Shows `resourceLimits.current_memory` |
+| 242-243 | Stopped state resources | Shows CPU/RAM in stopped state |
+| 295-298 | resourceLimits prop | Receives limits from AgentDetail |
+| 339 | emit definition | `'open-resource-modal'` |
+
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
 
 | Line | Element | Description |
 |------|---------|-------------|
-| 225 | `@click="showResourceModal = true"` | Gear button (running state, next to sparklines) |
-| 243 | `@click="showResourceModal = true"` | Gear button (stopped state) |
-| 427-518 | Resource Modal | Full modal component with form |
-| 467 | Memory dropdown | `v-model="resourceLimits.memory"` |
-| 484 | CPU dropdown | `v-model="resourceLimits.cpu"` |
-| 502 | Save button | `@click="saveResourceLimits"` |
-| 1392 | `showResourceModal` | Ref for modal visibility |
-| 1639-1658 | `saveResourceLimits()` | Handler that saves and auto-restarts |
+| 49 | `@open-resource-modal` | Event handler from AgentHeader |
+| 176-185 | ResourceModal | Modal component usage |
+| 234 | Import | `import ResourceModal from '../components/ResourceModal.vue'` |
+| 261 | `showResourceModal` | Ref for modal visibility |
+| 378-382 | composable destructure | Gets `resourceLimits`, `loadResourceLimits`, `updateResourceLimits` |
+| 385-404 | `saveResourceLimits()` | Handler that saves and auto-restarts |
 
-**Modal UI Features:**
-- Warning banner: "If the agent is running, it will be automatically restarted to apply changes"
-- Memory options: 1g, 2g, 4g, 8g, 16g, 32g, 64g (or Default)
-- CPU options: 1, 2, 4, 8, 16 cores (or Default)
-- Default option shows current container value (e.g., "Default (4g)")
+**ResourceModal.vue** (`src/frontend/src/components/ResourceModal.vue`)
+
+| Line | Element | Description |
+|------|---------|-------------|
+| 26-35 | Warning banner | "If the agent is running, it will be automatically restarted" |
+| 41-55 | Memory dropdown | Select with options: Default, 1g-64g |
+| 59-71 | CPU dropdown | Select with options: Default, 1-16 cores |
+| 77-84 | Save button | `@click="$emit('save')"` |
+| 99-106 | Props | `show`, `resourceLimits`, `loading` |
+| 108 | Emits | `update:show`, `update:memory`, `update:cpu`, `save` |
 
 ### Composable
 
 **useAgentSettings.js** (`src/frontend/src/composables/useAgentSettings.js:78-110`)
 
 ```javascript
-// State
+// State (lines 17-23)
 const resourceLimits = ref({
   memory: null,      // Selected value (null = use default)
   cpu: null,         // Selected value (null = use default)
@@ -59,12 +75,12 @@ const resourceLimits = ref({
 })
 
 // Methods
-const loadResourceLimits = async () => {
+const loadResourceLimits = async () => {  // lines 78-92
   const result = await agentsStore.getResourceLimits(agentRef.value.name)
   resourceLimits.value = { ... }
 }
 
-const updateResourceLimits = async () => {
+const updateResourceLimits = async () => {  // lines 94-110
   const result = await agentsStore.setResourceLimits(
     agentRef.value.name,
     resourceLimits.value.memory,
@@ -75,10 +91,10 @@ const updateResourceLimits = async () => {
 
 ### Store Actions
 
-**agents.js** (`src/frontend/src/stores/agents.js:601-618`)
+**agents.js** (`src/frontend/src/stores/agents.js:693-710`)
 
 ```javascript
-// GET /api/agents/{name}/resources
+// GET /api/agents/{name}/resources (lines 693-699)
 async getResourceLimits(name) {
   const response = await axios.get(`/api/agents/${name}/resources`, {
     headers: authStore.authHeader
@@ -86,7 +102,7 @@ async getResourceLimits(name) {
   return response.data
 }
 
-// PUT /api/agents/{name}/resources
+// PUT /api/agents/{name}/resources (lines 701-710)
 async setResourceLimits(name, memory, cpu) {
   const response = await axios.put(`/api/agents/${name}/resources`, {
     memory: memory,
@@ -98,7 +114,7 @@ async setResourceLimits(name, memory, cpu) {
 
 ### Auto-Restart Logic
 
-**AgentDetail.vue:1639-1658** - `saveResourceLimits()`:
+**AgentDetail.vue:385-404** - `saveResourceLimits()`:
 
 ```javascript
 async function saveResourceLimits() {
@@ -128,9 +144,9 @@ async function saveResourceLimits() {
 
 ### Endpoints
 
-**agents.py** (`src/backend/routers/agents.py:797-898`)
+**agents.py** (`src/backend/routers/agents.py:803-904`)
 
-#### GET /api/agents/{name}/resources (Line 797)
+#### GET /api/agents/{name}/resources (Lines 803-838)
 
 ```python
 @router.get("/{agent_name}/resources")
@@ -162,7 +178,7 @@ async def get_agent_resources(
     }
 ```
 
-#### PUT /api/agents/{name}/resources (Line 835)
+#### PUT /api/agents/{name}/resources (Lines 841-904)
 
 ```python
 @router.put("/{agent_name}/resources")
@@ -204,7 +220,7 @@ async def set_agent_resources(
 
 ### Mismatch Check at Start
 
-**helpers.py** (`src/backend/services/agent_service/helpers.py:299-329`)
+**helpers.py** (`src/backend/services/agent_service/helpers.py:333-363`)
 
 ```python
 def check_resource_limits_match(container, agent_name: str) -> bool:
@@ -241,7 +257,7 @@ def check_resource_limits_match(container, agent_name: str) -> bool:
 
 ### Container Recreation
 
-**lifecycle.py** (`src/backend/services/agent_service/lifecycle.py:53-97`)
+**lifecycle.py** (`src/backend/services/agent_service/lifecycle.py:173-224`)
 
 ```python
 async def start_agent_internal(agent_name: str) -> dict:
@@ -249,12 +265,13 @@ async def start_agent_internal(agent_name: str) -> dict:
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check if container needs recreation
+    # Check if container needs recreation (line 195-200)
     container.reload()
     needs_recreation = (
         not check_shared_folder_mounts_match(container, agent_name) or
         not check_api_key_env_matches(container, agent_name) or
-        not check_resource_limits_match(container, agent_name)  # <-- Resource check
+        not check_resource_limits_match(container, agent_name) or  # <-- Resource check at line 198
+        not check_full_capabilities_match(container, agent_name)
     )
 
     if needs_recreation:
@@ -265,13 +282,13 @@ async def start_agent_internal(agent_name: str) -> dict:
     # ... trinity prompt injection
 ```
 
-**lifecycle.py:100-231** - `recreate_container_with_updated_config()`:
+**lifecycle.py:227-371** - `recreate_container_with_updated_config()`:
 
 ```python
 async def recreate_container_with_updated_config(agent_name, old_container, owner_username):
     # ... extract old config ...
 
-    # Get resource limits - check DB for overrides, fallback to labels/defaults
+    # Get resource limits - check DB for overrides, fallback to labels/defaults (lines 254-261)
     db_limits = db.get_resource_limits(agent_name)
     if db_limits:
         cpu = db_limits.get("cpu") or labels.get("trinity.cpu", "2")
@@ -280,13 +297,13 @@ async def recreate_container_with_updated_config(agent_name, old_container, owne
         cpu = labels.get("trinity.cpu", "2")
         memory = labels.get("trinity.memory", "4g")
 
-    # Update labels with new resource limits for future reference
+    # Update labels with new resource limits for future reference (lines 263-265)
     labels["trinity.cpu"] = cpu
     labels["trinity.memory"] = memory
 
     # ... stop and remove old container ...
 
-    # Create new container with new limits
+    # Create new container with new limits (lines 348-368)
     new_container = docker_client.containers.run(
         image,
         # ... other config ...
@@ -301,34 +318,17 @@ async def recreate_container_with_updated_config(agent_name, old_container, owne
 
 ### Database Schema
 
-**database.py** (`src/backend/database.py:230-240`) - Migration:
-
-```python
-def _migrate_agent_ownership_resource_limits(cursor, conn):
-    """Add memory_limit and cpu_limit columns to agent_ownership table."""
-    new_columns = [
-        ("memory_limit", "TEXT"),  # e.g., "4g", "8g", "16g"
-        ("cpu_limit", "TEXT")      # e.g., "2", "4", "8"
-    ]
-    for col_name, col_type in new_columns:
-        if col_name not in columns:
-            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_type}")
-```
-
-**database.py:321-326** - Table schema:
+**agent_ownership table** - Columns added via migration:
 
 ```sql
-CREATE TABLE IF NOT EXISTS agent_ownership (
-    -- ... other columns ...
-    memory_limit TEXT,
-    cpu_limit TEXT,
-    FOREIGN KEY (owner_id) REFERENCES users(id)
-)
+-- Columns in agent_ownership table
+memory_limit TEXT,  -- e.g., "4g", "8g", "16g"
+cpu_limit TEXT      -- e.g., "2", "4", "8"
 ```
 
 ### CRUD Operations
 
-**db/agents.py** (`src/backend/db/agents.py:363-409`)
+**db/agents.py** (`src/backend/db/agents.py:368-414`)
 
 ```python
 def get_resource_limits(self, agent_name: str) -> Optional[Dict[str, str]]:
@@ -373,44 +373,45 @@ These labels are read to determine current container resources and compared agai
 ## Complete Flow
 
 ```
-1. User clicks gear icon in AgentDetail header
-   ├─ AgentDetail.vue:225 or :243 → showResourceModal = true
+1. User clicks gear icon in AgentHeader
+   ├─ AgentHeader.vue:224 or :247 → $emit('open-resource-modal')
+   └─ AgentDetail.vue:49 → showResourceModal = true
 
 2. Modal opens, shows current limits from composable
-   ├─ loadResourceLimits() called on component mount
-   └─ GET /api/agents/{name}/resources
+   ├─ loadResourceLimits() called on component mount (useAgentSettings.js:78)
+   └─ GET /api/agents/{name}/resources (agents.py:803)
        ├─ Check user access (can_user_access_agent)
        ├─ Get DB limits (may be null)
        ├─ Get container labels (trinity.memory, trinity.cpu)
        └─ Return { memory, cpu, current_memory, current_cpu }
 
 3. User selects new values and clicks Save
-   ├─ saveResourceLimits() in AgentDetail.vue:1639
+   ├─ saveResourceLimits() in AgentDetail.vue:385
    ├─ Calculates if values actually changed
-   └─ Calls updateResourceLimits()
-       └─ PUT /api/agents/{name}/resources { memory, cpu }
+   └─ Calls updateResourceLimits() (useAgentSettings.js:94)
+       └─ PUT /api/agents/{name}/resources { memory, cpu } (agents.py:841)
            ├─ Validate ownership (can_user_share_agent)
            ├─ Validate memory in [1g, 2g, 4g, 8g, 16g, 32g, 64g]
            ├─ Validate CPU in [1, 2, 4, 8, 16]
            ├─ UPDATE agent_ownership SET memory_limit, cpu_limit
            └─ Return { message, memory, cpu, restart_needed }
 
-4. Frontend auto-restarts if needed
+4. Frontend auto-restarts if needed (AgentDetail.vue:396-403)
    ├─ If valuesChanged && agent.status === 'running':
    │   ├─ showNotification("Restarting agent...")
    │   ├─ await stopAgent()
    │   ├─ wait 1 second
    │   └─ await startAgent()
 
-5. On agent start, backend checks for mismatches
-   ├─ start_agent_internal() in lifecycle.py:53
-   ├─ check_resource_limits_match() returns False if DB != container
+5. On agent start, backend checks for mismatches (lifecycle.py:195-200)
+   ├─ start_agent_internal() in lifecycle.py:173
+   ├─ check_resource_limits_match() returns False if DB != container (helpers.py:333)
    └─ If mismatch:
-       └─ recreate_container_with_updated_config()
+       └─ recreate_container_with_updated_config() (lifecycle.py:227)
            ├─ Stop and remove old container
-           ├─ Read new limits from DB
-           ├─ Update trinity.* labels
-           └─ Create new container with mem_limit and cpu_count
+           ├─ Read new limits from DB (line 255)
+           ├─ Update trinity.* labels (line 264)
+           └─ Create new container with mem_limit and cpu_count (line 366-367)
 ```
 
 ---
@@ -432,7 +433,7 @@ These labels are read to determine current container resources and compared agai
 1. **Ownership Check**: Only agent owners can modify resource limits (`can_user_share_agent`)
 2. **Access Check**: Reading limits requires agent access (`can_user_access_agent`)
 3. **Input Validation**: Strict validation of memory and CPU values against allowlists
-4. **Docker Security**: Recreated containers maintain security options (no-new-privileges, apparmor, cap_drop)
+4. **Docker Security**: Recreated containers maintain security options (cap_drop=['ALL'], cap_add based on mode, apparmor:docker-default)
 
 ---
 

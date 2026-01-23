@@ -13,7 +13,7 @@ As a platform user, I want to configure API credentials for my agents so that MC
 | UI Location | API Endpoint | Purpose |
 |-------------|--------------|---------|
 | `src/frontend/src/views/Credentials.vue` | `POST /api/credentials` | Single credential entry |
-| `src/frontend/src/views/Credentials.vue:82-108` | `POST /api/credentials/bulk` | Bulk import (.env paste) |
+| `src/frontend/src/views/Credentials.vue:96-107` | `POST /api/credentials/bulk` | Bulk import (.env paste) |
 | `src/frontend/src/views/AgentDetail.vue` | `GET /api/agents/{name}/credentials/assignments` | List assigned/available credentials |
 | `src/frontend/src/views/AgentDetail.vue` | `POST /api/agents/{name}/credentials/assign` | Assign credential to agent |
 | `src/frontend/src/views/AgentDetail.vue` | `DELETE /api/agents/{name}/credentials/assign/{id}` | Unassign credential from agent |
@@ -28,9 +28,20 @@ As a platform user, I want to configure API credentials for my agents so that MC
 
 ## Flow 1: Manual Credential Entry
 
-### Frontend (`src/frontend/src/views/Credentials.vue:438-492`)
+### Frontend (`src/frontend/src/views/Credentials.vue:501-569`)
 ```javascript
 const createCredential = async () => {
+  let credentials_data = {}
+  let file_path = null
+
+  if (newCredential.value.type === 'api_key') {
+    credentials_data = { api_key: newCredential.value.api_key }
+  } else if (newCredential.value.type === 'file') {
+    credentials_data = { content: newCredential.value.file_content }
+    file_path = newCredential.value.file_path
+  }
+  // ...
+
   const response = await fetch('/api/credentials', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${authStore.token}` },
@@ -39,55 +50,77 @@ const createCredential = async () => {
       service: newCredential.value.service,
       type: newCredential.value.type,
       credentials: credentials_data,
-      description: newCredential.value.description
+      description: newCredential.value.description,
+      file_path: file_path  // For file-type credentials
     })
   })
 }
 ```
 
-### Backend (`src/backend/routers/credentials.py:43-75`)
+### Backend (`src/backend/routers/credentials.py:44-56`)
 ```python
 @router.post("/credentials", response_model=Credential)
-async def create_credential(cred_data: CredentialCreate, request: Request, current_user: User):
+async def create_credential(
+    cred_data: CredentialCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
     credential = credential_manager.create_credential(current_user.username, cred_data)
-    await log_audit_event(
-        event_type="credential_management", action="create",
-        user_id=current_user.username, resource=f"credential-{credential.id}", ...
-    )
     return credential
 ```
 
-### Redis Storage (`src/backend/credentials.py:92-128`)
+### Redis Storage (`src/backend/credentials.py:98-136`)
 ```python
-def create_credential(self, user_id: str, cred_data: CredentialCreate):
-    cred_key = f"credentials:{cred_id}"
-    self.redis_client.hset(f"{cred_key}:metadata", mapping={...})
-    self.redis_client.set(f"{cred_key}:secret", json.dumps(cred_data.credentials))
-    self.redis_client.sadd(f"user:{user_id}:credentials", cred_id)
+def create_credential(self, user_id: str, cred_data: CredentialCreate) -> Credential:
+    cred_id = self._generate_id()
+    now = datetime.utcnow()
+
+    cred_key = f"{self.credentials_prefix}{cred_id}"
+    metadata_key = f"{cred_key}:metadata"
+    secret_key = f"{cred_key}:secret"
+    user_creds_key = f"user:{user_id}:credentials"
+
+    self.redis_client.hset(metadata_key, mapping={
+        "id": cred_id,
+        "name": cred_data.name,
+        "service": cred_data.service,
+        "type": cred_data.type,
+        "file_path": cred_data.file_path or "",  # For file-type credentials
+        # ...
+    })
+
+    self.redis_client.set(secret_key, json.dumps(cred_data.credentials))
+    self.redis_client.sadd(user_creds_key, cred_id)
+
+    return credential
 ```
 
 ---
 
 ## Flow 2: Bulk Credential Import
 
-### Frontend (`src/frontend/src/views/Credentials.vue:82-108`)
+### Frontend (`src/frontend/src/views/Credentials.vue:82-107`)
 User pastes `.env`-style content into textarea, clicks "Import Credentials" (line 98).
 
-### Backend (`src/backend/routers/credentials.py:172-243`)
+### Backend (`src/backend/routers/credentials.py:119-177`)
 ```python
 @router.post("/credentials/bulk", response_model=BulkCredentialResult)
-async def bulk_import_credentials(import_data: BulkCredentialImport, ...):
-    parsed = parse_env_content(import_data.content)  # line 179
+async def bulk_import_credentials(
+    import_data: BulkCredentialImport,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    parsed = parse_env_content(import_data.content)  # line 126
 
     for key, value in parsed:
-        service = infer_service_from_key(key)  # line 194
-        cred_type = infer_type_from_key(key)   # line 195
+        service = infer_service_from_key(key)  # line 141
+        cred_type = infer_type_from_key(key)   # line 142
 
         cred_data = CredentialCreate(
             name=key,
             service=service,
             type=cred_type,
-            credentials={key: value},  # line 202
+            credentials={key: value},  # line 149
             description="Bulk imported credential"
         )
 
@@ -95,7 +128,7 @@ async def bulk_import_credentials(import_data: BulkCredentialImport, ...):
         created_count += 1
 ```
 
-### Parser (`src/backend/utils/helpers.py:8-46, 49-96, 99-112`)
+### Parser (`src/backend/utils/helpers.py:96-200`)
 ```python
 def parse_env_content(content: str) -> List[Tuple[str, str]]:
     """Parse .env-style KEY=VALUE pairs"""
@@ -125,7 +158,7 @@ def infer_service_from_key(key: str) -> str:
         ('SLACK_', 'slack'),
         ('GITHUB_', 'github'),
         ('NOTION_', 'notion'),
-        # ... 15+ more patterns
+        # ... 20+ more patterns
     ]
     for prefix, service in service_patterns:
         if key_upper.startswith(prefix):
@@ -152,23 +185,25 @@ def infer_type_from_key(key: str) -> str:
 
 > **Updated 2025-12-28**: Hot-reload now persists credentials to Redis with conflict resolution. Credentials survive agent restarts.
 
-### Frontend (`src/frontend/src/composables/useAgentCredentials.js:45-73`)
+### Frontend (`src/frontend/src/composables/useAgentCredentials.js:141-171`)
 ```javascript
-const performHotReload = async () => {
+const quickAddCredentials = async () => {
   if (!agentRef.value || agentRef.value.status !== 'running') return
-  if (!hotReloadText.value.trim()) return
+  if (!quickAddText.value.trim()) return
 
+  quickAddLoading.value = true
   const result = await agentsStore.hotReloadCredentials(
     agentRef.value.name,
-    hotReloadText.value  // KEY=VALUE format
+    quickAddText.value  // KEY=VALUE format
   )
   // Result includes saved_to_redis with status: created/reused/renamed
 }
 ```
 
-### Store Action (`src/frontend/src/stores/agents.js:206-212`)
+### Store Action (`src/frontend/src/stores/agents.js:232-239`)
 ```javascript
 async hotReloadCredentials(name, credentialsText) {
+  const authStore = useAuthStore()
   const response = await axios.post(`/api/agents/${name}/credentials/hot-reload`,
     { credentials_text: credentialsText },
     { headers: authStore.authHeader }
@@ -177,7 +212,7 @@ async hotReloadCredentials(name, credentialsText) {
 }
 ```
 
-### Backend (`src/backend/routers/credentials.py:617-727`)
+### Backend (`src/backend/routers/credentials.py:508-614`)
 ```python
 @router.post("/agents/{agent_name}/credentials/hot-reload")
 async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredentialsRequest,
@@ -187,7 +222,8 @@ async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredent
     This endpoint:
     1. Parses .env-style KEY=VALUE text
     2. Saves each credential to Redis (with conflict resolution)
-    3. Pushes credentials to the running agent's .env file
+    3. Assigns credentials to this agent
+    4. Pushes credentials to the running agent's .env file
 
     Credentials are persisted in Redis so they survive agent restarts.
     """
@@ -199,7 +235,7 @@ async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredent
     for line in request_body.credentials_text.splitlines():
         # ... parse KEY=VALUE pairs ...
 
-    # Save credentials to Redis with conflict resolution
+    # Save credentials to Redis with conflict resolution AND assign to agent
     saved_credentials = []
     for key, value in credentials.items():
         result = credential_manager.import_credential_with_conflict_resolution(
@@ -211,6 +247,11 @@ async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredent
             "original": result.get("original")
         })
 
+        # Also assign the credential to this agent
+        cred = credential_manager.get_credential_by_name(result["name"], current_user.username)
+        if cred:
+            credential_manager.assign_credential(agent_name, cred.id, current_user.username)
+
     # Push credentials to the running agent
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -221,13 +262,13 @@ async def hot_reload_credentials(agent_name: str, request_body: HotReloadCredent
 
     return {
         "credential_names": list(credentials.keys()),
-        "saved_to_redis": saved_credentials,  # NEW: shows Redis persistence status
+        "saved_to_redis": saved_credentials,  # Shows Redis persistence status
         "updated_files": agent_response.get("updated_files", []),
         "note": "MCP servers may need to be restarted..."
     }
 ```
 
-### Agent Container (`docker/base-image/agent_server/routers/credentials.py:19-80`)
+### Agent Container (`docker/base-image/agent_server/routers/credentials.py:19-121`)
 
 > **Updated 2025-12-19**: Agent-server refactored from monolithic `agent-server.py` to modular package at `docker/base-image/agent_server/`.
 
@@ -241,7 +282,7 @@ async def update_credentials(request: CredentialUpdateRequest):
     mcp_file = home_dir / ".mcp.json"
     mcp_template = home_dir / ".mcp.json.template"
 
-    # 1. Write .env file (line 39-50)
+    # 1. Write .env file (line 40-49)
     env_lines = ["# Generated by Trinity - Agent credentials", ""]
     for var_name, value in request.credentials.items():
         escaped_value = str(value).replace('"', '\\"')
@@ -264,7 +305,15 @@ async def update_credentials(request: CredentialUpdateRequest):
         # Re-inject Trinity MCP after regenerating from template
         inject_trinity_mcp_if_configured()
 
-    # 3. Export to environment
+    # 3. Write file-type credentials (line 87-109)
+    if request.files:
+        for file_path, content in request.files.items():
+            target_path = home_dir / file_path.lstrip("/")
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(content)
+            target_path.chmod(0o600)  # Owner read/write only
+
+    # 4. Export to environment
     for var_name, value in request.credentials.items():
         os.environ[var_name] = str(value)
 
@@ -295,22 +344,22 @@ async def update_credentials(request: CredentialUpdateRequest):
 }
 ```
 
-### Generation at Agent Creation (`src/backend/routers/agents.py:434-448`)
+### Generation at Agent Creation (`src/backend/services/agent_service/crud.py:187-207`)
 ```python
-generated_files = {}
-if template_data:
-    generated_files = generate_credential_files(
-        template_data, flat_credentials, config.name,
-        template_base_path=github_template_path
-    )
+# Get assigned credential values
+flat_credentials = credential_manager.get_assigned_credential_values(config.name, current_user.username)
 
-cred_files_dir = Path(f"/tmp/agent-{config.name}-creds")
-cred_files_dir.mkdir(exist_ok=True)
-for filepath, content in generated_files.items():
-    file_path = cred_files_dir / filepath
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w") as f:
-        f.write(content)
+# Also get legacy credentials for backward compatibility
+agent_credentials = credential_manager.get_agent_credentials(config.name, config.mcp_servers, current_user.username)
+
+# Generate credential files
+generated_files = generate_credential_files(
+    template_data, flat_credentials, config.name,
+    template_base_path=github_template_path
+)
+
+# Get file-type credentials
+file_credentials = credential_manager.get_assigned_file_credentials(config.name, current_user.username)
 ```
 
 ### Generation Logic (`src/backend/services/template_service.py:228-299`)
@@ -340,7 +389,7 @@ def generate_credential_files(
 
 ## Flow 5: OAuth2 Flows
 
-### Supported Providers (`src/backend/credentials.py:48-74`)
+### Supported Providers (`src/backend/credentials.py:54-80`)
 - **Google** (Workspace, Drive, Gmail access)
 - **Slack** (Bot/User tokens)
 - **GitHub** (PAT for repos)
@@ -361,7 +410,7 @@ OAUTH_CONFIGS = {
 }
 ```
 
-### Init Endpoint (`src/backend/routers/credentials.py:247-283`)
+### Init Endpoint (`src/backend/routers/credentials.py:181-208`)
 
 > **Note**: OAuth provider buttons were removed from the Credentials.vue UI on 2025-12-07. OAuth flows remain available via these backend API endpoints.
 
@@ -380,15 +429,10 @@ async def init_oauth(provider: str, request: Request, current_user: User = Depen
 
     auth_url = credential_manager.build_oauth_url(provider, config["client_id"], redirect_uri, state)
 
-    await log_audit_event(
-        event_type="oauth", action="init",
-        user_id=current_user.username, resource=provider, result="success"
-    )
-
     return {"auth_url": auth_url, "state": state}
 ```
 
-### Callback Endpoint (`src/backend/routers/credentials.py:286-381`)
+### Callback Endpoint (`src/backend/routers/credentials.py:211-296`)
 ```python
 @router.get("/oauth/{provider}/callback")
 async def oauth_callback(provider: str, code: str, state: str, request: Request):
@@ -401,23 +445,16 @@ async def oauth_callback(provider: str, code: str, state: str, request: Request)
 
     config = OAUTH_CONFIGS[provider]
 
-    # Exchange authorization code for tokens (line 304-310)
+    # Exchange authorization code for tokens (line 229-235)
     tokens = await credential_manager.exchange_oauth_code(
         provider, code, config["client_id"], config["client_secret"], state_data["redirect_uri"]
     )
 
-    if not tokens:
-        raise HTTPException(status_code=500, detail="Failed to exchange OAuth code")
-
-    # Normalize credential names for MCP compatibility (line 316-355)
+    # Normalize credential names for MCP compatibility (line 240-280)
     normalized_creds = {
         "access_token": tokens.get("access_token"),
         "refresh_token": tokens.get("refresh_token"),
-        "token_type": tokens.get("token_type"),
-        "expires_in": tokens.get("expires_in"),
-        "scope": tokens.get("scope"),
-        "client_id": tokens.get("client_id"),
-        "client_secret": tokens.get("client_secret"),
+        # ...
     }
 
     # Add MCP-compatible naming (e.g., GOOGLE_ACCESS_TOKEN, SLACK_BOT_TOKEN)
@@ -426,14 +463,9 @@ async def oauth_callback(provider: str, code: str, state: str, request: Request)
             "GOOGLE_ACCESS_TOKEN": tokens.get("access_token"),
             "GOOGLE_REFRESH_TOKEN": tokens.get("refresh_token"),
         })
-    elif provider == "slack":
-        normalized_creds.update({
-            "SLACK_ACCESS_TOKEN": tokens.get("access_token"),
-            "SLACK_BOT_TOKEN": tokens.get("bot_token"),
-        })
-    # ... (github, notion have similar patterns)
+    # ... (slack, github, notion have similar patterns)
 
-    # Create credential in Redis (line 357-365)
+    # Create credential in Redis (line 282-290)
     cred_data = CredentialCreate(
         name=f"{provider.title()} OAuth - {datetime.now().strftime('%Y-%m-%d')}",
         service=provider,
@@ -444,12 +476,6 @@ async def oauth_callback(provider: str, code: str, state: str, request: Request)
 
     credential = credential_manager.create_credential(state_data["user_id"], cred_data)
 
-    await log_audit_event(
-        event_type="oauth", action="callback",
-        user_id=state_data["user_id"], resource=provider, result="success",
-        details={"credential_id": credential.id}
-    )
-
     return {"message": "OAuth authentication successful", "credential_id": credential.id}
 ```
 
@@ -457,7 +483,7 @@ async def oauth_callback(provider: str, code: str, state: str, request: Request)
 
 ## Flow 6: Credential Reload (from Redis)
 
-### Endpoint (`src/backend/routers/credentials.py:480-581`)
+### Endpoint (`src/backend/routers/credentials.py:386-471`)
 Reloads credentials from Redis store into running agent without manual text entry.
 
 ```python
@@ -470,22 +496,23 @@ async def reload_agent_credentials(agent_name: str, request: Request,
     if agent_status.status != "running":
         raise HTTPException(status_code=400, detail=f"Agent is not running (status: {agent_status.status})")
 
-    # Get credentials from Redis (line 522-526)
-    agent_credentials = credential_manager.get_agent_credentials(
-        agent_name, mcp_servers, current_user.username
-    )
+    # Get only assigned credentials from Redis (line 429)
+    agent_credentials = credential_manager.get_assigned_credential_values(agent_name, current_user.username)
 
-    # Generate .mcp.json if template exists (line 531-534)
+    # Generate .mcp.json if template exists (line 431-434)
     mcp_config = None
     if mcp_template_content and template_data:
         generated_files = generate_credential_files(template_data, agent_credentials, agent_name)
         mcp_config = generated_files.get(".mcp.json")
 
-    # Push to agent (line 536-560)
+    # Get file credentials (line 437)
+    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, current_user.username)
+
+    # Push to agent (line 439-464)
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"http://agent-{agent_name}:8000/api/credentials/update",
-            json={"credentials": agent_credentials, "mcp_config": mcp_config},
+            json={"credentials": agent_credentials, "mcp_config": mcp_config, "files": file_credentials},
             timeout=30.0
         )
 ```
@@ -495,9 +522,10 @@ async def reload_agent_credentials(agent_name: str, request: Request,
 ## Redis Data Structure
 
 ```
-credentials:{cred_id}:metadata  -> HASH {id, name, service, type, user_id, created_at}
+credentials:{cred_id}:metadata  -> HASH {id, name, service, type, user_id, file_path, created_at}
 credentials:{cred_id}:secret    -> STRING (JSON blob of secrets)
 user:{user_id}:credentials      -> SET of cred_ids
+agent:{agent_name}:credentials  -> SET of cred_ids (assigned credentials)
 oauth_state:{state_token}       -> STRING (JSON, TTL: 600s)
 ```
 
@@ -582,7 +610,7 @@ File-type credentials allow injecting entire files (JSON, YAML, PEM, etc.) into 
 - SSL/TLS certificates and keys
 - Custom configuration files
 
-### Frontend (`src/frontend/src/views/Credentials.vue`)
+### Frontend (`src/frontend/src/views/Credentials.vue:287-331`)
 
 ```javascript
 // Type selector includes "file" option
@@ -595,7 +623,7 @@ newCredential = {
   file_content: '{"type": "service_account", ...}'   // File content
 }
 
-// createCredential sends file_path separately
+// createCredential sends file_path separately (line 517-520)
 const requestBody = {
   name: 'GCP Service Account',
   service: 'google',
@@ -605,7 +633,7 @@ const requestBody = {
 }
 ```
 
-### Backend Model (`src/backend/credentials.py`)
+### Backend Model (`src/backend/credentials.py:30-36`)
 
 ```python
 class CredentialCreate(BaseModel):
@@ -616,7 +644,7 @@ class CredentialCreate(BaseModel):
     file_path: Optional[str] = None  # Target path relative to /home/developer/
 
 class CredentialType(str):
-    FILE = "file"  # New type for file-based credentials
+    FILE = "file"  # File-based credential (e.g., service account JSON)
 ```
 
 ### Redis Storage
@@ -630,7 +658,7 @@ credentials:{id}:metadata  -> HASH {
 credentials:{id}:secret    -> STRING '{"content": "...entire file content..."}'
 ```
 
-### Retrieval (`src/backend/credentials.py:264-298`)
+### Retrieval (`src/backend/credentials.py:270-304`)
 
 ```python
 def get_file_credentials(self, user_id: str) -> Dict[str, str]:
@@ -645,11 +673,11 @@ def get_file_credentials(self, user_id: str) -> Dict[str, str]:
     return file_credentials
 ```
 
-### Agent Creation Injection (`src/backend/services/agent_service/crud.py`)
+### Agent Creation Injection (`src/backend/services/agent_service/crud.py:207`)
 
 ```python
 # Get file credentials during agent creation
-file_credentials = credential_manager.get_file_credentials(current_user.username)
+file_credentials = credential_manager.get_assigned_file_credentials(config.name, current_user.username)
 
 # Write to credential-files subdirectory
 for filepath, content in file_credentials.items():
@@ -672,11 +700,11 @@ if [ -d "/generated-creds/credential-files" ]; then
 fi
 ```
 
-### Hot-Reload (`src/backend/routers/credentials.py`)
+### Hot-Reload (`src/backend/routers/credentials.py:577`)
 
 ```python
 # Get file credentials and send to agent
-file_credentials = credential_manager.get_file_credentials(current_user.username)
+file_credentials = credential_manager.get_assigned_file_credentials(agent_name, current_user.username)
 
 response = await client.post(
     f"http://agent-{agent_name}:8000/api/credentials/update",
@@ -688,7 +716,7 @@ response = await client.post(
 )
 ```
 
-### Agent-Server Handler (`docker/base-image/agent_server/routers/credentials.py`)
+### Agent-Server Handler (`docker/base-image/agent_server/routers/credentials.py:87-109`)
 
 ```python
 class CredentialUpdateRequest(BaseModel):
@@ -739,10 +767,10 @@ Users must explicitly assign credentials to each agent. This provides fine-grain
 ### Redis Data Structure
 
 ```
-agent:{agent_name}:credentials → SET of credential IDs
+agent:{agent_name}:credentials -> SET of credential IDs
 ```
 
-### Backend Methods (`src/backend/credentials.py:306-442`)
+### Backend Methods (`src/backend/credentials.py:310-461`)
 
 ```python
 def assign_credential(self, agent_name: str, cred_id: str, user_id: str) -> bool:
@@ -776,7 +804,7 @@ def cleanup_agent_credentials(self, agent_name: str) -> int:
     ...
 ```
 
-### API Endpoints (`src/backend/routers/credentials.py:782-1047`)
+### API Endpoints (`src/backend/routers/credentials.py:621-834`)
 
 ```python
 @router.get("/agents/{agent_name}/credentials/assignments")
@@ -809,7 +837,7 @@ The Credentials tab shows:
 - "+ Add" / "Remove" buttons for each credential
 - "Apply to Agent" button to push assigned credentials to running agent
 
-### Composable (`src/frontend/src/composables/useAgentCredentials.js`)
+### Composable (`src/frontend/src/composables/useAgentCredentials.js:1-215`)
 
 ```javascript
 // Returns
@@ -827,10 +855,35 @@ The Credentials tab shows:
 }
 ```
 
+### Store Actions (`src/frontend/src/stores/agents.js:242-274`)
+
+```javascript
+async getCredentialAssignments(name) {
+  const response = await axios.get(`/api/agents/${name}/credentials/assignments`, ...)
+  return response.data
+}
+
+async assignCredential(name, credentialId) {
+  const response = await axios.post(`/api/agents/${name}/credentials/assign`,
+    { credential_id: credentialId }, ...)
+  return response.data
+}
+
+async unassignCredential(name, credentialId) {
+  const response = await axios.delete(`/api/agents/${name}/credentials/assign/${credentialId}`, ...)
+  return response.data
+}
+
+async applyCredentials(name) {
+  const response = await axios.post(`/api/agents/${name}/credentials/apply`, {}, ...)
+  return response.data
+}
+```
+
 ### Workflow
 
 1. User creates credentials in the Credentials page
-2. User goes to Agent Detail → Credentials tab
+2. User goes to Agent Detail -> Credentials tab
 3. User clicks "+ Add" on desired credentials
 4. User clicks "Apply to Agent" to push to running agent
 5. On agent restart, only assigned credentials are injected
@@ -875,6 +928,7 @@ The Credentials tab shows:
 5. **OAuth State Tokens**: Cryptographic random with 10-minute TTL
 6. **Input Validation**: Keys must match `^[A-Z][A-Z0-9_]*$` pattern
 7. **Normalized Credentials**: OAuth tokens stored with both standard and MCP-compatible names
+8. **File Permissions**: File-type credentials written with 600 permissions (owner read/write only)
 
 ---
 
@@ -924,18 +978,20 @@ OPENAI_API_KEY=sk-openai-456
 ### 3. Hot-Reload Credentials
 **Action**:
 - Navigate to agent detail page
-- Click "Hot Reload Credentials" tab
+- Click "Credentials" tab
+- Use "Quick Add" section
 - Paste:
 ```
 HEYGEN_API_KEY=new_key_789
 ANTHROPIC_API_KEY=sk-ant-test
 ```
-- Click "Reload"
+- Click "Add & Apply"
 
 **Expected**:
 - Success message appears
 - Agent's `.env` file updated
 - Agent's `.mcp.json` file regenerated
+- Credentials assigned to agent
 
 **Verify**:
 - [ ] Agent detail shows success toast
@@ -999,7 +1055,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 ---
 
-**Last Updated**: 2025-12-31
+**Last Updated**: 2026-01-23
 **Status**: Verified - All file paths and line numbers confirmed accurate
 **Issues**: None - credential system fully functional with Redis persistence and centralized settings service
 
@@ -1009,6 +1065,7 @@ curl -X POST http://localhost:8000/api/oauth/google/init \
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Line number verification**: Updated all file paths and line numbers to match current codebase. `credentials.py` methods: `create_credential` at 98-136, `assign_credential` at 310-328, `get_assigned_credential_values` at 379-406, `get_assigned_file_credentials` at 408-445. Router endpoints: bulk import at 119-177, OAuth init at 181-208, OAuth callback at 211-296, hot-reload at 508-614, assignment endpoints at 621-834. Agent-server credentials router at 19-121. Store actions at 232-274. Composable at 1-215. |
 | 2025-12-31 | **Settings Service refactor**: API key retrieval functions (`get_anthropic_api_key()`, `get_github_pat()`, `get_google_api_key()`) moved from `routers/settings.py` to `services/settings_service.py`. Router re-exports for backward compatibility. Agent creation now imports from `services.settings_service`. Documented settings retrieval hierarchy. |
 | 2025-12-30 | **Bug fixes**: (1) File credential injection not working - agent containers needed base image rebuild. Added INFO logging to `get_assigned_file_credentials()`. (2) TypeError on mixed credential types - `get_agent_credentials()` returns mixed dict (string for bulk imports, dict for explicit assignments). Added `isinstance()` check in `crud.py`. Added Troubleshooting section. |
 | 2025-12-30 | **Agent credential assignment with filter UI**: Major refactor - credentials now require explicit assignment to agents. No credentials injected by default. New Redis structure `agent:{name}:credentials` stores assignments. New API endpoints: `/assignments` (GET), `/assign` (POST/DELETE), `/apply` (POST). New UI in AgentDetail.vue Credentials tab with Assigned/Available lists, **filter input for search**, **scrollable lists** (max-h-64), credential count badge on tab, and Quick Add. Hot-reload now also assigns credentials. Cleanup on agent deletion. Fixed route ordering conflict (moved legacy MCP route to end of file). |
@@ -1047,8 +1104,8 @@ docker exec agent-{name} grep -A 5 "Write file-type" /app/agent_server/routers/c
 **Symptom**: Error at `crud.py:331` when starting agent with credentials.
 
 **Root Cause**: `get_agent_credentials()` returns a mixed dict:
-- Explicitly assigned credentials → dict values like `{'api_key': 'xxx'}`
-- Bulk-imported credentials → string values like `'sk-xxx'`
+- Explicitly assigned credentials -> dict values like `{'api_key': 'xxx'}`
+- Bulk-imported credentials -> string values like `'sk-xxx'`
 
 **Fix**: Applied in commit `6d0d559`. Update backend code and restart.
 
@@ -1066,7 +1123,7 @@ API key retrieval functions are now centralized in `src/backend/services/setting
 
 | File | Purpose |
 |------|---------|
-| `src/backend/services/settings_service.py:1-124` | **Primary** - SettingsService class and convenience functions |
+| `src/backend/services/settings_service.py:1-139` | **Primary** - SettingsService class and convenience functions |
 | `src/backend/routers/settings.py:17-26` | Re-exports functions for backward compatibility |
 | `src/backend/services/agent_service/crud.py:29` | Uses `get_anthropic_api_key()` from settings_service |
 | `src/backend/db/settings.py:1-124` | Database operations for `system_settings` table |
@@ -1077,13 +1134,13 @@ The `SettingsService` class implements a three-tier fallback hierarchy:
 
 ```
 1. Database setting (if exists) - system_settings table
-       ↓ (fallback if not found)
+       | (fallback if not found)
 2. Environment variable
-       ↓ (fallback if not set)
+       | (fallback if not set)
 3. Default value (if provided)
 ```
 
-### API Key Functions (`src/backend/services/settings_service.py:62-81`)
+### API Key Functions (`src/backend/services/settings_service.py:64-83`)
 
 ```python
 def get_anthropic_api_key(self) -> str:
@@ -1108,7 +1165,7 @@ def get_google_api_key(self) -> str:
     return os.getenv('GOOGLE_API_KEY', '')
 ```
 
-### Convenience Functions (`src/backend/services/settings_service.py:106-118`)
+### Convenience Functions (`src/backend/services/settings_service.py:107-125`)
 
 Module-level functions for backward compatibility:
 
@@ -1125,34 +1182,6 @@ def get_github_pat() -> str:
 
 def get_google_api_key() -> str:
     return settings_service.get_google_api_key()
-```
-
-### Router Re-exports (`src/backend/routers/settings.py:17-26`)
-
-For backward compatibility, routers that previously defined these functions now import and re-export them:
-
-```python
-from services.settings_service import (
-    get_anthropic_api_key,
-    get_github_pat,
-    get_google_api_key,
-    get_ops_setting,
-    settings_service,
-    OPS_SETTINGS_DEFAULTS,
-    OPS_SETTINGS_DESCRIPTIONS,
-)
-```
-
-### Usage in Agent Creation (`src/backend/services/agent_service/crud.py:29, 277`)
-
-```python
-from services.settings_service import get_anthropic_api_key
-
-# ... in create_agent_internal():
-env_vars = {
-    'ANTHROPIC_API_KEY': get_anthropic_api_key(),
-    # ... other env vars
-}
 ```
 
 ### Database Table (`system_settings`)

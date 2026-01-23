@@ -5,10 +5,11 @@
 
 > **Updated (2026-01-23)**: Shared Folders Template Extraction Fix (SF-H1):
 > - **agent-shared-folders.md**: Rewrote "Agent Creation Flow" section with three-phase structure
-> - Phase 1: Template Extraction (lines 92, 173-179) - extracts `shared_folders` from template.yaml
-> - Phase 2: DB Upsert (lines 395-404) - persists config BEFORE container creation
+> - Phase 1: Template Extraction (lines 91-92, 173-179) - extracts `shared_folders` from template.yaml
+> - Phase 2: DB Upsert (lines 394-404) - persists config BEFORE container creation
 > - Phase 3: Volume Mounting (lines 406-450) - mounts volumes based on DB config
 > - Fix ensures templates with `shared_folders: expose: true` get volumes mounted on first creation
+> - Added Revision History table, Template-Based Agent Test section, corrected all line numbers
 >
 > **Updated (2026-01-15)**: Timezone-Aware Timestamp Handling:
 > - All feature flows with timestamp handling updated to reference [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md)
@@ -194,14 +195,15 @@
 > - Settings: `ssh_access_enabled` ops setting (default: false) controls feature availability
 > - Container security: Requires SETGID, SETUID, CHOWN, SYS_CHROOT, AUDIT_WRITE capabilities for SSH privilege separation
 >
-> **Updated (2026-01-02)**: Agent Resource Allocation feature documented:
-> - **agent-resource-allocation.md**: New feature flow for per-agent memory and CPU configuration
-> - Frontend: Gear button in AgentDetail.vue header (lines 225, 243) opens modal dialog
-> - Composable: `useAgentSettings.js` manages `resourceLimits` state and API calls
-> - Store: `agents.js` - `getResourceLimits()` and `setResourceLimits()` actions (lines 601-618)
-> - API: `GET/PUT /api/agents/{name}/resources` (agents.py:797-898)
-> - Database: `memory_limit` and `cpu_limit` columns in `agent_ownership` table (db/agents.py:363-409)
-> - Lifecycle: `check_resource_limits_match()` in helpers.py triggers container recreation on start
+> **Updated (2026-01-23)**: Agent Resource Allocation line numbers refreshed:
+> - **agent-resource-allocation.md**: Complete refresh - UI refactored to use separate ResourceModal.vue component
+> - Frontend: AgentHeader.vue gear buttons at lines 222-232 (running) and 245-255 (stopped), emits `open-resource-modal`
+> - Components: ResourceModal.vue extracted as standalone component with memory/CPU dropdowns
+> - Composable: `useAgentSettings.js:17-23` state, `:78-110` methods for load/update
+> - Store: `agents.js:693-710` - `getResourceLimits()` and `setResourceLimits()` actions
+> - API: `GET/PUT /api/agents/{name}/resources` (agents.py:803-904)
+> - Database: `memory_limit` and `cpu_limit` columns in `agent_ownership` table (db/agents.py:368-414)
+> - Lifecycle: `check_resource_limits_match()` in helpers.py:333-363, recreation in lifecycle.py:195-200
 >
 > **Updated (2026-01-10)**: Chat endpoint execution log fix:
 > - **execution-log-viewer.md**: Phase 2 fix - `/api/chat` now returns raw Claude Code format like `/api/task`
@@ -328,8 +330,8 @@
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
-| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control (Updated 2025-12-30) |
-| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows (Updated 2025-12-19) |
+| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer (Updated 2026-01-23) |
+| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows, assignment-based injection, file-type credentials (Updated 2026-01-23) |
 | **Credentials Page** | Medium | [credentials-page.md](feature-flows/credentials-page.md) | Global credential management UI at `/credentials` - create, view, delete, bulk import. Redis-backed storage with service/type auto-detection from key names (Created 2026-01-21) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
@@ -343,9 +345,9 @@
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
-| **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - **refactored**: GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency (Updated 2025-12-31) |
+| **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency, smart directory detection (Updated 2026-01-23) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
-| Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP (Implemented 2025-11-29) |
+| Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP - X-Source-Agent header, permission system (user/agent/system scopes), collaboration event broadcasting, activity tracking (Updated 2026-01-23) |
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
@@ -358,16 +360,16 @@
 | **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
 | **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top), `displayAgents` computed, admin check on mount (Updated 2026-01-13) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (474+ tests) + 8 local test agents for manual verification - agent-server refactored to modular package (Updated 2025-12-30) |
-| **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics - **service layer: metrics.py** (Updated 2025-12-30) |
-| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-03) |
+| **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics via `template.yaml` + Dashboard Widget system via `dashboard.yaml` - **service layer: metrics.py, dashboard.py** (Updated 2026-01-23) |
+| **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** + **PermissionsPanel.vue** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-23) |
 | **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File collaboration via shared volumes - **service layer: folders.py** (Updated 2025-12-27) |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
 | **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-14**: Emergency stop uses parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
-| **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** (Updated 2025-12-27) |
-| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns - now with execution_log persistence (Updated 2025-12-31, Req 12.1) |
+| **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
+| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, execution_log persistence, max_turns runaway prevention, live SSE streaming (Updated 2026-01-23, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
@@ -379,7 +381,7 @@
 | **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - **2026-01-14**: Added RESTRICTED/FULL_CAPABILITIES constants for consistent security across all container creation paths. System-wide setting + per-agent API, automatic recreation on start (CFG-004) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
-| **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in header opens modal, values stored in DB, auto-restart if running, container recreation on start if mismatch (Created 2026-01-02) |
+| **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in AgentHeader.vue opens ResourceModal.vue, values stored in DB, auto-restart if running, container recreation on start if mismatch (Updated 2026-01-23) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
 | **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
 | **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |

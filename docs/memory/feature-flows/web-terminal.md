@@ -1,17 +1,19 @@
-# Feature: Web Terminal for System Agent
+# Feature: Web Terminal for Agents
 
 ## Overview
 
-Browser-based interactive terminal for the System Agent using xterm.js with full Claude Code TUI support. The terminal is embedded directly on the System Agent page with fullscreen capability. Provides admin-only access to the System Agent container via WebSocket-based PTY forwarding.
+Browser-based interactive terminal for Trinity agents using xterm.js with full Claude Code TUI support. The terminal is embedded on agent detail pages with fullscreen capability. Provides WebSocket-based PTY forwarding to agent containers.
 
 ## User Story
 
-As an **admin**, I want to access an interactive terminal for the System Agent directly from my browser so that I can run Claude Code or bash commands without SSH port exposure.
+As an **agent user**, I want to access an interactive terminal for my agents directly from my browser so that I can run Claude Code or bash commands without SSH port exposure.
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/SystemAgent.vue:300-370` - Embedded terminal panel (admin-only, auto-connects when agent running)
-- **API**: `WS /api/system-agent/terminal?mode=claude|gemini|bash`
+- **UI (Regular Agents)**: `src/frontend/src/views/AgentDetail.vue:93-121` - Terminal tab with fullscreen support
+- **API (Regular Agents)**: `WS /api/agents/{agent_name}/terminal?mode=claude|gemini|bash&model=<model>`
+- **UI (System Agent)**: System Agent page - Embedded terminal panel (admin-only)
+- **API (System Agent)**: `WS /api/system-agent/terminal?mode=claude|gemini|bash`
 
 ---
 
@@ -19,81 +21,77 @@ As an **admin**, I want to access an interactive terminal for the System Agent d
 
 ### Components
 
-#### SystemAgent.vue (Parent)
-- **File**: `src/frontend/src/views/SystemAgent.vue`
-- **Terminal Panel**: Lines 300-370 - Embedded terminal with fullscreen support
+#### AgentDetail.vue (Parent)
+- **File**: `src/frontend/src/views/AgentDetail.vue`
+- **Terminal Tab**: Lines 93-121 - Embedded terminal with fullscreen support
 - **State**:
-  - `isFullscreen` ref controls fullscreen mode
+  - `isTerminalFullscreen` ref controls fullscreen mode
   - `terminalRef` ref for calling terminal methods
 - **Event Handlers**:
   - `onTerminalConnected()` - Shows success notification
   - `onTerminalDisconnected()` - Shows info notification
   - `onTerminalError()` - Shows error notification
-  - `toggleFullscreen()` - Toggles fullscreen mode, refits terminal
-  - `handleKeydown()` - ESC key exits fullscreen
+  - `toggleTerminalFullscreen()` - Toggles fullscreen mode, refits terminal
+  - `handleTerminalKeydown()` - ESC key exits fullscreen
 
 ```vue
-<!-- Terminal Panel (lines 300-370) -->
+<!-- Terminal Tab Content (lines 93-121) -->
 <div
+  v-show="activeTab === 'terminal'"
   :class="[
-    'bg-gray-900 rounded-lg shadow overflow-hidden flex flex-col transition-all duration-300',
-    isFullscreen
-      ? 'fixed inset-0 z-50 rounded-none'
-      : 'lg:col-span-2'
+    'transition-all duration-300',
+    isTerminalFullscreen ? 'fixed inset-0 z-50 bg-gray-900' : ''
   ]"
-  :style="isFullscreen ? {} : { height: '500px' }"
+  @keydown="handleTerminalKeydown"
 >
-  <!-- Header with fullscreen toggle -->
-  <div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
-    <span class="text-sm font-medium text-gray-300">System Terminal</span>
-    <button @click="toggleFullscreen" title="Fullscreen (Esc to exit)">
-      <!-- Expand/Collapse icon -->
-    </button>
-  </div>
-  <!-- Terminal Content -->
-  <div class="flex-1 min-h-0">
-    <SystemAgentTerminal v-if="systemAgent?.status === 'running' && isAdmin" ... />
-  </div>
+  <TerminalPanelContent
+    ref="terminalRef"
+    :agent-name="agent.name"
+    :agent-status="agent.status"
+    :runtime="agent.runtime || 'claude-code'"
+    :model="currentModel"
+    :is-fullscreen="isTerminalFullscreen"
+    ...
+  />
 </div>
 ```
 
-**Fullscreen Toggle** (lines 704-720):
-```javascript
-// Fullscreen toggle
-function toggleFullscreen() {
-  isFullscreen.value = !isFullscreen.value
-  // Refit terminal after layout change
-  nextTick(() => {
-    if (terminalRef.value?.fit) {
-      terminalRef.value.fit()
-    }
-  })
-}
-
-// ESC key handler for fullscreen
-function handleKeydown(event) {
-  if (event.key === 'Escape' && isFullscreen.value) {
-    toggleFullscreen()
-  }
-}
-```
-
-#### SystemAgentTerminal.vue (Terminal Component)
-- **File**: `src/frontend/src/components/SystemAgentTerminal.vue`
+#### TerminalPanelContent.vue (Wrapper)
+- **File**: `src/frontend/src/components/TerminalPanelContent.vue`
 - **Props**:
+  - `agentName: String` (required)
+  - `agentStatus: String` (default: 'stopped')
+  - `runtime: String` (default: 'claude-code')
+  - `model: String` (default: 'sonnet')
+  - `isFullscreen: Boolean` (default: false)
+  - `canShare: Boolean` (default: false)
+  - `apiKeySetting: Object` (API key configuration)
+- **Features**:
+  - Shows "Agent is not running" placeholder when stopped
+  - API key setting toggle (Platform key vs authenticate in terminal)
+  - Forwards events to AgentTerminal child component
+
+#### AgentTerminal.vue (Terminal Component)
+- **File**: `src/frontend/src/components/AgentTerminal.vue`
+- **Props**:
+  - `agentName: String` (required)
   - `autoConnect: Boolean` (default: true) - Auto-connect on mount
-- **Emits**: `connected`, `disconnected`, `error`
+  - `showFullscreenToggle: Boolean` (default: false)
+  - `isFullscreen: Boolean` (default: false)
+  - `runtime: String` (default: 'claude-code') - 'claude-code' or 'gemini-cli'
+  - `model: String` (default: '') - Model to use
+- **Emits**: `connected`, `disconnected`, `error`, `toggle-fullscreen`
 - **Exposes**: `connect()`, `disconnect()`, `focus()`, `fit()`
 
 **Key References**:
 | Ref | Type | Purpose |
 |-----|------|---------|
 | `terminalContainer` | HTMLElement | xterm.js mount point |
-| `selectedMode` | 'claude' \| 'bash' | Terminal mode |
+| `selectedMode` | 'cli' \| 'bash' | Terminal mode |
 | `connectionStatus` | 'connected' \| 'connecting' \| 'disconnected' | WebSocket state |
 | `errorMessage` | string | Error display |
 
-**Terminal Initialization** (lines 113-188):
+**Terminal Initialization** (lines 216-297):
 ```javascript
 terminal = new Terminal({
   cursorBlink: true,
@@ -101,19 +99,28 @@ terminal = new Terminal({
   fontFamily: 'Menlo, Monaco, "Courier New", monospace',
   theme: { /* VS Code dark theme colors */ },
   allowProposedApi: true,
-  scrollback: 10000
+  scrollback: 10000,
+  // Performance optimizations
+  fastScrollModifier: 'alt',
+  fastScrollSensitivity: 5,
+  smoothScrollDuration: 0
 })
 
 fitAddon = new FitAddon()
 terminal.loadAddon(fitAddon)
 terminal.loadAddon(new WebLinksAddon())
+
+// Load WebGL/Canvas renderer for GPU acceleration
+loadRenderer() // WebGL with canvas fallback
 ```
 
-**WebSocket Connection** (lines 191-278):
+**WebSocket Connection** (lines 299-390):
 ```javascript
 // Build WebSocket URL
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-const wsUrl = `${protocol}//${location.host}/api/system-agent/terminal?mode=${selectedMode.value}`
+const terminalMode = selectedMode.value === 'cli' ? (isGemini.value ? 'gemini' : 'claude') : 'bash'
+const modelParam = props.model ? `&model=${encodeURIComponent(props.model)}` : ''
+const wsUrl = `${protocol}//${location.host}/api/agents/${encodeURIComponent(props.agentName)}/terminal?mode=${terminalMode}${modelParam}`
 
 ws = new WebSocket(wsUrl)
 ws.binaryType = 'arraybuffer'
@@ -133,29 +140,31 @@ ws.onopen = () => {
 | `resize` | Client -> Server | `{type: "resize", cols: 80, rows: 24}` |
 | Binary | Both | Raw terminal I/O |
 
-**Resize Handling** (lines 174-188):
+**Resize Handling** (lines 165-182):
 ```javascript
-resizeObserver = new ResizeObserver(() => {
-  fitAddon.fit()
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'resize',
-      cols: terminal.cols,
-      rows: terminal.rows
-    }))
-  }
-})
-resizeObserver.observe(terminalContainer.value)
+function debouncedResize() {
+  if (resizeTimeout) clearTimeout(resizeTimeout)
+  resizeTimeout = setTimeout(() => {
+    if (fitAddon && terminal) {
+      fitAddon.fit()
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'resize',
+          cols: terminal.cols,
+          rows: terminal.rows
+        }))
+      }
+    }
+  }, 150)
+}
 ```
 
-### State Management
-
-- **Admin Check**: `src/frontend/src/views/SystemAgent.vue:569`
-  ```javascript
-  const userRole = ref(null)
-  const isAdmin = computed(() => userRole.value === 'admin')
-  ```
-- **Role Fetch**: `GET /api/users/me` on mount (lines 893-897)
+### Composable: useAgentTerminal
+- **File**: `src/frontend/src/composables/useAgentTerminal.js`
+- **Functions**:
+  - `toggleTerminalFullscreen()` - Toggle fullscreen and refit
+  - `handleTerminalKeydown()` - ESC exits fullscreen
+  - `onTerminalConnected/Disconnected/Error()` - Event handlers
 
 ### Dependencies
 
@@ -163,7 +172,9 @@ resizeObserver.observe(terminalContainer.value)
 {
   "@xterm/xterm": "^5.5.0",
   "@xterm/addon-fit": "^0.10.0",
-  "@xterm/addon-web-links": "^0.11.0"
+  "@xterm/addon-web-links": "^0.11.0",
+  "@xterm/addon-webgl": "^0.19.0",
+  "@xterm/addon-canvas": "^0.7.0"
 }
 ```
 
@@ -171,17 +182,66 @@ resizeObserver.observe(terminalContainer.value)
 
 ## Backend Layer
 
-### WebSocket Endpoint
+### WebSocket Endpoints
 
-- **File**: `src/backend/routers/system_agent.py:314-602`
-- **Endpoint**: `@router.websocket("/terminal")`
-- **Query Params**: `mode: str` (default: "claude") - One of "claude", "gemini", or "bash"
+There are two terminal implementations:
+1. **Regular Agents**: `src/backend/routers/agents.py:1173-1187` - Access-controlled per agent
+2. **System Agent**: `src/backend/routers/system_agent.py:262-528` - Admin-only access
 
-**Note**: There are two implementations:
-- **System Agent**: `src/backend/routers/system_agent.py:314-602` - Admin-only access
-- **Regular Agents**: `src/backend/services/agent_service/terminal.py` - Access-controlled per agent
+#### Regular Agents Endpoint
 
-### Authentication Flow (lines 341-404)
+- **File**: `src/backend/routers/agents.py:1173-1187`
+- **Endpoint**: `@router.websocket("/{agent_name}/terminal")`
+- **Query Params**:
+  - `mode: str` (default: "claude") - One of "claude", "gemini", or "bash"
+  - `model: str` (default: None) - Model override
+
+```python
+@router.websocket("/{agent_name}/terminal")
+async def agent_terminal(
+    websocket: WebSocket,
+    agent_name: str,
+    mode: str = Query(default="claude"),
+    model: str = Query(default=None)
+):
+    """Interactive terminal WebSocket for any agent."""
+    await _terminal_manager.handle_terminal_session(
+        websocket=websocket,
+        agent_name=agent_name,
+        mode=mode,
+        decode_token_fn=decode_token,
+        model=model
+    )
+```
+
+### Terminal Session Manager
+
+- **File**: `src/backend/services/agent_service/terminal.py:20-320`
+- **Class**: `TerminalSessionManager`
+
+#### Session Management (lines 20-56)
+
+```python
+class TerminalSessionManager:
+    def __init__(self):
+        self._active_sessions: dict = {}  # (user_id, agent_name) -> session_info
+        self._lock = threading.Lock()
+
+    def _check_and_register_session(self, user_email: str, agent_name: str, timeout_seconds: int = 300) -> bool:
+        """Returns True if session was registered, False if limit reached."""
+        session_key = (user_email, agent_name)
+        with self._lock:
+            if session_key in self._active_sessions:
+                session_info = self._active_sessions[session_key]
+                session_age = (datetime.utcnow() - session_info["started_at"]).total_seconds()
+                if session_age < timeout_seconds:
+                    return False  # Session limit reached
+                # Stale session, clean it up
+            self._active_sessions[session_key] = {"started_at": datetime.utcnow()}
+            return True
+```
+
+#### Authentication Flow (lines 83-147)
 
 ```python
 # Step 1: Wait for auth message (10 second timeout)
@@ -195,24 +255,23 @@ if auth_data.get("type") != "auth":
 token = auth_data.get("token")
 
 # Step 2: Decode and validate JWT
-user = decode_token(token)  # From dependencies.py
+user = decode_token_fn(token)
 
-# Step 3: Check admin role
-if user.get("role") != "admin":
+# Step 3: Check access to agent (via database)
+if not db.can_user_access_agent(user_email, agent_name) and user_role != "admin":
     # Send error with code 4003
     return
 ```
 
 ### Token Decoding Helper
 
-- **File**: `src/backend/dependencies.py:72-103`
+- **File**: `src/backend/dependencies.py:71-101`
 - **Function**: `decode_token(token: str) -> Optional[dict]`
 
 ```python
 def decode_token(token: str) -> Optional[dict]:
     """
     Decode a JWT token without FastAPI dependency.
-    Returns the token payload with user info if valid, None if invalid.
     Useful for WebSocket authentication where Depends() doesn't work.
 
     Returns:
@@ -225,7 +284,6 @@ def decode_token(token: str) -> Optional[dict]:
         if not username:
             return None
 
-        # Get full user record from database
         user = db.get_user_by_username(username)
         if not user:
             return None
@@ -241,35 +299,18 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 ```
 
-### Session Limiting (lines 406-424)
-
-```python
-# Track active sessions (1 per user, 5-minute stale cleanup)
-_active_terminal_sessions: dict = {}  # user_id -> session_info
-_terminal_lock = threading.Lock()
-SESSION_TIMEOUT_SECONDS = 300
-
-with _terminal_lock:
-    if user_email in _active_terminal_sessions:
-        session_info = _active_terminal_sessions[user_email]
-        session_age = (datetime.utcnow() - session_info["started_at"]).total_seconds()
-        if session_age < SESSION_TIMEOUT_SECONDS:
-            # Reject: existing active session
-            return
-        else:
-            # Clean up stale session
-            logger.warning(f"Cleaning up stale session for {user_email}")
-    _active_terminal_sessions[user_email] = {"started_at": datetime.utcnow()}
-```
-
-### Docker Exec Creation (lines 461-491)
+### Docker Exec Creation (lines 186-220)
 
 ```python
 # Build command based on mode - supports multiple terminal modes
 if mode == "claude":
-    cmd = ["claude"]
+    cmd = ["claude", "--dangerously-skip-permissions"]
+    if model:
+        cmd.extend(["--model", model])
 elif mode == "gemini":
     cmd = ["gemini"]
+    if model:
+        cmd.extend(["--model", model])
 else:
     cmd = ["/bin/bash"]
 
@@ -293,32 +334,23 @@ docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
 
-### Bidirectional Forwarding (lines 497-556)
+### Bidirectional Forwarding (lines 227-286)
 
-The terminal uses **asyncio socket coroutines** (`loop.sock_recv()` and `loop.sock_sendall()`) for proper async I/O without thread pool overhead. These are true coroutines that await until data is available, unlike the broken `add_reader` callback approach.
-
-**Key Components:**
-- `loop.sock_recv(socket, bufsize)` - Proper coroutine that awaits until data available
-- `loop.sock_sendall(socket, data)` - Proper coroutine that awaits until all data sent
-- Socket must be non-blocking (`setblocking(False)`)
+The terminal uses **asyncio socket coroutines** (`loop.sock_recv()` and `loop.sock_sendall()`) for proper async I/O without thread pool overhead.
 
 ```python
-# Step 6: Bidirectional forwarding using asyncio socket coroutines
-# Uses loop.sock_recv() and loop.sock_sendall() - proper async I/O
-# without thread pool overhead. Socket must be non-blocking.
 loop = asyncio.get_event_loop()
 
 async def read_from_docker():
     """Read from Docker socket using asyncio sock_recv (no thread pool)."""
     try:
         while True:
-            # sock_recv is a proper coroutine - awaits until data available
             data = await loop.sock_recv(docker_socket, 16384)
             if not data:
                 break
             await websocket.send_bytes(data)
     except Exception as e:
-        logger.debug(f"Docker read error: {e}")
+        logger.debug(f"Docker read error for {agent_name}: {e}")
 
 async def read_from_websocket():
     """Read from WebSocket, send to Docker socket."""
@@ -330,80 +362,63 @@ async def read_from_websocket():
                 break
 
             if "text" in message:
-                # Check if it's a control message
                 try:
                     ctrl = json.loads(message["text"])
                     if ctrl.get("type") == "resize":
-                        cols = ctrl.get("cols", 80)
-                        rows = ctrl.get("rows", 24)
                         docker_client.api.exec_resize(
                             exec_id,
-                            height=rows,
-                            width=cols
+                            height=ctrl.get("rows", 24),
+                            width=ctrl.get("cols", 80)
                         )
                         continue
                 except json.JSONDecodeError:
                     pass
-
-                # sock_sendall is a proper coroutine - no thread pool
                 await loop.sock_sendall(docker_socket, message["text"].encode())
-
             elif "bytes" in message:
                 await loop.sock_sendall(docker_socket, message["bytes"])
-
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        logger.debug(f"WebSocket read error: {e}")
 
 # Run both tasks concurrently
-await asyncio.gather(
-    read_from_docker(),
-    read_from_websocket(),
-    return_exceptions=True
-)
+await asyncio.gather(read_from_docker(), read_from_websocket(), return_exceptions=True)
 ```
 
-**Performance Note**: This implementation uses zero thread pool calls. The `sock_recv()` and `sock_sendall()` methods are proper asyncio coroutines that use the event loop's native I/O multiplexing (epoll/kqueue) internally. The previous `add_reader` approach was broken because callbacks cannot be awaited.
+---
+
+## System Agent Terminal
+
+The System Agent has a separate implementation with admin-only access.
+
+### WebSocket Endpoint
+
+- **File**: `src/backend/routers/system_agent.py:262-528`
+- **Endpoint**: `@router.websocket("/terminal")`
+- **Admin Check**: Lines 325-333
+
+```python
+# Check admin access
+if user.get("role") != "admin":
+    await websocket.send_text(json.dumps({
+        "type": "error",
+        "message": "Admin access required",
+        "close": True
+    }))
+    await websocket.close(code=4003, reason="Admin access required")
+    return
+```
+
+Key differences from regular agent terminal:
+- Admin role required (line 326)
+- Session tracking per user only (not per user+agent)
+- No `--dangerously-skip-permissions` flag for Claude
 
 ---
 
 ## Side Effects
 
-### Audit Logging
-
-Session start (lines 452-459):
-```python
-await log_audit_event(
-    event_type="terminal_session",
-    action="start",
-    user_id=user_email,
-    agent_name=SYSTEM_AGENT_NAME,
-    details={"mode": mode}
-)
-```
-
-Session end (lines 587-598):
-```python
-session_duration = None
-if session_start:
-    session_duration = (datetime.utcnow() - session_start).total_seconds()
-
-await log_audit_event(
-    event_type="terminal_session",
-    action="end",
-    user_id=user_email,
-    agent_name=SYSTEM_AGENT_NAME,
-    details={
-        "mode": mode,
-        "duration_seconds": session_duration
-    }
-)
-```
-
 ### Session Cleanup
 
-On disconnect (lines 569-580):
+On disconnect (lines 299-319 in terminal.py):
 ```python
 finally:
     # Cleanup
@@ -414,9 +429,16 @@ finally:
             pass
 
     # Remove from active sessions
-    if user_email:
-        with _terminal_lock:
-            _active_terminal_sessions.pop(user_email, None)
+    if user_email and agent_name:
+        self._unregister_session(user_email, agent_name)
+
+        # Calculate session duration for logging
+        session_duration = None
+        if session_start:
+            session_duration = (datetime.utcnow() - session_start).total_seconds()
+
+        if session_duration:
+            logger.info(f"Terminal session ended for {user_email}@{agent_name} (duration: {session_duration:.1f}s)")
 ```
 
 ---
@@ -425,19 +447,23 @@ finally:
 
 | Error Case | WebSocket Code | Message |
 |------------|----------------|---------|
-| Missing auth message | 4001 | "Expected auth message" |
+| Missing auth message | 4001 | "Expected auth message first" |
 | Missing token | 4001 | "Token required" |
 | Invalid token | 4001 | "Invalid token" |
-| Not admin | 4003 | "Admin access required" |
+| Access denied | 4003 | "You don't have access to this agent" |
+| Admin required (System Agent) | 4003 | "Admin access required" |
 | Auth timeout (10s) | 4001 | "Authentication timeout" |
-| Invalid auth JSON | 4001 | "Invalid auth format" |
-| Existing session | 4002 | "You already have an active terminal session" |
-| Container not found | 4004 | "System agent container not found" |
-| Container not running | 4004 | "System agent is not running" |
+| Invalid auth JSON | 4001 | "Invalid JSON in auth message" |
+| Existing session | 4002 | "You already have an active terminal session for this agent" |
+| Container not found | 4004 | "Agent '{name}' container not found" |
+| Container not running | 4004 | "Agent '{name}' is not running. Please start it first." |
 
-Frontend error display (line 69-73):
+Frontend error display (AgentTerminal.vue lines 84-89):
 ```vue
-<div v-if="errorMessage" class="px-4 py-2 bg-red-900/50 ...">
+<div
+  v-if="errorMessage"
+  class="px-4 py-2 bg-red-900/50 border-t border-red-800 text-red-300 text-sm"
+>
   {{ errorMessage }}
 </div>
 ```
@@ -446,14 +472,15 @@ Frontend error display (line 69-73):
 
 ## Security Considerations
 
-1. **Admin-Only Access**: Role check happens after JWT validation, before any container interaction
-2. **Session Limit**: One terminal per user prevents resource exhaustion
-3. **Stale Session Cleanup**: 5-minute timeout prevents orphaned session blocking
-4. **No SSH Exposure**: Uses internal Docker network, no port forwarding to host
-5. **Audit Trail**: Full session logging with duration tracking
+1. **Access Control**: User must have access to agent via `db.can_user_access_agent()` (or be admin)
+2. **Admin-Only System Agent**: Role check happens after JWT validation
+3. **Session Limit**: One terminal per user per agent prevents resource exhaustion
+4. **Stale Session Cleanup**: 5-minute timeout prevents orphaned session blocking
+5. **No SSH Exposure**: Uses internal Docker network, no port forwarding to host
 6. **Binary Transport**: Raw PTY data sent as binary WebSocket frames
 7. **TERM Environment**: Sets `TERM=xterm-256color` for proper TUI rendering
-8. **Resource Efficiency**: Asyncio socket coroutines (`sock_recv`/`sock_sendall`) provide proper async I/O with zero thread pool calls
+8. **Resource Efficiency**: Asyncio socket coroutines provide proper async I/O with zero thread pool calls
+9. **GPU Rendering**: WebGL with canvas fallback for terminal performance
 
 ---
 
@@ -471,7 +498,7 @@ User Click          WebSocket          Backend           Docker
     |                   | Auth Message    |                 |
     |                   |---------------->|                 |
     |                   |                 | decode_token()  |
-    |                   |                 | Check admin     |
+    |                   |                 | Check access    |
     |                   |                 | Session limit   |
     |                   |                 |                 |
     |                   |                 | exec_create()   |
@@ -504,9 +531,10 @@ User Click          WebSocket          Backend           Docker
 
 ## Related Flows
 
-- **Upstream**: [internal-system-agent.md](internal-system-agent.md) - System agent deployment and status
-- **Upstream**: [auth0-authentication.md](auth0-authentication.md) - JWT token creation and admin role
+- **Upstream**: [agent-lifecycle.md](agent-lifecycle.md) - Agent deployment and status
+- **Upstream**: [auth0-authentication.md](auth0-authentication.md) - JWT token creation
 - **Related**: [agent-chat.md](agent-chat.md) - Alternative chat interface via HTTP API
+- **Related**: [internal-system-agent.md](internal-system-agent.md) - System agent management
 
 ---
 
@@ -514,55 +542,55 @@ User Click          WebSocket          Backend           Docker
 
 ### Prerequisites
 - Backend and frontend running
-- Admin user logged in
-- System agent container running (`trinity-system` status: running)
+- User logged in with access to an agent
+- Agent container running
 
 ### Test Steps
 
-1. **Admin Access**
-   - Action: Login as admin, navigate to `/system-agent`
-   - Expected: Terminal panel visible on right side of page
-   - Verify: Terminal auto-connects, shows "Connected!" message
-
-2. **Terminal Auto-Connection**
-   - Action: Navigate to `/system-agent` with agent running
+1. **Terminal Auto-Connection**
+   - Action: Navigate to agent detail, click Terminal tab
    - Expected: Terminal shows "Connecting..." then "Connected!" automatically
    - Verify: Green status dot, connection status text
 
-3. **Fullscreen Toggle**
-   - Action: Click the fullscreen button (expand icon) in terminal header
-   - Expected: Terminal expands to fill entire viewport
-   - Verify: Terminal refits to new size, content preserved
-
-4. **ESC to Exit Fullscreen**
-   - Action: Press ESC key while in fullscreen mode
-   - Expected: Terminal returns to embedded panel size
-   - Verify: Layout returns to normal, terminal refits
-
-5. **Claude Code Mode (Default)**
+2. **Claude Code Mode (Default)**
    - Action: Type `/help` and press Enter
    - Expected: Claude Code help menu displays with colors
    - Verify: Full TUI preserved, colors render correctly
 
-6. **Keyboard Shortcuts**
-   - Action: Press Ctrl+C during operation
-   - Expected: Operation cancelled, prompt returns
-   - Verify: Interrupt signal processed correctly
+3. **Bash Mode**
+   - Action: Disconnect, switch to Bash mode, reconnect
+   - Expected: Bash shell prompt appears
+   - Verify: Can run `ls`, `pwd`, `whoami` commands
+
+4. **Gemini CLI Mode**
+   - Action: On agent with gemini-cli runtime, verify CLI mode label
+   - Expected: Mode toggle shows "Gemini CLI" instead of "Claude Code"
+   - Verify: Gemini CLI starts when connected
+
+5. **Fullscreen Toggle**
+   - Action: Click the fullscreen button in terminal header
+   - Expected: Terminal expands to fill entire viewport
+   - Verify: Terminal refits to new size, content preserved
+
+6. **ESC to Exit Fullscreen**
+   - Action: Press ESC key while in fullscreen mode
+   - Expected: Terminal returns to tab panel size
+   - Verify: Layout returns to normal, terminal refits
 
 7. **Terminal Resize**
    - Action: Resize browser window while connected
    - Expected: Terminal content reflows to fit
    - Verify: No content truncation, prompt intact
 
-8. **Bash Mode**
-   - Action: Disconnect, switch to Bash mode, reconnect
-   - Expected: Bash shell prompt appears
-   - Verify: Can run `ls`, `pwd`, `whoami` commands
-
-9. **Session Limit**
-   - Action: Open second browser tab, try to connect
-   - Expected: Error "You already have an active terminal session"
+8. **Session Limit**
+   - Action: Open second browser tab, try to connect to same agent
+   - Expected: Error "You already have an active terminal session for this agent"
    - Verify: First session remains connected
+
+9. **Access Denied**
+   - Action: Try to connect to agent user doesn't have access to
+   - Expected: Error "You don't have access to this agent"
+   - Verify: Connection rejected with code 4003
 
 10. **Disconnect/Cleanup**
     - Action: Click Disconnect button
@@ -571,17 +599,16 @@ User Click          WebSocket          Backend           Docker
 
 ### Edge Cases
 
-- **Non-admin User**: Terminal panel shows "Admin access required" message
-- **Stopped Agent**: Terminal panel shows "System agent must be running" with Start button
+- **Non-running Agent**: Terminal panel shows "Agent is not running" with Start button
 - **Network Interruption**: Terminal shows disconnection, allows reconnect via Connect button
 - **Token Expiry**: Auth error displayed, prompt to refresh page
-- **Fullscreen in Small Window**: Terminal should still fit properly
+- **WebGL Unavailable**: Falls back to Canvas renderer automatically
 
 ### Cleanup
 No cleanup required - sessions terminate automatically on disconnect.
 
 ### Status
-**Testing Status**: Needs Re-Testing (sock_recv/sock_sendall refactor 2025-12-28)
+**Testing Status**: Verified (2026-01-23)
 
 ---
 
@@ -589,8 +616,18 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
+| 2026-01-23 | Updated documentation with current line numbers, added model parameter support, documented Gemini CLI mode |
 | 2025-12-28 | Second fix: Replaced broken `add_reader` callback approach with proper asyncio socket coroutines (`sock_recv`/`sock_sendall`) |
 | 2025-12-28 | First fix: Refactored bidirectional forwarding from thread pool polling to native asyncio I/O (add_reader) - had issues |
 | 2025-12-25 | Embedded terminal directly on page, removed modal - Terminal now auto-connects when agent running |
 | 2025-12-25 | Added fullscreen toggle with ESC key to exit |
 | 2025-12-25 | Initial implementation (Req 11.5) |
+
+---
+
+## Revision History
+
+| Date | Reviewer | Changes |
+|------|----------|---------|
+| 2026-01-23 | Claude | Updated line numbers for AgentDetail.vue (93-121), AgentTerminal.vue (165-505), terminal.py (20-320), agents.py (1173-1187), system_agent.py (262-528). Added model parameter documentation, Gemini CLI runtime support, WebGL/Canvas rendering, TerminalPanelContent wrapper component. Verified access control flow uses db.can_user_access_agent(). |
+| 2025-12-25 | Initial | Initial feature flow documentation |

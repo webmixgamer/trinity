@@ -1,27 +1,35 @@
 # Querying Trinity Logs
 
-Trinity uses Vector to aggregate all container logs into JSON files.
+Trinity uses Vector to aggregate all container logs into daily-rotated JSON files.
 
 ## Log Locations
 
-| File | Contents |
-|------|----------|
-| `/data/logs/platform.json` | Backend, frontend, MCP server, Redis |
-| `/data/logs/agents.json` | All agent containers |
+| Pattern | Contents |
+|---------|----------|
+| `/data/logs/platform-YYYY-MM-DD.json` | Backend, frontend, MCP server, Redis, Vector |
+| `/data/logs/agents-YYYY-MM-DD.json` | All agent containers |
+
+Files rotate automatically at midnight UTC.
 
 ## Accessing Logs
 
 Logs are stored in the `trinity-logs` Docker volume. To access them:
 
 ```bash
+# Set today's date for convenience
+TODAY=$(date +%Y-%m-%d)
+
 # Find the volume location
 docker volume inspect trinity-logs
 
-# Or exec into a container that has access
-docker exec trinity-vector cat /data/logs/platform.json | tail -100
+# List all log files
+docker exec trinity-vector ls -la /data/logs/
+
+# Or exec into a container that has access (today's logs)
+docker exec trinity-vector cat /data/logs/platform-$TODAY.json | tail -100
 
 # Or mount the volume to a temporary container
-docker run --rm -v trinity-logs:/logs alpine cat /logs/platform.json | tail -100
+docker run --rm -v trinity-logs:/logs alpine cat /logs/platform-$TODAY.json | tail -100
 ```
 
 ## Query Examples
@@ -29,45 +37,71 @@ docker run --rm -v trinity-logs:/logs alpine cat /logs/platform.json | tail -100
 ### Find Errors
 
 ```bash
-# All errors in last 100 lines
-docker exec trinity-vector sh -c "cat /data/logs/platform.json | tail -100" | jq 'select(.level == "error")'
+TODAY=$(date +%Y-%m-%d)
 
-# Errors for specific agent
-docker exec trinity-vector sh -c "grep 'agent-ruby' /data/logs/agents.json | tail -50" | jq 'select(.level == "error")'
+# All errors in last 100 lines (today)
+docker exec trinity-vector sh -c "cat /data/logs/platform-$TODAY.json | tail -100" | jq 'select(.level == "error")'
+
+# Errors for specific agent (today)
+docker exec trinity-vector sh -c "grep 'agent-ruby' /data/logs/agents-$TODAY.json | tail -50" | jq 'select(.level == "error")'
+
+# Errors across all platform log files
+docker exec trinity-vector sh -c "cat /data/logs/platform-*.json" | jq 'select(.level == "error")' | tail -50
 ```
 
 ### Agent Activity
 
 ```bash
-# What did agent-ruby log?
-docker exec trinity-vector sh -c "grep 'agent-ruby' /data/logs/agents.json | tail -50" | jq -r '.message'
+TODAY=$(date +%Y-%m-%d)
 
-# All agent container logs
-docker exec trinity-vector sh -c "cat /data/logs/agents.json | tail -100" | jq -r '.container_name + ": " + .message'
+# What did agent-ruby log today?
+docker exec trinity-vector sh -c "grep 'agent-ruby' /data/logs/agents-$TODAY.json | tail -50" | jq -r '.message'
+
+# All agent container logs (today)
+docker exec trinity-vector sh -c "cat /data/logs/agents-$TODAY.json | tail -100" | jq -r '.container_name + ": " + .message'
 ```
 
 ### Authentication Events
 
 ```bash
-# Login attempts
-docker exec trinity-vector sh -c "grep -i 'login\|auth' /data/logs/platform.json | tail -50" | jq .
+TODAY=$(date +%Y-%m-%d)
+
+# Login attempts (today)
+docker exec trinity-vector sh -c "grep -i 'login\|auth' /data/logs/platform-$TODAY.json | tail -50" | jq .
+
+# Login attempts (all files)
+docker exec trinity-vector sh -c "cat /data/logs/platform-*.json" | grep -i 'login\|auth' | tail -50 | jq .
 ```
 
 ### Backend Requests
 
 ```bash
-# Recent backend logs
-docker exec trinity-vector sh -c "grep 'trinity-backend' /data/logs/platform.json | tail -50" | jq .
+TODAY=$(date +%Y-%m-%d)
+
+# Recent backend logs (today)
+docker exec trinity-vector sh -c "grep 'trinity-backend' /data/logs/platform-$TODAY.json | tail -50" | jq .
+```
+
+### Historical Logs
+
+```bash
+# Logs from a specific date
+docker exec trinity-vector cat /data/logs/platform-2026-01-20.json | tail -100 | jq .
+
+# Logs from the past week
+docker exec trinity-vector sh -c "cat /data/logs/platform-2026-01-1*.json" | tail -500 | jq .
 ```
 
 ## Live Tail
 
 ```bash
-# Follow platform logs
-docker exec trinity-vector sh -c "tail -f /data/logs/platform.json" | jq .
+TODAY=$(date +%Y-%m-%d)
 
-# Follow agent logs
-docker exec trinity-vector sh -c "tail -f /data/logs/agents.json" | jq .
+# Follow platform logs (today's file)
+docker exec trinity-vector sh -c "tail -f /data/logs/platform-$TODAY.json" | jq .
+
+# Follow agent logs (today's file)
+docker exec trinity-vector sh -c "tail -f /data/logs/agents-$TODAY.json" | jq .
 ```
 
 ## Log Structure
@@ -76,7 +110,7 @@ Each log entry contains:
 
 ```json
 {
-  "timestamp": "2025-12-31T12:00:00.000Z",
+  "timestamp": "2026-01-23T12:00:00.000Z",
   "container_name": "trinity-backend",
   "container_id": "abc123...",
   "message": "The log message",
@@ -91,7 +125,7 @@ For JSON-formatted log messages (from Python's structured logging), Vector parse
 
 ```json
 {
-  "timestamp": "2025-12-31T12:00:00.000Z",
+  "timestamp": "2026-01-23T12:00:00.000Z",
   "container_name": "trinity-backend",
   "message": "{\"level\": \"INFO\", ...}",
   "parsed": {
@@ -160,14 +194,41 @@ See [GitHub issue #7358](https://github.com/vectordotdev/vector/issues/7358) for
 
 ### Large Log Files
 
-Vector doesn't currently have rotation configured. Monitor log file sizes:
+Vector rotates logs daily via date-stamped filenames. Old logs are automatically archived by the backend after the retention period (default: 90 days).
+
+Monitor log file sizes:
 
 ```bash
 docker exec trinity-vector ls -lh /data/logs/
 ```
 
-To clear logs:
+To check log statistics via API:
+
 ```bash
-docker exec trinity-vector sh -c "echo '' > /data/logs/platform.json"
-docker exec trinity-vector sh -c "echo '' > /data/logs/agents.json"
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/stats
 ```
+
+To manually clear today's logs (if needed):
+
+```bash
+TODAY=$(date +%Y-%m-%d)
+docker exec trinity-vector sh -c "echo '' > /data/logs/platform-$TODAY.json"
+docker exec trinity-vector sh -c "echo '' > /data/logs/agents-$TODAY.json"
+```
+
+## Log Archival
+
+Old logs are automatically compressed and archived. Admin endpoints for management:
+
+```bash
+# Get log statistics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/stats
+
+# Get retention config
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/retention
+
+# Manually trigger archival
+curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/logs/archive
+```
+
+See `docs/memory/feature-flows/vector-logging.md` for full archival documentation.

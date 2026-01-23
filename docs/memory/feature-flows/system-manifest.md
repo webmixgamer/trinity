@@ -126,7 +126,7 @@ permissions:
 
 ### Models (`src/backend/models.py`)
 
-**SystemAgentConfig** (Lines 232-237)
+**SystemAgentConfig** (Lines 248-253)
 ```python
 class SystemAgentConfig(BaseModel):
     """Configuration for a single agent in a system manifest."""
@@ -136,7 +136,7 @@ class SystemAgentConfig(BaseModel):
     schedules: Optional[List[dict]] = None  # [{name, cron, message, ...}]
 ```
 
-**SystemPermissions** (Lines 240-243)
+**SystemPermissions** (Lines 256-259)
 ```python
 class SystemPermissions(BaseModel):
     """Permission configuration for system agents."""
@@ -144,7 +144,7 @@ class SystemPermissions(BaseModel):
     explicit: Optional[Dict[str, List[str]]] = None  # {"orchestrator": ["worker1", "worker2"]}
 ```
 
-**SystemManifest** (Lines 246-252)
+**SystemManifest** (Lines 262-268)
 ```python
 class SystemManifest(BaseModel):
     """Parsed system manifest from YAML."""
@@ -155,7 +155,7 @@ class SystemManifest(BaseModel):
     permissions: Optional[SystemPermissions] = None
 ```
 
-**SystemDeployRequest** (Lines 255-258)
+**SystemDeployRequest** (Lines 271-274)
 ```python
 class SystemDeployRequest(BaseModel):
     """Request to deploy a system from YAML manifest."""
@@ -163,7 +163,7 @@ class SystemDeployRequest(BaseModel):
     dry_run: bool = False
 ```
 
-**SystemDeployResponse** (Lines 261-270)
+**SystemDeployResponse** (Lines 277-286)
 ```python
 class SystemDeployResponse(BaseModel):
     """Response from system deployment."""
@@ -388,7 +388,7 @@ def export_manifest(system_name: str, agents: List[Dict]) -> str:
 
 ### Router Layer (`src/backend/routers/systems.py`)
 
-#### POST /api/systems/deploy (Lines 32-243)
+#### POST /api/systems/deploy (Lines 31-196)
 ```python
 @router.post("/deploy", response_model=SystemDeployResponse)
 async def deploy_system(
@@ -448,13 +448,13 @@ async def deploy_system(
 ```
 
 **Error Handling**:
-- Lines 52-55: YAML parse error → 400 with ValueError message
-- Lines 58-61: Validation error → 400 with ValueError message
-- Lines 121-146: Agent creation HTTPException → 500 with partial failure details
-- Lines 148-173: Agent creation generic error → 500 with partial failure details
-- Lines 239-243: Unexpected error → 500 with error message
+- Lines 51-54: YAML parse error - 400 with ValueError message
+- Lines 57-60: Validation error - 400 with ValueError message
+- Lines 120-131: Agent creation HTTPException - 500 with partial failure details
+- Lines 133-144: Agent creation generic error - 500 with partial failure details
+- Lines 192-196: Unexpected error - 500 with error message
 
-**Partial Failure Response** (Lines 138-146):
+**Partial Failure Response** (Lines 123-131):
 ```json
 {
   "error": "Deployment failed",
@@ -464,7 +464,7 @@ async def deploy_system(
 }
 ```
 
-#### GET /api/systems (Lines 246-291)
+#### GET /api/systems (Lines 199-244)
 ```python
 @router.get("")
 async def list_systems(current_user: User = Depends(get_current_user)):
@@ -504,14 +504,14 @@ async def list_systems(current_user: User = Depends(get_current_user)):
 ```
 
 **Implementation**:
-- Line 259: Get all agents via `get_accessible_agents(current_user)`
-- Lines 264-282: Group by prefix (all parts except last after splitting on '-')
-- Lines 284-285: Sort by created_at (newest first)
+- Line 212: Get all agents via `get_accessible_agents(current_user)`
+- Lines 214-234: Group by prefix (all parts except last after splitting on '-')
+- Lines 237-238: Sort by created_at (newest first)
 
 **Bug Fix (2025-12-18)**:
-- Line 268: Changed from `parts[0]` to `'-'.join(parts[:-1])` to handle hyphenated system names
+- Line 221: Changed from `parts[0]` to `'-'.join(parts[:-1])` to handle hyphenated system names
 
-#### GET /api/systems/{system_name} (Lines 294-366)
+#### GET /api/systems/{system_name} (Lines 247-319)
 ```python
 @router.get("/{system_name}")
 async def get_system(
@@ -558,14 +558,14 @@ async def get_system(
 ```
 
 **Implementation**:
-- Lines 309-315: Filter agents by `{system_name}-` prefix
-- Lines 317-321: Return 404 if no agents found
-- Lines 323-354: Enrich each agent with permissions, folders, schedules from database
-- Lines 336-337: Get permissions via `db.get_agent_permissions()`
-- Lines 339-345: Get folders via `db.get_agent_folder_config()`
-- Lines 347-349: Get schedules via `db.get_agent_schedules()`
+- Lines 264-268: Filter agents by `{system_name}-` prefix
+- Lines 270-274: Return 404 if no agents found
+- Lines 277-307: Enrich each agent with permissions, folders, schedules from database
+- Lines 289-290: Get permissions via `db.get_agent_permissions()`
+- Lines 293-298: Get folders via `db.get_agent_folder_config()`
+- Lines 301-302: Get schedules via `db.get_agent_schedules()`
 
-#### POST /api/systems/{system_name}/restart (Lines 369-445)
+#### POST /api/systems/{system_name}/restart (Lines 322-384)
 ```python
 @router.post("/{system_name}/restart")
 async def restart_system(
@@ -590,14 +590,14 @@ async def restart_system(
 ```
 
 **Implementation**:
-- Lines 386-398: Filter agents by `{system_name}-` prefix, return 404 if none found
-- Lines 400-421: For each agent:
+- Lines 341-351: Filter agents by `{system_name}-` prefix, return 404 if none found
+- Lines 356-373: For each agent:
   - Stop container if running via `container.stop()`
   - Start agent via `start_agent_internal(agent_name)` (triggers Trinity injection)
   - Track restarted and failed agents
-- Lines 423-434: Audit log with result ("success" or "partial")
+- Lines 375-378: Return restarted and failed lists
 
-#### GET /api/systems/{system_name}/manifest (Lines 448-500)
+#### GET /api/systems/{system_name}/manifest (Lines 387-426)
 ```python
 @router.get("/{system_name}/manifest", response_class=PlainTextResponse)
 async def get_system_manifest(
@@ -643,15 +643,15 @@ prompt: |
 ```
 
 **Implementation**:
-- Lines 464-476: Filter agents by prefix, return 404 if none
-- Line 479: Call `export_manifest(system_name, system_agents)` from service
-- Lines 482-492: Audit log export action
+- Lines 405-415: Filter agents by prefix, return 404 if none
+- Line 418: Call `export_manifest(system_name, system_agents)` from service
+- Line 420: Return YAML content as PlainTextResponse
 
 ### Agent Creation Integration
 
 System deployment reuses existing agent creation logic via `create_agent_internal()` from `src/backend/routers/agents.py`.
 
-**create_agent_internal()** (Lines 286-680 in agents.py):
+**create_agent_internal()** (in agents.py - see agent-lifecycle.md for details):
 ```python
 async def create_agent_internal(
     config: AgentConfig,
@@ -955,7 +955,7 @@ Returns: 3 (total permissions configured)
 
 All tools support MCP API key authentication when `requireApiKey=true` in server config.
 
-#### deploy_system (Lines 42-100)
+#### deploy_system (Lines 44-100)
 ```typescript
 {
   name: "deploy_system",
@@ -975,7 +975,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### list_systems (Lines 103-133)
+#### list_systems (Lines 105-133)
 ```typescript
 {
   name: "list_systems",
@@ -989,7 +989,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### restart_system (Lines 136-167)
+#### restart_system (Lines 138-167)
 ```typescript
 {
   name: "restart_system",
@@ -1008,7 +1008,7 @@ All tools support MCP API key authentication when `requireApiKey=true` in server
 }
 ```
 
-#### get_system_manifest (Lines 170-202)
+#### get_system_manifest (Lines 172-202)
 ```typescript
 {
   name: "get_system_manifest",
@@ -1049,7 +1049,7 @@ const getClient = (authContext?: McpAuthContext): TrinityClient => {
 
 ### Database Operations
 
-#### System Settings Table (Lines 467-474 in database.py)
+#### System Settings Table (Lines 524-528 in database.py)
 ```sql
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,
@@ -1191,99 +1191,26 @@ Content-Type: application/json
 
 ## Side Effects
 
-### Audit Logging
+### Logging
 
-#### Successful Deployment (Lines 212-227 in systems.py)
+System deployment operations are logged via the standard Python logger. Detailed audit logging via `log_audit_event()` was removed in a refactoring pass - operations are now tracked via Vector log aggregation.
+
+**Key Log Messages**:
 ```python
-await log_audit_event(
-    event_type="system_deployment",
-    action="deploy",
-    user_id=current_user.username,
-    ip_address=request.client.host,
-    result="success",
-    details={
-        "system_name": manifest.name,
-        "agents_created": created_agents,
-        "agents_started": agents_started,
-        "prompt_updated": prompt_updated,
-        "permissions_configured": permissions_count,
-        "schedules_created": schedules_count,
-        "folders_configured": folders_configured
-    }
-)
+# Deployment progress (systems.py)
+logger.info(f"Updated trinity_prompt for system '{manifest.name}'")
+logger.info(f"Created agent '{final_name}' for system '{manifest.name}'")
+logger.info(f"Configured {folders_configured} folder configs for system '{manifest.name}'")
+logger.info(f"Configured {permissions_count} permissions for system '{manifest.name}'")
+logger.info(f"Created {schedules_count} schedules for system '{manifest.name}'")
+logger.info(f"Started {agents_started}/{len(created_agents)} agents for system '{manifest.name}'")
+
+# Errors
+logger.error(f"Failed to create agent '{final_name}': {e.detail}")
+logger.exception(f"System deployment failed: {e}")
 ```
 
-**Audit Log Entry**:
-```json
-{
-  "id": "uuid-...",
-  "event_type": "system_deployment",
-  "action": "deploy",
-  "user_id": "user@example.com",
-  "ip_address": "192.168.1.100",
-  "result": "success",
-  "severity": "info",
-  "timestamp": "2025-12-18T10:00:00Z",
-  "details": {
-    "system_name": "my-system",
-    "agents_created": ["my-system-worker1", "my-system-worker2"],
-    "agents_started": 2,
-    "prompt_updated": true,
-    "permissions_configured": 2,
-    "schedules_created": 1,
-    "folders_configured": 2
-  }
-}
-```
-
-#### Partial Failure (Lines 124-136 in systems.py)
-```python
-await log_audit_event(
-    event_type="system_deployment",
-    action="partial_failure",
-    user_id=current_user.username,
-    ip_address=request.client.host,
-    result="failed",
-    severity="error",
-    details={
-        "system_name": manifest.name,
-        "failed_agent": final_name,
-        "created_agents": created_agents,
-        "error": e.detail
-    }
-)
-```
-
-#### System Restart (Lines 423-434 in systems.py)
-```python
-await log_audit_event(
-    event_type="system_management",
-    action="restart",
-    user_id=current_user.username,
-    ip_address=request.client.host,
-    result="success" if not failed else "partial",
-    details={
-        "system_name": system_name,
-        "restarted": restarted,
-        "failed": failed
-    }
-)
-```
-
-#### Manifest Export (Lines 482-492 in systems.py)
-```python
-await log_audit_event(
-    event_type="system_management",
-    action="export_manifest",
-    user_id=current_user.username,
-    ip_address=None,
-    result="success",
-    details={
-        "system_name": system_name,
-        "agent_count": len(system_agents)
-    }
-)
-```
+**Note**: Audit logging could be re-added if required for compliance. The infrastructure exists via `log_audit_event()` in the codebase but is not currently used in systems.py.
 
 ### WebSocket Broadcasts
 
@@ -1510,7 +1437,7 @@ prompt: !!python/object:db_models.Setting
 
 ### Test Suite Organization
 
-**Test File**: `tests/test_systems.py` (1051 lines, 30+ tests)
+**Test File**: `tests/test_systems.py` (~870 lines, 9 test classes)
 
 #### Test Categories
 - **Smoke Tests** (`@pytest.mark.smoke`): YAML parsing and validation (no agent creation)
@@ -1521,65 +1448,65 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 1 Tests: YAML Parsing and Validation
 
-#### TestSystemManifestParsing (Lines 130-260)
+#### TestSystemManifestParsing (Line 130)
 
-**test_dry_run_minimal_manifest** (Lines 135-149)
+**test_dry_run_minimal_manifest**
 - Action: POST with minimal valid manifest, dry_run=true
 - Expected: 200, status="valid", agents_to_create populated
 - Verifies: Basic YAML parsing and response structure
 
-**test_dry_run_invalid_yaml** (Lines 151-163)
+**test_dry_run_invalid_yaml**
 - Action: POST with malformed YAML syntax
 - Expected: 400, error contains "YAML parse error" or "parse"
 - Verifies: YAML syntax validation
 
-**test_dry_run_missing_name** (Lines 165-176)
+**test_dry_run_missing_name**
 - Action: POST without "name" field
 - Expected: 400, error contains "name"
 - Verifies: Required field validation
 
-**test_dry_run_missing_agents** (Lines 178-189)
+**test_dry_run_missing_agents**
 - Action: POST without "agents" field
 - Expected: 400, error contains "agents"
 - Verifies: Required field validation
 
-**test_dry_run_invalid_system_name** (Lines 191-200)
+**test_dry_run_invalid_system_name**
 - Action: POST with uppercase system name
 - Expected: 400
 - Verifies: System name format validation
 
-**test_dry_run_invalid_template_prefix** (Lines 202-219)
+**test_dry_run_invalid_template_prefix**
 - Action: POST with template not starting with github: or local:
 - Expected: 400, error mentions "github:" or "local:"
 - Verifies: Template format validation
 
-**test_dry_run_invalid_permission_preset** (Lines 221-239)
+**test_dry_run_invalid_permission_preset**
 - Action: POST with unknown permission preset
 - Expected: 400, error contains "preset"
 - Verifies: Permission preset validation
 
-**test_dry_run_both_preset_and_explicit** (Lines 241-260)
+**test_dry_run_both_preset_and_explicit**
 - Action: POST with both preset and explicit permissions
 - Expected: 400
 - Verifies: Mutually exclusive permission config validation
 
 ### Phase 2 Tests: System Deployment
 
-#### TestSystemDeployment (Lines 262-362)
+#### TestSystemDeployment (Line 262)
 
-**test_deploy_minimal_system** (Lines 265-294)
+**test_deploy_minimal_system**
 - Action: Deploy minimal system with one agent
 - Expected: 200, status="deployed", agent created with correct name
 - Verifies: Basic deployment flow
 - Cleanup: Delete created agent
 
-**test_deploy_conflict_resolution** (Lines 296-329)
+**test_deploy_conflict_resolution**
 - Action: Deploy same manifest twice
 - Expected: Second deployment creates agent with _2 suffix, warnings present
 - Verifies: Conflict resolution with incremental suffix
 - Cleanup: Delete both agents
 
-**test_deploy_updates_trinity_prompt** (Lines 331-361)
+**test_deploy_updates_trinity_prompt**
 - Action: Deploy with prompt field
 - Expected: 200, prompt_updated=true, GET /api/settings/trinity_prompt returns updated value
 - Verifies: Trinity prompt database update
@@ -1587,27 +1514,27 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 3 Tests: Permissions
 
-#### TestSystemPermissions (Lines 368-548)
+#### TestSystemPermissions (Line 368)
 
-**test_full_mesh_permissions** (Lines 371-414)
+**test_full_mesh_permissions**
 - Action: Deploy 3 agents with preset: full-mesh
 - Expected: Each agent has permissions to call 2 other agents
 - Verifies: Full-mesh permission pattern
 - Cleanup: Delete 3 agents
 
-**test_orchestrator_workers_permissions** (Lines 416-462)
+**test_orchestrator_workers_permissions**
 - Action: Deploy with preset: orchestrator-workers
 - Expected: Orchestrator has 2 permissions, workers have 0
 - Verifies: Orchestrator-workers permission pattern
 - Cleanup: Delete 3 agents
 
-**test_explicit_permissions** (Lines 464-509)
+**test_explicit_permissions**
 - Action: Deploy with explicit permission matrix
 - Expected: Manager can call analyst, analyst has no permissions
 - Verifies: Explicit permission configuration
 - Cleanup: Delete 2 agents
 
-**test_none_permissions_preset** (Lines 511-548)
+**test_none_permissions_preset**
 - Action: Deploy with preset: none
 - Expected: All agents have 0 permissions
 - Verifies: Permission clearing
@@ -1615,18 +1542,18 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 4 Tests: Folders and Schedules
 
-#### TestSystemFolders (Lines 551-600)
+#### TestSystemFolders (Line 553)
 
-**test_shared_folders_configuration** (Lines 554-600)
+**test_shared_folders_configuration**
 - Action: Deploy with folders config (expose/consume settings)
 - Expected: GET /api/agents/{name}/folders returns correct expose/consume values
 - Verifies: Shared folder configuration
 - Timeout: 120s (folder configuration is slow)
 - Cleanup: Delete 2 agents
 
-#### TestSystemSchedules (Lines 603-650)
+#### TestSystemSchedules (Line 605)
 
-**test_schedules_created** (Lines 606-650)
+**test_schedules_created**
 - Action: Deploy with 2 schedules
 - Expected: schedules_created >= 2, GET /api/agents/{name}/schedules returns schedules
 - Verifies: Schedule creation and database storage
@@ -1634,9 +1561,9 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 5 Tests: Auto-Start
 
-#### TestSystemAutoStart (Lines 653-692)
+#### TestSystemAutoStart (Line 656)
 
-**test_agents_started_after_deployment** (Lines 656-692)
+**test_agents_started_after_deployment**
 - Action: Deploy 2 agents
 - Expected: Both agents have status "running" or "starting" after 10s
 - Verifies: Auto-start after deployment
@@ -1644,32 +1571,32 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 6 Tests: Backend Endpoints
 
-#### TestSystemBackendEndpoints (Lines 699-852)
+#### TestSystemBackendEndpoints (Line 702)
 
-**test_list_systems_endpoint** (Lines 702-746)
+**test_list_systems_endpoint**
 - Action: Deploy system with 2 agents, call GET /api/systems
 - Expected: System appears in list with agent_count=2, 2 agents in array
 - Verifies: System grouping and listing
 - Cleanup: Delete 2 agents
 
-**test_get_system_endpoint** (Lines 748-780)
+**test_get_system_endpoint**
 - Action: Deploy system, call GET /api/systems/{name}
 - Expected: Detailed system info with agent list
 - Verifies: System detail retrieval
 - Cleanup: Delete agent
 
-**test_get_nonexistent_system_returns_404** (Lines 782-785)
+**test_get_nonexistent_system_returns_404**
 - Action: GET /api/systems/nonexistent-system-12345
 - Expected: 404
 - Verifies: Not found error handling
 
-**test_restart_system_endpoint** (Lines 787-817)
+**test_restart_system_endpoint**
 - Action: Deploy system, call POST /api/systems/{name}/restart
 - Expected: Agent name in "restarted" array
 - Verifies: System restart functionality
 - Cleanup: Delete agent
 
-**test_export_manifest_endpoint** (Lines 819-852)
+**test_export_manifest_endpoint**
 - Action: Deploy system, call GET /api/systems/{name}/manifest
 - Expected: Valid YAML with system name and agents
 - Verifies: YAML export functionality
@@ -1677,16 +1604,16 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 7 Tests: Complete Workflows
 
-#### TestSystemCompleteWorkflows (Lines 859-996)
+#### TestSystemCompleteWorkflows (Line 862)
 
-**test_complete_system_deployment** (@pytest.mark.slow, Lines 863-954)
+**test_complete_system_deployment** (@pytest.mark.slow)
 - Action: Deploy full system with prompt, folders, schedules, permissions
 - Expected: All configurations applied, agents running, trinity_prompt updated
 - Verifies: End-to-end deployment with all features
 - Timeout: 120s (complex multi-agent deployment)
 - Cleanup: Delete 2 agents
 
-**test_export_and_redeploy** (@pytest.mark.slow, Lines 957-996)
+**test_export_and_redeploy** (@pytest.mark.slow)
 - Action: Deploy system, export manifest, redeploy from export
 - Expected: Second deployment creates with _2 suffix
 - Verifies: Export-import round trip
@@ -1694,48 +1621,36 @@ prompt: !!python/object:db_models.Setting
 
 ### Phase 8 Tests: Edge Cases
 
-#### TestSystemEdgeCases (Lines 1003-1050)
+#### TestSystemEdgeCases (Line 1009)
 
-**test_deploy_requires_authentication** (Lines 1006-1013)
+**test_deploy_requires_authentication**
 - Action: POST /api/systems/deploy without auth
 - Expected: 401
 - Verifies: Authentication requirement
 
-**test_deploy_empty_manifest** (Lines 1015-1021)
+**test_deploy_empty_manifest**
 - Action: POST with empty manifest string
 - Expected: 400
 - Verifies: Empty manifest validation
 
-**test_deploy_with_unknown_agent_in_permissions** (Lines 1023-1040)
+**test_deploy_with_unknown_agent_in_permissions**
 - Action: POST with nonexistent agent in explicit permissions
 - Expected: 400
 - Verifies: Permission reference validation
 
-**test_list_systems_requires_auth** (Lines 1042-1045)
+**test_list_systems_requires_auth**
 - Action: GET /api/systems without auth
 - Expected: 401
 - Verifies: Authentication requirement
 
-**test_restart_nonexistent_system** (Lines 1047-1050)
+**test_restart_nonexistent_system**
 - Action: POST /api/systems/nonexistent-12345/restart
 - Expected: 404
 - Verifies: Not found error handling
 
-### Test Status (2025-12-18)
+### Test Status
 
-**Latest Test Run**: All critical bugs fixed
-
-**Bug Fixes Applied**:
-1. ✅ **P0 - YAML Export Serialization** (Security risk eliminated)
-2. ✅ **P1 - List Systems Prefix Extraction** (Hyphenated names now work)
-3. ✅ **P2 - Test Configuration** (Default password, timeouts)
-
-**Expected Results**:
-- Total Tests: 30
-- Passing: 28+ (93%+)
-- Known Issues:
-  - `test_explicit_permissions`: Test assertion bug (not API bug)
-  - `test_schedules_created`: Test API misuse (expects dict, API returns array)
+**Note**: Test suite line numbers are approximate as tests are frequently updated. Run `pytest tests/test_systems.py -v --collect-only` to see current test list.
 
 **Test Coverage**:
 - ✅ YAML parsing and validation
@@ -1844,20 +1759,28 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/backend/models.py` | 232-270 | Pydantic models for manifests and requests |
-| `src/backend/services/system_service.py` | 1-551 | YAML parsing, validation, deployment logic |
-| `src/backend/routers/systems.py` | 1-500 | FastAPI endpoints for system management |
-| `src/backend/routers/agents.py` | 286-680 | `create_agent_internal()` for agent creation |
-| `src/backend/database.py` | 467-474 | Settings table and operations |
-| `src/mcp-server/src/tools/systems.ts` | 1-204 | MCP tools for system operations |
-| `tests/test_systems.py` | 1-1051 | Comprehensive test suite (30+ tests) |
-| `docs/drafts/SYSTEM_MANIFEST_SIMPLIFIED.md` | - | Design document |
-| `docs/drafts/SYSTEM_MANIFEST_PHASE1.md` | - | Phase 1 implementation plan |
-| `docs/memory/requirements.md` | 944-999 | Requirement 10.7 specification |
+| `src/backend/models.py` | 248-286 | Pydantic models for manifests and requests |
+| `src/backend/services/system_service.py` | 1-552 | YAML parsing, validation, deployment logic |
+| `src/backend/routers/systems.py` | 1-427 | FastAPI endpoints for system management |
+| `src/backend/database.py` | 524-528 | Settings table definition |
+| `src/mcp-server/src/tools/systems.ts` | 1-205 | MCP tools for system operations |
+| `tests/test_systems.py` | 1-870 | Comprehensive test suite (9 test classes) |
 
 ---
 
-**Last Updated**: 2025-12-30 (Line numbers verified)
-**Status**: ✅ Complete (Phases 1, 2, 3)
-**Test Coverage**: 93%+ (28/30 tests passing)
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Line number verification: Updated models.py (248-286), systems.py (1-427), MCP tools. Removed outdated audit logging references (not in current implementation). Updated test section with correct class line numbers. |
+| 2025-12-30 | Line numbers verified |
+| 2025-12-18 | Bug fixes: YAML export serialization (P0), list systems prefix extraction (P1) |
+| 2025-12-18 | Phase 3: MCP tools and backend endpoints completed |
+| 2025-12-18 | Phase 2: Permissions, folders, schedules, auto-start completed |
+| 2025-12-17 | Phase 1: Basic deployment, YAML parsing, conflict resolution |
+
+---
+
+**Last Updated**: 2026-01-23 (Line numbers verified)
+**Status**: Complete (Phases 1, 2, 3 - API only, no frontend UI)
 **Feature Flag**: None (always enabled)
