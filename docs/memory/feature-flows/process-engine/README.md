@@ -94,6 +94,19 @@ The Process Engine follows DDD principles:
 | `notification` | `NotificationHandler` | Send Slack/webhook notifications |
 | `sub_process` | `SubProcessHandler` | Call another process as a step |
 
+### Template Variables
+
+All step handlers support template variable substitution in their configuration fields. Variables are evaluated at runtime using `ExpressionEvaluator`.
+
+**Supported Patterns:**
+- `{{input.X}}` - Process input data field
+- `{{steps.X.output}}` - Full step output
+- `{{steps.X.output.Y}}` - Nested field in step output
+- `{{execution.id}}` - Execution ID
+- `{{process.name}}` - Process name
+
+See [process-execution.md](./process-execution.md) for handler template field support.
+
 ### EMI Role Pattern
 
 Each step can have role assignments:
@@ -259,4 +272,5 @@ CREATE TABLE approval_requests (
 
 | Date | Change |
 |------|--------|
+| 2026-01-23 | Added Template Variables section documenting expression evaluator support |
 | 2026-01-16 | Initial creation with architecture overview |

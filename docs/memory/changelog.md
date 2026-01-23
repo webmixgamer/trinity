@@ -1,3 +1,163 @@
+### 2026-01-23 11:15:00
+📝 **Docs: Updated Agent Shared Folders Feature Flow for Template Extraction Fix**
+
+**Summary**: Updated feature flow documentation to reflect the SF-H1 bug fix enabling shared folder config extraction from templates.
+
+**File Modified**:
+- `docs/memory/feature-flows/agent-shared-folders.md`
+  - Added revision note in header for 2026-01-23 template extraction fix
+  - Rewrote "Agent Creation Flow" section with three-phase structure:
+    - Phase 1: Template Extraction (lines 92, 173-179)
+    - Phase 2: DB Upsert Before Container Creation (lines 395-404)
+    - Phase 3: Volume Mounting (lines 406-450)
+  - Added code snippets showing template extraction and DB upsert
+  - Updated line number references throughout (was 299-344, now 406-450)
+
+---
+
+### 2026-01-23 11:00:00
+📝 **Docs: Updated Process Engine Feature Flows for Template Variable Support**
+
+**Summary**: Updated feature flow documentation to reflect the PE-H1 bug fix enabling template variable substitution in human approval steps.
+
+**Files Modified**:
+- `docs/memory/feature-flows/process-engine/human-approval.md`
+  - Added template variable substitution to Key Capabilities
+  - Added "With Template Variables (Dynamic Content)" YAML example section
+  - Added Supported Template Variables table
+  - Added Template Evaluation Detail section with code snippets (lines 106-126, 186-198)
+  - Updated Document History
+
+- `docs/memory/feature-flows/process-engine/process-execution.md`
+  - Added "Template Variable Substitution" section after Handler Registry
+  - Added Supported Variables table
+  - Added Handler Template Support table (which fields each handler evaluates)
+  - Added YAML usage example
+  - Updated Document History
+
+- `docs/memory/feature-flows/process-engine/README.md`
+  - Added Template Variables section documenting expression evaluator patterns
+  - Updated Document History
+
+- `docs/memory/feature-flows.md`
+  - Added 2026-01-23 update note for Process Engine Template Variable Fix
+
+---
+
+### 2026-01-23 10:30:00
+🐛 **Fixed: Shared Folders Template Config Not Extracted (SF-H1)**
+
+**Summary**: Fixed bug where agents created from templates with `shared_folders: expose: true` didn't get `/shared-out/` volume mounted because template extraction didn't read the `shared_folders` config.
+
+**Root Cause**: Template extraction in `crud.py:153-172` read `type`, `resources`, `tools`, `runtime` but NOT `shared_folders`. The shared folder mounting logic (lines 393-438) checked `db.get_shared_folder_config()` which was never populated from templates.
+
+**Fix Applied**:
+1. Added `template_shared_folders = None` variable to track template config (line 92)
+2. Added extraction of `shared_folders` from template.yaml in local template processing block (lines 173-179):
+   ```python
+   shared_folders_config = template_data.get("shared_folders", {})
+   if shared_folders_config:
+       template_shared_folders = {
+           "expose": shared_folders_config.get("expose", False),
+           "consume": shared_folders_config.get("consume", False)
+       }
+   ```
+3. Added DB upsert before container creation (lines 394-404) so volumes mount correctly:
+   ```python
+   if template_shared_folders:
+       db.upsert_shared_folder_config(
+           agent_name=config.name,
+           expose_enabled=template_shared_folders.get("expose", False),
+           consume_enabled=template_shared_folders.get("consume", False)
+       )
+   ```
+
+**Files Modified**:
+- `src/backend/services/agent_service/crud.py` (3 locations)
+
+**Impact**: 13 templates with `shared_folders` config now work correctly:
+- `dd-lead`, `dd-legal`, `dd-captable`, `dd-compliance`, `dd-traction`, `dd-bizmodel`
+- `dd-tech`, `dd-competitor`, `dd-market`, `dd-founder`, `dd-intake`
+- `demo-researcher`, `demo-analyst`
+
+**Verified**: Python syntax check passed.
+
+---
+
+### 2026-01-23 09:15:00
+🐛 **Fixed: Process Engine Template Variables Not Substituted (PE-H1)**
+
+**Summary**: Fixed bug where `{{input.*}}` and `{{steps.*}}` template variables in human approval step `title` and `description` fields were not being substituted.
+
+**Root Cause**: `HumanApprovalHandler.execute()` used raw `config.title` and `config.description` values without calling `ExpressionEvaluator.evaluate()`.
+
+**Fix Applied**:
+1. Added import for `ExpressionEvaluator` and `EvaluationContext` from `...services`
+2. Added `expression_evaluator` instance to `HumanApprovalHandler.__init__()`
+3. Added `_evaluate_template()` helper method (lines 106-126) that:
+   - Creates `EvaluationContext` from `context.input_data`, `context.step_outputs`, execution ID, and process name
+   - Calls `expression_evaluator.evaluate()` on the template string
+4. Updated `execute()` to evaluate `title` and `description` before creating `ApprovalRequest` (lines 186-188)
+5. Updated wait result output to use evaluated title (line 211)
+
+**Files Modified**:
+- `src/backend/services/process_engine/engine/handlers/human_approval.py`
+- `tests/process_engine/unit/test_approval_handler.py` (added 4 new tests for template substitution)
+
+**Test Cases Added**:
+- `test_execute_substitutes_title_variables` - Verifies `{{input.company_name}}` → "TestCo AI"
+- `test_execute_substitutes_description_variables` - Verifies `{{steps.intake.output.response}}` substitution
+- `test_execute_returns_evaluated_title_in_output` - Verifies wait result has evaluated title
+- `test_execute_handles_missing_variables_gracefully` - Missing vars stay as placeholders
+
+**Verified**: Import successful in running backend container; syntax check passed.
+
+---
+
+### 2026-01-22 12:45:00
+🐛 **Discovered: Two Process Engine / Shared Folders Bugs**
+
+**Summary**: During VC Due Diligence demo testing, discovered two infrastructure bugs preventing proper workflow execution.
+
+**Bug 1: Template Variables Not Substituted (PE-H1)**
+- **Symptom**: `{{input.company_name}}` appears literally instead of "TestCo AI" in human approval titles
+- **Root Cause**: `HumanApprovalHandler.execute()` uses `config.title` and `config.description` directly without calling `ExpressionEvaluator.evaluate()`
+- **Location**: `src/backend/services/process_engine/engine/handlers/human_approval.py:158-165`
+- **Fix**: Create `EvaluationContext` with `context.input_data` and `context.step_outputs`, then call `evaluate()` on title/description before creating `ApprovalRequest`
+- **Impact**: All process definitions using template variables in human approval steps
+
+**Bug 2: Shared Folders Template Config Not Extracted (SF-H1)**
+- **Symptom**: Agents with `shared_folders: expose: true` in template don't get `/shared-out/` mounted
+- **Root Cause**: Template extraction in `crud.py:153-172` reads `type`, `resources`, `tools`, `runtime` but NOT `shared_folders`
+- **Location**: `src/backend/services/agent_service/crud.py:153-172`
+- **Fix**: Add `shared_folders = template_data.get("shared_folders", {})` extraction and call `db.upsert_shared_folder_config()`
+- **Impact**: 13 templates define shared_folders but config never written to DB on standalone creation
+- **Note**: Works in system manifest deployment (calls `configure_folders()` separately) but fails in direct agent creation
+
+**Roadmap Updated**: Both bugs added as HIGH priority
+
+---
+
+### 2026-01-22 12:30:00
+🔧 **VC Due Diligence Demo: Local-Only Mode**
+
+**Summary**: Updated VC DD process to work fully local without external notifications.
+
+**Changes**:
+- Removed `notify-approval` and `send-rejection` notification steps (email)
+- Added `save-approval-report` and `save-rejection-report` agent tasks
+- Final reports saved to `dd-lead`'s `/shared-out/final-report/`
+- Updated agent references to use `vc-due-diligence-dd-*` naming
+- Created new process `vc-dd-local-v2` with fixes
+
+**Files Modified**:
+- `config/process-templates/vc-due-diligence/definition.yaml`
+- `docs/demos/vc-due-diligence/README.md`
+
+**Test Result**: Process executed successfully (16 steps), but revealed template variable and shared folder bugs above.
+
+---
+
 ### 2026-01-21 12:15:00
 ✅ **Verified: Security Bugs Already Fixed (AL-H1, AL-H2, AL-H3)**
 

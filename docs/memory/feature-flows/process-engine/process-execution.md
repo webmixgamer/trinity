@@ -378,6 +378,42 @@ def get_default_registry() -> StepHandlerRegistry:
     return registry
 ```
 
+### Template Variable Substitution
+
+Handlers use `ExpressionEvaluator` to substitute template variables in step configuration fields. This enables dynamic content based on process inputs and previous step outputs.
+
+**Supported Variables:**
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `{{input.X}}` | Process input data | `{{input.company_name}}` |
+| `{{steps.X.output}}` | Full step output | `{{steps.research.output}}` |
+| `{{steps.X.output.Y}}` | Nested field in step output | `{{steps.research.output.summary}}` |
+| `{{execution.id}}` | Execution ID | `exec_abc123...` |
+| `{{process.name}}` | Process name | `due-diligence-workflow` |
+
+**Handler Template Support:**
+
+| Handler | Fields with Template Support |
+|---------|------------------------------|
+| `AgentTaskHandler` | `message`, `agent` |
+| `HumanApprovalHandler` | `title`, `description` |
+| `NotificationHandler` | `message` |
+| `GatewayHandler` | Condition expressions |
+| `SubProcessHandler` | `input_mapping` values |
+
+Example usage in YAML:
+```yaml
+- id: review
+  type: human_approval
+  title: Review {{input.company_name}} - {{input.deal_type}}
+  description: |
+    Intake result: {{steps.intake.output.response}}
+    Risk score: {{steps.intake.output.score}}
+```
+
+See [human-approval.md](./human-approval.md) for detailed template variable documentation.
+
 ### AgentTaskHandler
 
 ```python
@@ -679,4 +715,5 @@ class ExecutionConfig:
 
 | Date | Change |
 |------|--------|
+| 2026-01-23 | Added Template Variable Substitution section with handler support table |
 | 2026-01-16 | Initial creation |

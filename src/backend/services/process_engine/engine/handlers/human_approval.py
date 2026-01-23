@@ -17,6 +17,7 @@ from ...domain import (
     ApprovalRequest,
     ApprovalRequested,
 )
+from ...services import ExpressionEvaluator, EvaluationContext
 from ..step_handler import StepHandler, StepResult, StepContext, StepConfig
 
 
@@ -83,18 +84,46 @@ class HumanApprovalHandler(StepHandler):
     a waiting state until approval is given via API.
     """
     
-    def __init__(self, approval_store: Optional[ApprovalStore] = None):
+    def __init__(
+        self,
+        approval_store: Optional[ApprovalStore] = None,
+        expression_evaluator: Optional[ExpressionEvaluator] = None,
+    ):
         """
         Initialize handler.
-        
+
         Args:
             approval_store: Optional store for approval requests.
+            expression_evaluator: Optional expression evaluator for template substitution.
         """
         self.approval_store = approval_store or get_approval_store()
+        self.expression_evaluator = expression_evaluator or ExpressionEvaluator()
     
     @property
     def step_type(self) -> StepType:
         return StepType.HUMAN_APPROVAL
+
+    def _evaluate_template(self, template: str, context: StepContext) -> str:
+        """
+        Evaluate template variables in a string.
+
+        Supports:
+        - {{input.X}} - Process input data
+        - {{steps.X.output}} - Step output
+        - {{execution.id}} - Execution ID
+        - {{process.name}} - Process name
+        """
+        if not template:
+            return template
+
+        eval_context = EvaluationContext(
+            input_data=context.input_data,
+            step_outputs=context.step_outputs,
+            execution_id=str(context.execution.id),
+            process_name=context.execution.process_name,
+        )
+
+        return self.expression_evaluator.evaluate(template, eval_context)
     
     async def execute(
         self,
@@ -153,13 +182,17 @@ class HumanApprovalHandler(StepHandler):
         deadline = None
         if config.timeout:
             deadline = datetime.now(timezone.utc) + timedelta(seconds=config.timeout.seconds)
-        
+
+        # Evaluate template variables in title and description
+        evaluated_title = self._evaluate_template(config.title, context)
+        evaluated_description = self._evaluate_template(config.description, context) if config.description else None
+
         # Create approval request
         request = ApprovalRequest.create(
             execution_id=execution_id,
             step_id=step_id,
-            title=config.title,
-            description=config.description,
+            title=evaluated_title,
+            description=evaluated_description,
             assignees=config.assignees,
             deadline=deadline,
         )
@@ -175,6 +208,6 @@ class HumanApprovalHandler(StepHandler):
         # Return waiting result - the step will be paused
         return StepResult.wait({
             "approval_id": request.id,
-            "title": config.title,
+            "title": evaluated_title,
             "assignees": config.assignees,
         })

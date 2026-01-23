@@ -14,6 +14,7 @@ Human Approval provides a mechanism for processes to pause and wait for human de
 - Timeout with expiration
 - Approval inbox with filtering
 - Decision tracking (who, when, comments)
+- **Template variable substitution** in `title` and `description` fields
 
 ---
 
@@ -89,14 +90,64 @@ _execute_step()
                             →   execute()
                                 ├── Check existing request
                                 ├── Calculate deadline
+                                ├── Evaluate title template
+                                ├── Evaluate description template
                                 └── ApprovalRequest.create()
                                     save(request)          →    Store in memory
-                            ←   StepResult.wait({approval_id})
+                            ←   StepResult.wait({approval_id, title})
 
 _handle_step_waiting()
   step_exec.wait_for_approval()
   execution.pause()
   publish(StepWaitingApproval)
+```
+
+### Template Evaluation Detail
+
+```python
+# human_approval.py:106-126
+
+def _evaluate_template(self, template: str, context: StepContext) -> str:
+    """
+    Evaluate template variables in a string.
+
+    Supports:
+    - {{input.X}} - Process input data
+    - {{steps.X.output}} - Step output
+    - {{execution.id}} - Execution ID
+    - {{process.name}} - Process name
+    """
+    if not template:
+        return template
+
+    eval_context = EvaluationContext(
+        input_data=context.input_data,
+        step_outputs=context.step_outputs,
+        execution_id=str(context.execution.id),
+        process_name=context.execution.process_name,
+    )
+
+    return self.expression_evaluator.evaluate(template, eval_context)
+```
+
+The handler calls `_evaluate_template()` on both `title` and `description` before creating the `ApprovalRequest`:
+
+```python
+# human_approval.py:186-198
+
+# Evaluate template variables in title and description
+evaluated_title = self._evaluate_template(config.title, context)
+evaluated_description = self._evaluate_template(config.description, context) if config.description else None
+
+# Create approval request with evaluated values
+request = ApprovalRequest.create(
+    execution_id=execution_id,
+    step_id=step_id,
+    title=evaluated_title,
+    description=evaluated_description,
+    assignees=config.assignees,
+    deadline=deadline,
+)
 ```
 
 ### 2. Approve/Reject Flow
@@ -175,6 +226,46 @@ if existing:
     - supervisor@example.com
   timeout: 48h  # Auto-expires after 48 hours
 ```
+
+### With Template Variables (Dynamic Content)
+
+Template variables in `title` and `description` are evaluated at runtime using process input data and previous step outputs:
+
+```yaml
+- id: intake
+  type: agent_task
+  agent: intake-agent
+  message: Collect company info for {{input.company_name}}
+
+- id: review-approval
+  type: human_approval
+  title: Approve {{input.company_name}} for {{input.deal_type}}?
+  description: |
+    Review the intake results before proceeding.
+
+    **Company**: {{input.company_name}}
+    **Deal Type**: {{input.deal_type}}
+    **Intake Summary**: {{steps.intake.output.response}}
+    **Risk Score**: {{steps.intake.output.score}}
+  assignees:
+    - deal-manager@example.com
+  timeout: 24h
+```
+
+**Supported Template Variables:**
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `{{input.X}}` | Process input data field | `{{input.company_name}}` |
+| `{{steps.X.output}}` | Full step output (entire response object) | `{{steps.research.output}}` |
+| `{{steps.X.output.Y}}` | Nested field in step output | `{{steps.research.output.summary}}` |
+| `{{execution.id}}` | Execution ID | `exec_abc123...` |
+| `{{process.name}}` | Process name | `due-diligence-workflow` |
+
+**Notes:**
+- Missing variables are left as-is (e.g., `{{input.missing}}` remains unchanged)
+- Dict outputs with `response` or `value` keys are automatically extracted
+- Non-string values are converted to JSON for display
 
 ---
 
@@ -499,4 +590,5 @@ async def approve_request(
 
 | Date | Change |
 |------|--------|
+| 2026-01-23 | **Bug Fix (PE-H1)**: Documented template variable substitution in `title` and `description` fields - variables like `{{input.X}}` and `{{steps.X.output}}` are now properly evaluated using ExpressionEvaluator |
 | 2026-01-16 | Initial creation |

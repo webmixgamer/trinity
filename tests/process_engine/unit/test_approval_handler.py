@@ -479,3 +479,95 @@ class TestHumanApprovalConfig:
 
         assert d["title"] == "Test"
         assert d["description"] == "Description"
+
+
+# =============================================================================
+# Template Variable Substitution Tests (Bug Fix: 2026-01-23)
+# =============================================================================
+
+
+class TestHumanApprovalTemplateSubstitution:
+    """Tests for template variable substitution in HumanApprovalHandler."""
+
+    @pytest.fixture
+    def step_context_with_data(self, step_definition, process_execution):
+        """Create a step context with input data and step outputs."""
+        return StepContext(
+            step_definition=step_definition,
+            execution=process_execution,
+            step_outputs={
+                "intake": {"response": "Intake complete", "score": 85}
+            },
+            input_data={
+                "company_name": "TestCo AI",
+                "deal_type": "Series A"
+            },
+        )
+
+    @pytest.fixture
+    def approval_config_with_templates(self):
+        """Create an approval config with template variables."""
+        return HumanApprovalConfig(
+            title="Approve {{input.company_name}} for {{input.deal_type}}?",
+            description="Based on intake: {{steps.intake.output.response}}",
+            assignees=["manager@example.com"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_substitutes_title_variables(
+        self, approval_handler, step_context_with_data, approval_config_with_templates, fresh_approval_store
+    ):
+        """Template variables in title are substituted."""
+        result = await approval_handler.execute(step_context_with_data, approval_config_with_templates)
+
+        assert result.waiting is True
+        approval_id = result.output["approval_id"]
+        stored = fresh_approval_store.get(approval_id)
+
+        # Title should have substituted values
+        assert stored.title == "Approve TestCo AI for Series A?"
+        assert "{{input" not in stored.title
+
+    @pytest.mark.asyncio
+    async def test_execute_substitutes_description_variables(
+        self, approval_handler, step_context_with_data, approval_config_with_templates, fresh_approval_store
+    ):
+        """Template variables in description are substituted."""
+        result = await approval_handler.execute(step_context_with_data, approval_config_with_templates)
+
+        approval_id = result.output["approval_id"]
+        stored = fresh_approval_store.get(approval_id)
+
+        # Description should have substituted step output
+        assert stored.description == "Based on intake: Intake complete"
+        assert "{{steps" not in stored.description
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_evaluated_title_in_output(
+        self, approval_handler, step_context_with_data, approval_config_with_templates
+    ):
+        """The wait result output contains the evaluated title."""
+        result = await approval_handler.execute(step_context_with_data, approval_config_with_templates)
+
+        # The output title should be substituted, not raw template
+        assert result.output["title"] == "Approve TestCo AI for Series A?"
+
+    @pytest.mark.asyncio
+    async def test_execute_handles_missing_variables_gracefully(
+        self, approval_handler, step_context, fresh_approval_store
+    ):
+        """Missing template variables are left as-is."""
+        config = HumanApprovalConfig(
+            title="Review {{input.nonexistent_field}}",
+            description="Check {{steps.missing_step.output}}",
+            assignees=[],
+        )
+
+        result = await approval_handler.execute(step_context, config)
+
+        approval_id = result.output["approval_id"]
+        stored = fresh_approval_store.get(approval_id)
+
+        # Missing variables should remain as template placeholders
+        assert "{{input.nonexistent_field}}" in stored.title
+        assert "{{steps.missing_step.output}}" in stored.description

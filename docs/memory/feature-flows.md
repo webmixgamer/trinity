@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-23)**: Shared Folders Template Extraction Fix (SF-H1):
+> - **agent-shared-folders.md**: Rewrote "Agent Creation Flow" section with three-phase structure
+> - Phase 1: Template Extraction (lines 92, 173-179) - extracts `shared_folders` from template.yaml
+> - Phase 2: DB Upsert (lines 395-404) - persists config BEFORE container creation
+> - Phase 3: Volume Mounting (lines 406-450) - mounts volumes based on DB config
+> - Fix ensures templates with `shared_folders: expose: true` get volumes mounted on first creation
+>
 > **Updated (2026-01-15)**: Timezone-Aware Timestamp Handling:
 > - All feature flows with timestamp handling updated to reference [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md)
 > - Backend: Uses `utc_now_iso()`, `to_utc_iso()`, `parse_iso_timestamp()` from `utils/helpers.py` - timestamps include 'Z' suffix
@@ -241,6 +248,13 @@
 > - **vector-logging.md**: New infrastructure flow documenting Vector log aggregation replacing audit-logger
 > - Complete data flow: Docker socket -> VRL transforms -> platform.json/agents.json
 > - Includes structured logging config, query examples, troubleshooting guide
+>
+> **Updated (2026-01-23)**: Process Engine Template Variable Fix (PE-H1):
+> - **human-approval.md**: Documented template variable substitution (`{{input.*}}`, `{{steps.*}}`) in `title` and `description` fields
+> - **process-execution.md**: Added "Template Variable Substitution" section with handler support table
+> - **process-engine/README.md**: Added Template Variables section
+> - Handler now uses `ExpressionEvaluator` to evaluate templates at runtime before creating approval requests
+> - Tests: 4 new tests in `test_approval_handler.py` covering variable substitution, missing variables, and output content
 >
 > **Updated (2025-12-31)**: Execution log storage feature documented:
 > - **execution-queue.md**: Added revision history entry for execution_log storage

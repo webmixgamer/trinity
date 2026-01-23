@@ -1,7 +1,8 @@
 # Feature: Agent Shared Folders
 
 > **Updated**: 2025-12-27 - Refactored to service layer architecture. Folder logic moved to `services/agent_service/folders.py`.
-> **Last Updated**: 2025-12-30 (verified line numbers)
+> **Updated**: 2025-12-30 (verified line numbers)
+> **Updated**: 2026-01-23 - Fixed template extraction: `shared_folders` config now extracted from template.yaml during local template processing and persisted to DB before container creation.
 
 ## Overview
 
@@ -173,16 +174,48 @@ The shared folders feature uses a **thin router + service layer** architecture:
 
 ### Business Logic
 
-#### Agent Creation Flow (`services/agent_service/crud.py:299-344`)
+#### Agent Creation Flow (`services/agent_service/crud.py`)
+
+**Phase 1: Template Extraction** (Lines 92, 173-179)
+
+During local template processing, `shared_folders` config is extracted from `template.yaml`:
+
+```python
+# Line 92: Initialize tracking variable
+template_shared_folders = None
+
+# Lines 173-179: Extract from template.yaml during local template load
+shared_folders_config = template_data.get("shared_folders", {})
+if shared_folders_config:
+    template_shared_folders = {
+        "expose": shared_folders_config.get("expose", False),
+        "consume": shared_folders_config.get("consume", False)
+    }
+```
+
+**Phase 2: DB Upsert Before Container Creation** (Lines 395-404)
+
+The template config is persisted to DB **before** volume mounting, ensuring volumes are correctly attached on first container creation:
+
+```python
+if template_shared_folders:
+    db.upsert_shared_folder_config(
+        agent_name=config.name,
+        expose_enabled=template_shared_folders.get("expose", False),
+        consume_enabled=template_shared_folders.get("consume", False)
+    )
+```
+
+**Phase 3: Volume Mounting** (Lines 406-450)
 
 1. Check if agent has shared folder config: `db.get_shared_folder_config(config.name)`
 2. If `expose_enabled`:
-   - Create Docker volume `agent-{name}-shared` with labels
-   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 318-328)
-   - Mount at `/home/developer/shared-out` (rw)
+   - Create Docker volume `agent-{name}-shared` with labels (lines 410-422)
+   - **Volume ownership fix**: Run alpine container to chown to UID 1000 (lines 425-434)
+   - Mount at `/home/developer/shared-out` (rw) (line 436)
 3. If `consume_enabled`:
-   - Get available shared folders (permission-filtered): `db.get_available_shared_folders(config.name)`
-   - For each available folder, check if source volume exists
+   - Get available shared folders (permission-filtered): `db.get_available_shared_folders(config.name)` (line 440)
+   - For each available folder, check if source volume exists (lines 441-450)
    - Mount volume at `/home/developer/shared-in/{agent}` (rw)
 
 #### Agent Start Flow - Container Recreation (`services/agent_service/lifecycle.py:84-127`)
