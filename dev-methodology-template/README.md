@@ -6,7 +6,7 @@ A reusable development methodology kit for Claude Code projects. Provides slash 
 
 | Category | Contents |
 |----------|----------|
-| **Commands** | 5 slash commands: `/read-docs`, `/update-docs`, `/feature-flow-analysis`, `/add-testing`, `/security-check` |
+| **Commands** | 6 slash commands: `/read-docs`, `/update-docs`, `/feature-flow-analysis`, `/add-testing`, `/security-check`, `/validate-pr` |
 | **Agents** | 3 sub-agents: `feature-flow-analyzer`, `test-runner`, `security-analyzer` |
 | **Memory Files** | Templates for requirements, architecture, roadmap, changelog, feature flows |
 | **Workflow** | Development cycle documentation and testing guide |
@@ -57,7 +57,8 @@ your-project/
 │   │   ├── update-docs.md
 │   │   ├── feature-flow-analysis.md
 │   │   ├── add-testing.md
-│   │   └── security-check.md
+│   │   ├── security-check.md
+│   │   └── validate-pr.md
 │   ├── agents/                  # Sub-agents
 │   │   ├── feature-flow-analyzer.md
 │   │   ├── test-runner.md
@@ -77,7 +78,7 @@ your-project/
 
 ## Development Cycle
 
-This methodology enforces a 4-phase development cycle:
+This methodology enforces a 5-phase development cycle:
 
 ```
 1. CONTEXT LOADING    →  /read-docs
@@ -87,6 +88,8 @@ This methodology enforces a 4-phase development cycle:
 3. TESTING            →  test-runner agent
        ↓
 4. DOCUMENTATION      →  /update-docs
+       ↓
+5. PR VALIDATION      →  /validate-pr (before merge)
 ```
 
 See `docs/DEVELOPMENT_WORKFLOW.md` for details.
@@ -100,6 +103,7 @@ See `docs/DEVELOPMENT_WORKFLOW.md` for details.
 | `/feature-flow-analysis <name>` | Document feature from UI to database |
 | `/add-testing <name>` | Add testing section to feature flow |
 | `/security-check` | Validate no secrets in staged files before commit |
+| `/validate-pr <number>` | Validate PR against methodology and generate merge report |
 
 ## Agents Reference
 

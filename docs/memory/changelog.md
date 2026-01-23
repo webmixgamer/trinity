@@ -1,3 +1,83 @@
+### 2026-01-23 14:00:00
+📝 **Docs: Updated Vector Logging Feature Flow**
+
+**Summary**: Refreshed Vector logging feature flow documentation with correct line numbers, date-stamped file patterns, and API response examples.
+
+**Files Modified**:
+- `docs/memory/feature-flows/vector-logging.md`
+  - Updated vector.yaml line number references (sources: 18-23, transforms: 26-74, sinks: 76-96)
+  - Updated docker-compose.yml line references (vector: 184-205, volumes: 234-235, backend mounts: 50-51)
+  - Changed all filename references from static (`platform.json`) to date-stamped (`platform-YYYY-MM-DD.json`)
+  - Added architecture diagram showing LogArchiveService and archive flow
+  - Added API response examples for `/api/logs/stats` and `/api/logs/health`
+  - Added archive file structure documentation with metadata sidecar format
+  - Added archival troubleshooting section
+  - Added storage backend documentation (`LocalArchiveStorage`)
+  - Updated test steps for date-stamped files and archival verification
+  - Added revision history entry for 2026-01-23
+
+- `docs/QUERYING_LOGS.md`
+  - Updated all query examples to use date-stamped file patterns
+  - Added historical logs query examples
+  - Added log archival API documentation section
+  - Updated timestamps to 2026-01-23
+
+**Key Implementation Files Referenced**:
+- `/Users/eugene/Dropbox/trinity/trinity/config/vector.yaml` - Vector config with daily rotation
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/log_archive_service.py` - APScheduler archival
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/archive_storage.py` - LocalArchiveStorage interface
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/logs.py` - Admin API endpoints
+
+---
+
+### 2026-01-23 12:30:00
+📝 **Docs: Updated Web Terminal Feature Flow**
+
+**Summary**: Refreshed web terminal feature flow documentation with current line numbers and new features.
+
+**File Modified**:
+- `docs/memory/feature-flows/web-terminal.md`
+  - Updated all line number references to match current codebase
+  - Added TerminalPanelContent.vue wrapper component documentation
+  - Added model parameter support for WebSocket endpoint
+  - Added Gemini CLI runtime mode documentation
+  - Added WebGL/Canvas renderer with GPU acceleration details
+  - Updated xterm.js dependencies to current versions
+  - Added access control via `db.can_user_access_agent()`
+  - Clarified two implementations: regular agents vs system agent
+  - Added revision history entry for 2026-01-23
+
+**Key Line Numbers Updated**:
+- AgentDetail.vue: 93-121 (terminal tab)
+- AgentTerminal.vue: 165-505 (full component)
+- terminal.py: 20-320 (TerminalSessionManager)
+- agents.py: 1173-1187 (regular agent endpoint)
+- system_agent.py: 262-528 (system agent endpoint)
+
+---
+
+### 2026-01-23 10:52:59
+✨ **New: PR Validation Command (/validate-pr)**
+
+**Summary**: Added slash command for validating pull requests against Trinity development methodology.
+
+**File Created**:
+- `.claude/commands/validate-pr.md`
+
+**Features**:
+- 7-step validation process covering all methodology requirements
+- Documentation checks: changelog, roadmap, requirements, architecture, feature flows
+- Feature flow format validation (checks all required sections)
+- Security validation (API keys, emails, IPs, secrets, credentials)
+- Code quality assessment
+- Requirements traceability check
+- Generates structured report with APPROVE/REQUEST CHANGES/NEEDS DISCUSSION recommendation
+- Includes comment template for requesting changes
+
+**Usage**: `/validate-pr <pr-number-or-url>`
+
+---
+
 ### 2026-01-23 11:15:00
 📝 **Docs: Updated Agent Shared Folders Feature Flow for Template Extraction Fix**
 
