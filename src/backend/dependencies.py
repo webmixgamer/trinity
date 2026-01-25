@@ -155,6 +155,21 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
     raise credentials_exception
 
 
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Dependency that requires the current user to be an admin.
+
+    Raises:
+        HTTPException(403): If user is not an admin
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
+
+
 # ============================================================================
 # Agent Access Control Dependencies
 # ============================================================================

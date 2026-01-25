@@ -159,6 +159,11 @@
               <FilesPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
+            <!-- Skills Tab Content -->
+            <div v-if="activeTab === 'skills'">
+              <SkillsPanel :agent-name="agent.name" :agent-status="agent.status" />
+            </div>
+
             <!-- Shared Folders Tab Content -->
             <div v-if="activeTab === 'folders'" class="p-6">
               <FoldersPanel :agent-name="agent.name" :agent-status="agent.status" :can-share="agent.can_share" />
@@ -238,6 +243,7 @@ import SharingPanel from '../components/SharingPanel.vue'
 import PermissionsPanel from '../components/PermissionsPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import TerminalPanelContent from '../components/TerminalPanelContent.vue'
+import SkillsPanel from '../components/SkillsPanel.vue'
 
 // Import composables
 import { useNotification } from '../composables'
@@ -422,7 +428,8 @@ const visibleTabs = computed(() => {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
-    { id: 'credentials', label: 'Credentials' }
+    { id: 'credentials', label: 'Credentials' },
+    { id: 'skills', label: 'Skills' }
   ]
 
   // Sharing/Permissions - hide for system agent (system agent has full access)

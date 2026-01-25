@@ -1,3 +1,80 @@
+### 2026-01-26 01:45:00
+📝 **Docs: Updated skill injection feature flows for CLAUDE.md update step**
+
+**Summary**: Updated feature flow documentation to reflect the new CLAUDE.md "Platform Skills" section update that occurs during skill injection, enabling agents to answer "what skills do you have?"
+
+**Feature Flows Updated**:
+- `docs/memory/feature-flows/skills-on-agent-start.md`:
+  - Added `_update_claude_md_skills_section()` method documentation (lines 376-435)
+  - Added `AgentClient.read_file()` method documentation (lines 470-506)
+  - Updated flow diagram to show CLAUDE.md update step
+  - Updated "Result in Agent Container" section with two-mechanism explanation
+  - Added Files Download Endpoint documentation (agent_server lines 112-153)
+
+- `docs/feature-flows/skill-injection.md`:
+  - Added CLAUDE.md Skills Section Update section with code and example
+  - Updated Business Logic to include step 5 (CLAUDE.md update)
+  - Updated AgentClient Methods table with read_file() and write_file() line numbers
+  - Updated Agent Server File Endpoints table with both endpoints
+  - Updated Data Flow Diagram to show CLAUDE.md read/write operations
+
+- `docs/memory/feature-flows.md`:
+  - Updated Skill Injection entry with new line numbers and CLAUDE.md mention
+  - Updated Skills on Agent Start entry with _update_claude_md_skills_section reference
+
+**Line Numbers Verified**:
+- `skill_service.py:300-374` - inject_skills()
+- `skill_service.py:376-435` - _update_claude_md_skills_section()
+- `agent_client.py:470-506` - read_file()
+- `agent_client.py:508-547` - write_file()
+- `agent_server/routers/files.py:112-153` - GET /api/files/download
+- `agent_server/routers/files.py:314-371` - PUT /api/files
+
+---
+
+### 2026-01-26 00:30:00
+🎯 **Feature: Skills Management System Implementation**
+
+**Summary**: Implemented the full Skills Management System allowing agents to be assigned reusable skills from a GitHub-hosted library.
+
+**Backend Changes**:
+- `src/backend/db/skills.py` - New database operations for agent_skills table
+- `src/backend/db_models.py` - Added AgentSkill, SkillInfo, AgentSkillsUpdate, SkillsLibraryStatus models
+- `src/backend/database.py` - Added agent_skills table, indexes, and delegation methods
+- `src/backend/services/skill_service.py` - New service for git sync, skill listing, and injection
+- `src/backend/services/settings_service.py` - Added skills_library_url/branch settings
+- `src/backend/services/agent_service/lifecycle.py` - Added inject_assigned_skills on agent start
+- `src/backend/routers/skills.py` - New API router for skills endpoints
+- `src/backend/routers/agents.py` - Added skill cleanup on agent delete
+- `src/backend/main.py` - Registered skills router
+
+**Frontend Changes**:
+- `src/frontend/src/components/SkillsPanel.vue` - New component for agent skills tab
+- `src/frontend/src/views/Settings.vue` - Added Skills Library configuration section
+- `src/frontend/src/views/AgentDetail.vue` - Added Skills tab
+
+**MCP Tools** (7 new tools):
+- `list_skills` - List available skills from library
+- `get_skill` - Get skill details and content
+- `get_skills_library_status` - Get library sync status
+- `assign_skill_to_agent` - Assign skill to agent
+- `set_agent_skills` - Bulk update agent skills
+- `sync_agent_skills` - Inject skills to running agent
+- `get_agent_skills` - Get skills assigned to agent
+
+**API Endpoints**:
+- `GET /api/skills/library` - List available skills
+- `GET /api/skills/library/{name}` - Get skill content
+- `GET /api/skills/library/status` - Library status
+- `POST /api/skills/library/sync` - Sync from GitHub (admin)
+- `GET /api/agents/{name}/skills` - Agent's assigned skills
+- `PUT /api/agents/{name}/skills` - Bulk update assignments
+- `POST /api/agents/{name}/skills/{skill}` - Assign single skill
+- `DELETE /api/agents/{name}/skills/{skill}` - Unassign skill
+- `POST /api/agents/{name}/skills/inject` - Inject to running agent
+
+---
+
 ### 2026-01-25 23:15:00
 📝 **Requirements: Simplified Skills Management Architecture**
 

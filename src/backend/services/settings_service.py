@@ -136,3 +136,27 @@ def get_agent_full_capabilities() -> bool:
     """
     value = settings_service.get_setting('agent_full_capabilities', 'true')
     return str(value).lower() in ('true', '1', 'yes')
+
+
+# ============================================================================
+# Skills Library Settings
+# ============================================================================
+
+def get_skills_library_url() -> Optional[str]:
+    """
+    Get the skills library GitHub repository URL.
+
+    Returns None if not configured (feature disabled).
+
+    Example: "github.com/Abilityai/skills-library-41"
+    """
+    return settings_service.get_setting('skills_library_url')
+
+
+def get_skills_library_branch() -> str:
+    """
+    Get the skills library branch to use.
+
+    Default: "main"
+    """
+    return settings_service.get_setting('skills_library_branch', 'main')

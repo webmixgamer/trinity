@@ -467,6 +467,44 @@ class AgentClient:
     # File Operations
     # ========================================================================
 
+    async def read_file(
+        self,
+        path: str,
+        timeout: float = 30.0
+    ) -> dict:
+        """
+        Read content from a file in the agent's workspace.
+
+        Args:
+            path: File path within /home/developer
+            timeout: Request timeout
+
+        Returns:
+            dict with success status and content
+        """
+        try:
+            import urllib.parse
+            encoded_path = urllib.parse.quote(path, safe='')
+
+            response = await self.get(
+                f"/api/files/download?path={encoded_path}",
+                timeout=timeout
+            )
+
+            if response.status_code == 200:
+                return {"success": True, "content": response.text}
+            elif response.status_code == 404:
+                return {"success": True, "content": None, "not_found": True}
+            else:
+                return {
+                    "success": False,
+                    "error": response.text,
+                    "status_code": response.status_code
+                }
+
+        except AgentClientError as e:
+            return {"success": False, "error": str(e)}
+
     async def write_file(
         self,
         path: str,
