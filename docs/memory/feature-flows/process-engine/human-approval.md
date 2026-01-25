@@ -1,6 +1,6 @@
-# Feature: Human Approval
+# Feature: Human Approval Gates
 
-> Human approval gates within process workflows with inbox, timeout, and decision tracking
+> Human-in-the-loop approval steps within process workflows with inbox UI, timeout handling, and decision tracking.
 
 ---
 
@@ -10,99 +10,151 @@ Human Approval provides a mechanism for processes to pause and wait for human de
 
 **Key Capabilities:**
 - Approval gates that pause execution
-- Assignee-based authorization
-- Timeout with expiration
-- Approval inbox with filtering
+- Assignee-based authorization (or open to all if no assignees)
+- Configurable timeout with expiration
+- Approval inbox UI with status filtering
 - Decision tracking (who, when, comments)
-- **Template variable substitution** in `title` and `description` fields
+- **Template variable substitution** in `title` and `description` fields (`{{input.*}}`, `{{steps.*}}`)
+
+---
+
+## User Story
+
+As a **process designer**, I want to **add human approval gates** to my workflows so that **critical decisions require human sign-off before proceeding**.
+
+As a **reviewer**, I want to **see pending approvals in an inbox** so that **I can efficiently review and decide on requests**.
 
 ---
 
 ## Entry Points
 
-- **UI**: Nav bar "Approvals" -> `Approvals.vue`
-- **UI**: Process execution detail shows "Waiting for approval" status
-- **API**: `GET /api/approvals` - List approval requests
-- **API**: `POST /api/approvals/{id}/approve` - Approve request
-- **API**: `POST /api/approvals/{id}/reject` - Reject request
+| Entry Point | Location | Description |
+|-------------|----------|-------------|
+| **UI: Approvals Page** | NavBar -> Approvals -> `Approvals.vue` | Main inbox for reviewing approval requests |
+| **UI: Execution Detail** | ProcessExecutionDetail.vue | Shows "Waiting for approval" status on paused step |
+| **API: List Approvals** | `GET /api/approvals` | List all approval requests with optional filters |
+| **API: Approve** | `POST /api/approvals/{id}/approve` | Approve a pending request |
+| **API: Reject** | `POST /api/approvals/{id}/reject` | Reject a pending request |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Frontend                                            │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  Approvals.vue                                                           │    │
-│  │  ├── Filter by status (pending, approved, rejected)                     │    │
-│  │  ├── Stats cards (total, pending, approved, rejected counts)            │    │
-│  │  ├── Table of approval requests                                         │    │
-│  │  └── Approve/Reject modal with comment input                            │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-│                                     │                                            │
-│                                     │ POST /api/approvals/{id}/approve           │
-│                                     ▼                                            │
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Backend                                             │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  routers/approvals.py                                                    │    │
-│  │  ├── list_approvals()          - GET all requests with filters          │    │
-│  │  ├── get_approval()            - GET single request                      │    │
-│  │  ├── approve_request()         - POST approve decision                   │    │
-│  │  └── reject_request()          - POST reject decision                    │    │
-│  └───────────────────────────────────┬─────────────────────────────────────┘    │
-│                                      │                                           │
-│                                      │ Updates ApprovalRequest                   │
-│                                      ▼                                           │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  engine/handlers/human_approval.py                                       │    │
-│  │  ├── ApprovalStore              - In-memory request storage              │    │
-│  │  └── HumanApprovalHandler       - Creates requests, checks decisions     │    │
-│  └───────────────────────────────────┬─────────────────────────────────────┘    │
-│                                      │                                           │
-│                                      │ Stores/retrieves                          │
-│                                      ▼                                           │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  domain/entities.py - ApprovalRequest                                    │    │
-│  │  ├── create()                   - Factory method                         │    │
-│  │  ├── approve()                  - Mark as approved                       │    │
-│  │  ├── reject()                   - Mark as rejected                       │    │
-│  │  └── expire()                   - Mark as expired (timeout)              │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------------------------+
+|                              Frontend (Approvals.vue)                              |
+|  +-----------------------------------------------------------------------------+  |
+|  | - Filter by status (pending/approved/rejected)                              |  |
+|  | - Stats cards (total, pending, approved, rejected)                          |  |
+|  | - Table with approval requests                                              |  |
+|  | - Approve button (green checkmark)                                          |  |
+|  | - Reject button with required comment modal                                 |  |
+|  +-----------------------------------------------------------------------------+  |
+|                                     |                                             |
+|                                     | POST /api/approvals/{id}/approve            |
+|                                     v                                             |
++-----------------------------------------------------------------------------------+
+|                              Backend (routers/approvals.py)                        |
+|  +-----------------------------------------------------------------------------+  |
+|  | list_approvals()          :62   - GET all requests with filters             |  |
+|  | get_approval()            :92   - GET single request by ID                  |  |
+|  | get_approval_by_step()    :104  - GET by execution_id + step_id             |  |
+|  | approve()                 :116  - POST approve decision, resume execution   |  |
+|  | reject()                  :168  - POST reject decision, resume execution    |  |
+|  +-----------------------------------------------------------------------------+  |
+|                                     |                                             |
+|                                     | Updates ApprovalRequest, resumes engine     |
+|                                     v                                             |
+|  +-----------------------------------------------------------------------------+  |
+|  | engine/handlers/human_approval.py                                           |  |
+|  | +-------------------------------------------------------------------------+ |  |
+|  | | ApprovalStore          :27-76  - In-memory singleton for requests       | |  |
+|  | | HumanApprovalHandler   :79-213 - Creates requests, checks decisions     | |  |
+|  | | _evaluate_template()   :106-126 - Template variable substitution        | |  |
+|  | +-------------------------------------------------------------------------+ |  |
+|  +-----------------------------------------------------------------------------+  |
+|                                     |                                             |
+|  +-----------------------------------------------------------------------------+  |
+|  | domain/entities.py - ApprovalRequest :429-543                               |  |
+|  | +-------------------------------------------------------------------------+ |  |
+|  | | create()             :450-469  - Factory method with UUID               | |  |
+|  | | approve()            :471-476  - Mark as approved                       | |  |
+|  | | reject()             :478-483  - Mark as rejected                       | |  |
+|  | | expire()             :485-488  - Mark as expired (timeout)              | |  |
+|  | | is_pending()         :490-492  - Check if still pending                 | |  |
+|  | | can_be_decided_by()  :494-499  - Authorization check                    | |  |
+|  | +-------------------------------------------------------------------------+ |  |
+|  +-----------------------------------------------------------------------------+  |
++-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## Flow Details
+## Backend Layer
 
-### 1. Create Approval Request Flow
+### API Endpoints (routers/approvals.py)
 
-When execution reaches a `human_approval` step:
+| Method | Path | Handler | Line | Description |
+|--------|------|---------|------|-------------|
+| GET | `/api/approvals` | `list_approvals()` | 62 | List requests with status/user filters |
+| GET | `/api/approvals/{approval_id}` | `get_approval()` | 92 | Get single request details |
+| GET | `/api/approvals/execution/{execution_id}/step/{step_id}` | `get_approval_by_step()` | 104 | Get by execution step |
+| POST | `/api/approvals/{approval_id}/approve` | `approve()` | 116 | Approve and resume execution |
+| POST | `/api/approvals/{approval_id}/reject` | `reject()` | 168 | Reject and resume execution |
 
+### Request/Response Examples
+
+**List Pending Approvals:**
 ```
-ExecutionEngine                 HumanApprovalHandler           ApprovalStore
----------------                 --------------------           -------------
-_execute_step()
-  Get handler for HUMAN_APPROVAL
-  handler.execute(context, config)
-                            →   execute()
-                                ├── Check existing request
-                                ├── Calculate deadline
-                                ├── Evaluate title template
-                                ├── Evaluate description template
-                                └── ApprovalRequest.create()
-                                    save(request)          →    Store in memory
-                            ←   StepResult.wait({approval_id, title})
-
-_handle_step_waiting()
-  step_exec.wait_for_approval()
-  execution.pause()
-  publish(StepWaitingApproval)
+GET /api/approvals?status=pending
 ```
 
-### Template Evaluation Detail
+```json
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "execution_id": "exec_abc123def456",
+    "step_id": "review",
+    "title": "Approve Acme Corp for Series A?",
+    "description": "Review intake results before proceeding.",
+    "status": "pending",
+    "assignees": ["deal-manager@example.com"],
+    "created_at": "2026-01-23T10:00:00Z",
+    "deadline": "2026-01-24T10:00:00Z"
+  }
+]
+```
+
+**Approve Request:**
+```
+POST /api/approvals/{id}/approve
+Content-Type: application/json
+
+{ "comment": "Approved - looks good" }
+```
+
+**Reject Request:**
+```
+POST /api/approvals/{id}/reject
+Content-Type: application/json
+
+{ "comment": "Needs more information on revenue projections" }
+```
+
+### Approval Handler (engine/handlers/human_approval.py)
+
+**File**: `src/backend/services/process_engine/engine/handlers/human_approval.py`
+
+| Component | Lines | Description |
+|-----------|-------|-------------|
+| `ApprovalStore` | 27-76 | In-memory singleton storing approval requests |
+| `HumanApprovalHandler` | 79-213 | Step handler for `human_approval` type |
+| `_evaluate_template()` | 106-126 | Template variable substitution |
+| `execute()` | 128-213 | Main handler logic |
+
+#### Template Variable Substitution
+
+The handler evaluates template variables in `title` and `description` fields before creating the approval request:
 
 ```python
 # human_approval.py:106-126
@@ -130,10 +182,10 @@ def _evaluate_template(self, template: str, context: StepContext) -> str:
     return self.expression_evaluator.evaluate(template, eval_context)
 ```
 
-The handler calls `_evaluate_template()` on both `title` and `description` before creating the `ApprovalRequest`:
+The handler calls `_evaluate_template()` on both fields at lines 187-188:
 
 ```python
-# human_approval.py:186-198
+# human_approval.py:187-198
 
 # Evaluate template variables in title and description
 evaluated_title = self._evaluate_template(config.title, context)
@@ -150,6 +202,178 @@ request = ApprovalRequest.create(
 )
 ```
 
+### Expression Evaluator (services/expression_evaluator.py)
+
+**File**: `src/backend/services/process_engine/services/expression_evaluator.py`
+
+The `ExpressionEvaluator` class handles template substitution using Jinja2-style `{{...}}` syntax.
+
+| Component | Lines | Description |
+|-----------|-------|-------------|
+| `EvaluationContext` | 19-96 | Context dataclass with path resolution |
+| `ExpressionEvaluator` | 99-250 | Main evaluator class |
+| `EXPRESSION_PATTERN` | 126 | Regex: `\{\{([^}]+)\}\}` |
+| `evaluate()` | 128-162 | Replace expressions in template string |
+| `_value_to_string()` | 231-249 | Convert values (dict, list, etc.) to strings |
+
+**Supported Template Variables:**
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `{{input.X}}` | Process input data field | `{{input.company_name}}` |
+| `{{steps.X.output}}` | Full step output | `{{steps.research.output}}` |
+| `{{steps.X.output.Y}}` | Nested field in step output | `{{steps.research.output.summary}}` |
+| `{{execution.id}}` | Execution ID | `exec_abc123...` |
+| `{{process.name}}` | Process name | `due-diligence-workflow` |
+
+**Behavior for missing variables:** Left unchanged (non-strict mode).
+
+### Domain Model (domain/entities.py)
+
+**File**: `src/backend/services/process_engine/domain/entities.py`
+
+#### ApprovalRequest Entity (lines 429-543)
+
+```python
+@dataclass
+class ApprovalRequest:
+    id: str                          # UUID
+    execution_id: str                # Parent execution
+    step_id: str                     # Step within execution
+    title: str                       # Display title (supports templates)
+    description: str                 # Details (supports templates)
+    assignees: list[str]             # Users who can approve (empty = anyone)
+    status: ApprovalStatus           # pending, approved, rejected, expired
+    deadline: Optional[datetime]     # When request expires
+    created_at: datetime
+    decided_at: Optional[datetime]
+    decided_by: Optional[str]
+    decision_comment: Optional[str]
+```
+
+**Key Methods:**
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `create()` | 450-469 | Factory with UUID generation |
+| `approve()` | 471-476 | Set status=APPROVED, record decision |
+| `reject()` | 478-483 | Set status=REJECTED, require comment |
+| `expire()` | 485-488 | Set status=EXPIRED (timeout) |
+| `is_pending()` | 490-492 | Check if status == PENDING |
+| `can_be_decided_by()` | 494-499 | Authorization: empty assignees = anyone |
+
+#### ApprovalStatus Enum (domain/enums.py:55-60)
+
+```python
+class ApprovalStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+```
+
+### Step Configuration (domain/step_configs.py)
+
+**File**: `src/backend/services/process_engine/domain/step_configs.py`
+
+#### HumanApprovalConfig (lines 64-107)
+
+```python
+@dataclass(frozen=True)
+class HumanApprovalConfig:
+    title: str                       # Title shown in approval UI
+    description: str                 # Description of what needs approval
+    assignees: list[str]             # User IDs or emails (empty = anyone)
+    timeout: Duration                # Default: 24h
+    allow_comments: bool = True
+    require_reason_on_reject: bool = True
+```
+
+---
+
+## Frontend Layer
+
+### Approvals.vue
+
+**File**: `src/frontend/src/views/Approvals.vue`
+
+| Section | Lines | Description |
+|---------|-------|-------------|
+| Header | 8-27 | Title, refresh button |
+| Filter dropdown | 29-58 | Status filter (pending/approved/rejected) |
+| Stats cards | 60-78 | Total, pending, approved, rejected counts |
+| Table | 94-191 | List of requests with actions |
+| Reject modal | 196-230 | Comment input for rejection |
+
+**Key Methods:**
+
+```javascript
+// Load approvals with optional status filter
+async function loadApprovals() {
+  const params = new URLSearchParams()
+  if (statusFilter.value) params.append('status', statusFilter.value)
+  const response = await fetch(`/api/approvals?${params}`)
+  approvals.value = data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+}
+
+// Approve request
+async function approveRequest(approval) {
+  await fetch(`/api/approvals/${approval.id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: '' })
+  })
+  await loadApprovals()
+}
+
+// Reject request (requires comment)
+async function confirmReject() {
+  await fetch(`/api/approvals/${rejectingApproval.value.id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: rejectReason.value })
+  })
+  await loadApprovals()
+}
+```
+
+### ProcessSubNav Badge
+
+Shows pending approval count in navigation:
+
+```vue
+<ProcessSubNav :pending-approvals="pendingCount" />
+```
+
+---
+
+## Flow Details
+
+### 1. Create Approval Request Flow
+
+When execution reaches a `human_approval` step:
+
+```
+ExecutionEngine                 HumanApprovalHandler           ApprovalStore
+---------------                 --------------------           -------------
+_execute_step()
+  Get handler for HUMAN_APPROVAL
+  handler.execute(context, config)
+                            ->  execute()
+                                1. Check existing request
+                                2. Calculate deadline from config.timeout
+                                3. Evaluate title template
+                                4. Evaluate description template
+                                5. ApprovalRequest.create()
+                                   save(request)          ->   Store in memory
+                            <-  StepResult.wait({approval_id, title})
+
+_handle_step_waiting()
+  step_exec.wait_for_approval()
+  execution.pause()
+  publish(StepWaitingApproval)
+```
+
 ### 2. Approve/Reject Flow
 
 When user makes a decision in the UI:
@@ -157,32 +381,33 @@ When user makes a decision in the UI:
 ```
 Approvals.vue                   Backend                         ExecutionEngine
 -------------                   -------                         ---------------
-User clicks "Approve"
+User clicks Approve
 POST /api/approvals/{id}/approve
   { comment: "Looks good" }
-                            →   approve_request()
-                                ├── Get ApprovalRequest
-                                ├── Validate user authorization
-                                ├── request.approve(user, comment)
-                                ├── Save updated request
-                                └── engine.resume(execution)
-                                                            →   resume()
-                                                                ├── Reset step to PENDING
-                                                                └── _run() continues
-                                                                    ├── Handler sees "approved"
-                                                                    └── StepResult.ok()
+                            ->  approve()
+                                1. Get ApprovalRequest from store
+                                2. Validate still pending
+                                3. request.approve(user, comment)
+                                4. Store updated request
+                                5. engine.resume(execution)
+                                                            ->  resume()
+                                                                1. Re-execute step
+                                                                2. Handler sees "approved"
+                                                                3. Return StepResult.ok()
 ```
 
 ### 3. Resume After Approval
 
-When the step is re-executed after approval:
+When the step is re-executed after approval (lines 149-179):
 
 ```python
-# HumanApprovalHandler.execute() - line 119-140
-
 existing = self.approval_store.get_by_execution_step(execution_id, step_id)
 if existing:
     if existing.is_pending():
+        # Check timeout
+        if existing.deadline and datetime.now(timezone.utc) > existing.deadline:
+            existing.reject("SYSTEM", "Approval timed out - deadline exceeded")
+            return StepResult.fail("Approval timed out", error_code="APPROVAL_TIMEOUT")
         # Still waiting
         return StepResult.wait({"approval_id": existing.id})
     elif existing.status.value == "approved":
@@ -229,7 +454,7 @@ if existing:
 
 ### With Template Variables (Dynamic Content)
 
-Template variables in `title` and `description` are evaluated at runtime using process input data and previous step outputs:
+Template variables in `title` and `description` are evaluated at runtime:
 
 ```yaml
 - id: intake
@@ -252,258 +477,52 @@ Template variables in `title` and `description` are evaluated at runtime using p
   timeout: 24h
 ```
 
-**Supported Template Variables:**
-
-| Pattern | Description | Example |
-|---------|-------------|---------|
-| `{{input.X}}` | Process input data field | `{{input.company_name}}` |
-| `{{steps.X.output}}` | Full step output (entire response object) | `{{steps.research.output}}` |
-| `{{steps.X.output.Y}}` | Nested field in step output | `{{steps.research.output.summary}}` |
-| `{{execution.id}}` | Execution ID | `exec_abc123...` |
-| `{{process.name}}` | Process name | `due-diligence-workflow` |
-
-**Notes:**
-- Missing variables are left as-is (e.g., `{{input.missing}}` remains unchanged)
-- Dict outputs with `response` or `value` keys are automatically extracted
-- Non-string values are converted to JSON for display
-
----
-
-## Domain Model
-
-### ApprovalRequest Entity
-
-```python
-# entities.py:428-543
-
-@dataclass
-class ApprovalRequest:
-    id: str                          # UUID
-    execution_id: str                # Parent execution
-    step_id: str                     # Step within execution
-    title: str                       # Display title
-    description: str                 # Details about what needs approval
-    assignees: list[str]             # Users who can approve (empty = anyone)
-    status: ApprovalStatus           # pending, approved, rejected, expired
-    deadline: Optional[datetime]     # When request expires
-    created_at: datetime
-    decided_at: Optional[datetime]
-    decided_by: Optional[str]
-    decision_comment: Optional[str]
-
-    @classmethod
-    def create(cls, execution_id, step_id, title, description, assignees, deadline) -> ApprovalRequest:
-        """Create a new approval request."""
-
-    def approve(self, decided_by: str, comment: str = None) -> None:
-        """Mark as approved."""
-        self.status = ApprovalStatus.APPROVED
-        self.decided_at = datetime.now(timezone.utc)
-        self.decided_by = decided_by
-        self.decision_comment = comment
-
-    def reject(self, decided_by: str, comment: str) -> None:
-        """Mark as rejected (comment required)."""
-        self.status = ApprovalStatus.REJECTED
-        self.decided_at = datetime.now(timezone.utc)
-        self.decided_by = decided_by
-        self.decision_comment = comment
-
-    def expire(self) -> None:
-        """Mark as expired due to timeout."""
-        self.status = ApprovalStatus.EXPIRED
-        self.decided_at = datetime.now(timezone.utc)
-
-    def is_pending(self) -> bool:
-        return self.status == ApprovalStatus.PENDING
-
-    def can_be_decided_by(self, user: str) -> bool:
-        """Check if user can make a decision."""
-        if not self.assignees:
-            return True  # No assignees = anyone can approve
-        return user in self.assignees
-```
-
-### ApprovalStatus Enum
-
-```python
-class ApprovalStatus(str, Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-```
-
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/approvals` | List approval requests |
-| GET | `/api/approvals/{id}` | Get single request |
-| POST | `/api/approvals/{id}/approve` | Approve request |
-| POST | `/api/approvals/{id}/reject` | Reject request |
-
-### Request/Response Examples
-
-**List Approvals:**
-
-```
-GET /api/approvals?status=pending
-```
-
-```json
-{
-  "approvals": [
-    {
-      "id": "approval-uuid",
-      "execution_id": "execution-uuid",
-      "step_id": "review",
-      "title": "Review Content",
-      "description": "Please review before publishing",
-      "assignees": ["editor@example.com"],
-      "status": "pending",
-      "deadline": "2026-01-18T10:00:00Z",
-      "created_at": "2026-01-16T10:00:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-**Approve Request:**
-
-```
-POST /api/approvals/{id}/approve
-{
-  "comment": "Content looks good, approved for publishing"
-}
-```
-
-```json
-{
-  "id": "approval-uuid",
-  "status": "approved",
-  "decided_at": "2026-01-16T11:30:00Z",
-  "decided_by": "editor@example.com",
-  "decision_comment": "Content looks good, approved for publishing"
-}
-```
-
-**Reject Request:**
-
-```
-POST /api/approvals/{id}/reject
-{
-  "comment": "Needs revision, see inline comments"
-}
-```
-
----
-
-## Frontend Components
-
-### Approvals.vue
-
-Main inbox view for approval management.
-
-| Section | Lines | Description |
-|---------|-------|-------------|
-| Header | 8-27 | Title and refresh button |
-| Filters | 29-58 | Status dropdown filter |
-| Stats Cards | 60-78 | Total/Pending/Approved/Rejected counts |
-| Table | 94-200 | List of requests with actions |
-| Approve Modal | 210-280 | Confirmation dialog |
-| Reject Modal | 290-360 | Rejection with required comment |
-
-**Key Methods:**
-
-```javascript
-async function loadApprovals() {
-  const params = {}
-  if (statusFilter.value) {
-    params.status = statusFilter.value
-  }
-  const response = await api.get('/api/approvals', { params })
-  approvals.value = response.approvals
-  calculateStats()
-}
-
-async function handleApprove(approval) {
-  const comment = approveComment.value
-  await api.post(`/api/approvals/${approval.id}/approve`, { comment })
-  loadApprovals()  // Refresh list
-}
-
-async function handleReject(approval) {
-  const comment = rejectComment.value
-  if (!comment) {
-    error.value = 'Comment is required for rejection'
-    return
-  }
-  await api.post(`/api/approvals/${approval.id}/reject`, { comment })
-  loadApprovals()
-}
-```
-
-### ProcessSubNav Badge
-
-Shows pending approval count in navigation:
-
-```vue
-<ProcessSubNav :pending-approvals="pendingCount" />
-```
-
-```vue
-<!-- In ProcessSubNav.vue -->
-<router-link to="/approvals">
-  Approvals
-  <span v-if="pendingApprovals > 0" class="ml-2 bg-amber-500 text-white rounded-full px-2 py-0.5 text-xs">
-    {{ pendingApprovals }}
-  </span>
-</router-link>
-```
-
 ---
 
 ## Timeout Handling
 
-### Deadline Calculation
+### Deadline Calculation (lines 182-184)
 
 ```python
-# human_approval.py:142-145
-
 deadline = None
 if config.timeout:
     deadline = datetime.now(timezone.utc) + timedelta(seconds=config.timeout.seconds)
 ```
 
-### Expiration Check
+### Duration Parsing
 
-Timeout expiration is checked when:
-1. Approval request is queried
-2. Execution is resumed
-3. Periodic background check (if implemented)
+The `Duration` class supports human-readable formats:
+
+| Format | Seconds |
+|--------|---------|
+| `30s` | 30 |
+| `5m` | 300 |
+| `2h` | 7200 |
+| `24h` | 86400 |
+| `48h` | 172800 |
+
+### Expiration Check (lines 152-161)
+
+When handler is re-executed, it checks if deadline has passed:
 
 ```python
-def check_expired(request: ApprovalRequest) -> bool:
-    if request.deadline and datetime.now(timezone.utc) > request.deadline:
-        if request.is_pending():
-            request.expire()
-            return True
-    return False
+if existing.deadline and datetime.now(timezone.utc) > existing.deadline:
+    logger.info(f"Approval deadline passed for step '{step_id}', auto-rejecting")
+    existing.reject("SYSTEM", "Approval timed out - deadline exceeded")
+    self.approval_store.save(existing)
+    return StepResult.fail(
+        f"Approval timed out after deadline: {existing.deadline.isoformat()}",
+        error_code="APPROVAL_TIMEOUT",
+    )
 ```
 
 ---
 
 ## Authorization
 
-### Assignee Check
+### Assignee Check (lines 494-499)
 
 ```python
-# entities.py:494-499
-
 def can_be_decided_by(self, user: str) -> bool:
     """Check if the given user can decide on this request."""
     # If no assignees specified, anyone can approve
@@ -512,27 +531,10 @@ def can_be_decided_by(self, user: str) -> bool:
     return user in self.assignees
 ```
 
-### API Authorization
-
-```python
-# routers/approvals.py
-
-@router.post("/{approval_id}/approve")
-async def approve_request(
-    approval_id: str,
-    request: ApproveRequest,
-    current_user: CurrentUser,
-):
-    approval = store.get(approval_id)
-    if not approval:
-        raise HTTPException(404, "Approval not found")
-
-    if not approval.can_be_decided_by(current_user.email):
-        raise HTTPException(403, "Not authorized to approve this request")
-
-    approval.approve(current_user.email, request.comment)
-    # ... resume execution
-```
+**Authorization Rules:**
+- Empty `assignees` list = **anyone** can approve
+- Non-empty `assignees` list = only listed users can approve
+- Currently uses hardcoded "admin" user (TODO: get from auth context)
 
 ---
 
@@ -542,9 +544,30 @@ async def approve_request(
 |-------|-------------|-------|
 | Approval not found | 404 | Invalid approval ID |
 | Not authorized | 403 | User not in assignees list |
-| Already decided | 400 | Approval already approved/rejected |
-| Expired | 400 | Deadline passed |
+| Already decided | 400 | Approval already approved/rejected/expired |
 | Comment required | 422 | Rejection without comment |
+
+---
+
+## Storage
+
+### In-Memory Storage (ApprovalStore)
+
+Currently uses singleton in-memory storage (lines 27-76):
+
+```python
+class ApprovalStore:
+    _instance = None
+    _requests: dict[str, ApprovalRequest] = {}
+
+    def save(self, request: ApprovalRequest) -> None
+    def get(self, request_id: str) -> Optional[ApprovalRequest]
+    def get_by_execution_step(self, execution_id: str, step_id: str) -> Optional[ApprovalRequest]
+    def get_pending_for_user(self, user: str) -> list[ApprovalRequest]
+    def get_all_pending(self) -> list[ApprovalRequest]
+```
+
+**Note**: In production, this would be backed by database persistence.
 
 ---
 
@@ -552,7 +575,7 @@ async def approve_request(
 
 ### Prerequisites
 - Backend running at localhost:8000
-- Published process with human_approval step
+- Published process with `human_approval` step
 - User account for testing
 
 ### Test Cases
@@ -560,29 +583,45 @@ async def approve_request(
 1. **Create approval request**
    - Action: Start process with human_approval step
    - Expected: Execution pauses, request appears in inbox
+   - Verify: `GET /api/approvals?status=pending` returns new request
 
 2. **Approve request**
    - Action: Click approve on pending request
-   - Expected: Request marked approved, execution resumes
+   - Expected: Request marked approved, execution resumes, step completes
+   - Verify: Step output contains `decision: approved`
 
 3. **Reject request**
    - Action: Click reject, enter comment
-   - Expected: Request marked rejected, step fails
+   - Expected: Request marked rejected, step fails with APPROVAL_REJECTED
+   - Verify: Process fails or handles rejection per error policy
 
-4. **Assignee authorization**
+4. **Template variable substitution**
+   - Action: Start process with `{{input.X}}` in approval title
+   - Expected: Title shows actual input value, not template
+   - Verify: Approval request title is evaluated
+
+5. **Missing template variable**
+   - Action: Use `{{input.missing}}` in title
+   - Expected: Variable left unchanged (non-strict mode)
+   - Verify: Title shows `{{input.missing}}` literally
+
+6. **Assignee authorization**
    - Action: Try to approve as non-assignee
    - Expected: 403 Forbidden error
+   - Verify: Error message indicates not authorized
 
-5. **Timeout expiration**
-   - Action: Let request exceed deadline
-   - Expected: Request marked expired, step fails
+7. **Timeout expiration**
+   - Action: Create approval with short timeout, wait for expiration
+   - Expected: Request marked expired, step fails with APPROVAL_TIMEOUT
+   - Verify: Status changes from `pending` to `expired`
 
 ---
 
 ## Related Flows
 
-- [process-execution.md](./process-execution.md) - How execution pauses/resumes
-- [process-monitoring.md](./process-monitoring.md) - Viewing approval status in UI
+- **[process-execution.md](./process-execution.md)** - How execution pauses/resumes at approval steps
+- **[process-monitoring.md](./process-monitoring.md)** - Viewing approval status in execution detail
+- **[process-analytics.md](./process-analytics.md)** - Tracking approval wait times
 
 ---
 
@@ -590,5 +629,6 @@ async def approve_request(
 
 | Date | Change |
 |------|--------|
-| 2026-01-23 | **Bug Fix (PE-H1)**: Documented template variable substitution in `title` and `description` fields - variables like `{{input.X}}` and `{{steps.X.output}}` are now properly evaluated using ExpressionEvaluator |
+| 2026-01-23 | **Rebuilt**: Complete rewrite with accurate line numbers, detailed template variable documentation, full API examples, testing section |
+| 2026-01-23 | **Bug Fix (PE-H1)**: Documented template variable substitution in `title` and `description` fields |
 | 2026-01-16 | Initial creation |

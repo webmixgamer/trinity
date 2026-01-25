@@ -8,6 +8,7 @@ A reusable development methodology kit for Claude Code projects. Provides slash 
 |----------|----------|
 | **Commands** | 6 slash commands: `/read-docs`, `/update-docs`, `/feature-flow-analysis`, `/add-testing`, `/security-check`, `/validate-pr` |
 | **Agents** | 3 sub-agents: `feature-flow-analyzer`, `test-runner`, `security-analyzer` |
+| **Skills** | 4 methodology guides: `verification`, `systematic-debugging`, `tdd`, `code-review` |
 | **Memory Files** | Templates for requirements, architecture, roadmap, changelog, feature flows |
 | **Workflow** | Development cycle documentation and testing guide |
 | **Testing** | Phase-based testing framework templates |
@@ -63,6 +64,11 @@ your-project/
 │   │   ├── feature-flow-analyzer.md
 │   │   ├── test-runner.md
 │   │   └── security-analyzer.md
+│   ├── skills/                  # Methodology guides
+│   │   ├── verification/SKILL.md
+│   │   ├── systematic-debugging/SKILL.md
+│   │   ├── tdd/SKILL.md
+│   │   └── code-review/SKILL.md
 │   └── settings.local.json      # Claude Code settings
 └── docs/
     ├── DEVELOPMENT_WORKFLOW.md  # Development cycle guide
@@ -112,6 +118,19 @@ See `docs/DEVELOPMENT_WORKFLOW.md` for details.
 | `feature-flow-analyzer` | Traces and documents feature vertical slices |
 | `test-runner` | Runs test suite with tiered execution (smoke/core/full) |
 | `security-analyzer` | OWASP Top 10 security analysis |
+
+## Skills Reference
+
+Skills are methodology guides that define HOW to approach specific tasks.
+
+| Skill | Purpose | Key Rule |
+|-------|---------|----------|
+| `verification` | Evidence-based completion | No "done" without proof |
+| `systematic-debugging` | Root cause investigation | Investigate before fixing |
+| `tdd` | Test-driven development | Failing test first |
+| `code-review` | Receiving feedback | Verify before implementing |
+
+Skills are located in `.claude/skills/{name}/SKILL.md`.
 
 ## Memory Files Explained
 

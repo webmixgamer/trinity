@@ -315,6 +315,33 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 
 ---
 
+## Development Skills
+
+Skills are methodology guides in `.claude/skills/` that define HOW to approach specific tasks.
+
+### Available Skills
+
+| Skill | Purpose | When to Apply |
+|-------|---------|---------------|
+| `verification` | Evidence-based completion claims | Before saying "done" or "fixed" |
+| `systematic-debugging` | Root cause investigation | When fixing bugs or failures |
+| `tdd` | Test-driven development | When writing new code |
+| `code-review` | Receiving review feedback | When responding to PR comments |
+
+### Key Principles
+
+**Verification**: No completion claims without evidence. Run the command, show the output.
+
+**Debugging**: Find root cause BEFORE attempting fixes. No quick patches.
+
+**TDD**: Write failing test first, then minimal code to pass.
+
+**Code Review**: Technical rigor over social comfort. Verify before implementing.
+
+See `.claude/skills/{name}/SKILL.md` for full methodology guides.
+
+---
+
 ## Best Practices
 
 ### DO
@@ -327,6 +354,8 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 - ✅ Keep changelog entries concise but informative
 - ✅ Run `/security-check` before every commit
 - ✅ Run `/validate-pr` before approving any PR
+- ✅ Provide evidence with completion claims (verification skill)
+- ✅ Investigate root cause before fixing bugs (debugging skill)
 
 ### DON'T
 
@@ -337,6 +366,8 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 - ❌ Write new documentation files without being asked
 - ❌ Over-document - keep it minimal and useful
 - ❌ Merge PRs without running validation
+- ❌ Claim "done" without showing verification output
+- ❌ Guess at bug fixes without root cause analysis
 
 ---
 

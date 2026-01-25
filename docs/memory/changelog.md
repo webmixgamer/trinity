@@ -1,3 +1,249 @@
+### 2026-01-25 23:15:00
+📝 **Requirements: Simplified Skills Management Architecture**
+
+**Summary**: Redesigned skills management to use GitHub as the single source of truth, eliminating Docker volumes, symlinks, and complex infrastructure.
+
+**Key Changes**:
+- GitHub repository replaces Docker volume as source of truth
+- Simple copy injection replaces symlinks
+- Database stores assignments only (no skill metadata)
+- Git handles versioning (no custom version control)
+- MCP tools reduced from 10 to 4 essential ones
+- Removed System Agent curator role (use GitHub PRs instead)
+
+**New Architecture**:
+```
+GitHub Repo → git clone/pull → /data/skills-library/ → copy → agent ~/.claude/skills/
+```
+
+**Benefits**:
+- Simpler implementation (no Docker volume management)
+- Familiar workflow (edit skills via GitHub PRs)
+- Auto-update via git pull
+- Portable across Trinity instances
+
+**Files Updated**:
+- `docs/requirements/SKILLS_MANAGEMENT.md` - Complete rewrite
+- `docs/memory/requirements.md` - Section 21 updated
+
+---
+
+### 2026-01-25 22:30:00
+📚 **Docs: Trinity Compatible Agent Guide - Skills Management**
+
+**Summary**: Updated TRINITY_COMPATIBLE_AGENT_GUIDE.md to document the new Platform Skills system.
+
+**Changes**:
+- Added "Platform Skills" section (Section 11) documenting centralized skills management
+- Updated Table of Contents with new section
+- Updated directory structure to show `skills-library/` mount point
+- Clarified `.claude/skills/` in templates are seeded to platform library
+- Updated template.yaml schema with skills seeding note
+- Added revision history entry
+
+**Key Points for Agent Developers**:
+- Skills are managed at platform level, not in agent templates
+- Agents receive skills via symlinks from `~/.claude/skills/<name>`
+- Platform Skills Library mounted read-only at `~/.claude/skills-library/`
+- Three skill types: policy (always active), procedure (executable), methodology (guidance)
+
+---
+
+### 2026-01-25 16:12:00
+🔧 **Fix: Skill Injection to Agent Containers**
+
+**Summary**: Fixed skill injection system to successfully write skill files to agent containers.
+
+**Issues Fixed**:
+1. `AgentClient` missing `put` method - Added `put()` method for HTTP PUT requests
+2. Agent server not creating parent directories - Added `mkdir -p` before file writes in `files.py`
+3. `.claude/skills` directory permissions - Pre-created directory in Dockerfile with correct ownership
+
+**Files Changed**:
+- `src/backend/services/agent_client.py` - Added `put()` method (line 153)
+- `docker/base-image/agent_server/routers/files.py` - Added `parent.mkdir(parents=True, exist_ok=True)` before writes
+- `docker/base-image/Dockerfile` - Added `/home/developer/.claude/skills` to mkdir command
+
+**Testing**:
+- Created new agent `skill-test-2` with updated base image
+- Assigned `verification` skill via UI
+- Clicked "Sync to Agent" - successfully synced 1 skill
+- Verified `/home/developer/.claude/skills/verification/SKILL.md` exists in container
+
+**Note**: Existing agents need container recreation to get the updated base image.
+
+---
+
+### 2026-01-25 21:15:00
+📚 **Docs: Update Architecture Diagrams**
+
+**Summary**: Refreshed all 9 diagram documentation files with verified line numbers and corrected MCP tool counts.
+
+**Updates**:
+- `01-system-overview.md` - Updated MCP tool count from 21 to 29
+- `02-service-architecture.md` - Updated tool count to 29, added System Management (4 tools) category
+- `03-agent-container.md` - Fixed line number references (32-50, 468-500)
+- `05-authentication.md` - Fixed permission endpoints line reference (642-681)
+- `06-multi-agent-systems.md` - Fixed permissions router line reference
+- `09-agent-lifecycle-states.md` - Fixed security constants and crud.py line numbers
+
+**MCP Tool Inventory** (29 total):
+- Agent Management: 13 tools
+- Agent Interaction: 3 tools
+- System Management: 4 tools
+- Skills Management: 8 tools
+- Documentation: 1 tool
+
+---
+
+### 2026-01-25 18:30:00
+🔧 **Enhancement: Skills Shared Volume Architecture**
+
+**Summary**: Refactored skills management to use a shared Docker volume with symlinks instead of direct file injection. Skills are now stored centrally and mounted read-only into agents.
+
+**Architecture Changes**:
+- `docker-compose.yml` - Added `trinity-skills-library` volume, mounted at `/skills-library` in backend and `/home/developer/.claude/skills-library` in agents
+- `src/backend/services/skill_service.py` - Rewritten to use volume-based storage with symlinks
+- `src/backend/services/agent_service/crud.py` - Mount skills library volume on container creation
+- `src/backend/services/agent_service/lifecycle.py` - Mount skills library volume on container recreation
+- `src/backend/main.py` - Call `seed_skills_library()` on startup to seed from `.claude/skills/`
+
+**Key Features**:
+- Skills stored in `trinity-skills-library` Docker volume
+- Regular agents get read-only mount at `~/.claude/skills-library`
+- System agent (`trinity-system`) gets read-write access for curation
+- Skill assignment creates symlinks from `~/.claude/skills/<name>` to library
+- Auto-seeding from `.claude/skills/` directory on first run
+- Built-in skills (verification, tdd, etc.) marked as defaults
+
+**Benefits**:
+- Instant propagation of skill updates (no restart needed)
+- Centralized skill storage with database metadata
+- Audit trail for skill assignments
+- Future support for git-based versioning by System Agent
+
+---
+
+### 2026-01-25 17:00:00
+✨ **Feature: Skills Management System Implementation**
+
+**Summary**: Implemented centralized skill management for Trinity agents - platform-level skill library with per-agent assignment and container injection.
+
+**Backend Changes**:
+- `src/backend/database.py` - Added skills and agent_skills tables with indexes
+- `src/backend/db/skills.py` - SkillOperations class (already existed, now integrated)
+- `src/backend/routers/skills.py` - CRUD endpoints for skills (already existed, now registered)
+- `src/backend/services/skill_service.py` - Injection logic (already existed)
+- `src/backend/services/agent_service/lifecycle.py` - Added skill injection on agent start
+- `src/backend/main.py` - Registered skills_router
+
+**Frontend Changes**:
+- `src/frontend/src/views/Skills.vue` - Admin skills management page
+- `src/frontend/src/components/SkillsPanel.vue` - Agent skills tab component
+- `src/frontend/src/components/NavBar.vue` - Added Skills link (admin only)
+- `src/frontend/src/views/AgentDetail.vue` - Added Skills tab
+
+**MCP Server Changes**:
+- `src/mcp-server/src/types.ts` - Added Skill types
+- `src/mcp-server/src/client.ts` - Added skill methods to TrinityClient
+- `src/mcp-server/src/tools/skills.ts` - Created 8 MCP tools
+- `src/mcp-server/src/server.ts` - Registered skill tools
+
+**MCP Tools Added** (8 total):
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all platform skills |
+| `get_skill` | Get skill with full content |
+| `create_skill` | Create skill (system scope) |
+| `delete_skill` | Delete skill (system scope) |
+| `assign_skill_to_agent` | Assign skill to agent |
+| `remove_skill_from_agent` | Remove skill from agent |
+| `sync_agent_skills` | Re-inject skills to running container |
+| `execute_procedure` | Execute procedure skill on agent |
+
+**Skill Types**:
+- `policy` - Always active rules (e.g., `policy-data-retention`)
+- `procedure` - Step-by-step instructions (e.g., `procedure-incident-response`)
+- `methodology` - Approach guidance (e.g., `systematic-debugging`)
+
+---
+
+### 2026-01-25 15:30:00
+📝 **Docs: Skills as Unified Organizational Knowledge**
+
+**Summary**: Extended skills requirements with philosophical framework - skills as unified abstraction for policies, procedures, and methodologies.
+
+**Files Updated**:
+- `docs/requirements/SKILLS_MANAGEMENT.md`
+  - Added Philosophy section explaining unified model
+  - Added skill types: policy-*, procedure-*, methodology
+  - Added execution modes: passive, on-demand, scheduled
+  - Added Process Engine integration section
+  - Added `execute_procedure` MCP tool
+  - Added Phase 5: Process Engine Integration
+- `docs/memory/requirements.md`
+  - Updated Section 21 with skill types and philosophy
+  - Added 21.2 Skill Types, 21.6 Process Engine Integration
+
+**Key Concepts**:
+| Type | Naming | Behavior |
+|------|--------|----------|
+| Policy | `policy-*` | Always active, agents follow implicitly |
+| Procedure | `procedure-*` | Executable, can be scheduled/triggered |
+| Methodology | (no prefix) | Guidance, loaded when relevant |
+
+**Process Engine Connection**: Procedures become schedulable tasks via existing Process Engine infrastructure.
+
+---
+
+### 2026-01-25 14:00:00
+📝 **Docs: Skills Management System Requirements**
+
+**Summary**: Created detailed requirements for centralized skill management in Trinity.
+
+**File Created**:
+- `docs/requirements/SKILLS_MANAGEMENT.md` - Full feature specification
+
+**Key Features**:
+- Platform-level skill library (admin manages reusable skills)
+- Per-agent skill assignment via UI
+- System agent MCP tools for programmatic control
+- Automatic injection into agent containers at start
+- 5 phases: Core → UI → MCP Tools → System Agent → Process Integration
+
+**Database**: 2 new tables (`skills`, `agent_skills`)
+**API**: 7 new endpoints for skills CRUD and assignment
+**MCP Tools**: 7 new tools for system agent skill management
+
+---
+
+### 2026-01-23 17:30:00
+✨ **New: Development Methodology Skills (Inspired by Superpowers)**
+
+**Summary**: Added 4 methodology skill guides to strengthen development discipline. Inspired by obra/superpowers framework (34k stars).
+
+**Files Created**:
+- `.claude/skills/verification/SKILL.md` - Evidence-based completion claims
+- `.claude/skills/systematic-debugging/SKILL.md` - Root cause investigation before fixes
+- `.claude/skills/tdd/SKILL.md` - Test-driven development cycle
+- `.claude/skills/code-review/SKILL.md` - Technical rigor when receiving feedback
+
+**Files Updated**:
+- `CLAUDE.md` - Added "Development Skills" section (#6 in Rules of Engagement)
+- `docs/DEVELOPMENT_WORKFLOW.md` - Added "Development Skills" section with skill reference table
+- `dev-methodology-template/README.md` - Added skills to "What's Included" and directory structure
+- `dev-methodology-template/.claude/skills/` - Copied all 4 skills to template
+
+**Key Principles Adopted**:
+1. **Verification**: No "done" without evidence (run command, show output)
+2. **Debugging**: Find root cause BEFORE attempting fixes
+3. **TDD**: Write failing test first, then minimal code to pass
+4. **Code Review**: Verify feedback technically, not socially
+
+**Source**: Analysis of https://github.com/obra/superpowers
+
+---
+
 ### 2026-01-23 16:00:00
 📝 **Docs: Updated Testing Agents Feature Flow**
 

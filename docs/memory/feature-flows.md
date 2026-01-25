@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-25)**: Skills Management System - 5 Dedicated Flows:
+> - **skills-management.md**: UI documentation for Skills.vue admin page and SkillsPanel.vue agent tab (grid layout, modals, user flows)
+> - **skills-crud.md**: Backend CRUD operations via `/skills` page (`routers/skills.py`, `db/skills.py`)
+> - **agent-skill-assignment.md**: Owner assigns skills via SkillsPanel (`routers/agents.py:999-1184`)
+> - **skill-injection.md**: Automatic injection to `~/.claude/skills/{name}/SKILL.md` on agent start (`skill_service.py`, `lifecycle.py:219-221`)
+> - **mcp-skill-tools.md**: 8 MCP tools for programmatic management (`tools/skills.ts`, `client.ts:500-575`)
+>
 > **Updated (2026-01-23)**: Shared Folders Template Extraction Fix (SF-H1):
 > - **agent-shared-folders.md**: Rewrote "Agent Creation Flow" section with three-phase structure
 > - Phase 1: Template Extraction (lines 91-92, 173-179) - extracts `shared_folders` from template.yaml
@@ -387,6 +394,11 @@
 | **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
 | **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
 | **Alerts Page** | Medium | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts for process executions - NavBar badge with 60s polling, filter by status, dismiss alerts, severity levels (warning/critical), threshold types (per_execution/daily/weekly). Service: CostAlertService, DB: trinity_alerts.db (Created 2026-01-21) |
+| **Skills CRUD** | High | [skills-crud.md](feature-flows/skills-crud.md) | Admin CRUD for platform skills via `/skills` page - create, update, delete methodology guides. Types: policy, procedure, methodology. Backend: `routers/skills.py`, `db/skills.py` (Created 2026-01-25) |
+| **Agent Skill Assignment** | High | [agent-skill-assignment.md](feature-flows/agent-skill-assignment.md) | Owner assigns skills to agents via SkillsPanel in Agent Detail - checkbox selection, save, sync to running agents. Backend: `routers/agents.py:999-1184`, `db/skills.py:248-399` (Created 2026-01-25) |
+| **Skill Injection** | High | [skill-injection.md](feature-flows/skill-injection.md) | Automatic injection of assigned skills into agent containers on start - writes to `~/.claude/skills/{name}/SKILL.md`, hot-reload via sync endpoint. Service: `skill_service.py`, lifecycle: `lifecycle.py:219-221` (Created 2026-01-25) |
+| **MCP Skill Tools** | High | [mcp-skill-tools.md](feature-flows/mcp-skill-tools.md) | 8 MCP tools for programmatic skill management - `list_skills`, `get_skill`, `create_skill`, `delete_skill`, `assign_skill_to_agent`, `remove_skill_from_agent`, `sync_agent_skills`, `execute_procedure`. Some require system scope. Files: `tools/skills.ts`, `client.ts:500-575` (Created 2026-01-25) |
+| **Skills Management UI** | High | [skills-management.md](feature-flows/skills-management.md) | Frontend UI documentation - Skills.vue admin page (CRUD modals, grid layout, type badges), SkillsPanel.vue agent tab (checkbox assignment, Save/Sync buttons). User flows for create/edit/delete skills and assign/sync to agents (Created 2026-01-25) |
 
 ---
 
@@ -401,11 +413,11 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Flow | Document | Description |
 |------|----------|-------------|
 | Process Definition | [process-definition.md](feature-flows/process-engine/process-definition.md) | YAML schema, validation, versioning |
-| Process Execution | [process-execution.md](feature-flows/process-engine/process-execution.md) | Execution engine, step handlers, state machine |
-| Process Monitoring | [process-monitoring.md](feature-flows/process-engine/process-monitoring.md) | Real-time UI views, WebSocket events |
+| Process Execution | [process-execution.md](feature-flows/process-engine/process-execution.md) | Execution engine, step handlers, state machine, retry logic, compensation - Rebuilt with accurate line numbers 2026-01-23 |
+| Process Monitoring | [process-monitoring.md](feature-flows/process-engine/process-monitoring.md) | Real-time WebSocket events (10 types), ExecutionTimeline, breadcrumbs, polling fallback (Updated 2026-01-23) |
 | Human Approval | [human-approval.md](feature-flows/process-engine/human-approval.md) | Approval gates, inbox, timeout handling |
 | Process Scheduling | [process-scheduling.md](feature-flows/process-engine/process-scheduling.md) | Cron triggers, timer steps |
-| Process Analytics | [process-analytics.md](feature-flows/process-engine/process-analytics.md) | Cost tracking, metrics, alerts |
+| Process Analytics | [process-analytics.md](feature-flows/process-engine/process-analytics.md) | Cost tracking, metrics, trends, threshold alerts - ProcessDashboard.vue, analytics.js store, ProcessAnalytics service, CostAlertService (Rebuilt 2026-01-23) |
 | Sub-Processes | [sub-processes.md](feature-flows/process-engine/sub-processes.md) | Parent-child linking, breadcrumbs |
 | Agent Roles (EMI) | [agent-roles-emi.md](feature-flows/process-engine/agent-roles-emi.md) | EMI pattern, InformedNotifier |
 | Process Templates | [process-templates.md](feature-flows/process-engine/process-templates.md) | Bundled and user templates |
@@ -431,6 +443,7 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Agent Vector Memory | REMOVED | [archive/vector-memory.md](feature-flows/archive/vector-memory.md) | Platform-injected vector memory removed (2025-12-24) - templates should define their own |
 | Agent Network Replay Mode | SUPERSEDED | [archive/agent-network-replay-mode.md](feature-flows/archive/agent-network-replay-mode.md) | VCR-style replay replaced by Dashboard Timeline View and replay-timeline.md (2026-01-04) |
 | System Agent UI | CONSOLIDATED | [archive/system-agent-ui.md](feature-flows/archive/system-agent-ui.md) | Dedicated `/system-agent` page removed (2026-01-13) - system agent now uses regular AgentDetail.vue with full tab access including Schedules |
+| Skills Management | SPLIT | [archive/skills-management.md](feature-flows/archive/skills-management.md) | Comprehensive skills doc split into 4 dedicated flows (2026-01-25) - see skills-crud.md, agent-skill-assignment.md, skill-injection.md, mcp-skill-tools.md |
 
 ---
 
