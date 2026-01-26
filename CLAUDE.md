@@ -91,6 +91,16 @@ After **EVERY** change, update:
 - Use placeholder values in example configs (e.g., `your-domain.com`, `your-api-key`)
 - Review diffs before committing for accidental sensitive data
 
+### 6. Development Skills
+Follow methodology guides in `.claude/skills/`:
+
+| Skill | Key Rule |
+|-------|----------|
+| `verification` | No "done" claims without evidence (run command, show output) |
+| `systematic-debugging` | Find root cause BEFORE attempting fixes |
+| `tdd` | Write failing test first, then minimal code to pass |
+| `code-review` | Verify feedback technically before implementing |
+
 ---
 
 ## Memory Files

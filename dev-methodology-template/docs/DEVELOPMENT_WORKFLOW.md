@@ -42,6 +42,14 @@
 │      ↓                                                              │
 │   /update-docs → Update changelog, architecture, requirements       │
 │                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   5. PR VALIDATION (before merge)                                   │
+│      ↓                                                              │
+│   /validate-pr → Validate PR meets all methodology requirements     │
+│      ↓                                                              │
+│   Review report → APPROVE / REQUEST CHANGES / NEEDS DISCUSSION      │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -218,6 +226,7 @@ Use the security-analyzer to review the auth code
 | `/feature-flow-analysis <feature>` | Document feature flow | After modifying features |
 | `/security-check` | Validate no secrets in staged files | Before every commit |
 | `/add-testing` | Add tests for a feature | Improving coverage |
+| `/validate-pr <number>` | Validate PR against methodology | Before merging PRs |
 
 ---
 
@@ -306,6 +315,33 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 
 ---
 
+## Development Skills
+
+Skills are methodology guides in `.claude/skills/` that define HOW to approach specific tasks.
+
+### Available Skills
+
+| Skill | Purpose | When to Apply |
+|-------|---------|---------------|
+| `verification` | Evidence-based completion claims | Before saying "done" or "fixed" |
+| `systematic-debugging` | Root cause investigation | When fixing bugs or failures |
+| `tdd` | Test-driven development | When writing new code |
+| `code-review` | Receiving review feedback | When responding to PR comments |
+
+### Key Principles
+
+**Verification**: No completion claims without evidence. Run the command, show the output.
+
+**Debugging**: Find root cause BEFORE attempting fixes. No quick patches.
+
+**TDD**: Write failing test first, then minimal code to pass.
+
+**Code Review**: Technical rigor over social comfort. Verify before implementing.
+
+See `.claude/skills/{name}/SKILL.md` for full methodology guides.
+
+---
+
 ## Best Practices
 
 ### DO
@@ -317,6 +353,9 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 - ✅ Use sub-agents for specialized tasks
 - ✅ Keep changelog entries concise but informative
 - ✅ Run `/security-check` before every commit
+- ✅ Run `/validate-pr` before approving any PR
+- ✅ Provide evidence with completion claims (verification skill)
+- ✅ Investigate root cause before fixing bugs (debugging skill)
 
 ### DON'T
 
@@ -326,6 +365,66 @@ Claude: [Updates changelog, possibly updates feature flow if behavior changed]
 - ❌ Leave feature flows outdated after changes
 - ❌ Write new documentation files without being asked
 - ❌ Over-document - keep it minimal and useful
+- ❌ Merge PRs without running validation
+- ❌ Claim "done" without showing verification output
+- ❌ Guess at bug fixes without root cause analysis
+
+---
+
+## Phase 5: PR Validation
+
+**Before merging any PR, validate it meets all methodology requirements.**
+
+### Run PR Validation
+
+```
+/validate-pr 42
+```
+
+Or with full URL:
+```
+/validate-pr https://github.com/org/repo/pull/42
+```
+
+### What Gets Validated
+
+| Category | Validation |
+|----------|------------|
+| **Changelog** | Entry exists with timestamp and emoji |
+| **Roadmap** | Updated if task completed or new work discovered |
+| **Requirements** | Updated if new feature or scope change |
+| **Architecture** | Updated if API/schema/integration changes |
+| **Feature Flows** | Created/updated for behavior changes, correct format |
+| **Security** | No secrets, keys, emails, IPs in diff |
+| **Code Quality** | Minimal changes, follows patterns |
+| **Traceability** | Links to requirements |
+
+### Validation Report
+
+The command generates a structured report with:
+- Summary table showing pass/fail for each category
+- Documentation and security checklists
+- Issues found (Critical, Warnings, Suggestions)
+- **Recommendation**: APPROVE / REQUEST CHANGES / NEEDS DISCUSSION
+
+### Example Workflow
+
+```
+# Reviewer receives PR notification
+You: /validate-pr 42
+
+# Claude analyzes and generates report
+Claude: ## PR Validation Report
+        ...
+        ### Recommendation
+        **REQUEST CHANGES**
+        - [ ] Changelog entry missing
+        - [ ] Feature flow needs Testing section
+
+# Reviewer posts comment with required changes
+# Developer fixes and requests re-review
+# Reviewer runs /validate-pr 42 again
+```
 
 ---
 
@@ -340,3 +439,10 @@ For every development session:
 - [ ] Update feature flow if behavior changed (`feature-flow-analyzer` agent)
 - [ ] Update documentation (`/update-docs`)
 - [ ] Run security check before commit (`/security-check`)
+
+For PR reviews:
+
+- [ ] Run `/validate-pr <number>` before approving
+- [ ] Verify all Critical issues resolved
+- [ ] Review Warnings with human judgment
+- [ ] Approve only when report shows all ✅

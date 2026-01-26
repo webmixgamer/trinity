@@ -18,15 +18,16 @@
 8. [Credential Management](#credential-management)
 9. [Inter-Agent Collaboration](#inter-agent-collaboration)
 10. [Shared Folders](#shared-folders)
-11. [Custom Metrics](#custom-metrics)
-12. [Agent Dashboard](#agent-dashboard)
-13. [Memory Management](#memory-management)
-14. [Content Folder Convention](#content-folder-convention)
-15. [Package Persistence](#package-persistence)
-16. [Compatibility Checklist](#compatibility-checklist)
-17. [Migration Guide](#migration-guide)
-18. [Best Practices](#best-practices)
-19. [Autonomous Agent Design](#autonomous-agent-design)
+11. [Platform Skills](#platform-skills)
+12. [Custom Metrics](#custom-metrics)
+13. [Agent Dashboard](#agent-dashboard)
+14. [Memory Management](#memory-management)
+15. [Content Folder Convention](#content-folder-convention)
+16. [Package Persistence](#package-persistence)
+17. [Compatibility Checklist](#compatibility-checklist)
+18. [Migration Guide](#migration-guide)
+19. [Best Practices](#best-practices)
+20. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -185,7 +186,7 @@ content/
 
 **What to commit from `.claude/`:**
 - ✅ `.claude/commands/` - Slash commands
-- ✅ `.claude/skills/` - Skills
+- ✅ `.claude/skills/` - Skills (seeded to platform library on first deploy)
 - ✅ `.claude/agents/` - Sub-agents
 - ✅ `.claude/settings.local.json` - Claude Code settings
 
@@ -194,6 +195,8 @@ content/
 - ❌ `.claude/statsig/` - Analytics
 - ❌ `.claude/todos/` - Temporary todo lists
 - ❌ `.claude/debug/` - Debug logs
+
+**Note on Skills**: Skills in templates are seeded to the **Platform Skills Library** on first deployment, then managed centrally. See [Platform Skills](#platform-skills).
 
 ---
 
@@ -213,7 +216,8 @@ my-agent/
 ├── .claude/
 │   ├── agents/                    # Agent's own sub-agents (optional)
 │   ├── commands/                  # Slash commands (optional)
-│   ├── skills/                    # Skills (optional)
+│   ├── skills/                    # Symlinks to assigned platform skills (auto-managed)
+│   ├── skills-library/            # Read-only mount of all platform skills
 │   └── settings.local.json        # Claude Code settings
 │
 ├── .mcp.json.template             # MCP config with ${VAR} placeholders
@@ -312,7 +316,8 @@ mcp_servers:
   - name: server-name
     description: "What this MCP server provides"
 
-# Skills with descriptions
+# Skills (for documentation/seeding - managed at platform level)
+# Skills in .claude/skills/ are seeded to Platform Skills Library on first deploy
 skills:
   - name: my-skill
     description: "What this skill enables"
@@ -558,6 +563,63 @@ cat /home/developer/shared-in/agent-a/report.txt
 ```
 
 **Note**: Changes to shared folder config require an agent restart.
+
+---
+
+## Platform Skills
+
+Trinity provides a centralized **Skills Library** for managing organizational knowledge — policies, procedures, and methodologies that agents follow.
+
+### How It Works
+
+1. **Platform stores skills** in a shared Docker volume (`trinity-skills-library`)
+2. **Admins manage skills** via the `/skills` page (create, edit, delete)
+3. **Owners assign skills** to their agents via the Skills tab
+4. **Skills are mounted** read-only at `~/.claude/skills-library/` in agents
+5. **Assigned skills** appear as symlinks at `~/.claude/skills/<name>/`
+
+### Skill Types
+
+| Type | Naming Convention | Behavior |
+|------|-------------------|----------|
+| `policy` | `policy-*` | Always active rules agents follow implicitly |
+| `procedure` | `procedure-*` | Executable step-by-step instructions |
+| `methodology` | (no prefix) | Approach guidance loaded when relevant |
+
+### Agent Perspective
+
+Agents see assigned skills in their standard Claude Code skills location:
+
+```
+~/.claude/
+├── skills/
+│   ├── verification/        # Symlink → skills-library
+│   │   └── SKILL.md
+│   └── systematic-debugging/
+│       └── SKILL.md
+└── skills-library/          # Read-only mount (all platform skills)
+```
+
+### What This Means for Templates
+
+**Templates should NOT include `.claude/skills/`** — skills are managed at the platform level and assigned per-agent. If your template includes skills in `.claude/skills/`, they will be seeded to the platform library on first deployment, then managed centrally.
+
+### Syncing Skills
+
+When skills are updated at the platform level, agents receive updates:
+- **On next start**: Skills automatically sync
+- **While running**: Use "Sync to Agent" button or MCP `sync_agent_skills` tool
+
+### MCP Tools for Skills
+
+Agents can interact with the skills system programmatically:
+
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all platform skills |
+| `get_skill` | Get skill content |
+| `sync_agent_skills` | Re-sync skills to container |
+| `execute_procedure` | Run a procedure skill |
 
 ---
 
@@ -1161,6 +1223,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-25 | **Platform Skills**: Added new section documenting centralized Skills Library; Skills managed at platform level, mounted read-only into agents; Three skill types (policy, procedure, methodology); Updated directory structure and .gitignore notes |
 | 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
 | 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
 | 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |

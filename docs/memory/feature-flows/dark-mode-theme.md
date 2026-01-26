@@ -7,8 +7,8 @@ Client-side theme management system supporting Light, Dark, and System (OS-prefe
 As a user, I want to switch between light, dark, and system theme modes so that I can use Trinity comfortably in different lighting conditions and match my OS preferences.
 
 ## Entry Points
-- **UI (Quick Toggle)**: `src/frontend/src/components/NavBar.vue:82-99` - Theme icon button in navbar
-- **UI (Full Selector)**: `src/frontend/src/components/NavBar.vue:136-170` - Theme selector in user dropdown menu
+- **UI (Quick Toggle)**: `src/frontend/src/components/NavBar.vue:81-98` - Theme icon button in navbar
+- **UI (Full Selector)**: `src/frontend/src/components/NavBar.vue:135-168` - Theme selector in user dropdown menu
 
 ## Frontend Layer
 
@@ -46,6 +46,7 @@ function getStoredTheme() {
 function applyTheme() {
   const root = document.documentElement
   if (theme.value === 'system') {
+    // Use system preference
     isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
   } else {
     isDark.value = theme.value === 'dark'
@@ -59,7 +60,9 @@ function applyTheme() {
 
 // :50-61 - Initialize + listen for OS preference changes
 function initTheme() {
+  // Apply theme immediately
   applyTheme()
+  // Listen for system preference changes
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', () => {
     if (theme.value === 'system') {
@@ -67,6 +70,9 @@ function initTheme() {
     }
   })
 }
+
+// :63-64 - Watch for theme changes
+watch(theme, applyTheme)
 ```
 
 ### Tailwind Configuration
@@ -79,9 +85,11 @@ darkMode: 'class'  // Uses class strategy (not media query)
 This means Tailwind generates `dark:` variants that activate when `.dark` class is on an ancestor element.
 
 ### App Initialization
-**File**: `src/frontend/src/App.vue:20,25`
+**File**: `src/frontend/src/App.vue:16,20,25`
 
 ```javascript
+import { useThemeStore } from './stores/theme'  // line 16
+
 const themeStore = useThemeStore()  // line 20
 
 onMounted(async () => {
@@ -94,7 +102,7 @@ onMounted(async () => {
 ### NavBar Component
 **File**: `src/frontend/src/components/NavBar.vue`
 
-**Theme Toggle Button** (:82-99):
+**Theme Toggle Button** (:81-98):
 - Cycles through themes on click via `themeStore.toggleTheme()`
 - Displays contextual icon:
   - Sun icon for light mode
@@ -102,13 +110,19 @@ onMounted(async () => {
   - Computer/monitor icon for system mode
 - Shows tooltip with current mode and hint to click
 
-**Theme Selector in Dropdown** (:136-170):
+**Theme Selector in Dropdown** (:135-168):
 - Three buttons: Light, Dark, Auto (System)
 - Active state highlighted with blue background
 - Calls `themeStore.setTheme(themeName)` on click
 
 ```javascript
-// :207-221 - Theme handling in component
+// :191 - Import theme store
+import { useThemeStore } from '../stores/theme'
+
+// :198 - Initialize theme store
+const themeStore = useThemeStore()
+
+// :225-232 - Theme handling in component
 const themeTitle = computed(() => {
   const titles = {
     light: 'Light mode (click to switch)',
@@ -118,10 +132,12 @@ const themeTitle = computed(() => {
   return titles[themeStore.theme]
 })
 
+// :234-236 - Cycle theme
 const cycleTheme = () => {
   themeStore.toggleTheme()
 }
 
+// :238-240 - Set specific theme
 const setTheme = (theme) => {
   themeStore.setTheme(theme)
 }
@@ -157,28 +173,79 @@ Dark mode classes follow Tailwind's `dark:` variant pattern:
 
 ## Components with Dark Mode Support
 
-| Component | File | Key Dark Classes |
-|-----------|------|------------------|
+**Total Coverage**: 61 files with 2,293 `dark:` class occurrences
+
+### Views (21 files, 1099 dark: occurrences)
+
+| Component | File | dark: Count |
+|-----------|------|-------------|
 | App | `App.vue:2` | `bg-gray-100 dark:bg-gray-900` |
-| NavBar | `NavBar.vue:2` | `bg-white dark:bg-gray-800 shadow dark:shadow-gray-900` |
-| Dashboard | `Dashboard.vue:2,8,229` | Full dark mode support |
-| Login | `Login.vue:2,20,35` | Dark backgrounds, inputs, buttons |
-| Settings | `Settings.vue:2,15,23` | Full dark mode support |
-| Agents | Multiple views | Full dark mode support |
-| AgentDetail | `AgentDetail.vue` | Full dark mode support |
-| Credentials | `Credentials.vue` | Full dark mode support |
-| Templates | `Templates.vue` | Full dark mode support |
-| ApiKeys | `ApiKeys.vue` | Full dark mode support |
-| ConfirmDialog | `ConfirmDialog.vue:7,16,19,24,29,41,45,54,58,70` | Backdrop, dialog, buttons |
-| CreateAgentModal | `CreateAgentModal.vue:4,8,10,15,20,38,51,54,87,106,121,140,145,154,159,163,174` | Full modal dark support |
-| UnifiedActivityPanel | `UnifiedActivityPanel.vue` | Session activity, timeline, modal |
-| InfoPanel | `InfoPanel.vue` | Template info sections, colored badges |
-| MetricsPanel | `MetricsPanel.vue` | Metrics grid, empty states |
-| FoldersPanel | `FoldersPanel.vue` | Shared folders config, toggles, cards |
-| AgentNode | `AgentNode.vue` | Dashboard agent tiles, progress bars, buttons |
-| GitPanel | `GitPanel.vue` | Git status, commits, changes list |
-| SchedulesPanel | `SchedulesPanel.vue` | Schedule cards, form modal, execution history |
-| ExecutionsPanel | `ExecutionsPanel.vue` | Stats cards, table, execution detail modal |
+| Dashboard | `Dashboard.vue` | 43 |
+| Login | `Login.vue` | 28 |
+| Settings | `Settings.vue` | 78 |
+| Agents | `Agents.vue` | 41 |
+| AgentDetail | `AgentDetail.vue` | 8 |
+| Credentials | `Credentials.vue` | 63 |
+| Templates | `Templates.vue` | 40 |
+| ApiKeys | `ApiKeys.vue` | 57 |
+| ProcessWizard | `ProcessWizard.vue` | 59 |
+| ProcessList | `ProcessList.vue` | 59 |
+| ProcessDashboard | `ProcessDashboard.vue` | 82 |
+| ProcessEditor | `ProcessEditor.vue` | 104 |
+| ProcessDocs | `ProcessDocs.vue` | 38 |
+| ProcessExecutionDetail | `ProcessExecutionDetail.vue` | 71 |
+| ExecutionList | `ExecutionList.vue` | 63 |
+| ExecutionDetail | `ExecutionDetail.vue` | 91 |
+| Approvals | `Approvals.vue` | 56 |
+| Alerts | `Alerts.vue` | 28 |
+| FileManager | `FileManager.vue` | 34 |
+| PublicChat | `PublicChat.vue` | 33 |
+| SetupPassword | `SetupPassword.vue` | 23 |
+
+### Components (40 files, 1194 dark: occurrences)
+
+| Component | File | dark: Count |
+|-----------|------|-------------|
+| NavBar | `NavBar.vue:2` | 31 |
+| ConfirmDialog | `ConfirmDialog.vue` | 10 |
+| CreateAgentModal | `CreateAgentModal.vue` | 38 |
+| UnifiedActivityPanel | `UnifiedActivityPanel.vue` | 29 |
+| InfoPanel | `InfoPanel.vue` | 60 |
+| MetricsPanel | `MetricsPanel.vue` | 33 |
+| FoldersPanel | `FoldersPanel.vue` | 47 |
+| AgentNode | `AgentNode.vue` | 36 |
+| GitPanel | `GitPanel.vue` | 63 |
+| SchedulesPanel | `SchedulesPanel.vue` | 76 |
+| TasksPanel | `TasksPanel.vue` | 85 |
+| CredentialsPanel | `CredentialsPanel.vue` | 40 |
+| ExecutionTimeline | `ExecutionTimeline.vue` | 93 |
+| DashboardPanel | `DashboardPanel.vue` | 58 |
+| ObservabilityPanel | `ObservabilityPanel.vue` | 42 |
+| PublicLinksPanel | `PublicLinksPanel.vue` | 46 |
+| AgentHeader | `AgentHeader.vue` | 36 |
+| ProcessFlowPreview | `ProcessFlowPreview.vue` | 25 |
+| ProcessChatAssistant | `ProcessChatAssistant.vue` | 26 |
+| ReplayTimeline | `ReplayTimeline.vue` | 37 |
+| OnboardingChecklist | `OnboardingChecklist.vue` | 28 |
+| EditorHelpPanel | `EditorHelpPanel.vue` | 22 |
+| SharingPanel | `SharingPanel.vue` | 14 |
+| PermissionsPanel | `PermissionsPanel.vue` | 17 |
+| ResourceModal | `ResourceModal.vue` | 13 |
+| FilesPanel | `FilesPanel.vue` | 8 |
+| FileTreeNode | `FileTreeNode.vue` | 10 |
+| YamlEditor | `YamlEditor.vue` | 10 |
+| GitConflictModal | `GitConflictModal.vue` | 24 |
+| SystemAgentNode | `SystemAgentNode.vue` | 20 |
+| HostTelemetry | `HostTelemetry.vue` | 6 |
+| LogsPanel | `LogsPanel.vue` | 4 |
+| RuntimeBadge | `RuntimeBadge.vue` | 3 |
+| ProcessSubNav | `ProcessSubNav.vue` | 4 |
+| AgentSubNav | `AgentSubNav.vue` | 3 |
+| process/TemplateSelector | `process/TemplateSelector.vue` | 37 |
+| process/RoleMatrix | `process/RoleMatrix.vue` | 33 |
+| process/TrendChart | `process/TrendChart.vue` | 12 |
+| file-manager/FileTreeNode | `file-manager/FileTreeNode.vue` | 6 |
+| file-manager/FilePreview | `file-manager/FilePreview.vue` | 9 |
 
 ## Data Flow Diagram
 
@@ -290,54 +357,52 @@ localStorage.getItem('trinity-theme')  // Should return current theme
 
 ## Implementation Status
 
-- [x] Theme store with persistence
-- [x] Tailwind class-based dark mode
-- [x] NavBar toggle button with icons
-- [x] NavBar dropdown selector
-- [x] App.vue initialization
-- [x] Dashboard dark mode
-- [x] Login page dark mode
-- [x] Settings page dark mode
-- [x] Agents views dark mode
-- [x] AgentDetail dark mode
-- [x] Credentials page dark mode
-- [x] Templates page dark mode
-- [x] ApiKeys page dark mode
-- [x] ConfirmDialog dark mode
-- [x] CreateAgentModal dark mode
-- [x] System preference listener
-- [x] UnifiedActivityPanel dark mode
-- [x] InfoPanel dark mode
-- [x] MetricsPanel dark mode
+### Core Infrastructure
+- [x] Theme store with persistence (`stores/theme.js`)
+- [x] Tailwind class-based dark mode (`tailwind.config.js:7`)
+- [x] NavBar toggle button with icons (`:81-98`)
+- [x] NavBar dropdown selector (`:135-168`)
+- [x] App.vue initialization (`:25`)
+- [x] System preference listener with `matchMedia`
+- [x] Watch for theme changes (`:64`)
 
-## Files Modified
+### Views (21 files complete)
+- [x] Dashboard, Login, Settings, Agents, AgentDetail
+- [x] Credentials, Templates, ApiKeys
+- [x] ProcessWizard, ProcessList, ProcessDashboard, ProcessEditor, ProcessDocs
+- [x] ProcessExecutionDetail, ExecutionList, ExecutionDetail
+- [x] Approvals, Alerts, FileManager, PublicChat, SetupPassword
 
-| File | Changes |
-|------|---------|
-| `src/frontend/src/stores/theme.js` | **New** - Pinia store for theme state |
-| `src/frontend/tailwind.config.js:7` | Added `darkMode: 'class'` |
-| `src/frontend/src/App.vue:11,15,20` | Import store, initialize theme |
-| `src/frontend/src/components/NavBar.vue` | Theme toggle button + dropdown selector |
-| `src/frontend/src/views/Dashboard.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/Login.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/Settings.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/Agents.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/AgentDetail.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/Credentials.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/Templates.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/views/ApiKeys.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/ConfirmDialog.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/CreateAgentModal.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/UnifiedActivityPanel.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/InfoPanel.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/MetricsPanel.vue` | Dark mode Tailwind classes |
-| `src/frontend/src/components/FoldersPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
-| `src/frontend/src/components/AgentNode.vue` | Dark mode Tailwind classes (2025-12-19) |
-| `src/frontend/src/components/GitPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
-| `src/frontend/src/components/SchedulesPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
-| `src/frontend/src/components/ExecutionsPanel.vue` | Dark mode Tailwind classes (2025-12-19) |
+### Components (40 files complete)
+- [x] NavBar, ConfirmDialog, CreateAgentModal
+- [x] UnifiedActivityPanel, InfoPanel, MetricsPanel, FoldersPanel
+- [x] AgentNode, GitPanel, SchedulesPanel, TasksPanel
+- [x] CredentialsPanel, ExecutionTimeline, DashboardPanel
+- [x] ObservabilityPanel, PublicLinksPanel, AgentHeader
+- [x] ProcessFlowPreview, ProcessChatAssistant, ReplayTimeline
+- [x] OnboardingChecklist, EditorHelpPanel, SharingPanel, PermissionsPanel
+- [x] ResourceModal, FilesPanel, FileTreeNode, YamlEditor
+- [x] GitConflictModal, SystemAgentNode, HostTelemetry, LogsPanel
+- [x] RuntimeBadge, ProcessSubNav, AgentSubNav
+- [x] process/TemplateSelector, process/RoleMatrix, process/TrendChart
+- [x] file-manager/FileTreeNode, file-manager/FilePreview
+
+## Key Files
+
+| File | Purpose | Line References |
+|------|---------|-----------------|
+| `src/frontend/src/stores/theme.js` | Pinia store for theme state | 73 lines total |
+| `src/frontend/tailwind.config.js` | `darkMode: 'class'` config | Line 7 |
+| `src/frontend/src/App.vue` | Theme initialization | Lines 16, 20, 25 |
+| `src/frontend/src/components/NavBar.vue` | Toggle button + dropdown | Lines 81-98, 135-168, 225-240 |
 
 ---
 
-*Feature implemented: 2025-12-14*
-*Last updated: 2025-12-30* (verified line numbers against current codebase)
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2025-12-14 | Feature implemented |
+| 2025-12-19 | Added FoldersPanel, AgentNode, GitPanel, SchedulesPanel, ExecutionsPanel |
+| 2025-12-30 | Verified line numbers against codebase |
+| 2026-01-23 | Updated line numbers, expanded component coverage table to 61 files (2,293 dark: classes), added process and file-manager subdirectory components |

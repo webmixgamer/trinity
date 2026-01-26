@@ -18,14 +18,15 @@ As an admin, I want to define custom instructions that apply to all agents so th
   - Save/Clear buttons (lines 267-286)
   - Character count display (line 262)
   - Unsaved changes indicator (line 263)
-  - Error message display (lines 114-126)
-  - Success message display (lines 128-140)
+  - Error message display (lines 456-468)
+  - Success message display (lines 470-482)
+  - Info box explaining how it works (lines 432-452)
 
 ### State Management
 - `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/settings.js`
-  - `fetchSettings()` - Fetches all settings from backend (lines 23-42)
-  - `updateSetting(key, value)` - Updates a setting via PUT (lines 66-80)
-  - `deleteSetting(key)` - Deletes a setting via DELETE (lines 87-101)
+  - `fetchSettings()` - Fetches all settings from backend (lines 23-43)
+  - `updateSetting(key, value)` - Updates a setting via PUT (lines 66-81)
+  - `deleteSetting(key)` - Deletes a setting via DELETE (lines 87-102)
   - `trinityPrompt` getter - Returns settings['trinity_prompt'] (lines 13-15)
 
 ### API Calls
@@ -41,26 +42,32 @@ await axios.delete('/api/settings/trinity_prompt')
 ```
 
 ### Routing
-- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:48-52`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:138-142`
   - Route: `/settings` -> `Settings.vue`
   - Meta: `requiresAuth: true, requiresAdmin: true`
 
 ### Navigation
 - `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/NavBar.vue:46-53`
   - Settings link conditionally rendered: `v-if="isAdmin"` (line 47)
-  - Admin check via `GET /api/users/me` response role field (lines 218-223)
+  - Admin check via `GET /api/users/me` response role field (lines 254-261)
 
 ## Backend Layer
 
+### Settings Service
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/settings_service.py` - Centralized settings retrieval
+  - `SettingsService` class (lines 49-101)
+  - `get_setting(key, default)` method (lines 59-62)
+  - Singleton instance `settings_service` (line 104)
+
 ### Endpoints
 - `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/settings.py`
-  - `GET /api/settings` (line 98) - List all settings (admin-only)
-  - `GET /api/settings/{key}` (line 660) - Get specific setting (admin-only)
-  - `PUT /api/settings/{key}` (line 696) - Create/update setting (admin-only)
-  - `DELETE /api/settings/{key}` (line 738) - Delete setting (admin-only)
+  - `GET /api/settings` (line 75) - List all settings (admin-only)
+  - `GET /api/settings/{key}` (line 510) - Get specific setting (admin-only)
+  - `PUT /api/settings/{key}` (line 537) - Create/update setting (admin-only)
+  - `DELETE /api/settings/{key}` (line 559) - Delete setting (admin-only)
 
 ### Business Logic
-1. **Admin Check** (lines 92-95):
+1. **Admin Check** (lines 69-72):
    ```python
    def require_admin(current_user: User):
        if current_user.role != "admin":
@@ -68,7 +75,6 @@ await axios.delete('/api/settings/trinity_prompt')
    ```
 
 2. **Setting Storage**: Uses `db.set_setting(key, value)` for upsert
-3. **Audit Logging**: All operations logged via `log_audit_event()`
 
 ### Database Operations
 - `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/settings.py` - `SettingsOperations` class
@@ -90,9 +96,10 @@ CREATE TABLE IF NOT EXISTS system_settings (
 - `set_setting(key, value)` - INSERT OR REPLACE (lines 60-83)
 - `delete_setting(key)` - DELETE by key (lines 85-98)
 - `get_all_settings()` - Get all settings (lines 100-114)
+- `get_settings_dict()` - Get settings as key-value dict (lines 116-123)
 
 ### Models
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db_models.py:281-290`
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/db_models.py:285-294`
   ```python
   class SystemSetting(BaseModel):
       key: str
@@ -106,27 +113,54 @@ CREATE TABLE IF NOT EXISTS system_settings (
 ## Agent Injection Flow
 
 ### Backend Agent Startup
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/lifecycle.py:23-81`
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/lifecycle.py:62-89`
   - `inject_trinity_meta_prompt(agent_name)` function
-  - Called during `start_agent_internal()` (line 120)
+  - Called during `start_agent_internal()` (line 211)
 
-**Injection Logic** (lines 42-50):
+**Injection Logic** (lines 77-89):
 ```python
 # Fetch system-wide custom prompt setting
 custom_prompt = db.get_setting_value("trinity_prompt", default=None)
-
-# Build request payload
-payload = {"force": False}
 if custom_prompt:
-    payload["custom_prompt"] = custom_prompt
+    logger.info(f"Found trinity_prompt setting ({len(custom_prompt)} chars), will inject into {agent_name}")
+
+# Use AgentClient for injection (handles retries internally)
+client = get_agent_client(agent_name)
+return await client.inject_trinity_prompt(
+    custom_prompt=custom_prompt,
+    force=False,
+    max_retries=max_retries,
+    retry_delay=retry_delay
+)
+```
+
+### Agent Client
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_client.py:390-456`
+  - `inject_trinity_prompt()` method handles retries and HTTP communication
+  - Sends POST to `/api/trinity/inject` with `custom_prompt` payload
+
+**Client Injection Code** (lines 390-456):
+```python
+async def inject_trinity_prompt(
+    self,
+    custom_prompt: Optional[str] = None,
+    force: bool = False,
+    timeout: float = None,
+    max_retries: int = 3,
+    retry_delay: float = 2.0
+) -> Dict[str, Any]:
+    payload = {"force": force}
+    if custom_prompt:
+        payload["custom_prompt"] = custom_prompt
+    # ... retries and HTTP request to /api/trinity/inject
 ```
 
 ### Agent-Server Injection
-- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/trinity.py:54-187`
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/trinity.py:54-202`
   - `POST /api/trinity/inject` endpoint (line 54)
   - Handles `TrinityInjectRequest.custom_prompt` field
 
-**Custom Instructions Injection** (lines 122-131):
+**Custom Instructions Injection** (lines 137-145):
 ```python
 # Build the custom instructions section if provided
 custom_section = ""
@@ -137,21 +171,37 @@ if request.custom_prompt and request.custom_prompt.strip():
 
 {request.custom_prompt.strip()}
 """
+    logger.info("Custom prompt provided, will inject into CLAUDE.md")
 ```
 
-**CLAUDE.md Update** (lines 133-172):
-- If CLAUDE.md exists and has Trinity section: Append/update Custom Instructions
+**CLAUDE.md Update** (lines 148-187):
+- If CLAUDE.md exists and has Trinity section: Update/append Custom Instructions
 - If CLAUDE.md exists without Trinity: Add both sections
 - If CLAUDE.md doesn't exist: Create with Trinity + Custom sections
-- Removes existing "## Custom Instructions" before updating (lines 137-146)
-- Tracks `had_custom_instructions` flag to ensure removal when prompt is cleared (lines 138-145)
+- Removes existing "## Custom Instructions" before updating (lines 152-161)
+- Tracks `had_custom_instructions` flag to ensure removal when prompt is cleared (lines 153, 160)
+
+**Key Logic** (lines 163-178):
+```python
+if "## Trinity Agent System" not in content:
+    with open(claude_md_path, "a") as f:
+        f.write(trinity_section)
+        f.write(custom_section)
+    claude_md_updated = True
+elif custom_section or had_custom_instructions:
+    # Trinity section exists, update file if custom section changed
+    with open(claude_md_path, "w") as f:
+        f.write(content)
+        f.write(custom_section)
+    claude_md_updated = True
+```
 
 ### Models
-- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/models.py:178-181`
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/models.py:186-189`
   ```python
   class TrinityInjectRequest(BaseModel):
-      force: bool = False
-      custom_prompt: Optional[str] = None  # System-wide custom prompt
+      force: bool = False  # If true, re-inject even if already done
+      custom_prompt: Optional[str] = None  # System-wide custom prompt to inject into CLAUDE.md
   ```
 
 ## Data Flow Diagram
@@ -171,10 +221,17 @@ if request.custom_prompt and request.custom_prompt.strip():
                             (Later, when agent starts)
 
 +------------------+      +------------------------+      +-------------------+
-| POST /api/agents | ---> | inject_trinity_meta_   | ---> | agent-server      |
-| /{name}/start    |      | prompt()               |      | POST /api/trinity |
-+------------------+      | (reads trinity_prompt) |      | /inject           |
+| POST /api/agents | ---> | inject_trinity_meta_   | ---> | AgentClient       |
+| /{name}/start    |      | prompt()               |      | inject_trinity_   |
++------------------+      | (reads trinity_prompt) |      | prompt()          |
                           +------------------------+      +-------------------+
+                                                                   |
+                                                                   v
+                                                          +-------------------+
+                                                          | agent-server      |
+                                                          | POST /api/trinity |
+                                                          | /inject           |
+                                                          +-------------------+
                                                                    |
                                                                    v
                                                           +-------------------+
@@ -186,23 +243,8 @@ if request.custom_prompt and request.custom_prompt.strip():
 
 ## Side Effects
 
-### Audit Logging
-- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/settings.py`
-  - All CRUD operations logged via `log_audit_event()`
-  - Events: `system_settings.list`, `system_settings.read`, `system_settings.update`, `system_settings.delete`
-  - Details include: key name, value length (not value itself), success/failure
-
-Example audit entry:
-```python
-await log_audit_event(
-    event_type="system_settings",
-    action="update",
-    user_id=current_user.username,
-    resource=f"setting:trinity_prompt",
-    result="success",
-    details={"key": "trinity_prompt", "value_length": 150}
-)
-```
+### No Audit Logging
+The current implementation does not log settings CRUD operations via audit logging.
 
 ### No WebSocket Broadcasts
 This feature does not broadcast changes via WebSocket. Agents only receive the prompt when they start/restart.
@@ -211,27 +253,23 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
 
 | Error Case | HTTP Status | Message | Location |
 |------------|-------------|---------|----------|
-| Not admin | 403 | "Admin access required" | settings.py:21 |
-| Setting not found (GET) | 404 | "Setting '{key}' not found" | settings.py:70 |
+| Not admin | 403 | "Admin access required" | settings.py:72 |
+| Setting not found (GET) | 404 | "Setting '{key}' not found" | settings.py:528 |
 | Database error | 500 | "Failed to get/update/delete setting: {error}" | settings.py |
-| Agent not reachable | N/A | Returns error in injection result | agents.py:105 |
+| Agent not reachable | N/A | Returns error in injection result | agent_client.py:450 |
 
 ## Security Considerations
 
 ### Authorization
 - All `/api/settings` endpoints require admin role
-- `require_admin()` check on every endpoint (lines 34, 64, 100, 141 in settings.py)
+- `require_admin()` check on every endpoint (lines 85, 110, 152, 186, 214, 274, 308, 336, 439, 458, 492, 522, 549, 570, 595, 631, 664 in settings.py)
 - Frontend NavBar hides Settings link for non-admins (NavBar.vue line 47)
-- Router meta requires admin: `requiresAdmin: true` (router/index.js line 51)
+- Router meta requires admin: `requiresAdmin: true` (router/index.js line 141)
 
 ### Input Validation
 - Pydantic `SystemSettingUpdate` model validates request body
 - No character limit enforced (could store large prompts)
 - Markdown content allowed (injected as-is into CLAUDE.md)
-
-### Audit Trail
-- All changes logged with user, timestamp, resource, and result
-- Value contents NOT logged (only length) - safe for sensitive instructions
 
 ## Testing
 
@@ -275,15 +313,15 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
 
 **Test File**: `/Users/eugene/Dropbox/trinity/trinity/tests/test_settings.py`
 
-**Test Classes** (19 tests total):
+**Test Classes**:
 
-| Class | Tests | Coverage |
-|-------|-------|----------|
-| `TestSettingsEndpointsAuthentication` (lines 24-51) | 4 | Auth required for all endpoints |
-| `TestSettingsEndpointsAdmin` (lines 54-148) | 6 | Admin CRUD operations |
-| `TestTrinityPromptSetting` (lines 151-238) | 3 | Trinity prompt specific operations |
-| `TestTrinityPromptInjection` (lines 241-415) | 3 | Agent injection verification (slow) |
-| `TestSettingsValidation` (lines 418-453) | 3 | Input validation |
+| Class | Lines | Tests | Coverage |
+|-------|-------|-------|----------|
+| `TestSettingsEndpointsAuthentication` | 24-51 | 4 | Auth required for all endpoints |
+| `TestSettingsEndpointsAdmin` | 54-149 | 6 | Admin CRUD operations |
+| `TestTrinityPromptSetting` | 151-238 | 3 | Trinity prompt specific operations |
+| `TestTrinityPromptInjection` | 241-415 | 3 | Agent injection verification (slow) |
+| `TestSettingsValidation` | 418-454 | 3 | Input validation |
 
 **Key Test Cases**:
 - `test_list_settings_requires_auth` (line 29) - Verifies 401 without token
@@ -309,12 +347,12 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
 
 **Issue**: When clearing the `trinity_prompt` setting, the "## Custom Instructions" section was not being removed from CLAUDE.md on agent restart.
 
-**Root Cause**: The condition at line 271 only checked for `custom_section` being non-empty, so when the prompt was cleared (empty `custom_section`), the code would not rewrite CLAUDE.md even though it had stripped out the old Custom Instructions section.
+**Root Cause**: The condition only checked for `custom_section` being non-empty, so when the prompt was cleared (empty `custom_section`), the code would not rewrite CLAUDE.md even though it had stripped out the old Custom Instructions section.
 
 **Fix Location**: `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/trinity.py`
 
 **Changes**:
-1. Added `had_custom_instructions` flag tracking at lines 255-262:
+1. Added `had_custom_instructions` flag tracking at lines 153-161:
    ```python
    had_custom_instructions = False
    if "## Custom Instructions" in content:
@@ -322,7 +360,7 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
        had_custom_instructions = True
    ```
 
-2. Modified condition at line 271 from:
+2. Modified condition at line 169 from:
    ```python
    elif custom_section:
    ```
@@ -331,7 +369,7 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
    elif custom_section or had_custom_instructions:
    ```
 
-3. Added log message at line 280:
+3. Added log message at line 178:
    ```python
    logger.info("Removed Custom Instructions from CLAUDE.md")
    ```
@@ -344,6 +382,11 @@ This feature does not broadcast changes via WebSocket. Agents only receive the p
 
 ---
 
-*Document created: 2025-12-13*
-*Feature implemented: 2025-12-13*
-*Last updated: 2025-12-30* (verified line numbers against current codebase)
+## Revision History
+
+| Date | Author | Changes |
+|------|--------|---------|
+| 2025-12-13 | claude | Document created, feature implemented |
+| 2025-12-14 | claude | Bug fix: Custom instructions removal when cleared |
+| 2025-12-19 | claude | Verified line numbers against current codebase |
+| 2026-01-23 | claude | Updated line numbers after refactoring: settings_service.py extracted, agent_client.py added, router line numbers updated, test file expanded |

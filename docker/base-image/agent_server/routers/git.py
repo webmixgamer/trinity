@@ -330,7 +330,7 @@ async def sync_to_github(request: GitSyncRequest):
         else:
             # Normal push or pull_first (after pull, should be safe to push)
             push_result = subprocess.run(
-                ["git", "push"],
+                ["git", "push", "-u", "origin", current_branch],
                 capture_output=True,
                 text=True,
                 cwd=str(home_dir),
@@ -338,16 +338,39 @@ async def sync_to_github(request: GitSyncRequest):
             )
 
             if push_result.returncode != 0:
+                stderr = push_result.stderr or ""
+                stderr_lower = stderr.lower()
+                if "has no upstream branch" in stderr_lower:
+                    upstream_result = subprocess.run(
+                        ["git", "push", "--set-upstream", "origin", current_branch],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(home_dir),
+                        timeout=60
+                    )
+                    if upstream_result.returncode != 0:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Git push failed: {upstream_result.stderr}"
+                        )
+                    return {
+                        "success": True,
+                        "message": f"Synced to {current_branch}",
+                        "commit_sha": commit_sha,
+                        "files_changed": len(staged_changes),
+                        "branch": current_branch,
+                        "strategy": strategy,
+                        "sync_time": datetime.now().isoformat()
+                    }
                 # Check if it's a rejection due to remote changes
-                stderr = push_result.stderr.lower()
-                if "rejected" in stderr or "fetch first" in stderr or "non-fast-forward" in stderr:
+                if "rejected" in stderr_lower or "fetch first" in stderr_lower or "non-fast-forward" in stderr_lower:
                     raise HTTPException(
                         status_code=409,
                         detail="Push rejected: Remote has changes. Use 'Pull First' or 'Force Push' strategy.",
                         headers={"X-Conflict-Type": "push_rejected"}
                     )
                 else:
-                    raise HTTPException(status_code=500, detail=f"Git push failed: {push_result.stderr}")
+                    raise HTTPException(status_code=500, detail=f"Git push failed: {stderr}")
 
         return {
             "success": True,

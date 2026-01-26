@@ -535,7 +535,7 @@ class ProcessValidator:
 
         # Required: type
         trigger_type = trigger.get("type", "webhook")
-        valid_types = ["webhook", "schedule"]
+        valid_types = ["manual", "webhook", "schedule"]
         if trigger_type not in valid_types:
             result.add_error(
                 message=f"Invalid trigger type '{trigger_type}'",

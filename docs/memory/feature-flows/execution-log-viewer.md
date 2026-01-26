@@ -12,7 +12,7 @@ As an agent operator, I want to view the complete execution transcript of any ta
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/components/TasksPanel.vue:206-215` - Document icon button on task rows
+- **UI**: `src/frontend/src/components/TasksPanel.vue:234-243` - Document icon button on task rows
 - **API**: `GET /api/agents/{name}/executions/{id}/log` - Retrieve stored execution log
 
 ---
@@ -21,14 +21,14 @@ As an agent operator, I want to view the complete execution transcript of any ta
 
 ### Components
 
-**TasksPanel.vue:206-215** - View Log Button:
+**TasksPanel.vue:234-243** - View Log Button:
 ```vue
-<!-- View Log Button -->
+<!-- View Log Button (Modal) -->
 <button
   v-if="task.status !== 'running' && !task.id.startsWith('local-')"
   @click="viewExecutionLog(task)"
   class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
-  title="View execution log"
+  title="View execution log (modal)"
 >
   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -40,10 +40,14 @@ As an agent operator, I want to view the complete execution transcript of any ta
 - Only shown when `task.status !== 'running'` (completed/failed tasks only)
 - Only shown when `!task.id.startsWith('local-')` (server-persisted tasks only)
 
-**TasksPanel.vue:250-366** - Execution Log Modal:
+**TasksPanel.vue:316-432** - Execution Log Modal:
 ```vue
 <Teleport to="body">
-  <div v-if="showLogModal" class="fixed inset-0 z-50 overflow-y-auto" @click.self="closeLogModal">
+  <div
+    v-if="showLogModal"
+    class="fixed inset-0 z-50 overflow-y-auto"
+    @click.self="closeLogModal"
+  >
     <div class="flex items-center justify-center min-h-screen p-4">
       <div class="fixed inset-0 bg-black/50 transition-opacity"></div>
       <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
@@ -57,7 +61,7 @@ As an agent operator, I want to view the complete execution transcript of any ta
 
 ### State Management
 
-**TasksPanel.vue:419-424** - Modal State:
+**TasksPanel.vue:499-503** - Modal State:
 ```javascript
 // Execution log modal state
 const showLogModal = ref(false)
@@ -68,7 +72,7 @@ const logError = ref(null)
 
 ### API Calls
 
-**TasksPanel.vue:585-601** - viewExecutionLog():
+**TasksPanel.vue:803-820** - viewExecutionLog():
 ```javascript
 async function viewExecutionLog(task) {
   showLogModal.value = true
@@ -89,7 +93,7 @@ async function viewExecutionLog(task) {
 }
 ```
 
-**TasksPanel.vue:604-608** - closeLogModal():
+**TasksPanel.vue:822-827** - closeLogModal():
 ```javascript
 function closeLogModal() {
   showLogModal.value = false
@@ -100,7 +104,7 @@ function closeLogModal() {
 
 ### Log Parsing
 
-**TasksPanel.vue:619-710** - parseExecutionLog():
+**TasksPanel.vue:839-930** - parseExecutionLog():
 
 This function transforms raw Claude Code JSON stream output into structured entries for display.
 
@@ -207,7 +211,7 @@ function parseExecutionLog(log) {
 
 **Visual Components**:
 
-**Init Block (lines 292-303)**:
+**Init Block (lines 357-369)**:
 ```vue
 <div v-if="entry.type === 'init'" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 text-xs">
   <div class="flex items-center space-x-2 text-gray-500 dark:text-gray-400 mb-1">
@@ -221,7 +225,7 @@ function parseExecutionLog(log) {
 </div>
 ```
 
-**Assistant Text (lines 306-316)**:
+**Assistant Text (lines 371-382)**:
 ```vue
 <div v-else-if="entry.type === 'assistant-text'" class="flex space-x-3">
   <div class="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center">
@@ -234,7 +238,7 @@ function parseExecutionLog(log) {
 </div>
 ```
 
-**Tool Call (lines 319-332)**:
+**Tool Call (lines 384-398)**:
 ```vue
 <div v-else-if="entry.type === 'tool-call'" class="flex space-x-3">
   <div class="flex-shrink-0 w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center">
@@ -247,7 +251,7 @@ function parseExecutionLog(log) {
 </div>
 ```
 
-**Tool Result (lines 335-345)**:
+**Tool Result (lines 400-411)**:
 ```vue
 <div v-else-if="entry.type === 'tool-result'" class="flex space-x-3">
   <div class="flex-shrink-0 w-8 h-8 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center">
@@ -260,7 +264,7 @@ function parseExecutionLog(log) {
 </div>
 ```
 
-**Final Result (lines 348-359)**:
+**Final Result (lines 413-425)**:
 ```vue
 <div v-else-if="entry.type === 'result'" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 text-xs border-t-2 border-gray-300 dark:border-gray-600">
   <div class="flex items-center justify-between text-gray-500 dark:text-gray-400">
@@ -282,14 +286,13 @@ function parseExecutionLog(log) {
 
 ### Endpoint
 
-**File**: `src/backend/routers/schedules.py:368-415`
+**File**: `src/backend/routers/schedules.py:339-379`
 
 ```python
 @router.get("/{name}/executions/{execution_id}/log")
 async def get_execution_log(
-    name: str,
-    execution_id: str,
-    current_user: User = Depends(get_current_user)
+    name: AuthorizedAgent,
+    execution_id: str
 ):
     """
     Get the full execution log for a specific execution.
@@ -297,14 +300,6 @@ async def get_execution_log(
     Returns the raw Claude Code execution transcript as JSON array.
     This includes all tool calls, thinking, and responses.
     """
-    # Authorization check
-    if not db.can_user_access_agent(current_user.username, name):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-
-    # Get execution record
     execution = db.get_execution(execution_id)
     if not execution or execution.agent_name != name:
         raise HTTPException(
@@ -312,7 +307,6 @@ async def get_execution_log(
             detail="Execution not found"
         )
 
-    # No log available
     if not execution.execution_log:
         return {
             "execution_id": execution_id,
@@ -321,7 +315,7 @@ async def get_execution_log(
             "message": "No execution log available for this execution"
         }
 
-    # Parse JSON log
+    # Parse the JSON log for structured response
     try:
         log_data = json.loads(execution.execution_log)
     except json.JSONDecodeError:
@@ -378,7 +372,7 @@ Both `/api/chat` and `/api/task` endpoints now capture and return raw Claude Cod
 
 **File**: `docker/base-image/agent_server/services/claude_code.py`
 
-**`execute_claude_code()` (lines 381-516)** - For chat endpoint:
+**`execute_claude_code()` (lines 389-546)** - For chat endpoint:
 ```python
 async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
     # ...
@@ -402,14 +396,16 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     return response_text, execution_log, metadata, raw_messages
 ```
 
-**`execute_headless_task()` (lines 521-709)** - For task endpoint:
+**`execute_headless_task()` (lines 553-766)** - For task endpoint:
 ```python
 async def execute_headless_task(
     prompt: str,
     model: Optional[str] = None,
     allowed_tools: Optional[List[str]] = None,
     system_prompt: Optional[str] = None,
-    timeout_seconds: int = 900
+    timeout_seconds: int = 900,
+    max_turns: Optional[int] = None,
+    execution_id: Optional[str] = None
 ) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, str]:
     # ...
     raw_messages: List[Dict] = []  # Capture ALL raw JSON messages from Claude Code
@@ -431,69 +427,53 @@ async def execute_headless_task(
 
 ### Chat Endpoint Returns Raw Format
 
-**File**: `docker/base-image/agent_server/routers/chat.py:74-90`
+**File**: `docker/base-image/agent_server/routers/chat.py:24-93`
 
 ```python
-# Return enhanced response with execution log and session stats
-# Use raw_messages (full Claude Code JSON transcript) for execution log viewer compatibility
-return {
-    "response": response_text,
-    "execution_log": raw_messages,  # Full Claude Code stream-json format for UI
-    "execution_log_simplified": [entry.model_dump() for entry in execution_log],  # For activity tracking
-    "metadata": metadata.model_dump(),
-    "session": {...},
-    "timestamp": datetime.now().isoformat()
-}
-```
-
-### How Scheduled Executions Get Raw Logs
-
-**Scheduler uses `/api/task` endpoint** (Fixed 2025-01-02)
-
-Previously, the scheduler used `/api/chat` which returned a simplified `ExecutionLogEntry` format that `parseExecutionLog()` could not parse. Now the scheduler uses `AgentClient.task()` which calls `/api/task` and returns raw Claude Code `stream-json` format.
-
-**File**: `src/backend/services/agent_client.py:194-281` - `task()` method and `_parse_task_response()`
-
-```python
-async def task(self, message: str, timeout: float = None) -> AgentChatResponse:
-    """
-    Execute a stateless task on the agent (no conversation context).
-
-    Unlike chat(), this endpoint:
-    - Does NOT maintain conversation history
-    - Each call is independent (no --continue flag)
-    - Returns raw Claude Code execution log (full transcript)
-
-    Use this for scheduled executions and independent tasks.
-    """
-    response = await self.post(
-        "/api/task",
-        json={"message": message, "timeout_seconds": int(timeout)},
-        timeout=timeout + 10
+@router.post("/api/chat")
+async def chat(request: ChatRequest):
+    # ...
+    response_text, execution_log, metadata, raw_messages = await runtime.execute(
+        prompt=request.message,
+        model=effective_model,
+        continue_session=True,
+        stream=request.stream
     )
-    result = response.json()
-    return self._parse_task_response(result)
+
+    # Return enhanced response with execution log and session stats
+    # Use raw_messages (full Claude Code JSON transcript) for execution log viewer compatibility
+    return {
+        "response": response_text,
+        "execution_log": raw_messages,  # Full Claude Code stream-json format for UI
+        "execution_log_simplified": [entry.model_dump() for entry in execution_log],  # For activity tracking
+        "metadata": metadata.model_dump(),
+        "session": {...},
+        "timestamp": datetime.now().isoformat()
+    }
 ```
 
-**File**: `src/backend/services/scheduler_service.py:263-278` - Scheduler execution:
+### Task Endpoint Returns Raw Format
+
+**File**: `docker/base-image/agent_server/routers/chat.py:96-137`
 
 ```python
-# Send task to agent using AgentClient (stateless execution)
-# Uses /api/task for raw Claude Code execution log format
-client = get_agent_client(schedule.agent_name)
-task_response = await client.task(schedule.message)
+@router.post("/api/task")
+async def execute_task(request: ParallelTaskRequest):
+    # ...
+    response_text, raw_messages, metadata, session_id = await runtime.execute_headless(
+        prompt=request.message,
+        model=request.model,
+        # ...
+    )
 
-# Update execution status with parsed response
-db.update_execution_status(
-    execution_id=execution.id,
-    status="success",
-    response=task_response.response_text,
-    context_used=task_response.metrics.context_used,
-    context_max=task_response.metrics.context_max,
-    cost=task_response.metrics.cost_usd,
-    tool_calls=task_response.metrics.tool_calls_json,
-    execution_log=task_response.metrics.execution_log_json  # Raw Claude Code format
-)
+    # raw_messages contains the full Claude Code JSON stream (init, assistant, user, result)
+    return {
+        "response": response_text,
+        "execution_log": raw_messages,  # Full JSON transcript from Claude Code
+        "metadata": metadata.model_dump(),
+        "session_id": session_id,
+        "timestamp": datetime.now().isoformat()
+    }
 ```
 
 ### Claude Code Output Format
@@ -517,7 +497,7 @@ The execution log is stored in the `schedule_executions` table:
 
 **Column**: `execution_log TEXT`
 
-**Storage Location**: `src/backend/db/schedules.py:366-411`
+**Storage Location**: `src/backend/db/schedules.py` - `update_execution_status()` method
 
 ```python
 def update_execution_status(
@@ -542,7 +522,7 @@ def update_execution_status(
 
 ### Log Persistence
 
-**Backend Chat Router** (`src/backend/routers/chat.py:483-506`):
+**Backend Chat Router** (`src/backend/routers/chat.py`):
 ```python
 # Update execution record with success
 if execution_id:
@@ -577,7 +557,7 @@ if execution_id:
 
 ## Security Considerations
 
-1. **Authorization**: `db.can_user_access_agent()` check before returning log
+1. **Authorization**: Uses `AuthorizedAgent` dependency that calls `db.can_user_access_agent()` check before returning log
 2. **Agent Ownership**: Only agent owners/shared users can view execution logs
 3. **Log Content**: Logs may contain sensitive file contents from tool results
 4. **Truncation**: Tool results >2000 chars are truncated in display (not storage)
@@ -590,7 +570,7 @@ if execution_id:
 
 **Problem**: Scheduled executions were not displaying in the log viewer. The root cause was that the scheduler used `/api/chat` which returned a simplified format.
 
-**Solution**: Added `AgentClient.task()` method (`src/backend/services/agent_client.py:194-281`) that calls `/api/task` and returns raw format.
+**Solution**: Added `AgentClient.task()` method (`src/backend/services/agent_client.py`) that calls `/api/task` and returns raw format.
 
 ### Phase 2: Chat Endpoint Fix (2026-01-10)
 
@@ -638,6 +618,7 @@ All execution types now produce logs that `parseExecutionLog()` can render:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Line number update**: Updated all line number references to match current implementation. View Log Button moved to lines 234-243. Modal at lines 316-432. Modal state at lines 499-503. viewExecutionLog() at lines 803-820. parseExecutionLog() at lines 839-930. Visual components at lines 357-425. Backend endpoint at lines 339-379 (using AuthorizedAgent dependency). Agent server execute_claude_code() at lines 389-546, execute_headless_task() at lines 553-766. |
 | 2026-01-10 | **Chat endpoint log fix**: Updated `/api/chat` to return raw Claude Code format. Modified `execute_claude_code()` to capture `raw_messages`. Backend now extracts both formats for activity tracking and UI. All execution types including MCP calls now produce parseable logs. |
 | 2025-01-02 | **Scheduler log fix**: Documented switch from `/api/chat` to `/api/task` for scheduled executions. Added `AgentClient.task()` method and `_parse_task_response()`. All execution types now produce parseable logs. |
 | 2025-12-31 | Initial documentation |

@@ -8,7 +8,16 @@ As a **Trinity platform user**, I want to **enable GitHub synchronization for an
 
 ---
 
-## Architecture Overview (Updated 2025-12-31)
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Verified line numbers against current implementation, updated MCP tool lines (530-604), verified git_service.py structure |
+| 2025-12-31 | Refactored to clean architecture with service layer |
+
+---
+
+## Architecture Overview (Updated 2026-01-23)
 
 The feature was refactored to follow clean architecture patterns:
 
@@ -34,7 +43,7 @@ The feature was refactored to follow clean architecture patterns:
 | **UI** | `src/frontend/src/views/Settings.vue:126-218` | GitHub PAT configuration with test/save |
 | **UI** | `src/frontend/src/components/GitPanel.vue:17-26` | "Initialize GitHub Sync" button |
 | **UI** | `src/frontend/src/components/GitPanel.vue:29-166` | Initialize modal form |
-| **API** | `POST /api/agents/{name}/git/initialize` | Initialize git sync endpoint |
+| **API** | `POST /api/agents/{agent_name}/git/initialize` | Initialize git sync endpoint |
 | **MCP** | `initialize_github_sync` tool | MCP tool for programmatic initialization |
 
 ---
@@ -185,6 +194,7 @@ async function saveGithubPat() {
 | 113-137 | Info box | Explains what will happen + timing warning |
 | 143-154 | Initialize button | Calls `initializeGitHub()` with form data |
 | 350-385 | `initializeGitHub()` | Method with console logging |
+| 387-393 | `closeInitializeModal()` | Modal close handler |
 
 **Key Methods**:
 
@@ -234,10 +244,10 @@ const initializeGitHub = async () => {
 
 | Lines | Method | Description |
 |-------|--------|-------------|
-| 382-389 | `initializeGitHub()` | Store action with 120-second timeout |
+| 443-450 | `initializeGitHub()` | Store action with 120-second timeout |
 
 ```javascript
-// Line 382-389: Initialize GitHub Sync (with timeout)
+// Line 443-450: Initialize GitHub Sync (with timeout)
 async initializeGitHub(name, config) {
   const authStore = useAuthStore()
   const response = await axios.post(`/api/agents/${name}/git/initialize`, config, {
@@ -252,18 +262,18 @@ async initializeGitHub(name, config) {
 
 ## Backend Layer
 
-### Settings Service (NEW - Plan 01)
+### Settings Service
 
 **Location**: `src/backend/services/settings_service.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 47-99 | `SettingsService` class | Centralized settings retrieval |
-| 69-74 | `get_github_pat()` method | Get PAT from DB or env var |
-| 111-113 | `get_github_pat()` function | Convenience function export |
+| 49-100 | `SettingsService` class | Centralized settings retrieval |
+| 71-76 | `get_github_pat()` method | Get PAT from DB or env var |
+| 113-115 | `get_github_pat()` function | Convenience function export |
 
 ```python
-# Line 69-74: Get GitHub PAT
+# Line 71-76: Get GitHub PAT
 def get_github_pat(self) -> str:
     """Get GitHub PAT from settings, fallback to env var."""
     key = self.get_setting('github_pat')
@@ -272,20 +282,20 @@ def get_github_pat(self) -> str:
     return os.getenv('GITHUB_PAT', '')
 ```
 
-### GitHub Service (NEW - Plan 04)
+### GitHub Service
 
 **Location**: `src/backend/services/github_service.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 19-23 | `OwnerType` enum | USER or ORGANIZATION |
-| 25-35 | `GitHubRepoInfo` dataclass | Repository existence info |
-| 37-43 | `GitHubCreateResult` dataclass | Repo creation result |
+| 19-22 | `OwnerType` enum | USER or ORGANIZATION |
+| 25-34 | `GitHubRepoInfo` dataclass | Repository existence info |
+| 37-42 | `GitHubCreateResult` dataclass | Repo creation result |
 | 45-57 | Exception classes | `GitHubError`, `GitHubAuthError`, `GitHubPermissionError` |
 | 60-265 | `GitHubService` class | GitHub API client |
 | 101-118 | `validate_token()` | Validate PAT and get username |
 | 120-139 | `get_owner_type()` | Detect user vs organization |
-| 141-176 | `check_repo_exists()` | Check if repo exists |
+| 141-175 | `check_repo_exists()` | Check if repo exists |
 | 177-264 | `create_repository()` | Create new repo (user or org) |
 | 271-281 | `get_github_service()` | Factory function |
 
@@ -332,15 +342,18 @@ class GitHubService:
         ...
 ```
 
-### Git Service - Initialization (NEW - Plan 04)
+### Git Service - Initialization
 
 **Location**: `src/backend/services/git_service.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
+| 22-24 | `generate_instance_id()` | Generate 8-char UUID for instance |
+| 27-29 | `generate_working_branch()` | Generate branch name `trinity/{name}/{id}` |
+| 32-61 | `create_git_config_for_agent()` | Create database git config record |
 | 253-259 | `GitInitResult` dataclass | Result of git init in container |
-| 262-397 | `initialize_git_in_container()` | Full git init workflow |
-| 400-425 | `check_git_initialized()` | Check if git exists in container |
+| 262-399 | `initialize_git_in_container()` | Full git init workflow |
+| 402-427 | `check_git_initialized()` | Check if git exists in container |
 
 **Key Function**:
 
@@ -355,7 +368,7 @@ class GitInitResult:
     error: Optional[str] = None
 
 
-# Line 262-397: Initialize git in container
+# Line 262-399: Initialize git in container
 async def initialize_git_in_container(
     agent_name: str,
     github_repo: str,
@@ -376,44 +389,54 @@ async def initialize_git_in_container(
     """
     container_name = f"agent-{agent_name}"
 
-    # Step 1: Smart directory detection
+    # Step 1: Smart directory detection (lines 293-302)
     check_workspace = execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
         timeout=5
     )
 
-    workspace_has_content = ...
+    workspace_has_content = (
+        check_workspace.get("exit_code") == 0 and
+        "1" in check_workspace.get("output", "")
+    )
     git_dir = "/home/developer/workspace" if workspace_has_content else "/home/developer"
 
-    # Step 2: Create .gitignore (if using home directory)
+    # Step 2: Create .gitignore (if using home directory, lines 311-327)
     if git_dir == "/home/developer":
         gitignore_content = """# Exclude sensitive and temporary files
 .bash_logout
 .bashrc
 .profile
-...
+.bash_history
+.cache/
+.local/
+.npm/
+.ssh/
 """
         execute_command_in_container(...)
 
-    # Step 3-6: Git commands
+    # Step 3-6: Git commands (lines 329-356)
     commands = [
         'git config --global user.email "trinity@agent.local"',
+        'git config --global user.name "Trinity Agent"',
+        'git config --global init.defaultBranch main',
         'git init',
+        f'git remote get-url origin >/dev/null 2>&1 && '
+        f'git remote set-url origin https://oauth2:{github_pat}@github.com/{github_repo}.git || '
         f'git remote add origin https://oauth2:{github_pat}@github.com/{github_repo}.git',
         'git add .',
-        'git commit -m "Initial commit from Trinity Agent"',
+        'git commit -m "Initial commit from Trinity Agent" || echo "Nothing to commit"',
         'git push -u origin main --force'
     ]
-    ...
 
-    # Step 7: Create working branch
+    # Step 7: Create working branch (lines 358-377)
     if create_working_branch:
         instance_id = generate_instance_id()
         working_branch = generate_working_branch(agent_name, instance_id)
-        ...
+        # Create and push branch
 
-    # Step 8: Verify
+    # Step 8: Verify (lines 379-393)
     verify_result = execute_command_in_container(
         command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
         timeout=5
@@ -422,17 +445,17 @@ async def initialize_git_in_container(
     return GitInitResult(success=True, git_dir=git_dir, working_branch=working_branch)
 ```
 
-### Access Control Dependencies (Plan 02)
+### Access Control Dependencies
 
 **Location**: `src/backend/dependencies.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 234-253 | `get_owned_agent_by_name()` | Validates owner access to agent |
-| 262-263 | `OwnedAgentByName` | Type alias for Annotated dependency |
+| 258-285 | `get_owned_agent_by_name()` | Validates owner access to agent |
+| 295 | `OwnedAgentByName` | Type alias for Annotated dependency |
 
 ```python
-# Line 234-253: Owner access validation
+# Line 258-285: Owner access validation
 def get_owned_agent_by_name(
     agent_name: str = Path(..., description="Agent name from path"),
     current_user: User = Depends(get_current_user)
@@ -440,7 +463,17 @@ def get_owned_agent_by_name(
     """
     Dependency that validates user owns or can share an agent.
     For routes using {agent_name} path parameter.
+
+    Used for endpoints that require owner-level access (delete, share, configure).
+    Returns the agent name if authorized.
     """
+    # First check if agent exists
+    if not db.get_agent_owner(agent_name):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    # Then check if user has owner access
     if not db.can_user_share_agent(current_user.username, agent_name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -449,23 +482,23 @@ def get_owned_agent_by_name(
     return agent_name
 
 
-# Line 262-263: Type alias
+# Line 295: Type alias
 OwnedAgentByName = Annotated[str, Depends(get_owned_agent_by_name)]
 ```
 
-### Git Routes - Initialize Endpoint (Refactored)
+### Git Routes - Initialize Endpoint
 
 **Location**: `src/backend/routers/git.py`
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
 | 34-41 | `GitInitializeRequest` model | Request body schema |
-| 251-364 | `POST /{agent_name}/git/initialize` | Main initialization endpoint (now 115 lines) |
+| 251-389 | `POST /{agent_name}/git/initialize` | Main initialization endpoint |
 
-**Refactored Endpoint**:
+**Endpoint Implementation**:
 
 ```python
-# Line 251-364: Initialize GitHub sync (refactored)
+# Line 251-389: Initialize GitHub sync
 @router.post("/{agent_name}/git/initialize")
 async def initialize_github_sync(
     agent_name: OwnedAgentByName,  # Dependency validates ownership
@@ -474,27 +507,27 @@ async def initialize_github_sync(
 ):
     """Initialize GitHub synchronization for an agent."""
     from services.docker_service import get_agent_container
-    from services.settings_service import get_github_pat      # Plan 01
-    from services.github_service import GitHubService, GitHubError  # Plan 04
+    from services.settings_service import get_github_pat
+    from services.github_service import GitHubService, GitHubError
 
-    # Check if agent exists and is running
+    # Check if agent exists and is running (lines 277-282)
     container = get_agent_container(agent_name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to initialize Git sync")
 
-    # Check if already configured (with orphan cleanup)
+    # Check if already configured with orphan cleanup (lines 284-298)
     existing_config = git_service.get_agent_git_config(agent_name)
     if existing_config:
-        git_dir = git_service.check_git_initialized(agent_name)  # NEW: service function
+        git_dir = git_service.check_git_initialized(agent_name)
         if git_dir:
-            raise HTTPException(status_code=409, ...)
+            raise HTTPException(status_code=409, detail=f"Git sync already configured...")
         else:
             # Clean up orphaned record
             db.execute_query("DELETE FROM agent_git_config WHERE agent_name = ?", (agent_name,))
 
-    # Get GitHub PAT (from settings_service)
+    # Get GitHub PAT from settings_service (lines 300-306)
     github_pat = get_github_pat()
     if not github_pat:
         raise HTTPException(status_code=400, detail="GitHub Personal Access Token not configured...")
@@ -502,11 +535,12 @@ async def initialize_github_sync(
     repo_full_name = f"{body.repo_owner}/{body.repo_name}"
 
     try:
-        # Step 1: Create repository if requested (using GitHubService)
-        if body.create_repo:
-            gh = GitHubService(github_pat)
-            repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+        gh = GitHubService(github_pat)
 
+        # Step 1: Check repo existence and handle create_repo flag (lines 313-336)
+        repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
+
+        if body.create_repo:
             if not repo_info.exists:
                 create_result = await gh.create_repository(
                     owner=body.repo_owner,
@@ -516,8 +550,12 @@ async def initialize_github_sync(
                 )
                 if not create_result.success:
                     raise HTTPException(status_code=400, detail=f"Failed to create repository: {create_result.error}")
+        else:
+            # create_repo=False: Repository MUST exist
+            if not repo_info.exists:
+                raise HTTPException(status_code=400, detail=f"Repository '{repo_full_name}' does not exist...")
 
-        # Step 2: Initialize git in container (using git_service)
+        # Step 2: Initialize git in container (lines 338-364)
         init_result = await git_service.initialize_git_in_container(
             agent_name=agent_name,
             github_repo=repo_full_name,
@@ -525,9 +563,10 @@ async def initialize_github_sync(
         )
 
         if not init_result.success:
-            raise HTTPException(status_code=500, detail=f"Git initialization failed: {init_result.error}")
+            # Handle various error types with appropriate status codes
+            raise HTTPException(status_code=400, detail=f"Git initialization failed: {init_result.error}")
 
-        # Step 3: Store configuration
+        # Step 3: Store configuration (lines 366-372)
         instance_id = git_service.generate_instance_id()
         config = await git_service.create_git_config_for_agent(
             agent_name=agent_name,
@@ -558,12 +597,17 @@ async def initialize_github_sync(
 
 | Lines | Function | Description |
 |-------|----------|-------------|
-| 135-168 | `execute_command_in_container()` | Execute commands in container |
+| 208-238 | `execute_command_in_container()` | Execute commands in container |
 
-**Function Definition** (Lines 135-168):
+**Function Definition** (Lines 208-238):
 ```python
 def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
     """Execute a command in a Docker container.
+
+    Args:
+        container_name: Name of the container (e.g., "agent-myagent")
+        command: Command to execute
+        timeout: Timeout in seconds
 
     Returns:
         Dictionary with 'exit_code' and 'output' keys
@@ -573,7 +617,11 @@ def execute_command_in_container(container_name: str, command: str, timeout: int
 
     try:
         container = docker_client.containers.get(container_name)
-        result = container.exec_run(command, user="developer", demux=False)
+        result = container.exec_run(
+            command,
+            user="developer",
+            demux=False
+        )
         output = result.output.decode('utf-8') if isinstance(result.output, bytes) else str(result.output)
         return {"exit_code": result.exit_code, "output": output}
     except docker.errors.NotFound:
@@ -592,30 +640,44 @@ def execute_command_in_container(container_name: str, command: str, timeout: int
 
 | Lines | Component | Description |
 |-------|-----------|-------------|
-| 436-514 | `initializeGithubSync` tool | MCP tool definition |
+| 530-604 | `initializeGithubSync` tool | MCP tool definition |
 
-**Tool Definition**:
+**Tool Definition** (Lines 530-604):
 
 ```typescript
 initializeGithubSync: {
   name: "initialize_github_sync",
   description:
-    "Initialize GitHub synchronization for an agent. " +
-    "Creates a GitHub repository (if requested), initializes git in workspace, " +
-    "commits current state, pushes to GitHub, enables bidirectional sync. " +
-    "Requires GitHub PAT configured in system settings with 'repo' scope. " +
+    "Initialize GitHub synchronization for an existing agent (not created from GitHub template). " +
+    "Creates a GitHub repository (if requested), initializes git in the agent workspace, " +
+    "commits the current state, pushes to GitHub, and creates a working branch for sync. " +
+    "Requires GitHub Personal Access Token (PAT) to be configured in system settings with 'repo' scope. " +
+    "Note: Agents created from GitHub templates already have git sync enabled in source mode (pull-only). " +
     "Agent must be running.",
   parameters: z.object({
-    agent_name: z.string().describe("Agent name"),
-    repo_owner: z.string().describe("GitHub username or org"),
-    repo_name: z.string().describe("Repository name"),
-    create_repo: z.boolean().optional().default(true),
-    private: z.boolean().optional().default(true),
-    description: z.string().optional()
+    agent_name: z.string().describe("The name of the agent to initialize GitHub sync for"),
+    repo_owner: z.string().describe("GitHub username or organization name (e.g., 'your-username')"),
+    repo_name: z.string().describe("Repository name (e.g., 'my-agent')"),
+    create_repo: z.boolean().optional().default(true)
+      .describe("Whether to create the repository if it doesn't exist (default: true)"),
+    private: z.boolean().optional().default(true)
+      .describe("Whether the new repository should be private (default: true)"),
+    description: z.string().optional().describe("Repository description (optional)")
   }),
   execute: async (args, context) => {
     const authContext = context?.session;
     const apiClient = getClient(authContext);
+
+    console.log(`[initialize_github_sync] Initializing GitHub sync for agent '${args.agent_name}' -> ${args.repo_owner}/${args.repo_name}`);
+
+    interface GitInitializeResponse {
+      success: boolean;
+      message: string;
+      github_repo: string;
+      working_branch: string;
+      instance_id: string;
+      repo_url: string;
+    }
 
     const response = await apiClient.request<GitInitializeResponse>(
       "POST",
@@ -1174,14 +1236,14 @@ docker exec agent-{name} bash -c "[ -d /home/developer/.git ] && echo exists || 
 
 ## Testing Status
 
-**Status**: Verified Working (as of 2025-12-31)
+**Status**: Verified Working (as of 2026-01-23)
 
-**Architecture Refactoring** (2025-12-31):
-- NEW: `services/github_service.py` - GitHub API client with dataclasses
-- NEW: `services/settings_service.py` - Settings retrieval service
-- UPDATED: `services/git_service.py` - Added `initialize_git_in_container()`, `check_git_initialized()`
-- UPDATED: `routers/git.py` - Reduced from ~280 lines to ~115 lines
-- UPDATED: `dependencies.py` - Added `OwnedAgentByName` type alias
+**Architecture Components**:
+- `services/github_service.py` - GitHub API client with dataclasses (282 lines)
+- `services/settings_service.py` - Settings retrieval service (139 lines)
+- `services/git_service.py` - Git operations including `initialize_git_in_container()`, `check_git_initialized()` (428 lines)
+- `routers/git.py` - Git routes including initialize endpoint (389 lines)
+- `dependencies.py` - Access control with `OwnedAgentByName` type alias
 
 **Recent Bug Fixes** (2025-12-26):
 - Fixed empty repositories: Smart directory detection chooses correct location
@@ -1205,6 +1267,8 @@ docker exec agent-{name} bash -c "[ -d /home/developer/.git ] && echo exists || 
 - Organization repos: Correct endpoint selection
 
 **Known Issues**: None
+
+**Verification Date**: 2026-01-23 - All line numbers verified against current implementation.
 
 ---
 

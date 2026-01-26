@@ -1,6 +1,15 @@
 # Feature: File Browser (Tree Structure)
 
-> **Updated**: 2025-12-27 - Refactored to service layer architecture. File operations moved to `services/agent_service/files.py`.
+> **Updated**: 2026-01-23 - Verified line numbers and architecture. Frontend refactored to use `FilesPanel.vue` component with `useFileBrowser` composable. Protected path handling added to agent server.
+
+## Revision History
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Verified all line numbers. Updated frontend architecture (FilesPanel + composable). Documented protected paths (delete/edit). |
+| 2025-12-30 | Updated line numbers. Service file grew from 137 to 413 lines. |
+| 2025-12-27 | Service layer refactoring. File operations moved to `services/agent_service/files.py`. |
+| 2025-12-06 | Agent-server modular refactoring (`agent_server/routers/files.py`). |
+| 2025-12-01 | Initial tree structure implementation. |
 
 ## Overview
 Users can browse and download files from agent workspaces through the Trinity web UI without requiring SSH access. The feature displays files in a **hierarchical tree structure** similar to macOS Finder, with expandable/collapsible folders. Users can navigate folder hierarchies, search files, and download individual files.
@@ -9,98 +18,57 @@ Users can browse and download files from agent workspaces through the Trinity we
 As a Trinity user, I want to browse files in my agent's workspace using a familiar folder tree interface so that I can easily navigate directory structures and access agent-generated artifacts without needing SSH or Docker command-line access.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:275` - "Files" tab button
+- **UI**: `src/frontend/src/views/AgentDetail.vue:157-160` - "Files" tab content (FilesPanel component)
 - **API**: `GET /api/agents/{agent_name}/files`
 - **API**: `GET /api/agents/{agent_name}/files/download`
+- **API**: `GET /api/agents/{agent_name}/files/preview`
+- **API**: `DELETE /api/agents/{agent_name}/files`
+- **API**: `PUT /api/agents/{agent_name}/files`
 
 ---
 
 ## Frontend Layer
 
-### Components
-**File**: `/Users/eugene/Dropbox/Coding/N8N_Main_repos/project_trinity/src/frontend/src/views/AgentDetail.vue`
+### Architecture
 
-#### Tab Button (Line 275-285)
+The file browser uses a **component + composable** architecture:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| View | `src/frontend/src/views/AgentDetail.vue:157-160` | Tab content (renders FilesPanel) |
+| Component | `src/frontend/src/components/FilesPanel.vue` (130 lines) | File browser UI |
+| Component | `src/frontend/src/components/FileTreeNode.vue` (141 lines) | Recursive tree node |
+| Composable | `src/frontend/src/composables/useFileBrowser.js` (111 lines) | State and logic |
+| Store | `src/frontend/src/stores/agents.js:452-478` | API calls |
+
+### FilesPanel Component
+
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/FilesPanel.vue`
+
 ```vue
-<button
-  @click="activeTab = 'files'"
-  :class="[
-    'px-6 py-3 border-b-2 font-medium text-sm transition-colors',
-    activeTab === 'files'
-      ? 'border-indigo-500 text-indigo-600'
-      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-  ]"
->
-  Files
-</button>
+<!-- Line 157-160 in AgentDetail.vue -->
+<div v-if="activeTab === 'files'">
+  <FilesPanel :agent-name="agent.name" :agent-status="agent.status" />
+</div>
 ```
 
-#### Files Tab Content (Line 765-830)
-- **Guard**: Shows "Agent must be running" message if status !== 'running'
-- **Search Box**: `v-model="fileSearchQuery"` - filters files by name, auto-expands matching folders
-- **File Tree**: Recursive FileTreeNode components displaying:
-  - **Folders**: Chevron icon (rotates when expanded), folder icon (color changes), file count badge
-  - **Files**: File icon, name, size, download button (visible on hover)
-  - Proper indentation (20px per level)
-  - Collapsed by default, click to expand/collapse
-- **States**: Loading spinner, error display, empty state, refresh button
+**Features** (Lines 1-67):
+- **Guard**: Shows "Agent must be running" message if status !== 'running' (Line 3-8)
+- **Search Box**: `v-model="fileSearchQuery"` - filters files by name (Line 11-17)
+- **Loading State**: Spinner while loading files (Line 21-27)
+- **Error State**: Error message with retry button (Line 29-34)
+- **Empty State**: "No files found in workspace" (Line 36-38)
+- **File Tree**: Recursive FileTreeNode components (Line 52-62)
 
-### State Management (Line 1100-1142)
+### FileTreeNode Component
 
-**File**: `/Users/eugene/Dropbox/Coding/N8N_Main_repos/project_trinity/src/frontend/src/views/AgentDetail.vue`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/FileTreeNode.vue`
 
-```javascript
-// File browser state
-const fileTree = ref([])               // Hierarchical tree structure
-const filesLoading = ref(false)
-const filesError = ref(null)
-const fileSearchQuery = ref('')
-const expandedFolders = ref(new Set()) // Track which folders are open
-const totalFileCount = ref(0)
-
-const filteredFileTree = computed(() => {
-  if (!fileSearchQuery.value) return fileTree.value
-
-  const query = fileSearchQuery.value.toLowerCase()
-
-  const filterTree = (items) => {
-    return items.filter(item => {
-      if (item.type === 'file') {
-        return item.name.toLowerCase().includes(query)
-      } else {
-        // For directories, include if name matches or has matching children
-        const nameMatches = item.name.toLowerCase().includes(query)
-        const filteredChildren = filterTree(item.children || [])
-        if (nameMatches || filteredChildren.length > 0) {
-          // Auto-expand folders when searching
-          if (fileSearchQuery.value) {
-            expandedFolders.value.add(item.path)
-          }
-          return true
-        }
-        return false
-      }
-    }).map(item => {
-      if (item.type === 'directory') {
-        return {
-          ...item,
-          children: filterTree(item.children || [])
-        }
-      }
-      return item
-    })
-  }
-
-  return filterTree(fileTree.value)
-})
-```
-
-### FileTreeNode Component (Line 866-993)
-
-Recursive component using Vue's `h()` render function:
+Recursive component using Vue's `h()` render function (141 lines):
 
 ```javascript
-const FileTreeNode = defineComponent({
+// Line 13-21
+export default defineComponent({
   name: 'FileTreeNode',
   props: {
     item: Object,           // Tree node (file or directory)
@@ -109,100 +77,53 @@ const FileTreeNode = defineComponent({
     expandedFolders: Set   // Set of expanded folder paths
   },
   emits: ['toggle-folder', 'download'],
-  setup(props, { emit }) {
-    // Renders folder with expand/collapse or file with download button
-    // Recursively renders children when folder is expanded
-  }
+  // ...
 })
 ```
 
-### Functions (Line 1689-1713)
+**Features**:
+- **Folders** (Line 35-88): Chevron icon (rotates when expanded), folder icon, file count badge
+- **Files** (Line 89-136): File icon, name, size, download button (visible on hover)
+- **Indentation**: 20px per depth level (Line 24, 93)
+- **Recursion**: Renders children via self-reference (Line 75-87)
 
-#### loadFiles()
-```javascript
-const loadFiles = async () => {
-  if (!agent.value || agent.value.status !== 'running') return
-  filesLoading.value = true
-  filesError.value = null
-  try {
-    const response = await agentsStore.listAgentFiles(agent.value.name)
-    fileTree.value = response.tree || []         // Tree structure
-    totalFileCount.value = response.total_files || 0
-  } catch (err) {
-    console.error('Failed to load files:', err)
-    filesError.value = err.response?.data?.detail || 'Failed to load files'
-  } finally {
-    filesLoading.value = false
-  }
-}
+### useFileBrowser Composable
 
-const toggleFolder = (path) => {
-  if (expandedFolders.value.has(path)) {
-    expandedFolders.value.delete(path)
-  } else {
-    expandedFolders.value.add(path)
-  }
-  // Trigger reactivity
-  expandedFolders.value = new Set(expandedFolders.value)
-}
-```
-
-#### downloadFile(filePath, fileName)
-```javascript
-const downloadFile = async (filePath, fileName) => {
-  if (!agent.value) return
-  try {
-    const content = await agentsStore.downloadAgentFile(agent.value.name, filePath)
-    // Create blob and download
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
-    showNotification(`Downloaded ${fileName}`, 'success')
-  } catch (err) {
-    console.error('Failed to download file:', err)
-    showNotification(err.response?.data?.detail || 'Failed to download file', 'error')
-  }
-}
-```
-
-#### Helper Functions
-- `formatFileSize(bytes)` - Converts bytes to B/KB/MB/GB
-- `formatDate(dateString)` - Relative time (e.g., "2h ago", "3d ago")
-
-### Watchers (Line 1006-1010)
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/composables/useFileBrowser.js`
 
 ```javascript
-// Watch for Files tab activation to load files
-watch(activeTab, (newTab) => {
-  if (newTab === 'files' && agent.value?.status === 'running') {
-    loadFiles()
-  }
-})
+// Line 7-13 - State
+const fileTree = ref([])               // Hierarchical tree structure
+const filesLoading = ref(false)
+const filesError = ref(null)
+const fileSearchQuery = ref('')
+const expandedFolders = ref(new Set()) // Track which folders are open
+const totalFileCount = ref(0)
 ```
+
+**Functions**:
+- `loadFiles()` (Line 51-65) - Fetches file tree from API
+- `toggleFolder(path)` (Line 67-75) - Expands/collapses folder
+- `downloadFile(filePath, fileName)` (Line 77-96) - Downloads file via blob
+- `filteredFileTree` (Line 15-49) - Computed property for search filtering
 
 ### Store Actions
 
-**File**: `/Users/eugene/Dropbox/Coding/N8N_Main_repos/project_trinity/src/frontend/src/stores/agents.js`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
 
-#### listAgentFiles (Line 312-319)
+#### listAgentFiles (Line 452-459)
 ```javascript
-async listAgentFiles(name, path = '/home/developer') {
+async listAgentFiles(name, path = '/home/developer', showHidden = false) {
   const authStore = useAuthStore()
   const response = await axios.get(`/api/agents/${name}/files`, {
-    params: { path },
+    params: { path, show_hidden: showHidden },
     headers: authStore.authHeader
   })
-  return response.data  // Returns: { tree: [...], total_files: N }
+  return response.data  // Returns: { tree: [...], total_files: N, show_hidden: bool }
 }
 ```
 
-#### downloadAgentFile (Line 321-329)
+#### downloadAgentFile (Line 461-469)
 ```javascript
 async downloadAgentFile(name, filePath) {
   const authStore = useAuthStore()
@@ -215,31 +136,58 @@ async downloadAgentFile(name, filePath) {
 }
 ```
 
+#### deleteAgentFile (Line 471-478)
+```javascript
+async deleteAgentFile(name, filePath) {
+  const authStore = useAuthStore()
+  const response = await axios.delete(`/api/agents/${name}/files`, {
+    params: { path: filePath },
+    headers: authStore.authHeader
+  })
+  return response.data
+}
+```
+
+#### updateAgentFile (Line 480-488)
+```javascript
+async updateAgentFile(name, filePath, content) {
+  const authStore = useAuthStore()
+  const response = await axios.put(`/api/agents/${name}/files`, {
+    content
+  }, {
+    params: { path: filePath },
+    headers: authStore.authHeader
+  })
+  return response.data
+}
+```
+
 ---
 
 ## Backend Layer
 
-### Architecture (Post-Refactoring)
+### Architecture
 
 The file browser feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:551-619` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/files.py` (413 lines) | File listing, download, preview, delete, and update logic |
+| Router | `src/backend/routers/agents.py:500-569` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/files.py` (309 lines) | File listing, download, preview, delete, and update logic |
 
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:551-565`
-**Service**: `src/backend/services/agent_service/files.py:21-98`
+**Router**: `src/backend/routers/agents.py:500-514`
+**Service**: `src/backend/services/agent_service/files.py:20-78`
 
 **Purpose**: List all files in agent workspace as hierarchical tree structure
 
 **Parameters**:
 - `agent_name` (path) - Agent identifier
 - `path` (query, optional) - Directory path (default: `/home/developer`)
+- `show_hidden` (query, optional) - Include hidden files (default: `false`)
 
 **Business Logic** (in `list_agent_files_logic()`):
 1. Check user authentication (`get_current_user` dependency)
@@ -248,8 +196,7 @@ The file browser feature uses a **thin router + service layer** architecture:
 4. Verify container exists (404 if not)
 5. Check container is running (400 if not)
 6. Proxy request to agent's internal API at `http://agent-{name}:8000/api/files`
-7. Log audit event on success/error
-8. Return hierarchical tree JSON
+7. Return hierarchical tree JSON
 
 **Response Format** (Tree Structure):
 ```json
@@ -281,27 +228,15 @@ The file browser feature uses a **thin router + service layer** architecture:
       "modified": "2025-12-01T10:25:00"
     }
   ],
-  "total_files": 6
+  "total_files": 6,
+  "show_hidden": false
 }
-```
-
-**Audit Logging**:
-```python
-await log_audit_event(
-    event_type="file_access",
-    action="file_list",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    ip_address=request.client.host,
-    metadata={"path": path},
-    result="success"  # or "error"
-)
 ```
 
 #### GET /api/agents/{agent_name}/files/download
 
-**Router**: `src/backend/routers/agents.py:568-576`
-**Service**: `src/backend/services/agent_service/files.py:101-170`
+**Router**: `src/backend/routers/agents.py:517-525`
+**Service**: `src/backend/services/agent_service/files.py:81-131`
 
 **Purpose**: Download file content from agent workspace
 
@@ -315,33 +250,80 @@ await log_audit_event(
 3. Get agent container
 4. Verify container exists and is running
 5. Proxy request to agent's internal API at `http://agent-{name}:8000/api/files/download`
-6. Log audit event with file_path in metadata
-7. Return file content as PlainTextResponse
+6. Return file content as PlainTextResponse
 
 **Response**: Plain text content of the file
 
-**Audit Logging**:
-```python
-await log_audit_event(
-    event_type="file_access",
-    action="file_download",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    ip_address=request.client.host,
-    metadata={"file_path": path},
-    result="success"  # or "error"
-)
+#### GET /api/agents/{agent_name}/files/preview
+
+**Router**: `src/backend/routers/agents.py:528-536`
+**Service**: `src/backend/services/agent_service/files.py:187-246`
+
+**Purpose**: Get file with proper MIME type for preview (images, video, audio, etc.)
+
+**Parameters**:
+- `agent_name` (path) - Agent identifier
+- `path` (query, required) - File path relative to workspace
+
+**Response**: StreamingResponse with correct Content-Type header
+
+#### DELETE /api/agents/{agent_name}/files
+
+**Router**: `src/backend/routers/agents.py:539-547`
+**Service**: `src/backend/services/agent_service/files.py:134-184`
+
+**Purpose**: Delete a file or directory from agent workspace
+
+**Parameters**:
+- `agent_name` (path) - Agent identifier
+- `path` (query, required) - File path to delete
+
+**Protected Paths**: Cannot delete `CLAUDE.md`, `.trinity`, `.git`, `.gitignore`, `.env`, `.mcp.json`, `.mcp.json.template`
+
+**Response**:
+```json
+{
+  "success": true,
+  "deleted": "path/to/file",
+  "type": "file",
+  "file_count": 1
+}
+```
+
+#### PUT /api/agents/{agent_name}/files
+
+**Router**: `src/backend/routers/agents.py:555-569`
+**Service**: `src/backend/services/agent_service/files.py:249-308`
+
+**Purpose**: Update a file's content in agent workspace
+
+**Parameters**:
+- `agent_name` (path) - Agent identifier
+- `path` (query, required) - File path to update
+- `body.content` (body, required) - New file content
+
+**Protected Paths**: Cannot edit `.trinity`, `.git`, `.gitignore`, `.env`, `.mcp.json.template`
+**Note**: `CLAUDE.md` and `.mcp.json` ARE editable since users need to modify them
+
+**Response**:
+```json
+{
+  "success": true,
+  "path": "CLAUDE.md",
+  "size": 1234,
+  "modified": "2025-12-01T10:30:00.123456"
+}
 ```
 
 ---
 
 ## Agent Layer
 
-> **Architecture Change (2025-12-06)**: The agent-server has been refactored from a monolithic file into a modular package structure at `docker/base-image/agent_server/`.
+> **Architecture**: The agent-server uses a modular package structure at `docker/base-image/agent_server/`.
 
 ### Agent Server Endpoints
 
-**File**: `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/files.py`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/routers/files.py` (370 lines)
 
 #### GET /api/files (Line 23-109)
 
@@ -349,26 +331,22 @@ await log_audit_event(
 
 **Parameters**:
 - `path` (query, optional) - Directory to list (default: `/home/developer`)
+- `show_hidden` (query, optional) - Include hidden files (default: `false`)
 
 **Security**:
 - Only allows access to `/home/developer` and subdirectories
 - Path traversal protection via `Path.resolve()` and prefix check
-- Automatically skips hidden files/directories (starting with `.`)
+- Skips hidden files/directories unless `show_hidden=true`
 
 **Business Logic**:
-1. Resolve requested path and validate it's within workspace
-2. Check path exists (404 if not)
-3. Call recursive `build_tree(directory)` function:
-   - Lists directory contents
-   - Sorts items (directories first, then files, alphabetically)
-   - For directories: recursively builds subtree
-   - For files: collects metadata
-   - Returns `{"children": [...], "file_count": N}`
-4. Return structured tree response
+1. Resolve requested path and validate it's within workspace (Line 36-41)
+2. Check path exists (404 if not) (Line 43-44)
+3. Call recursive `build_tree(directory)` function (Line 46-94)
+4. Return structured tree response (Line 96-109)
 
-**build_tree() Function** (`agent_server/routers/files.py:46-94`):
+**build_tree() Function** (Line 46-94):
 ```python
-def build_tree(directory: Path, base_path: Path) -> dict:
+def build_tree(directory: Path, base_path: Path, include_hidden: bool) -> dict:
     """Build a hierarchical tree structure from a directory."""
     items = []
     total_files = 0
@@ -376,11 +354,11 @@ def build_tree(directory: Path, base_path: Path) -> dict:
     dir_items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
 
     for item in dir_items:
-        if item.name.startswith('.'):  # Skip hidden
+        if item.name.startswith('.') and not include_hidden:
             continue
 
         if item.is_dir():
-            subtree = build_tree(item, base_path)  # Recursive
+            subtree = build_tree(item, base_path, include_hidden)  # Recursive
             items.append({
                 "name": item.name,
                 "path": str(relative_path),
@@ -404,7 +382,7 @@ def build_tree(directory: Path, base_path: Path) -> dict:
 ```
 
 **Response**:
-```python
+```json
 {
     "base_path": "/home/developer",
     "requested_path": ".",
@@ -425,7 +403,8 @@ def build_tree(directory: Path, base_path: Path) -> dict:
             "modified": "2025-12-01T10:30:00.123456"
         }
     ],
-    "total_files": 3
+    "total_files": 3,
+    "show_hidden": false
 }
 ```
 
@@ -439,26 +418,93 @@ def build_tree(directory: Path, base_path: Path) -> dict:
 **Security**:
 - Only allows access to `/home/developer`
 - Path traversal protection
-- Max file size: 100MB (413 error if exceeded)
+- **Max file size: 100MB** (413 error if exceeded)
 - Verifies path is a file (400 if directory)
 
 **Business Logic**:
-1. Handle both absolute and relative paths
-2. Resolve path and validate workspace access
-3. Check file exists (404 if not)
-4. Verify it's a file, not directory (400 if directory)
-5. Check file size <= 100MB (413 if too large)
-6. Read file as UTF-8 text (with error replacement for binary)
+1. Handle both absolute and relative paths (Line 125-128)
+2. Resolve path and validate workspace access (Line 130-132)
+3. Check file exists (404 if not) (Line 134-135)
+4. Verify it's a file, not directory (400 if directory) (Line 137-138)
+5. Check file size <= 100MB (413 if too large) (Line 140-144)
+6. Read file as UTF-8 text (with error replacement for binary) (Line 146-149)
 7. Return as PlainTextResponse
 
 **Response**: Plain text content
 
-**Error Handling**:
-- 403: Access denied (outside workspace)
+#### DELETE /api/files (Line 202-259)
+
+**Purpose**: Delete a file or directory from workspace
+
+**Parameters**:
+- `path` (query, required) - File path to delete
+
+**Protected Paths** (Line 157-165):
+```python
+PROTECTED_PATHS = [
+    "CLAUDE.md",
+    ".trinity",
+    ".git",
+    ".gitignore",
+    ".env",
+    ".mcp.json",
+    ".mcp.json.template",
+]
+```
+
+**Business Logic**:
+1. Validate path is within workspace
+2. Check not deleting home directory itself
+3. Check path is not protected (403 if protected)
+4. Delete file or directory recursively
+
+#### GET /api/files/preview (Line 262-311)
+
+**Purpose**: Get file with proper MIME type for preview
+
+**Parameters**:
+- `path` (query, required) - File path to preview
+
+**Security**:
+- Same as download (workspace restriction, 100MB limit)
+
+**Business Logic**:
+1. Validate path
+2. Detect MIME type via `mimetypes.guess_type()`
+3. Return FileResponse with correct Content-Type
+
+#### PUT /api/files (Line 314-369)
+
+**Purpose**: Update a file's content
+
+**Parameters**:
+- `path` (query, required) - File path to update
+- `content` (body, required) - New file content
+
+**Edit-Protected Paths** (Line 169-175):
+```python
+# CLAUDE.md and .mcp.json ARE editable since users need to modify them
+EDIT_PROTECTED_PATHS = [
+    ".trinity",
+    ".git",
+    ".gitignore",
+    ".env",
+    ".mcp.json.template",
+]
+```
+
+**Business Logic**:
+1. Validate path is within workspace
+2. Check path is not edit-protected
+3. Write new content as UTF-8
+4. Return updated file info
+
+**Error Handling** (all endpoints):
+- 403: Access denied (outside workspace or protected path)
 - 404: File not found
 - 400: Not a file (is directory)
 - 413: File too large (>100MB)
-- 500: Read error
+- 500: Read/write error
 
 ---
 
@@ -468,27 +514,27 @@ def build_tree(directory: Path, base_path: Path) -> dict:
 ```
 User clicks "Files" tab
   |
-activeTab watcher triggers
+FilesPanel mounts / status watcher triggers
   |
-loadFiles() called
+loadFiles() called (useFileBrowser composable)
   |
 agentsStore.listAgentFiles(name)
   |
-GET /api/agents/{name}/files (backend)
+GET /api/agents/{name}/files (backend router)
   |
-Authorization check (JWT + ownership)
+list_agent_files_logic() - Authorization check (JWT + ownership)
+  |
+agent_http_request() - proxy to agent
   |
 GET http://agent-{name}:8000/api/files (agent-server)
   |
-Walk /home/developer
+build_tree() - Walk /home/developer recursively
   |
-Filter hidden files/dirs
+Filter hidden files/dirs (unless show_hidden=true)
   |
 Collect metadata (name, path, size, modified)
   |
-Return JSON array
-  |
-Audit log: file_list
+Return hierarchical tree JSON
   |
 Display files in UI with search/filter
 ```
@@ -497,23 +543,25 @@ Display files in UI with search/filter
 ```
 User clicks download icon
   |
-downloadFile(path, name) called
+downloadFile(path, name) called (useFileBrowser composable)
   |
 agentsStore.downloadAgentFile(name, path)
   |
-GET /api/agents/{name}/files/download?path=... (backend)
+GET /api/agents/{name}/files/download?path=... (backend router)
   |
-Authorization check
+download_agent_file_logic() - Authorization check
+  |
+agent_http_request() - proxy to agent
   |
 GET http://agent-{name}:8000/api/files/download?path=... (agent-server)
   |
-Validate path, check size
+Validate path within workspace
   |
-Read file content (UTF-8)
+Check file size <= 100MB
+  |
+Read file content (UTF-8 with error replacement)
   |
 Return PlainTextResponse
-  |
-Audit log: file_download with file_path
   |
 Create Blob in browser
   |
@@ -526,25 +574,12 @@ Show success notification
 
 ## Side Effects
 
-### Audit Logs
-**Event Type**: `file_access`
-
-**Actions**:
-1. `file_list` - User listed files in workspace
-   - Metadata: `{"path": "/home/developer"}`
-2. `file_download` - User downloaded a specific file
-   - Metadata: `{"file_path": "path/to/file.txt"}`
-
-**Fields Logged**:
-- `user_id`: Username (from JWT)
-- `agent_name`: Agent identifier
-- `ip_address`: Client IP
-- `timestamp`: ISO 8601 timestamp
-- `result`: "success" or "error"
-- `metadata`: Additional context
+### No Audit Logging
+File browser operations are not currently logged to the audit system (removed during service layer refactoring).
 
 ### No Database Operations
-This feature is read-only and does not modify any database tables.
+The file browser (list, download, preview) is read-only and does not modify database tables.
+The delete and update operations modify agent workspace files only (not database).
 
 ### No WebSocket Broadcasts
 This feature does not emit real-time events.
@@ -557,14 +592,21 @@ This feature does not emit real-time events.
 |------------|-------------|---------|-------|
 | Agent not found | 404 | "Agent not found" | Backend |
 | Agent not running | 400 | "Agent must be running to browse/download files" | Backend |
+| Agent server not ready | 503 | "Agent server not ready. The agent may still be starting up." | Backend |
 | No access permission | 403 | "You don't have permission to access this agent" | Backend |
 | Path outside workspace | 403 | "Access denied: only /home/developer accessible" | Agent Server |
+| Protected path (delete) | 403 | "Cannot delete protected path: {name}" | Agent Server |
+| Protected path (edit) | 403 | "Cannot edit protected path: {name}" | Agent Server |
+| Cannot delete home | 403 | "Cannot delete home directory" | Agent Server |
 | File not found | 404 | "File not found: {path}" | Agent Server |
 | Path is directory | 400 | "Not a file: {path}" | Agent Server |
 | File too large | 413 | "File too large: {size} bytes (max 104857600)" | Agent Server |
 | File read error | 500 | "Failed to read file: {error}" | Agent Server |
 | Network timeout (list) | 504 | "File listing timed out" | Backend (30s) |
 | Network timeout (download) | 504 | "File download timed out" | Backend (60s) |
+| Network timeout (delete) | 504 | "File deletion timed out" | Backend (30s) |
+| Network timeout (update) | 504 | "File update timed out" | Backend (60s) |
+| Network timeout (preview) | 504 | "File preview timed out" | Backend (30s) |
 
 ---
 
@@ -581,10 +623,19 @@ This feature does not emit real-time events.
 - No access to system files, .env, .git, or other agent workspace directories
 
 ### File Access Restrictions
-- Hidden files (.env, .git) automatically skipped
-- Hidden directories (.git, .vscode) not traversed
-- Max file size: 100MB download limit
-- Only text file content (binary treated as text with error replacement)
+- Hidden files (.env, .git) skipped by default (use `show_hidden=true` to include)
+- Hidden directories (.git, .vscode) not traversed by default
+- Max file size: 100MB download/preview limit
+- Only text file content for download (binary treated as text with error replacement)
+- Preview endpoint returns files with proper MIME types
+
+### Protected Path Handling
+**Delete-Protected** (cannot be deleted):
+- `CLAUDE.md`, `.trinity`, `.git`, `.gitignore`, `.env`, `.mcp.json`, `.mcp.json.template`
+
+**Edit-Protected** (cannot be modified):
+- `.trinity`, `.git`, `.gitignore`, `.env`, `.mcp.json.template`
+- Note: `CLAUDE.md` and `.mcp.json` ARE editable since users need to modify them
 
 ### Rate Limiting
 - Not currently implemented (consider for future if abuse occurs)
@@ -612,12 +663,7 @@ This feature does not emit real-time events.
 - Loading spinner appears briefly
 - File list loads showing workspace contents
 - Each file shows: name, path, size, modified time
-
-**Verify**:
-```bash
-# Check audit logs
-docker-compose logs audit-logger | grep file_list
-```
+- Folders show file count badge
 
 #### 2. Search/Filter Files
 **Action**: Type "test" in search box
@@ -702,15 +748,19 @@ Working - Feature tested and operational as of 2025-12-01
 
 ## Future Enhancements
 
+### Implemented
+- [x] **File Preview**: Preview endpoint with proper MIME types (images, video, audio, PDFs)
+- [x] **File Delete**: Delete files and directories (with protected path handling)
+- [x] **File Edit/Update**: Update file content (with edit-protected path handling)
+- [x] **Show Hidden Files**: Toggle to include hidden files in listing
+
 ### Potential Improvements
 1. **Upload Files**: Allow file upload to workspace
-2. **File Preview**: Show content preview for small text files
-3. **Bulk Download**: Zip multiple files or entire directory
-4. **File Actions**: Delete, rename, move files
-5. **Syntax Highlighting**: Code preview with language detection
-6. **Image Preview**: Display images inline
-7. **File Versioning**: Track file changes over time
-8. **Remember expanded state**: Save which folders were expanded across sessions
+2. **Bulk Download**: Zip multiple files or entire directory
+3. **Rename/Move Files**: Rename or move files within workspace
+4. **Syntax Highlighting**: Code preview with language detection
+5. **File Versioning**: Track file changes over time
+6. **Remember expanded state**: Save which folders were expanded across sessions
 
 ### Performance Optimizations
 - Pagination for workspaces with 1000+ files
@@ -739,11 +789,12 @@ Working - Feature tested and operational as of 2025-12-01
 - Protects against abuse (downloading GB files)
 - Large files should use alternative methods (SSH, Docker cp)
 
-### Why Skip Hidden Files?
+### Why Skip Hidden Files (by default)?
 - Prevents accidental exposure of secrets (.env)
 - Reduces clutter in file list
 - Git repositories (.git) can be huge
-- User can SSH if they need hidden files
+- `show_hidden=true` parameter available when needed
+- FileManager view has a toggle to show hidden files
 
 ### Why Recursive Tree vs Flat List?
 - **Hierarchical structure**: Mirrors actual filesystem organization
@@ -755,6 +806,15 @@ Working - Feature tested and operational as of 2025-12-01
 ---
 
 ## Changelog
+
+- **2026-01-23**: Verified all line numbers and updated documentation
+  - Frontend refactored: FilesPanel component + useFileBrowser composable
+  - FileTreeNode now in separate file (141 lines)
+  - Backend router lines: 500-569 (was 551-619)
+  - Service file: 309 lines (was 413)
+  - Agent server: 370 lines with protected path handling
+  - Added show_hidden parameter to file listing
+  - Documented DELETE_PROTECTED_PATHS and EDIT_PROTECTED_PATHS
 
 - **2025-12-30**: Updated line numbers to reflect current codebase. Service file grew from 137 to 413 lines (added update function). Fixed file paths.
 - **2025-12-27**: **Service layer refactoring**: File operations moved to `services/agent_service/files.py`. Router reduced to thin endpoint definitions.

@@ -3,7 +3,7 @@ display_name: Customer Support Escalation
 description: AI-powered support ticket handling with human escalation and notifications
 category: support
 complexity: intermediate
-version: "1.0.0"
+version: "1.0"
 author: Trinity Examples
 
 tags:

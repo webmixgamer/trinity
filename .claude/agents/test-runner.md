@@ -135,6 +135,7 @@ The test suite covers:
 - **Templates** (test_templates.py) - Template listing [SMOKE]
 - **MCP Keys** (test_mcp_keys.py) - API key management [SMOKE]
 - **First-Time Setup** (test_setup.py) - Setup status, admin password validation [SMOKE]
+- **Skills CRUD** (test_skills.py) - List skills, create skill, get default skills [SMOKE]
 
 ### Agent Lifecycle & Management
 - **Agent Lifecycle** (test_agent_lifecycle.py) - CRUD, start/stop, logs

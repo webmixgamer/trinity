@@ -42,7 +42,9 @@ services:
       - ./src/backend:/app
       - ./VERSION:/app/VERSION:ro  # Platform version for agent container labels
       - ./config/agent-templates:/agent-configs/templates:ro
+      - ./config/process-templates:/agent-configs/process-templates:ro  # Process templates
       - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
+      - ./config/process-docs:/app/config/process-docs:ro  # Process documentation
       - agent-configs:/agent-configs
       - trinity-data:/data
       - trinity-logs:/data/logs:ro  # Read-only access to Vector logs

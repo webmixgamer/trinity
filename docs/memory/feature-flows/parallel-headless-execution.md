@@ -3,8 +3,17 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
-> **Updated**: 2026-01-12 (max_turns parameter for runaway prevention)
-> **Verified**: 2025-12-31
+> **Updated**: 2026-01-23 (verified line numbers and code references)
+> **Verified**: 2026-01-23
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Verified all line numbers against current codebase. Updated file references. |
+| 2026-01-12 | Added max_turns parameter for runaway prevention |
+| 2025-12-31 | Added execution log persistence details |
+| 2025-12-22 | Initial documentation |
 
 ## Overview
 
@@ -29,17 +38,17 @@ This feature enables Trinity agents to execute multiple independent tasks in par
 ## Architecture Diagram
 
 ```
-                                    ┌─────────────────────────────┐
-                                    │     Sequential Chat         │
-User/Agent ──► POST /chat ─────────►│  Execution Queue (Redis)    │──► claude --continue
-                                    │  One at a time              │
-                                    └─────────────────────────────┘
+                                    +-----------------------------+
+                                    |     Sequential Chat         |
+User/Agent --> POST /chat --------->|  Execution Queue (Redis)    |--> claude --continue
+                                    |  One at a time              |
+                                    +-----------------------------+
 
-                                    ┌─────────────────────────────┐
-                                    │     Parallel Task           │
-User/Agent ──► POST /task ─────────►│  No queue, no lock          │──► claude -p (headless)
-              (can send N)          │  N concurrent allowed       │    (N processes)
-                                    └─────────────────────────────┘
+                                    +-----------------------------+
+                                    |     Parallel Task           |
+User/Agent --> POST /task --------->|  No queue, no lock          |--> claude -p (headless)
+              (can send N)          |  N concurrent allowed       |    (N processes)
+                                    +-----------------------------+
 ```
 
 ## Data Flow
@@ -48,24 +57,24 @@ User/Agent ──► POST /task ─────────►│  No queue, no 
 
 ```
 Orchestrator Agent
-       │
-       ▼
-┌─────────────────────────────────────────────┐
-│ chat_with_agent(                            │
-│   agent_name: "worker-1",                   │
-│   message: "Process file X",                │
-│   parallel: true,                           │
-│   timeout_seconds: 300                      │
-│ )                                           │
-└─────────────────────────────────────────────┘
-       │
-       ▼
+       |
+       v
++---------------------------------------------+
+| chat_with_agent(                            |
+|   agent_name: "worker-1",                   |
+|   message: "Process file X",                |
+|   parallel: true,                           |
+|   timeout_seconds: 300                      |
+| )                                           |
++---------------------------------------------+
+       |
+       v
    MCP Server (src/mcp-server)
-       │
-       ▼
+       |
+       v
    client.task(name, message, options)
-       │
-       ▼
+       |
+       v
    POST /api/agents/{name}/task
 ```
 
@@ -73,19 +82,19 @@ Orchestrator Agent
 
 ```
 POST /api/agents/{name}/task
-       │
-       ▼
-┌─────────────────────────────────────────────┐
-│ 1. Validate agent exists and is running     │
-│ 2. Check access permissions                 │
-│ 3. Track activity (ActivityType.CHAT_START  │
-│    with parallel_mode: true)                │
-│ 4. Build payload with options               │
-│ 5. Proxy to agent container                 │
-│    (NO EXECUTION QUEUE)                     │
-└─────────────────────────────────────────────┘
-       │
-       ▼
+       |
+       v
++---------------------------------------------+
+| 1. Validate agent exists and is running     |
+| 2. Check access permissions                 |
+| 3. Track activity (ActivityType.CHAT_START  |
+|    with parallel_mode: true)                |
+| 4. Build payload with options               |
+| 5. Proxy to agent container                 |
+|    (NO EXECUTION QUEUE)                     |
++---------------------------------------------+
+       |
+       v
    POST http://agent-{name}:8000/api/task
 ```
 
@@ -93,24 +102,24 @@ POST /api/agents/{name}/task
 
 ```
 POST /api/task
-       │
-       ▼
-┌─────────────────────────────────────────────┐
-│ execute_headless_task()                     │
-│                                             │
-│ - NO execution lock acquired                │
-│ - Build command:                            │
-│   claude -p --output-format stream-json     │
-│   --verbose --dangerously-skip-permissions  │
-│   [--model X] [--allowedTools Y]            │
-│   [--append-system-prompt Z]                │
-│   [--max-turns N]                           │
-│   [--mcp-config ~/.mcp.json]                │
-│                                             │
-│ - NO --continue flag (stateless)            │
-│ - Parse streaming JSON output               │
-│ - Return response with session_id           │
-└─────────────────────────────────────────────┘
+       |
+       v
++---------------------------------------------+
+| execute_headless_task()                     |
+|                                             |
+| - NO execution lock acquired                |
+| - Build command:                            |
+|   claude -p --output-format stream-json     |
+|   --verbose --dangerously-skip-permissions  |
+|   [--model X] [--allowedTools Y]            |
+|   [--append-system-prompt Z]                |
+|   [--max-turns N]                           |
+|   [--mcp-config ~/.mcp.json]                |
+|                                             |
+| - NO --continue flag (stateless)            |
+| - Parse streaming JSON output               |
+| - Return response with session_id           |
++---------------------------------------------+
 ```
 
 ## Key Files
@@ -119,25 +128,27 @@ POST /api/task
 
 | File | Line | Purpose |
 |------|------|---------|
-| `models.py` | 214-231 | ParallelTaskRequest, ParallelTaskResponse models |
-| `services/claude_code.py` | 536-731 | execute_headless_task() function |
+| `models.py` | 215-232 | ParallelTaskRequest, ParallelTaskResponse models |
+| `services/claude_code.py` | 553-739 | execute_headless_task() function |
 | `services/gemini_runtime.py` | 489-642 | execute_headless() for Gemini CLI |
-| `services/runtime_adapter.py` | 98-127 | AgentRuntime.execute_headless() interface |
-| `routers/chat.py` | 93-133 | POST /api/task endpoint |
+| `services/runtime_adapter.py` | 99-129 | AgentRuntime.execute_headless() interface |
+| `routers/chat.py` | 96-137 | POST /api/task endpoint |
 
 ### Backend (src/backend/)
 
 | File | Line | Purpose |
 |------|------|---------|
-| `models.py` | 103-110 | ParallelTaskRequest model with max_turns |
-| `routers/chat.py` | 358-475 | POST /api/agents/{name}/task endpoint |
+| `models.py` | 109-116 | ParallelTaskRequest model with max_turns |
+| `routers/chat.py` | 418-630 | POST /api/agents/{name}/task endpoint |
+| `routers/schedules.py` | 339-379 | GET /api/agents/{name}/executions/{id}/log endpoint |
+| `services/agent_client.py` | 194-287 | AgentClient.task() method |
 
 ### MCP Server (src/mcp-server/)
 
 | File | Line | Purpose |
 |------|------|---------|
-| `src/client.ts` | 344-396 | task() method for API calls |
-| `src/tools/chat.ts` | 132-270 | chat_with_agent tool with parallel parameter |
+| `src/client.ts` | 393-445 | task() method for API calls |
+| `src/tools/chat.ts` | 130-270 | chat_with_agent tool with parallel parameter |
 
 ## API Specifications
 
@@ -151,7 +162,8 @@ POST /api/task
   "allowed_tools": ["Read"],     // Optional: Tool restrictions
   "system_prompt": "string",     // Optional: Additional instructions
   "timeout_seconds": 900,        // Optional: Timeout (default 15 min)
-  "max_turns": 50                // Optional: Max agentic turns (runaway prevention)
+  "max_turns": 50,               // Optional: Max agentic turns (runaway prevention)
+  "execution_id": "uuid"         // Optional: Database execution ID for process registry
 }
 ```
 
@@ -172,7 +184,7 @@ POST /api/task
 }
 ```
 
-**Note**: As of 2025-12-31, the `execution_log` is persisted to the `schedule_executions` database table and can be retrieved via `GET /api/agents/{name}/executions/{execution_id}/log`.
+**Note**: The `execution_log` is persisted to the `schedule_executions` database table and can be retrieved via `GET /api/agents/{name}/executions/{execution_id}/log`.
 
 ### Backend: POST /api/agents/{name}/task
 
@@ -181,13 +193,14 @@ Same request/response as agent server, with additional:
 - Access control validation
 - Activity tracking
 - Audit logging
-- **Execution log persistence** - Full transcript saved to `schedule_executions.execution_log` *(added 2025-12-31)*
+- **Execution log persistence** - Full transcript saved to `schedule_executions.execution_log`
+- **Process registry** - Passes `execution_id` to agent for termination tracking
 
-### Backend: GET /api/agents/{name}/executions/{execution_id}/log *(added 2025-12-31)*
+### Backend: GET /api/agents/{name}/executions/{execution_id}/log
 
 Retrieve the full execution log for any task execution.
 
-**File**: `src/backend/routers/schedules.py:426-473`
+**File**: `src/backend/routers/schedules.py:339-379`
 
 **Response**:
 ```json
@@ -217,7 +230,7 @@ Retrieve the full execution log for any task execution.
 | model | string | null | Model override (parallel only) |
 | allowed_tools | string[] | null | Tool restrictions (parallel only) |
 | system_prompt | string | null | Additional instructions (parallel only) |
-| timeout_seconds | number | 900 | Timeout in seconds (parallel only) |
+| timeout_seconds | number | 300 | Timeout in seconds (parallel only) |
 | max_turns | number | null | Max agentic turns for runaway prevention (parallel only) |
 
 ## Key Differences: Chat vs Task
@@ -250,7 +263,7 @@ When `max_turns` is specified:
 
 ### Implementation Details
 
-**Claude Code** (`docker/base-image/agent_server/services/claude_code.py:604-606`):
+**Claude Code** (`docker/base-image/agent_server/services/claude_code.py:622-625`):
 ```python
 if max_turns is not None:
     cmd.extend(["--max-turns", str(max_turns)])
@@ -328,6 +341,25 @@ Use both together for comprehensive protection:
 }
 ```
 
+## Live Execution Streaming
+
+Task executions can be monitored in real-time via Server-Sent Events (SSE).
+
+### Endpoint
+
+**Backend**: `GET /api/agents/{name}/executions/{execution_id}/stream`
+**File**: `src/backend/routers/chat.py:1196-1257`
+
+**Agent Server**: `GET /api/executions/{execution_id}/stream`
+**File**: `docker/base-image/agent_server/routers/chat.py:295-369`
+
+### Process Registry
+
+The process registry (`docker/base-image/agent_server/services/process_registry.py`) enables:
+- Tracking running executions
+- Terminating executions
+- Live log streaming via pub/sub
+
 ## Testing
 
 Tests are in `tests/test_parallel_task.py`:
@@ -350,11 +382,11 @@ cd tests && pytest test_parallel_task.py -v
 ### 1. Orchestrator-Worker Pattern
 ```
 Orchestrator spawns 5 parallel workers:
-  ├─► Worker 1: "Process file A" (parallel=true)
-  ├─► Worker 2: "Process file B" (parallel=true)
-  ├─► Worker 3: "Process file C" (parallel=true)
-  ├─► Worker 4: "Process file D" (parallel=true)
-  └─► Worker 5: "Process file E" (parallel=true)
+  +-> Worker 1: "Process file A" (parallel=true)
+  +-> Worker 2: "Process file B" (parallel=true)
+  +-> Worker 3: "Process file C" (parallel=true)
+  +-> Worker 4: "Process file D" (parallel=true)
+  +-> Worker 5: "Process file E" (parallel=true)
 
 All 5 execute concurrently, no queue blocking.
 ```
@@ -369,9 +401,9 @@ System Agent runs nightly batch:
 ### 3. Research Tasks
 ```
 Orchestrator gathers info from multiple sources:
-  ├─► Research Agent 1: "Find info about X" (parallel=true)
-  ├─► Research Agent 2: "Find info about Y" (parallel=true)
-  └─► Research Agent 3: "Find info about Z" (parallel=true)
+  +-> Research Agent 1: "Find info about X" (parallel=true)
+  +-> Research Agent 2: "Find info about Y" (parallel=true)
+  +-> Research Agent 3: "Find info about Z" (parallel=true)
 
 Combine results after all complete.
 ```
@@ -383,7 +415,7 @@ Combine results after all complete.
 3. **Audit Trail**: All parallel tasks logged with user attribution
 4. **Tool Restrictions**: `allowed_tools` parameter for sandboxing
 5. **Timeout**: Hard limit (`timeout_seconds`) prevents wall-clock runaway
-6. **Turn Limit**: `max_turns` prevents infinite agentic loops (added 2026-01-12)
+6. **Turn Limit**: `max_turns` prevents infinite agentic loops
 
 ## Future Enhancements
 

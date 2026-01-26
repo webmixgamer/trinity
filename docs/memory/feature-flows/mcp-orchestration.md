@@ -62,7 +62,7 @@ As a Claude Code user (head agent), I want to use MCP tools to create, manage, a
 
 ## Authentication Flow (Critical)
 
-### 1. MCP Client → MCP Server Authentication (`server.ts:105-141`)
+### 1. MCP Client → MCP Server Authentication (`server.ts:114-151`)
 
 When a request arrives at the MCP server:
 
@@ -105,7 +105,7 @@ authenticate: requireApiKey
 - FastMCP stores this in `context.session` for tool execution
 - **Request-scoped**: Each request gets its own auth context (no race conditions)
 
-### 2. Tool Execution with Auth Context (`agents.ts:120-166`)
+### 2. Tool Execution with Auth Context (`agents.ts:202-248`)
 
 Tools receive auth context via FastMCP's context parameter:
 
@@ -130,7 +130,7 @@ execute: async (args: {...}, context: any) => {
 }
 ```
 
-**getClient() Helper** (`agents.ts:25-34`):
+**getClient() Helper** (`agents.ts:25-38`):
 ```typescript
 const getClient = (authContext?: McpAuthContext): TrinityClient => {
   if (authContext?.mcpApiKey) {
@@ -144,7 +144,7 @@ const getClient = (authContext?: McpAuthContext): TrinityClient => {
 };
 ```
 
-### 3. MCP Server → Backend API Call (`client.ts:86-128`)
+### 3. MCP Server → Backend API Call (`client.ts:103-155`)
 
 TrinityClient includes MCP API key in request:
 
@@ -177,16 +177,17 @@ private async request<T>(method: string, path: string, body?: unknown, isRetry: 
 }
 ```
 
-### 4. Backend Validates MCP API Key (`dependencies.py:47-121`)
+### 4. Backend Validates MCP API Key (`dependencies.py:104-155`)
 
 FastAPI dependency validates incoming Bearer token:
 
 ```python
 async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> User:
     """
+    FastAPI dependency to get the current authenticated user.
     Validates JWT token OR MCP API key and returns User object.
     """
-    print(f"[AUTH DEBUG] Received token: {token[:20]}... (length: {len(token)})")
+    credentials_exception = HTTPException(...)
 
     # Try JWT token first
     try:
@@ -195,39 +196,28 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         if username is None:
             raise credentials_exception
         # ... return User object
-    except JWTError as e:
-        print(f"[AUTH DEBUG] JWT decode failed: {e}, trying MCP API key...")
+    except JWTError:
+        # JWT failed, try MCP API key
+        pass
 
     # Try MCP API key authentication
-    print(f"[AUTH DEBUG] Validating as MCP API key...")
     mcp_key_info = db.validate_mcp_api_key(token)
-    print(f"[AUTH DEBUG] MCP validation result: {mcp_key_info}")
-
-    # CRITICAL FIX: Check if mcp_key_info exists (not if it has "valid" key)
     if mcp_key_info:  # Returns dict if valid, None if invalid
         user_email = mcp_key_info.get("user_email")
-        user_id = mcp_key_info.get("user_id")
+        user_id = mcp_key_info.get("user_id")  # This is actually username, not DB id
 
-        # Get full user record
-        user = db.get_user_by_email(user_email) if user_email else db.get_user_by_id(user_id)
+        # Get full user record - try email first, then username
+        user = db.get_user_by_email(user_email) if user_email else db.get_user_by_username(user_id)
         if user:
-            return User(
-                id=user["id"],
-                username=user["username"],
-                email=user.get("email"),
-                role=user["role"]
-            )
+            return User(...)
 
     # Both JWT and MCP key failed
     raise credentials_exception
 ```
 
-**Critical Fix**: Line 95 now checks `if mcp_key_info:` instead of `if mcp_key_info.get("valid"):`
-- `validate_mcp_api_key()` returns dict if valid, `None` if invalid
-- Old code checked for non-existent "valid" key, always evaluated to False
-- This caused all MCP-authenticated requests to fail validation
+**Key Implementation Detail**: Line 139 checks `if mcp_key_info:` - `validate_mcp_api_key()` returns dict if valid, `None` if invalid
 
-### 5. Agent Creation with Correct Owner (`routers/agents.py:376`)
+### 5. Agent Creation with Correct Owner
 
 Agent is registered with correct user:
 
@@ -331,7 +321,7 @@ async function validateMcpApiKey(
 }
 ```
 
-### Tool Registration (`src/mcp-server/src/server.ts:156-189`)
+### Tool Registration (`src/mcp-server/src/server.ts:156-192`)
 ```typescript
 // Register agent management tools (11 tools)
 const agentTools = createAgentTools(client, requireApiKey);
@@ -364,7 +354,7 @@ console.log(`Registered ${totalTools} tools`);
 | `list_agents` | 44-79 | `{}` | `GET /api/agents` |
 | `get_agent` | 84-98 | `{name}` | `GET /api/agents/{name}` |
 | `get_agent_info` | 103-145 | `{name}` | `GET /api/agents/{name}/info` |
-| `create_agent` | 150-249 | `{name, type?, template?, resources?}` | `POST /api/agents` |
+| `create_agent` | 150-249 | `{name, type?, template?, resources?, tools?, mcp_servers?, custom_instructions?}` | `POST /api/agents` |
 | `delete_agent` | 254-281 | `{name}` | `DELETE /api/agents/{name}` |
 | `start_agent` | 286-301 | `{name}` | `POST /api/agents/{name}/start` |
 | `stop_agent` | 306-321 | `{name}` | `POST /api/agents/{name}/stop` |
@@ -373,30 +363,30 @@ console.log(`Registered ${totalTools} tools`);
 | `get_credential_status` | 365-380 | `{name}` | `GET /api/agents/{name}/credentials/status` |
 | `get_agent_ssh_access` | 385-420 | `{agent_name, ttl_hours?, auth_method?}` | `POST /api/agents/{name}/ssh-access` |
 | `deploy_local_agent` | 425-525 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
-| `initialize_github_sync` | 530-605 | `{agent_name, repo_owner, repo_name, ...}` | `POST /api/agents/{name}/git/initialize` |
+| `initialize_github_sync` | 530-606 | `{agent_name, repo_owner, repo_name, create_repo?, private?, description?}` | `POST /api/agents/{name}/git/initialize` |
 
 ### Chat Tools (`src/mcp-server/src/tools/chat.ts`)
 
 | Tool | Line | Parameters | Backend Endpoint |
 |------|------|------------|------------------|
-| `chat_with_agent` | 132-270 | `{agent_name, message, parallel?, ...}` | `POST /api/agents/{name}/chat` or `/task` |
+| `chat_with_agent` | 132-270 | `{agent_name, message, parallel?, model?, allowed_tools?, system_prompt?, timeout_seconds?}` | `POST /api/agents/{name}/chat` or `/task` |
 | `get_chat_history` | 275-292 | `{agent_name}` | `GET /api/agents/{name}/chat/history` |
-| `get_agent_logs` | 297-325 | `{agent_name, lines?}` | `GET /api/agents/{name}/logs` |
+| `get_agent_logs` | 297-326 | `{agent_name, lines?}` | `GET /api/agents/{name}/logs` |
 
 ### System Tools (`src/mcp-server/src/tools/systems.ts`)
 
-| Tool | Parameters | Description |
-|------|------------|-------------|
-| `deploy_system` | `{manifest, credentials?}` | Deploy multi-agent system |
-| `list_systems` | `{}` | List deployed systems |
-| `restart_system` | `{name}` | Restart all agents in system |
-| `get_system_manifest` | `{name}` | Get system manifest |
+| Tool | Line | Parameters | Description |
+|------|------|------------|-------------|
+| `deploy_system` | 44-100 | `{manifest, dry_run?}` | Deploy multi-agent system from YAML |
+| `list_systems` | 105-133 | `{}` | List deployed systems grouped by prefix |
+| `restart_system` | 138-167 | `{system_name}` | Restart all agents in system |
+| `get_system_manifest` | 172-202 | `{system_name}` | Export system as YAML manifest |
 
 ### Documentation Tools (`src/mcp-server/src/tools/docs.ts`)
 
-| Tool | Parameters | Description |
-|------|------------|-------------|
-| `get_agent_requirements` | `{}` | Get Trinity agent requirements |
+| Tool | Line | Parameters | Description |
+|------|------|------------|-------------|
+| `get_agent_requirements` | 97-109 | `{}` | Get Trinity Compatible Agent Guide |
 
 ### Parallel Mode (Added 2025-12-22)
 
@@ -473,7 +463,7 @@ if ('queue_status' in response) {
 }
 ```
 
-**Client-side 429 handling** (`client.ts:253-296`):
+**Client-side 429 handling** (`client.ts:355-370`):
 ```typescript
 if (response.status === 429) {
     return {
@@ -512,7 +502,7 @@ async function checkAgentAccess(
 
 ## Trinity Client (`src/mcp-server/src/client.ts`)
 
-### Authentication (lines 32-55)
+### Authentication (lines 46-69)
 ```typescript
 async authenticate(username: string, password: string): Promise<void> {
   // Store credentials for re-authentication
@@ -534,7 +524,7 @@ async authenticate(username: string, password: string): Promise<void> {
 }
 ```
 
-### Request Pattern with Auto-Retry (lines 89-137)
+### Request Pattern with Auto-Retry (lines 103-155)
 ```typescript
 async request<T>(method: string, path: string, body?: unknown, isRetry = false): Promise<T> {
   if (!this.token) {
@@ -555,7 +545,7 @@ async request<T>(method: string, path: string, body?: unknown, isRetry = false):
 }
 ```
 
-### Chat with Queue Handling (lines 288-329)
+### Chat with Queue Handling (lines 336-378)
 ```typescript
 async chat(name: string, message: string, sourceAgent?: string): Promise<ChatResponse | QueueStatus> {
   // Handle 429 Too Many Requests (agent queue full)
@@ -570,7 +560,7 @@ async chat(name: string, message: string, sourceAgent?: string): Promise<ChatRes
 }
 ```
 
-### Parallel Task Execution (lines 344-396)
+### Parallel Task Execution (lines 393-445)
 ```typescript
 async task(name: string, message: string, options?: TaskOptions, sourceAgent?: string): Promise<ChatResponse> {
   // Stateless execution, no queue, can run N tasks concurrently
@@ -602,7 +592,7 @@ const getClient = (authContext?: McpAuthContext): TrinityClient => {
 
 ## Backend Layer
 
-### MCP API Key Validation (`routers/mcp_keys.py:154-211`)
+### MCP API Key Validation (`routers/mcp_keys.py:144-180`)
 ```python
 @router.post("/validate")
 async def validate_mcp_api_key_http_endpoint(request: Request):
@@ -634,17 +624,19 @@ async def validate_mcp_api_key_http_endpoint(request: Request):
 
 | Line | Endpoint | Method | Purpose |
 |------|----------|--------|---------|
-| 15-54 | `/api/mcp/keys` | POST | Create API key |
-| 57-79 | `/api/mcp/keys` | GET | List user's keys |
-| 82-103 | `/api/mcp/keys/{id}` | GET | Get key details |
-| 106-127 | `/api/mcp/keys/{id}/revoke` | POST | Revoke key |
-| 130-151 | `/api/mcp/keys/{id}` | DELETE | Delete key |
+| 14-34 | `/api/mcp/keys` | POST | Create API key |
+| 37-51 | `/api/mcp/keys` | GET | List user's keys |
+| 54-96 | `/api/mcp/keys/ensure-default` | POST | Ensure default key exists |
+| 99-111 | `/api/mcp/keys/{id}` | GET | Get key details |
+| 114-126 | `/api/mcp/keys/{id}/revoke` | POST | Revoke key |
+| 129-141 | `/api/mcp/keys/{id}` | DELETE | Delete key |
+| 144-180 | `/api/mcp/validate` | POST | Validate API key (MCP server) |
 
 ---
 
 ## Database Layer (`src/backend/database.py`)
 
-### MCP API Keys Table (lines 212-227)
+### MCP API Keys Table (lines 356-371)
 ```sql
 CREATE TABLE IF NOT EXISTS mcp_api_keys (
     id TEXT PRIMARY KEY,
@@ -656,9 +648,10 @@ CREATE TABLE IF NOT EXISTS mcp_api_keys (
     last_used_at TEXT,
     usage_count INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    user_id INTEGER NOT NULL,
     agent_name TEXT,  -- For agent-scoped keys
-    scope TEXT DEFAULT 'user'  -- 'user' or 'agent'
+    scope TEXT DEFAULT 'user',  -- 'user', 'agent', or 'system'
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 ```
 
@@ -844,7 +837,7 @@ if mcp_key_info:  # validate_mcp_api_key() returns dict if valid, None if invali
     # This correctly checks if key is valid
 ```
 
-**Fix Location**: `src/backend/dependencies.py:95`
+**Fix Location**: `src/backend/dependencies.py:139`
 
 ---
 
@@ -921,12 +914,12 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Flow verification**: Updated all line numbers to match current implementation. Verified 21 tools (13 agent, 3 chat, 4 system, 1 docs). Updated client.ts line refs (authenticate: 46-69, request: 103-155, chat: 336-378, task: 393-445). Updated dependencies.py refs (104-155). Updated mcp_keys.py refs (144-180). Added ensure-default endpoint. Fixed database table line (356-371). |
 | 2026-01-15 | **Docs**: Added Dashboard Timeline Visualization section noting pink (#ec4899) color for MCP executions |
 | 2026-01-03 | **get_agent_info tool**: Added new tool to retrieve full template.yaml metadata for agents. Supports access control - agent-scoped keys can only access self + permitted agents. Returns capabilities, commands, MCP servers, tools, skills, use cases. |
+| 2026-01-03 | **Tool count update**: 21 tools total (13 agent, 3 chat, 4 system, 1 docs). Added `get_agent_info` (agents.ts:103-145) and `get_agent_ssh_access` (agents.ts:385-420). Updated all line numbers. |
 | 2025-12-30 | **Agent-to-agent chat tracking**: Non-parallel `chat_with_agent` calls now create `schedule_executions` records when agent-scoped, ensuring all MCP agent communications appear in Tasks tab. |
 | 2025-12-30 | **Dynamic GitHub Templates**: `create_agent` now supports any `github:owner/repo` format - not just pre-defined templates. Uses system GITHUB_PAT for access. |
-| 2025-12-30 | **Flow verification**: Updated tool count to 16 (11 agent, 3 chat, 4 system, 1 docs). Updated line numbers for all TypeScript files. Added deploy_local_agent, initialize_github_sync tools. Added queue handling and parallel task client methods. Added System Agent (Phase 11.1) access control rules. |
-| 2026-01-03 | **Tool count update**: 21 tools total (13 agent, 3 chat, 4 system, 1 docs). Added `get_agent_info` (agents.ts:103-145) and `get_agent_ssh_access` (agents.ts:385-420). Updated all line numbers. |
 | 2025-12-22 | Added parallel mode to chat_with_agent tool |
 | 2025-12-03 | MCP API key authentication deployed to production |
 | 2025-12-02 | Fixed race condition bug in auth context handling |

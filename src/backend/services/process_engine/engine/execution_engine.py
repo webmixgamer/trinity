@@ -505,8 +505,8 @@ class ExecutionEngine:
             execution.record_step_attempt(step_id, result.error or "Unknown error", result.error_code)
             self.execution_repo.save(execution)
 
-            # Some errors should not be retried (human decisions, validation errors)
-            non_retryable_errors = {"APPROVAL_REJECTED", "VALIDATION_ERROR", "INVALID_CONFIG"}
+            # Some errors should not be retried (human decisions, validation errors, timeouts)
+            non_retryable_errors = {"APPROVAL_REJECTED", "APPROVAL_TIMEOUT", "VALIDATION_ERROR", "INVALID_CONFIG", "TIMEOUT"}
             if result.error_code in non_retryable_errors:
                 logger.info(f"Step '{step_def.name}' failed with non-retryable error: {result.error_code}")
                 await self._handle_step_failure(execution, step_def, result, definition)

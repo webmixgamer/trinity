@@ -56,6 +56,7 @@
                 <option value="">All Status</option>
                 <option value="pending">⏳ Pending</option>
                 <option value="running">🔄 Running</option>
+                <option value="paused">🔔 Awaiting Approval</option>
                 <option value="completed">✅ Completed</option>
                 <option value="failed">❌ Failed</option>
                 <option value="cancelled">⛔ Cancelled</option>
@@ -146,9 +147,9 @@
                 @click="viewExecution(execution)"
               >
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <span :class="getStatusClasses(execution.status)" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium">
-                    <span>{{ getStatusIcon(execution.status) }}</span>
-                    <span class="capitalize">{{ execution.status }}</span>
+                  <span :class="getStatusClasses(getDisplayStatus(execution))" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium">
+                    <span>{{ getStatusIcon(getDisplayStatus(execution)) }}</span>
+                    <span class="capitalize">{{ getDisplayStatusText(execution) }}</span>
                   </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
@@ -353,6 +354,7 @@ function getStatusIcon(status) {
     failed: '❌',
     cancelled: '⛔',
     paused: '⏸️',
+    awaiting_approval: '🔔',
   }
   return icons[status] || '❓'
 }
@@ -365,8 +367,24 @@ function getStatusClasses(status) {
     failed: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
     cancelled: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300',
     paused: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
+    awaiting_approval: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300',
   }
   return classes[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+}
+
+// Enhanced status display for paused executions
+// In list view, steps data isn't loaded, so treat ALL paused as awaiting approval
+function getDisplayStatus(execution) {
+  if (execution.status === 'paused') {
+    return 'awaiting_approval'
+  }
+  return execution.status
+}
+
+function getDisplayStatusText(execution) {
+  const status = getDisplayStatus(execution)
+  if (status === 'awaiting_approval') return 'Awaiting Approval'
+  return status
 }
 
 function formatDate(dateStr) {

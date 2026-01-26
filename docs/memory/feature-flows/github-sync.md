@@ -53,14 +53,31 @@ GIT_SOURCE_MODE=true           # Enables source mode
 GIT_SOURCE_BRANCH=main         # Branch to track (default: main)
 ```
 
-### Startup Behavior (`docker/base-image/startup.sh`)
+### Startup Behavior (`docker/base-image/startup.sh:41-71`)
 
 ```bash
-# Source mode: checkout source branch directly
+# SOURCE MODE (lines 41-54): Track the source branch directly (unidirectional pull only)
 if [ "${GIT_SOURCE_MODE}" = "true" ]; then
     SOURCE_BRANCH="${GIT_SOURCE_BRANCH:-main}"
-    git checkout "${SOURCE_BRANCH}"
-    git branch --set-upstream-to="origin/${SOURCE_BRANCH}"
+    echo "Source mode enabled - tracking branch: ${SOURCE_BRANCH}"
+
+    # Checkout the source branch
+    git checkout "${SOURCE_BRANCH}" 2>&1 || git checkout -b "${SOURCE_BRANCH}" "origin/${SOURCE_BRANCH}"
+
+    # Set up tracking for pull operations
+    git branch --set-upstream-to="origin/${SOURCE_BRANCH}" "${SOURCE_BRANCH}"
+
+    echo "Source mode ready - pull updates with 'git pull'"
+
+# LEGACY WORKING BRANCH MODE (lines 55-71): Create unique working branch
+elif [ -n "${GIT_WORKING_BRANCH}" ]; then
+    # Check if branch exists on remote
+    if git ls-remote --heads origin "${GIT_WORKING_BRANCH}" | grep -q "${GIT_WORKING_BRANCH}"; then
+        git checkout "${GIT_WORKING_BRANCH}"
+    else
+        git checkout -b "${GIT_WORKING_BRANCH}"
+        git push -u origin "${GIT_WORKING_BRANCH}"
+    fi
 fi
 ```
 
@@ -102,9 +119,11 @@ sequenceDiagram
 Large generated files (videos, audio, images, exports) should go in `content/` which is automatically gitignored:
 
 ```bash
-# Created by startup.sh
-mkdir -p content/{videos,audio,images,exports}
-echo "content/" >> .gitignore
+# Created by startup.sh (lines 279-285)
+mkdir -p /home/developer/content/{videos,audio,images,exports}
+
+# Ensure content/ is in .gitignore (prevents large files from bloating Git repos)
+grep -q "^content/$" /home/developer/.gitignore || echo "content/" >> /home/developer/.gitignore
 ```
 
 ---
@@ -168,25 +187,40 @@ sequenceDiagram
 ### Database Model: AgentGitConfig
 
 ```python
-# src/backend/db_models.py
+# src/backend/db_models.py:158-171
 class AgentGitConfig(BaseModel):
+    """Git configuration for an agent (GitHub-native agents)."""
     id: str
     agent_name: str
     github_repo: str           # e.g., "Owner/repo"
     working_branch: str        # "main" (source mode) or "trinity/{agent}/{id}" (legacy)
     instance_id: str           # 8-char unique identifier
-    source_branch: str = "main"  # Branch to pull from
-    source_mode: bool = False    # True = source mode, False = working branch mode
+    source_branch: str = "main"  # Branch to pull from (default: main)
+    source_mode: bool = False    # If True, track source_branch directly (no working branch)
     created_at: datetime
     last_sync_at: Optional[datetime] = None
     last_commit_sha: Optional[str] = None
     sync_enabled: bool = True
-    sync_paths: Optional[str] = None  # JSON array
+    sync_paths: Optional[str] = None  # JSON array of paths to sync
+```
+
+```python
+# src/backend/db_models.py:174-182
+class GitSyncResult(BaseModel):
+    """Result of a git sync operation."""
+    success: bool
+    commit_sha: Optional[str] = None
+    message: str
+    files_changed: int = 0
+    branch: Optional[str] = None
+    sync_time: Optional[datetime] = None
+    conflict_type: Optional[str] = None  # "push_rejected", "merge_conflict", etc.
 ```
 
 ### Database Table
 
 ```sql
+-- src/backend/database.py:418-432
 CREATE TABLE IF NOT EXISTS agent_git_config (
     id TEXT PRIMARY KEY,
     agent_name TEXT UNIQUE NOT NULL,
@@ -202,6 +236,10 @@ CREATE TABLE IF NOT EXISTS agent_git_config (
     sync_paths TEXT,
     FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name)
 );
+
+-- Indexes (src/backend/database.py:620-621)
+CREATE INDEX IF NOT EXISTS idx_git_config_agent ON agent_git_config(agent_name);
+CREATE INDEX IF NOT EXISTS idx_git_config_repo ON agent_git_config(github_repo);
 ```
 
 ---
@@ -210,7 +248,7 @@ CREATE TABLE IF NOT EXISTS agent_git_config (
 
 ### Access Control Dependencies
 
-Git endpoints use FastAPI dependencies for access control (defined in `src/backend/dependencies.py:212-263`):
+Git endpoints use FastAPI dependencies for access control (defined in `src/backend/dependencies.py:228-295`):
 
 | Dependency | Path Parameter | Access Level | Used By |
 |------------|----------------|--------------|---------|
@@ -237,12 +275,12 @@ The dependency automatically:
 
 | Endpoint | Line | Dependency | Access Level |
 |----------|------|------------|--------------|
-| `GET /{agent_name}/git/status` | 43 | `AuthorizedAgentByName` | Read |
-| `POST /{agent_name}/git/sync` | 95 | `OwnedAgentByName` | Owner |
-| `GET /{agent_name}/git/log` | 150 | `AuthorizedAgentByName` | Read |
-| `POST /{agent_name}/git/pull` | 177 | `OwnedAgentByName` | Owner |
-| `GET /{agent_name}/git/config` | 214 | `AuthorizedAgentByName` | Read |
-| `POST /{agent_name}/git/initialize` | 251 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/status` | 43-92 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/sync` | 95-147 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/log` | 150-174 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/pull` | 177-211 | `OwnedAgentByName` | Owner |
+| `GET /{agent_name}/git/config` | 214-248 | `AuthorizedAgentByName` | Read |
+| `POST /{agent_name}/git/initialize` | 251-389 | `OwnedAgentByName` | Owner |
 
 ### Settings Service Integration
 
@@ -256,7 +294,7 @@ from services.settings_service import get_github_pat
 github_pat = get_github_pat()
 ```
 
-**Settings Service** (`src/backend/services/settings_service.py:69-74`):
+**Settings Service** (`src/backend/services/settings_service.py:71-76` and `113-115`):
 ```python
 def get_github_pat(self) -> str:
     """Get GitHub PAT from settings, fallback to env var."""
@@ -274,7 +312,7 @@ Repository operations use the centralized GitHub service:
 # src/backend/routers/git.py:275
 from services.github_service import GitHubService, GitHubError
 
-# Used in initialize_github_sync endpoint (lines 312-327)
+# Used in initialize_github_sync endpoint (lines 311-329)
 gh = GitHubService(github_pat)
 repo_info = await gh.check_repo_exists(body.repo_owner, body.repo_name)
 
@@ -288,10 +326,11 @@ if not repo_info.exists:
 ```
 
 **GitHub Service** (`src/backend/services/github_service.py:60-265`):
-- `check_repo_exists(owner, name)` - Returns `GitHubRepoInfo`
-- `create_repository(owner, name, private, description)` - Returns `GitHubCreateResult`
-- `validate_token()` - Returns `(is_valid, username)`
-- `get_owner_type(owner)` - Returns `OwnerType.USER` or `OwnerType.ORGANIZATION`
+- `GitHubService.__init__(pat)` - line 70-82
+- `check_repo_exists(owner, name)` - line 141-175, returns `GitHubRepoInfo`
+- `create_repository(owner, name, private, description)` - line 177-264, returns `GitHubCreateResult`
+- `validate_token()` - line 101-118, returns `(is_valid, username)`
+- `get_owner_type(owner)` - line 120-139, returns `OwnerType.USER` or `OwnerType.ORGANIZATION`
 
 ### Git Service Layer
 
@@ -299,16 +338,17 @@ if not repo_info.exists:
 
 | Function | Line | Description |
 |----------|------|-------------|
-| `generate_instance_id()` | 22 | Create 8-char UUID for agent |
-| `generate_working_branch()` | 27 | Create `trinity/{agent}/{id}` branch name |
-| `create_git_config_for_agent()` | 32 | Store config in database |
-| `get_git_status()` | 64 | Proxy to agent `/api/git/status` |
-| `sync_to_github()` | 88 | Proxy to agent `/api/git/sync` with conflict handling |
-| `get_git_log()` | 172 | Proxy to agent `/api/git/log` |
-| `pull_from_github()` | 196 | Proxy to agent `/api/git/pull` with conflict handling |
-| `get_agent_git_config()` | 239 | Get config from database |
-| `initialize_git_in_container()` | 262 | Initialize git in agent container |
-| `check_git_initialized()` | 400 | Check if git exists in container |
+| `generate_instance_id()` | 22-24 | Create 8-char UUID for agent |
+| `generate_working_branch()` | 27-29 | Create `trinity/{agent}/{id}` branch name |
+| `create_git_config_for_agent()` | 32-61 | Store config in database |
+| `get_git_status()` | 64-85 | Proxy to agent `/api/git/status` |
+| `sync_to_github()` | 88-169 | Proxy to agent `/api/git/sync` with conflict handling |
+| `get_git_log()` | 172-193 | Proxy to agent `/api/git/log` |
+| `pull_from_github()` | 196-236 | Proxy to agent `/api/git/pull` with conflict handling |
+| `get_agent_git_config()` | 239-241 | Get config from database |
+| `delete_agent_git_config()` | 244-246 | Delete git config when agent is deleted |
+| `initialize_git_in_container()` | 262-399 | Initialize git in agent container |
+| `check_git_initialized()` | 402-427 | Check if git exists in container |
 
 ---
 
@@ -318,31 +358,44 @@ if not repo_info.exists:
 
 **Location**: `src/frontend/src/composables/useGitSync.js`
 
-**Polling Behavior**:
+**Reactive State** (lines 11-21):
+- `gitStatus` - Current git status from agent
+- `gitLoading` / `gitSyncing` / `gitPulling` - Loading states
+- `gitConflict` / `showConflictModal` - Conflict handling state
+
+**Computed Properties** (lines 22-31):
+- `gitHasChanges` - True if local changes or commits ahead
+- `gitChangesCount` - Number of local file changes
+- `gitBehind` - Number of commits behind remote
+
+**Polling Behavior** (lines 161-172):
 - Git status polled every 60 seconds to detect changes
 - Polling starts on component mount, stops on unmount
 - Manual refresh available via refresh button
 
 ```javascript
-// Git status polling (line 164)
+// Git status polling (line 161-165)
 const startGitStatusPolling = () => {
   if (!hasGitSync.value) return
   loadGitStatus() // Load immediately
   gitStatusInterval = setInterval(loadGitStatus, 60000) // Then every 60 seconds
 }
 
-// Pull from GitHub (source mode)
-const pullFromGithub = async () => {
-  const result = await agentsStore.pullFromGithub(agentRef.value.name)
-  showNotification(result.message, result.success ? 'success' : 'error')
-  await loadGitStatus()
+// Pull from GitHub (line 102-136) - supports strategy parameter
+const pullFromGithub = async (strategy = 'clean') => {
+  const result = await agentsStore.pullFromGithub(agentRef.value.name, { strategy })
+  // Handles 409 conflicts by showing GitConflictModal
 }
 
-// Sync to GitHub (working branch mode)
-const syncToGithub = async () => {
-  const result = await agentsStore.syncToGithub(agentRef.value.name)
-  showNotification(`Synced ${result.files_changed} file(s)`, 'success')
-  await loadGitStatus()
+// Sync to GitHub (line 56-96) - supports strategy parameter
+const syncToGithub = async (strategy = 'normal') => {
+  const result = await agentsStore.syncToGithub(agentRef.value.name, { strategy })
+  // Handles 409 conflicts by showing GitConflictModal
+}
+
+// Conflict resolution (line 142-151)
+const resolveConflict = async (strategy) => {
+  // Retries the failed operation with user-selected strategy
 }
 ```
 
@@ -494,16 +547,26 @@ POST /api/agents/{name}/git/sync
 
 ### Component Files
 
-| Component | File | Description |
-|-----------|------|-------------|
-| Modal | `src/frontend/src/components/GitConflictModal.vue` | Conflict resolution UI |
-| Composable | `src/frontend/src/composables/useGitSync.js` | State management with conflict handling |
-| Agent-Server | `docker/base-image/agent_server/routers/git.py` | Git operations with strategies |
-| Backend Router | `src/backend/routers/git.py` | API endpoints with strategy params |
-| Git Service | `src/backend/services/git_service.py` | Proxy to agent with conflict detection |
-| Settings Service | `src/backend/services/settings_service.py` | GitHub PAT retrieval |
-| GitHub Service | `src/backend/services/github_service.py` | GitHub API operations |
-| Dependencies | `src/backend/dependencies.py` | Access control (lines 212-263) |
+| Component | File | Line Range | Description |
+|-----------|------|------------|-------------|
+| Modal | `src/frontend/src/components/GitConflictModal.vue` | - | Conflict resolution UI |
+| Composable | `src/frontend/src/composables/useGitSync.js` | 1-202 | State management with conflict handling |
+| Agent-Server | `docker/base-image/agent_server/routers/git.py` | 1-644 | Git operations with strategies |
+| Backend Router | `src/backend/routers/git.py` | 1-389 | API endpoints with strategy params |
+| Git Service | `src/backend/services/git_service.py` | 1-427 | Proxy to agent with conflict detection |
+| Settings Service | `src/backend/services/settings_service.py` | 71-76, 113-115 | GitHub PAT retrieval |
+| GitHub Service | `src/backend/services/github_service.py` | 60-265 | GitHub API operations |
+| Dependencies | `src/backend/dependencies.py` | 228-295 | Access control for agent routes |
+| DB Models | `src/backend/db_models.py` | 158-182 | AgentGitConfig and GitSyncResult |
+
+### Agent-Server Endpoints (docker/base-image/agent_server/routers/git.py)
+
+| Endpoint | Line Range | Description |
+|----------|------------|-------------|
+| `GET /api/git/status` | 17-139 | Get repository status, branch, changes, ahead/behind |
+| `POST /api/git/sync` | 142-391 | Stage, commit, push with strategy support |
+| `GET /api/git/log` | 394-441 | Get recent commit history |
+| `POST /api/git/pull` | 444-643 | Pull from remote with conflict strategies |
 
 ---
 
@@ -538,6 +601,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Line number verification**: Updated all line number references to match current implementation. Added GitSyncResult model, delete_agent_git_config function, agent-server endpoint table. Expanded useGitSync composable documentation with reactive state and computed properties. Added database indexes. |
 | 2026-01-12 | **Polling interval optimization**: Git status polling changed from 30s to 60s for reduced API load. Added polling behavior documentation to useGitSync composable section. |
 | 2026-01-12 | Renamed "Sync" button to "Push" for consistent Pull/Push terminology. Pull button now shows commits behind count when remote has updates. Both buttons use dynamic coloring (active color when action available, gray when up to date). |
 | 2025-12-31 | Updated with access control dependencies (`AuthorizedAgentByName`, `OwnedAgentByName`), settings service (`get_github_pat()`), and GitHub service integration. Added line number references. |
