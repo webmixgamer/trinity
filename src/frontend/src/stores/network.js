@@ -50,6 +50,7 @@ export const useNetworkStore = defineStore('network', () => {
   const executionStats = ref({}) // Map of agent name -> execution stats
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
+  const runningToggleLoading = ref({}) // Map of agent name -> boolean (loading state for start/stop)
 
   // View mode state (graph vs timeline) - default to timeline, persist to localStorage
   const savedViewMode = localStorage.getItem('trinity-dashboard-view')
@@ -1208,6 +1209,56 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
+  // Toggle agent running state (start/stop)
+  async function toggleAgentRunning(agentName) {
+    const node = nodes.value.find(n => n.id === agentName)
+    if (!node) {
+      console.error('[Network] Agent not found:', agentName)
+      return { success: false, error: 'Agent not found' }
+    }
+
+    const isRunning = node.data.status === 'running'
+    runningToggleLoading.value[agentName] = true
+
+    try {
+      const token = localStorage.getItem('token')
+      if (isRunning) {
+        await axios.post(
+          `/api/agents/${agentName}/stop`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        node.data.status = 'stopped'
+        node.data.activityState = 'offline'
+        console.log(`[Network] Agent ${agentName} stopped`)
+      } else {
+        await axios.post(
+          `/api/agents/${agentName}/start`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        node.data.status = 'running'
+        node.data.activityState = 'idle'
+        console.log(`[Network] Agent ${agentName} started`)
+      }
+
+      return { success: true, status: node.data.status }
+    } catch (error) {
+      console.error('[Network] Failed to toggle agent running:', error)
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to toggle agent'
+      }
+    } finally {
+      runningToggleLoading.value[agentName] = false
+    }
+  }
+
+  // Check if an agent is in the process of toggling running state
+  function isTogglingRunning(agentName) {
+    return runningToggleLoading.value[agentName] || false
+  }
+
   return {
     // State
     agents,
@@ -1278,6 +1329,10 @@ export const useNetworkStore = defineStore('network', () => {
     getEventPosition,
     handleTimelineClick,
     jumpToTimelinePosition,
-    toggleAutonomy
+    toggleAutonomy,
+    // Running state toggle
+    toggleAgentRunning,
+    isTogglingRunning,
+    runningToggleLoading
   }
 })

@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-26)**: Agent Start/Stop Toggle UX:
+> - **agent-lifecycle.md**: Updated Entry Points (unified toggle UI), Frontend Layer (RunningStateToggle component), State Management (`toggleAgentRunning()`)
+> - **agent-network.md**: Added RunningStateToggle to AgentNode.vue (lines 57-65), `toggleAgentRunning()` to network.js (lines 1211-1254)
+> - **agents-page-ui-improvements.md**: Updated to reflect RunningStateToggle replacing Start/Stop buttons
+> - New component: `RunningStateToggle.vue` - reusable toggle with sm/md/lg sizes, loading spinner, dark mode, ARIA support
+>
 > **Updated (2026-01-25)**: Skills Management System - 5 Dedicated Flows:
 > - **skills-management.md**: UI documentation for Skills.vue admin page and SkillsPanel.vue agent tab (grid layout, modals, user flows)
 > - **skills-crud.md**: Backend CRUD operations via `/skills` page (`routers/skills.py`, `db/skills.py`)

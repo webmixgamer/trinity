@@ -53,9 +53,20 @@
         ></div>
       </div>
 
-      <!-- Activity state label and autonomy toggle -->
+      <!-- Running state toggle and activity state -->
       <div class="flex items-center justify-between mb-2">
+        <!-- Running State Toggle (not for system agent) -->
+        <RunningStateToggle
+          v-if="!isSystemAgent"
+          :model-value="isRunning"
+          :loading="runningToggleLoading"
+          size="sm"
+          class="nodrag"
+          @toggle="handleRunningToggle"
+        />
+        <!-- Activity state label (for system agent, shown on left) -->
         <div
+          v-else
           :class="[
             'text-xs font-medium capitalize',
             activityStateColor
@@ -200,6 +211,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
 import RuntimeBadge from './RuntimeBadge.vue'
+import RunningStateToggle from './RunningStateToggle.vue'
 import { useNetworkStore } from '../stores/network'
 
 const props = defineProps({
@@ -215,6 +227,14 @@ const networkStore = useNetworkStore()
 
 // Autonomy toggle loading state
 const autonomyLoading = ref(false)
+
+// Running toggle loading state
+const runningToggleLoading = ref(false)
+
+// Check if agent is running
+const isRunning = computed(() => {
+  return props.data.status === 'running'
+})
 
 // Check if this is a system agent
 const isSystemAgent = computed(() => {
@@ -361,6 +381,18 @@ async function handleAutonomyToggle(event) {
     await networkStore.toggleAutonomy(props.data.label)
   } finally {
     autonomyLoading.value = false
+  }
+}
+
+// Handle running state toggle (start/stop)
+async function handleRunningToggle() {
+  if (runningToggleLoading.value || isSystemAgent.value) return
+
+  runningToggleLoading.value = true
+  try {
+    await networkStore.toggleAgentRunning(props.data.label)
+  } finally {
+    runningToggleLoading.value = false
   }
 }
 </script>

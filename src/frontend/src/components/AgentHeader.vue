@@ -45,30 +45,13 @@
         </template>
       </div>
       <div class="flex items-center space-x-2">
-        <button
-          v-if="agent.status === 'stopped'"
-          @click="$emit('start')"
-          :disabled="actionLoading"
-          class="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium py-1.5 px-3 rounded flex items-center"
-        >
-          <svg v-if="actionLoading" class="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {{ actionLoading ? 'Starting...' : 'Start' }}
-        </button>
-        <button
-          v-else
-          @click="$emit('stop')"
-          :disabled="actionLoading"
-          class="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-1.5 px-3 rounded flex items-center"
-        >
-          <svg v-if="actionLoading" class="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {{ actionLoading ? 'Stopping...' : 'Stop' }}
-        </button>
+        <!-- Running State Toggle -->
+        <RunningStateToggle
+          :model-value="agent.status === 'running'"
+          :loading="actionLoading"
+          size="lg"
+          @toggle="$emit('toggle')"
+        />
         <!-- Git Sync Controls (only for GitHub-native agents when running) -->
         <template v-if="hasGitSync && agent.status === 'running'">
           <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
@@ -260,6 +243,7 @@
 <script setup>
 import RuntimeBadge from './RuntimeBadge.vue'
 import SparklineChart from './SparklineChart.vue'
+import RunningStateToggle from './RunningStateToggle.vue'
 import { useFormatters } from '../composables'
 
 const props = defineProps({
@@ -332,8 +316,7 @@ const props = defineProps({
 })
 
 defineEmits([
-  'start',
-  'stop',
+  'toggle',
   'delete',
   'toggle-autonomy',
   'open-resource-modal',

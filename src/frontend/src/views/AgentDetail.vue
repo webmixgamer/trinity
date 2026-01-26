@@ -42,8 +42,7 @@
             :git-has-changes="gitHasChanges"
             :git-changes-count="gitChangesCount"
             :git-behind="gitBehind"
-            @start="startAgent"
-            @stop="stopAgent"
+            @toggle="toggleRunning"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
             @open-resource-modal="showResourceModal = true"
@@ -362,6 +361,17 @@ async function toggleAutonomy() {
     showNotification(error.message || 'Failed to update autonomy mode', 'error')
   } finally {
     autonomyLoading.value = false
+  }
+}
+
+// Toggle running state (start/stop)
+async function toggleRunning() {
+  if (!agent.value || actionLoading.value) return
+
+  if (agent.value.status === 'running') {
+    await stopAgent()
+  } else {
+    await startAgent()
   }
 }
 

@@ -1,3 +1,34 @@
+### 2026-01-26 03:00:00
+🎨 **UX: Agent Start/Stop Toggle Control**
+
+**Summary**: Replaced separate Start/Stop buttons with a unified toggle switch across all agent-displaying pages for consistent UX.
+
+**Changes**:
+- Created `RunningStateToggle.vue` - Reusable toggle component with:
+  - Three size variants (sm/md/lg)
+  - Loading spinner during state change
+  - Dark mode support
+  - Accessibility (ARIA attributes, keyboard navigation)
+  - Green for Running, gray for Stopped
+
+- Updated pages to use toggle:
+  - `AgentHeader.vue` - Detail page header (size: lg)
+  - `Agents.vue` - Agents list page (size: md)
+  - `AgentNode.vue` - Dashboard network view (size: sm, with nodrag)
+
+- Added store methods:
+  - `agents.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` state
+  - `network.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` ref
+
+**User Impact**:
+- Toggle clearly shows current state (Running/Stopped) vs old buttons that showed action
+- Dashboard users can now start/stop agents without navigating to detail page
+- Consistent visual pattern across all pages
+
+**Requirement**: docs/requirements/AGENT_START_STOP_TOGGLE.md
+
+---
+
 ### 2026-01-26 01:45:00
 📝 **Docs: Updated skill injection feature flows for CLAUDE.md update step**
 
