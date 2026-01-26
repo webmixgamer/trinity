@@ -1,3 +1,20 @@
+### 2026-01-26 05:00:00
+🎨 **UX: Enter Key Submits Tasks in Tasks Tab**
+
+**Summary**: Added Enter key shortcut to submit tasks in the Tasks tab for faster workflow.
+
+**Changes**:
+- `TasksPanel.vue`: Added `@keydown.enter.exact.prevent` to textarea
+- Enter now submits the task (no modifier keys needed)
+- Shift+Enter inserts a newline (for multi-line tasks)
+- Cmd/Ctrl+Enter also works (kept for consistency)
+- Updated placeholder text to hint at keyboard shortcuts
+
+**Files Changed**:
+- `src/frontend/src/components/TasksPanel.vue` - lines 53-60
+
+---
+
 ### 2026-01-26 04:30:00
 📚 **Docs: Expanded Platform Skills Best Practices in Agent Guide**
 
