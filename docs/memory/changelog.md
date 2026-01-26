@@ -1,3 +1,27 @@
+### 2026-01-26 04:30:00
+📚 **Docs: Expanded Platform Skills Best Practices in Agent Guide**
+
+**Summary**: Updated TRINITY_COMPATIBLE_AGENT_GUIDE.md with comprehensive guidance on writing effective skills, making it the go-to reference for skill development.
+
+**Additions to Platform Skills Section**:
+- **SKILL.md format**: Complete example with frontmatter and markdown instructions
+- **Frontmatter fields**: `name`, `description`, `allowed-tools` with explanations
+- **Description best practices**: Good vs bad examples, what to include
+- **Tool restrictions**: Using `allowed-tools` for read-only or security-sensitive skills
+- **Multi-file patterns**: Progressive disclosure with supporting files and scripts
+- **Agent perspective**: How injected skills appear in ~/.claude/skills/ and CLAUDE.md
+- **Comparison table**: Skills vs Slash Commands vs CLAUDE.md - when to use each
+
+**Key Guidance**:
+- Skills are the **recommended way** to encode reusable organizational knowledge
+- Skills are **model-invoked** (Claude decides when to apply them based on description)
+- Description field is critical - Claude uses it to match skills to tasks
+
+**Files Changed**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Platform Skills section expanded (Section 11)
+
+---
+
 ### 2026-01-26 03:00:00
 🎨 **UX: Agent Start/Stop Toggle Control**
 

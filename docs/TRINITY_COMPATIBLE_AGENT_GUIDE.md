@@ -568,37 +568,149 @@ cat /home/developer/shared-in/agent-a/report.txt
 
 ## Platform Skills
 
-Trinity provides a centralized **Skills Library** for managing organizational knowledge — policies, procedures, and methodologies that agents follow.
+**Skills are the recommended way to encode reusable knowledge for agents.** A Skill is a markdown file that teaches Claude how to do something specific — like reviewing PRs using your team's standards or generating commit messages in your preferred format. When an agent encounters a task that matches a Skill's purpose, Claude automatically applies it.
 
-### How It Works
+Unlike slash commands (which require `/command` to invoke), **skills are model-invoked**: Claude decides which skills to use based on the task at hand. This makes skills ideal for organizational knowledge that should be consistently applied.
 
-1. **Platform stores skills** in a shared Docker volume (`trinity-skills-library`)
+### How Trinity Manages Skills
+
+1. **Platform stores skills** in a centralized library (synced from GitHub or created via UI)
 2. **Admins manage skills** via the `/skills` page (create, edit, delete)
 3. **Owners assign skills** to their agents via the Skills tab
-4. **Skills are mounted** read-only at `~/.claude/skills-library/` in agents
-5. **Assigned skills** appear as symlinks at `~/.claude/skills/<name>/`
+4. **Skills are injected** into `~/.claude/skills/<name>/SKILL.md` on agent start
+5. **CLAUDE.md is updated** with a "Platform Skills" section listing available skills
 
 ### Skill Types
 
-| Type | Naming Convention | Behavior |
-|------|-------------------|----------|
-| `policy` | `policy-*` | Always active rules agents follow implicitly |
-| `procedure` | `procedure-*` | Executable step-by-step instructions |
-| `methodology` | (no prefix) | Approach guidance loaded when relevant |
+Use naming conventions to indicate how a skill should be applied:
+
+| Type | Naming Convention | When to Use | Example |
+|------|-------------------|-------------|---------|
+| `policy` | `policy-*` | Always-active rules that Claude follows implicitly | `policy-code-review`, `policy-security` |
+| `procedure` | `procedure-*` | Step-by-step instructions for specific tasks | `procedure-incident-response`, `procedure-deploy` |
+| `methodology` | (no prefix) | General guidance for approaches to problems | `verification`, `tdd`, `systematic-debugging` |
+
+### Writing Effective Skills
+
+Every skill needs a `SKILL.md` file with YAML frontmatter and markdown instructions:
+
+```yaml
+---
+name: code-review
+description: Reviews code for quality, security, and best practices. Use when reviewing pull requests, code changes, or asking "is this code good?"
+---
+
+# Code Review
+
+## Instructions
+
+When reviewing code, check for:
+1. **Security issues** - SQL injection, XSS, exposed secrets
+2. **Error handling** - Are all error cases handled?
+3. **Performance** - Any obvious N+1 queries or inefficient loops?
+4. **Readability** - Is the code self-documenting?
+
+## Output Format
+
+Provide feedback in three sections:
+- **Critical**: Must fix before merge
+- **Suggestions**: Would improve the code
+- **Good**: Highlight what was done well
+```
+
+#### Frontmatter Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Skill identifier (lowercase, hyphens, max 64 chars) |
+| `description` | Yes | What the skill does and when to use it (max 1024 chars). **Claude uses this to decide when to apply the skill.** |
+| `allowed-tools` | No | Restrict which tools Claude can use (e.g., `Read, Grep, Glob` for read-only) |
+
+#### Description Best Practices
+
+The description is critical — Claude uses it to decide whether to apply the skill. A good description:
+
+```yaml
+# ❌ Bad - too vague
+description: Helps with code
+
+# ✅ Good - specific actions and trigger terms
+description: Reviews code for quality, security, and best practices. Use when reviewing pull requests, code changes, or asking "is this code good?"
+```
+
+Include:
+1. **What it does**: Specific capabilities (reviews, generates, validates)
+2. **When to use it**: Trigger phrases users would say ("review this PR", "is this secure?")
+
+### Restricting Tool Access
+
+Use `allowed-tools` to limit what Claude can do when a skill is active:
+
+```yaml
+---
+name: read-only-analysis
+description: Analyze code without making changes
+allowed-tools: Read, Grep, Glob
+---
+```
+
+This is useful for:
+- Read-only skills that shouldn't modify files
+- Security-sensitive workflows
+- Analysis tasks that should never write
+
+### Multi-File Skills
+
+For complex skills, use progressive disclosure — essential info in `SKILL.md`, details in supporting files:
+
+```
+my-skill/
+├── SKILL.md           # Overview and navigation
+├── reference.md       # Detailed docs (loaded when needed)
+├── examples.md        # Usage examples
+└── scripts/
+    └── validate.py    # Utility script (executed, not loaded)
+```
+
+In `SKILL.md`, reference the files:
+
+```markdown
+For detailed API reference, see [reference.md](reference.md).
+
+To validate input, run:
+```bash
+python scripts/validate.py input.txt
+```
+
+**Tip**: Bundled scripts run without consuming context tokens — only their output does.
 
 ### Agent Perspective
 
-Agents see assigned skills in their standard Claude Code skills location:
+Agents see assigned skills in the standard Claude Code location:
 
 ```
-~/.claude/
-├── skills/
-│   ├── verification/        # Symlink → skills-library
-│   │   └── SKILL.md
-│   └── systematic-debugging/
-│       └── SKILL.md
-└── skills-library/          # Read-only mount (all platform skills)
+~/.claude/skills/
+├── verification/
+│   └── SKILL.md
+├── systematic-debugging/
+│   └── SKILL.md
+└── policy-code-review/
+    └── SKILL.md
 ```
+
+The agent's `CLAUDE.md` is also updated with a "Platform Skills" section:
+
+```markdown
+## Platform Skills
+
+This agent has the following skills installed in `~/.claude/skills/`:
+
+- `/verification` - Use with /verification command
+- `/systematic-debugging` - Use with /systematic-debugging command
+- `/policy-code-review` - Use with /policy-code-review command
+```
+
+This allows agents to answer "what skills do you have?" without scanning the filesystem.
 
 ### What This Means for Templates
 
@@ -607,8 +719,8 @@ Agents see assigned skills in their standard Claude Code skills location:
 ### Syncing Skills
 
 When skills are updated at the platform level, agents receive updates:
-- **On next start**: Skills automatically sync
-- **While running**: Use "Sync to Agent" button or MCP `sync_agent_skills` tool
+- **On next start**: Skills automatically injected
+- **While running**: Use "Inject to Agent" button in Skills tab or MCP `sync_agent_skills` tool
 
 ### MCP Tools for Skills
 
@@ -617,9 +729,21 @@ Agents can interact with the skills system programmatically:
 | Tool | Description |
 |------|-------------|
 | `list_skills` | List all platform skills |
-| `get_skill` | Get skill content |
-| `sync_agent_skills` | Re-sync skills to container |
-| `execute_procedure` | Run a procedure skill |
+| `get_skill` | Get skill details and content |
+| `assign_skill_to_agent` | Assign a skill to an agent |
+| `sync_agent_skills` | Re-inject skills to running agent |
+
+### Skills vs. Slash Commands vs. CLAUDE.md
+
+| Mechanism | Invoked By | Best For |
+|-----------|------------|----------|
+| **Skills** | Claude (automatic) | Reusable knowledge that applies across many situations |
+| **Slash commands** | User (`/command`) | Specific actions the user explicitly requests |
+| **CLAUDE.md** | Always loaded | Project-wide context and constraints |
+
+**Use skills when**: The knowledge should apply automatically based on the task (e.g., always apply security review standards when reviewing code).
+
+**Use slash commands when**: The user needs to explicitly trigger an action (e.g., `/deploy staging`).
 
 ---
 
@@ -1223,6 +1347,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-26 | **Platform Skills Best Practices**: Expanded Platform Skills section with comprehensive skill writing guidance; Added SKILL.md format, frontmatter fields, description best practices, `allowed-tools` for restricting tool access, multi-file skill patterns, Skills vs Commands vs CLAUDE.md comparison table; Emphasized skills as the recommended way to encode reusable knowledge |
 | 2026-01-25 | **Platform Skills**: Added new section documenting centralized Skills Library; Skills managed at platform level, mounted read-only into agents; Three skill types (policy, procedure, methodology); Updated directory structure and .gitignore notes |
 | 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
 | 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
