@@ -407,6 +407,33 @@ How you approach tasks in your specialty.
 - Things you should NOT do
 ```
 
+### Imports
+
+CLAUDE.md files can import other files using `@path/to/file` syntax:
+
+```markdown
+See @README.md for project overview and @package.json for npm commands.
+
+# Additional Instructions
+- Git workflow: @docs/git-instructions.md
+- Individual preferences: @~/.claude/my-project-instructions.md
+```
+
+Imports support relative paths, absolute paths, and `~` for home directory. Not evaluated inside code blocks.
+
+### Best Practices
+
+| ✅ Include | ❌ Exclude |
+|-----------|-----------|
+| Bash commands Claude can't guess | Anything Claude can infer from code |
+| Code style rules differing from defaults | Standard language conventions |
+| Testing instructions and runners | Detailed API docs (link instead) |
+| Repository etiquette (branch naming, PRs) | Information that changes frequently |
+| Architectural decisions | Long explanations or tutorials |
+| Common gotchas | Self-evident practices ("write clean code") |
+
+**If Claude ignores rules**, the file is probably too long. Use emphasis for critical rules: `IMPORTANT: Always run tests before committing`
+
 ---
 
 ## Runtime Options
@@ -623,8 +650,63 @@ Provide feedback in three sections:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Skill identifier (lowercase, hyphens, max 64 chars) |
-| `description` | Yes | What the skill does and when to use it (max 1024 chars). **Claude uses this to decide when to apply the skill.** |
+| `description` | Yes | What the skill does and when to use it. **Claude uses this to decide when to apply the skill.** |
 | `allowed-tools` | No | Restrict which tools Claude can use (e.g., `Read, Grep, Glob` for read-only) |
+| `disable-model-invocation` | No | Set `true` to prevent Claude from auto-invoking. User must invoke with `/skill-name`. Use for workflows with side effects. |
+| `user-invocable` | No | Set `false` to hide from `/` menu. Use for background knowledge Claude should apply automatically but users shouldn't invoke directly. |
+| `argument-hint` | No | Autocomplete hint (e.g., `[issue-number]`, `[filename] [format]`) |
+| `model` | No | Override model for this skill (`sonnet`, `opus`, `haiku`) |
+| `context` | No | Set to `fork` to run in isolated subagent context |
+| `agent` | No | Subagent type when `context: fork` (`Explore`, `Plan`, or custom agent name) |
+| `hooks` | No | Lifecycle hooks scoped to this skill (`PreToolUse`, `PostToolUse`, `Stop`) |
+
+#### Invocation Control
+
+| Frontmatter | User can invoke | Claude can invoke | Context behavior |
+|-------------|-----------------|-------------------|------------------|
+| (default) | ✅ | ✅ | Description loaded, full skill on invoke |
+| `disable-model-invocation: true` | ✅ | ❌ | Not in context until user invokes |
+| `user-invocable: false` | ❌ | ✅ | Description loaded, auto-applied when relevant |
+
+#### String Substitutions
+
+Skills support variable substitution:
+
+| Variable | Description |
+|----------|-------------|
+| `$ARGUMENTS` | All arguments passed when invoking (e.g., `/fix-issue 123` → `123`) |
+| `$ARGUMENTS[N]` or `$N` | Specific argument by index (`$0` = first, `$1` = second) |
+| `${CLAUDE_SESSION_ID}` | Current session ID (useful for logging, session-specific files) |
+
+```yaml
+---
+name: fix-issue
+description: Fix a GitHub issue
+disable-model-invocation: true
+---
+Fix GitHub issue $ARGUMENTS following our coding standards.
+# Or: Migrate the $0 component from $1 to $2.
+```
+
+#### Dynamic Context Injection
+
+The `!`command`` syntax runs shell commands before skill content is sent to Claude:
+
+```yaml
+---
+name: pr-summary
+description: Summarize a pull request
+context: fork
+agent: Explore
+---
+## Context
+- PR diff: !`gh pr diff`
+- Changed files: !`gh pr diff --name-only`
+
+Summarize this pull request...
+```
+
+Commands execute immediately; output replaces the placeholder. Claude only sees the final rendered content.
 
 #### Description Best Practices
 
@@ -659,13 +741,19 @@ This is useful for:
 - Security-sensitive workflows
 - Analysis tasks that should never write
 
+### Skill Size Guidelines
+
+- **Keep `SKILL.md` under 500 lines.** Move detailed reference material to separate files.
+- **Skill descriptions budget**: ~15,000 characters total across all skills. If you have many skills, some may be excluded from context.
+- **Bundled scripts** run without consuming context tokens — only their output does.
+
 ### Multi-File Skills
 
 For complex skills, use progressive disclosure — essential info in `SKILL.md`, details in supporting files:
 
 ```
 my-skill/
-├── SKILL.md           # Overview and navigation
+├── SKILL.md           # Overview and navigation (<500 lines)
 ├── reference.md       # Detailed docs (loaded when needed)
 ├── examples.md        # Usage examples
 └── scripts/
@@ -681,8 +769,6 @@ To validate input, run:
 ```bash
 python scripts/validate.py input.txt
 ```
-
-**Tip**: Bundled scripts run without consuming context tokens — only their output does.
 
 ### Agent Perspective
 
@@ -1347,6 +1433,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-27 | **Advanced Skills & CLAUDE.md**: Added 8 new skill frontmatter fields (`disable-model-invocation`, `user-invocable`, `argument-hint`, `model`, `context`, `agent`, `hooks`); Added invocation control table; Added string substitutions (`$ARGUMENTS`, `$N`, `${CLAUDE_SESSION_ID}`); Added dynamic context injection (`!`command``); Added skill size guidelines; Added CLAUDE.md imports (`@path` syntax) and best practices table |
 | 2026-01-26 | **Platform Skills Best Practices**: Expanded Platform Skills section with comprehensive skill writing guidance; Added SKILL.md format, frontmatter fields, description best practices, `allowed-tools` for restricting tool access, multi-file skill patterns, Skills vs Commands vs CLAUDE.md comparison table; Emphasized skills as the recommended way to encode reusable knowledge |
 | 2026-01-25 | **Platform Skills**: Added new section documenting centralized Skills Library; Skills managed at platform level, mounted read-only into agents; Three skill types (policy, procedure, methodology); Updated directory structure and .gitignore notes |
 | 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
