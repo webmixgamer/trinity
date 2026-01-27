@@ -11,11 +11,11 @@ As a platform user, I want to monitor my agent's resource usage and view logs so
 ## Entry Points
 
 ### Logs Viewing
-- **UI**: `src/frontend/src/views/AgentDetail.vue` - Logs tab
+- **UI**: `src/frontend/src/views/AgentDetail.vue:124-126` - Logs tab
 - **API**: `GET /api/agents/{name}/logs?tail=100`
 
 ### Live Telemetry
-- **UI**: `src/frontend/src/views/AgentDetail.vue` - Header stats bar
+- **UI**: `src/frontend/src/views/AgentDetail.vue:28-36` - Stats props passed to AgentHeader
 - **API**: `GET /api/agents/{name}/stats`
 
 ---
@@ -24,52 +24,70 @@ As a platform user, I want to monitor my agent's resource usage and view logs so
 
 ### Components
 
-#### AgentDetail.vue - Live Stats Bar
-**Location**: `src/frontend/src/views/AgentDetail.vue:123-177`
+#### AgentDetail.vue - Composable Setup
+**Location**: `src/frontend/src/views/AgentDetail.vue:277-285`
+
+```javascript
+// Stats composable
+const {
+  agentStats,
+  statsLoading,
+  cpuHistory,
+  memoryHistory,
+  startStatsPolling,
+  stopStatsPolling
+} = useAgentStats(agent, agentsStore)
+```
+
+#### AgentHeader.vue - Live Stats Bar
+**Location**: `src/frontend/src/components/AgentHeader.vue:172-235`
 
 Displays real-time telemetry in the agent header when status is "running":
 
 | Line | Element | Purpose |
 |------|---------|---------|
-| 124-128 | Loading indicator | Shows "Loading stats..." with spinner |
-| 129-177 | Stats display row | CPU, Memory, Network, Uptime metrics |
-| 130-141 | CPU widget | Progress bar with color coding (green/yellow/red) |
-| 143-157 | Memory widget | Progress bar showing MB / GB with percentage |
-| 159-168 | Network widget | RX (green) and TX (blue) byte counts |
-| 170-177 | Uptime widget | Time since container started |
+| 173-176 | Loading indicator | Shows "Loading stats..." with spinner |
+| 177-233 | Stats display row | CPU, Memory, Network, Uptime metrics |
+| 178-193 | CPU widget | SparklineChart + percentage with color coding |
+| 194-209 | Memory widget | SparklineChart + MB / GB with percentage |
+| 210-215 | Network widget | RX (green) and TX (blue) byte counts |
+| 216-220 | Uptime widget | Time since container started |
+| 221-232 | Resource config button | Opens resource modal |
+| 234 | Stats unavailable | Shown when stats null |
 
-**Color Thresholds**:
+**Color Thresholds** (line 190, 206):
 - Green: < 50%
 - Yellow: 50-80%
 - Red: > 80%
 
-#### AgentDetail.vue - Logs Tab
-**Location**: `src/frontend/src/views/AgentDetail.vue` (Logs tab content in template)
+#### LogsPanel.vue - Logs Tab
+**Location**: `src/frontend/src/components/LogsPanel.vue`
 
 Features:
-- Scrollable log container
-- Line count selector: 50, 100, 200, 500
-- Auto-refresh toggle
-- Manual refresh button
-- Smart auto-scroll (pauses when user scrolls up)
-- Monospace font display
+- Scrollable log container (line 6: `h-96 overflow-auto`)
+- Line count selector: 50, 100, 200, 500 (lines 25-30)
+- Auto-refresh toggle (line 19: labeled "10s" but actual interval is 15s - see Known Issue)
+- Manual refresh button (lines 12-17)
+- Smart auto-scroll (pauses when user scrolls up - handled by composable)
+- Monospace font display (line 8)
 
 ### State Management
 
 **Location**: `src/frontend/src/stores/agents.js`
 
 ```javascript
-// Line 125-131: Get agent logs
+// Line 183-189: Get agent logs
 async getAgentLogs(name, tail = 100) {
-  const response = await axios.get(`/api/agents/${name}/logs`, {
-    params: { tail },
+  const authStore = useAuthStore()
+  const response = await axios.get(`/api/agents/${name}/logs?tail=${tail}`, {
     headers: authStore.authHeader
   })
   return response.data.logs
 }
 
-// Line 183-189: Get agent stats
+// Line 276-282: Get agent stats
 async getAgentStats(name) {
+  const authStore = useAuthStore()
   const response = await axios.get(`/api/agents/${name}/stats`, {
     headers: authStore.authHeader
   })
@@ -77,18 +95,50 @@ async getAgentStats(name) {
 }
 ```
 
-### Reactive State
+### Composables
 
-**Location**: `src/frontend/src/views/AgentDetail.vue` (script section)
+#### useAgentStats.js
+**Location**: `src/frontend/src/composables/useAgentStats.js`
 
 ```javascript
-const logs = ref('')
-const logLines = ref(100)           // Lines to fetch: 50, 100, 200, 500
-const agentStats = ref(null)        // Live telemetry data
-const statsLoading = ref(false)     // Stats loading indicator
-const autoRefreshLogs = ref(false)  // Auto-refresh toggle
-const userScrolledUp = ref(false)   // Smart scroll tracking
+// Line 4: History configuration
+const MAX_POINTS = 30  // 30 samples at 10s = 5 minutes
+
+// Line 56-60: Stats polling
+const startStatsPolling = () => {
+  initHistory()
+  loadStats()
+  statsRefreshInterval = setInterval(loadStats, 10000) // 10 seconds
+}
 ```
+
+Returns: `agentStats`, `statsLoading`, `cpuHistory`, `memoryHistory`, `loadStats`, `startStatsPolling`, `stopStatsPolling`
+
+#### useAgentLogs.js
+**Location**: `src/frontend/src/composables/useAgentLogs.js`
+
+```javascript
+// Line 43-52: Auto-refresh toggle watch
+watch(autoRefreshLogs, (enabled) => {
+  if (enabled) {
+    logsRefreshInterval = setInterval(refreshLogs, 15000) // 15 seconds
+  } else {
+    if (logsRefreshInterval) {
+      clearInterval(logsRefreshInterval)
+      logsRefreshInterval = null
+    }
+  }
+})
+
+// Line 35-40: Smart scroll detection
+const handleLogsScroll = () => {
+  if (!logsContainer.value) return
+  const { scrollTop, scrollHeight, clientHeight } = logsContainer.value
+  userScrolledUp.value = scrollTop + clientHeight < scrollHeight - 50
+}
+```
+
+Returns: `logs`, `logLines`, `autoRefreshLogs`, `logsContainer`, `userScrolledUp`, `refreshLogs`, `handleLogsScroll`
 
 ### Polling Behavior
 
@@ -99,9 +149,9 @@ const userScrolledUp = ref(false)   // Smart scroll tracking
 - Cleanup: `stopStatsPolling()` in `onUnmounted()`
 
 **Logs Auto-Refresh** (optional):
-- Interval: 15 seconds
+- Interval: 15 seconds (actual, despite UI showing "10s")
 - User-controlled toggle
-- Smart scroll: Auto-scroll to bottom unless user scrolled up
+- Smart scroll: Auto-scroll to bottom unless user scrolled up (within 50px threshold)
 
 ---
 
@@ -110,16 +160,15 @@ const userScrolledUp = ref(false)   // Smart scroll tracking
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/logs
-**File**: `src/backend/routers/agents.py:404-430`
+**File**: `src/backend/routers/agents.py:367-383`
 
 **Handler**:
 ```python
 @router.get("/{agent_name}/logs")
 async def get_agent_logs_endpoint(
-    agent_name: str,
+    agent_name: AuthorizedAgentByName,
     request: Request,
-    tail: int = 100,
-    current_user: User = Depends(get_current_user)
+    tail: int = 100
 ):
     """Get agent container logs."""
     container = get_agent_container(agent_name)
@@ -128,16 +177,6 @@ async def get_agent_logs_endpoint(
 
     try:
         logs = container.logs(tail=tail).decode('utf-8')
-
-        await log_audit_event(
-            event_type="agent_access",
-            action="view_logs",
-            user_id=current_user.username,
-            agent_name=agent_name,
-            ip_address=request.client.host if request.client else None,
-            result="success"
-        )
-
         return {"logs": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get logs: {str(e)}")
@@ -153,9 +192,11 @@ async def get_agent_logs_endpoint(
 }
 ```
 
+**Note**: Uses `AuthorizedAgentByName` dependency for authorization check. No audit logging on this endpoint (removed for simplicity).
+
 #### GET /api/agents/{agent_name}/stats
-**File**: `src/backend/routers/agents.py:433-440` (delegates to service layer)
-**Business Logic**: `src/backend/services/agent_service/stats.py:101-162`
+**File**: `src/backend/routers/agents.py:386-393` (thin router layer)
+**Business Logic**: `src/backend/services/agent_service/stats.py:123-184`
 
 **Handler** (thin router layer):
 ```python
@@ -169,7 +210,13 @@ async def get_agent_stats_endpoint(
     return await get_agent_stats_logic(agent_name, current_user)
 ```
 
-**Service Logic** (`services/agent_service/stats.py`):
+### Business Logic
+
+> **Note**: Business logic is in `services/agent_service/stats.py`
+
+#### get_agent_stats_logic
+**Location**: `src/backend/services/agent_service/stats.py:123-184`
+
 ```python
 async def get_agent_stats_logic(agent_name: str, current_user: User) -> dict:
     """Get live container stats (CPU, memory, network) for an agent."""
@@ -182,28 +229,11 @@ async def get_agent_stats_logic(agent_name: str, current_user: User) -> dict:
         raise HTTPException(status_code=400, detail="Agent is not running")
 
     stats = container.stats(stream=False)  # One-shot, not streaming
-
-    # Calculate CPU, memory, network, uptime...
-    # (See business logic section for calculation details)
-
-    return {
-        "cpu_percent": round(cpu_percent, 1),
-        "memory_used_bytes": memory_used_actual,
-        "memory_limit_bytes": memory_limit,
-        "memory_percent": round((memory_used_actual / memory_limit * 100) if memory_limit > 0 else 0, 1),
-        "network_rx_bytes": network_rx,
-        "network_tx_bytes": network_tx,
-        "uptime_seconds": uptime_seconds,
-        "status": container.status
-    }
+    # ... calculations ...
 ```
 
-### Business Logic
-
-> **Note**: Business logic has been refactored from `agents.py` to `services/agent_service/stats.py`
-
 #### CPU Calculation
-**Location**: `src/backend/services/agent_service/stats.py:119-130`
+**Location**: `src/backend/services/agent_service/stats.py:145-152`
 
 ```python
 cpu_stats = stats.get("cpu_stats", {})
@@ -220,7 +250,7 @@ if system_delta > 0 and cpu_delta > 0:
 ```
 
 #### Memory Calculation
-**Location**: `src/backend/services/agent_service/stats.py:132-136`
+**Location**: `src/backend/services/agent_service/stats.py:154-158`
 
 ```python
 memory_stats = stats.get("memory_stats", {})
@@ -231,7 +261,7 @@ memory_used_actual = max(0, memory_used - cache)  # Subtract cache
 ```
 
 #### Network Stats
-**Location**: `src/backend/services/agent_service/stats.py:138-140`
+**Location**: `src/backend/services/agent_service/stats.py:160-162`
 
 ```python
 networks = stats.get("networks", {})
@@ -240,7 +270,7 @@ network_tx = sum(net.get("tx_bytes", 0) for net in networks.values())
 ```
 
 #### Uptime Calculation
-**Location**: `src/backend/services/agent_service/stats.py:142-149`
+**Location**: `src/backend/services/agent_service/stats.py:164-171`
 
 ```python
 started_at = container.attrs.get("State", {}).get("StartedAt", "")
@@ -251,6 +281,22 @@ if started_at:
         uptime_seconds = int((datetime.now(start_time.tzinfo) - start_time).total_seconds())
     except Exception:
         pass
+```
+
+#### Stats Response
+**Location**: `src/backend/services/agent_service/stats.py:173-182`
+
+```python
+return {
+    "cpu_percent": round(cpu_percent, 1),
+    "memory_used_bytes": memory_used_actual,
+    "memory_limit_bytes": memory_limit,
+    "memory_percent": round((memory_used_actual / memory_limit * 100) if memory_limit > 0 else 0, 1),
+    "network_rx_bytes": network_rx,
+    "network_tx_bytes": network_tx,
+    "uptime_seconds": uptime_seconds,
+    "status": container.status
+}
 ```
 
 ---
@@ -271,40 +317,33 @@ This feature reads directly from Docker API - no database persistence.
 ## UI Display
 
 ### Telemetry Stats Bar (Header)
+
+**Component**: `AgentHeader.vue:172-235`
+
 | Metric | Display | Color Coding |
 |--------|---------|--------------|
-| CPU | `XX.X%` with progress bar | Green (<50%), Yellow (50-80%), Red (>80%) |
-| Memory | `847 MB / 4 GB` with progress bar | Similar thresholds |
+| CPU | `XX.X%` with sparkline chart | Green (<50%), Yellow (50-80%), Red (>80%) |
+| Memory | `847 MB / 4 GB` with sparkline | Similar thresholds |
 | Network | `↓1.2 MB ↑456 KB` | Green for RX, Blue for TX |
 | Uptime | `2h 15m` | Gray |
 
 ### Logs Tab Features
-- Scrollable container (max-height: 500px)
+
+**Component**: `LogsPanel.vue`
+
+- Scrollable container (h-96 = 384px)
 - Line count selector: 50, 100, 200, 500
 - Auto-refresh toggle (15-second interval)
 - Manual refresh button
-- Smart auto-scroll (pauses when user scrolls up)
+- Smart auto-scroll (pauses when user scrolls up, 50px threshold)
 - Monospace font with line wrapping
 
 ---
 
 ## Side Effects
 
-### Audit Logging
-**Location**: `src/backend/routers/agents.py:419-425`
-
-```python
-await log_audit_event(
-    event_type="agent_access",
-    action="view_logs",
-    user_id=current_user.username,
-    agent_name=agent_name,
-    ip_address=request.client.host if request.client else None,
-    result="success"
-)
-```
-
-**Note**: Only logs viewing is audited, not stats (too frequent for audit log).
+### No Audit Logging
+Unlike the previous implementation, logs viewing is no longer audited (removed for simplicity in the current codebase).
 
 ### No WebSocket Broadcasts
 Stats and logs are pull-based, not push-based.
@@ -325,7 +364,8 @@ Stats and logs are pull-based, not push-based.
 ## Security Considerations
 
 ### Authorization
-- Requires authenticated user via `get_current_user`
+- Logs endpoint: Uses `AuthorizedAgentByName` dependency (checks owner, shared users, admins)
+- Stats endpoint: Uses `get_current_user` dependency
 - Access allowed for owner, shared users, and admins
 - No credential data exposed in logs (container logs only)
 
@@ -333,6 +373,15 @@ Stats and logs are pull-based, not push-based.
 - 10-second stats polling interval prevents API overload
 - 15-second logs auto-refresh interval for reduced load
 - `stream=False` for stats prevents long-running connections
+
+---
+
+## Known Issues
+
+### UI/Code Mismatch for Logs Auto-Refresh Interval
+- **UI Label**: `LogsPanel.vue:20` says "Auto-refresh (10s)"
+- **Actual Interval**: `useAgentLogs.js:45` uses 15000ms (15 seconds)
+- **Impact**: Minor UX confusion, no functional impact
 
 ---
 
@@ -355,7 +404,7 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 ---
 
 ## Status
-**Last Updated**: 2025-12-30
+**Last Updated**: 2026-01-23
 **Verified**: All line numbers updated for current codebase structure
 
 ---
@@ -364,6 +413,7 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 
 | Date | Changes |
 |------|---------|
+| 2026-01-23 | **Full verification and update**: Verified all line numbers against current codebase. Logs endpoint now at lines 367-383 (was 404-430). Stats endpoint at 386-393. Documented UI/code mismatch for auto-refresh interval (UI says 10s, code uses 15s). Audit logging removed from logs endpoint. Updated AgentHeader.vue stats display lines (172-235). Added composable file locations. |
 | 2026-01-12 | **Polling interval optimization**: Stats polling changed from 5s to 10s, logs auto-refresh changed from 10s to 15s. Stats history reduced from 60 to 30 samples (still 5 min at 10s intervals). Updated composables `useAgentStats.js` and `useAgentLogs.js`. |
 | 2025-12-30 | **Updated for service layer refactor**: Stats logic moved from `agents.py` to `services/agent_service/stats.py`. Logs endpoint now at lines 404-430 (was 558-584). Stats endpoint now at 433-440 delegating to service layer. Updated all business logic line references to stats.py. |
 | 2025-12-02 | Initial documentation |

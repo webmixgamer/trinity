@@ -314,16 +314,17 @@ async def preview_file(path: str):
 @router.put("/api/files")
 async def update_file(path: str, request: FileUpdateRequest):
     """
-    Update a file's content in the workspace.
+    Update or create a file's content in the workspace.
     Only allows access to /home/developer for security.
-    Cannot modify protected paths (CLAUDE.md, .trinity, .git, etc.)
+    Cannot modify protected paths (.trinity, .git, etc.)
+    Creates parent directories if they don't exist.
 
     Args:
-        path: File path to update (query parameter)
+        path: File path to update/create (query parameter)
         request: Request body with content
 
     Returns:
-        Success status and updated file info
+        Success status and file info
     """
     # Security: Only allow workspace access
     allowed_base = Path("/home/developer")
@@ -345,13 +346,14 @@ async def update_file(path: str, request: FileUpdateRequest):
             detail=f"Cannot edit protected path: {requested_path.name}"
         )
 
-    if not requested_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {path}")
-
-    if not requested_path.is_file():
+    # If path exists and is a directory, reject
+    if requested_path.exists() and not requested_path.is_file():
         raise HTTPException(status_code=400, detail=f"Not a file: {path}")
 
     try:
+        # Create parent directories if they don't exist
+        requested_path.parent.mkdir(parents=True, exist_ok=True)
+
         # Write the new content
         requested_path.write_text(request.content, encoding='utf-8')
         stat = requested_path.stat()

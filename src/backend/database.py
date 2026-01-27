@@ -88,6 +88,7 @@ from db.shared_folders import SharedFolderOperations
 from db.settings import SettingsOperations
 from db.public_links import PublicLinkOperations
 from db.email_auth import EmailAuthOperations
+from db.skills import SkillsOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -256,6 +257,53 @@ def _migrate_agent_ownership_full_capabilities(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_skills_table(cursor, conn):
+    """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
+    if not cursor.fetchone():
+        return  # Table doesn't exist yet, will be created fresh
+
+    cursor.execute("PRAGMA table_info(agent_skills)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    # Check if table has old schema (skill_id instead of skill_name)
+    if "skill_id" in columns and "skill_name" not in columns:
+        print("Migrating agent_skills table: renaming skill_id to skill_name...")
+
+        # Get existing data
+        cursor.execute("SELECT id, agent_name, skill_id, assigned_by, assigned_at FROM agent_skills")
+        existing_data = cursor.fetchall()
+
+        # Drop old table
+        cursor.execute("DROP TABLE agent_skills")
+
+        # Create new table with correct schema
+        cursor.execute("""
+            CREATE TABLE agent_skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                assigned_by TEXT NOT NULL,
+                assigned_at TEXT NOT NULL,
+                UNIQUE(agent_name, skill_name)
+            )
+        """)
+
+        # Reinsert data
+        for row in existing_data:
+            cursor.execute("""
+                INSERT INTO agent_skills (agent_name, skill_name, assigned_by, assigned_at)
+                VALUES (?, ?, ?, ?)
+            """, (row[1], row[2], row[3], row[4]))
+
+        # Recreate indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_name)")
+
+        conn.commit()
+        print(f"Migrated {len(existing_data)} agent_skills records")
+
+
 def init_database():
     """Initialize the SQLite database with all required tables."""
     db_path = Path(DB_PATH)
@@ -304,6 +352,11 @@ def init_database():
             _migrate_agent_ownership_resource_limits(cursor, conn)
         except Exception as e:
             print(f"Migration check (agent_ownership resource_limits): {e}")
+
+        try:
+            _migrate_agent_skills_table(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_skills): {e}")
 
         # Users table
         cursor.execute("""
@@ -600,6 +653,18 @@ def init_database():
             )
         """)
 
+        # Agent skills table (Skills Management System)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                assigned_by TEXT NOT NULL,
+                assigned_at TEXT NOT NULL,
+                UNIQUE(agent_name, skill_name)
+            )
+        """)
+
         # Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub)")
@@ -651,6 +716,9 @@ def init_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_whitelist_email ON email_whitelist(email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_email ON email_login_codes(email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_login_codes_code ON email_login_codes(code)")
+        # Agent skills indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_name)")
 
         conn.commit()
 
@@ -748,6 +816,7 @@ class DatabaseManager:
         self._settings_ops = SettingsOperations()
         self._public_link_ops = PublicLinkOperations(self._user_ops, self._agent_ops)
         self._email_auth_ops = EmailAuthOperations(self._user_ops)
+        self._skills_ops = SkillsOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1225,6 +1294,34 @@ class DatabaseManager:
 
     def get_or_create_email_user(self, email: str):
         return self._email_auth_ops.get_or_create_email_user(email)
+
+    # =========================================================================
+    # Agent Skills (delegated to db/skills.py) - Skills Management System
+    # =========================================================================
+
+    def get_agent_skills(self, agent_name: str):
+        return self._skills_ops.get_agent_skills(agent_name)
+
+    def get_agent_skill_names(self, agent_name: str):
+        return self._skills_ops.get_agent_skill_names(agent_name)
+
+    def assign_skill(self, agent_name: str, skill_name: str, assigned_by: str):
+        return self._skills_ops.assign_skill(agent_name, skill_name, assigned_by)
+
+    def unassign_skill(self, agent_name: str, skill_name: str):
+        return self._skills_ops.unassign_skill(agent_name, skill_name)
+
+    def set_agent_skills(self, agent_name: str, skill_names: list, assigned_by: str):
+        return self._skills_ops.set_agent_skills(agent_name, skill_names, assigned_by)
+
+    def delete_agent_skills(self, agent_name: str):
+        return self._skills_ops.delete_agent_skills(agent_name)
+
+    def is_skill_assigned(self, agent_name: str, skill_name: str):
+        return self._skills_ops.is_skill_assigned(agent_name, skill_name)
+
+    def get_agents_with_skill(self, skill_name: str):
+        return self._skills_ops.get_agents_with_skill(skill_name)
 
 
 # Global database manager instance

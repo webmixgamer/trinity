@@ -21,9 +21,20 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Isolated Agent Containers** — Each agent runs in its own Docker container with dedicated resources
 - **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
 - **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
+- **Dashboard Timeline View** — Visual timeline showing executions with trigger-based color coding (manual/scheduled/MCP/agent-triggered)
+- **Host Telemetry** — Real-time CPU, memory, and disk monitoring in the dashboard header
 - **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
 - **Package Persistence** — Installed packages survive container recreation via `~/.trinity/setup.sh`
 - **Base Image Versioning** — Track agent versions and detect when updates are available
+
+### Process Engine
+- **YAML-Based Workflows** — Define multi-step business processes with declarative YAML syntax
+- **Six Step Types** — agent_task, human_approval, gateway (conditional), timer, notification, sub_process
+- **Human-in-the-Loop** — Approval gates with inbox, timeout handling, and decision tracking
+- **Process Templates** — Pre-built templates for common workflows (content pipelines, onboarding, etc.)
+- **AI Process Assistant** — Chat-based assistant that helps create and edit process definitions
+- **Real-Time Monitoring** — Live execution progress with step-by-step visibility
+- **Analytics & Cost Tracking** — Metrics, trends, and cost threshold alerts per process
 
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
@@ -32,6 +43,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
+- **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types
 - **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
 - **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
@@ -40,9 +52,11 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
 - **Credential Management** — Redis-backed secrets with hot-reload capability
 - **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
+- **Live Execution Streaming** — Real-time streaming of execution logs to the web UI
+- **Execution Termination** — Stop running executions gracefully via SIGINT/SIGKILL
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
-- **File Browser** — Browse and download agent workspace files via web UI
+- **File Manager** — Browse, preview, and download agent workspace files via web UI
 - **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
 
 ## Quick Start
@@ -133,6 +147,8 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
+│   │   └── services/
+│   │       └── process_engine/  # Process Engine (DDD architecture)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
 │   ├── mcp-server/       # Trinity MCP server (21 tools)
 │   └── scheduler/        # Dedicated scheduler service (Redis locks)
@@ -143,6 +159,8 @@ trinity/
 │   └── scheduler/        # Scheduler Dockerfile
 ├── config/
 │   ├── agent-templates/  # Pre-configured agent templates
+│   ├── process-templates/ # Process definition templates
+│   ├── process-docs/     # In-app documentation content
 │   ├── vector.yaml       # Vector log aggregation config
 │   ├── otel-collector.yaml # OpenTelemetry collector config
 │   └── trinity-meta-prompt/ # Platform injection templates
@@ -300,6 +318,66 @@ curl -X POST http://localhost:8000/api/systems/deploy \
 
 See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for architecture patterns and best practices.
 
+## Process Engine
+
+Trinity includes a BPMN-inspired Process Engine for orchestrating multi-step workflows with AI agents, human approvals, and automated scheduling.
+
+### Example Process Definition
+
+```yaml
+name: content-review-pipeline
+description: Review and publish content with human approval
+
+triggers:
+  - type: schedule
+    cron: "0 9 * * 1-5"  # Weekdays at 9 AM
+
+steps:
+  - id: draft-content
+    name: Draft Content
+    type: agent_task
+    agent: content-writer
+    task: "Draft the weekly newsletter based on recent updates"
+
+  - id: review-gate
+    name: Editorial Review
+    type: human_approval
+    title: "Approve Newsletter Draft"
+    description: "Review the drafted newsletter before publishing"
+    timeout: 24h
+    depends_on: [draft-content]
+
+  - id: publish
+    name: Publish Content
+    type: agent_task
+    agent: publisher
+    task: "Publish the approved newsletter"
+    depends_on: [review-gate]
+```
+
+### Step Types
+
+| Type | Description |
+|------|-------------|
+| `agent_task` | Execute a task via an AI agent |
+| `human_approval` | Pause for human decision with timeout |
+| `gateway` | Conditional branching based on expressions |
+| `timer` | Delay execution for a specified duration |
+| `notification` | Send notifications to users or systems |
+| `sub_process` | Call another process as a nested workflow |
+
+### AI Process Assistant
+
+The Process Editor includes an AI-powered chat assistant that helps you:
+- Create new processes from natural language descriptions
+- Edit existing YAML with conversational commands
+- Get explanations of step types and syntax
+- Debug validation errors
+
+Access it via the **Chat** tab in the Process Editor.
+
+See `docs/PROCESS_DRIVEN_PLATFORM/` for detailed design documents.
+
 ## Configuration
 
 ### Environment Variables
@@ -339,6 +417,7 @@ EMAIL_PROVIDER=console  # Use 'resend' or 'smtp' for production
 - [Gemini Support Guide](docs/GEMINI_SUPPORT.md) — Using Gemini CLI runtime for cost optimization
 - [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) — Building multi-agent systems with coordinated workflows
+- [Process Engine Design](docs/PROCESS_DRIVEN_PLATFORM/) — Process Engine architecture and design documents
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards
 - [Contributing Guide](CONTRIBUTING.md) — How to contribute (PRs, code standards)
 - [Known Issues](docs/KNOWN_ISSUES.md) — Current limitations and workarounds

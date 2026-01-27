@@ -2,7 +2,7 @@
 
 > **Created**: 2025-12-27 - Phase 11.5, Requirement 12.2
 >
-> **Updated**: 2025-12-29 - Added hidden files toggle and inline text editing
+> **Updated**: 2026-01-23 - Verified line numbers and component structure
 >
 > **Related**: [file-browser.md](file-browser.md) - Original in-agent file browser (Files tab in AgentDetail)
 
@@ -17,7 +17,7 @@ As a Trinity user, I want to manage files across all my running agents from a si
 ## Entry Points
 
 - **UI**: `src/frontend/src/views/FileManager.vue` - Standalone page at `/files` route
-- **Router**: `src/frontend/src/router/index.js:42-46` - Route definition
+- **Router**: `src/frontend/src/router/index.js:48-52` - Route definition
 - **API Endpoints**:
   - `GET /api/agents/{agent_name}/files?show_hidden=true|false` - List files (with hidden toggle)
   - `GET /api/agents/{agent_name}/files/preview` - Preview with MIME type
@@ -33,7 +33,7 @@ As a Trinity user, I want to manage files across all my running agents from a si
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js`
 
 ```javascript
-// Line 42-46
+// Lines 48-52
 {
   path: '/files',
   name: 'FileManager',
@@ -44,7 +44,7 @@ As a Trinity user, I want to manage files across all my running agents from a si
 
 ### Main Component
 
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/FileManager.vue` (494 lines)
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/FileManager.vue` (639 lines)
 
 #### Component Structure
 
@@ -65,10 +65,10 @@ FileManager.vue
   |-- Delete Confirmation Modal
 ```
 
-#### State Management (Lines 300-318)
+#### State Management (Lines 302-320)
 
 ```javascript
-// Component state
+// Component state (Lines 302-320)
 const selectedAgentName = ref(localStorage.getItem('fileManager.selectedAgent') || '')
 const fileTree = ref([])
 const selectedFile = ref(null)
@@ -82,30 +82,30 @@ const downloading = ref(false)
 const deleting = ref(false)
 const showDeleteConfirm = ref(false)
 const showHidden = ref(localStorage.getItem('fileManager.showHidden') === 'true')
-// Edit mode state
+// Edit mode state (Lines 316-320)
 const isEditing = ref(false)
 const editContent = ref('')
 const saving = ref(false)
 const hasUnsavedChanges = ref(false)
 ```
 
-#### Protected Paths (Lines 320-324)
+#### Protected Paths (Lines 322-326)
 
 ```javascript
-// Protected paths (cannot be deleted)
+// Protected paths (cannot be deleted) - Line 323
 const DELETE_PROTECTED_PATHS = ['CLAUDE.md', '.trinity', '.git', '.gitignore', '.env', '.mcp.json', '.mcp.json.template']
 
-// Edit protected paths (cannot be edited) - CLAUDE.md and .mcp.json ARE editable
+// Edit protected paths (cannot be edited) - CLAUDE.md and .mcp.json ARE editable - Lines 325-326
 const EDIT_PROTECTED_PATHS = ['.trinity', '.git', '.gitignore', '.env', '.mcp.json.template']
 ```
 
-#### Agent Selector (Lines 10-26)
+#### Agent Selector (Lines 26-39)
 
-- Dropdown shows only running agents (`agentsStore.runningAgents`)
+- Dropdown shows only running agents (`agentsStore.runningAgents`) - computed at Line 329
 - Selection persisted to `localStorage.fileManager.selectedAgent`
-- Auto-loads files on agent change
+- Auto-loads files on agent change via `onAgentChange()` handler
 
-#### Search/Filter (Lines 353-373)
+#### Search/Filter (Lines 355-375)
 
 ```javascript
 const filteredTree = computed(() => {
@@ -135,18 +135,20 @@ const filteredTree = computed(() => {
 
 | Method | Lines | Purpose |
 |--------|-------|---------|
-| `loadFiles()` | 404-420 | Fetch file tree from agent (with showHidden) |
-| `onAgentChange()` | 422-427 | Handle agent selection, clear state |
-| `onFileSelect()` | 429-449 | Select file and load preview, reset edit state |
-| `loadPreview()` | 451-462 | Fetch file preview as blob |
-| `downloadFile()` | 464-496 | Download file via blob URL |
-| `deleteFile()` | 498-521 | Delete file/folder after confirmation |
-| `startEdit()` | 524-529+ | Enter edit mode, load text content |
-| `cancelEdit()` | ~540 | Exit edit mode with unsaved changes check |
-| `saveFile()` | ~555 | Save edited content to agent |
-| `onEditContentChange()` | ~541-544 | Track content changes |
+| `loadFiles()` | 406-422 | Fetch file tree from agent (with showHidden) |
+| `onAgentChange()` | 424-429 | Handle agent selection, clear state |
+| `onFileSelect()` | 431-451 | Select file and load preview, reset edit state |
+| `loadPreview()` | 453-464 | Fetch file preview as blob |
+| `downloadFile()` | 466-498 | Download file via blob URL |
+| `deleteFile()` | 500-523 | Delete file/folder after confirmation |
+| `startEdit()` | 526-539 | Enter edit mode, load text content |
+| `cancelEdit()` | 541-550 | Exit edit mode with unsaved changes check |
+| `saveFile()` | 557-579 | Save edited content to agent |
+| `onEditContentChange()` | 552-555 | Track content changes |
+| `formatFileSize()` | 581-587 | Format bytes to human-readable size |
+| `formatDate()` | 589-603 | Format ISO date to relative time |
 
-#### Protected Path Check (Lines 375-385)
+#### Protected Path Check (Lines 377-387)
 
 ```javascript
 const isDeleteProtected = computed(() => {
@@ -162,13 +164,26 @@ const isEditProtected = computed(() => {
 })
 ```
 
+#### Text File Extensions (Lines 390-397)
+
+```javascript
+const TEXT_EXTENSIONS = [
+  'txt', 'md', 'json', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log',
+  'js', 'ts', 'jsx', 'tsx', 'py', 'go', 'rs', 'rb', 'java', 'c', 'cpp', 'h',
+  'css', 'scss', 'sass', 'less', 'html', 'vue', 'svelte',
+  'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'prisma', 'dockerfile', 'makefile',
+  'env', 'ini', 'conf', 'cfg', 'gitignore', 'editorconfig'
+]
+```
+
 When a delete-protected file is selected, the Delete button is disabled with tooltip "Protected file cannot be deleted" and a warning message appears. Note: CLAUDE.md and .mcp.json are editable but not deletable.
 
 ### FileTreeNode Component
 
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/file-manager/FileTreeNode.vue` (186 lines)
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/file-manager/FileTreeNode.vue` (220 lines)
 
-#### Props
+#### Props (Lines 64-68)
 
 ```javascript
 const props = defineProps({
@@ -201,9 +216,9 @@ Maps file extensions to icon components:
 
 ### FilePreview Component
 
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/file-manager/FilePreview.vue` (230 lines)
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/file-manager/FilePreview.vue` (245 lines)
 
-#### Props
+#### Props (Lines 146-155)
 
 ```javascript
 const props = defineProps({
@@ -211,23 +226,29 @@ const props = defineProps({
   agentName: { type: String, required: true },
   previewData: { type: Object, default: null },
   previewLoading: { type: Boolean, default: false },
-  previewError: { type: String, default: null }
+  previewError: { type: String, default: null },
+  // Edit mode props
+  isEditing: { type: Boolean, default: false },
+  editContent: { type: String, default: '' }
 })
 ```
 
-#### File Type Detection (Lines 148-201)
+#### File Type Detection (Lines 169-216)
 
 ```javascript
+// Lines 169-175
 const isImage = computed(() => {
+  if (!props.previewData) return false
+  const ext = fileExtension.value
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp']
   const mimeMatch = props.previewData.type?.startsWith('image/')
   return imageExts.includes(ext) || mimeMatch
 })
 
-const isVideo = computed(() => { /* mp4, webm, mov, avi, mkv */ })
-const isAudio = computed(() => { /* mp3, wav, ogg, m4a, flac, aac */ })
-const isPdf = computed(() => { /* pdf */ })
-const isText = computed(() => { /* txt, md, json, js, py, etc. */ })
+const isVideo = computed(() => { /* mp4, webm, mov, avi, mkv */ })  // Lines 177-183
+const isAudio = computed(() => { /* mp3, wav, ogg, m4a, flac, aac */ })  // Lines 185-191
+const isPdf = computed(() => { /* pdf */ })  // Lines 193-198
+const isText = computed(() => { /* comprehensive text/code extensions */ })  // Lines 200-216
 ```
 
 #### Preview Types
@@ -235,14 +256,14 @@ const isText = computed(() => { /* txt, md, json, js, py, etc. */ })
 | Type | Component | Features |
 |------|-----------|----------|
 | Directory | Folder icon + item count | Shows folder info |
-| Image | `<img>` | Max size constraints, shows dimensions |
-| Video | `<video controls>` | Native player controls |
-| Audio | `<audio controls>` | Centered card with icon |
-| PDF | `<embed type="application/pdf">` | Full-height embedded viewer |
-| Text/Code | `<pre><code>` | Monospace font, dark theme |
+| Image | `<img>` (Lines 40-47) | Max size constraints, shows dimensions |
+| Video | `<video controls>` (Lines 50-59) | Native player controls |
+| Audio | `<audio controls>` (Lines 62-81) | Centered card with icon |
+| PDF | `<embed type="application/pdf">` (Lines 84-90) | Full-height embedded viewer |
+| Text/Code | `<textarea>` or `<pre><code>` (Lines 93-107) | Edit mode textarea or view mode monospace |
 | Unknown | Document icon | "Preview not available" message |
 
-#### Text Content Loading (Lines 204-216)
+#### Text Content Loading (Lines 219-231)
 
 ```javascript
 watch(() => props.previewData, async (data) => {
@@ -253,7 +274,10 @@ watch(() => props.previewData, async (data) => {
     } catch (e) {
       textContent.value = 'Failed to load text content'
     }
+  } else {
+    textContent.value = ''
   }
+  imageDimensions.value = null
 }, { immediate: true })
 ```
 
@@ -261,7 +285,7 @@ watch(() => props.previewData, async (data) => {
 
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
 
-#### listAgentFiles (Lines 391-398)
+#### listAgentFiles (Lines 452-459)
 
 ```javascript
 async listAgentFiles(name, path = '/home/developer', showHidden = false) {
@@ -274,7 +298,7 @@ async listAgentFiles(name, path = '/home/developer', showHidden = false) {
 }
 ```
 
-#### deleteAgentFile (Lines 410-417)
+#### deleteAgentFile (Lines 471-478)
 
 ```javascript
 async deleteAgentFile(name, filePath) {
@@ -287,7 +311,7 @@ async deleteAgentFile(name, filePath) {
 }
 ```
 
-#### updateAgentFile (Lines 419-428)
+#### updateAgentFile (Lines 480-489)
 
 ```javascript
 async updateAgentFile(name, filePath, content) {
@@ -302,7 +326,7 @@ async updateAgentFile(name, filePath, content) {
 }
 ```
 
-#### getFilePreviewBlob (Lines 430-445)
+#### getFilePreviewBlob (Lines 491-504)
 
 ```javascript
 async getFilePreviewBlob(name, filePath) {
@@ -312,6 +336,7 @@ async getFilePreviewBlob(name, filePath) {
     headers: authStore.authHeader,
     responseType: 'blob'
   })
+  // Return blob URL for media elements
   return {
     url: URL.createObjectURL(response.data),
     type: response.data.type,
@@ -328,21 +353,21 @@ async getFilePreviewBlob(name, filePath) {
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:551-619` | Endpoint definitions |
-| Service | `src/backend/services/agent_service/files.py` (413 lines) | File operations logic |
+| Router | `src/backend/routers/agents.py:500-569` | Endpoint definitions |
+| Service | `src/backend/services/agent_service/files.py` (309 lines) | File operations logic |
 
 ### Endpoints
 
 #### GET /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:551-565`
-**Service**: `src/backend/services/agent_service/files.py:21-98`
+**Router**: `src/backend/routers/agents.py:500-514`
+**Service**: `src/backend/services/agent_service/files.py:20-79`
 
 See [file-browser.md](file-browser.md) for full documentation.
 
 #### GET /api/agents/{agent_name}/files/preview
 
-**Router**: `src/backend/routers/agents.py:579-587`
+**Router**: `src/backend/routers/agents.py:528-536`
 
 ```python
 @router.get("/{agent_name}/files/preview")
@@ -356,7 +381,7 @@ async def preview_agent_file_endpoint(
     return await preview_agent_file_logic(agent_name, path, current_user, request)
 ```
 
-**Service**: `src/backend/services/agent_service/files.py:249-328`
+**Service**: `src/backend/services/agent_service/files.py:187-246`
 
 ```python
 async def preview_agent_file_logic(
@@ -366,11 +391,10 @@ async def preview_agent_file_logic(
     request: Request
 ) -> StreamingResponse:
     """Get file with proper MIME type for preview."""
-    # 1. Check user access permission
-    # 2. Get and verify agent container is running
-    # 3. Proxy to agent's /api/files/preview endpoint
-    # 4. Stream response with correct Content-Type
-    # 5. Log audit event
+    # 1. Check user access permission (Line 197-198)
+    # 2. Get and verify agent container is running (Lines 200-206)
+    # 3. Proxy to agent's /api/files/preview endpoint (Lines 208-218)
+    # 4. Stream response with correct Content-Type (Lines 225-233)
 ```
 
 **Business Logic**:
@@ -384,7 +408,7 @@ async def preview_agent_file_logic(
 
 #### DELETE /api/agents/{agent_name}/files
 
-**Router**: `src/backend/routers/agents.py:590-598`
+**Router**: `src/backend/routers/agents.py:539-547`
 
 ```python
 @router.delete("/{agent_name}/files")
@@ -398,7 +422,7 @@ async def delete_agent_file_endpoint(
     return await delete_agent_file_logic(agent_name, path, current_user, request)
 ```
 
-**Service**: `src/backend/services/agent_service/files.py:173-246`
+**Service**: `src/backend/services/agent_service/files.py:127-185`
 
 ```python
 async def delete_agent_file_logic(
@@ -408,10 +432,44 @@ async def delete_agent_file_logic(
     request: Request
 ) -> dict:
     """Delete a file or directory from the agent's workspace."""
-    # 1. Check user access permission
-    # 2. Get and verify agent container is running
-    # 3. Proxy DELETE to agent's /api/files endpoint
-    # 4. Log audit event with file type and count
+    # 1. Check user access permission (Lines 135-136)
+    # 2. Get and verify agent container is running (Lines 138-145)
+    # 3. Proxy DELETE to agent's /api/files endpoint (Lines 147-164)
+    # 4. Return result with deleted path, type, and file_count
+```
+
+#### PUT /api/agents/{agent_name}/files
+
+**Router**: `src/backend/routers/agents.py:555-569`
+
+```python
+@router.put("/{agent_name}/files")
+async def update_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    body: FileUpdateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a file's content in the agent's workspace."""
+    return await update_agent_file_logic(agent_name, path, body.content, current_user, request)
+```
+
+**Service**: `src/backend/services/agent_service/files.py:249-308`
+
+```python
+async def update_agent_file_logic(
+    agent_name: str,
+    path: str,
+    content: str,
+    current_user: User,
+    request: Request
+) -> dict:
+    """Update a file's content in the agent's workspace."""
+    # 1. Check user access permission (Lines 266-267)
+    # 2. Get and verify agent container is running (Lines 269-275)
+    # 3. Proxy PUT to agent's /api/files endpoint with content (Lines 277-288)
+    # 4. Return result with path, size, and modified timestamp
 ```
 
 **Response**:
@@ -436,10 +494,10 @@ async def delete_agent_file_logic(
 @router.get("/api/files/preview")
 async def preview_file(path: str):
     """Get file with proper MIME type for preview."""
-    # Security: Only allow /home/developer access
-    # Max file size: 100MB
-    # Detect MIME type with mimetypes.guess_type()
-    # Return FileResponse with correct media_type
+    # Security: Only allow /home/developer access (Lines 270-281)
+    # Max file size: 100MB (Lines 289-293)
+    # Detect MIME type with mimetypes.guess_type() (Lines 296-300)
+    # Return FileResponse with correct media_type (Lines 302-307)
 ```
 
 **Features**:
@@ -454,15 +512,15 @@ async def preview_file(path: str):
 @router.delete("/api/files")
 async def delete_file(path: str):
     """Delete a file or directory from the workspace."""
-    # Security checks
-    # Protected path check
-    # Recursive directory deletion with shutil.rmtree()
-    # Single file deletion with Path.unlink()
+    # Security checks (Lines 209-220)
+    # Protected path check (Lines 226-231)
+    # Recursive directory deletion with shutil.rmtree() (Lines 240-244)
+    # Single file deletion with Path.unlink() (Lines 245-247)
 ```
 
-**Protected Paths** (Lines 156-175):
+**Protected Paths** (Lines 157-175):
 ```python
-# Protected paths that cannot be deleted
+# Protected paths that cannot be deleted (Lines 157-165)
 PROTECTED_PATHS = [
     "CLAUDE.md",
     ".trinity",
@@ -473,7 +531,7 @@ PROTECTED_PATHS = [
     ".mcp.json.template",
 ]
 
-# Paths that cannot be edited (subset of PROTECTED_PATHS)
+# Paths that cannot be edited (subset of PROTECTED_PATHS) - Lines 169-175
 # CLAUDE.md and .mcp.json ARE editable since users need to modify them
 EDIT_PROTECTED_PATHS = [
     ".trinity",
@@ -498,15 +556,30 @@ def _is_protected_path(path: Path) -> bool:
     return False
 ```
 
+**_is_edit_protected_path()** (Lines 190-199):
+```python
+def _is_edit_protected_path(path: Path) -> bool:
+    """Check if path is protected from editing."""
+    for protected in EDIT_PROTECTED_PATHS:
+        if path.name == protected:
+            return True
+        # Check parent directories too
+        for parent in path.parents:
+            if parent.name == protected:
+                return True
+    return False
+```
+
 ### PUT /api/files (Lines 314-369)
 
 ```python
 @router.put("/api/files")
 async def update_file(path: str, request: FileUpdateRequest):
     """Update a file's content in the workspace."""
-    # Security: Only allow /home/developer access
-    # Protected path check (cannot edit CLAUDE.md, .trinity, etc.)
-    # Write content with path.write_text()
+    # Security: Only allow /home/developer access (Lines 328-339)
+    # Protected path check - cannot edit .trinity, .git, etc. (Lines 341-346)
+    # Note: CLAUDE.md and .mcp.json ARE editable
+    # Write content with path.write_text() (Lines 354-364)
 ```
 
 **Request Body**:
@@ -522,7 +595,7 @@ async def update_file(path: str, request: FileUpdateRequest):
   "success": true,
   "path": "path/to/file",
   "size": 1234,
-  "modified": "2025-12-29T15:30:00"
+  "modified": "2026-01-23T15:30:00"
 }
 ```
 
@@ -812,7 +885,7 @@ docker exec agent-{name} rm -rf /home/developer/test-dir
 
 ### Status
 
-Working - Feature implemented 2025-12-27, updated 2025-12-29 (hidden files + editing)
+Working - Feature implemented 2025-12-27, last verified 2026-01-23
 
 ---
 
@@ -847,7 +920,20 @@ Working - Feature implemented 2025-12-27, updated 2025-12-29 (hidden files + edi
 
 ## Changelog
 
+- **2026-01-23**: Verified and updated line numbers for all components
+  - FileManager.vue now 639 lines (was 494)
+  - FileTreeNode.vue now 220 lines (was 186)
+  - FilePreview.vue now 245 lines (was 230)
+  - Updated router index line numbers (48-52)
+  - Updated store action line numbers (452-504)
+  - Updated backend router line numbers (500-569)
+  - Updated agent server line numbers (157-369)
+  - Added TEXT_EXTENSIONS documentation
+  - Added _is_edit_protected_path() documentation
+  - Verified two-panel layout, media preview types, delete with confirmation
+
 - **2025-12-30**: Updated line numbers to reflect current codebase. Fixed protected path documentation to show split into DELETE_PROTECTED_PATHS and EDIT_PROTECTED_PATHS.
+
 - **2025-12-29**: Hidden files toggle and inline text editing
   - Added "Show hidden" checkbox in header (persisted to localStorage)
   - Agent server and backend accept `show_hidden` query parameter

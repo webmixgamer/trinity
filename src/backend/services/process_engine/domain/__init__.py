@@ -31,6 +31,12 @@ from .enums import (
     OnErrorAction,
     ApprovalStatus,
     AgentRole,
+    # Access Control Enums (IT5 P1)
+    ProcessPermission,
+    ProcessRole,
+    ROLE_PERMISSIONS,
+    role_has_permission,
+    get_role_permissions,
 )
 
 from .entities import (
@@ -53,6 +59,7 @@ from .step_configs import (
     parse_step_config,
     # Trigger configs
     TriggerConfig,
+    ManualTriggerConfig,
     WebhookTriggerConfig,
     ScheduleTriggerConfig,
     parse_trigger_config,
@@ -104,6 +111,11 @@ from .events import (
     ProcessArchived,
     # Informed Agent Events (EMI Pattern)
     InformedNotification,
+    # Recovery Events
+    ExecutionRecoveryStarted,
+    ExecutionRecovered,
+    ExecutionRecoveryFailed,
+    ExecutionRecoveryCompleted,
 )
 
 __all__ = [
@@ -125,6 +137,12 @@ __all__ = [
     "OnErrorAction",
     "ApprovalStatus",
     "AgentRole",
+    # Access Control Enums (IT5 P1)
+    "ProcessPermission",
+    "ProcessRole",
+    "ROLE_PERMISSIONS",
+    "role_has_permission",
+    "get_role_permissions",
     # Entities
     "StepDefinition",
     "StepExecution",
@@ -188,4 +206,9 @@ __all__ = [
     "ProcessArchived",
     # Informed Agent Events (EMI Pattern)
     "InformedNotification",
+    # Recovery Events
+    "ExecutionRecoveryStarted",
+    "ExecutionRecovered",
+    "ExecutionRecoveryFailed",
+    "ExecutionRecoveryCompleted",
 ]

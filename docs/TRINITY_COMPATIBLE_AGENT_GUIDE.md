@@ -18,15 +18,16 @@
 8. [Credential Management](#credential-management)
 9. [Inter-Agent Collaboration](#inter-agent-collaboration)
 10. [Shared Folders](#shared-folders)
-11. [Custom Metrics](#custom-metrics)
-12. [Agent Dashboard](#agent-dashboard)
-13. [Memory Management](#memory-management)
-14. [Content Folder Convention](#content-folder-convention)
-15. [Package Persistence](#package-persistence)
-16. [Compatibility Checklist](#compatibility-checklist)
-17. [Migration Guide](#migration-guide)
-18. [Best Practices](#best-practices)
-19. [Autonomous Agent Design](#autonomous-agent-design)
+11. [Platform Skills](#platform-skills)
+12. [Custom Metrics](#custom-metrics)
+13. [Agent Dashboard](#agent-dashboard)
+14. [Memory Management](#memory-management)
+15. [Content Folder Convention](#content-folder-convention)
+16. [Package Persistence](#package-persistence)
+17. [Compatibility Checklist](#compatibility-checklist)
+18. [Migration Guide](#migration-guide)
+19. [Best Practices](#best-practices)
+20. [Autonomous Agent Design](#autonomous-agent-design)
 
 ---
 
@@ -185,7 +186,7 @@ content/
 
 **What to commit from `.claude/`:**
 - ✅ `.claude/commands/` - Slash commands
-- ✅ `.claude/skills/` - Skills
+- ✅ `.claude/skills/` - Skills (seeded to platform library on first deploy)
 - ✅ `.claude/agents/` - Sub-agents
 - ✅ `.claude/settings.local.json` - Claude Code settings
 
@@ -194,6 +195,8 @@ content/
 - ❌ `.claude/statsig/` - Analytics
 - ❌ `.claude/todos/` - Temporary todo lists
 - ❌ `.claude/debug/` - Debug logs
+
+**Note on Skills**: Skills in templates are seeded to the **Platform Skills Library** on first deployment, then managed centrally. See [Platform Skills](#platform-skills).
 
 ---
 
@@ -213,7 +216,8 @@ my-agent/
 ├── .claude/
 │   ├── agents/                    # Agent's own sub-agents (optional)
 │   ├── commands/                  # Slash commands (optional)
-│   ├── skills/                    # Skills (optional)
+│   ├── skills/                    # Symlinks to assigned platform skills (auto-managed)
+│   ├── skills-library/            # Read-only mount of all platform skills
 │   └── settings.local.json        # Claude Code settings
 │
 ├── .mcp.json.template             # MCP config with ${VAR} placeholders
@@ -312,7 +316,8 @@ mcp_servers:
   - name: server-name
     description: "What this MCP server provides"
 
-# Skills with descriptions
+# Skills (for documentation/seeding - managed at platform level)
+# Skills in .claude/skills/ are seeded to Platform Skills Library on first deploy
 skills:
   - name: my-skill
     description: "What this skill enables"
@@ -401,6 +406,33 @@ How you approach tasks in your specialty.
 - Safety constraints for your area
 - Things you should NOT do
 ```
+
+### Imports
+
+CLAUDE.md files can import other files using `@path/to/file` syntax:
+
+```markdown
+See @README.md for project overview and @package.json for npm commands.
+
+# Additional Instructions
+- Git workflow: @docs/git-instructions.md
+- Individual preferences: @~/.claude/my-project-instructions.md
+```
+
+Imports support relative paths, absolute paths, and `~` for home directory. Not evaluated inside code blocks.
+
+### Best Practices
+
+| ✅ Include | ❌ Exclude |
+|-----------|-----------|
+| Bash commands Claude can't guess | Anything Claude can infer from code |
+| Code style rules differing from defaults | Standard language conventions |
+| Testing instructions and runners | Detailed API docs (link instead) |
+| Repository etiquette (branch naming, PRs) | Information that changes frequently |
+| Architectural decisions | Long explanations or tutorials |
+| Common gotchas | Self-evident practices ("write clean code") |
+
+**If Claude ignores rules**, the file is probably too long. Use emphasis for critical rules: `IMPORTANT: Always run tests before committing`
 
 ---
 
@@ -558,6 +590,246 @@ cat /home/developer/shared-in/agent-a/report.txt
 ```
 
 **Note**: Changes to shared folder config require an agent restart.
+
+---
+
+## Platform Skills
+
+**Skills are the recommended way to encode reusable knowledge for agents.** A Skill is a markdown file that teaches Claude how to do something specific — like reviewing PRs using your team's standards or generating commit messages in your preferred format. When an agent encounters a task that matches a Skill's purpose, Claude automatically applies it.
+
+Unlike slash commands (which require `/command` to invoke), **skills are model-invoked**: Claude decides which skills to use based on the task at hand. This makes skills ideal for organizational knowledge that should be consistently applied.
+
+### How Trinity Manages Skills
+
+1. **Platform stores skills** in a centralized library (synced from GitHub or created via UI)
+2. **Admins manage skills** via the `/skills` page (create, edit, delete)
+3. **Owners assign skills** to their agents via the Skills tab
+4. **Skills are injected** into `~/.claude/skills/<name>/SKILL.md` on agent start
+5. **CLAUDE.md is updated** with a "Platform Skills" section listing available skills
+
+### Skill Types
+
+Use naming conventions to indicate how a skill should be applied:
+
+| Type | Naming Convention | When to Use | Example |
+|------|-------------------|-------------|---------|
+| `policy` | `policy-*` | Always-active rules that Claude follows implicitly | `policy-code-review`, `policy-security` |
+| `procedure` | `procedure-*` | Step-by-step instructions for specific tasks | `procedure-incident-response`, `procedure-deploy` |
+| `methodology` | (no prefix) | General guidance for approaches to problems | `verification`, `tdd`, `systematic-debugging` |
+
+### Writing Effective Skills
+
+Every skill needs a `SKILL.md` file with YAML frontmatter and markdown instructions:
+
+```yaml
+---
+name: code-review
+description: Reviews code for quality, security, and best practices. Use when reviewing pull requests, code changes, or asking "is this code good?"
+---
+
+# Code Review
+
+## Instructions
+
+When reviewing code, check for:
+1. **Security issues** - SQL injection, XSS, exposed secrets
+2. **Error handling** - Are all error cases handled?
+3. **Performance** - Any obvious N+1 queries or inefficient loops?
+4. **Readability** - Is the code self-documenting?
+
+## Output Format
+
+Provide feedback in three sections:
+- **Critical**: Must fix before merge
+- **Suggestions**: Would improve the code
+- **Good**: Highlight what was done well
+```
+
+#### Frontmatter Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Skill identifier (lowercase, hyphens, max 64 chars) |
+| `description` | Yes | What the skill does and when to use it. **Claude uses this to decide when to apply the skill.** |
+| `allowed-tools` | No | Restrict which tools Claude can use (e.g., `Read, Grep, Glob` for read-only) |
+| `disable-model-invocation` | No | Set `true` to prevent Claude from auto-invoking. User must invoke with `/skill-name`. Use for workflows with side effects. |
+| `user-invocable` | No | Set `false` to hide from `/` menu. Use for background knowledge Claude should apply automatically but users shouldn't invoke directly. |
+| `argument-hint` | No | Autocomplete hint (e.g., `[issue-number]`, `[filename] [format]`) |
+| `model` | No | Override model for this skill (`sonnet`, `opus`, `haiku`) |
+| `context` | No | Set to `fork` to run in isolated subagent context |
+| `agent` | No | Subagent type when `context: fork` (`Explore`, `Plan`, or custom agent name) |
+| `hooks` | No | Lifecycle hooks scoped to this skill (`PreToolUse`, `PostToolUse`, `Stop`) |
+
+#### Invocation Control
+
+| Frontmatter | User can invoke | Claude can invoke | Context behavior |
+|-------------|-----------------|-------------------|------------------|
+| (default) | ✅ | ✅ | Description loaded, full skill on invoke |
+| `disable-model-invocation: true` | ✅ | ❌ | Not in context until user invokes |
+| `user-invocable: false` | ❌ | ✅ | Description loaded, auto-applied when relevant |
+
+#### String Substitutions
+
+Skills support variable substitution:
+
+| Variable | Description |
+|----------|-------------|
+| `$ARGUMENTS` | All arguments passed when invoking (e.g., `/fix-issue 123` → `123`) |
+| `$ARGUMENTS[N]` or `$N` | Specific argument by index (`$0` = first, `$1` = second) |
+| `${CLAUDE_SESSION_ID}` | Current session ID (useful for logging, session-specific files) |
+
+```yaml
+---
+name: fix-issue
+description: Fix a GitHub issue
+disable-model-invocation: true
+---
+Fix GitHub issue $ARGUMENTS following our coding standards.
+# Or: Migrate the $0 component from $1 to $2.
+```
+
+#### Dynamic Context Injection
+
+The `!`command`` syntax runs shell commands before skill content is sent to Claude:
+
+```yaml
+---
+name: pr-summary
+description: Summarize a pull request
+context: fork
+agent: Explore
+---
+## Context
+- PR diff: !`gh pr diff`
+- Changed files: !`gh pr diff --name-only`
+
+Summarize this pull request...
+```
+
+Commands execute immediately; output replaces the placeholder. Claude only sees the final rendered content.
+
+#### Description Best Practices
+
+The description is critical — Claude uses it to decide whether to apply the skill. A good description:
+
+```yaml
+# ❌ Bad - too vague
+description: Helps with code
+
+# ✅ Good - specific actions and trigger terms
+description: Reviews code for quality, security, and best practices. Use when reviewing pull requests, code changes, or asking "is this code good?"
+```
+
+Include:
+1. **What it does**: Specific capabilities (reviews, generates, validates)
+2. **When to use it**: Trigger phrases users would say ("review this PR", "is this secure?")
+
+### Restricting Tool Access
+
+Use `allowed-tools` to limit what Claude can do when a skill is active:
+
+```yaml
+---
+name: read-only-analysis
+description: Analyze code without making changes
+allowed-tools: Read, Grep, Glob
+---
+```
+
+This is useful for:
+- Read-only skills that shouldn't modify files
+- Security-sensitive workflows
+- Analysis tasks that should never write
+
+### Skill Size Guidelines
+
+- **Keep `SKILL.md` under 500 lines.** Move detailed reference material to separate files.
+- **Skill descriptions budget**: ~15,000 characters total across all skills. If you have many skills, some may be excluded from context.
+- **Bundled scripts** run without consuming context tokens — only their output does.
+
+### Multi-File Skills
+
+For complex skills, use progressive disclosure — essential info in `SKILL.md`, details in supporting files:
+
+```
+my-skill/
+├── SKILL.md           # Overview and navigation (<500 lines)
+├── reference.md       # Detailed docs (loaded when needed)
+├── examples.md        # Usage examples
+└── scripts/
+    └── validate.py    # Utility script (executed, not loaded)
+```
+
+In `SKILL.md`, reference the files:
+
+```markdown
+For detailed API reference, see [reference.md](reference.md).
+
+To validate input, run:
+```bash
+python scripts/validate.py input.txt
+```
+
+### Agent Perspective
+
+Agents see assigned skills in the standard Claude Code location:
+
+```
+~/.claude/skills/
+├── verification/
+│   └── SKILL.md
+├── systematic-debugging/
+│   └── SKILL.md
+└── policy-code-review/
+    └── SKILL.md
+```
+
+The agent's `CLAUDE.md` is also updated with a "Platform Skills" section:
+
+```markdown
+## Platform Skills
+
+This agent has the following skills installed in `~/.claude/skills/`:
+
+- `/verification` - Use with /verification command
+- `/systematic-debugging` - Use with /systematic-debugging command
+- `/policy-code-review` - Use with /policy-code-review command
+```
+
+This allows agents to answer "what skills do you have?" without scanning the filesystem.
+
+### What This Means for Templates
+
+**Templates should NOT include `.claude/skills/`** — skills are managed at the platform level and assigned per-agent. If your template includes skills in `.claude/skills/`, they will be seeded to the platform library on first deployment, then managed centrally.
+
+### Syncing Skills
+
+When skills are updated at the platform level, agents receive updates:
+- **On next start**: Skills automatically injected
+- **While running**: Use "Inject to Agent" button in Skills tab or MCP `sync_agent_skills` tool
+
+### MCP Tools for Skills
+
+Agents can interact with the skills system programmatically:
+
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all platform skills |
+| `get_skill` | Get skill details and content |
+| `assign_skill_to_agent` | Assign a skill to an agent |
+| `sync_agent_skills` | Re-inject skills to running agent |
+
+### Skills vs. Slash Commands vs. CLAUDE.md
+
+| Mechanism | Invoked By | Best For |
+|-----------|------------|----------|
+| **Skills** | Claude (automatic) | Reusable knowledge that applies across many situations |
+| **Slash commands** | User (`/command`) | Specific actions the user explicitly requests |
+| **CLAUDE.md** | Always loaded | Project-wide context and constraints |
+
+**Use skills when**: The knowledge should apply automatically based on the task (e.g., always apply security review standards when reviewing code).
+
+**Use slash commands when**: The user needs to explicitly trigger an action (e.g., `/deploy staging`).
 
 ---
 
@@ -1161,6 +1433,9 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-01-27 | **Advanced Skills & CLAUDE.md**: Added 8 new skill frontmatter fields (`disable-model-invocation`, `user-invocable`, `argument-hint`, `model`, `context`, `agent`, `hooks`); Added invocation control table; Added string substitutions (`$ARGUMENTS`, `$N`, `${CLAUDE_SESSION_ID}`); Added dynamic context injection (`!`command``); Added skill size guidelines; Added CLAUDE.md imports (`@path` syntax) and best practices table |
+| 2026-01-26 | **Platform Skills Best Practices**: Expanded Platform Skills section with comprehensive skill writing guidance; Added SKILL.md format, frontmatter fields, description best practices, `allowed-tools` for restricting tool access, multi-file skill patterns, Skills vs Commands vs CLAUDE.md comparison table; Emphasized skills as the recommended way to encode reusable knowledge |
+| 2026-01-25 | **Platform Skills**: Added new section documenting centralized Skills Library; Skills managed at platform level, mounted read-only into agents; Three skill types (policy, procedure, methodology); Updated directory structure and .gitignore notes |
 | 2026-01-13 | **Dashboard widget examples**: Added complete examples for ALL 11 widget types with required field names highlighted; Added warning box about common field name mistakes (`content` not `text`, `items` not `values`, `url` not `href`) |
 | 2026-01-13 | Added Agent Dashboard section with YAML schema and widget types reference |
 | 2026-01-12 | Expanded Custom Metrics section: added file locations, complete template.yaml examples for all 6 metric types (counter, gauge, percentage, status, duration, bytes), metrics.json format with last_updated field, complete working example, and CLAUDE.md integration guidance |

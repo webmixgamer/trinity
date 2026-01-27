@@ -1,3 +1,985 @@
+### 2026-01-27 11:00:00
+📝 **Docs: Feature Flow Updates for Bug Fixes**
+
+**Summary**: Updated feature flow documentation to reflect today's bug fixes.
+
+**internal-system-agent.md**:
+- Section 3 (Emergency Stop Flow): Documented new `system_prefix` query parameter
+- Updated API signature with `Optional[str] = Query()` parameter
+- Added prefix filter logic for schedules (line 638-639) and agents (line 658-659)
+- Updated Testing section with examples for prefix filtering and safe testing
+- Added revision history entry for 2026-01-27
+
+**testing-agents.md**:
+- Added revision history entry for AsyncTrinityApiClient header fix
+- Documented fix pattern: `kwargs.pop('headers', {})` + merge with auth headers
+
+**feature-flows.md**:
+- Updated summary block with detailed fix descriptions
+- Updated Internal System Agent entry with 2026-01-27 prefix filter note
+- Updated Testing Agents Suite entry with fix date and test count (1460+)
+
+---
+
+### 2026-01-27 10:30:00
+🐛 **Bug Fixes: Test Suite and Emergency Stop Improvements**
+
+**Summary**: Fixed 3 bugs from roadmap - verified executions 404, fixed async client headers, and improved emergency stop test.
+
+**Bug 1: Executions 404 for Non-Existent Agent**
+- Status: Already fixed (verified)
+- The `AuthorizedAgent` dependency at `dependencies.py:198-202` already validates agent existence
+- Returns 404 "Agent not found" correctly for non-existent agents
+- No code changes needed
+
+**Bug 2: AsyncTrinityApiClient Headers Bug**
+- Added header merging to all `AsyncTrinityApiClient` methods (get, post, put, delete)
+- Pattern: `custom_headers = kwargs.pop('headers', {}); headers = {**self._get_headers(auth), **custom_headers}`
+- Now matches sync `TrinityApiClient` behavior
+- File: `tests/utils/api_client.py:208-280`
+
+**Bug 3: Emergency Stop Test Timeout**
+- Added `system_prefix` query parameter to `POST /api/ops/emergency-stop`
+- Allows filtering which agents/schedules are affected
+- Test now uses nonexistent prefix to verify structure without side effects
+- Test runs in 0.25s (was timing out at 2+ minutes)
+- Files: `routers/ops.py:607-682`, `tests/test_ops.py:367-391`
+
+**Tests**: All 253 smoke tests pass, 41/41 ops tests pass
+
+---
+
+### 2026-01-26 16:45:00
+🔬 **Feature: Process Miner Skill for Agent Log Analysis**
+
+**Summary**: Created a new skill that analyzes Claude Code execution logs (JSONL transcripts) to discover repeatable workflow patterns and generate Trinity Process YAML definitions.
+
+**New Files**:
+- `.claude/skills/process-miner.md` - Skill definition with instructions
+- `.claude/skills/scripts/process_miner.py` - Python analysis script (~500 lines)
+
+**Capabilities**:
+- Parse Claude Code JSONL transcripts
+- Discover frequent tool sequences (n-grams)
+- Semantic analysis of tool inputs (files read, modified, commands run)
+- Infer workflow types (read-modify, search-review, delegation, etc.)
+- Generate Trinity Process YAML from discovered patterns
+- Confidence scoring based on pattern frequency
+
+**Usage**:
+```bash
+# List available projects
+python3 .claude/skills/scripts/process_miner.py --list-projects
+
+# Analyze a transcript
+python3 .claude/skills/scripts/process_miner.py --transcript PATH
+
+# Save outputs
+python3 .claude/skills/scripts/process_miner.py --transcript PATH --output DIR
+```
+
+**Background**: Inspired by process mining concepts (BPMN + pm4py) but applied to AI agent reasoning traces instead of human business processes.
+
+---
+
+### 2026-01-26 05:00:00
+🎨 **UX: Enter Key Submits Tasks in Tasks Tab**
+
+**Summary**: Added Enter key shortcut to submit tasks in the Tasks tab for faster workflow.
+
+**Changes**:
+- `TasksPanel.vue`: Added `@keydown.enter.exact.prevent` to textarea
+- Enter now submits the task (no modifier keys needed)
+- Shift+Enter inserts a newline (for multi-line tasks)
+- Cmd/Ctrl+Enter also works (kept for consistency)
+- Updated placeholder text to hint at keyboard shortcuts
+
+**Files Changed**:
+- `src/frontend/src/components/TasksPanel.vue` - lines 53-60
+
+---
+
+### 2026-01-26 04:30:00
+📚 **Docs: Expanded Platform Skills Best Practices in Agent Guide**
+
+**Summary**: Updated TRINITY_COMPATIBLE_AGENT_GUIDE.md with comprehensive guidance on writing effective skills, making it the go-to reference for skill development.
+
+**Additions to Platform Skills Section**:
+- **SKILL.md format**: Complete example with frontmatter and markdown instructions
+- **Frontmatter fields**: `name`, `description`, `allowed-tools` with explanations
+- **Description best practices**: Good vs bad examples, what to include
+- **Tool restrictions**: Using `allowed-tools` for read-only or security-sensitive skills
+- **Multi-file patterns**: Progressive disclosure with supporting files and scripts
+- **Agent perspective**: How injected skills appear in ~/.claude/skills/ and CLAUDE.md
+- **Comparison table**: Skills vs Slash Commands vs CLAUDE.md - when to use each
+
+**Key Guidance**:
+- Skills are the **recommended way** to encode reusable organizational knowledge
+- Skills are **model-invoked** (Claude decides when to apply them based on description)
+- Description field is critical - Claude uses it to match skills to tasks
+
+**Files Changed**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Platform Skills section expanded (Section 11)
+
+---
+
+### 2026-01-26 03:00:00
+🎨 **UX: Agent Start/Stop Toggle Control**
+
+**Summary**: Replaced separate Start/Stop buttons with a unified toggle switch across all agent-displaying pages for consistent UX.
+
+**Changes**:
+- Created `RunningStateToggle.vue` - Reusable toggle component with:
+  - Three size variants (sm/md/lg)
+  - Loading spinner during state change
+  - Dark mode support
+  - Accessibility (ARIA attributes, keyboard navigation)
+  - Green for Running, gray for Stopped
+
+- Updated pages to use toggle:
+  - `AgentHeader.vue` - Detail page header (size: lg)
+  - `Agents.vue` - Agents list page (size: md)
+  - `AgentNode.vue` - Dashboard network view (size: sm, with nodrag)
+
+- Added store methods:
+  - `agents.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` state
+  - `network.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` ref
+
+**User Impact**:
+- Toggle clearly shows current state (Running/Stopped) vs old buttons that showed action
+- Dashboard users can now start/stop agents without navigating to detail page
+- Consistent visual pattern across all pages
+
+**Requirement**: docs/requirements/AGENT_START_STOP_TOGGLE.md
+
+---
+
+### 2026-01-26 01:45:00
+📝 **Docs: Updated skill injection feature flows for CLAUDE.md update step**
+
+**Summary**: Updated feature flow documentation to reflect the new CLAUDE.md "Platform Skills" section update that occurs during skill injection, enabling agents to answer "what skills do you have?"
+
+**Feature Flows Updated**:
+- `docs/memory/feature-flows/skills-on-agent-start.md`:
+  - Added `_update_claude_md_skills_section()` method documentation (lines 376-435)
+  - Added `AgentClient.read_file()` method documentation (lines 470-506)
+  - Updated flow diagram to show CLAUDE.md update step
+  - Updated "Result in Agent Container" section with two-mechanism explanation
+  - Added Files Download Endpoint documentation (agent_server lines 112-153)
+
+- `docs/feature-flows/skill-injection.md`:
+  - Added CLAUDE.md Skills Section Update section with code and example
+  - Updated Business Logic to include step 5 (CLAUDE.md update)
+  - Updated AgentClient Methods table with read_file() and write_file() line numbers
+  - Updated Agent Server File Endpoints table with both endpoints
+  - Updated Data Flow Diagram to show CLAUDE.md read/write operations
+
+- `docs/memory/feature-flows.md`:
+  - Updated Skill Injection entry with new line numbers and CLAUDE.md mention
+  - Updated Skills on Agent Start entry with _update_claude_md_skills_section reference
+
+**Line Numbers Verified**:
+- `skill_service.py:300-374` - inject_skills()
+- `skill_service.py:376-435` - _update_claude_md_skills_section()
+- `agent_client.py:470-506` - read_file()
+- `agent_client.py:508-547` - write_file()
+- `agent_server/routers/files.py:112-153` - GET /api/files/download
+- `agent_server/routers/files.py:314-371` - PUT /api/files
+
+---
+
+### 2026-01-26 00:30:00
+🎯 **Feature: Skills Management System Implementation**
+
+**Summary**: Implemented the full Skills Management System allowing agents to be assigned reusable skills from a GitHub-hosted library.
+
+**Backend Changes**:
+- `src/backend/db/skills.py` - New database operations for agent_skills table
+- `src/backend/db_models.py` - Added AgentSkill, SkillInfo, AgentSkillsUpdate, SkillsLibraryStatus models
+- `src/backend/database.py` - Added agent_skills table, indexes, and delegation methods
+- `src/backend/services/skill_service.py` - New service for git sync, skill listing, and injection
+- `src/backend/services/settings_service.py` - Added skills_library_url/branch settings
+- `src/backend/services/agent_service/lifecycle.py` - Added inject_assigned_skills on agent start
+- `src/backend/routers/skills.py` - New API router for skills endpoints
+- `src/backend/routers/agents.py` - Added skill cleanup on agent delete
+- `src/backend/main.py` - Registered skills router
+
+**Frontend Changes**:
+- `src/frontend/src/components/SkillsPanel.vue` - New component for agent skills tab
+- `src/frontend/src/views/Settings.vue` - Added Skills Library configuration section
+- `src/frontend/src/views/AgentDetail.vue` - Added Skills tab
+
+**MCP Tools** (7 new tools):
+- `list_skills` - List available skills from library
+- `get_skill` - Get skill details and content
+- `get_skills_library_status` - Get library sync status
+- `assign_skill_to_agent` - Assign skill to agent
+- `set_agent_skills` - Bulk update agent skills
+- `sync_agent_skills` - Inject skills to running agent
+- `get_agent_skills` - Get skills assigned to agent
+
+**API Endpoints**:
+- `GET /api/skills/library` - List available skills
+- `GET /api/skills/library/{name}` - Get skill content
+- `GET /api/skills/library/status` - Library status
+- `POST /api/skills/library/sync` - Sync from GitHub (admin)
+- `GET /api/agents/{name}/skills` - Agent's assigned skills
+- `PUT /api/agents/{name}/skills` - Bulk update assignments
+- `POST /api/agents/{name}/skills/{skill}` - Assign single skill
+- `DELETE /api/agents/{name}/skills/{skill}` - Unassign skill
+- `POST /api/agents/{name}/skills/inject` - Inject to running agent
+
+---
+
+### 2026-01-25 23:15:00
+📝 **Requirements: Simplified Skills Management Architecture**
+
+**Summary**: Redesigned skills management to use GitHub as the single source of truth, eliminating Docker volumes, symlinks, and complex infrastructure.
+
+**Key Changes**:
+- GitHub repository replaces Docker volume as source of truth
+- Simple copy injection replaces symlinks
+- Database stores assignments only (no skill metadata)
+- Git handles versioning (no custom version control)
+- MCP tools reduced from 10 to 4 essential ones
+- Removed System Agent curator role (use GitHub PRs instead)
+
+**New Architecture**:
+```
+GitHub Repo → git clone/pull → /data/skills-library/ → copy → agent ~/.claude/skills/
+```
+
+**Benefits**:
+- Simpler implementation (no Docker volume management)
+- Familiar workflow (edit skills via GitHub PRs)
+- Auto-update via git pull
+- Portable across Trinity instances
+
+**Files Updated**:
+- `docs/requirements/SKILLS_MANAGEMENT.md` - Complete rewrite
+- `docs/memory/requirements.md` - Section 21 updated
+
+---
+
+### 2026-01-25 22:30:00
+📚 **Docs: Trinity Compatible Agent Guide - Skills Management**
+
+**Summary**: Updated TRINITY_COMPATIBLE_AGENT_GUIDE.md to document the new Platform Skills system.
+
+**Changes**:
+- Added "Platform Skills" section (Section 11) documenting centralized skills management
+- Updated Table of Contents with new section
+- Updated directory structure to show `skills-library/` mount point
+- Clarified `.claude/skills/` in templates are seeded to platform library
+- Updated template.yaml schema with skills seeding note
+- Added revision history entry
+
+**Key Points for Agent Developers**:
+- Skills are managed at platform level, not in agent templates
+- Agents receive skills via symlinks from `~/.claude/skills/<name>`
+- Platform Skills Library mounted read-only at `~/.claude/skills-library/`
+- Three skill types: policy (always active), procedure (executable), methodology (guidance)
+
+---
+
+### 2026-01-25 16:12:00
+🔧 **Fix: Skill Injection to Agent Containers**
+
+**Summary**: Fixed skill injection system to successfully write skill files to agent containers.
+
+**Issues Fixed**:
+1. `AgentClient` missing `put` method - Added `put()` method for HTTP PUT requests
+2. Agent server not creating parent directories - Added `mkdir -p` before file writes in `files.py`
+3. `.claude/skills` directory permissions - Pre-created directory in Dockerfile with correct ownership
+
+**Files Changed**:
+- `src/backend/services/agent_client.py` - Added `put()` method (line 153)
+- `docker/base-image/agent_server/routers/files.py` - Added `parent.mkdir(parents=True, exist_ok=True)` before writes
+- `docker/base-image/Dockerfile` - Added `/home/developer/.claude/skills` to mkdir command
+
+**Testing**:
+- Created new agent `skill-test-2` with updated base image
+- Assigned `verification` skill via UI
+- Clicked "Sync to Agent" - successfully synced 1 skill
+- Verified `/home/developer/.claude/skills/verification/SKILL.md` exists in container
+
+**Note**: Existing agents need container recreation to get the updated base image.
+
+---
+
+### 2026-01-25 21:15:00
+📚 **Docs: Update Architecture Diagrams**
+
+**Summary**: Refreshed all 9 diagram documentation files with verified line numbers and corrected MCP tool counts.
+
+**Updates**:
+- `01-system-overview.md` - Updated MCP tool count from 21 to 29
+- `02-service-architecture.md` - Updated tool count to 29, added System Management (4 tools) category
+- `03-agent-container.md` - Fixed line number references (32-50, 468-500)
+- `05-authentication.md` - Fixed permission endpoints line reference (642-681)
+- `06-multi-agent-systems.md` - Fixed permissions router line reference
+- `09-agent-lifecycle-states.md` - Fixed security constants and crud.py line numbers
+
+**MCP Tool Inventory** (29 total):
+- Agent Management: 13 tools
+- Agent Interaction: 3 tools
+- System Management: 4 tools
+- Skills Management: 8 tools
+- Documentation: 1 tool
+
+---
+
+### 2026-01-25 18:30:00
+🔧 **Enhancement: Skills Shared Volume Architecture**
+
+**Summary**: Refactored skills management to use a shared Docker volume with symlinks instead of direct file injection. Skills are now stored centrally and mounted read-only into agents.
+
+**Architecture Changes**:
+- `docker-compose.yml` - Added `trinity-skills-library` volume, mounted at `/skills-library` in backend and `/home/developer/.claude/skills-library` in agents
+- `src/backend/services/skill_service.py` - Rewritten to use volume-based storage with symlinks
+- `src/backend/services/agent_service/crud.py` - Mount skills library volume on container creation
+- `src/backend/services/agent_service/lifecycle.py` - Mount skills library volume on container recreation
+- `src/backend/main.py` - Call `seed_skills_library()` on startup to seed from `.claude/skills/`
+
+**Key Features**:
+- Skills stored in `trinity-skills-library` Docker volume
+- Regular agents get read-only mount at `~/.claude/skills-library`
+- System agent (`trinity-system`) gets read-write access for curation
+- Skill assignment creates symlinks from `~/.claude/skills/<name>` to library
+- Auto-seeding from `.claude/skills/` directory on first run
+- Built-in skills (verification, tdd, etc.) marked as defaults
+
+**Benefits**:
+- Instant propagation of skill updates (no restart needed)
+- Centralized skill storage with database metadata
+- Audit trail for skill assignments
+- Future support for git-based versioning by System Agent
+
+---
+
+### 2026-01-25 17:00:00
+✨ **Feature: Skills Management System Implementation**
+
+**Summary**: Implemented centralized skill management for Trinity agents - platform-level skill library with per-agent assignment and container injection.
+
+**Backend Changes**:
+- `src/backend/database.py` - Added skills and agent_skills tables with indexes
+- `src/backend/db/skills.py` - SkillOperations class (already existed, now integrated)
+- `src/backend/routers/skills.py` - CRUD endpoints for skills (already existed, now registered)
+- `src/backend/services/skill_service.py` - Injection logic (already existed)
+- `src/backend/services/agent_service/lifecycle.py` - Added skill injection on agent start
+- `src/backend/main.py` - Registered skills_router
+
+**Frontend Changes**:
+- `src/frontend/src/views/Skills.vue` - Admin skills management page
+- `src/frontend/src/components/SkillsPanel.vue` - Agent skills tab component
+- `src/frontend/src/components/NavBar.vue` - Added Skills link (admin only)
+- `src/frontend/src/views/AgentDetail.vue` - Added Skills tab
+
+**MCP Server Changes**:
+- `src/mcp-server/src/types.ts` - Added Skill types
+- `src/mcp-server/src/client.ts` - Added skill methods to TrinityClient
+- `src/mcp-server/src/tools/skills.ts` - Created 8 MCP tools
+- `src/mcp-server/src/server.ts` - Registered skill tools
+
+**MCP Tools Added** (8 total):
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all platform skills |
+| `get_skill` | Get skill with full content |
+| `create_skill` | Create skill (system scope) |
+| `delete_skill` | Delete skill (system scope) |
+| `assign_skill_to_agent` | Assign skill to agent |
+| `remove_skill_from_agent` | Remove skill from agent |
+| `sync_agent_skills` | Re-inject skills to running container |
+| `execute_procedure` | Execute procedure skill on agent |
+
+**Skill Types**:
+- `policy` - Always active rules (e.g., `policy-data-retention`)
+- `procedure` - Step-by-step instructions (e.g., `procedure-incident-response`)
+- `methodology` - Approach guidance (e.g., `systematic-debugging`)
+
+---
+
+### 2026-01-25 15:30:00
+📝 **Docs: Skills as Unified Organizational Knowledge**
+
+**Summary**: Extended skills requirements with philosophical framework - skills as unified abstraction for policies, procedures, and methodologies.
+
+**Files Updated**:
+- `docs/requirements/SKILLS_MANAGEMENT.md`
+  - Added Philosophy section explaining unified model
+  - Added skill types: policy-*, procedure-*, methodology
+  - Added execution modes: passive, on-demand, scheduled
+  - Added Process Engine integration section
+  - Added `execute_procedure` MCP tool
+  - Added Phase 5: Process Engine Integration
+- `docs/memory/requirements.md`
+  - Updated Section 21 with skill types and philosophy
+  - Added 21.2 Skill Types, 21.6 Process Engine Integration
+
+**Key Concepts**:
+| Type | Naming | Behavior |
+|------|--------|----------|
+| Policy | `policy-*` | Always active, agents follow implicitly |
+| Procedure | `procedure-*` | Executable, can be scheduled/triggered |
+| Methodology | (no prefix) | Guidance, loaded when relevant |
+
+**Process Engine Connection**: Procedures become schedulable tasks via existing Process Engine infrastructure.
+
+---
+
+### 2026-01-25 14:00:00
+📝 **Docs: Skills Management System Requirements**
+
+**Summary**: Created detailed requirements for centralized skill management in Trinity.
+
+**File Created**:
+- `docs/requirements/SKILLS_MANAGEMENT.md` - Full feature specification
+
+**Key Features**:
+- Platform-level skill library (admin manages reusable skills)
+- Per-agent skill assignment via UI
+- System agent MCP tools for programmatic control
+- Automatic injection into agent containers at start
+- 5 phases: Core → UI → MCP Tools → System Agent → Process Integration
+
+**Database**: 2 new tables (`skills`, `agent_skills`)
+**API**: 7 new endpoints for skills CRUD and assignment
+**MCP Tools**: 7 new tools for system agent skill management
+
+---
+
+### 2026-01-23 17:30:00
+✨ **New: Development Methodology Skills (Inspired by Superpowers)**
+
+**Summary**: Added 4 methodology skill guides to strengthen development discipline. Inspired by obra/superpowers framework (34k stars).
+
+**Files Created**:
+- `.claude/skills/verification/SKILL.md` - Evidence-based completion claims
+- `.claude/skills/systematic-debugging/SKILL.md` - Root cause investigation before fixes
+- `.claude/skills/tdd/SKILL.md` - Test-driven development cycle
+- `.claude/skills/code-review/SKILL.md` - Technical rigor when receiving feedback
+
+**Files Updated**:
+- `CLAUDE.md` - Added "Development Skills" section (#6 in Rules of Engagement)
+- `docs/DEVELOPMENT_WORKFLOW.md` - Added "Development Skills" section with skill reference table
+- `dev-methodology-template/README.md` - Added skills to "What's Included" and directory structure
+- `dev-methodology-template/.claude/skills/` - Copied all 4 skills to template
+
+**Key Principles Adopted**:
+1. **Verification**: No "done" without evidence (run command, show output)
+2. **Debugging**: Find root cause BEFORE attempting fixes
+3. **TDD**: Write failing test first, then minimal code to pass
+4. **Code Review**: Verify feedback technically, not socially
+
+**Source**: Analysis of https://github.com/obra/superpowers
+
+---
+
+### 2026-01-23 16:00:00
+📝 **Docs: Updated Testing Agents Feature Flow**
+
+**Summary**: Major update to testing-agents.md feature flow with accurate test counts and comprehensive test suite structure.
+
+**File Modified**:
+- `docs/memory/feature-flows/testing-agents.md`
+  - Updated test count from 474+ to 1460+ tests across 84 files
+  - Added process_engine tests (737 tests in 41 files: 32 unit + 9 integration)
+  - Added scheduler_tests (71 tests in 6 files)
+  - Updated config.py line numbers (GITHUB_TEMPLATES: line 91, ALL_GITHUB_TEMPLATES: line 164)
+  - Added detailed test file listing with test counts per file
+  - Added pytest configuration section with pyproject.toml contents
+  - Added Test Categories Summary table
+  - Added comprehensive test directory tree structure
+  - Updated Key Source Files table with line counts
+  - Added revision history entry for 2026-01-23
+
+**Test Suite Statistics (2026-01-23)**:
+- Backend API tests: 34 files, 638 tests
+- Agent Server tests: 3 files, 14 tests
+- Scheduler tests: 6 files, 71 tests
+- Process Engine Unit: 32 files, 692 tests
+- Process Engine Integration: 9 files, 45 tests
+- **Total**: 84 files, 1460+ tests
+
+**Key Implementation Files Verified**:
+- `/Users/eugene/Dropbox/trinity/trinity/tests/conftest.py` (368 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/pyproject.toml` (lines 1-16 pytest config)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/config.py` (165 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/templates.py` (220 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/template_service.py` (381 lines)
+- `/Users/eugene/Dropbox/trinity/trinity/docker/base-image/agent_server/main.py` (88 lines)
+
+---
+
+### 2026-01-23 15:00:00
+📝 **Docs: Updated Agent Logs & Telemetry Feature Flow**
+
+**Summary**: Verified and updated agent logs/telemetry feature flow with correct line numbers, composable documentation, and discovered UI/code mismatch.
+
+**File Modified**:
+- `docs/memory/feature-flows/agent-logs-telemetry.md`
+  - Updated logs endpoint line numbers (367-383, was 404-430)
+  - Updated stats endpoint line numbers (386-393, was 433-440)
+  - Added AgentHeader.vue stats display documentation (lines 172-235)
+  - Added composable file locations and code snippets
+  - Documented useAgentStats.js (lines 4, 56-60) and useAgentLogs.js (lines 35-40, 43-52)
+  - Added LogsPanel.vue component details (lines 6, 8, 12-17, 19, 25-30)
+  - Removed audit logging note (no longer present in logs endpoint)
+  - Added Known Issues section for UI/code mismatch
+  - Added revision history entry for 2026-01-23
+
+**Known Issue Discovered**:
+- `LogsPanel.vue:20` displays "Auto-refresh (10s)"
+- `useAgentLogs.js:45` uses 15000ms (15 seconds) interval
+- Minor UX inconsistency, no functional impact
+
+**Key Implementation Files**:
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py:367-393`
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/stats.py:123-184`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/LogsPanel.vue`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentHeader.vue:172-235`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/composables/useAgentStats.js`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/composables/useAgentLogs.js`
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js:183-189,276-282`
+
+---
+
+### 2026-01-23 14:00:00
+📝 **Docs: Updated Vector Logging Feature Flow**
+
+**Summary**: Refreshed Vector logging feature flow documentation with correct line numbers, date-stamped file patterns, and API response examples.
+
+**Files Modified**:
+- `docs/memory/feature-flows/vector-logging.md`
+  - Updated vector.yaml line number references (sources: 18-23, transforms: 26-74, sinks: 76-96)
+  - Updated docker-compose.yml line references (vector: 184-205, volumes: 234-235, backend mounts: 50-51)
+  - Changed all filename references from static (`platform.json`) to date-stamped (`platform-YYYY-MM-DD.json`)
+  - Added architecture diagram showing LogArchiveService and archive flow
+  - Added API response examples for `/api/logs/stats` and `/api/logs/health`
+  - Added archive file structure documentation with metadata sidecar format
+  - Added archival troubleshooting section
+  - Added storage backend documentation (`LocalArchiveStorage`)
+  - Updated test steps for date-stamped files and archival verification
+  - Added revision history entry for 2026-01-23
+
+- `docs/QUERYING_LOGS.md`
+  - Updated all query examples to use date-stamped file patterns
+  - Added historical logs query examples
+  - Added log archival API documentation section
+  - Updated timestamps to 2026-01-23
+
+**Key Implementation Files Referenced**:
+- `/Users/eugene/Dropbox/trinity/trinity/config/vector.yaml` - Vector config with daily rotation
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/log_archive_service.py` - APScheduler archival
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/archive_storage.py` - LocalArchiveStorage interface
+- `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/logs.py` - Admin API endpoints
+
+---
+
+### 2026-01-23 12:30:00
+📝 **Docs: Updated Web Terminal Feature Flow**
+
+**Summary**: Refreshed web terminal feature flow documentation with current line numbers and new features.
+
+**File Modified**:
+- `docs/memory/feature-flows/web-terminal.md`
+  - Updated all line number references to match current codebase
+  - Added TerminalPanelContent.vue wrapper component documentation
+  - Added model parameter support for WebSocket endpoint
+  - Added Gemini CLI runtime mode documentation
+  - Added WebGL/Canvas renderer with GPU acceleration details
+  - Updated xterm.js dependencies to current versions
+  - Added access control via `db.can_user_access_agent()`
+  - Clarified two implementations: regular agents vs system agent
+  - Added revision history entry for 2026-01-23
+
+**Key Line Numbers Updated**:
+- AgentDetail.vue: 93-121 (terminal tab)
+- AgentTerminal.vue: 165-505 (full component)
+- terminal.py: 20-320 (TerminalSessionManager)
+- agents.py: 1173-1187 (regular agent endpoint)
+- system_agent.py: 262-528 (system agent endpoint)
+
+---
+
+### 2026-01-23 10:52:59
+✨ **New: PR Validation Command (/validate-pr)**
+
+**Summary**: Added slash command for validating pull requests against Trinity development methodology.
+
+**File Created**:
+- `.claude/commands/validate-pr.md`
+
+**Features**:
+- 7-step validation process covering all methodology requirements
+- Documentation checks: changelog, roadmap, requirements, architecture, feature flows
+- Feature flow format validation (checks all required sections)
+- Security validation (API keys, emails, IPs, secrets, credentials)
+- Code quality assessment
+- Requirements traceability check
+- Generates structured report with APPROVE/REQUEST CHANGES/NEEDS DISCUSSION recommendation
+- Includes comment template for requesting changes
+
+**Usage**: `/validate-pr <pr-number-or-url>`
+
+---
+
+### 2026-01-23 11:15:00
+📝 **Docs: Updated Agent Shared Folders Feature Flow for Template Extraction Fix**
+
+**Summary**: Updated feature flow documentation to reflect the SF-H1 bug fix enabling shared folder config extraction from templates.
+
+**File Modified**:
+- `docs/memory/feature-flows/agent-shared-folders.md`
+  - Added revision note in header for 2026-01-23 template extraction fix
+  - Rewrote "Agent Creation Flow" section with three-phase structure:
+    - Phase 1: Template Extraction (lines 92, 173-179)
+    - Phase 2: DB Upsert Before Container Creation (lines 395-404)
+    - Phase 3: Volume Mounting (lines 406-450)
+  - Added code snippets showing template extraction and DB upsert
+  - Updated line number references throughout (was 299-344, now 406-450)
+
+---
+
+### 2026-01-23 11:00:00
+📝 **Docs: Updated Process Engine Feature Flows for Template Variable Support**
+
+**Summary**: Updated feature flow documentation to reflect the PE-H1 bug fix enabling template variable substitution in human approval steps.
+
+**Files Modified**:
+- `docs/memory/feature-flows/process-engine/human-approval.md`
+  - Added template variable substitution to Key Capabilities
+  - Added "With Template Variables (Dynamic Content)" YAML example section
+  - Added Supported Template Variables table
+  - Added Template Evaluation Detail section with code snippets (lines 106-126, 186-198)
+  - Updated Document History
+
+- `docs/memory/feature-flows/process-engine/process-execution.md`
+  - Added "Template Variable Substitution" section after Handler Registry
+  - Added Supported Variables table
+  - Added Handler Template Support table (which fields each handler evaluates)
+  - Added YAML usage example
+  - Updated Document History
+
+- `docs/memory/feature-flows/process-engine/README.md`
+  - Added Template Variables section documenting expression evaluator patterns
+  - Updated Document History
+
+- `docs/memory/feature-flows.md`
+  - Added 2026-01-23 update note for Process Engine Template Variable Fix
+
+---
+
+### 2026-01-23 10:30:00
+🐛 **Fixed: Shared Folders Template Config Not Extracted (SF-H1)**
+
+**Summary**: Fixed bug where agents created from templates with `shared_folders: expose: true` didn't get `/shared-out/` volume mounted because template extraction didn't read the `shared_folders` config.
+
+**Root Cause**: Template extraction in `crud.py:153-172` read `type`, `resources`, `tools`, `runtime` but NOT `shared_folders`. The shared folder mounting logic (lines 393-438) checked `db.get_shared_folder_config()` which was never populated from templates.
+
+**Fix Applied**:
+1. Added `template_shared_folders = None` variable to track template config (line 92)
+2. Added extraction of `shared_folders` from template.yaml in local template processing block (lines 173-179):
+   ```python
+   shared_folders_config = template_data.get("shared_folders", {})
+   if shared_folders_config:
+       template_shared_folders = {
+           "expose": shared_folders_config.get("expose", False),
+           "consume": shared_folders_config.get("consume", False)
+       }
+   ```
+3. Added DB upsert before container creation (lines 394-404) so volumes mount correctly:
+   ```python
+   if template_shared_folders:
+       db.upsert_shared_folder_config(
+           agent_name=config.name,
+           expose_enabled=template_shared_folders.get("expose", False),
+           consume_enabled=template_shared_folders.get("consume", False)
+       )
+   ```
+
+**Files Modified**:
+- `src/backend/services/agent_service/crud.py` (3 locations)
+
+**Impact**: 13 templates with `shared_folders` config now work correctly:
+- `dd-lead`, `dd-legal`, `dd-captable`, `dd-compliance`, `dd-traction`, `dd-bizmodel`
+- `dd-tech`, `dd-competitor`, `dd-market`, `dd-founder`, `dd-intake`
+- `demo-researcher`, `demo-analyst`
+
+**Verified**: Python syntax check passed.
+
+---
+
+### 2026-01-23 09:15:00
+🐛 **Fixed: Process Engine Template Variables Not Substituted (PE-H1)**
+
+**Summary**: Fixed bug where `{{input.*}}` and `{{steps.*}}` template variables in human approval step `title` and `description` fields were not being substituted.
+
+**Root Cause**: `HumanApprovalHandler.execute()` used raw `config.title` and `config.description` values without calling `ExpressionEvaluator.evaluate()`.
+
+**Fix Applied**:
+1. Added import for `ExpressionEvaluator` and `EvaluationContext` from `...services`
+2. Added `expression_evaluator` instance to `HumanApprovalHandler.__init__()`
+3. Added `_evaluate_template()` helper method (lines 106-126) that:
+   - Creates `EvaluationContext` from `context.input_data`, `context.step_outputs`, execution ID, and process name
+   - Calls `expression_evaluator.evaluate()` on the template string
+4. Updated `execute()` to evaluate `title` and `description` before creating `ApprovalRequest` (lines 186-188)
+5. Updated wait result output to use evaluated title (line 211)
+
+**Files Modified**:
+- `src/backend/services/process_engine/engine/handlers/human_approval.py`
+- `tests/process_engine/unit/test_approval_handler.py` (added 4 new tests for template substitution)
+
+**Test Cases Added**:
+- `test_execute_substitutes_title_variables` - Verifies `{{input.company_name}}` → "TestCo AI"
+- `test_execute_substitutes_description_variables` - Verifies `{{steps.intake.output.response}}` substitution
+- `test_execute_returns_evaluated_title_in_output` - Verifies wait result has evaluated title
+- `test_execute_handles_missing_variables_gracefully` - Missing vars stay as placeholders
+
+**Verified**: Import successful in running backend container; syntax check passed.
+
+---
+
+### 2026-01-22 12:45:00
+🐛 **Discovered: Two Process Engine / Shared Folders Bugs**
+
+**Summary**: During VC Due Diligence demo testing, discovered two infrastructure bugs preventing proper workflow execution.
+
+**Bug 1: Template Variables Not Substituted (PE-H1)**
+- **Symptom**: `{{input.company_name}}` appears literally instead of "TestCo AI" in human approval titles
+- **Root Cause**: `HumanApprovalHandler.execute()` uses `config.title` and `config.description` directly without calling `ExpressionEvaluator.evaluate()`
+- **Location**: `src/backend/services/process_engine/engine/handlers/human_approval.py:158-165`
+- **Fix**: Create `EvaluationContext` with `context.input_data` and `context.step_outputs`, then call `evaluate()` on title/description before creating `ApprovalRequest`
+- **Impact**: All process definitions using template variables in human approval steps
+
+**Bug 2: Shared Folders Template Config Not Extracted (SF-H1)**
+- **Symptom**: Agents with `shared_folders: expose: true` in template don't get `/shared-out/` mounted
+- **Root Cause**: Template extraction in `crud.py:153-172` reads `type`, `resources`, `tools`, `runtime` but NOT `shared_folders`
+- **Location**: `src/backend/services/agent_service/crud.py:153-172`
+- **Fix**: Add `shared_folders = template_data.get("shared_folders", {})` extraction and call `db.upsert_shared_folder_config()`
+- **Impact**: 13 templates define shared_folders but config never written to DB on standalone creation
+- **Note**: Works in system manifest deployment (calls `configure_folders()` separately) but fails in direct agent creation
+
+**Roadmap Updated**: Both bugs added as HIGH priority
+
+---
+
+### 2026-01-22 12:30:00
+🔧 **VC Due Diligence Demo: Local-Only Mode**
+
+**Summary**: Updated VC DD process to work fully local without external notifications.
+
+**Changes**:
+- Removed `notify-approval` and `send-rejection` notification steps (email)
+- Added `save-approval-report` and `save-rejection-report` agent tasks
+- Final reports saved to `dd-lead`'s `/shared-out/final-report/`
+- Updated agent references to use `vc-due-diligence-dd-*` naming
+- Created new process `vc-dd-local-v2` with fixes
+
+**Files Modified**:
+- `config/process-templates/vc-due-diligence/definition.yaml`
+- `docs/demos/vc-due-diligence/README.md`
+
+**Test Result**: Process executed successfully (16 steps), but revealed template variable and shared folder bugs above.
+
+---
+
+### 2026-01-21 12:15:00
+✅ **Verified: Security Bugs Already Fixed (AL-H1, AL-H2, AL-H3)**
+
+**Summary**: Validated that the HIGH priority security bugs from the audit report have already been fixed.
+
+**Bugs Verified Fixed**:
+
+1. **Missing Auth on Lifecycle Endpoints (AL-H1, AL-H2)**
+   - `start_agent` (line 316), `stop_agent` (line 343), `get_logs` (line 368) all use `AuthorizedAgentByName` dependency
+   - `AuthorizedAgentByName` calls `db.can_user_access_agent()` to verify authorization
+   - Files: `routers/agents.py`, `dependencies.py:228-255`
+
+2. **Container Security Inconsistency (AL-H3)**
+   - Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`
+   - Both container creation paths (`crud.py`) and recreation (`lifecycle.py`) use same constants
+   - Security settings ALWAYS applied: `cap_drop=['ALL']`, `apparmor:docker-default`, `tmpfs noexec,nosuid`
+   - Files: `lifecycle.py:343-368`, `crud.py:31,462-464`
+
+**Roadmap Updated**: Both bugs marked as ✅ Fixed
+
+---
+
+### 2026-01-21 11:45:00
+✅ **Verified: Execution Queue Race Conditions Already Fixed**
+
+**Summary**: Validated that the execution queue race conditions (EQ-H1, EQ-H2, EQ-M1 from audit report) were already fixed on 2026-01-14.
+
+**Fixes Verified**:
+1. **`submit()` race condition** (EQ-H1): Uses atomic `SET NX EX` for slot acquisition - prevents two concurrent requests from acquiring the same execution slot
+2. **`complete()` race condition** (EQ-H2): Uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice
+3. **`get_all_busy_agents()` blocking** (EQ-M1): Uses `SCAN` instead of `KEYS` - avoids blocking Redis on large datasets
+
+**Validation**:
+- Reviewed `src/backend/services/execution_queue.py` (lines 67-84 Lua script, 165-170 atomic submit, 295-308 SCAN)
+- Ran all 20 execution queue tests - **all passed**
+- Feature flow documentation already updated (`docs/memory/feature-flows/execution-queue.md`)
+
+**Roadmap Updated**: Bug marked as ✅ Fixed 2026-01-14
+
+---
+
+### 2026-01-21 09:30:00
+🐛 **Fix: RoleMatrix Shows Correct Executor from Step Agent**
+
+**Problem**: Process Editor's Role Matrix showed "No executor" warnings for all steps, even when agents were properly defined in the YAML configuration.
+
+**Root Cause**: Two separate concepts for agent assignment:
+- `step.agent` - The agent that executes the task (defined in YAML, used at runtime)
+- `step.roles.executor` - EMI pattern role assignment (optional, what RoleMatrix displayed)
+
+RoleMatrix only checked `roles.executor`, ignoring the actual `agent` field.
+
+**Fix**:
+- `ProcessEditor.vue`: Pass `step.agent` to RoleMatrix via `parsedSteps`
+- `RoleMatrix.vue`: Use `step.agent` as default executor for `agent_task` steps when `roles.executor` is not explicitly set
+
+**Files Modified**:
+- `src/frontend/src/views/ProcessEditor.vue`
+- `src/frontend/src/components/process/RoleMatrix.vue`
+
+---
+
+### 2026-01-20 21:15:00
+📚 **Documentation: Audit Trail Architecture Updated for Process Engine**
+
+**Summary**: Updated SEC-001 (Audit Trail Architecture) to acknowledge the Process Engine's existing audit system.
+
+**Changes**:
+- Added "Process Engine Audit (Implemented 2026-01-16)" section documenting:
+  - `AuditService` in `services/process_engine/services/audit.py`
+  - `SqliteAuditRepository` in `services/process_engine/repositories/audit.py`
+  - 18 audit actions covering process lifecycle, execution, approvals, admin
+- Updated "Relationship to Existing Systems" diagram to show 4 data systems:
+  - `audit_log` (NEW) - Platform audit for agents, auth, MCP, credentials
+  - `audit_entries` (PROCESS ENGINE) - Process workflow audit
+  - `agent_activities` - Runtime observability
+  - Vector logs - Container debugging
+- Added "Audit System Boundaries" table with scope, storage, retention
+- Added "Why Two Audit Systems?" rationale (separation of concerns, DB isolation, query optimization)
+
+**Decision**: Platform audit and Process audit remain separate for clear boundaries. Future unified query API can aggregate both for compliance reporting.
+
+**File Modified**: `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md`
+
+---
+
+### 2026-01-20 20:55:00
+📚 **Documentation: Demo Fleet Command Updated**
+
+**Summary**: Comprehensive update to `/create-demo-agent-fleet` command with complete setup instructions.
+
+**New Sections Added**:
+- **Step-by-step setup guide** for Acme Consulting fleet (6 steps)
+- **Process template deployment** - How to create processes from bundled templates
+- **Schedule configuration** - API calls for setting up recurring automation
+- **Autonomy mode** - Enabling automatic schedule execution
+- **Building demo history** - Running initial tasks to populate timeline
+- **Verification checklist** - Commands to verify everything works
+
+**API Reference**:
+- Quick reference table for all relevant endpoints
+- Token acquisition and authentication flow
+- Both MCP and curl/API examples throughout
+
+**Demo Checklist**:
+- 7-item verification checklist for complete setup
+
+**File Modified**: `.claude/commands/create-demo-agent-fleet.md`
+
+---
+
+### 2026-01-20 10:30:00
+📚 **Documentation: README.md Updated for Recent Features**
+
+**Summary**: Updated README.md to document major features added since Process Engine completion.
+
+**New Sections Added**:
+- **Process Engine** - Full section with YAML example, step types table, AI assistant documentation
+- **Process Engine Features** in Features list - 7 bullet points covering workflows, step types, approvals, templates
+
+**Features Documented**:
+- Dashboard Timeline View (execution visualization with color coding)
+- Host Telemetry (real-time CPU/memory/disk monitoring)
+- Agent Dashboard (custom dashboards via `dashboard.yaml`)
+- Live Execution Streaming (real-time log streaming)
+- Execution Termination (stop running tasks)
+- File Manager (renamed from File Browser, with preview capabilities)
+
+**Project Structure Updates**:
+- Added `services/process_engine/` under backend
+- Added `config/process-templates/` and `config/process-docs/`
+
+**Documentation Links**:
+- Added Process Engine Design docs link
+
+**File Modified**: `README.md`
+
+---
+
+### 2026-01-19 18:00:00
+✨ **Feature: Premium Onboarding & Process Creation Chat Assistant**
+
+**Summary**: Complete implementation of premium onboarding experience (20 stories across 5 epics) including an AI-powered chat assistant for creating processes.
+
+**Major Features**:
+
+1. **Process Creation Chat Assistant (E25)**
+   - Embedded chat panel powered by Trinity System Agent
+   - Auto-syncs YAML to editor as assistant types (live preview)
+   - Selection-to-chat: select code in editor → ask questions or request edits
+   - Typing animation with word-by-word reveal
+   - Chat persistence via localStorage
+   - Process status awareness (knows published processes are read-only)
+
+2. **First Process Wizard (E24)**
+   - Step-by-step guided wizard for creating first process
+   - Template selection with previews
+   - Integrated with chat assistant
+
+3. **Contextual Help System (E22)**
+   - YAML Editor help panel with cursor-aware documentation
+   - Execution status explainers with tooltips
+   - Error messages with actionable guidance
+
+4. **Documentation Tab (E21)**
+   - In-app documentation at `/docs`
+   - Getting started guides, pattern docs, reference material
+   - Restart onboarding button
+
+5. **Onboarding Checklist (E20)**
+   - Floating checklist tracking setup progress
+   - Visual celebration when milestones completed
+   - Smart hints based on current page context
+
+**Files Added**:
+- `src/frontend/src/components/ProcessChatAssistant.vue` - Chat assistant UI
+- `src/frontend/src/views/ProcessWizard.vue` - First process wizard
+- `src/frontend/src/components/EditorHelpPanel.vue` - Contextual YAML help
+- `src/frontend/src/components/OnboardingChecklist.vue` - Progress checklist
+- `src/frontend/src/views/DocsView.vue` - Documentation viewer
+- `config/process-docs/` - Documentation content (markdown)
+
+**Files Modified**:
+- `src/frontend/src/views/ProcessEditor.vue` - Integrated chat tab, help panel
+- `src/frontend/src/views/ProcessList.vue` - Enhanced empty state with templates
+- `src/frontend/src/router/index.js` - Added /docs and /processes/wizard routes
+- `config/agent-templates/trinity-system/CLAUDE.md` - Process assistant prompt
+- `src/frontend/src/components/YamlEditor.vue` - Selection change events
+
+**Documentation**:
+- `docs/PROCESS_DRIVEN_PLATFORM/BACKLOG_ONBOARDING.md` - 20 stories, all complete
+
+---
+
 ### 2026-01-18 10:30:00
 📋 **Architecture: Audit Trail System (SEC-001)**
 
@@ -86,6 +1068,16 @@
 - 🩷 MCP (pink) - Tasks triggered via MCP client
 - 🟣 Scheduled (purple) - Cron-scheduled tasks
 - 🩵 Agent-Triggered (cyan) - Agent-to-agent calls
+### 2026-01-19 10:00:00
+🐛 **Fix: Git Sync Sets Upstream on First Push**
+
+**Problem**: Initial push from agent server failed when branch had no upstream, requiring manual `git push -u`.
+
+**Fix**: Set upstream explicitly on normal push using current branch name.
+
+**File Modified**: `docker/base-image/agent_server/routers/git.py`
+
+**Impact**: First-time pushes succeed without manual intervention.
 
 ---
 

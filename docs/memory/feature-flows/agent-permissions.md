@@ -1,6 +1,14 @@
 # Feature: Agent-to-Agent Permissions System
 
-> **Updated**: 2026-01-03 - Added `get_agent_info` MCP tool enforcement. Documented new access control dependencies from `dependencies.py`. Permission endpoints currently use inline checks but can migrate to dependency pattern for consistency.
+> **Updated**: 2026-01-23 - Verified and corrected all line numbers. Frontend refactored to use PermissionsPanel component. Router endpoints moved to lines 641-681. Database operations at lines 1070-1091.
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-01-23 | Verified all line numbers against implementation. Updated router endpoints (641-681), database delegation (1070-1091), frontend component references (PermissionsPanel.vue). |
+| 2026-01-03 | Added `get_agent_info` MCP tool enforcement. Documented access control dependencies from `dependencies.py`. |
+| 2025-12-10 | Initial implementation of Phase 9.10 agent-to-agent permissions. |
 
 ## Overview
 
@@ -9,7 +17,7 @@ Fine-grained permission control for agent-to-agent communication. Allows owners 
 **Requirement**: 9.10 - Agent-to-Agent Collaboration Permissions
 **Phase**: 9.10
 **Implemented**: 2025-12-10
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-01-23
 
 ## User Story
 
@@ -29,13 +37,14 @@ When an agent is created, it automatically receives **bidirectional permissions*
 ## Entry Points
 
 ### User Configuration (UI)
-- **UI**: `src/frontend/src/views/AgentDetail.vue:288-299` - Permissions tab button
-- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:797-893` - Checkbox list UI
+- **Component**: `src/frontend/src/components/PermissionsPanel.vue` - Dedicated permissions panel component
+- **Tab Definition**: `src/frontend/src/views/AgentDetail.vue:428-431` - Tab added for owners
+- **Tab Content**: `src/frontend/src/views/AgentDetail.vue:142-144` - PermissionsPanel integration
 
 ### MCP Tool Enforcement
 - **list_agents**: `src/mcp-server/src/tools/agents.ts:61-74` - Filters visible agents
-- **get_agent_info**: `src/mcp-server/src/tools/agents.ts:119-139` - Access control for template metadata
-- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:29-67` - Blocks unauthorized calls
+- **get_agent_info**: `src/mcp-server/src/tools/agents.ts:119-144` - Access control for template metadata
+- **chat_with_agent**: `src/mcp-server/src/tools/chat.ts:29-100` - Blocks unauthorized calls
 
 ### Backend API
 - `GET /api/agents/{name}/permissions` - List permitted agents
@@ -49,26 +58,31 @@ When an agent is created, it automatically receives **bidirectional permissions*
 
 ### Components
 
-#### AgentDetail.vue:288-299 - Permissions Tab Button
-```vue
-<button
-  v-if="agent.can_share"
-  @click="activeTab = 'permissions'"
-  :class="[...]"
->
-  Permissions
-</button>
-```
+#### PermissionsPanel.vue - Dedicated Component
+**File**: `src/frontend/src/components/PermissionsPanel.vue` (148 lines)
 
-#### AgentDetail.vue:797-893 - Permissions Tab Content
+The permissions UI has been refactored into a dedicated component:
 - Checkbox list of all other accessible agents
-- "Allow All" / "Allow None" bulk actions
-- Save button with dirty state tracking
-- Success/error message display
+- "Allow All" / "Allow None" bulk actions (lines 18-37)
+- Save button with dirty state tracking (lines 65-86)
+- Success/error message display (lines 80-85)
+
+#### AgentDetail.vue Integration
+**File**: `src/frontend/src/views/AgentDetail.vue`
+
+- Tab computed: lines 428-431 (added when `agent.can_share`)
+- Tab content: lines 142-144 (renders PermissionsPanel)
+
+```vue
+<!-- AgentDetail.vue:142-144 -->
+<div v-if="activeTab === 'permissions' && agent.can_share">
+  <PermissionsPanel :agent-name="agent.name" :agent-status="agent.status" />
+</div>
+```
 
 ### State Management
 
-#### `src/frontend/src/stores/agents.js:275-290`
+#### `src/frontend/src/stores/agents.js:335-350`
 
 ```javascript
 // Get permissions for an agent
@@ -140,7 +154,7 @@ The permissions feature uses a **thin router + service layer** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Router | `src/backend/routers/agents.py:598-638` | Endpoint definitions |
+| Router | `src/backend/routers/agents.py:641-681` | Endpoint definitions |
 | Service | `src/backend/services/agent_service/permissions.py` (169 lines) | Permission business logic |
 | Dependencies | `src/backend/dependencies.py:158-267` | Access control dependencies |
 
@@ -191,11 +205,11 @@ async def get_agent_permissions(
 
 ### Endpoint: GET /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:598-605`
+**Router**: `src/backend/routers/agents.py:641-648`
 **Service**: `src/backend/services/agent_service/permissions.py:18-66`
 
 ```python
-# Router (agents.py:598-605)
+# Router (agents.py:641-648)
 @router.get("/{agent_name}/permissions")
 async def get_agent_permissions(
     agent_name: str,
@@ -239,7 +253,7 @@ async def get_agent_permissions_logic(agent_name: str, current_user: User) -> di
 
 ### Endpoint: PUT /api/agents/{name}/permissions
 
-**Router**: `src/backend/routers/agents.py:608-616`
+**Router**: `src/backend/routers/agents.py:651-659`
 **Service**: `src/backend/services/agent_service/permissions.py:69-106`
 
 ```python
@@ -270,14 +284,14 @@ async def set_agent_permissions_logic(
 
 ### Endpoint: POST /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:619-627`
+**Router**: `src/backend/routers/agents.py:662-670`
 **Service**: `src/backend/services/agent_service/permissions.py:109-141`
 
 Adds a single permission. Returns `{status: "added"}` or `{status: "already_exists"}`.
 
 ### Endpoint: DELETE /api/agents/{name}/permissions/{target}
 
-**Router**: `src/backend/routers/agents.py:630-638`
+**Router**: `src/backend/routers/agents.py:673-681`
 **Service**: `src/backend/services/agent_service/permissions.py:144-168`
 
 Removes a single permission. Returns `{status: "removed"}` or `{status: "not_found"}`.
@@ -288,7 +302,7 @@ Removes a single permission. Returns `{status: "removed"}` or `{status: "not_fou
 
 ### Database Table
 
-**File**: `src/backend/database.py:444-453`
+**File**: `src/backend/database.py:501-509`
 
 ```sql
 CREATE TABLE IF NOT EXISTS agent_permissions (
@@ -301,7 +315,7 @@ CREATE TABLE IF NOT EXISTS agent_permissions (
 )
 ```
 
-**Indexes** (created in `src/backend/database.py` table initialization):
+**Indexes** (`src/backend/database.py:637-638`):
 ```sql
 CREATE INDEX IF NOT EXISTS idx_permissions_source ON agent_permissions(source_agent)
 CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_agent)
@@ -326,7 +340,7 @@ CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_ag
 
 ### Database Manager Delegation
 
-**File**: `src/backend/database.py:964-986`
+**File**: `src/backend/database.py:1070-1091`
 
 ```python
 def get_permitted_agents(self, source_agent: str):
@@ -351,9 +365,7 @@ def grant_default_permissions(self, agent_name: str, owner_username: str):
 
 ### TrinityClient Methods
 
-**File**: `src/mcp-server/src/client.ts:182-200`
-
-Note: Line numbers for MCP server are approximate and may vary with TypeScript transpilation.
+**File**: `src/mcp-server/src/client.ts:211-228`
 
 ```typescript
 // Get permitted agents for a source agent
@@ -398,7 +410,7 @@ if (authContext?.scope === "agent" && authContext?.agentName) {
 
 ### chat_with_agent Permission Check
 
-**File**: `src/mcp-server/src/tools/chat.ts:29-67`
+**File**: `src/mcp-server/src/tools/chat.ts:29-100`
 
 ```typescript
 async function checkAgentAccess(
@@ -408,6 +420,12 @@ async function checkAgentAccess(
 ): Promise<AgentAccessCheckResult> {
   // If no auth context, allow (auth may be disabled)
   if (!authContext) {
+    return { allowed: true };
+  }
+
+  // Phase 11.1: System-scoped keys bypass ALL permission checks
+  if (authContext.scope === "system") {
+    console.log(`[System Agent Access] ${authContext.agentName || "system"} -> ${targetAgentName} (bypassing permissions)`);
     return { allowed: true };
   }
 
@@ -433,7 +451,7 @@ async function checkAgentAccess(
     };
   }
 
-  // User-scoped keys: use existing ownership/sharing rules (lines 59-90)
+  // User-scoped keys: use existing ownership/sharing rules (lines 69-99)
 }
 ```
 
@@ -465,7 +483,7 @@ Use `list_agents` to discover your available collaborators.
 
 ### Agent Creation
 
-**File**: `src/backend/services/agent_service/crud.py:474-480`
+**File**: `src/backend/services/agent_service/crud.py:512-518`
 
 ```python
 # Phase 9.10: Grant default permissions (Option B - same-owner agents)
@@ -479,7 +497,7 @@ except Exception as e:
 
 ### Agent Deletion
 
-**File**: `src/backend/routers/agents.py:239-243`
+**File**: `src/backend/routers/agents.py:276-280`
 
 ```python
 # Delete agent permissions

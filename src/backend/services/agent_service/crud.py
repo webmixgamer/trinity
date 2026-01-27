@@ -88,6 +88,8 @@ async def create_agent_internal(
     github_pat_for_agent = None
     git_instance_id = None
     git_working_branch = None
+    # Phase 9.11: Track shared folder config from template
+    template_shared_folders = None
 
     # Load template configuration
     if config.template:
@@ -168,6 +170,13 @@ async def create_agent_internal(
                             config.runtime_model = runtime_config.get("model", config.runtime_model)
                         elif isinstance(runtime_config, str):
                             config.runtime = runtime_config
+                        # Phase 9.11: Extract shared folder config from template
+                        shared_folders_config = template_data.get("shared_folders", {})
+                        if shared_folders_config:
+                            template_shared_folders = {
+                                "expose": shared_folders_config.get("expose", False),
+                                "consume": shared_folders_config.get("consume", False)
+                            }
                 except Exception as e:
                     logger.warning(f"Error loading template config: {e}")
 
@@ -382,6 +391,18 @@ async def create_agent_internal(
                 volumes[host_meta_prompt_path] = {'bind': '/trinity-meta-prompt', 'mode': 'ro'}
 
             # Phase 9.11: Agent Shared Folders - mount shared volumes based on config
+            # First, write template-defined shared folder config to DB (if defined)
+            if template_shared_folders:
+                try:
+                    db.upsert_shared_folder_config(
+                        agent_name=config.name,
+                        expose_enabled=template_shared_folders.get("expose", False),
+                        consume_enabled=template_shared_folders.get("consume", False)
+                    )
+                    logger.info(f"Applied template shared folder config for {config.name}: expose={template_shared_folders.get('expose')}, consume={template_shared_folders.get('consume')}")
+                except Exception as e:
+                    logger.warning(f"Failed to apply template shared folder config for {config.name}: {e}")
+
             shared_folder_config = db.get_shared_folder_config(config.name)
             if shared_folder_config:
                 # If agent exposes a shared folder, create and mount the shared volume

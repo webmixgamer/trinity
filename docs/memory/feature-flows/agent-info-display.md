@@ -7,7 +7,7 @@ Displays template metadata (capabilities, commands, sub-agents, platforms, resou
 As a platform user, I want to see what an agent is capable of so that I understand its purpose and available commands before interacting with it.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:76-78` - Info tab content rendering
+- **UI**: `src/frontend/src/views/AgentDetail.vue:79-81` - Info tab content rendering
 - **API**: `GET /api/agents/{name}/info`
 
 ---
@@ -16,31 +16,36 @@ As a platform user, I want to see what an agent is capable of so that I understa
 
 ### Components
 
-#### AgentDetail.vue:207-216
-Tab button for Info panel:
+#### AgentDetail.vue:59-76
+Tab navigation using dynamic visibleTabs computed property:
 ```vue
-<button
-  @click="activeTab = 'info'"
-  :class="[
-    'inline-flex items-center px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
-    activeTab === 'info'
-      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-  ]"
->
-  Info
-</button>
+<nav class="-mb-px flex whitespace-nowrap">
+  <button
+    v-for="tab in visibleTabs"
+    :key="tab.id"
+    @click="activeTab = tab.id"
+    :class="[
+      'px-4 py-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap',
+      activeTab === tab.id
+        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+    ]"
+  >
+    {{ tab.label }}
+  </button>
+</nav>
 ```
 
-#### AgentDetail.vue:76-78
+#### AgentDetail.vue:79-81
 Info tab content rendering:
 ```vue
+<!-- Info Tab Content -->
 <div v-if="activeTab === 'info'" class="p-6">
   <InfoPanel :agent-name="agent.name" :agent-status="agent.status" @item-click="handleInfoItemClick" />
 </div>
 ```
 
-#### AgentDetail.vue:566-576 - Item Click Handler
+#### AgentDetail.vue:577-588 - Item Click Handler
 Handles clicks from Info tab items (use cases, commands, sub-agents) and redirects to Tasks tab:
 ```javascript
 // Handle item click from Info tab - switch to Tasks tab with prefilled message
@@ -63,35 +68,36 @@ const props = defineProps({
   agentName: { type: String, required: true },
   agentStatus: { type: String, default: 'stopped' },
   highlightExecutionId: { type: String, default: null },
-  initialMessage: { type: String, default: '' }  // NEW: prefilled task message
+  initialMessage: { type: String, default: '' }  // Prefilled task message from Info tab
 })
 
 // Watch for initial message changes (from Info tab clicks)
+// immediate: true ensures it fires on mount when component is conditionally rendered
 watch(() => props.initialMessage, (newMessage) => {
   if (newMessage) {
     newTaskMessage.value = newMessage
   }
-})
+}, { immediate: true })
 ```
 
-#### InfoPanel.vue:1-360
+#### InfoPanel.vue:1-375
 The complete Info Panel component displaying template metadata.
 
 **Key sections displayed:**
 | Section | Lines | Data Field | Visual Style | Clickable |
 |---------|-------|------------|--------------|-----------|
 | Header (name, version, author) | 27-67 | `display_name`, `tagline`, `version`, `author`, `type` | Gradient header box | No |
-| Use Cases | 70-91 | `use_cases[]` | Clickable prompts grid | ✅ Yes |
+| Use Cases | 70-91 | `use_cases[]` | Clickable prompts grid | Yes |
 | Resources (CPU, Memory) | 93-111 | `resources.cpu`, `resources.memory` | White card with icon | No |
-| Sub-Agents | 113-145 | `sub_agents[]` | Blue grid cards | ✅ Yes |
-| Slash Commands | 147-172 | `commands[]` | Purple mono pills | ✅ Yes |
-| MCP Servers | 174-194 | `mcp_servers[]` | Yellow mono pills | No |
-| Skills | 196-216 | `skills[]` | Teal pills | No |
-| Capabilities | 218-235 | `capabilities[]` | Green pills | No |
-| Platforms | 237-254 | `platforms[]` | Gray pills | No |
-| Enabled Tools | 256-274 | `tools[]` | Orange pills | No |
+| Sub-Agents | 113-141 | `sub_agents[]` | Blue grid cards | Yes |
+| Slash Commands | 143-168 | `commands[]` | Purple mono pills | Yes |
+| MCP Servers | 170-190 | `mcp_servers[]` | Yellow mono pills | No |
+| Skills | 192-212 | `skills[]` | Teal pills | No |
+| Capabilities | 214-231 | `capabilities[]` | Green pills | No |
+| Platforms | 233-250 | `platforms[]` | Gray pills | No |
+| Enabled Tools | 252-270 | `tools[]` | Orange pills | No |
 
-**Click handlers (lines 333-353):**
+**Click handlers (lines 332-354):**
 ```javascript
 const emit = defineEmits(['item-click'])
 
@@ -112,6 +118,7 @@ const handleCommandClick = (command) => {
 const handleSubAgentClick = (subAgent) => {
   const agentName = getItemName(subAgent)
   const description = getItemDescription(subAgent)
+  // Create a prompt to delegate to the sub-agent
   const prompt = description
     ? `Ask ${agentName} to help with: ${description}`
     : `Ask ${agentName} to help with a task`
@@ -121,7 +128,7 @@ const handleSubAgentClick = (subAgent) => {
 
 ### State Management
 
-#### stores/agents.js:224-230
+#### stores/agents.js:284-290
 ```javascript
 async getAgentInfo(name) {
   const authStore = useAuthStore()
@@ -144,25 +151,25 @@ Headers: Authorization: Bearer {token}
 
 ### Endpoint
 
-#### src/backend/routers/agents.py:478-549
+#### src/backend/routers/agents.py:431-497
 ```python
 @router.get("/{agent_name}/info")
 async def get_agent_info_endpoint(
-    agent_name: str,
-    request: Request,
-    current_user: User = Depends(get_current_user)
+    agent_name: AuthorizedAgentByName,
+    request: Request
 ):
+    """Get template info and metadata for an agent."""
 ```
 
 ### Business Logic
 
 **Decision tree:**
 ```
-1. Check user has access to agent
+1. Check user has access to agent (via AuthorizedAgentByName dependency)
    |
    +-> NO  --> 403 Forbidden
    |
-   +-> YES --> Check if agent exists
+   +-> YES --> Check if container exists
                |
                +-> NO  --> 404 Not Found
                |
@@ -173,7 +180,7 @@ async def get_agent_info_endpoint(
                            +-> RUNNING --> Proxy to agent container API
 ```
 
-**When agent is STOPPED (lines 496-509):**
+**When agent is STOPPED (lines 445-458):**
 Returns limited info from Docker container labels:
 ```python
 labels = container.labels
@@ -191,7 +198,7 @@ return {
 }
 ```
 
-**When agent is RUNNING (lines 511-532):**
+**When agent is RUNNING (lines 460-467):**
 Proxies request to agent container:
 ```python
 agent_url = f"http://agent-{agent_name}:8000/api/template/info"
@@ -214,7 +221,7 @@ async with httpx.AsyncClient(timeout=10.0) as client:
 
 ### Agent Server Endpoint
 
-#### docker/base-image/agent_server/routers/info.py:81-152
+#### docker/base-image/agent_server/routers/info.py:81-140
 ```python
 @router.get("/api/template/info")
 async def get_template_info():
@@ -225,18 +232,14 @@ async def get_template_info():
 ```
 
 ### Template Discovery
-Searches for `template.yaml` in multiple locations (lines 87-94):
+Template is read from a fixed path (line 87):
 ```python
-template_paths = [
-    home_dir / "template.yaml",
-    home_dir / "workspace" / "template.yaml",
-    Path("/template") / "template.yaml",
-]
+template_path = Path("/home/developer/template.yaml")
 ```
 
 ### Response Schema
 
-**When template exists (lines 126-152):**
+**When template exists (lines 114-140):**
 ```python
 return {
     "has_template": True,
@@ -267,7 +270,7 @@ return {
 }
 ```
 
-**When no template (lines 110-117):**
+**When no template (lines 98-105):**
 ```python
 return {
     "has_template": False,
@@ -415,7 +418,7 @@ platforms:
 
 ## Security Considerations
 
-- **Authorization**: User must have access to the agent (owner, shared, or admin)
+- **Authorization**: User must have access to the agent (owner, shared, or admin) - enforced via `AuthorizedAgentByName` dependency
 - **No credentials exposed**: MCP servers list contains only names, not secrets
 - **Container isolation**: Backend proxies request, frontend never talks to agent directly
 - **Docker network**: Agent container only accessible via internal Docker network
@@ -446,10 +449,11 @@ Renders all metadata sections when `templateInfo.has_template === true`
 
 ## Helper Functions
 
-### formatCapability (InfoPanel.vue:314-320)
+### formatCapability (InfoPanel.vue:324-330)
 Converts snake_case capability names to Title Case:
 ```javascript
 const formatCapability = (capability) => {
+  // Convert snake_case to Title Case
   return capability
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -457,14 +461,16 @@ const formatCapability = (capability) => {
 }
 ```
 
-### getItemName / getItemDescription (InfoPanel.vue:303-312)
+### getItemName / getItemDescription (InfoPanel.vue:312-322)
 Handle items that can be either strings or {name, description} objects:
 ```javascript
+// Get name from item - handles both string and {name, description} object
 const getItemName = (item) => {
   if (typeof item === 'string') return item
   return item?.name || ''
 }
 
+// Get description from item - returns null for strings
 const getItemDescription = (item) => {
   if (typeof item === 'string') return null
   return item?.description || null
@@ -473,7 +479,7 @@ const getItemDescription = (item) => {
 
 ---
 
-## MCP Tool Access (Added 2026-01-03)
+## MCP Tool Access
 
 Agents can also retrieve template metadata for other agents via the MCP tool `get_agent_info`:
 
@@ -482,10 +488,25 @@ Agents can also retrieve template metadata for other agents via the MCP tool `ge
 **File**: `src/mcp-server/src/tools/agents.ts:103-145`
 
 ```typescript
-// Tool usage
-get_agent_info({ name: "target-agent" })
-
-// Returns: AgentTemplateInfo with full template.yaml metadata
+// Tool definition
+getAgentInfo: {
+  name: "get_agent_info",
+  description:
+    "Get full template metadata and capabilities for an agent. " +
+    "Returns detailed information from the agent's template.yaml including: " +
+    "display name, description, version, author, capabilities, available commands, " +
+    "MCP servers, tools, skills, and example use cases. " +
+    "Useful for understanding what an agent can do before interacting with it. " +
+    "Access control: agents can only get info about agents they have permission to call.",
+  parameters: z.object({
+    name: z.string().describe("The name of the agent to get information about"),
+  }),
+  execute: async ({ name }, context) => {
+    // ... access control logic
+    const info = await apiClient.getAgentInfo(name);
+    return JSON.stringify(info, null, 2);
+  },
+}
 ```
 
 ### Access Control
@@ -498,7 +519,7 @@ get_agent_info({ name: "target-agent" })
 
 ### Client Method
 
-**File**: `src/mcp-server/src/client.ts:184-189`
+**File**: `src/mcp-server/src/client.ts:200-205`
 
 ```typescript
 async getAgentInfo(name: string): Promise<AgentTemplateInfo> {
@@ -511,22 +532,32 @@ async getAgentInfo(name: string): Promise<AgentTemplateInfo> {
 
 ### Types
 
-**File**: `src/mcp-server/src/types.ts:84-114`
+**File**: `src/mcp-server/src/types.ts:91-114`
 
 ```typescript
 export interface AgentTemplateInfo {
   has_template: boolean;
   agent_name: string;
+  name?: string;
   display_name?: string;
+  tagline?: string;
   description?: string;
   version?: string;
+  author?: string;
+  type?: string;
+  resources?: {
+    cpu?: string;
+    memory?: string;
+  };
   capabilities?: string[];
   commands?: AgentCommand[];
   mcp_servers?: string[];
+  sub_agents?: string[];
+  platforms?: string[];
   tools?: string[];
   skills?: string[];
   use_cases?: string[];
-  // ... additional fields
+  status?: "running" | "stopped";
 }
 ```
 
@@ -573,16 +604,17 @@ if (info.capabilities?.includes("code_review")) {
 ---
 
 ## Status
-**Working** - Verified implementation, line numbers updated as of 2026-01-12
+**Working** - Line numbers verified as of 2026-01-23
 
-**Key Changes:**
-- **2026-01-12**: **Interactive Items** - Use cases, commands, and sub-agents are now clickable
-  - Clicking redirects to Tasks tab with text pre-filled in task input
-  - Event changed from `@use-case-click` to `@item-click` with `{type, text}` payload
-  - TasksPanel has new `initialMessage` prop for prefilled text
-  - Commands prefill as `/command-name`, sub-agents prefill as delegation prompts
-- **2026-01-03**: Added MCP tool `get_agent_info` for programmatic access to template metadata
-- **2025-12-30**: Line numbers verified for agent server modular package
-- **2025-12-06**: Agent server refactored to modular package structure (`docker/base-image/agent_server/`)
-- InfoPanel.vue now supports `use_cases`, `skills`, `tagline` fields
-- Items can be strings or {name, description} objects for rich display
+---
+
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| **2026-01-23** | Updated all line numbers and code references; verified against current codebase |
+| **2026-01-12** | **Interactive Items** - Use cases, commands, and sub-agents are now clickable; event changed from `@use-case-click` to `@item-click` with `{type, text}` payload; TasksPanel has new `initialMessage` prop; commands prefill as `/command-name`, sub-agents prefill as delegation prompts |
+| **2026-01-03** | Added MCP tool `get_agent_info` for programmatic access to template metadata |
+| **2025-12-30** | Line numbers verified for agent server modular package |
+| **2025-12-06** | Agent server refactored to modular package structure (`docker/base-image/agent_server/`) |
+| **Initial** | InfoPanel.vue supports `use_cases`, `skills`, `tagline` fields; items can be strings or {name, description} objects for rich display |

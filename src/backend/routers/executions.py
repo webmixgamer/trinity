@@ -5,6 +5,7 @@ Provides REST API endpoints for managing process executions.
 Part of the Process-Driven Platform feature.
 
 Reference: BACKLOG_MVP.md - E2-05
+Reference: BACKLOG_ACCESS_AUDIT.md - E17-04 (Authorization)
 """
 
 import asyncio
@@ -14,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, BackgroundTa
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user, CurrentUser
+from services.process_engine.services import ProcessAuthorizationService, ExecutionLimitService
 from services.process_engine.domain import (
     ProcessDefinition,
     ProcessExecution,
@@ -234,6 +236,83 @@ def get_execution_engine() -> ExecutionEngine:
 
 
 # =============================================================================
+# Authorization Service (IT5 P1)
+# =============================================================================
+
+_auth_service: Optional[ProcessAuthorizationService] = None
+
+
+def get_auth_service() -> ProcessAuthorizationService:
+    """Get the process authorization service."""
+    global _auth_service
+    if _auth_service is None:
+        _auth_service = ProcessAuthorizationService()
+    return _auth_service
+
+
+# =============================================================================
+# Execution Limit Service (IT5 P1 - E19-01)
+# =============================================================================
+
+_limit_service: Optional[ExecutionLimitService] = None
+
+
+def get_limit_service() -> ExecutionLimitService:
+    """Get the execution limit service."""
+    global _limit_service
+    if _limit_service is None:
+        _limit_service = ExecutionLimitService(get_execution_repo())
+    return _limit_service
+
+
+# =============================================================================
+# Recovery Service
+# =============================================================================
+
+from services.process_engine.services import ExecutionRecoveryService, RecoveryReport
+
+_recovery_service: Optional[ExecutionRecoveryService] = None
+_last_recovery_report: Optional[RecoveryReport] = None
+
+
+def get_recovery_service() -> ExecutionRecoveryService:
+    """Get the execution recovery service."""
+    global _recovery_service
+    if _recovery_service is None:
+        _recovery_service = ExecutionRecoveryService(
+            execution_repo=get_execution_repo(),
+            definition_repo=get_definition_repo(),
+            execution_engine=get_execution_engine(),
+            event_bus=get_event_bus(),
+        )
+    return _recovery_service
+
+
+async def run_execution_recovery() -> RecoveryReport:
+    """
+    Run execution recovery on startup.
+
+    Called from main.py lifespan handler to recover any executions
+    that were interrupted by a previous restart.
+
+    Reference: IT5 Section 2.3 (Recovery on Backend Restart)
+    Reference: BACKLOG_RELIABILITY_IMPROVEMENTS.md - RI-12
+    """
+    global _last_recovery_report
+
+    recovery_service = get_recovery_service()
+    report = await recovery_service.recover_on_startup()
+    _last_recovery_report = report
+
+    return report
+
+
+def get_last_recovery_report() -> Optional[RecoveryReport]:
+    """Get the last recovery report for health checks."""
+    return _last_recovery_report
+
+
+# =============================================================================
 # Endpoints
 # =============================================================================
 
@@ -250,7 +329,18 @@ async def start_execution(
 
     The execution runs asynchronously in the background.
     Returns the initial execution state immediately.
+
+    Requires: EXECUTION_TRIGGER permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_trigger_execution(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "execution.trigger", "process", process_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     definition_repo = get_definition_repo()
 
     # Get the process definition
@@ -268,6 +358,16 @@ async def start_execution(
         raise HTTPException(
             status_code=400,
             detail=f"Process is not published (status: {definition.status.value})"
+        )
+
+    # Check execution limits (IT5 P1 - E19-01)
+    limit_service = get_limit_service()
+    limit_result = limit_service.check_can_start(pid)
+    if not limit_result:
+        logger.warning(f"Execution limit exceeded for {process_id}: {limit_result.reason}")
+        raise HTTPException(
+            status_code=429,  # Too Many Requests
+            detail=limit_result.reason,
         )
 
     # Create the execution
@@ -324,7 +424,19 @@ async def list_executions(
 ):
     """
     List all executions with optional filters.
+
+    Requires: EXECUTION_VIEW permission
+    Note: VIEWER role can only see own executions
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_view_execution(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "execution.list", "execution", None, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     execution_repo = get_execution_repo()
 
     # Parse status filter
@@ -362,6 +474,9 @@ async def get_execution(
 ):
     """
     Get detailed information about a specific execution.
+
+    Requires: EXECUTION_VIEW permission
+    Note: VIEWER role can only see own executions
     """
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
@@ -374,6 +489,15 @@ async def get_execution(
     execution = execution_repo.get_by_id(eid)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Authorization check with execution context (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_view_execution(current_user, execution)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "execution.view", "execution", execution_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
 
     # Get definition for parallel structure info
     definition = definition_repo.get_by_id(execution.process_id)
@@ -388,7 +512,18 @@ async def cancel_execution(
 ):
     """
     Cancel a running execution.
+
+    Requires: EXECUTION_CANCEL permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_cancel_execution(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "execution.cancel", "execution", execution_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
 
@@ -426,7 +561,18 @@ async def retry_execution(
     Retry a failed execution.
 
     Creates a new execution with the same input data.
+
+    Requires: EXECUTION_RETRY permission
     """
+    # Authorization check (IT5 P1)
+    auth = get_auth_service()
+    auth_result = auth.can_retry_execution(current_user)
+    if not auth_result:
+        auth.log_authorization_failure(
+            current_user, "execution.retry", "execution", execution_id, auth_result.reason
+        )
+        raise HTTPException(status_code=403, detail=auth_result.reason)
+
     execution_repo = get_execution_repo()
     definition_repo = get_definition_repo()
 
@@ -684,3 +830,69 @@ def _to_detail(
         parent_step_id=str(execution.parent_step_id) if execution.parent_step_id else None,
         child_execution_ids=[str(cid) for cid in (execution.child_execution_ids or [])],
     )
+
+
+# =============================================================================
+# Recovery Status Endpoint
+# =============================================================================
+
+
+@router.get("/recovery/status")
+async def get_recovery_status(current_user: CurrentUser):
+    """
+    Get the status of the last execution recovery scan.
+
+    Useful for health checks and monitoring to verify recovery
+    ran successfully after backend startup.
+
+    Reference: BACKLOG_RELIABILITY_IMPROVEMENTS.md - RI-12
+    """
+    report = get_last_recovery_report()
+
+    if report is None:
+        return {
+            "status": "not_run",
+            "message": "Recovery has not run yet (backend may have just started)",
+        }
+
+    return {
+        "status": "completed",
+        "started_at": report.started_at.isoformat(),
+        "completed_at": report.completed_at.isoformat() if report.completed_at else None,
+        "duration_ms": report.duration_ms,
+        "counts": {
+            "resumed": len(report.resumed),
+            "retried": len(report.retried),
+            "failed": len(report.failed),
+            "skipped": len(report.skipped),
+            "errors": len(report.errors),
+            "total": report.total_processed,
+        },
+        "has_errors": len(report.errors) > 0,
+    }
+
+
+# =============================================================================
+# Execution Limits Endpoint (IT5 P1 - E19-01)
+# =============================================================================
+
+
+@router.get("/limits/status")
+async def get_limits_status(current_user: CurrentUser):
+    """
+    Get current execution limits status.
+
+    Returns global and per-process limits with current usage.
+    Useful for monitoring capacity and troubleshooting 429 errors.
+
+    Requires: ADMIN_VIEW_ALL permission
+    """
+    auth = get_auth_service()
+    if not auth.is_admin(current_user):
+        auth.log_authorization_failure(
+            current_user, "limits.view", "limits", None, "Admin access required"
+        )
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    limit_service = get_limit_service()
+    return limit_service.get_limits_status()

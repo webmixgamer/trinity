@@ -213,10 +213,13 @@ class AsyncTrinityApiClient:
         **kwargs
     ) -> httpx.Response:
         """Make authenticated GET request."""
+        # Merge any custom headers with default headers
+        custom_headers = kwargs.pop('headers', {})
+        headers = {**self._get_headers(auth), **custom_headers}
         return await self._client.get(
             path,
             params=params,
-            headers=self._get_headers(auth),
+            headers=headers,
             **kwargs
         )
 
@@ -231,11 +234,14 @@ class AsyncTrinityApiClient:
     ) -> httpx.Response:
         """Make authenticated POST request."""
         request_timeout = timeout if timeout else self._client.timeout
+        # Merge any custom headers with default headers
+        custom_headers = kwargs.pop('headers', {})
+        headers = {**self._get_headers(auth), **custom_headers}
         return await self._client.post(
             path,
             json=json,
             data=data,
-            headers=self._get_headers(auth),
+            headers=headers,
             timeout=request_timeout,
             **kwargs
         )
@@ -248,10 +254,13 @@ class AsyncTrinityApiClient:
         **kwargs
     ) -> httpx.Response:
         """Make authenticated PUT request."""
+        # Merge any custom headers with default headers
+        custom_headers = kwargs.pop('headers', {})
+        headers = {**self._get_headers(auth), **custom_headers}
         return await self._client.put(
             path,
             json=json,
-            headers=self._get_headers(auth),
+            headers=headers,
             **kwargs
         )
 
@@ -262,9 +271,12 @@ class AsyncTrinityApiClient:
         **kwargs
     ) -> httpx.Response:
         """Make authenticated DELETE request."""
+        # Merge any custom headers with default headers
+        custom_headers = kwargs.pop('headers', {})
+        headers = {**self._get_headers(auth), **custom_headers}
         return await self._client.delete(
             path,
-            headers=self._get_headers(auth),
+            headers=headers,
             **kwargs
         )
 

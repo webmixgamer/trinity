@@ -607,7 +607,11 @@ def _stop_agent_container(agent_name: str, timeout: int = 10) -> dict:
 @router.post("/emergency-stop")
 async def emergency_stop(
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    system_prefix: Optional[str] = Query(
+        None,
+        description="Optional: Only stop agents whose names start with this prefix"
+    )
 ):
     """
     Emergency stop: Pause all schedules and stop all non-system agents.
@@ -615,6 +619,9 @@ async def emergency_stop(
     Admin-only. Use for runaway costs or critical issues.
 
     Agents are stopped in parallel using a thread pool for faster response time.
+
+    Args:
+        system_prefix: Optional filter to only stop agents with names starting with this prefix
     """
     require_admin(current_user)
 
@@ -624,9 +631,12 @@ async def emergency_stop(
         "errors": []
     }
 
-    # 1. Pause all schedules
+    # 1. Pause all schedules (optionally filtered by prefix)
     schedules = db.list_all_enabled_schedules()
     for schedule in schedules:
+        # If prefix filter is set, only pause schedules for matching agents
+        if system_prefix and not schedule.agent_name.startswith(system_prefix):
+            continue
         try:
             db.set_schedule_enabled(schedule.id, False)
             from services.scheduler_service import scheduler_service
@@ -643,6 +653,10 @@ async def emergency_stop(
     for agent in agents:
         agent_name = agent.name
         status = agent.status
+
+        # If prefix filter is set, only process matching agents
+        if system_prefix and not agent_name.startswith(system_prefix):
+            continue
 
         # Skip system agent
         owner = db.get_agent_owner(agent_name)

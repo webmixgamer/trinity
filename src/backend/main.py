@@ -53,6 +53,9 @@ from routers.approvals import router as approvals_router
 from routers.triggers import router as triggers_router
 from routers.alerts import router as alerts_router
 from routers.process_templates import router as process_templates_router
+from routers.audit import router as audit_router
+from routers.docs import router as docs_router
+from routers.skills import router as skills_router
 
 # Import scheduler service
 from services.scheduler_service import scheduler_service
@@ -71,6 +74,9 @@ from credentials import CredentialManager, CredentialCreate
 
 # Import process engine WebSocket publisher
 from services.process_engine.events import set_websocket_publisher_broadcast
+
+# Import execution recovery function
+from routers.executions import run_execution_recovery
 
 # Import logging configuration
 from logging_config import setup_logging
@@ -221,6 +227,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Error starting log archive service: {e}")
 
+    # Run process execution recovery (IT5 P0 reliability feature)
+    try:
+        recovery_report = await run_execution_recovery()
+        if recovery_report.total_processed > 0:
+            print(
+                f"Execution recovery: "
+                f"resumed={len(recovery_report.resumed)}, "
+                f"retried={len(recovery_report.retried)}, "
+                f"failed={len(recovery_report.failed)}, "
+                f"errors={len(recovery_report.errors)}"
+            )
+        else:
+            print("Execution recovery: no interrupted executions found")
+    except Exception as e:
+        print(f"Error running execution recovery: {e}")
+        # Don't fail startup - recovery is important but not critical
+
     yield
 
     # NOTE: Embedded scheduler shutdown removed - scheduler runs in dedicated container
@@ -279,6 +302,9 @@ app.include_router(approvals_router)
 app.include_router(triggers_router)
 app.include_router(alerts_router)
 app.include_router(process_templates_router)
+app.include_router(audit_router)  # IT5 P1: Audit logging
+app.include_router(docs_router)   # Process documentation serving
+app.include_router(skills_router) # Skills Management System
 
 
 # WebSocket endpoint

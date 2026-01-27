@@ -1177,6 +1177,28 @@ In-app interactive tutorials that guide through real actions.
 
 ## Implementation Tracking
 
+### Pre-Phase: Integration Test Coverage ✅
+
+> **Completed**: 2026-01-17
+> **Reference**: `BACKLOG_RELIABILITY_IMPROVEMENTS.md`
+
+Before running manual test processes, we established **33 Application Service Integration Tests** covering:
+
+| Area | Tests | Coverage |
+|------|-------|----------|
+| Execution Lifecycle | 4 | Start, complete, fail, cancel |
+| Sequential Execution | 4 | Multi-step, output passing, failure handling |
+| Parallel Execution | 5 | Fork/join, diamond pattern, failure behavior |
+| Error Handling & Retry | 5 | Retry policies, skip_step, backoff |
+| Gateway Routing | 4 | Exclusive routing, conditions, defaults |
+| Timer Steps | 3 | Timer completion, output, dependencies |
+| Event Publishing | 5 | Event sequence, failure events, context |
+| Output Persistence | 3 | Storage, substitution, multi-reference |
+
+**Key**: Tests use real SQLite repos, real handlers, real event bus - only mock external agent HTTP calls.
+
+---
+
 ### Phase 1 Status
 
 | Process | Created | Tested | Issues Found |
@@ -1221,11 +1243,15 @@ In-app interactive tutorials that guide through real actions.
 
 | Item | Designed | Implemented | Issues Found |
 |------|----------|-------------|--------------|
-| P6.1 Docs Tab | ⏳ | ⏳ | - |
+| P6.1 Docs Tab | ✅ | ✅ | - |
 | P6.2 Contextual Help | ⏳ | ⏳ | - |
-| P6.3 Empty States | ⏳ | ⏳ | - |
+| P6.3 Empty States | ✅ | ✅ | - |
 | P6.4 Onboarding Wizard | ⏳ | ⏳ | - |
 | P6.5 Interactive Tutorials | ⏳ | ⏳ | - |
+
+> **Progress Note** (2026-01-18): Implemented BACKLOG_ONBOARDING.md Sprint 7 and Sprint 8
+> - E20-01, E20-02: Enhanced empty state with templates + onboarding checklist
+> - E21-01, E21-02, E21-04, E21-05, E21-06: Docs tab with full reference content
 
 ---
 
@@ -1257,9 +1283,144 @@ Phase completion requires:
 
 ---
 
+---
+
+## Completed: Execution Recovery (IT5 P0) ✅
+
+> **Reference**: `PROCESS_DRIVEN_THINKING_IT5.md` Section 2.3
+> **Implementation**: `BACKLOG_RELIABILITY_IMPROVEMENTS.md` (RI-10 to RI-14)
+
+Execution Recovery on Startup has been implemented and tested:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Recovery Flow (runs on backend startup)                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. Scan for active executions (RUNNING, PENDING, PAUSED)                   │
+│                                                                              │
+│  2. For each execution:                                                      │
+│     ├── Age > 24h?        → MARK_FAILED                                      │
+│     ├── Step RUNNING?     → RETRY_STEP (reset & resume)                      │
+│     └── Otherwise         → RESUME (continue from next step)                 │
+│                                                                              │
+│  3. Emit events and log summary                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Details:**
+| Component | Location |
+|-----------|----------|
+| `ExecutionRecoveryService` | `services/process_engine/services/recovery.py` |
+| Recovery events | `services/process_engine/domain/events.py` |
+| Startup integration | `main.py` lifespan handler |
+| Status endpoint | `GET /api/executions/recovery/status` |
+| Integration tests | `tests/process_engine/integration/test_execution_recovery.py` (12 tests) |
+
+**IT5 P0 Reliability Foundation Status:**
+| Feature | Status |
+|---------|--------|
+| Per-step retry | ✅ (Integration tests verify) |
+| State persistence before transitions | ✅ (Integration tests verify) |
+| Execution recovery on startup | ✅ (This implementation) |
+
+---
+
+## Completed: IT5 P1 - Access & Audit ✅
+
+> **Reference**: `PROCESS_DRIVEN_THINKING_IT5.md` Section 5 (Access Management)
+> **Implementation**: `BACKLOG_ACCESS_AUDIT.md` (E17, E18, E19)
+
+Access control, audit logging, and execution governance have been implemented:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  IT5 P1 - Access & Audit Architecture                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Authorization Flow:                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  API Request → ProcessAuthorizationService → Role-based check        │    │
+│  │                        ↓                                             │    │
+│  │  Roles: DESIGNER | OPERATOR | VIEWER | APPROVER | ADMIN              │    │
+│  │                        ↓                                             │    │
+│  │  Allow or Deny (403 Forbidden)                                       │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  Audit Trail:                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  All state changes → AuditService → SqliteAuditRepository           │    │
+│  │  Query via GET /api/audit (admin only)                               │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  Execution Limits:                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  ExecutionLimitService → Global: 50 concurrent | Per-process: 3      │    │
+│  │  Returns 429 Too Many Requests when exceeded                         │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Details:**
+| Component | Location |
+|-----------|----------|
+| `ProcessPermission` enum | `services/process_engine/domain/enums.py` |
+| `ProcessRole` enum + mappings | `services/process_engine/domain/enums.py` |
+| `ProcessAuthorizationService` | `services/process_engine/services/authorization.py` |
+| `AuditService` + `AuditEntry` | `services/process_engine/services/audit.py` |
+| `SqliteAuditRepository` | `services/process_engine/repositories/audit.py` |
+| `ExecutionLimitService` | `services/process_engine/services/limits.py` |
+| Audit API router | `routers/audit.py` |
+| Unit tests | `tests/process_engine/unit/test_authorization.py` (42 tests) |
+| Unit tests | `tests/process_engine/unit/test_audit.py` (22 tests) |
+
+**IT5 P1 Status:**
+| Feature | Status |
+|---------|--------|
+| Role-based permissions | ✅ (5 roles, 13 permissions) |
+| API authorization middleware | ✅ (All process/execution endpoints protected) |
+| Audit logging | ✅ (Append-only with filters) |
+| Audit query API | ✅ (`GET /api/audit` admin-only) |
+| Execution concurrency limits | ✅ (Global: 50, Per-process: 3) |
+| Limits status endpoint | ✅ (`GET /api/executions/limits/status`) |
+| Basic rate limiting | ⏳ (E19-02 - P2 priority, deferred) |
+
+---
+
+## Next Priority: Phase 1 Manual Testing or IT5 P2
+
+With P0 (Reliability) and P1 (Access & Audit) complete, the next options are:
+
+**Option A: Phase 1 Manual Testing** ✅ Infrastructure Ready
+Test cases and agents are prepared in `docs/PROCESS_DRIVEN_PLATFORM/manual_run/`:
+- 22 test cases across 5 tiers (Critical Path, Conditional, Approval, Error, Edge Cases)
+- 3 test agent templates (process-echo, process-worker, process-failer)
+- Results tracking template ready
+
+Steps to execute:
+1. Deploy test agents
+2. Run T1.x through T5.x tests
+3. Document findings in `manual_run/results/`
+
+**Option B: IT5 P2 - Performance & Scale**
+1. Checkpointing for recovery
+2. Performance monitoring
+3. Database optimization
+
+---
+
 ## Document History
 
 | Date | Change |
 |------|--------|
+| 2026-01-17 | Add manual testing infrastructure (22 test cases, 3 test agents) |
+| 2026-01-17 | Mark IT5 P1 (Access & Audit) as complete |
+| 2026-01-17 | Update Next Priority section with Phase 1 or IT5 P2 options |
+| 2026-01-17 | Mark Execution Recovery (IT5 P0) as complete |
+| 2026-01-17 | Update Next Priority section with options |
+| 2026-01-17 | Add Pre-Phase integration test summary (33 tests) |
+| 2026-01-17 | Add Next Priority section linking to IT5 P0 |
 | 2026-01-16 | Add Phase 6: In-app documentation and onboarding (5 items) |
 | 2026-01-16 | Initial roadmap with 5 phases, 14 test processes |

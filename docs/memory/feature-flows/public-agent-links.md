@@ -26,8 +26,8 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 |  - View usage stats            - Session management               |
 |  - Enable/disable              - Error handling                   |
 +-------------------------------------------------------------------+
-                                   |
-                                   v
+                                  |
+                                  v
 +-------------------------------------------------------------------+
 |                         Backend API                                |
 +-------------------------------------------------------------------+
@@ -38,9 +38,9 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 |  - Owner verification          - Email verification               |
 |  - Usage stats                 - Public chat                      |
 +-------------------------------------------------------------------+
-                                   |
-          +------------------------+------------------------+
-          v                        v                        v
+                                  |
+         +------------------------+------------------------+
+         v                        v                        v
 +------------------+  +----------------------+  +------------------+
 |   SQLite DB      |  |   Email Service      |  |   Agent Server   |
 +------------------+  +----------------------+  +------------------+
@@ -56,12 +56,12 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 ## Entry Points
 
 ### Owner Interface
-- **UI**: `src/frontend/src/views/AgentDetail.vue:349` - "Public Links" tab (visible only to owners with `can_share` permission)
+- **UI**: `src/frontend/src/views/AgentDetail.vue:167` - "Public Links" tab content
 - **Component**: `src/frontend/src/components/PublicLinksPanel.vue` - Full management panel
 
 ### Public Interface
 - **UI**: `src/frontend/src/views/PublicChat.vue` - Public chat page
-- **Route**: `/chat/:token` defined in `src/frontend/src/router/index.js:18`
+- **Route**: `/chat/:token` defined in `src/frontend/src/router/index.js:18-22`
 
 ## Data Flow
 
@@ -117,9 +117,10 @@ Public User -> POST /api/public/chat/{token}
 
 | File | Line | Description |
 |------|------|-------------|
-| `src/frontend/src/views/AgentDetail.vue` | 349 | Public Links tab trigger |
-| `src/frontend/src/views/AgentDetail.vue` | 991 | Tab content rendering |
-| `src/frontend/src/views/AgentDetail.vue` | 1029 | Import statement |
+| `src/frontend/src/views/AgentDetail.vue` | 167 | Public Links tab content |
+| `src/frontend/src/views/AgentDetail.vue` | 169 | PublicLinksPanel component usage |
+| `src/frontend/src/views/AgentDetail.vue` | 230 | Import statement |
+| `src/frontend/src/views/AgentDetail.vue` | 443-446 | Tab configuration logic |
 | `src/frontend/src/components/PublicLinksPanel.vue` | 1-503 | Owner management panel |
 | `src/frontend/src/views/PublicChat.vue` | 1-441 | Public chat interface |
 
@@ -161,20 +162,20 @@ Public User -> POST /api/public/chat/{token}
 
 | Endpoint | File:Line | Handler |
 |----------|-----------|---------|
-| `POST /api/agents/{name}/public-links` | `public_links.py:57` | `create_public_link()` |
-| `GET /api/agents/{name}/public-links` | `public_links.py:123` | `list_public_links()` |
-| `GET /api/agents/{name}/public-links/{id}` | `public_links.py:153` | `get_public_link()` |
-| `PUT /api/agents/{name}/public-links/{id}` | `public_links.py:180` | `update_public_link()` |
-| `DELETE /api/agents/{name}/public-links/{id}` | `public_links.py:251` | `delete_public_link()` |
+| `POST /api/agents/{name}/public-links` | `public_links.py:56` | `create_public_link()` |
+| `GET /api/agents/{name}/public-links` | `public_links.py:92` | `list_public_links()` |
+| `GET /api/agents/{name}/public-links/{id}` | `public_links.py:107` | `get_public_link()` |
+| `PUT /api/agents/{name}/public-links/{id}` | `public_links.py:126` | `update_public_link()` |
+| `DELETE /api/agents/{name}/public-links/{id}` | `public_links.py:167` | `delete_public_link()` |
 
 ### Public Endpoints (Unauthenticated)
 
 | Endpoint | File:Line | Handler |
 |----------|-----------|---------|
-| `GET /api/public/link/{token}` | `public.py:44` | `get_public_link_info()` |
-| `POST /api/public/verify/request` | `public.py:74` | `request_verification_code()` |
-| `POST /api/public/verify/confirm` | `public.py:151` | `confirm_verification_code()` |
-| `POST /api/public/chat/{token}` | `public.py:206` | `public_chat()` |
+| `GET /api/public/link/{token}` | `public.py:43` | `get_public_link_info()` |
+| `POST /api/public/verify/request` | `public.py:73` | `request_verification_code()` |
+| `POST /api/public/verify/confirm` | `public.py:130` | `confirm_verification_code()` |
+| `POST /api/public/chat/{token}` | `public.py:166` | `public_chat()` |
 
 ### Database Operations
 
@@ -186,29 +187,30 @@ Public User -> POST /api/public/chat/{token}
 | `list_agent_public_links()` | `db/public_links.py:86` | List all links for agent |
 | `update_public_link()` | `db/public_links.py:101` | Update link properties |
 | `delete_public_link()` | `db/public_links.py:142` | Delete link and related data |
+| `delete_agent_public_links()` | `db/public_links.py:156` | Cascade delete for agent |
 | `is_link_valid()` | `db/public_links.py:176` | Validate token (enabled, not expired) |
 | `create_verification()` | `db/public_links.py:200` | Create 6-digit verification code |
 | `verify_code()` | `db/public_links.py:235` | Verify code, create session |
 | `validate_session()` | `db/public_links.py:281` | Validate session token |
+| `count_recent_verification_requests()` | `db/public_links.py:305` | Verification rate limit |
 | `record_usage()` | `db/public_links.py:324` | Record chat message usage |
 | `get_link_usage_stats()` | `db/public_links.py:363` | Get usage statistics |
 | `count_recent_messages_by_ip()` | `db/public_links.py:407` | Rate limit check |
-| `count_recent_verification_requests()` | `db/public_links.py:305` | Verification rate limit |
 
 ### Pydantic Models
 
 | Model | File:Line | Description |
 |-------|-----------|-------------|
-| `PublicLinkCreate` | `db_models.py:299` | Create link request |
-| `PublicLinkUpdate` | `db_models.py:306` | Update link request |
-| `PublicLink` | `db_models.py:314` | Base link model |
-| `PublicLinkWithUrl` | `db_models.py:327` | Link with generated URL |
-| `PublicLinkInfo` | `db_models.py:333` | Public-facing link info |
-| `VerificationRequest` | `db_models.py:341` | Request verification code |
-| `VerificationConfirm` | `db_models.py:347` | Confirm verification code |
-| `VerificationResponse` | `db_models.py:354` | Verification result |
-| `PublicChatRequest` | `db_models.py:362` | Chat message request |
-| `PublicChatResponse` | `db_models.py:368` | Chat message response |
+| `PublicLinkCreate` | `db_models.py:301` | Create link request |
+| `PublicLinkUpdate` | `db_models.py:308` | Update link request |
+| `PublicLink` | `db_models.py:316` | Base link model |
+| `PublicLinkWithUrl` | `db_models.py:329` | Link with generated URL |
+| `PublicLinkInfo` | `db_models.py:335` | Public-facing link info |
+| `VerificationRequest` | `db_models.py:343` | Request verification code |
+| `VerificationConfirm` | `db_models.py:349` | Confirm verification code |
+| `VerificationResponse` | `db_models.py:356` | Verification result |
+| `PublicChatRequest` | `db_models.py:364` | Chat message request |
+| `PublicChatResponse` | `db_models.py:370` | Chat message response |
 
 ## Database Schema
 
@@ -337,13 +339,13 @@ FRONTEND_URL=http://localhost
 | File | Description |
 |------|-------------|
 | `src/backend/db/public_links.py` | Database operations class (439 lines) |
-| `src/backend/routers/public_links.py` | Owner CRUD endpoints (309 lines) |
-| `src/backend/routers/public.py` | Public endpoints (329 lines) |
+| `src/backend/routers/public_links.py` | Owner CRUD endpoints (198 lines) |
+| `src/backend/routers/public.py` | Public endpoints (265 lines) |
 | `src/backend/services/email_service.py` | Email sending service |
-| `src/backend/db_models.py:299-372` | Pydantic models |
+| `src/backend/db_models.py:301-374` | Pydantic models |
 | `src/backend/database.py` | Schema, imports, delegation |
 | `src/backend/config.py` | Email configuration |
-| `src/backend/main.py:44,89,234` | Router registration |
+| `src/backend/main.py:44-45,112,292-293` | Router registration |
 
 ### Frontend
 
@@ -358,7 +360,7 @@ FRONTEND_URL=http://localhost
 
 | File | Description |
 |------|-------------|
-| `tests/test_public_links.py` | Comprehensive test suite (423 lines) |
+| `tests/test_public_links.py` | Comprehensive test suite |
 
 ## Testing
 
@@ -427,3 +429,4 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 |------|---------|
 | 2025-12-22 | Initial documentation |
 | 2025-12-30 | Verified line numbers, updated file references, added detailed method tables, expanded testing section |
+| 2026-01-23 | Refreshed line numbers for all backend files: public_links.py endpoints (56, 92, 107, 126, 167), public.py endpoints (43, 73, 130, 166), db_models.py models (301-374). Updated AgentDetail.vue references (167, 169, 230, 443-446). Added delete_agent_public_links() at db/public_links.py:156. Updated main.py references (44-45, 112, 292-293). Corrected file line counts. |

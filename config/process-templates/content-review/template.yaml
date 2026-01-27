@@ -3,7 +3,7 @@ display_name: Content Review Pipeline
 description: A multi-step content review workflow with AI analysis and human approval
 category: content
 complexity: intermediate
-version: "1.0.0"
+version: "1.0"
 author: Trinity Examples
 
 tags:

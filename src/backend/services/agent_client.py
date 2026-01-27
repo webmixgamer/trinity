@@ -150,6 +150,14 @@ class AgentClient:
         """Make a POST request to the agent."""
         return await self._request("POST", path, timeout, **kwargs)
 
+    async def put(self, path: str, timeout: float = None, **kwargs) -> httpx.Response:
+        """Make a PUT request to the agent."""
+        return await self._request("PUT", path, timeout, **kwargs)
+
+    async def delete(self, path: str, timeout: float = None, **kwargs) -> httpx.Response:
+        """Make a DELETE request to the agent."""
+        return await self._request("DELETE", path, timeout, **kwargs)
+
     # ========================================================================
     # Chat Operations
     # ========================================================================
@@ -454,6 +462,89 @@ class AgentClient:
                 return {"status": "error", "error": str(e)}
 
         return {"status": "error", "error": "Max retries exceeded"}
+
+    # ========================================================================
+    # File Operations
+    # ========================================================================
+
+    async def read_file(
+        self,
+        path: str,
+        timeout: float = 30.0
+    ) -> dict:
+        """
+        Read content from a file in the agent's workspace.
+
+        Args:
+            path: File path within /home/developer
+            timeout: Request timeout
+
+        Returns:
+            dict with success status and content
+        """
+        try:
+            import urllib.parse
+            encoded_path = urllib.parse.quote(path, safe='')
+
+            response = await self.get(
+                f"/api/files/download?path={encoded_path}",
+                timeout=timeout
+            )
+
+            if response.status_code == 200:
+                return {"success": True, "content": response.text}
+            elif response.status_code == 404:
+                return {"success": True, "content": None, "not_found": True}
+            else:
+                return {
+                    "success": False,
+                    "error": response.text,
+                    "status_code": response.status_code
+                }
+
+        except AgentClientError as e:
+            return {"success": False, "error": str(e)}
+
+    async def write_file(
+        self,
+        path: str,
+        content: str,
+        timeout: float = 30.0
+    ) -> dict:
+        """
+        Write content to a file in the agent's workspace.
+        Creates parent directories if they don't exist.
+
+        Args:
+            path: File path within /home/developer
+            content: File content to write
+            timeout: Request timeout
+
+        Returns:
+            dict with success status and file info
+        """
+        try:
+            # URL encode the path for query parameter
+            import urllib.parse
+            encoded_path = urllib.parse.quote(path, safe='')
+
+            response = await self.put(
+                f"/api/files?path={encoded_path}",
+                json={"content": content},
+                timeout=timeout
+            )
+
+            if response.status_code == 200:
+                return {"success": True, **response.json()}
+            else:
+                return {
+                    "success": False,
+                    "error": response.text,
+                    "status_code": response.status_code
+                }
+
+        except AgentClientError as e:
+            return {"success": False, "error": str(e)}
 
     # ========================================================================
     # Health Check

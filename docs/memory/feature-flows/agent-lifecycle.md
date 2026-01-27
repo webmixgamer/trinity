@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-01-14 - **Security Fixes**:
+> **Updated**: 2026-01-26 - **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component across all pages (AgentHeader.vue, Agents.vue, AgentNode.vue). Added `toggleAgentRunning()` to agents.js and network.js stores.
+>
+> **Previous (2026-01-14)** - **Security Fixes**:
 > - **Auth on Lifecycle Endpoints (HIGH)**: `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` now use `AuthorizedAgentByName` dependency instead of plain `get_current_user` - prevents unauthorized users from starting/stopping agents they don't own
 > - **Container Security Consistency (HIGH)**: All container creation paths now ALWAYS apply baseline security (`cap_drop=['ALL']`, AppArmor, noexec tmpfs). Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py` for consistent security settings.
 >
@@ -22,13 +24,13 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 - **UI**: `src/frontend/src/views/Agents.vue:34-39` - "Create Agent" button
 - **API**: `POST /api/agents`
 
-### Start Agent
-- **UI**: `src/frontend/src/views/AgentDetail.vue:54-65` - Start button (when stopped)
-- **API**: `POST /api/agents/{agent_name}/start`
-
-### Stop Agent
-- **UI**: `src/frontend/src/views/AgentDetail.vue:66-77` - Stop button (when running)
-- **API**: `POST /api/agents/{agent_name}/stop`
+### Start/Stop Agent (Toggle)
+- **UI**: Unified toggle control across all pages:
+  - `src/frontend/src/components/AgentHeader.vue` - Detail page header (size: lg)
+  - `src/frontend/src/views/Agents.vue` - Agents list page (size: md)
+  - `src/frontend/src/components/AgentNode.vue` - Dashboard network view (size: sm)
+- **Component**: `src/frontend/src/components/RunningStateToggle.vue` - Reusable toggle
+- **API**: `POST /api/agents/{agent_name}/start` or `POST /api/agents/{agent_name}/stop`
 
 ### Delete Agent
 - **UI**: `src/frontend/src/views/AgentDetail.vue:137-146` - Delete button (trash icon)
@@ -40,18 +42,31 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 
 ### Components
 
+**Running State Toggle** - `src/frontend/src/components/RunningStateToggle.vue` (NEW 2026-01-26)
+- Unified toggle component replacing separate Start/Stop buttons
+- Props: `modelValue` (boolean), `loading`, `disabled`, `showLabel`, `size` (sm/md/lg)
+- Events: `update:modelValue`, `toggle`
+- Shows "Running" (green) or "Stopped" (gray) state
+- Loading spinner overlay during API calls
+
 **Agents List View** - `src/frontend/src/views/Agents.vue`
 - Line 34-39: Create Agent button opens modal
-- Line 104-115: Start agent inline button with spinner
-- Line 116-127: Stop agent inline button with spinner
-- Line 236-247: `startAgent()` method
-- Line 249-260: `stopAgent()` method
+- Lines 187-204: RunningStateToggle for each agent card
+- Line 391-405: `toggleAgentRunning()` method (unified toggle)
 
 **Agent Detail View** - `src/frontend/src/views/AgentDetail.vue`
-- Line 54-65: Start button (conditional on `agent.status === 'stopped'`)
-- Line 66-77: Stop button (conditional on `agent.status === 'running'`)
+- Lines 28-53: AgentHeader with `@toggle="toggleRunning"` event
+- Lines 371-379: `toggleRunning()` function (calls start or stop based on status)
 - Line 137-146: Delete button (conditional on `agent.can_delete`)
 - Lifecycle methods via composable (see below)
+
+**Agent Header** - `src/frontend/src/components/AgentHeader.vue`
+- Lines 48-54: RunningStateToggle (size: lg)
+- Emits `toggle` event instead of separate `start`/`stop`
+
+**Agent Node (Dashboard)** - `src/frontend/src/components/AgentNode.vue`
+- Lines 57-65: RunningStateToggle (size: sm, nodrag class)
+- Lines 376-385: `handleRunningToggle()` function
 
 **Agent Lifecycle Composable** - `src/frontend/src/composables/useAgentLifecycle.js`
 - Line 19-31: `startAgent()` function
@@ -105,6 +120,29 @@ async stopAgent(name) {
   const agent = this.agents.find(a => a.name === name)
   if (agent) agent.status = 'stopped'
   return { success: true, message: response.data?.message || `Agent ${name} stopped` }
+}
+
+// Line 183-218: Toggle agent running state (NEW 2026-01-26)
+async toggleAgentRunning(name) {
+  const agent = this.agents.find(a => a.name === name)
+  if (!agent) return { success: false, error: 'Agent not found' }
+
+  this.runningToggleLoading[name] = true  // Track loading per agent
+
+  try {
+    if (agent.status === 'running') {
+      await axios.post(`/api/agents/${name}/stop`, {}, { headers: authStore.authHeader })
+      agent.status = 'stopped'
+    } else {
+      await axios.post(`/api/agents/${name}/start`, {}, { headers: authStore.authHeader })
+      agent.status = 'running'
+    }
+    return { success: true, status: agent.status }
+  } catch (error) {
+    return { success: false, error: error.response?.data?.detail || 'Failed to toggle agent' }
+  } finally {
+    this.runningToggleLoading[name] = false
+  }
 }
 ```
 
@@ -762,6 +800,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-01-26 | **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Component supports three sizes (sm/md/lg), loading spinner, dark mode, ARIA attributes. Updated AgentHeader.vue (emits `toggle` instead of `start`/`stop`), Agents.vue (uses `toggleAgentRunning()`), AgentNode.vue (new toggle in Dashboard). Added `toggleAgentRunning()` and `runningToggleLoading` state to agents.js and network.js stores. |
 | 2026-01-14 | **Security Bug Fixes (HIGH)**: (1) **Missing Auth on Lifecycle Endpoints**: Changed `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency instead of plain `get_current_user`. This ensures users can only start/stop/view logs for agents they have access to. (2) **Container Security Consistency**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. All container creation paths (`crud.py:464`, `lifecycle.py:361`, `system_agent_service.py:260`) now ALWAYS apply baseline security: `cap_drop=['ALL']`, AppArmor profile, `noexec,nosuid` on tmpfs. Previously some paths had inconsistent security settings. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added `get_all_agent_metadata()` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables. Rewrote `get_accessible_agents()` in `helpers.py:83-153` to use batch query instead of 8-10 individual queries per agent. Exposed on `DatabaseManager` (`database.py:845-850`). Database queries reduced from 160-200 to 2 per request. Orphaned agents (Docker-only, no DB record) now only visible to admin. |
 | 2026-01-12 | **Docker Stats Optimization**: Added `list_all_agents_fast()` function (docker_service.py:101-159) that extracts data ONLY from container labels, avoiding slow Docker operations (`container.attrs`, `container.image`, `container.stats()`). Updated `get_next_available_port()` to use fast version. Performance: `/api/agents` reduced from ~2-3s to <50ms. |

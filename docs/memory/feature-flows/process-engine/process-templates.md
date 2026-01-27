@@ -1,240 +1,224 @@
 # Feature: Process Templates
 
-> Pre-built and user-defined process templates for quick-start workflows
+> Bundled and user-created process templates for quick-start workflows
 
 ---
 
 ## Overview
 
 Process Templates provide starting points for common workflows. Users can:
-- Browse and use bundled templates
+- Browse and filter templates by category
+- Preview template YAML before using
 - Create processes from templates
-- Save their own processes as templates
+- Save their own processes as reusable templates
 
-**Key Capabilities:**
-- Bundled templates for common use cases
-- Template metadata (category, complexity, tags)
-- User-created template storage
-- Template selector UI component
+**Template Sources:**
+- **Bundled**: Pre-configured templates in `config/process-templates/`
+- **User**: Custom templates saved to SQLite database
+
+---
+
+## User Story
+
+As a **process designer**, I want to **start from a template** so that **I can quickly create workflows without writing YAML from scratch**.
 
 ---
 
 ## Entry Points
 
-- **UI**: `ProcessEditor.vue` -> "Create from Template" -> `TemplateSelector.vue`
-- **UI**: `ProcessList.vue` -> "Create Process" -> Template option
-- **API**: `GET /api/process-templates` - List templates
-- **API**: `GET /api/process-templates/{id}` - Get template detail
-- **API**: `POST /api/process-templates` - Create user template
+| Type | Location | Description |
+|------|----------|-------------|
+| **UI** | `src/frontend/src/views/ProcessEditor.vue:158-163` | TemplateSelector shown for new processes |
+| **UI** | `src/frontend/src/views/ProcessList.vue:219-274` | Quick Start Templates in empty state |
+| **UI** | `src/frontend/src/views/ProcessEditor.vue:132-142` | "Save as Template" button for published processes |
+| **API** | `GET /api/process-templates` | List all templates |
+| **API** | `GET /api/process-templates/categories` | List available categories |
+| **API** | `GET /api/process-templates/{id}` | Get template detail |
+| **API** | `GET /api/process-templates/{id}/preview` | Get YAML for preview |
+| **API** | `POST /api/process-templates/{id}/use` | Create process from template |
+| **API** | `POST /api/process-templates` | Create user template |
+| **API** | `DELETE /api/process-templates/{id}` | Delete user template |
 
 ---
 
-## Architecture
+## Frontend Layer
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Frontend                                            │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  TemplateSelector.vue                                                    │    │
-│  │  ├── Category filter (content, devops, analytics)                       │    │
-│  │  ├── Source filter (bundled, user)                                      │    │
-│  │  ├── Template cards with preview                                        │    │
-│  │  └── "Use Template" button                                              │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                     │
-                                     │ GET /api/process-templates
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Backend                                             │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  routers/process_templates.py                                            │    │
-│  │  ├── list_templates()        - GET /api/process-templates               │    │
-│  │  ├── get_template()          - GET /api/process-templates/{id}          │    │
-│  │  ├── create_template()       - POST /api/process-templates              │    │
-│  │  └── delete_template()       - DELETE /api/process-templates/{name}     │    │
-│  └───────────────────────────────────┬─────────────────────────────────────┘    │
-│                                      │                                           │
-│                                      ▼                                           │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  services/templates.py - ProcessTemplateService                          │    │
-│  │  ├── list_templates()        - Combine bundled + user templates         │    │
-│  │  ├── get_template()          - Load template by ID                      │    │
-│  │  ├── create_template()       - Save user template to database           │    │
-│  │  └── delete_template()       - Remove user template                     │    │
-│  └───────────────────────────────────┬─────────────────────────────────────┘    │
-│                                      │                                           │
-│                                      ▼                                           │
-│  ┌───────────────────────────────────────────────────────────────────────────┐  │
-│  │                     Template Sources                                       │  │
-│  │  ┌─────────────────────┐       ┌─────────────────────┐                    │  │
-│  │  │  Bundled Templates  │       │   User Templates    │                    │  │
-│  │  │  config/process-    │       │   trinity_         │                    │  │
-│  │  │  templates/         │       │   templates.db      │                    │  │
-│  │  │  ├── content-review │       │                     │                    │  │
-│  │  │  ├── data-analysis  │       │                     │                    │  │
-│  │  │  └── customer-      │       │                     │                    │  │
-│  │  │      support        │       │                     │                    │  │
-│  │  └─────────────────────┘       └─────────────────────┘                    │  │
-│  └───────────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────────┘
+### Components
+
+#### TemplateSelector.vue
+**File**: `src/frontend/src/components/process/TemplateSelector.vue`
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 8-16 | Category dropdown | Filter templates by category |
+| 39-111 | Template grid | Display template cards with selection |
+| 41-61 | Blank process option | "Start from scratch" card |
+| 64-110 | Template cards | Individual template cards |
+| 113-174 | Preview modal | Full template preview with YAML |
+
+**Props:**
+```javascript
+// Line 189-194
+props: {
+  selectedId: {
+    type: String,
+    default: null,
+  },
+}
 ```
 
----
+**Events emitted:**
+- `@select(templateId)` - Template selected (null for blank)
 
-## Bundled Templates
+#### ProcessEditor.vue Template Integration
+**File**: `src/frontend/src/views/ProcessEditor.vue`
 
-### Directory Structure
+| Line | Function | Description |
+|------|----------|-------------|
+| 158-163 | TemplateSelector | Component for selecting templates |
+| 186-200 | Continue button | Load template and proceed to editor |
+| 648-735 | Save Template Dialog | Modal for saving process as template |
+| 1166-1200 | handleTemplateSelect() | Handle template selection |
+| 1171-1200 | proceedWithTemplate() | Load template YAML into editor |
+| 1489-1524 | saveAsTemplate() | Save current process as user template |
 
-```
-config/process-templates/
-├── content-review/
-│   ├── template.yaml      # Metadata
-│   └── definition.yaml    # Process definition
-├── data-analysis/
-│   ├── template.yaml
-│   └── definition.yaml
-└── customer-support/
-    ├── template.yaml
-    └── definition.yaml
-```
+#### ProcessList.vue Quick Start Templates
+**File**: `src/frontend/src/views/ProcessList.vue`
 
-### Template Metadata (template.yaml)
+| Line | Function | Description |
+|------|----------|-------------|
+| 219-274 | Quick Start Templates | Inline templates in empty state |
+| 371-376 | useTemplate() | Navigate to editor with template query param |
 
-```yaml
-name: content-review
-display_name: Content Review Pipeline
-description: A multi-step content review workflow with AI analysis and human approval
-category: content                   # content, devops, analytics, business
-complexity: intermediate            # simple, intermediate, advanced
-version: "1.0.0"
-author: Trinity Examples
+### State Management
 
-tags:
-  - content
-  - review
-  - approval
-  - quality
+The processes store does not manage template state directly. Templates are loaded on-demand via API calls.
 
-step_types_used:
-  - agent_task
-  - human_approval
-  - gateway
+### API Calls
 
-use_cases:
-  - "Content moderation and approval workflows"
-  - "Quality assurance pipelines"
-  - "Editorial review processes"
+**List templates:**
+```javascript
+// TemplateSelector.vue:227-239
+async function fetchTemplates() {
+  const response = await axios.get('/api/process-templates', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  templates.value = response.data.templates || []
+}
 ```
 
-### Process Definition (definition.yaml)
+**Get categories:**
+```javascript
+// TemplateSelector.vue:242-251
+async function fetchCategories() {
+  const response = await axios.get('/api/process-templates/categories', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  categories.value = response.data.categories || []
+}
+```
 
-```yaml
-name: content-review-process
-version: 1
-description: Review and approve content
+**Load template preview:**
+```javascript
+// ProcessEditor.vue:1181
+const response = await api.get(`/api/process-templates/${selectedTemplateId.value}/preview`)
+```
 
-steps:
-  - id: analyze
-    name: Analyze Content
-    type: agent_task
-    agent: analysis-agent
-    message: Analyze the following content: {{input.content}}
-
-  - id: review
-    type: human_approval
-    title: Review Analysis
-    description: Review the AI analysis before publishing
-    depends_on: [analyze]
-
-  - id: publish
-    type: agent_task
-    agent: publisher-agent
-    message: Publish the approved content
-    depends_on: [review]
-
-outputs:
-  - name: result
-    source: "{{steps.publish.output}}"
+**Save as template:**
+```javascript
+// ProcessEditor.vue:1500-1506
+await api.post('/api/process-templates', {
+  name: templateForm.value.name,
+  display_name: templateForm.value.displayName || templateForm.value.name,
+  description: templateForm.value.description,
+  category: templateForm.value.category,
+  tags: tags,
+  definition_yaml: yamlContent.value,
+})
 ```
 
 ---
 
-## Domain Model
+## Backend Layer
 
-### ProcessTemplateInfo
+### Router Endpoints
+**File**: `src/backend/routers/process_templates.py`
+
+| Line | Method | Path | Handler | Description |
+|------|--------|------|---------|-------------|
+| 106-124 | GET | `/api/process-templates` | `list_templates()` | List templates with filters |
+| 128-144 | GET | `/api/process-templates/categories` | `list_categories()` | Get available categories |
+| 149-169 | GET | `/api/process-templates/{id}/preview` | `get_template_preview()` | Get YAML for preview |
+| 172-243 | POST | `/api/process-templates/{id}/use` | `use_template()` | Create process from template |
+| 246-273 | POST | `/api/process-templates` | `create_template()` | Create user template |
+| 277-294 | GET | `/api/process-templates/{id}` | `get_template()` | Get full template detail |
+| 297-323 | DELETE | `/api/process-templates/{id}` | `delete_template()` | Delete user template |
+
+### Request/Response Models
+**File**: `src/backend/routers/process_templates.py:28-83`
 
 ```python
-# templates.py:24-51
-
-@dataclass
-class ProcessTemplateInfo:
-    """Summary info for a process template."""
-    id: str                      # "process:name" or "user:name"
-    name: str                    # Template slug
-    display_name: str            # Human-readable name
+class TemplateInfoResponse(BaseModel):
+    """Template summary info."""
+    id: str
+    name: str
+    display_name: str
     description: str
-    category: str               # content, devops, analytics, etc.
-    complexity: str             # simple, intermediate, advanced
+    category: str
+    complexity: str
     version: str
     author: str
     tags: List[str]
-    step_types_used: List[str]  # agent_task, human_approval, etc.
-    source: str                 # "bundled" | "user" | "community"
-```
+    step_types_used: List[str]
+    source: str
 
-### ProcessTemplate
-
-```python
-# templates.py:54-69
-
-@dataclass
-class ProcessTemplate:
-    """Full process template with definition."""
-    info: ProcessTemplateInfo
-    definition_yaml: str         # The actual YAML to create process from
+class TemplateDetailResponse(BaseModel):
+    """Full template with definition."""
+    # ... same fields plus:
+    definition_yaml: str
     use_cases: List[str]
-    created_at: Optional[datetime]
+    created_at: Optional[str]
     created_by: Optional[str]
+
+class CreateTemplateRequest(BaseModel):
+    """Request body for creating a template."""
+    name: str = Field(..., min_length=1, max_length=100)
+    display_name: Optional[str]
+    description: Optional[str]
+    category: str = Field(default="general")
+    complexity: str = Field(default="simple")
+    tags: List[str] = Field(default_factory=list)
+    use_cases: List[str] = Field(default_factory=list)
+    definition_yaml: str
 ```
 
----
+### Service Layer
+**File**: `src/backend/services/process_engine/services/templates.py`
 
-## ProcessTemplateService
+#### ProcessTemplateService
 
-### List Templates
+| Line | Method | Description |
+|------|--------|-------------|
+| 82-106 | `__init__()` | Initialize with templates dir and db path |
+| 108-137 | `_ensure_tables()` | Create SQLite tables for user templates |
+| 143-171 | `list_templates()` | List bundled + user templates |
+| 173-219 | `_load_bundled_templates()` | Scan config/process-templates/ directory |
+| 221-258 | `_load_user_templates()` | Query database for user templates |
+| 264-283 | `get_template()` | Get template by ID (process: or user: prefix) |
+| 285-332 | `_get_bundled_template()` | Load bundled template from filesystem |
+| 334-369 | `_get_user_template()` | Load user template from database |
+| 375-444 | `create_template()` | Create new user template |
+| 446-460 | `delete_template()` | Delete user template |
 
-```python
-# templates.py:143-171
+#### Template ID Format
 
-def list_templates(
-    self,
-    category: Optional[str] = None,
-    source: Optional[str] = None,
-) -> List[ProcessTemplateInfo]:
-    """List all available templates."""
-    templates = []
-
-    # Load bundled templates
-    if source is None or source == "bundled":
-        templates.extend(self._load_bundled_templates(category))
-
-    # Load user templates
-    if source is None or source == "user":
-        templates.extend(self._load_user_templates(category))
-
-    # Sort by display name
-    templates.sort(key=lambda t: t.display_name)
-    return templates
-```
-
-### Get Template
+Templates use prefixed IDs to distinguish sources:
+- `process:{name}` - Bundled template (e.g., `process:content-review`)
+- `user:{name}` - User-created template (e.g., `user:my-workflow`)
 
 ```python
 # templates.py:264-283
-
 def get_template(self, template_id: str) -> Optional[ProcessTemplate]:
-    """Get a template by ID."""
     if template_id.startswith("process:"):
         return self._get_bundled_template(template_id[8:])
     elif template_id.startswith("user:"):
@@ -247,298 +231,300 @@ def get_template(self, template_id: str) -> Optional[ProcessTemplate]:
         return template
 ```
 
-### Create User Template
-
-```python
-# templates.py:375-444
-
-def create_template(
-    self,
-    name: str,
-    definition_yaml: str,
-    display_name: Optional[str] = None,
-    description: Optional[str] = None,
-    category: str = "general",
-    complexity: str = "simple",
-    tags: Optional[List[str]] = None,
-    use_cases: Optional[List[str]] = None,
-    created_by: Optional[str] = None,
-) -> ProcessTemplate:
-    """Create a new user template."""
-    # Check if name exists
-    cursor.execute("SELECT 1 FROM process_templates WHERE name = ?", (name,))
-    if cursor.fetchone():
-        raise ValueError(f"Template with name '{name}' already exists")
-
-    # Analyze definition to extract step types
-    definition = yaml.safe_load(definition_yaml)
-    steps = definition.get("steps", [])
-    step_types = list(set(s.get("type", "") for s in steps))
-
-    # Insert into database
-    cursor.execute("""
-        INSERT INTO process_templates (...) VALUES (...)
-    """, ...)
-
-    return self._get_user_template(name)
-```
-
 ---
 
-## API Endpoints
+## Bundled Templates
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/process-templates` | List templates (filter by category, source) |
-| GET | `/api/process-templates/{id}` | Get template detail |
-| POST | `/api/process-templates` | Create user template |
-| DELETE | `/api/process-templates/{name}` | Delete user template |
-
-### Response Examples
-
-**List Templates:**
-
-```json
-{
-  "templates": [
-    {
-      "id": "process:content-review",
-      "name": "content-review",
-      "display_name": "Content Review Pipeline",
-      "description": "A multi-step content review workflow",
-      "category": "content",
-      "complexity": "intermediate",
-      "version": "1.0.0",
-      "author": "Trinity Examples",
-      "tags": ["content", "review", "approval"],
-      "step_types_used": ["agent_task", "human_approval", "gateway"],
-      "source": "bundled"
-    }
-  ]
-}
+### Directory Structure
+```
+config/process-templates/
+├── client-onboarding/
+│   ├── template.yaml      # Metadata
+│   └── definition.yaml    # Process definition
+├── content-review/
+│   ├── template.yaml
+│   └── definition.yaml
+├── customer-support/
+│   ├── template.yaml
+│   └── definition.yaml
+├── data-analysis/
+│   ├── template.yaml
+│   └── definition.yaml
+├── market-analysis/
+│   ├── template.yaml
+│   └── definition.yaml
+├── vc-due-diligence/
+│   ├── template.yaml
+│   └── definition.yaml
+└── weekly-brief/
+    ├── template.yaml
+    └── definition.yaml
 ```
 
-**Get Template:**
+### Current Bundled Templates
 
-```json
-{
-  "id": "process:content-review",
-  "name": "content-review",
-  "display_name": "Content Review Pipeline",
-  "description": "A multi-step content review workflow",
-  "category": "content",
-  "complexity": "intermediate",
-  "version": "1.0.0",
-  "author": "Trinity Examples",
-  "tags": ["content", "review"],
-  "step_types_used": ["agent_task", "human_approval"],
-  "source": "bundled",
-  "definition_yaml": "name: content-review-process\nversion: 1\n...",
-  "use_cases": [
-    "Content moderation and approval workflows",
-    "Quality assurance pipelines"
-  ]
-}
+| Template | Category | Complexity | Step Types |
+|----------|----------|------------|------------|
+| client-onboarding | business | intermediate | agent_task, human_approval |
+| content-review | content | intermediate | agent_task, user_task, condition |
+| customer-support | support | intermediate | agent_task, human_approval |
+| data-analysis | analytics | intermediate | agent_task |
+| market-analysis | consulting | intermediate | agent_task, human_approval, gateway |
+| vc-due-diligence | finance | advanced | agent_task, human_approval, gateway, notification |
+| weekly-brief | business | simple | agent_task |
+
+### Template Metadata Schema (template.yaml)
+
+```yaml
+name: market-analysis               # Slug (must match directory name)
+display_name: Market Analysis Pipeline
+description: Comprehensive market analysis workflow
+category: consulting                # business, content, devops, analytics, support, finance
+complexity: intermediate            # simple, intermediate, advanced
+version: "1.0.0"
+author: Acme Consulting
+
+tags:
+  - consulting
+  - market-research
+  - analysis
+
+step_types_used:
+  - agent_task
+  - human_approval
+  - gateway
+
+use_cases:
+  - "Market entry analysis"
+  - "Competitive landscape assessment"
+
+# Optional fields:
+prerequisites:
+  - "Deploy required agents"
+estimated_duration: "2-5 minutes"
 ```
 
----
+### Process Definition Schema (definition.yaml)
 
-## Frontend Components
+```yaml
+name: market-analysis
+version: 1
+description: End-to-end market analysis
 
-### TemplateSelector.vue
+steps:
+  - id: market-research
+    name: Conduct Market Research
+    type: agent_task
+    agent: acme-scout
+    message: |
+      Research {{input.market}}
+    timeout: 15m
 
-Component for browsing and selecting templates.
+  - id: quality-check
+    name: Quality Review
+    type: human_approval
+    depends_on: market-research
+    title: Review Market Analysis
+    timeout: 48h
 
-```vue
-<template>
-  <div class="template-selector">
-    <!-- Filters -->
-    <div class="filters">
-      <select v-model="categoryFilter">
-        <option value="">All Categories</option>
-        <option value="content">Content</option>
-        <option value="devops">DevOps</option>
-        <option value="analytics">Analytics</option>
-      </select>
-
-      <select v-model="sourceFilter">
-        <option value="">All Sources</option>
-        <option value="bundled">Bundled</option>
-        <option value="user">My Templates</option>
-      </select>
-    </div>
-
-    <!-- Template Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div
-        v-for="template in templates"
-        :key="template.id"
-        class="template-card"
-        @click="selectTemplate(template)"
-      >
-        <h3>{{ template.display_name }}</h3>
-        <p>{{ template.description }}</p>
-        <div class="flex gap-1">
-          <span v-for="tag in template.tags" class="tag">{{ tag }}</span>
-        </div>
-        <div class="meta">
-          <span class="badge">{{ template.complexity }}</span>
-          <span class="badge">{{ template.source }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-const emit = defineEmits(['select'])
-
-async function loadTemplates() {
-  const params = {}
-  if (categoryFilter.value) params.category = categoryFilter.value
-  if (sourceFilter.value) params.source = sourceFilter.value
-
-  templates.value = await api.get('/api/process-templates', { params })
-}
-
-function selectTemplate(template) {
-  emit('select', template)
-}
-</script>
-```
-
-### Integration with ProcessEditor
-
-```javascript
-// ProcessEditor.vue
-
-async function handleTemplateSelect(templateInfo) {
-  // Load full template
-  const template = await api.get(`/api/process-templates/${templateInfo.id}`)
-
-  // Set YAML content to template definition
-  yamlContent.value = template.definition_yaml
-
-  // Close selector
-  showTemplateSelector.value = false
-}
+outputs:
+  - name: report_status
+    source: "{{steps.create-report.output}}"
 ```
 
 ---
 
 ## Database Schema
 
-### process_templates Table
+### User Templates Table
+**File**: `src/backend/services/process_engine/services/templates.py:116-134`
 
 ```sql
-CREATE TABLE process_templates (
+CREATE TABLE IF NOT EXISTS process_templates (
     id TEXT PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,          -- Unique slug
+    name TEXT UNIQUE NOT NULL,
     display_name TEXT,
     description TEXT,
     category TEXT DEFAULT 'general',
     complexity TEXT DEFAULT 'simple',
     version TEXT DEFAULT '1.0.0',
     author TEXT,
-    tags TEXT,                          -- YAML list
-    step_types_used TEXT,               -- YAML list
-    use_cases TEXT,                     -- YAML list
-    definition_yaml TEXT NOT NULL,      -- Process definition
+    tags TEXT,               -- YAML serialized list
+    step_types_used TEXT,    -- YAML serialized list
+    use_cases TEXT,          -- YAML serialized list
+    definition_yaml TEXT NOT NULL,
     created_by TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-);
+)
+```
+
+**Database Location:** `~/trinity-data/trinity_templates.db`
+
+---
+
+## Template Categories
+
+**File**: `src/backend/routers/process_templates.py:128-144`
+
+```python
+@router.get("/categories")
+async def list_categories(current_user: CurrentUser):
+    return {
+        "categories": [
+            {"id": "general", "name": "General", "description": "General-purpose workflows"},
+            {"id": "business", "name": "Business", "description": "Business process automation"},
+            {"id": "devops", "name": "DevOps", "description": "Development and operations"},
+            {"id": "analytics", "name": "Analytics", "description": "Data analysis workflows"},
+            {"id": "support", "name": "Support", "description": "Customer support workflows"},
+            {"id": "content", "name": "Content", "description": "Content creation pipelines"},
+        ]
+    }
+```
+
+Note: Additional categories like `consulting` and `finance` are used in bundled templates but not in the static categories list.
+
+---
+
+## Use Template Flow
+
+### Endpoint Handler
+**File**: `src/backend/routers/process_templates.py:172-243`
+
+```python
+@router.post("/{template_id:path}/use")
+async def use_template(
+    template_id: str,
+    request: UseTemplateRequest,
+    current_user: CurrentUser,
+):
+    # 1. Load template
+    template = service.get_template(template_id)
+
+    # 2. Customize YAML with new process name
+    yaml_content = template.definition_yaml
+    yaml_content = yaml_content.replace("{{name}}", request.name)
+    yaml_content = re.sub(r'^name:\s*.+$', f'name: {request.name}', yaml_content, flags=re.MULTILINE)
+
+    # 3. Validate the customized YAML
+    result = validator.validate_yaml(yaml_content, created_by=current_user.email)
+
+    # 4. Save to repository
+    repo.save(definition)
+
+    # 5. Emit ProcessCreated event
+    await publish_event(ProcessCreated(...))
+
+    return {
+        "process_id": str(definition.id),
+        "process_name": definition.name,
+        "template_id": template_id,
+    }
+```
+
+---
+
+## Error Handling
+
+| Error Case | HTTP Status | Detail |
+|------------|-------------|--------|
+| Template not found | 404 | "Template not found" |
+| Template name exists | 400 | "Template with name 'x' already exists" |
+| Cannot delete bundled | 400 | "Cannot delete bundled templates" |
+| Invalid definition YAML | 422 | "Template validation failed" with error list |
+| Validation passed but no definition | 500 | "Validation passed but no definition created" |
+
+---
+
+## Side Effects
+
+- **No WebSocket broadcasts** - Template operations do not broadcast events
+- **No audit logging** - Template CRUD is not currently audited
+- **Domain Event**: `ProcessCreated` emitted when using template to create process
+
+---
+
+## Security Considerations
+
+1. **Authentication Required**: All endpoints require valid JWT token
+2. **User Templates**: Only user-created templates can be deleted
+3. **Bundled Protection**: Bundled templates cannot be modified or deleted via API
+4. **Input Validation**: Template names validated for length (1-100 chars)
+
+---
+
+## Quick Start Templates (Inline)
+
+ProcessList.vue provides inline quick-start templates for the empty state:
+
+**File**: `src/frontend/src/views/ProcessList.vue:219-274`
+
+| Template ID | Name | Steps |
+|-------------|------|-------|
+| content-pipeline | Content Pipeline | Research, Write, Review |
+| data-report | Data Report | Gather, Analyze, Report |
+| support-escalation | Support Escalation | Triage, Route, Resolve + approval |
+
+ProcessEditor.vue provides corresponding YAML:
+
+**File**: `src/frontend/src/views/ProcessEditor.vue:929-1071`
+
+```javascript
+const quickStartTemplates = {
+  'content-pipeline': `name: content-pipeline\nversion: "1.0"\n...`,
+  'data-report': `name: data-report\nversion: "1.0"\n...`,
+  'support-escalation': `name: support-escalation\nversion: "1.0"\n...`,
+}
 ```
 
 ---
 
 ## Creating a Bundled Template
 
-To add a new bundled template:
+1. Create directory:
+   ```bash
+   mkdir config/process-templates/my-template
+   ```
 
-1. Create directory in `config/process-templates/`:
+2. Create `template.yaml`:
+   ```yaml
+   name: my-template
+   display_name: My Template
+   description: What this template does
+   category: business
+   complexity: simple
+   version: "1.0.0"
+   author: Your Name
+   tags: [tag1, tag2]
+   step_types_used: [agent_task]
+   use_cases: ["Use case 1"]
+   ```
 
-```bash
-mkdir config/process-templates/my-template
-```
+3. Create `definition.yaml`:
+   ```yaml
+   name: "{{name}}"
+   version: 1
+   description: Process from my-template
 
-2. Create `template.yaml` with metadata:
+   steps:
+     - id: step1
+       type: agent_task
+       agent: your-agent
+       message: Instructions
 
-```yaml
-name: my-template
-display_name: My Template
-description: Description of what this template does
-category: business
-complexity: simple
-version: "1.0.0"
-author: Your Name
+   outputs:
+     - name: result
+       source: "{{steps.step1.output}}"
+   ```
 
-tags:
-  - tag1
-  - tag2
-
-step_types_used:
-  - agent_task
-  - notification
-
-use_cases:
-  - "Use case 1"
-  - "Use case 2"
-```
-
-3. Create `definition.yaml` with process definition:
-
-```yaml
-name: my-template-process
-version: 1
-description: Process created from my-template
-
-steps:
-  - id: step1
-    type: agent_task
-    agent: some-agent
-    message: Do something
-
-outputs:
-  - name: result
-    source: "{{steps.step1.output}}"
-```
-
----
-
-## Testing
-
-### Prerequisites
-- Backend running at localhost:8000
-- Bundled templates in config/process-templates/
-
-### Test Cases
-
-1. **List bundled templates**
-   - Action: GET /api/process-templates?source=bundled
-   - Expected: Returns bundled templates
-
-2. **Create user template**
-   - Action: POST /api/process-templates with valid definition
-   - Expected: Template saved, appears in user templates
-
-3. **Create process from template**
-   - Action: Select template, click "Use Template"
-   - Expected: YAML loaded in editor
-
-4. **Filter by category**
-   - Action: Select category filter
-   - Expected: Only templates in category shown
-
-5. **Delete user template**
-   - Action: DELETE /api/process-templates/my-template
-   - Expected: Template removed
+4. Rebuild/restart backend to pick up new template
 
 ---
 
 ## Related Flows
 
-- [process-definition.md](./process-definition.md) - Process creation from template YAML
+- **Upstream**: [process-definition.md](./process-definition.md) - Process created from template
+- **Downstream**: [process-execution.md](./process-execution.md) - Execute created process
 
 ---
 
@@ -547,3 +533,4 @@ outputs:
 | Date | Change |
 |------|--------|
 | 2026-01-16 | Initial creation |
+| 2026-01-23 | Rebuilt with accurate line numbers and complete file paths |

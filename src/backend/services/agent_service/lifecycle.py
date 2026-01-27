@@ -16,6 +16,7 @@ from services.docker_service import (
 )
 from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
 from services.agent_client import get_agent_client
+from services.skill_service import skill_service
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match, check_full_capabilities_match
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,47 @@ async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, ret
     return {"status": "failed", "error": last_error}
 
 
+async def inject_assigned_skills(agent_name: str) -> dict:
+    """
+    Inject assigned skills into a running agent.
+
+    This is called after agent startup to push any skills that were
+    assigned to this agent in the Skills tab.
+
+    Args:
+        agent_name: Name of the agent
+
+    Returns:
+        dict with injection status
+    """
+    from database import db
+
+    # Get assigned skills
+    skill_names = db.get_agent_skill_names(agent_name)
+
+    if not skill_names:
+        logger.debug(f"No assigned skills for agent {agent_name}")
+        return {"status": "skipped", "reason": "no_skills"}
+
+    logger.info(f"Injecting {len(skill_names)} skills into agent {agent_name}: {skill_names}")
+
+    # Inject skills
+    result = await skill_service.inject_skills(agent_name, skill_names)
+
+    if result.get("success"):
+        return {
+            "status": "success",
+            "skills_injected": result.get("skills_injected", 0)
+        }
+    else:
+        return {
+            "status": "partial" if result.get("skills_injected", 0) > 0 else "failed",
+            "skills_injected": result.get("skills_injected", 0),
+            "skills_failed": result.get("skills_failed", 0),
+            "results": result.get("results", {})
+        }
+
+
 async def start_agent_internal(agent_name: str) -> dict:
     """
     Internal function to start an agent.
@@ -215,12 +257,18 @@ async def start_agent_internal(agent_name: str) -> dict:
     credentials_result = await inject_assigned_credentials(agent_name)
     credentials_status = credentials_result.get("status", "unknown")
 
+    # Inject assigned skills from the Skills page
+    skills_result = await inject_assigned_skills(agent_name)
+    skills_status = skills_result.get("status", "unknown")
+
     return {
         "message": f"Agent {agent_name} started",
         "trinity_injection": trinity_status,
         "trinity_result": trinity_result,
         "credentials_injection": credentials_status,
-        "credentials_result": credentials_result
+        "credentials_result": credentials_result,
+        "skills_injection": skills_status,
+        "skills_result": skills_result
     }
 
 

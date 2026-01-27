@@ -30,33 +30,56 @@ As a platform administrator deploying Trinity for the first time, I want to be g
 ### Frontend Layer
 
 #### Router Guard
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:94-117`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:165-220`
 
 ```javascript
-// Cache for setup status check
+// Cache for setup status check (avoid repeated API calls)
 let setupStatusCache = null
 let setupStatusCacheTime = 0
 const SETUP_CACHE_DURATION = 5000 // 5 seconds
 
 async function checkSetupStatus() {
   const now = Date.now()
+  // Use cached value if recent
   if (setupStatusCache !== null && (now - setupStatusCacheTime) < SETUP_CACHE_DURATION) {
     return setupStatusCache
   }
 
-  const response = await fetch('/api/setup/status')
-  const data = await response.json()
-  setupStatusCache = data.setup_completed
-  setupStatusCacheTime = now
-  return setupStatusCache
+  try {
+    const response = await fetch('/api/setup/status')
+    const data = await response.json()
+    setupStatusCache = data.setup_completed
+    setupStatusCacheTime = now
+    return setupStatusCache
+  } catch (e) {
+    console.error('Failed to check setup status:', e)
+    // Assume setup is completed if check fails (don't block access)
+    return true
+  }
 }
 
 // Navigation guard
 router.beforeEach(async (to, from, next) => {
+  // ... auth initialization check
+
+  // Check setup status for login and protected routes
   if (!to.meta.isSetup) {
     const setupCompleted = await checkSetupStatus()
+
+    // If setup not completed, redirect to setup page
     if (!setupCompleted) {
-      next('/setup')  // Redirect to setup
+      // Allow access to public routes that don't need setup
+      if (to.path === '/chat' || to.path.startsWith('/chat/')) {
+        next()
+        return
+      }
+      next('/setup')
+      return
+    }
+
+    // If setup completed and trying to access setup page, redirect to login
+    if (to.path === '/setup') {
+      next('/login')
       return
     }
   }
@@ -73,6 +96,17 @@ router.beforeEach(async (to, from, next) => {
   name: 'Setup',
   component: () => import('../views/SetupPassword.vue'),
   meta: { requiresAuth: false, isSetup: true }
+}
+```
+
+#### Clear Setup Cache Export
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/router/index.js:242-245`
+
+```javascript
+// Clear setup cache on successful setup
+export function clearSetupCache() {
+  setupStatusCache = null
+  setupStatusCacheTime = 0
 }
 ```
 
@@ -117,67 +151,128 @@ async function handleSubmit() {
 }
 ```
 
+**Password Strength Calculation** (lines 166-176):
+```javascript
+const passwordStrength = computed(() => {
+  const p = password.value
+  if (!p) return 0
+  let strength = 0
+  if (p.length >= 8) strength++
+  if (p.length >= 12) strength++
+  if (/[A-Z]/.test(p) && /[a-z]/.test(p)) strength++
+  if (/[0-9]/.test(p)) strength++
+  if (/[^A-Za-z0-9]/.test(p)) strength++
+  return Math.min(strength, 4)
+})
+```
+
+**Validation Logic** (lines 205-207):
+```javascript
+const isValid = computed(() => {
+  return password.value.length >= 8 && passwordsMatch.value
+})
+```
+
 ### Backend Layer
 
 #### Setup Router
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/setup.py`
 
-**Router Registration** in `main.py:46`:
+**Router Registration** in `main.py:46, 294`:
 ```python
 from routers.setup import router as setup_router
-# Line 175 (approx): app.include_router(setup_router)
+# ...
+app.include_router(setup_router)
 ```
 
-#### GET /api/setup/status (lines 23-35)
+**Request Model** (lines 16-19):
+```python
+class SetAdminPasswordRequest(BaseModel):
+    """Request body for setting admin password."""
+    password: str
+    confirm_password: str
+```
+
+#### GET /api/setup/status (lines 22-34)
 ```python
 @router.get("/status")
 async def get_setup_status():
-    """Check if initial setup is complete. No auth required."""
+    """
+    Check if initial setup is complete. No auth required.
+
+    Returns:
+        - setup_completed: Whether the admin password has been set
+        - dev_mode_hint: Hint for dev mode (if applicable)
+    """
     setup_completed = db.get_setting_value('setup_completed', 'false') == 'true'
-    return {"setup_completed": setup_completed}
+    return {
+        "setup_completed": setup_completed
+    }
 ```
 
-#### POST /api/setup/admin-password (lines 38-101)
+#### POST /api/setup/admin-password (lines 37-81)
 ```python
 @router.post("/admin-password")
 async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
+    """
+    Set admin password on first launch. No auth required, only works once.
+
+    This endpoint is only available before setup is completed.
+    Once setup_completed=true is set, this endpoint returns 403.
+
+    Requirements:
+    - Password must be at least 8 characters
+    - Password and confirm_password must match
+    """
     # 1. Check setup not already completed
     if db.get_setting_value('setup_completed', 'false') == 'true':
-        raise HTTPException(status_code=403, detail="Setup already completed")
+        raise HTTPException(
+            status_code=403,
+            detail="Setup already completed. Password cannot be changed through this endpoint."
+        )
 
-    # 2. Validate password
+    # 2. Validate password length
     if len(data.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-    if data.password != data.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match")
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters"
+        )
 
-    # 3. Hash password with bcrypt
+    # 3. Validate passwords match
+    if data.password != data.confirm_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Passwords do not match"
+        )
+
+    # 4. Hash password with bcrypt
     hashed_password = hash_password(data.password)
 
-    # 4. Update admin user's password
+    # 5. Update admin user's password (creates user if doesn't exist)
     db.update_user_password('admin', hashed_password)
 
-    # 5. Mark setup as completed
+    # 6. Mark setup as completed
     db.set_setting('setup_completed', 'true')
-
-    # 6. Audit log
-    await log_audit_event(event_type="setup", action="admin_password", ...)
 
     return {"success": True}
 ```
 
 #### Password Hashing
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py:16-38`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py:15-37`
 
 ```python
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return pwd_context.hash(password)
 
+
 def verify_password(plain_password: str, stored_password: str) -> bool:
     """Verify password against stored hash.
+
     For backward compatibility, also checks plaintext passwords.
     """
     # First try bcrypt verification
@@ -186,6 +281,7 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
             return True
     except Exception:
         pass
+
     # Fall back to plaintext comparison for legacy passwords
     return plain_password == stored_password
 ```
@@ -193,7 +289,7 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
 ### Database Layer
 
 #### User Password Update (Upsert Pattern)
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/users.py:129-161`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/users.py:129-162`
 
 ```python
 def update_user_password(self, username: str, hashed_password: str) -> bool:
@@ -235,25 +331,54 @@ def update_user_password(self, username: str, hashed_password: str) -> bool:
 1. First attempts UPDATE on existing user
 2. If UPDATE affects 0 rows (user doesn't exist), performs INSERT
 3. New admin users are created with role='admin' and username as email
+4. This pattern ensures first-time setup works even on fresh deployments with no existing admin user
 
 #### Settings Storage
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/settings.py:60-83`
 
 ```python
 def set_setting(self, key: str, value: str) -> SystemSetting:
-    """Set a system setting value (upsert)."""
+    """
+    Set a system setting value (upsert).
+
+    Creates the setting if it doesn't exist, updates if it does.
+    Returns the updated setting.
+    """
     now = datetime.utcnow().isoformat()
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
+
+        # Use INSERT OR REPLACE for upsert
         cursor.execute("""
             INSERT OR REPLACE INTO system_settings (key, value, updated_at)
             VALUES (?, ?, ?)
         """, (key, value, now))
         conn.commit()
+
+        return SystemSetting(
+            key=key,
+            value=value,
+            updated_at=datetime.fromisoformat(now)
+        )
+```
+
+**Get Setting Value** (lines 49-58):
+```python
+def get_setting_value(self, key: str, default: str = None) -> Optional[str]:
+    """
+    Get just the value of a setting.
+
+    Returns the default if the setting doesn't exist.
+    """
+    setting = self.get_setting(key)
+    if setting:
+        return setting.value
+    return default
 ```
 
 #### Database Table
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py:418-425`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py:522-527`
 
 ```sql
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -271,13 +396,17 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 ### Login Block During Setup
 
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/auth.py:24-27, 53-66`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/auth.py`
 
+**Setup Check Function** (lines 20-22):
 ```python
 def is_setup_completed() -> bool:
     """Check if initial setup is completed."""
     return db.get_setting_value('setup_completed', 'false') == 'true'
+```
 
+**Admin Login Block** (lines 49-78):
+```python
 @router.post("/token", response_model=Token)
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Login with username/password and get JWT token.
@@ -294,11 +423,40 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     # ... rest of login logic
 ```
 
-**Auth mode endpoint also reports setup status** (lines 31-50):
+**Email Login Request Block** (lines 153-158):
+```python
+# Block if setup is not completed
+if not is_setup_completed():
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="setup_required"
+    )
+```
+
+**Email Login Verify Block** (lines 210-215):
+```python
+# Block if setup is not completed
+if not is_setup_completed():
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="setup_required"
+    )
+```
+
+**Auth Mode Endpoint Reports Setup Status** (lines 27-46):
 ```python
 @router.get("/api/auth/mode")
 async def get_auth_mode():
-    """Get authentication mode configuration. No auth required."""
+    """
+    Get authentication mode configuration.
+
+    This endpoint requires NO authentication - it's called before login
+    to determine which login options to show.
+
+    Returns:
+        - email_auth_enabled: Whether email-based login is enabled
+        - setup_completed: Whether first-time setup is complete
+    """
     email_auth_setting = db.get_setting_value("email_auth_enabled", str(EMAIL_AUTH_ENABLED).lower())
     email_auth_enabled = email_auth_setting.lower() == "true"
 
@@ -626,4 +784,5 @@ UPDATE users SET password_hash = 'changeme' WHERE username = 'admin';
 | Date | Change | Details |
 |------|--------|---------|
 | 2025-12-23 | Initial documentation | First-time setup and API key configuration flows |
-| 2026-01-14 | Bug fix: Admin user upsert | Fixed `update_user_password()` to create admin user if it doesn't exist. Previously, on fresh deployment with empty ADMIN_PASSWORD env var, the UPDATE query affected 0 rows but setup_completed was still set to true, leaving users unable to login. The method now uses an upsert pattern: UPDATE first, then INSERT if no rows affected. See `src/backend/db/users.py:129-161`. |
+| 2026-01-14 | Bug fix: Admin user upsert | Fixed `update_user_password()` to create admin user if it doesn't exist. Previously, on fresh deployment with empty ADMIN_PASSWORD env var, the UPDATE query affected 0 rows but setup_completed was still set to true, leaving users unable to login. The method now uses an upsert pattern: UPDATE first, then INSERT if no rows affected. See `src/backend/db/users.py:129-162`. |
+| 2026-01-23 | Line number verification | Updated all line numbers to match current codebase. Verified: setup.py endpoints (22-34, 37-81), auth.py login blocks (20-22, 49-78, 153-158, 210-215), dependencies.py password hashing (15-37), db/users.py upsert (129-162), db/settings.py (49-83), router/index.js guards (165-220, 242-245), SetupPassword.vue (166-176, 205-207, 209-236). Added documentation for email auth login blocking and password strength validation. |

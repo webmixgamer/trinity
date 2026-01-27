@@ -33,6 +33,29 @@ Comprehensive audit logging system for Trinity platform to track all user and ag
 | Schedule executions | `schedule_executions` | Execution history with logs |
 | Agent collaboration | `agent_activities` | Dashboard timeline |
 | Container logs | Vector → JSON files | Debugging |
+| **Process operations** | `audit_entries` (Process Engine) | Process-specific audit trail |
+
+### Process Engine Audit (Implemented 2026-01-16)
+
+The Process Engine has its own comprehensive audit system in `src/backend/services/process_engine/`:
+
+| Component | Location | Description |
+|-----------|----------|-------------|
+| `AuditService` | `services/audit.py` | Service layer with log(), query(), count() |
+| `AuditRepository` | `repositories/audit.py` | SQLite storage in `audit_entries` table |
+| Domain Events | `domain/events.py` | 25+ immutable event types |
+
+**Process Engine Audit Actions** (`AuditAction` enum):
+- Process lifecycle: `PROCESS_CREATE`, `PROCESS_READ`, `PROCESS_UPDATE`, `PROCESS_DELETE`, `PROCESS_PUBLISH`, `PROCESS_ARCHIVE`
+- Execution: `EXECUTION_TRIGGER`, `EXECUTION_VIEW`, `EXECUTION_CANCEL`, `EXECUTION_RETRY`, `EXECUTION_COMPLETE`, `EXECUTION_FAIL`
+- Approval: `APPROVAL_REQUEST`, `APPROVAL_DECIDE`, `APPROVAL_DELEGATE`, `APPROVAL_EXPIRE`
+- Admin: `ADMIN_CONFIG_CHANGE`, `ADMIN_RECOVERY`, `AUTH_FAILURE`
+
+**Relationship to Platform Audit**:
+- Process Engine audit is **domain-specific** (process workflows)
+- Platform audit (`audit_log`) is **cross-cutting** (agents, auth, MCP, credentials)
+- Both are append-only and immutable
+- **Decision**: Keep separate for separation of concerns; unified query API can span both if needed
 
 ## Solution: Dedicated Audit Log
 
@@ -752,28 +775,45 @@ ORDER BY timestamp DESC;
 ## Relationship to Existing Systems
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Trinity Data Systems                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
-│  │   audit_log      │    │ agent_activities │    │     Vector       │      │
-│  │   (NEW)          │    │   (EXISTING)     │    │   (EXISTING)     │      │
-│  ├──────────────────┤    ├──────────────────┤    ├──────────────────┤      │
-│  │ Security/Compliance│   │ Observability    │    │ Debugging        │      │
-│  │ WHO did WHAT     │    │ Runtime timeline │    │ Container logs   │      │
-│  │ Investigation    │    │ Dashboard viz    │    │ stdout/stderr    │      │
-│  │ IMMUTABLE        │    │ Mutable          │    │ File-based       │      │
-│  │ 1 year retention │    │ 90 day retention │    │ 90 day rotation  │      │
-│  └──────────────────┘    └──────────────────┘    └──────────────────┘      │
-│                                                                              │
-│  Keep Existing (No Changes):                                                 │
-│  - schedule_executions.execution_log → Full Claude Code transcripts         │
-│  - chat_messages → Conversation content                                      │
-│  - chat_sessions → Session metadata                                          │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                              Trinity Data Systems                                         │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                           │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐ │
+│  │   audit_log      │  │  audit_entries   │  │ agent_activities │  │     Vector       │ │
+│  │   (NEW)          │  │  (PROCESS ENGINE)│  │   (EXISTING)     │  │   (EXISTING)     │ │
+│  ├──────────────────┤  ├──────────────────┤  ├──────────────────┤  ├──────────────────┤ │
+│  │ Platform Audit   │  │ Process Audit    │  │ Observability    │  │ Debugging        │ │
+│  │ WHO did WHAT     │  │ Process workflow │  │ Runtime timeline │  │ Container logs   │ │
+│  │ Agents, Auth,    │  │ Definition CRUD  │  │ Dashboard viz    │  │ stdout/stderr    │ │
+│  │ MCP, Credentials │  │ Exec lifecycle   │  │ Tool calls       │  │ File-based       │ │
+│  │ IMMUTABLE        │  │ IMMUTABLE        │  │ Mutable          │  │ 90 day rotation  │ │
+│  │ 1 year retention │  │ 1 year retention │  │ 90 day retention │  │                  │ │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  └──────────────────┘ │
+│                                                                                           │
+│  Keep Existing (No Changes):                                                              │
+│  - schedule_executions.execution_log → Full Claude Code transcripts                      │
+│  - chat_messages → Conversation content                                                   │
+│  - chat_sessions → Session metadata                                                       │
+│  - process_executions, process_step_executions → Process execution state                 │
+│                                                                                           │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Audit System Boundaries
+
+| System | Scope | Storage | Retention |
+|--------|-------|---------|-----------|
+| **Platform Audit** (`audit_log`) | Agents, Auth, MCP, Credentials, Git, Settings | SQLite in main DB | 1 year |
+| **Process Audit** (`audit_entries`) | Process definitions, Executions, Approvals | SQLite in process DB | 1 year |
+| **Agent Activities** | Runtime observability (tool calls, chat, collaboration) | SQLite in main DB | 90 days |
+| **Vector Logs** | Container stdout/stderr for debugging | JSON files | 90 days |
+
+**Why Two Audit Systems?**
+1. **Separation of concerns**: Process Engine is a self-contained domain with its own lifecycle
+2. **Database isolation**: Process Engine can use separate database file if needed
+3. **Query optimization**: Process queries don't affect platform audit performance
+4. **Unified view possible**: Future API can aggregate both for compliance reporting
 
 ## Security Considerations
 

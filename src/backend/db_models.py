@@ -409,3 +409,39 @@ class EmailLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: dict  # User profile
+
+
+# =========================================================================
+# Agent Skills Models (Skills Management System)
+# =========================================================================
+
+class AgentSkill(BaseModel):
+    """A skill assigned to an agent."""
+    id: int
+    agent_name: str
+    skill_name: str
+    assigned_by: str  # Username of who assigned
+    assigned_at: datetime
+
+
+class SkillInfo(BaseModel):
+    """Information about a skill from the library."""
+    name: str
+    description: Optional[str] = None
+    path: str  # Relative path in library
+    content: Optional[str] = None  # Full SKILL.md content (optional)
+
+
+class AgentSkillsUpdate(BaseModel):
+    """Request model for bulk updating agent skills."""
+    skills: List[str]  # List of skill names to assign
+
+
+class SkillsLibraryStatus(BaseModel):
+    """Status of the skills library."""
+    configured: bool
+    url: Optional[str] = None
+    branch: str = "main"
+    last_sync: Optional[datetime] = None
+    commit_sha: Optional[str] = None
+    skill_count: int = 0

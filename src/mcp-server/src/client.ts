@@ -420,7 +420,7 @@ export class TrinityClient {
       timeout_seconds: options?.timeout_seconds,
     };
 
-    const timeout = (options?.timeout_seconds || 300) + 10; // Add buffer
+    const timeout = (options?.timeout_seconds || 600) + 10; // Add buffer (default matches tool schema)
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);

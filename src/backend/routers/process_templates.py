@@ -144,27 +144,8 @@ async def list_categories(
     }
 
 
-# NOTE: This route uses :path to allow template IDs like "process:content-review"
-@router.get("/{template_id:path}", response_model=TemplateDetailResponse)
-async def get_template(
-    template_id: str,
-    current_user: CurrentUser,
-):
-    """
-    Get a template by ID.
-
-    Template IDs are formatted as "process:name" for bundled templates
-    or "user:name" for user-created templates.
-    """
-    service = get_template_service()
-    template = service.get_template(template_id)
-
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-
-    return TemplateDetailResponse(**template.to_dict())
-
-
+# NOTE: Routes with /preview and /use MUST be defined BEFORE /{template_id:path}
+# because :path matches everything including /preview
 @router.get("/{template_id:path}/preview")
 async def get_template_preview(
     template_id: str,
@@ -288,6 +269,27 @@ async def create_template(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    return TemplateDetailResponse(**template.to_dict())
+
+
+# NOTE: This catch-all route MUST be defined LAST - after /preview, /use, and other specific routes
+@router.get("/{template_id:path}", response_model=TemplateDetailResponse)
+async def get_template(
+    template_id: str,
+    current_user: CurrentUser,
+):
+    """
+    Get a template by ID.
+
+    Template IDs are formatted as "process:name" for bundled templates
+    or "user:name" for user-created templates.
+    """
+    service = get_template_service()
+    template = service.get_template(template_id)
+
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
 
     return TemplateDetailResponse(**template.to_dict())
 
