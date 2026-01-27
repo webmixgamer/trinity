@@ -1,8 +1,10 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13)
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26)
 > **Tested**: All features verified working
-> **Last Updated**: 2026-01-13 - System Agent Display: System agent now visible on Agents page for admin users only. Pinned at top with purple ring and "SYSTEM" badge. Uses standard AgentDetail.vue with tab filtering instead of dedicated SystemAgent.vue. Added `systemAgent`, `sortedAgentsWithSystem` getters and `displayAgents` computed to conditionally show system agent.
+> **Last Updated**: 2026-01-26 - UX: Unified Start/Stop Toggle: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Shows "Running" (green) or "Stopped" (gray) state. Uses `toggleAgentRunning()` from agents.js store.
+>
+> **Previous (2026-01-13)** - System Agent Display: System agent now visible on Agents page for admin users only. Pinned at top with purple ring and "SYSTEM" badge. Uses standard AgentDetail.vue with tab filtering instead of dedicated SystemAgent.vue. Added `systemAgent`, `sortedAgentsWithSystem` getters and `displayAgents` computed to conditionally show system agent.
 
 ## Overview
 
@@ -12,10 +14,10 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 
 ### Agents Page (Agents.vue) - Current
 - Simple list view with server icon
-- Shows: agent name, type, port, status badge (running/stopped)
-- Start/Stop buttons with loading spinners
+- Shows: agent name, type, port, RuntimeBadge (Claude/Gemini)
+- **Running State Toggle** (2026-01-26): `RunningStateToggle.vue` component with "Running/Stopped" label, green/gray styling, loading spinner
 - "Shared by X" badge for shared agents
-- **Missing**: Activity state indicators, context stats, sorting
+- Activity state indicators, context stats, sorting (implemented 2025-12-07)
 
 ### Collaboration Dashboard (AgentNode.vue) - Already Has
 - Activity state (Active/Idle/Offline) with pulsing green dot

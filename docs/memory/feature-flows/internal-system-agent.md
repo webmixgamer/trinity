@@ -199,7 +199,7 @@ The dedicated `SystemAgent.vue` has been removed. The system agent now uses the 
 | `/api/ops/schedules` | GET | List all schedules with filters and execution history |
 | `/api/ops/schedules/pause` | POST | Pause all schedules (optionally per-agent) |
 | `/api/ops/schedules/resume` | POST | Resume all schedules (optionally per-agent) |
-| `/api/ops/emergency-stop` | POST | Halt all executions immediately |
+| `/api/ops/emergency-stop` | POST | Halt all executions immediately. Optional `?system_prefix=` to filter by agent name prefix |
 
 **Query Parameters for `GET /api/ops/schedules`**:
 - `agent_name` - Filter by specific agent
@@ -460,23 +460,29 @@ class AgentSessionInfo:
 - Uses `client.get_session()` at lines 167-169
 - Classifies context usage: critical (>90%), warning (>75%), healthy
 
-### 3. Emergency Stop Flow (Parallel Execution - 2026-01-14)
+### 3. Emergency Stop Flow (Parallel Execution - 2026-01-14, Prefix Filter - 2026-01-27)
 
 **Performance Improvement**: Emergency stop now uses `ThreadPoolExecutor(max_workers=10)` to stop agents in parallel instead of sequentially. This significantly reduces the time to halt a large fleet during emergencies.
 
+**Prefix Filtering (2026-01-27)**: Added optional `system_prefix` query parameter to target specific agents by name prefix. This allows stopping only agents matching a pattern (e.g., `?system_prefix=prod-` to stop only production agents).
+
 ```
-POST /api/ops/emergency-stop
+POST /api/ops/emergency-stop?system_prefix={optional-prefix}
        │
        ▼
-┌──────────────────────────────────┐
-│ 1. Pause all enabled schedules   │
-│    - Set enabled=false in DB     │
-│    - Remove from APScheduler     │
-└────────┬─────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ 1. Pause enabled schedules (with prefix filter)      │
+│    - If prefix set: only schedules where             │
+│      agent_name.startswith(prefix)                   │
+│    - Set enabled=false in DB                         │
+│    - Remove from APScheduler                         │
+└────────┬─────────────────────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────────────────────────┐
-│ 2. Stop all non-system agents IN PARALLEL            │
+│ 2. Stop non-system agents IN PARALLEL (with filter)  │
+│    - If prefix set: only agents where                │
+│      agent_name.startswith(prefix)                   │
 │    - Filter to running non-system agents             │
 │    - ThreadPoolExecutor(max_workers=10)              │
 │    - _stop_agent_container() helper for each         │
@@ -493,7 +499,33 @@ POST /api/ops/emergency-stop
 └──────────────────────────────────┘
 ```
 
-**Implementation** (`src/backend/routers/ops.py:591-682`):
+**API Signature** (`src/backend/routers/ops.py:607-696`):
+
+```python
+@router.post("/emergency-stop")
+async def emergency_stop(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    system_prefix: Optional[str] = Query(
+        None,
+        description="Optional: Only stop agents whose names start with this prefix"
+    )
+):
+```
+
+**Prefix Filter Logic** (lines 638-639 for schedules, 658-659 for agents):
+
+```python
+# Schedule filtering (line 638-639)
+if system_prefix and not schedule.agent_name.startswith(system_prefix):
+    continue
+
+# Agent filtering (line 658-659)
+if system_prefix and not agent_name.startswith(system_prefix):
+    continue
+```
+
+**Implementation** (`src/backend/routers/ops.py:591-696`):
 
 ```python
 def _stop_agent_container(agent_name: str, timeout: int = 10) -> dict:
@@ -518,6 +550,11 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
 ```
 
 **Why Parallel**: Docker SDK `container.stop()` is synchronous and waits for the container to stop (up to timeout). With 20 agents at 10-second timeout each, sequential stopping would take 200+ seconds. Parallel stopping with 10 workers reduces this to ~20-30 seconds.
+
+**Use Cases for Prefix Filter**:
+- Stop all agents in a namespace: `?system_prefix=prod-`
+- Stop agents from a specific project: `?system_prefix=project-x-`
+- Testing without side effects: `?system_prefix=nonexistent-prefix` (stops nothing)
 
 ### 4. Cost Monitoring Flow (OTel Access)
 
@@ -780,10 +817,23 @@ curl http://localhost:8000/api/ops/fleet/health \
 
 ### 5. Emergency Stop
 ```bash
+# Stop ALL non-system agents
 curl -X POST http://localhost:8000/api/ops/emergency-stop \
   -H "Authorization: Bearer $TOKEN"
 
 # Expected: All schedules paused, all non-system agents stopped
+
+# Stop only agents with specific prefix
+curl -X POST "http://localhost:8000/api/ops/emergency-stop?system_prefix=prod-" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected: Only schedules/agents where name starts with "prod-" are affected
+
+# Safe test (no side effects)
+curl -X POST "http://localhost:8000/api/ops/emergency-stop?system_prefix=nonexistent-prefix" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected: {"success": true, "schedules_paused": 0, "agents_stopped": 0}
 ```
 
 ### 6. Ops Commands (via Chat)
@@ -901,7 +951,8 @@ ls -1 ~/reports/fleet/ | tail -1
 
 | Date | Changes |
 |------|---------|
-| 2026-01-14 | **Emergency Stop Parallel Execution (LOW)**: Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)` in `routers/ops.py:591-682`. Added `_stop_agent_container()` helper function for thread pool execution. Reduces emergency stop time from 200+ seconds (sequential) to 20-30 seconds for a 20-agent fleet. Uses 60-second timeout for all futures with `concurrent.futures.as_completed()`. |
+| 2026-01-27 | **Emergency Stop Prefix Filter**: Added `system_prefix` query parameter to `POST /api/ops/emergency-stop` (`routers/ops.py:607-696`). Allows targeting specific agents/schedules by name prefix. Schedule pausing respects prefix (line 638-639), agent stopping respects prefix (line 658-659). Enables safe testing with nonexistent prefix. |
+| 2026-01-14 | **Emergency Stop Parallel Execution (LOW)**: Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)` in `routers/ops.py:591-696`. Added `_stop_agent_container()` helper function for thread pool execution. Reduces emergency stop time from 200+ seconds (sequential) to 20-30 seconds for a 20-agent fleet. Uses 60-second timeout for all futures with `concurrent.futures.as_completed()`. |
 | 2026-01-13 | **Report Storage**: Added organized report storage in `~/reports/` with subdirectories per report type. All slash commands now save reports with timestamped filenames. Added `.gitignore` to exclude reports from sync. |
 | 2026-01-13 | **UI Consolidation**: Removed dedicated `SystemAgent.vue` (782 lines) and `SystemAgentTerminal.vue` (~350 lines). System agent now uses standard `AgentDetail.vue` with tab filtering (`visibleTabs` computed, lines 414-448). Added `systemAgent` and `sortedAgentsWithSystem` getters to `agents.js` store (lines 25-27, 39-41). System agent visible on Agents page for admins only with purple ring and "SYSTEM" badge (Agents.vue lines 46-75). `/system-agent` route redirects to `/agents/trinity-system`. Schedules tab now available for system agent. |
 | 2026-01-12 | **Docker Stats Optimization**: Updated fleet status flow - `list_all_agents_fast()` now used at ops.py:54 instead of `list_all_agents()`. Avoids slow Docker API calls for better dashboard performance (~50ms vs 2-3s). |

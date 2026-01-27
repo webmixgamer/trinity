@@ -279,6 +279,12 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     except Exception as e:
         logger.warning(f"Failed to delete permissions for agent {agent_name}: {e}")
 
+    # Delete agent skills
+    try:
+        db.delete_agent_skills(agent_name)
+    except Exception as e:
+        logger.warning(f"Failed to delete skills for agent {agent_name}: {e}")
+
     # Delete shared folder config and shared volume
     try:
         db.delete_shared_folder_config(agent_name)

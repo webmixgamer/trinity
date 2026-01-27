@@ -42,8 +42,7 @@
             :git-has-changes="gitHasChanges"
             :git-changes-count="gitChangesCount"
             :git-behind="gitBehind"
-            @start="startAgent"
-            @stop="stopAgent"
+            @toggle="toggleRunning"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
             @open-resource-modal="showResourceModal = true"
@@ -159,6 +158,11 @@
               <FilesPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
+            <!-- Skills Tab Content -->
+            <div v-if="activeTab === 'skills'">
+              <SkillsPanel :agent-name="agent.name" :agent-status="agent.status" />
+            </div>
+
             <!-- Shared Folders Tab Content -->
             <div v-if="activeTab === 'folders'" class="p-6">
               <FoldersPanel :agent-name="agent.name" :agent-status="agent.status" :can-share="agent.can_share" />
@@ -238,6 +242,7 @@ import SharingPanel from '../components/SharingPanel.vue'
 import PermissionsPanel from '../components/PermissionsPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import TerminalPanelContent from '../components/TerminalPanelContent.vue'
+import SkillsPanel from '../components/SkillsPanel.vue'
 
 // Import composables
 import { useNotification } from '../composables'
@@ -359,6 +364,17 @@ async function toggleAutonomy() {
   }
 }
 
+// Toggle running state (start/stop)
+async function toggleRunning() {
+  if (!agent.value || actionLoading.value) return
+
+  if (agent.value.status === 'running') {
+    await stopAgent()
+  } else {
+    await startAgent()
+  }
+}
+
 // Default model based on runtime
 const defaultModel = computed(() => {
   const runtime = agent.value?.runtime || 'claude-code'
@@ -422,7 +438,8 @@ const visibleTabs = computed(() => {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
-    { id: 'credentials', label: 'Credentials' }
+    { id: 'credentials', label: 'Credentials' },
+    { id: 'skills', label: 'Skills' }
   ]
 
   // Sharing/Permissions - hide for system agent (system agent has full access)

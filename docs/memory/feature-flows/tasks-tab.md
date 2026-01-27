@@ -39,6 +39,7 @@ As an agent operator, I want to view and trigger headless task executions from a
 **TasksPanel.vue** - Main tasks component with the following sections:
 - **Header (lines 4-47)**: Title, queue status indicator, refresh button
 - **New Task Input (lines 49-78)**: Textarea for task message, Run button
+  - **Keyboard shortcuts**: Enter to submit, Shift+Enter for newline, Cmd/Ctrl+Enter also works
 - **Summary Stats (lines 81-100)**: Total tasks, success rate, total cost, avg duration
 - **Task History (lines 102-298)**: Scrollable list of all tasks with expand/collapse
   - **Action Buttons per Task** (lines 206-294):

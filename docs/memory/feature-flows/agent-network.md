@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-01-15 - Timezone-aware timestamps: All timestamps now use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
+> **Last Updated**: 2026-01-26 - UX: Added `RunningStateToggle` to AgentNode.vue for Dashboard start/stop control. Added `toggleAgentRunning()` to network.js store.
+>
+> **Previous (2026-01-15)** - Timezone-aware timestamps: All timestamps now use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
 ## Overview
 Real-time visual dashboard that displays all agents as interactive, draggable nodes connected by animated edges that light up when agents communicate with each other. Built with Vue Flow for graph visualization. **This is the main landing page after login.**
@@ -87,13 +89,17 @@ Custom node component for each agent (updated 2025-12-30).
 - Line 45: Pulsing animation for active agents (`active-pulse` class)
 
 **Status Display**:
-- Lines 52-61: Activity state label ("Active", "Idle", "Offline") and Autonomy toggle
-- Lines 62-96: Autonomy toggle switch (not shown for system agent):
+- Lines 57-65: **Running State Toggle** (NEW 2026-01-26) - for non-system agents:
+  - `RunningStateToggle` component (size: sm, nodrag class)
+  - Shows "Running" (green) or "Stopped" (gray)
+  - Clicking calls `handleRunningToggle()` -> `networkStore.toggleAgentRunning()`
+  - Loading spinner during API call
+- Lines 67-100: Autonomy toggle switch (not shown for system agent):
   - Toggle switch (36x20px) with sliding knob animation
   - Label shows "AUTO" (amber) or "Manual" (gray)
   - Clicking calls `networkStore.toggleAutonomy(agentName)`
   - Loading state disables toggle during API call
-- Lines 99-101: GitHub repo display (if from GitHub template)
+- Lines 103-117: GitHub repo display (if from GitHub template)
 
 **Progress Bars**:
 - Lines 71-84: Context usage progress bar with percentage and color coding
@@ -356,7 +362,7 @@ async function fetchExecutionStats() {
 - Polls every 15 seconds for agent list changes
 - Detects new/deleted agents and updates graph
 
-##### toggleAutonomy() (Lines 993-1030)
+##### toggleAutonomy() (Lines 1173-1209)
 ```javascript
 async function toggleAutonomy(agentName) {
   const node = nodes.value.find(n => n.id === agentName)
@@ -369,6 +375,41 @@ async function toggleAutonomy(agentName) {
 }
 ```
 Toggles autonomy mode for an agent and updates the node data reactively.
+
+##### toggleAgentRunning() (Lines 1211-1250) - NEW 2026-01-26
+```javascript
+async function toggleAgentRunning(agentName) {
+  const node = nodes.value.find(n => n.id === agentName)
+  if (!node) return { success: false, error: 'Agent not found' }
+
+  const isRunning = node.data.status === 'running'
+  runningToggleLoading.value[agentName] = true
+
+  try {
+    if (isRunning) {
+      await axios.post(`/api/agents/${agentName}/stop`, {}, { headers: ... })
+      node.data.status = 'stopped'
+      node.data.activityState = 'offline'
+    } else {
+      await axios.post(`/api/agents/${agentName}/start`, {}, { headers: ... })
+      node.data.status = 'running'
+      node.data.activityState = 'idle'
+    }
+    return { success: true, status: node.data.status }
+  } finally {
+    runningToggleLoading.value[agentName] = false
+  }
+}
+```
+Toggles running state (start/stop) for an agent from the Dashboard. Updates node status and activity state reactively.
+
+##### isTogglingRunning() (Lines 1252-1254) - NEW 2026-01-26
+```javascript
+function isTogglingRunning(agentName) {
+  return runningToggleLoading.value[agentName] || false
+}
+```
+Helper to check if an agent is currently toggling running state (for loading UI).
 
 ##### Replay Mode Functions (Lines 689-897)
 - `setReplayMode()` (690-708): Toggle between live and replay mode
@@ -1429,6 +1470,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-01-26 | **UX: Running State Toggle on Dashboard**: Added `RunningStateToggle.vue` component to AgentNode.vue (lines 57-65) for start/stop control from Dashboard. Added `toggleAgentRunning()` (lines 1211-1250), `isTogglingRunning()` (lines 1252-1254), and `runningToggleLoading` ref to network.js store. Users can now start/stop agents directly from the Dashboard without navigating to detail page. |
 | 2026-01-15 | **Timezone-aware timestamps**: All timestamps now use UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. Frontend uses `parseUTC()` and `getTimestampMs()` from `@/utils/timestamps.js`. Added timezone notes to WebSocket events and timestamp parsing sections. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md). |
 | 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s. Agent list refresh changed from 10s to 15s. Updated polling strategy documentation and performance considerations. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: `get_accessible_agents()` (helpers.py:83-153) now uses `db.get_all_agent_metadata()` (db/agents.py:467-529) - single JOIN query instead of 8-10 queries per agent. Database queries reduced from 160-200 to 2 per request. Added Agent List Optimization section to Data Layer. Orphaned agents (Docker-only) only visible to admin. |

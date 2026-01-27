@@ -11,6 +11,7 @@ import { createAgentTools } from "./tools/agents.js";
 import { createChatTools } from "./tools/chat.js";
 import { createSystemTools } from "./tools/systems.js";
 import { createDocsTools } from "./tools/docs.js";
+import { createSkillsTools } from "./tools/skills.js";
 import type { McpAuthContext } from "./types.js";
 
 export interface ServerConfig {
@@ -187,8 +188,18 @@ export async function createServer(config: ServerConfig = {}) {
   const docsTools = createDocsTools();
   server.addTool(docsTools.getAgentRequirements);
 
-  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length;
-  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs)`);
+  // Register skills management tools
+  const skillsTools = createSkillsTools(client, requireApiKey);
+  server.addTool(skillsTools.listSkills);
+  server.addTool(skillsTools.getSkill);
+  server.addTool(skillsTools.getSkillsLibraryStatus);
+  server.addTool(skillsTools.assignSkillToAgent);
+  server.addTool(skillsTools.setAgentSkills);
+  server.addTool(skillsTools.syncAgentSkills);
+  server.addTool(skillsTools.getAgentSkills);
+
+  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length;
+  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills)`);
 
   return { server, port, client, requireApiKey };
 }

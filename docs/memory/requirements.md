@@ -29,10 +29,11 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Create agents from templates (GitHub or local) or from scratch
 - **Key Features**: Web UI, REST API, GitHub templates (`github:Org/repo`), local templates, credential schema auto-detection
 
-### 1.2 Agent Start/Stop
-- **Status**: ✅ Implemented
-- **Description**: Start and stop agent containers with visual feedback
-- **Key Features**: Loading spinners, toast notifications, WebSocket status broadcasts
+### 1.2 Agent Start/Stop Toggle
+- **Status**: ✅ Implemented (Updated 2026-01-26)
+- **Description**: Start and stop agent containers via unified toggle control
+- **Key Features**: Toggle switch shows Running/Stopped state, loading spinner during action, consistent UI across Dashboard, Agents page, and Agent Detail page
+- **Components**: `RunningStateToggle.vue` - Reusable toggle component with size variants (sm/md/lg)
 
 ### 1.3 Agent Deletion
 - **Status**: ✅ Implemented

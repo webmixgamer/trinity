@@ -183,52 +183,21 @@
 
             <!-- Action buttons -->
             <div class="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
-              <!-- Status badge -->
-              <span :class="[
-                'px-2 py-1 text-xs font-semibold rounded-full',
-                agent.status === 'running'
-                  ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              ]">
-                {{ agent.status }}
-              </span>
+              <!-- Running State Toggle -->
+              <RunningStateToggle
+                :model-value="agent.status === 'running'"
+                :loading="actionInProgress === agent.name"
+                size="md"
+                @toggle="toggleAgentRunning(agent)"
+              />
 
-              <div class="flex items-center space-x-2">
-                <!-- Start/Stop button -->
-                <button
-                  v-if="agent.status === 'stopped'"
-                  @click="startAgent(agent.name)"
-                  :disabled="actionInProgress === agent.name"
-                  class="p-1.5 rounded-lg bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50 transition-colors"
-                  title="Start agent"
-                >
-                  <svg v-if="actionInProgress === agent.name" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <PlayIcon v-else class="h-5 w-5" />
-                </button>
-                <button
-                  v-else
-                  @click="stopAgent(agent.name)"
-                  :disabled="actionInProgress === agent.name"
-                  class="p-1.5 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 transition-colors"
-                  title="Stop agent"
-                >
-                  <svg v-if="actionInProgress === agent.name" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <StopIcon v-else class="h-5 w-5" />
-                </button>
-                <!-- View Details button -->
-                <router-link
-                  :to="`/agents/${agent.name}`"
-                  class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold transition-all duration-200 border border-blue-200 dark:border-blue-700"
-                >
-                  View Details
-                </router-link>
-              </div>
+              <!-- View Details button -->
+              <router-link
+                :to="`/agents/${agent.name}`"
+                class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold transition-all duration-200 border border-blue-200 dark:border-blue-700"
+              >
+                View Details
+              </router-link>
             </div>
           </div>
         </div>
@@ -262,7 +231,8 @@ import NavBar from '../components/NavBar.vue'
 import AgentSubNav from '../components/AgentSubNav.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
-import { ServerIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline'
+import RunningStateToggle from '../components/RunningStateToggle.vue'
+import { ServerIcon } from '@heroicons/vue/24/outline'
 import axios from 'axios'
 
 const agentsStore = useAgentsStore()
@@ -398,27 +368,20 @@ const handleAutonomyToggle = async (agent) => {
   }
 }
 
-const startAgent = async (name) => {
-  if (actionInProgress.value === name) return
-  actionInProgress.value = name
-  try {
-    const result = await agentsStore.startAgent(name)
-    showNotification(result.message, 'success')
-  } catch (error) {
-    showNotification(error.message || 'Failed to start agent', 'error')
-  } finally {
-    actionInProgress.value = null
-  }
-}
+const toggleAgentRunning = async (agent) => {
+  if (actionInProgress.value === agent.name) return
+  actionInProgress.value = agent.name
 
-const stopAgent = async (name) => {
-  if (actionInProgress.value === name) return
-  actionInProgress.value = name
   try {
-    const result = await agentsStore.stopAgent(name)
-    showNotification(result.message, 'success')
+    const result = await agentsStore.toggleAgentRunning(agent.name)
+    if (result.success) {
+      const action = result.status === 'running' ? 'started' : 'stopped'
+      showNotification(`Agent ${agent.name} ${action}`, 'success')
+    } else {
+      showNotification(result.error || 'Failed to toggle agent', 'error')
+    }
   } catch (error) {
-    showNotification(error.message || 'Failed to stop agent', 'error')
+    showNotification(error.message || 'Failed to toggle agent', 'error')
   } finally {
     actionInProgress.value = null
   }

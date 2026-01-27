@@ -1,3 +1,236 @@
+### 2026-01-27 11:00:00
+📝 **Docs: Feature Flow Updates for Bug Fixes**
+
+**Summary**: Updated feature flow documentation to reflect today's bug fixes.
+
+**internal-system-agent.md**:
+- Section 3 (Emergency Stop Flow): Documented new `system_prefix` query parameter
+- Updated API signature with `Optional[str] = Query()` parameter
+- Added prefix filter logic for schedules (line 638-639) and agents (line 658-659)
+- Updated Testing section with examples for prefix filtering and safe testing
+- Added revision history entry for 2026-01-27
+
+**testing-agents.md**:
+- Added revision history entry for AsyncTrinityApiClient header fix
+- Documented fix pattern: `kwargs.pop('headers', {})` + merge with auth headers
+
+**feature-flows.md**:
+- Updated summary block with detailed fix descriptions
+- Updated Internal System Agent entry with 2026-01-27 prefix filter note
+- Updated Testing Agents Suite entry with fix date and test count (1460+)
+
+---
+
+### 2026-01-27 10:30:00
+🐛 **Bug Fixes: Test Suite and Emergency Stop Improvements**
+
+**Summary**: Fixed 3 bugs from roadmap - verified executions 404, fixed async client headers, and improved emergency stop test.
+
+**Bug 1: Executions 404 for Non-Existent Agent**
+- Status: Already fixed (verified)
+- The `AuthorizedAgent` dependency at `dependencies.py:198-202` already validates agent existence
+- Returns 404 "Agent not found" correctly for non-existent agents
+- No code changes needed
+
+**Bug 2: AsyncTrinityApiClient Headers Bug**
+- Added header merging to all `AsyncTrinityApiClient` methods (get, post, put, delete)
+- Pattern: `custom_headers = kwargs.pop('headers', {}); headers = {**self._get_headers(auth), **custom_headers}`
+- Now matches sync `TrinityApiClient` behavior
+- File: `tests/utils/api_client.py:208-280`
+
+**Bug 3: Emergency Stop Test Timeout**
+- Added `system_prefix` query parameter to `POST /api/ops/emergency-stop`
+- Allows filtering which agents/schedules are affected
+- Test now uses nonexistent prefix to verify structure without side effects
+- Test runs in 0.25s (was timing out at 2+ minutes)
+- Files: `routers/ops.py:607-682`, `tests/test_ops.py:367-391`
+
+**Tests**: All 253 smoke tests pass, 41/41 ops tests pass
+
+---
+
+### 2026-01-26 16:45:00
+🔬 **Feature: Process Miner Skill for Agent Log Analysis**
+
+**Summary**: Created a new skill that analyzes Claude Code execution logs (JSONL transcripts) to discover repeatable workflow patterns and generate Trinity Process YAML definitions.
+
+**New Files**:
+- `.claude/skills/process-miner.md` - Skill definition with instructions
+- `.claude/skills/scripts/process_miner.py` - Python analysis script (~500 lines)
+
+**Capabilities**:
+- Parse Claude Code JSONL transcripts
+- Discover frequent tool sequences (n-grams)
+- Semantic analysis of tool inputs (files read, modified, commands run)
+- Infer workflow types (read-modify, search-review, delegation, etc.)
+- Generate Trinity Process YAML from discovered patterns
+- Confidence scoring based on pattern frequency
+
+**Usage**:
+```bash
+# List available projects
+python3 .claude/skills/scripts/process_miner.py --list-projects
+
+# Analyze a transcript
+python3 .claude/skills/scripts/process_miner.py --transcript PATH
+
+# Save outputs
+python3 .claude/skills/scripts/process_miner.py --transcript PATH --output DIR
+```
+
+**Background**: Inspired by process mining concepts (BPMN + pm4py) but applied to AI agent reasoning traces instead of human business processes.
+
+---
+
+### 2026-01-26 05:00:00
+🎨 **UX: Enter Key Submits Tasks in Tasks Tab**
+
+**Summary**: Added Enter key shortcut to submit tasks in the Tasks tab for faster workflow.
+
+**Changes**:
+- `TasksPanel.vue`: Added `@keydown.enter.exact.prevent` to textarea
+- Enter now submits the task (no modifier keys needed)
+- Shift+Enter inserts a newline (for multi-line tasks)
+- Cmd/Ctrl+Enter also works (kept for consistency)
+- Updated placeholder text to hint at keyboard shortcuts
+
+**Files Changed**:
+- `src/frontend/src/components/TasksPanel.vue` - lines 53-60
+
+---
+
+### 2026-01-26 04:30:00
+📚 **Docs: Expanded Platform Skills Best Practices in Agent Guide**
+
+**Summary**: Updated TRINITY_COMPATIBLE_AGENT_GUIDE.md with comprehensive guidance on writing effective skills, making it the go-to reference for skill development.
+
+**Additions to Platform Skills Section**:
+- **SKILL.md format**: Complete example with frontmatter and markdown instructions
+- **Frontmatter fields**: `name`, `description`, `allowed-tools` with explanations
+- **Description best practices**: Good vs bad examples, what to include
+- **Tool restrictions**: Using `allowed-tools` for read-only or security-sensitive skills
+- **Multi-file patterns**: Progressive disclosure with supporting files and scripts
+- **Agent perspective**: How injected skills appear in ~/.claude/skills/ and CLAUDE.md
+- **Comparison table**: Skills vs Slash Commands vs CLAUDE.md - when to use each
+
+**Key Guidance**:
+- Skills are the **recommended way** to encode reusable organizational knowledge
+- Skills are **model-invoked** (Claude decides when to apply them based on description)
+- Description field is critical - Claude uses it to match skills to tasks
+
+**Files Changed**:
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` - Platform Skills section expanded (Section 11)
+
+---
+
+### 2026-01-26 03:00:00
+🎨 **UX: Agent Start/Stop Toggle Control**
+
+**Summary**: Replaced separate Start/Stop buttons with a unified toggle switch across all agent-displaying pages for consistent UX.
+
+**Changes**:
+- Created `RunningStateToggle.vue` - Reusable toggle component with:
+  - Three size variants (sm/md/lg)
+  - Loading spinner during state change
+  - Dark mode support
+  - Accessibility (ARIA attributes, keyboard navigation)
+  - Green for Running, gray for Stopped
+
+- Updated pages to use toggle:
+  - `AgentHeader.vue` - Detail page header (size: lg)
+  - `Agents.vue` - Agents list page (size: md)
+  - `AgentNode.vue` - Dashboard network view (size: sm, with nodrag)
+
+- Added store methods:
+  - `agents.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` state
+  - `network.js`: `toggleAgentRunning()`, `isTogglingRunning()`, `runningToggleLoading` ref
+
+**User Impact**:
+- Toggle clearly shows current state (Running/Stopped) vs old buttons that showed action
+- Dashboard users can now start/stop agents without navigating to detail page
+- Consistent visual pattern across all pages
+
+**Requirement**: docs/requirements/AGENT_START_STOP_TOGGLE.md
+
+---
+
+### 2026-01-26 01:45:00
+📝 **Docs: Updated skill injection feature flows for CLAUDE.md update step**
+
+**Summary**: Updated feature flow documentation to reflect the new CLAUDE.md "Platform Skills" section update that occurs during skill injection, enabling agents to answer "what skills do you have?"
+
+**Feature Flows Updated**:
+- `docs/memory/feature-flows/skills-on-agent-start.md`:
+  - Added `_update_claude_md_skills_section()` method documentation (lines 376-435)
+  - Added `AgentClient.read_file()` method documentation (lines 470-506)
+  - Updated flow diagram to show CLAUDE.md update step
+  - Updated "Result in Agent Container" section with two-mechanism explanation
+  - Added Files Download Endpoint documentation (agent_server lines 112-153)
+
+- `docs/feature-flows/skill-injection.md`:
+  - Added CLAUDE.md Skills Section Update section with code and example
+  - Updated Business Logic to include step 5 (CLAUDE.md update)
+  - Updated AgentClient Methods table with read_file() and write_file() line numbers
+  - Updated Agent Server File Endpoints table with both endpoints
+  - Updated Data Flow Diagram to show CLAUDE.md read/write operations
+
+- `docs/memory/feature-flows.md`:
+  - Updated Skill Injection entry with new line numbers and CLAUDE.md mention
+  - Updated Skills on Agent Start entry with _update_claude_md_skills_section reference
+
+**Line Numbers Verified**:
+- `skill_service.py:300-374` - inject_skills()
+- `skill_service.py:376-435` - _update_claude_md_skills_section()
+- `agent_client.py:470-506` - read_file()
+- `agent_client.py:508-547` - write_file()
+- `agent_server/routers/files.py:112-153` - GET /api/files/download
+- `agent_server/routers/files.py:314-371` - PUT /api/files
+
+---
+
+### 2026-01-26 00:30:00
+🎯 **Feature: Skills Management System Implementation**
+
+**Summary**: Implemented the full Skills Management System allowing agents to be assigned reusable skills from a GitHub-hosted library.
+
+**Backend Changes**:
+- `src/backend/db/skills.py` - New database operations for agent_skills table
+- `src/backend/db_models.py` - Added AgentSkill, SkillInfo, AgentSkillsUpdate, SkillsLibraryStatus models
+- `src/backend/database.py` - Added agent_skills table, indexes, and delegation methods
+- `src/backend/services/skill_service.py` - New service for git sync, skill listing, and injection
+- `src/backend/services/settings_service.py` - Added skills_library_url/branch settings
+- `src/backend/services/agent_service/lifecycle.py` - Added inject_assigned_skills on agent start
+- `src/backend/routers/skills.py` - New API router for skills endpoints
+- `src/backend/routers/agents.py` - Added skill cleanup on agent delete
+- `src/backend/main.py` - Registered skills router
+
+**Frontend Changes**:
+- `src/frontend/src/components/SkillsPanel.vue` - New component for agent skills tab
+- `src/frontend/src/views/Settings.vue` - Added Skills Library configuration section
+- `src/frontend/src/views/AgentDetail.vue` - Added Skills tab
+
+**MCP Tools** (7 new tools):
+- `list_skills` - List available skills from library
+- `get_skill` - Get skill details and content
+- `get_skills_library_status` - Get library sync status
+- `assign_skill_to_agent` - Assign skill to agent
+- `set_agent_skills` - Bulk update agent skills
+- `sync_agent_skills` - Inject skills to running agent
+- `get_agent_skills` - Get skills assigned to agent
+
+**API Endpoints**:
+- `GET /api/skills/library` - List available skills
+- `GET /api/skills/library/{name}` - Get skill content
+- `GET /api/skills/library/status` - Library status
+- `POST /api/skills/library/sync` - Sync from GitHub (admin)
+- `GET /api/agents/{name}/skills` - Agent's assigned skills
+- `PUT /api/agents/{name}/skills` - Bulk update assignments
+- `POST /api/agents/{name}/skills/{skill}` - Assign single skill
+- `DELETE /api/agents/{name}/skills/{skill}` - Unassign skill
+- `POST /api/agents/{name}/skills/inject` - Inject to running agent
+
+---
+
 ### 2026-01-25 23:15:00
 📝 **Requirements: Simplified Skills Management Architecture**
 

@@ -538,6 +538,7 @@ markers = [
 
 | Date | Changes |
 |------|---------|
+| 2026-01-27 | **AsyncTrinityApiClient Header Fix**: Fixed header merging in async test client. All async methods (get, post, put, delete) now properly merge custom headers with auth headers, matching sync client behavior. Previously, custom headers passed via kwargs would override auth headers. File: `tests/utils/api_client.py:208-280`. |
 | 2025-12-07 | Initial implementation - 8 test agents designed and 4 configured |
 | 2025-12-08 | All 8 test agents configured in `config.py` (added test-scheduler, test-queue, test-files, test-error) |
 | 2025-12-08 | Test results: test-echo PASSED, test-counter PASSED, test-worker PARTIAL, test-delegator PASSED |

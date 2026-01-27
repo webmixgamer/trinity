@@ -13,7 +13,9 @@ export const useAgentsStore = defineStore('agents', {
     // Execution stats for agents list page (tasks, success rate, cost, last run)
     executionStats: {},  // Map of agent name -> execution stats
     contextPollingInterval: null,
-    sortBy: 'created_desc'  // Default sort order
+    sortBy: 'created_desc',  // Default sort order
+    // Running toggle loading state per agent
+    runningToggleLoading: {}  // Map of agent name -> boolean
   }),
 
   getters: {
@@ -178,6 +180,49 @@ export const useAgentsStore = defineStore('agents', {
         console.error('Stop agent error:', message)
         throw new Error(message)
       }
+    },
+
+    /**
+     * Toggle agent running state (start/stop)
+     * @param {string} name - Agent name
+     * @returns {Promise<{success: boolean, status?: string, error?: string}>}
+     */
+    async toggleAgentRunning(name) {
+      const agent = this.agents.find(a => a.name === name)
+      if (!agent) return { success: false, error: 'Agent not found' }
+
+      this.runningToggleLoading[name] = true
+
+      try {
+        const authStore = useAuthStore()
+        if (agent.status === 'running') {
+          await axios.post(`/api/agents/${name}/stop`, {}, {
+            headers: authStore.authHeader
+          })
+          agent.status = 'stopped'
+        } else {
+          await axios.post(`/api/agents/${name}/start`, {}, {
+            headers: authStore.authHeader
+          })
+          agent.status = 'running'
+        }
+        return { success: true, status: agent.status }
+      } catch (error) {
+        const message = error.response?.data?.detail || error.message || 'Failed to toggle agent'
+        console.error('Toggle agent running error:', message)
+        return { success: false, error: message }
+      } finally {
+        this.runningToggleLoading[name] = false
+      }
+    },
+
+    /**
+     * Check if an agent is in the process of toggling running state
+     * @param {string} name - Agent name
+     * @returns {boolean}
+     */
+    isTogglingRunning(name) {
+      return this.runningToggleLoading[name] || false
     },
 
     async getAgentLogs(name, tail = 100) {
