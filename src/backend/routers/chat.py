@@ -28,7 +28,7 @@ async def agent_post_with_retry(
     payload: dict,
     max_retries: int = 3,
     retry_delay: float = 1.0,
-    timeout: float = 300.0
+    timeout: float = 600.0
 ) -> httpx.Response:
     """
     Make a POST request to an agent with retry logic.
@@ -259,7 +259,7 @@ async def chat_with_agent(
             payload,
             max_retries=3,
             retry_delay=1.0,
-            timeout=300.0
+            timeout=600.0  # 10 min timeout for chat mode
         )
         response.raise_for_status()
 
@@ -461,12 +461,40 @@ async def execute_parallel_task(
     )
     execution_id = execution.id if execution else None
 
-    # Track parallel task activity
+    # Broadcast collaboration event if this is agent-to-agent communication
+    # Track collaboration activity FIRST (belongs to source agent) - mirrors /api/chat pattern
+    collaboration_activity_id = None
+    if x_source_agent:
+        await broadcast_collaboration_event(
+            source_agent=x_source_agent,
+            target_agent=name,
+            action="parallel_task"
+        )
+
+        # Track agent collaboration activity (belongs to source agent for Dashboard arrows)
+        collaboration_activity_id = await activity_service.track_activity(
+            agent_name=x_source_agent,  # Activity belongs to source agent (the caller)
+            activity_type=ActivityType.AGENT_COLLABORATION,
+            user_id=current_user.id,
+            triggered_by="agent",
+            related_execution_id=execution_id,  # Database execution ID for structured queries
+            details={
+                "source_agent": x_source_agent,
+                "target_agent": name,
+                "action": "parallel_task",
+                "message_preview": request.message[:100],
+                "execution_id": execution_id,  # Also in details for WebSocket events
+                "parallel_mode": True
+            }
+        )
+
+    # Track parallel task activity (belongs to target agent)
     task_activity_id = await activity_service.track_activity(
         agent_name=name,
-        activity_type=ActivityType.CHAT_START,  # Reusing CHAT_START for now
+        activity_type=ActivityType.CHAT_START,
         user_id=current_user.id,
         triggered_by=triggered_by,
+        parent_activity_id=collaboration_activity_id,  # Link to collaboration if agent-initiated
         related_execution_id=execution_id,  # Database execution ID for structured queries
         details={
             "message_preview": request.message[:100],
@@ -477,14 +505,6 @@ async def execute_parallel_task(
             "execution_id": execution_id  # Also in details for WebSocket events
         }
     )
-
-    # Broadcast collaboration event if this is agent-to-agent communication
-    if x_source_agent:
-        await broadcast_collaboration_event(
-            source_agent=x_source_agent,
-            target_agent=name,
-            action="parallel_task"
-        )
 
     try:
         # Build payload for agent's /api/task endpoint
@@ -507,7 +527,7 @@ async def execute_parallel_task(
             payload,
             max_retries=3,
             retry_delay=1.0,
-            timeout=float(request.timeout_seconds or 300) + 10  # Add buffer to agent timeout
+            timeout=float(request.timeout_seconds or 600) + 10  # Add buffer to agent timeout (default 600s)
         )
         response.raise_for_status()
 
@@ -562,6 +582,18 @@ async def execute_parallel_task(
             }
         )
 
+        # Complete collaboration activity if this was agent-to-agent
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
+                status="completed",
+                details={
+                    "response_length": len(response_data.get("response", "")),
+                    "execution_time_ms": execution_time_ms,
+                    "execution_id": execution_id
+                }
+            )
+
         # Add database execution ID to response for frontend tracking
         response_data["task_execution_id"] = execution_id
 
@@ -585,6 +617,14 @@ async def execute_parallel_task(
             status="failed",
             error="Task execution timed out"
         )
+
+        # Complete collaboration activity on failure
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
+                status="failed",
+                error="Task execution timed out"
+            )
 
         raise HTTPException(
             status_code=504,
@@ -623,6 +663,14 @@ async def execute_parallel_task(
             status="failed",
             error=type(e).__name__
         )
+
+        # Complete collaboration activity on failure
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
+                status="failed",
+                error=error_msg
+            )
 
         raise HTTPException(
             status_code=503,

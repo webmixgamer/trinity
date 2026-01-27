@@ -461,7 +461,7 @@ function handleScroll() {
 }
 
 // Layout constants - compact version
-const labelWidth = 240
+const labelWidth = 288
 const headerHeight = 24
 const rowHeight = 72
 const barHeight = 24  // Taller bars for better visibility
