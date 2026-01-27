@@ -368,24 +368,27 @@ class TestEmergencyStop:
     """Tests for Emergency Stop API.
 
     Note: Emergency stop is a dangerous operation that stops all agents.
-    These tests only verify the endpoint exists and returns proper structure.
+    These tests use a nonexistent system_prefix to verify endpoint structure
+    without actually stopping any agents.
     """
 
     @pytest.mark.slow
-    @pytest.mark.timeout(180)
+    @pytest.mark.timeout(60)
     def test_emergency_stop_returns_structure(self, api_client: TrinityApiClient):
         """POST /api/ops/emergency-stop returns expected structure."""
-        # WARNING: This actually stops agents - use with caution in tests
-        # Using a timeout because this operation involves stopping containers
-        response = api_client.post("/api/ops/emergency-stop")
+        # Use a nonexistent prefix so no agents are actually stopped
+        # This tests the endpoint structure without side effects
+        response = api_client.post("/api/ops/emergency-stop?system_prefix=nonexistent-test-prefix-xyz")
         assert_status_in(response, [200, 403])
 
         if response.status_code == 200:
             data = response.json()
             assert_has_fields(data, ["success", "message"])
-            # Should have counts
+            # Should have counts (will be 0 due to nonexistent prefix)
             assert "schedules_paused" in data
             assert "agents_stopped" in data
+            # With nonexistent prefix, no agents should be stopped
+            assert data["agents_stopped"] == 0
 
 
 class TestAlerts:

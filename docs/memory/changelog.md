@@ -1,3 +1,87 @@
+### 2026-01-27 11:00:00
+📝 **Docs: Feature Flow Updates for Bug Fixes**
+
+**Summary**: Updated feature flow documentation to reflect today's bug fixes.
+
+**internal-system-agent.md**:
+- Section 3 (Emergency Stop Flow): Documented new `system_prefix` query parameter
+- Updated API signature with `Optional[str] = Query()` parameter
+- Added prefix filter logic for schedules (line 638-639) and agents (line 658-659)
+- Updated Testing section with examples for prefix filtering and safe testing
+- Added revision history entry for 2026-01-27
+
+**testing-agents.md**:
+- Added revision history entry for AsyncTrinityApiClient header fix
+- Documented fix pattern: `kwargs.pop('headers', {})` + merge with auth headers
+
+**feature-flows.md**:
+- Updated summary block with detailed fix descriptions
+- Updated Internal System Agent entry with 2026-01-27 prefix filter note
+- Updated Testing Agents Suite entry with fix date and test count (1460+)
+
+---
+
+### 2026-01-27 10:30:00
+🐛 **Bug Fixes: Test Suite and Emergency Stop Improvements**
+
+**Summary**: Fixed 3 bugs from roadmap - verified executions 404, fixed async client headers, and improved emergency stop test.
+
+**Bug 1: Executions 404 for Non-Existent Agent**
+- Status: Already fixed (verified)
+- The `AuthorizedAgent` dependency at `dependencies.py:198-202` already validates agent existence
+- Returns 404 "Agent not found" correctly for non-existent agents
+- No code changes needed
+
+**Bug 2: AsyncTrinityApiClient Headers Bug**
+- Added header merging to all `AsyncTrinityApiClient` methods (get, post, put, delete)
+- Pattern: `custom_headers = kwargs.pop('headers', {}); headers = {**self._get_headers(auth), **custom_headers}`
+- Now matches sync `TrinityApiClient` behavior
+- File: `tests/utils/api_client.py:208-280`
+
+**Bug 3: Emergency Stop Test Timeout**
+- Added `system_prefix` query parameter to `POST /api/ops/emergency-stop`
+- Allows filtering which agents/schedules are affected
+- Test now uses nonexistent prefix to verify structure without side effects
+- Test runs in 0.25s (was timing out at 2+ minutes)
+- Files: `routers/ops.py:607-682`, `tests/test_ops.py:367-391`
+
+**Tests**: All 253 smoke tests pass, 41/41 ops tests pass
+
+---
+
+### 2026-01-26 16:45:00
+🔬 **Feature: Process Miner Skill for Agent Log Analysis**
+
+**Summary**: Created a new skill that analyzes Claude Code execution logs (JSONL transcripts) to discover repeatable workflow patterns and generate Trinity Process YAML definitions.
+
+**New Files**:
+- `.claude/skills/process-miner.md` - Skill definition with instructions
+- `.claude/skills/scripts/process_miner.py` - Python analysis script (~500 lines)
+
+**Capabilities**:
+- Parse Claude Code JSONL transcripts
+- Discover frequent tool sequences (n-grams)
+- Semantic analysis of tool inputs (files read, modified, commands run)
+- Infer workflow types (read-modify, search-review, delegation, etc.)
+- Generate Trinity Process YAML from discovered patterns
+- Confidence scoring based on pattern frequency
+
+**Usage**:
+```bash
+# List available projects
+python3 .claude/skills/scripts/process_miner.py --list-projects
+
+# Analyze a transcript
+python3 .claude/skills/scripts/process_miner.py --transcript PATH
+
+# Save outputs
+python3 .claude/skills/scripts/process_miner.py --transcript PATH --output DIR
+```
+
+**Background**: Inspired by process mining concepts (BPMN + pm4py) but applied to AI agent reasoning traces instead of human business processes.
+
+---
+
 ### 2026-01-26 05:00:00
 🎨 **UX: Enter Key Submits Tasks in Tasks Tab**
 
