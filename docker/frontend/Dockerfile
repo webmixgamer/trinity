@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (use npm install to get correct native binaries for container arch)
+RUN rm -f package-lock.json && npm install
 
 # Copy application code
 COPY . .
