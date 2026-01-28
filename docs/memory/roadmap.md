@@ -335,6 +335,10 @@ Items not yet scheduled. Will be prioritized as needed.
 | Low | Automated testing pipeline | Non-functional |
 | Low | Performance monitoring dashboard | Non-functional |
 | Low | Agent resource usage alerts | Non-functional |
+| **High** | **Claude Code Hooks for State Persistence** | Use `.claude/hooks/` (`Stop`, `PreToolUse`, `PostToolUse`) to persist agent work state before context compaction. Enables work to survive context window resets. Inspired by Gastown. |
+| Medium | **Convoy-like Work Bundles** | Group related tasks/executions into trackable units for multi-agent coordination. Track multi-agent projects as single unit. Inspired by Gastown. |
+| Medium | **Ephemeral Agent Spawning** | Let System Agent spawn temporary worker agents on-demand (create → run task → auto-cleanup). No pre-creation required. Inspired by Gastown. |
+| Low | **Ready Work Discovery MCP Tool** | `find_ready_work()` tool to discover unblocked tasks across fleet. System Agent can identify what can be worked on next. Inspired by Gastown. |
 
 ---
 
@@ -342,6 +346,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-01-27 | Gastown-Inspired Features Added to Backlog | After analyzing Gastown (Steve Yegge's multi-agent CLI tool), identified 4 features to adopt: (1) Claude Code Hooks for state persistence (HIGH - enables work to survive context compaction), (2) Convoy-like work bundles (MEDIUM - track multi-agent projects as units), (3) Ephemeral agent spawning (MEDIUM - on-demand workers), (4) Ready work discovery (LOW - find unblocked tasks). See `docs/research/gastown-comparison.md`. |
 | 2026-01-16 | Process Engine Completed (Phase 14) | Implemented full BPMN-inspired Process Engine with 15 sprints: YAML definitions, execution engine with 6 step handlers, human approvals, parallel execution, sub-processes, analytics/cost tracking, EMI roles, templates. Deferred Event Bus - using direct WebSocket broadcasting instead. Visual designer deferred (YAML editor with preview sufficient for now). See `docs/PROCESS_DRIVEN_PLATFORM/` and `docs/memory/feature-flows/process-engine/`. |
 | 2026-01-09 | Compliance-Ready Development Methodology (Phase 15) | Extend `dev-methodology-template/` to produce SOC-2 and ISO 27001-compatible development artifacts. The existing methodology (slash commands, memory files, security-check, changelog) maps naturally to compliance controls. Formalizing this enables enterprise adoption and audit-ready AI development practices. |
 | 2026-01-06 | Process-Driven Multi-Agent Vision | Evolution from agent management to business process orchestration. Processes define agents (not vice versa). RACI matrix for role assignment. System Agent as primary interface for design/test/monitor. Human-in-the-loop improvement cycles. See `docs/PROCESS_DRIVEN_PLATFORM/PROCESS_DRIVEN_AGENTS.md`. |

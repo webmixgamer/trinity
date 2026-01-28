@@ -1,3 +1,40 @@
+### 2026-01-27 12:30:00
+📋 **Roadmap: Added Gastown-Inspired Features to Backlog**
+
+**Summary**: After competitive analysis of Gastown (Steve Yegge's multi-agent CLI tool), added 4 features to the roadmap backlog.
+
+**Features Added**:
+1. **Claude Code Hooks for State Persistence** (HIGH) - Use `.claude/hooks/` to persist agent work state before context compaction
+2. **Convoy-like Work Bundles** (MEDIUM) - Group related tasks into trackable units for multi-agent coordination
+3. **Ephemeral Agent Spawning** (MEDIUM) - Let System Agent spawn temporary workers on-demand with auto-cleanup
+4. **Ready Work Discovery MCP Tool** (LOW) - Find unblocked tasks across the fleet
+
+**Analysis**: `docs/research/gastown-comparison.md`
+
+---
+
+### 2026-01-27 11:58:00
+🐛 **Fix: Dashboard Arrows for Agent-to-Agent Orchestration via /api/task**
+
+**Summary**: Fixed Dashboard not showing arrows when agents call other agents via `chat_with_agent` MCP tool with `parallel=true` mode.
+
+**Root Cause**: The `/api/task` endpoint was only creating a `CHAT_START` activity on the target agent, not the `AGENT_COLLABORATION` activity on the source agent that the Dashboard needs for arrows.
+
+**Fixes** (`src/backend/routers/chat.py`):
+- Aligned `/api/task` with `/api/chat` pattern: now creates TWO activities for agent-to-agent calls:
+  1. `AGENT_COLLABORATION` activity with `agent_name=x_source_agent` (the caller)
+  2. `CHAT_START` activity with `agent_name=name` (the target), linked via `parent_activity_id`
+- Added completion handling for `collaboration_activity_id` in success, timeout, and error cases
+
+**Pattern Match**: Now mirrors `/api/chat` endpoint (lines 196-210) per feature-flows/activity-stream-collaboration-tracking.md
+
+**Before**: Only target agent had activity, Dashboard couldn't draw arrows
+**After**: Source agent has `agent_collaboration` activity with `source_agent` and `target_agent` in details
+
+**Testing**: Verified activity has `agent_name: "vc-due-diligence-dd-lead"` (source), `target_agent: "vc-due-diligence-dd-market"`
+
+---
+
 ### 2026-01-27 11:00:00
 📝 **Docs: Feature Flow Updates for Bug Fixes**
 
