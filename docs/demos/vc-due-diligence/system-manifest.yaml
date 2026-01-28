@@ -9,6 +9,9 @@
 # - 1 Intake Agent (parses pitch decks)
 # - 9 Specialist Agents (parallel analysis)
 # - 1 Deal Lead Agent (synthesis & recommendation)
+#
+# After deployment, assign skills via:
+#   POST /api/agents/{name}/skills (see Skills section below)
 # =============================================================================
 
 name: vc-due-diligence
@@ -24,27 +27,25 @@ description: |
 # SYSTEM-WIDE PROMPT
 # =============================================================================
 # Injected into all agents' CLAUDE.md
+# Note: Detailed methodologies are now in skills (dd-verification, dd-sourcing, etc.)
 prompt: |
   You are part of a world-class venture capital due diligence team.
 
   ## Your Mission
   Provide thorough, unbiased analysis to help make informed investment decisions
-  worth millions of dollars. Be rigorous. Be skeptical. Verify claims. Identify risks.
+  worth millions of dollars. Your job is to find the truth, not validate pitches.
 
-  ## Standards
-  - When in doubt, dig deeper
-  - When something seems too good to be true, it probably is
-  - Your job is to find the truth, not validate pitches
-  - Document your sources and confidence levels
-  - Distinguish facts from inferences
+  ## Platform Skills
+  You have been assigned skills that define your methodologies:
+  - `/dd-verification` - Fact-checking with confidence levels
+  - `/dd-sourcing` - Source documentation standards
+  - `/dd-report-format` - Standard JSON output format
+
+  Use these skills. They ensure consistency across all specialist agents.
 
   ## Collaboration
-  You are part of a team. Your findings will be synthesized by the Deal Lead agent.
-  Be thorough but focused on your domain. Don't duplicate other specialists' work.
-
-  ## Output
-  Save your analysis to the shared folder so other agents can access it.
-  Use consistent JSON formats for machine processing.
+  You are part of a team. Save your analysis to the shared folder so other agents
+  can access it. Use consistent formats for machine processing by the Deal Lead.
 
 # =============================================================================
 # AGENT FLEET
@@ -136,59 +137,20 @@ agents:
       cpu: "4"
 
 # =============================================================================
-# PERMISSIONS - Orchestrator-Worker Pattern
+# PERMISSIONS - Configured Post-Deployment
 # =============================================================================
-permissions:
-  preset: orchestrator-workers
-  orchestrator: dd-lead
-
-  # Additional custom permissions
-  custom:
-    # Intake can distribute work to all specialists
-    - from: dd-intake
-      to: dd-founder
-    - from: dd-intake
-      to: dd-market
-    - from: dd-intake
-      to: dd-competitor
-    - from: dd-intake
-      to: dd-tech
-    - from: dd-intake
-      to: dd-bizmodel
-    - from: dd-intake
-      to: dd-traction
-    - from: dd-intake
-      to: dd-compliance
-    - from: dd-intake
-      to: dd-captable
-    - from: dd-intake
-      to: dd-legal
-
-    # Deal Lead can read from all specialists
-    - from: dd-lead
-      to: dd-intake
-    - from: dd-lead
-      to: dd-founder
-    - from: dd-lead
-      to: dd-market
-    - from: dd-lead
-      to: dd-competitor
-    - from: dd-lead
-      to: dd-tech
-    - from: dd-lead
-      to: dd-bizmodel
-    - from: dd-lead
-      to: dd-traction
-    - from: dd-lead
-      to: dd-compliance
-    - from: dd-lead
-      to: dd-captable
-    - from: dd-lead
-      to: dd-legal
-
-    # Legal prepares term sheets, needs deal lead context
-    - from: dd-legal
-      to: dd-lead
+# NOTE: Permissions must be configured AFTER deployment via API or UI.
+# The manifest deployment creates agents but permissions require a separate step.
+#
+# See README.md "Configure Permissions" section for the setup script.
+#
+# Permission structure:
+#   - dd-lead (orchestrator) can call ALL other agents
+#   - dd-intake can distribute to all specialists
+#   - dd-legal can call dd-lead (for term sheet coordination)
+#
+# This enables dd-lead to use mcp__trinity__chat_with_agent to delegate
+# tasks to specialists, which creates arrows on the Dashboard Timeline.
 
 # =============================================================================
 # SHARED FOLDERS - All agents write to shared folder for handoff
@@ -213,3 +175,34 @@ folders:
 # AUTO-START - All agents start automatically after deployment
 # =============================================================================
 auto_start: true
+
+# =============================================================================
+# SKILLS ASSIGNMENT (Post-Deployment)
+# =============================================================================
+# After deploying the manifest, assign skills to agents using the API or UI.
+#
+# Recommended skill assignments:
+#
+# ALL SPECIALISTS (dd-founder, dd-market, dd-competitor, dd-tech, dd-bizmodel,
+#                  dd-traction, dd-compliance, dd-captable, dd-legal):
+#   - dd-verification    (claim verification methodology)
+#   - dd-sourcing        (source documentation standards)
+#   - dd-report-format   (consistent JSON output format)
+#
+# DEAL LEAD ONLY (dd-lead):
+#   - dd-verification    (claim verification methodology)
+#   - dd-sourcing        (source documentation standards)
+#   - dd-report-format   (consistent JSON output format)
+#   - dd-risk-scoring    (weighted risk calculation)
+#   - dd-synthesis       (multi-source synthesis)
+#
+# To assign skills via API:
+#   PUT /api/agents/dd-founder/skills
+#   {"skills": ["dd-verification", "dd-sourcing", "dd-report-format"]}
+#
+# To assign skills via UI:
+#   Agents → dd-founder → Skills tab → Check skills → Save
+#
+# To inject skills to running agents:
+#   POST /api/agents/dd-founder/skills/inject
+# =============================================================================

@@ -1,204 +1,387 @@
 # AI Venture Capital Due Diligence System
 
-> **"9 analysts. 60 seconds. One verdict."**
+> **"9 analysts. One orchestrator. Complete due diligence."**
 
-A multi-agent system that performs comprehensive startup due diligence in parallel, synthesizes findings, and delivers an investment recommendation — with one human approval gate.
+A multi-agent system where a Deal Lead orchestrates 9 specialist agents to perform comprehensive startup due diligence, then synthesizes findings into an investment recommendation.
 
 **Fully local. No external services required.** All results stored in shared folders within Trinity.
 
 ## The Demo
 
-**The Hook**: Provide a pitch deck link. Watch 9 AI analysts fan out simultaneously on the Dashboard Timeline. Each researches their domain in parallel. Findings converge. Investment Committee clicks once. Verdict delivered to dd-lead's shared folder.
+**The Hook**: Provide a company name or pitch deck link. Watch `dd-lead` orchestrate 9 AI analysts via agent-to-agent calls. See arrows appear on the Dashboard Timeline as each specialist is called.
 
-**The Shock**: What takes a VC firm 2-4 weeks and costs $50K+ in analyst time happens in 60 seconds.
+**The Experience**: Watch the orchestration unfold — dd-lead calls each specialist sequentially, arrows appear one-by-one, each specialist researches their domain and returns findings.
 
-**The Viral Moment**: The Dashboard Timeline exploding with parallel agent activity — a living, breathing AI investment firm.
+**The Viral Moment**: The Dashboard Timeline showing arrows between agents — a living AI investment firm where you can see the delegation happening in real-time.
 
 **The Deliverable**: All analysis saved to `dd-lead`'s shared folder — accessible via Trinity File Manager.
 
+---
+
 ## Quick Start
 
-### 1. Deploy the Agent Fleet
+### 1. Clean Up (if redeploying)
+
+If you have existing DD agents, clean them up first:
 
 ```bash
-# Via API
-curl -X POST http://localhost:8000/api/system-manifest \
-  -H "Content-Type: application/yaml" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  --data-binary @docs/demos/vc-due-diligence/system-manifest.yaml
-
-# Or upload via UI: Settings → System Manifest
+# Delete existing DD agents
+TOKEN="YOUR_TOKEN"
+for agent in $(curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:8000/api/agents" | jq -r '.[].name' | grep vc-due-diligence); do
+  echo "Deleting: $agent"
+  curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "http://localhost:8000/api/agents/$agent"
+done
 ```
 
-This deploys 11 agents:
-- `dd-intake` - Pitch deck parser
-- `dd-founder` - Founder background checks
-- `dd-market` - Market research & validation
-- `dd-competitor` - Competitive intelligence
-- `dd-tech` - Technical due diligence
-- `dd-bizmodel` - Business model analysis
-- `dd-traction` - Traction & financials
-- `dd-compliance` - Regulatory compliance
-- `dd-captable` - Cap table analysis
-- `dd-legal` - Legal review
-- `dd-lead` - Deal lead synthesis
-
-### 2. Create the Process
+### 2. Deploy the Agent Fleet
 
 ```bash
-# Import the process template
-curl -X POST http://localhost:8000/api/processes \
+TOKEN="YOUR_TOKEN"
+MANIFEST=$(cat docs/demos/vc-due-diligence/system-manifest.yaml)
+
+curl -s -X POST "http://localhost:8000/api/systems/deploy" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d "$(jq -n --arg m "$MANIFEST" '{manifest: $m, dry_run: false}')"
+```
+
+This deploys 11 agents (all auto-started):
+- `vc-due-diligence-dd-intake` - Pitch deck parser
+- `vc-due-diligence-dd-founder` - Founder background checks
+- `vc-due-diligence-dd-market` - Market research & validation
+- `vc-due-diligence-dd-competitor` - Competitive intelligence
+- `vc-due-diligence-dd-tech` - Technical due diligence
+- `vc-due-diligence-dd-bizmodel` - Business model analysis
+- `vc-due-diligence-dd-traction` - Traction & financials
+- `vc-due-diligence-dd-compliance` - Regulatory compliance
+- `vc-due-diligence-dd-captable` - Cap table analysis
+- `vc-due-diligence-dd-legal` - Legal review
+- `vc-due-diligence-dd-lead` - **Deal lead (orchestrator)**
+
+### 3. Configure Permissions (Required!)
+
+**This step is critical for agent-to-agent communication.** Without permissions, dd-lead cannot call other agents.
+
+```bash
+TOKEN="YOUR_TOKEN"
+PREFIX="vc-due-diligence"
+
+# dd-lead can orchestrate ALL agents
+curl -s -X PUT "http://localhost:8000/api/agents/$PREFIX-dd-lead/permissions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"permitted_agents\": [
+    \"$PREFIX-dd-intake\", \"$PREFIX-dd-founder\", \"$PREFIX-dd-market\",
+    \"$PREFIX-dd-competitor\", \"$PREFIX-dd-tech\", \"$PREFIX-dd-bizmodel\",
+    \"$PREFIX-dd-traction\", \"$PREFIX-dd-compliance\", \"$PREFIX-dd-captable\",
+    \"$PREFIX-dd-legal\"
+  ]}"
+
+# dd-intake can distribute to specialists
+curl -s -X PUT "http://localhost:8000/api/agents/$PREFIX-dd-intake/permissions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"permitted_agents\": [
+    \"$PREFIX-dd-founder\", \"$PREFIX-dd-market\", \"$PREFIX-dd-competitor\",
+    \"$PREFIX-dd-tech\", \"$PREFIX-dd-bizmodel\", \"$PREFIX-dd-traction\",
+    \"$PREFIX-dd-compliance\", \"$PREFIX-dd-captable\", \"$PREFIX-dd-legal\"
+  ]}"
+
+# dd-legal can call dd-lead (for term sheet coordination)
+curl -s -X PUT "http://localhost:8000/api/agents/$PREFIX-dd-legal/permissions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"permitted_agents\": [\"$PREFIX-dd-lead\"]}"
+
+echo "Permissions configured!"
+```
+
+Or via UI: **Agents → {agent} → Permissions tab → Add permitted agents**
+
+### 4. Run Due Diligence (The Demo!)
+
+Send a task to `dd-lead` — it will orchestrate the other agents sequentially.
+
+**Via UI (recommended for demo):**
+1. Go to **Agents** → **vc-due-diligence-dd-lead** → **Terminal**
+2. Enter a task like:
+
+```
+Perform due diligence on [COMPANY NAME].
+
+Use mcp__trinity__chat_with_agent to delegate to your specialist team. Call each with parallel=true and timeout_seconds=600 for longer research tasks:
+
+1. vc-due-diligence-dd-founder: Research the founding team and leadership
+2. vc-due-diligence-dd-market: Analyze the market size and opportunity
+3. vc-due-diligence-dd-competitor: Identify competitors and competitive positioning
+4. vc-due-diligence-dd-tech: Assess the technology and technical moat
+5. vc-due-diligence-dd-bizmodel: Evaluate the business model
+6. vc-due-diligence-dd-traction: Research revenue and growth metrics
+7. vc-due-diligence-dd-compliance: Check regulatory considerations
+8. vc-due-diligence-dd-captable: Research investors and funding history
+9. vc-due-diligence-dd-legal: Note any legal issues
+
+After receiving all reports, synthesize findings into an investment recommendation.
+Save your final analysis to ~/shared-out/[company]-analysis.md
+```
+
+**Via API:**
+```bash
+TOKEN="YOUR_TOKEN"
+
+curl -s -X POST "http://localhost:8000/api/agents/vc-due-diligence-dd-lead/task" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{
-    "name": "vc-due-diligence",
-    "template": "vc-due-diligence"
+    "message": "Perform due diligence on Anthropic. Use mcp__trinity__chat_with_agent (with parallel=true, timeout_seconds=600) to delegate to your specialist team: vc-due-diligence-dd-founder, dd-market, dd-competitor, dd-tech, dd-bizmodel, dd-traction, dd-compliance, dd-captable, dd-legal. After all reports are received, synthesize into ~/shared-out/anthropic-analysis.md",
+    "max_turns": 30,
+    "timeout_seconds": 1800
   }'
 ```
 
-### 3. Run Due Diligence
+*Note: With 9 specialists at ~2 min each, expect ~20 minutes total. Use `timeout_seconds=1800` (30 min) to be safe.*
 
-```bash
-# Start a due diligence process
-curl -X POST http://localhost:8000/api/processes/vc-due-diligence/execute \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "company_name": "Acme AI Corp",
-    "pitch_deck_url": "https://example.com/pitch.pdf",
-    "funding_round": "Series A",
-    "funding_ask": "$10M",
-    "target_markets": ["US", "EU"],
-    "additional_docs": "",
-    "financial_docs": "",
-    "cap_table": "",
-    "legal_docs": ""
-  }'
-```
+### 5. Watch the Dashboard
 
-### 4. Watch the Magic
+Open **http://localhost** (Dashboard view) and watch:
+1. **Arrows appear** as dd-lead calls specialist agents
+2. **Agent nodes light up** as they receive and process tasks
+3. **Timeline shows** real-time agent collaboration events
+4. **Results converge** as dd-lead synthesizes findings
 
-Open the Dashboard at `http://localhost` and watch:
-1. Intake agent parses the pitch deck
-2. 9 specialist agents fan out in parallel
-3. Each researches their domain (visible on Timeline)
-4. Deal Lead synthesizes all findings
-5. Human approval notification appears in Trinity Approvals page
-6. One click: APPROVE or REJECT
-
-### 5. Retrieve Results
+### 6. Retrieve Results
 
 All deliverables are stored in **dd-lead's shared folder**:
 
 ```
-dd-lead/shared-out/
-├── investment-recommendation/
-│   ├── investment_recommendation.json  # Full analysis
-│   └── ic_briefing.md                  # Investment Committee briefing
-└── final-report/
-    ├── OUTCOME.md                      # Decision summary
-    ├── investment_recommendation.json  # Copy of full analysis
-    ├── ic_briefing.md                  # Copy of IC briefing
-    └── term-sheet/                     # (if approved)
+vc-due-diligence-dd-lead/shared-out/
+├── [company]-analysis.md     # Full investment analysis
+└── investment-recommendation/
+    └── investment_recommendation.json  # Structured data
 ```
 
 **Access via Trinity UI**:
-- Go to **Agents** → **dd-lead** → **Files** tab → **shared-out/final-report/**
-- Or use **File Manager** (`/files`) → Select **dd-lead**
+- **Agents** → **vc-due-diligence-dd-lead** → **Files** tab → **shared-out/**
+- Or **File Manager** → Select **vc-due-diligence-dd-lead**
+
+---
+
+## How Orchestration Works
+
+The key to this demo is **agent-to-agent communication** via the Trinity MCP tools:
+
+1. **dd-lead** receives your task
+2. dd-lead uses `mcp__trinity__chat_with_agent` to call each specialist **sequentially**
+3. Each call creates an **arrow on the Dashboard** (collaboration event)
+4. Specialist researches and returns results to dd-lead
+5. dd-lead calls the next specialist, and so on
+6. After all specialists complete, dd-lead synthesizes findings into final recommendation
+
+### Sequential Execution
+
+Claude Code executes tool calls one at a time, so dd-lead calls specialists sequentially:
+```
+dd-lead → dd-founder (waits for result)
+dd-lead → dd-market (waits for result)
+dd-lead → dd-competitor (waits for result)
+... and so on
+```
+
+Each arrow appears on the Dashboard as the call happens. Total time depends on how long each specialist takes.
+
+### chat_with_agent Modes
+
+| Mode | Parameter | Endpoint | Timeout | Use Case |
+|------|-----------|----------|---------|----------|
+| Sequential | `parallel=false` (default) | `/api/chat` | **Hardcoded 300s** | Multi-turn conversations |
+| Parallel | `parallel=true` | `/api/task` | **Configurable** | Independent tasks, longer timeouts |
+
+**For orchestration, use `parallel=true`** to get configurable timeouts (the 300s default may not be enough for research tasks).
+
+**Without permissions configured**, dd-lead cannot call other agents and the orchestration fails silently.
+
+---
 
 ## Architecture
 
 ```
-                                    ┌─────────────────────┐
-                                    │   PITCH DECK        │
-                                    │   UPLOAD            │
-                                    └──────────┬──────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │   INTAKE AGENT      │
-                                    │   Parse & Extract   │
-                                    └──────────┬──────────┘
-                                               │
-                 ┌─────────────────────────────┼─────────────────────────────┐
-                 │                             │                             │
-    ┌────────────▼────────────┐  ┌────────────▼────────────┐  ┌────────────▼────────────┐
-    │  FOUNDER    MARKET      │  │  COMPETITOR   TECH      │  │  BIZMODEL   TRACTION    │
-    │  COMPLIANCE CAPTABLE    │  │  LEGAL                  │  │                         │
-    └────────────┬────────────┘  └────────────┬────────────┘  └────────────┬────────────┘
-                 │                             │                             │
-                 └─────────────────────────────┴─────────────────────────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │   DEAL LEAD AGENT   │
-                                    │   Synthesize All    │
-                                    │   Risk Score        │
-                                    └──────────┬──────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │   HUMAN APPROVAL    │
-                                    │   Investment        │
-                                    │   Committee         │
-                                    └──────────┬──────────┘
-                                               │
-                              ┌────────────────┴────────────────┐
-                              │                                 │
-                   ┌──────────▼──────────┐           ┌──────────▼──────────┐
-                   │   APPROVE           │           │   REJECT            │
-                   │   → Term Sheet      │           │   → Rejection       │
-                   │   → Final Report    │           │   → Final Report    │
-                   └──────────┬──────────┘           └──────────┬──────────┘
-                              │                                 │
-                              └────────────────┬────────────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │   dd-lead           │
-                                    │   shared-out/       │
-                                    │   final-report/     │
-                                    └─────────────────────┘
+                              ┌─────────────────────────┐
+                              │   USER TASK             │
+                              │   "Analyze Company X"   │
+                              └───────────┬─────────────┘
+                                          │
+                              ┌───────────▼─────────────┐
+                              │   DD-LEAD (Orchestrator)│
+                              │   Calls specialists     │
+                              │   one-by-one            │
+                              └───────────┬─────────────┘
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+              ┌───────────┐         ┌───────────┐         ┌───────────┐
+              │ 1. FOUNDER│ ──────► │ 2. MARKET │ ──────► │ 3. COMPET.│
+              └───────────┘         └───────────┘         └───────────┘
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+              ┌───────────┐         ┌───────────┐         ┌───────────┐
+              │ 4. TECH   │ ──────► │ 5. BIZMOD │ ──────► │ 6. TRACT. │
+              └───────────┘         └───────────┘         └───────────┘
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+              ┌───────────┐         ┌───────────┐         ┌───────────┐
+              │7. COMPLNC │ ──────► │ 8. CAPTAB │ ──────► │ 9. LEGAL  │
+              └───────────┘         └───────────┘         └───────────┘
+                                          │
+                              ┌───────────▼─────────────┐
+                              │   DD-LEAD               │
+                              │   Synthesizes findings  │
+                              │   Creates recommendation│
+                              └───────────┬─────────────┘
+                                          │
+                              ┌───────────▼─────────────┐
+                              │   shared-out/           │
+                              │   [company]-analysis.md │
+                              └─────────────────────────┘
+
+  Dashboard shows 9 ARROWS appearing sequentially as dd-lead calls each specialist
 ```
 
-**All results stored locally in Trinity shared folders. No external services required.**
+---
 
 ## Agent Fleet Details
 
-| Agent | Purpose | Resources |
-|-------|---------|-----------|
-| `dd-intake` | Parse pitch decks, extract structured data | 2GB / 1 CPU |
-| `dd-founder` | Background checks, track record verification | 4GB / 2 CPU |
-| `dd-market` | TAM/SAM/SOM validation, growth rates | 4GB / 2 CPU |
-| `dd-competitor` | Competitive landscape, market share | 4GB / 2 CPU |
-| `dd-tech` | Technology assessment, IP evaluation | 4GB / 2 CPU |
-| `dd-bizmodel` | Revenue model, unit economics | 2GB / 1 CPU |
-| `dd-traction` | Growth metrics, financial health | 4GB / 2 CPU |
-| `dd-compliance` | Regulatory landscape, compliance | 2GB / 1 CPU |
-| `dd-captable` | Equity structure, investor analysis | 2GB / 1 CPU |
-| `dd-legal` | Corporate structure, IP ownership | 4GB / 2 CPU |
-| `dd-lead` | Synthesis, risk scoring, recommendation | 8GB / 4 CPU |
+| Agent | Full Name | Purpose | Resources |
+|-------|-----------|---------|-----------|
+| dd-lead | `vc-due-diligence-dd-lead` | **Orchestrator** - delegates tasks, synthesizes results | 8GB / 4 CPU |
+| dd-intake | `vc-due-diligence-dd-intake` | Parse pitch decks, extract structured data | 2GB / 1 CPU |
+| dd-founder | `vc-due-diligence-dd-founder` | Background checks, track record verification | 4GB / 2 CPU |
+| dd-market | `vc-due-diligence-dd-market` | TAM/SAM/SOM validation, growth rates | 4GB / 2 CPU |
+| dd-competitor | `vc-due-diligence-dd-competitor` | Competitive landscape, market share | 4GB / 2 CPU |
+| dd-tech | `vc-due-diligence-dd-tech` | Technology assessment, IP evaluation | 4GB / 2 CPU |
+| dd-bizmodel | `vc-due-diligence-dd-bizmodel` | Revenue model, unit economics | 2GB / 1 CPU |
+| dd-traction | `vc-due-diligence-dd-traction` | Growth metrics, financial health | 4GB / 2 CPU |
+| dd-compliance | `vc-due-diligence-dd-compliance` | Regulatory landscape, compliance | 2GB / 1 CPU |
+| dd-captable | `vc-due-diligence-dd-captable` | Equity structure, investor analysis | 2GB / 1 CPU |
+| dd-legal | `vc-due-diligence-dd-legal` | Corporate structure, IP ownership | 4GB / 2 CPU |
 
 **Total Resources**: ~40GB RAM, 20 CPUs
 
-## Risk Scoring
+---
 
-The Deal Lead calculates an overall risk score (0-100) using weighted specialist scores:
+## Troubleshooting
 
-| Area | Weight |
-|------|--------|
-| Founder/Team | 20% |
-| Technology | 15% |
-| Business Model | 15% |
-| Traction | 15% |
-| Market | 15% |
-| Competition | 10% |
-| Compliance | 5% |
-| Cap Table | 3% |
-| Legal | 2% |
+### No arrows on Dashboard?
 
-**Recommendations**:
-- **Strong Invest**: Risk 0-20
-- **Invest**: Risk 21-35
-- **Negotiate**: Risk 36-50
-- **Pass**: Risk 51-70
-- **Strong Pass**: Risk 71-100
+1. **Check permissions are configured**:
+   ```bash
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     "http://localhost:8000/api/agents/vc-due-diligence-dd-lead/permissions"
+   ```
+   Should show 10 permitted agents.
+
+2. **Refresh the Dashboard** (Cmd+R / F5)
+
+3. **Check collaboration events exist**:
+   ```bash
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     "http://localhost:8000/api/activities/timeline?activity_types=agent_collaboration&limit=10"
+   ```
+
+### Agents not calling each other?
+
+- dd-lead must use `mcp__trinity__chat_with_agent` tool
+- Include agent names in your prompt to dd-lead
+- Check permissions are set (see step 3)
+
+### Tasks timing out?
+
+**Symptom:** Execution shows "HTTP error: ReadTimeout" after ~300 seconds, but agent logs show it actually completed.
+
+**Root cause:** The default `parallel=false` mode has a hardcoded 300s backend timeout. Research tasks often take longer.
+
+**Fix:** Use `parallel=true` with a longer `timeout_seconds`:
+```
+mcp__trinity__chat_with_agent(
+  agent_name="vc-due-diligence-dd-founder",
+  message="Research founders...",
+  parallel=true,           # <-- Enables configurable timeout
+  timeout_seconds=600      # <-- 10 minutes instead of 5
+)
+```
+
+Also increase the main task timeout when calling dd-lead via API:
+```json
+{"timeout_seconds": 1800}  // 30 minutes for full orchestration
+```
+
+### Results not appearing?
+
+- Check `shared-out/` folder in each specialist
+- dd-lead reads from `shared-in/` (mounted from specialists)
+- Verify the task completed (check execution status in UI)
+
+---
+
+## Demo Script
+
+**[0:00]** "Watch an AI VC firm analyze a startup."
+
+**[0:05]** Open dd-lead terminal, paste task with company name
+
+**[0:10]** Switch to Dashboard - first arrow appears:
+- dd-lead → dd-founder (researching founders)
+
+**[1-2 min per specialist]** Watch arrows appear sequentially:
+- dd-lead → dd-market
+- dd-lead → dd-competitor
+- dd-lead → dd-tech
+- ... (9 specialists total)
+
+**[~15-20 min]** All specialists complete:
+- 9 arrows on Dashboard (all green/completed)
+- dd-lead synthesizes all findings
+
+**[Final]** Results appear:
+- Open dd-lead → Files → shared-out/
+- Full investment analysis with recommendation
+
+**"What takes VCs 2 weeks. 20 minutes. 9 agents. Watch the orchestration."**
+
+*Note: For a faster demo, reduce the number of specialists or give simpler tasks.*
+
+---
+
+## Optional: Skills Assignment
+
+For enhanced methodology, assign skills to agents:
+
+```bash
+TOKEN="YOUR_TOKEN"
+PREFIX="vc-due-diligence"
+
+# Assign skills to all specialists
+for agent in dd-intake dd-founder dd-market dd-competitor dd-tech dd-bizmodel dd-traction dd-compliance dd-captable dd-legal; do
+  curl -s -X PUT "http://localhost:8000/api/agents/$PREFIX-$agent/skills" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"skills": ["dd-verification", "dd-sourcing", "dd-report-format"]}'
+done
+
+# Additional skills for dd-lead
+curl -s -X PUT "http://localhost:8000/api/agents/$PREFIX-dd-lead/skills" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"skills": ["dd-verification", "dd-sourcing", "dd-report-format", "dd-risk-scoring", "dd-synthesis"]}'
+```
+
+Skills are in `docs/demos/vc-due-diligence/skills/`.
+
+---
 
 ## Files
 
@@ -206,69 +389,14 @@ The Deal Lead calculates an overall risk score (0-100) using weighted specialist
 docs/demos/vc-due-diligence/
 ├── README.md                    # This file
 ├── system-manifest.yaml         # Agent fleet deployment
-
-config/agent-templates/
-├── dd-intake/                   # Pitch deck parser
-├── dd-founder/                  # Founder background check
-├── dd-market/                   # Market research
-├── dd-competitor/               # Competitive intelligence
-├── dd-tech/                     # Technical due diligence
-├── dd-bizmodel/                 # Business model analysis
-├── dd-traction/                 # Traction & financials
-├── dd-compliance/               # Regulatory compliance
-├── dd-captable/                 # Cap table analysis
-├── dd-legal/                    # Legal review
-└── dd-lead/                     # Deal lead synthesis
-
-config/process-templates/
-└── vc-due-diligence/
-    ├── template.yaml            # Process metadata
-    └── definition.yaml          # Process definition
+└── skills/                      # Optional methodology skills
+    ├── dd-verification/
+    ├── dd-sourcing/
+    ├── dd-report-format/
+    ├── dd-risk-scoring/
+    └── dd-synthesis/
 ```
 
-## Demo Script (60 Seconds)
-
-**[0:00]** "Watch an AI VC firm analyze a startup."
-
-**[0:05]** Provide pitch deck URL → Click "Execute Process"
-
-**[0:10]** Dashboard Timeline explodes:
-- Intake agent parses deck
-- 9 colored bars fan out simultaneously
-- Each agent researching their domain
-
-**[0:30]** Real-time activity:
-- "Founder Agent: Checking LinkedIn..."
-- "Market Agent: Verifying TAM claims..."
-- "Competitor Agent: Found 7 competitors on Crunchbase..."
-
-**[0:45]** Convergence:
-- Specialist agents complete (bars turn green)
-- Deal Lead starts synthesizing
-- Risk score calculated
-
-**[0:55]** Human moment:
-- Approval request appears in Trinity
-- Investment Committee review screen
-- **One click: APPROVE or REJECT**
-
-**[1:00]** Results in dd-lead's shared folder:
-- Complete investment recommendation
-- Risk analysis and scoring
-- Term sheet (if approved)
-
-**[1:05]** "What takes VCs 2 weeks. 60 seconds. 9 agents. All local."
-
 ---
 
-## Accessing Results
-
-Results are stored in **dd-lead's shared folder**, accessible via:
-
-1. **Trinity File Manager**: `/files` → Select `dd-lead` → Navigate to `shared-out/final-report/`
-2. **Agent Detail**: Agents → `dd-lead` → Files tab → `shared-out/final-report/`
-3. **API**: `GET /api/agents/dd-lead/files?path=/shared-out/final-report/`
-
----
-
-*"Your startup's fate. Decided by agents. In 60 seconds. Fully local."*
+*"Your startup's fate. Decided by agents. In 60 seconds. Watch the arrows."*
