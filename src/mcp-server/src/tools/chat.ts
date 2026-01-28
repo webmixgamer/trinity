@@ -178,9 +178,9 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
         timeout_seconds: z
           .number()
           .optional()
-          .default(300)
+          .default(600)
           .describe(
-            "Execution timeout in seconds (default: 300). Only applies when parallel=true."
+            "Execution timeout in seconds (default: 600). Only applies when parallel=true."
           ),
       }),
       execute: async (
