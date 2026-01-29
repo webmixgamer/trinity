@@ -17,6 +17,7 @@ As a Trinity platform operator, I want all agent execution requests (user chat, 
 - **User Chat**: `POST /api/agents/{name}/chat` - User messages from UI
 - **Scheduler**: `scheduler_service._execute_schedule()` - Cron-triggered executions
 - **MCP Server**: `chat_with_agent` tool - Agent-to-agent communication
+- **MCP Server**: `trigger_agent_schedule` tool - Manual schedule trigger via MCP (Added 2026-01-29)
 - **Queue Management**: `GET/POST /api/agents/{name}/queue/*` - Status, clear, release
 
 ---
@@ -1074,8 +1075,8 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 - **Integrates With**:
   - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal
-  - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue
-  - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`)
+  - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue; MCP `trigger_agent_schedule` also uses queue
+  - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`); schedule tools go through queue
   - Activity Stream (`activity-stream.md`) - Queue status tracked in activities
 
 - **Bypassed By**:
@@ -1091,6 +1092,7 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 | Date | Changes |
 |------|---------|
+| 2026-01-29 | **MCP Schedule Management (MCP-SCHED-001)**: Added `trigger_agent_schedule` MCP tool to Entry Points. Updated Related Flows to note that MCP schedule tools go through the queue. |
 | 2026-01-14 | **Race Condition Bug Fixes (HIGH)**: Fixed three race conditions in execution queue. (1) `submit()` now uses atomic `SET NX EX` instead of separate EXISTS/SET - prevents two concurrent requests from acquiring the same execution slot. (2) `complete()` now uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice. (3) `get_all_busy_agents()` replaced `KEYS` with `SCAN` - avoids blocking Redis on large datasets. Added Thread Safety section with Lua script documentation. Updated all method line numbers. |
 | 2026-01-12 | **Execution Termination**: Added section documenting process registry, termination flow, signal handling (SIGINT -> SIGKILL), and new endpoints. See [execution-termination.md](execution-termination.md) for full feature documentation. |
 | 2026-01-11 | **Execution ID tracking**: Documented two ID systems (Queue vs Database). Chat response now includes both `id` (queue) and `task_execution_id` (database). Activity tracking uses `related_execution_id` as top-level field for structured SQL queries. |

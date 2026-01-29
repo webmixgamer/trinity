@@ -133,3 +133,69 @@ export interface SshAccessResponse {
   expires_in_hours: number;
   instructions: string[];
 }
+
+// Schedule Management Types
+
+export interface Schedule {
+  id: string;
+  agent_name: string;
+  name: string;
+  cron_expression: string;
+  message: string;
+  enabled: boolean;
+  timezone: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  last_run_at?: string;
+  next_run_at?: string;
+}
+
+export interface ScheduleCreate {
+  name: string;
+  cron_expression: string;
+  message: string;
+  timezone?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface ScheduleUpdate {
+  name?: string;
+  cron_expression?: string;
+  message?: string;
+  timezone?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface ScheduleExecution {
+  id: string;
+  schedule_id: string;
+  agent_name: string;
+  status: "pending" | "running" | "success" | "failed" | "cancelled";
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+  message: string;
+  response?: string;
+  error?: string;
+  triggered_by: "schedule" | "manual" | "mcp";
+  context_used?: number;
+  context_max?: number;
+  cost?: number;
+}
+
+export interface ScheduleToggleResult {
+  status: "enabled" | "disabled";
+  schedule_id: string;
+  schedule_name?: string;
+  next_run_at?: string;
+}
+
+export interface ScheduleTriggerResult {
+  status: "triggered";
+  schedule_id: string;
+  execution_id: string;
+  message?: string;
+}

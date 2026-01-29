@@ -1,3 +1,36 @@
+### 2026-01-29 11:30:00
+🚀 **Feature: MCP Schedule Management Tools (MCP-SCHED-001)**
+
+**Summary**: Added 8 new MCP tools for programmatic schedule management, enabling head agents (Claude Code instances) to create, list, modify, and control schedules on Trinity agents through the Model Context Protocol.
+
+**New MCP Tools (8 total)**:
+1. `list_agent_schedules` - List all schedules for an agent
+2. `create_agent_schedule` - Create a new cron-based schedule
+3. `get_agent_schedule` - Get schedule details
+4. `update_agent_schedule` - Update schedule configuration
+5. `delete_agent_schedule` - Delete a schedule
+6. `toggle_agent_schedule` - Enable/disable a schedule
+7. `trigger_agent_schedule` - Manually trigger execution
+8. `get_schedule_executions` - Get execution history
+
+**Files Changed**:
+- `src/mcp-server/src/types.ts` - Added Schedule, ScheduleCreate, ScheduleUpdate, ScheduleExecution types
+- `src/mcp-server/src/client.ts` - Added 10 schedule-related client methods
+- `src/mcp-server/src/tools/schedules.ts` - **NEW** All 8 schedule tools with access control
+- `src/mcp-server/src/server.ts` - Register schedule tools (36 total tools now)
+
+**Access Control**:
+- Agent-scoped keys can manage their OWN schedules (self-scheduling)
+- Agent-scoped keys can read/toggle/trigger on permitted agents
+- Agent-scoped keys CANNOT create/update/delete schedules on OTHER agents
+- System-scoped keys have full access to all agents
+
+**Testing**: All 13 backend schedule tests pass, MCP server registers 36 tools successfully
+
+**Requirements**: `docs/requirements/MCP_SCHEDULE_MANAGEMENT.md`
+
+---
+
 ### 2026-01-27 12:30:00
 📋 **Roadmap: Added Gastown-Inspired Features to Backlog**
 

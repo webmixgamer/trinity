@@ -12,6 +12,7 @@ import { createChatTools } from "./tools/chat.js";
 import { createSystemTools } from "./tools/systems.js";
 import { createDocsTools } from "./tools/docs.js";
 import { createSkillsTools } from "./tools/skills.js";
+import { createScheduleTools } from "./tools/schedules.js";
 import type { McpAuthContext } from "./types.js";
 
 export interface ServerConfig {
@@ -198,8 +199,19 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(skillsTools.syncAgentSkills);
   server.addTool(skillsTools.getAgentSkills);
 
-  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length;
-  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills)`);
+  // Register schedule management tools (8 tools)
+  const scheduleTools = createScheduleTools(client, requireApiKey);
+  server.addTool(scheduleTools.listAgentSchedules);
+  server.addTool(scheduleTools.createAgentSchedule);
+  server.addTool(scheduleTools.getAgentSchedule);
+  server.addTool(scheduleTools.updateAgentSchedule);
+  server.addTool(scheduleTools.deleteAgentSchedule);
+  server.addTool(scheduleTools.toggleAgentSchedule);
+  server.addTool(scheduleTools.triggerAgentSchedule);
+  server.addTool(scheduleTools.getScheduleExecutions);
+
+  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length;
+  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule)`);
 
   return { server, port, client, requireApiKey };
 }

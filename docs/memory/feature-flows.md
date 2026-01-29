@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-29)**: MCP Schedule Management (MCP-SCHED-001):
+> - **mcp-orchestration.md**: Already updated to 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule)
+> - **scheduling.md**: Already has MCP Integration section with 8 schedule tools table
+> - **execution-queue.md**: Added `trigger_agent_schedule` to Entry Points, updated Related Flows
+> - **agent-to-agent-collaboration.md**: Added System Agent Schedule Management section for system-scoped agents managing schedules across all agents
+> - Schedule tools go through existing backend endpoints -> scheduler service -> execution queue (no new queue paths)
+>
 > **Updated (2026-01-27)**: Bug Fixes:
 > - **internal-system-agent.md**: Added `system_prefix` query parameter to `POST /api/ops/emergency-stop` endpoint for targeted emergency stops. Schedule pausing (line 638-639) and agent stopping (line 658-659) now respect prefix filter. Enables safe testing with nonexistent prefix (`routers/ops.py:607-696`)
 > - **testing-agents.md**: Fixed AsyncTrinityApiClient header merging - all async methods (get, post, put, delete) now properly merge custom headers with auth headers (`tests/utils/api_client.py:208-280`). Emergency stop test now uses `?system_prefix=nonexistent-test-prefix-xyz` to avoid side effects (`tests/test_ops.py:367-391`)
@@ -358,13 +365,13 @@
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 21 MCP tools for external agent management, including `get_agent_info` for template metadata access (Updated 2026-01-03) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 36 MCP tools: 13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule management (Updated 2026-01-29) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional) (Updated 2025-12-30) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency, smart directory detection (Updated 2026-01-23) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
-| Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP - X-Source-Agent header, permission system (user/agent/system scopes), collaboration event broadcasting, activity tracking (Updated 2026-01-23) |
+| Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP - X-Source-Agent header, permission system (user/agent/system scopes), collaboration event broadcasting, activity tracking, **system agent schedule management** via 8 MCP schedule tools (Updated 2026-01-29) |
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |

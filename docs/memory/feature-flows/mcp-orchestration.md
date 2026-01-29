@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 21 tools for agent lifecycle, chat, system management, credential management, and SSH access through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 36 tools for agent lifecycle, chat, system management, credential management, SSH access, skills, and schedule management through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 
@@ -876,7 +876,7 @@ npm start
 # Test with MCP inspector
 npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 
-# Verify 21 tools are registered:
+# Verify 36 tools are registered:
 # Agent tools (13):
 # - list_agents, get_agent, get_agent_info, create_agent, delete_agent
 # - start_agent, stop_agent, list_templates
@@ -888,6 +888,13 @@ npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 # - deploy_system, list_systems, restart_system, get_system_manifest
 # Docs tools (1):
 # - get_agent_requirements
+# Skills tools (7):
+# - list_skills, get_skill, get_skills_library_status
+# - assign_skill_to_agent, set_agent_skills, sync_agent_skills, get_agent_skills
+# Schedule tools (8):
+# - list_agent_schedules, create_agent_schedule, get_agent_schedule
+# - update_agent_schedule, delete_agent_schedule, toggle_agent_schedule
+# - trigger_agent_schedule, get_schedule_executions
 ```
 
 ### Race Condition Testing
@@ -914,6 +921,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-01-29 | **Schedule tools (MCP-SCHED-001)**: Added 8 schedule management tools - list_agent_schedules, create_agent_schedule, get_agent_schedule, update_agent_schedule, delete_agent_schedule, toggle_agent_schedule, trigger_agent_schedule, get_schedule_executions. Total now 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). |
 | 2026-01-23 | **Flow verification**: Updated all line numbers to match current implementation. Verified 21 tools (13 agent, 3 chat, 4 system, 1 docs). Updated client.ts line refs (authenticate: 46-69, request: 103-155, chat: 336-378, task: 393-445). Updated dependencies.py refs (104-155). Updated mcp_keys.py refs (144-180). Added ensure-default endpoint. Fixed database table line (356-371). |
 | 2026-01-15 | **Docs**: Added Dashboard Timeline Visualization section noting pink (#ec4899) color for MCP executions |
 | 2026-01-03 | **get_agent_info tool**: Added new tool to retrieve full template.yaml metadata for agents. Supports access control - agent-scoped keys can only access self + permitted agents. Returns capabilities, commands, MCP servers, tools, skills, use cases. |
@@ -927,7 +935,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 ---
 
 ## Status
-Working - All 21 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
+Working - All 36 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
 
 ---
 

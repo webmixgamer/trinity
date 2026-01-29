@@ -816,7 +816,51 @@ See: `activity-stream.md` for complete details
 
 ---
 
+## MCP Integration (Added 2026-01-29)
+
+Schedule management is now available via MCP tools, enabling programmatic control from Claude Code or other MCP clients.
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_agent_schedules` | List all schedules for an agent |
+| `create_agent_schedule` | Create a new cron-based schedule |
+| `get_agent_schedule` | Get schedule details |
+| `update_agent_schedule` | Update schedule configuration |
+| `delete_agent_schedule` | Delete a schedule |
+| `toggle_agent_schedule` | Enable/disable a schedule |
+| `trigger_agent_schedule` | Manually trigger execution |
+| `get_schedule_executions` | Get execution history |
+
+### Example: Orchestrator Creating Worker Schedule
+
+```javascript
+// Head agent (Claude Code) creating a schedule on a worker
+await mcp.call("create_agent_schedule", {
+  agent_name: "report-generator",
+  name: "Daily Sales Report",
+  cron_expression: "0 9 * * 1-5",  // Weekdays at 9am
+  message: "Generate the daily sales report and email to team",
+  timezone: "America/New_York",
+  enabled: true
+});
+```
+
+### Access Control
+
+| Key Scope | Own Schedules | Other Agents' Schedules |
+|-----------|---------------|-------------------------|
+| User | Full CRUD | Full CRUD (if agent owner) |
+| Agent | Full CRUD | Read/toggle/trigger only (if permitted) |
+| System | Full CRUD | Full CRUD (all agents) |
+
+See `mcp-orchestration.md` for full MCP authentication and access control details.
+
+---
+
 ## Status
+**Updated 2026-01-29** - Added MCP Integration section with 8 schedule management tools
 **Updated 2026-01-15** - Added timezone handling note for UTC timestamps with 'Z' suffix
 **Updated 2026-01-12** - Added "Make Repeatable" flow documentation - create schedule from existing task via calendar icon in Tasks tab
 **Updated 2026-01-11** - Execution record created BEFORE activity tracking for proper `related_execution_id` linkage. Manual trigger now has full activity tracking with queue integration.

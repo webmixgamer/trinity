@@ -515,8 +515,48 @@ class ActivityType(str, Enum):
 
 - **Downstream**: Activity Monitoring - collaboration events appear in activity stream
 - **Upstream**: Agent Lifecycle - MCP API keys generated on agent creation
-- **Related**: MCP Orchestration - Trinity MCP server provides chat_with_agent tool
+- **Related**: MCP Orchestration - Trinity MCP server provides chat_with_agent tool and 8 schedule management tools
 - **Related**: Parallel Headless Execution - Use `parallel: true` for concurrent delegation
+- **Related**: Scheduling - System agents can manage schedules on all agents via MCP schedule tools
+
+---
+
+## System Agent Schedule Management (Added 2026-01-29)
+
+System-scoped agents (like `trinity-system`) can manage schedules across all agents via MCP schedule tools. This enables centralized automation management.
+
+### Available Schedule Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_agent_schedules` | List all schedules for any agent |
+| `create_agent_schedule` | Create cron-based schedules on any agent |
+| `toggle_agent_schedule` | Enable/disable schedules |
+| `trigger_agent_schedule` | Manually trigger execution |
+| `delete_agent_schedule` | Remove schedules |
+
+### Example: System Agent Managing Worker Schedules
+
+```javascript
+// System agent (trinity-system) creating recurring task on worker
+await mcp.call("create_agent_schedule", {
+  agent_name: "daily-report-agent",
+  name: "Morning Report",
+  cron_expression: "0 9 * * 1-5",  // Weekdays at 9 AM
+  message: "Generate and email the morning status report",
+  timezone: "America/New_York",
+  enabled: true
+});
+
+// Pause schedules during maintenance
+await mcp.call("toggle_agent_schedule", {
+  agent_name: "daily-report-agent",
+  schedule_id: "abc123",
+  enabled: false
+});
+```
+
+See `scheduling.md` and `mcp-orchestration.md` for full details on schedule management.
 
 ---
 
@@ -554,3 +594,4 @@ for worker in ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"]:
 | 2025-12-22 | Added parallel execution mode |
 | 2025-12-30 | Line numbers updated |
 | 2026-01-23 | Full review: verified all line numbers, added code snippets, documented CORS config, activity tracking details |
+| 2026-01-29 | **MCP Schedule Management (MCP-SCHED-001)**: Added System Agent Schedule Management section - system-scoped agents can now manage schedules across all agents via 8 new MCP schedule tools. Updated Related Flows to reference scheduling.md |

@@ -14,6 +14,12 @@ import type {
   AgentAccessInfo,
   SshAccessResponse,
   AgentTemplateInfo,
+  Schedule,
+  ScheduleCreate,
+  ScheduleUpdate,
+  ScheduleExecution,
+  ScheduleToggleResult,
+  ScheduleTriggerResult,
 } from "./types.js";
 
 /**
@@ -484,6 +490,141 @@ export class TrinityClient {
     return this.request<Template>(
       "GET",
       `/api/templates/${encodeURIComponent(templateId)}`
+    );
+  }
+
+  // ============================================================================
+  // Schedule Management
+  // ============================================================================
+
+  /**
+   * List all schedules for an agent
+   */
+  async listAgentSchedules(agentName: string): Promise<Schedule[]> {
+    return this.request<Schedule[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules`
+    );
+  }
+
+  /**
+   * Create a new schedule for an agent
+   */
+  async createAgentSchedule(
+    agentName: string,
+    schedule: ScheduleCreate
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules`,
+      schedule
+    );
+  }
+
+  /**
+   * Get a specific schedule by ID
+   */
+  async getAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`
+    );
+  }
+
+  /**
+   * Update an existing schedule
+   */
+  async updateAgentSchedule(
+    agentName: string,
+    scheduleId: string,
+    updates: ScheduleUpdate
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "PUT",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`,
+      updates
+    );
+  }
+
+  /**
+   * Delete a schedule
+   */
+  async deleteAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<void> {
+    await this.request<void>(
+      "DELETE",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`
+    );
+  }
+
+  /**
+   * Enable a schedule
+   */
+  async enableAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleToggleResult> {
+    return this.request<ScheduleToggleResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/enable`
+    );
+  }
+
+  /**
+   * Disable a schedule
+   */
+  async disableAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleToggleResult> {
+    return this.request<ScheduleToggleResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/disable`
+    );
+  }
+
+  /**
+   * Manually trigger a schedule execution
+   */
+  async triggerAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleTriggerResult> {
+    return this.request<ScheduleTriggerResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/trigger`
+    );
+  }
+
+  /**
+   * Get execution history for a specific schedule
+   */
+  async getScheduleExecutions(
+    agentName: string,
+    scheduleId: string,
+    limit: number = 20
+  ): Promise<ScheduleExecution[]> {
+    return this.request<ScheduleExecution[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/executions?limit=${limit}`
+    );
+  }
+
+  /**
+   * Get all executions for an agent across all schedules
+   */
+  async getAgentExecutions(
+    agentName: string,
+    limit: number = 20
+  ): Promise<ScheduleExecution[]> {
+    return this.request<ScheduleExecution[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/executions?limit=${limit}`
     );
   }
 
