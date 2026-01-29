@@ -1,3 +1,146 @@
+### 2026-01-29 18:30:00
+🐛 **Fix: Scheduler Sync Bug - New Schedules Now Work Without Restart**
+
+**Problem**: New schedules created via API wouldn't execute until the scheduler container was restarted. The `next_run_at` field was `None` for newly created schedules, and timeline markers wouldn't show.
+
+**Solution** (two parts):
+
+1. **Database Layer** (`src/backend/db/schedules.py`):
+   - Added `_calculate_next_run_at()` helper using croniter
+   - `create_schedule()` now calculates `next_run_at` before INSERT
+   - `update_schedule()` recalculates when cron_expression, timezone, or enabled changes
+   - `set_schedule_enabled()` recalculates when enabling, clears when disabling
+
+2. **Dedicated Scheduler** (`src/scheduler/service.py`):
+   - Added `_sync_schedules()` method that compares database state with in-memory APScheduler jobs
+   - Detects new, updated, and deleted schedules
+   - Called every 60 seconds (configurable via `SCHEDULE_RELOAD_INTERVAL`)
+   - Added `list_all_schedules()` and `list_all_process_schedules()` to `src/scheduler/database.py`
+
+**Behavior**:
+- New schedules have `next_run_at` populated immediately
+- Scheduler detects and loads new schedules within 60 seconds
+- Timeline markers show immediately (no restart needed)
+- Enable/disable triggers recalculation of `next_run_at`
+
+**Files Changed**:
+- `src/backend/db/schedules.py` - Added croniter import and `_calculate_next_run_at()` helper
+- `src/scheduler/service.py` - Added `_sync_schedules()`, `_sync_agent_schedules()`, `_sync_process_schedules()`
+- `src/scheduler/database.py` - Added `list_all_schedules()` and `list_all_process_schedules()`
+- `docs/memory/feature-flows/scheduling.md` - Updated Known Issues to FIXED
+- `docs/memory/feature-flows/scheduler-service.md` - Added Flow 6: Periodic Schedule Sync
+
+---
+
+### 2026-01-29 17:00:00
+🐛 **Bug Documented: New Schedules Don't Execute Until Scheduler Restart**
+
+**Discovered During TSM-001 Testing**: Schedule markers weren't appearing for newly created schedules.
+
+**Root Cause Analysis**:
+1. Backend creates schedule in database but does NOT calculate `next_run_at`
+2. Backend's embedded scheduler is disabled (`main.py` lines 214-220)
+3. `scheduler_service.add_schedule()` returns early because `self.scheduler` is `None`
+4. Dedicated scheduler container (`trinity-scheduler`) only loads schedules on startup
+5. No mechanism exists to notify the scheduler container when new schedules are created
+
+**Impact**:
+- `next_run_at` field is `None` for newly created schedules
+- Schedule will never execute until scheduler restarts
+- Timeline markers won't show (they depend on `next_run_at`)
+
+**Workaround**: `docker restart trinity-scheduler`
+
+**Planned Fix**: Calculate `next_run_at` in the database layer when creating/updating schedules, independent of the scheduler service.
+
+**Documentation Updated**:
+- `docs/memory/feature-flows/scheduling.md` - Added "Known Issues" section with full details
+- `docs/memory/feature-flows/replay-timeline.md` - Added note in Section 5a Schedule Markers
+
+---
+
+### 2026-01-29 16:20:00
+🐛 **Fix: Timeline Scale Issue with Schedule Markers (TSM-001)**
+
+**Problem**: Timeline was extending days into the future when schedules had far-off `next_run_at` times (e.g., weekly schedules 4+ days away), breaking the timeline scale.
+
+**Root Cause**: The `endTime` computed property extended to show ALL schedule markers regardless of how far in the future they were.
+
+**Fix** (`src/frontend/src/components/ReplayTimeline.vue`):
+- Added **2-hour max limit** for future timeline extension
+- Only schedules within 2 hours of NOW extend the timeline
+- Far-off schedules (beyond 2 hours) are simply not shown as markers
+- Updated scroll handling to match the 2-hour limit logic
+
+**Behavior**:
+- Timeline shows past + NOW (as before)
+- If a schedule is within 2 hours, timeline extends slightly to show it
+- Weekly/monthly schedules (days away) don't break the scale
+
+---
+
+### 2026-01-29 15:45:00
+📚 **Docs: Updated Feature Flows for Timeline Schedule Markers (TSM-001)**
+
+Updated feature flow documentation to reflect the Timeline Schedule Markers implementation:
+
+- **`docs/memory/feature-flows/scheduling.md`**: Added new "Dashboard Timeline Integration (TSM-001)" section with:
+  - Complete data flow diagram (Dashboard -> network.js -> Backend -> ReplayTimeline)
+  - Frontend implementation details (store, Dashboard, ReplayTimeline)
+  - Timeline extension for future schedules explanation
+  - Visual design specifications
+
+- **`docs/memory/feature-flows/dashboard-timeline-view.md`**: Already updated with:
+  - Section 8 "Schedule Markers (TSM-001)"
+  - `schedules` prop in Props table
+  - Test Case 9 for schedule marker verification
+  - Edge cases for schedules
+
+- **`docs/memory/feature-flows/replay-timeline.md`**: Already updated with:
+  - Section 5a "Schedule Markers" with computed property, SVG rendering, helpers
+  - Legend entry documentation
+  - Visual Elements Summary table entry
+
+- **`docs/memory/feature-flows.md`**: Already updated at lines 6-11 with TSM-001 summary
+
+---
+
+### 2026-01-29 14:30:00
+🎨 **Feature: Timeline Schedule Markers (TSM-001)**
+
+**Summary**: Added visual markers on the Dashboard timeline showing when agent schedules are configured to run. Users can hover to see schedule details and click to navigate to the schedule configuration. **Timeline extends into the future** to show upcoming schedule markers.
+
+**Changes**:
+- `src/frontend/src/stores/network.js`:
+  - Added `schedules` ref to store enabled schedules
+  - Added `fetchSchedules()` action to fetch from `/api/ops/schedules?enabled_only=true`
+  - Exported `schedules` and `fetchSchedules` from store
+
+- `src/frontend/src/views/Dashboard.vue`:
+  - Added `schedules` to storeToRefs extraction
+  - Call `fetchSchedules()` on component mount
+  - Pass `schedules` prop to ReplayTimeline component
+
+- `src/frontend/src/components/ReplayTimeline.vue`:
+  - Added `schedules` prop
+  - Added `scheduleMarkers` computed property to calculate marker positions
+  - Added schedule marker rendering (purple triangles ▼ at top of agent rows)
+  - Added `getScheduleMarkerPoints()`, `getScheduleTooltip()`, `navigateToSchedule()` helpers
+  - Added "Next Run" legend item
+  - **Extended `endTime` computation** to include future schedule `next_run_at` times
+  - **Updated scroll handling** to allow scrolling into future when schedules exist
+
+**Visual Design**:
+- Purple (▼) triangles at top of each agent's row
+- Positioned at `next_run_at` timestamp (can be in the future)
+- Timeline automatically extends to show furthest scheduled run time + 10% padding
+- Hover shows tooltip with schedule name, next run time, cron expression, and message preview
+- Click navigates to `/agents/{agent_name}?tab=schedules`
+
+**Requirements**: `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
+
+---
+
 ### 2026-01-29 11:30:00
 🚀 **Feature: MCP Schedule Management Tools (MCP-SCHED-001)**
 

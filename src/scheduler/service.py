@@ -37,6 +37,7 @@ class SchedulerService:
     - APScheduler with AsyncIO for non-blocking execution
     - Distributed locking to prevent duplicate executions
     - Event publishing for WebSocket compatibility
+    - Periodic sync to detect new/updated/deleted schedules
     """
 
     def __init__(
@@ -62,6 +63,11 @@ class SchedulerService:
         self._initialized = False
         self._start_time: Optional[datetime] = None
         self._instance_id: str = f"scheduler-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+        # Schedule state snapshots for sync detection
+        # Maps schedule_id -> (enabled, updated_at_iso)
+        self._schedule_snapshot: Dict[str, tuple] = {}
+        self._process_schedule_snapshot: Dict[str, tuple] = {}
 
     @property
     def redis(self) -> redis.Redis:
@@ -93,11 +99,21 @@ class SchedulerService:
         schedules = self.db.list_all_enabled_schedules()
         for schedule in schedules:
             self._add_job(schedule)
+            # Capture snapshot for sync detection
+            self._schedule_snapshot[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
 
         # Load all enabled process schedules from database
         process_schedules = self.db.list_all_enabled_process_schedules()
         for process_schedule in process_schedules:
             self._add_process_job(process_schedule)
+            # Capture snapshot for sync detection
+            self._process_schedule_snapshot[process_schedule.id] = (
+                process_schedule.enabled,
+                process_schedule.updated_at.isoformat() if process_schedule.updated_at else None
+            )
 
         # Start the scheduler
         self.scheduler.start()
@@ -106,6 +122,7 @@ class SchedulerService:
 
         logger.info(f"Scheduler initialized with {len(schedules)} agent schedules, {len(process_schedules)} process schedules")
         logger.info(f"Instance ID: {self._instance_id}")
+        logger.info(f"Schedule sync interval: {config.schedule_reload_interval}s")
 
     def shutdown(self):
         """Shutdown the scheduler gracefully."""
@@ -124,11 +141,22 @@ class SchedulerService:
         """Run the scheduler until interrupted."""
         self.initialize()
 
+        sync_interval = config.schedule_reload_interval
+        heartbeat_interval = 30
+        last_sync = datetime.utcnow()
+
         try:
-            # Keep the service running with periodic heartbeat
+            # Keep the service running with periodic heartbeat and sync
             while True:
                 self.lock_manager.set_heartbeat(self._instance_id)
-                await asyncio.sleep(30)
+
+                # Check if it's time to sync schedules
+                now = datetime.utcnow()
+                if (now - last_sync).total_seconds() >= sync_interval:
+                    await self._sync_schedules()
+                    last_sync = now
+
+                await asyncio.sleep(heartbeat_interval)
         except asyncio.CancelledError:
             logger.info("Scheduler received cancel signal")
         finally:
@@ -221,6 +249,149 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Failed to calculate next run time: {e}")
             return None
+
+    # =========================================================================
+    # Schedule Sync (detect new/updated/deleted schedules)
+    # =========================================================================
+
+    async def _sync_schedules(self):
+        """
+        Sync in-memory APScheduler jobs with database schedules.
+
+        This is called periodically to detect:
+        - New schedules created since last sync
+        - Deleted schedules
+        - Updated schedules (cron, timezone, enabled status changed)
+
+        This allows new schedules to work without restarting the scheduler container.
+        """
+        try:
+            await self._sync_agent_schedules()
+            await self._sync_process_schedules()
+        except Exception as e:
+            logger.error(f"Schedule sync failed: {e}")
+
+    async def _sync_agent_schedules(self):
+        """Sync agent schedules with database."""
+        # Get all schedules from database (enabled and disabled)
+        all_schedules = self.db.list_all_schedules()
+
+        # Build current state map
+        current_state: Dict[str, tuple] = {}
+        schedule_map: Dict[str, Schedule] = {}
+        for schedule in all_schedules:
+            current_state[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
+            schedule_map[schedule.id] = schedule
+
+        # Detect changes
+        snapshot_ids = set(self._schedule_snapshot.keys())
+        current_ids = set(current_state.keys())
+
+        # New schedules (in database but not in snapshot)
+        new_ids = current_ids - snapshot_ids
+        for schedule_id in new_ids:
+            schedule = schedule_map[schedule_id]
+            if schedule.enabled:
+                logger.info(f"Sync: Adding new schedule {schedule.name} for agent {schedule.agent_name}")
+                self._add_job(schedule)
+            self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+        # Deleted schedules (in snapshot but not in database)
+        deleted_ids = snapshot_ids - current_ids
+        for schedule_id in deleted_ids:
+            logger.info(f"Sync: Removing deleted schedule {schedule_id}")
+            self._remove_job(schedule_id)
+            del self._schedule_snapshot[schedule_id]
+
+        # Updated schedules (still exists but state changed)
+        for schedule_id in (snapshot_ids & current_ids):
+            old_state = self._schedule_snapshot[schedule_id]
+            new_state = current_state[schedule_id]
+
+            if old_state != new_state:
+                schedule = schedule_map[schedule_id]
+                old_enabled, old_updated = old_state
+                new_enabled, new_updated = new_state
+
+                if old_enabled and not new_enabled:
+                    # Schedule was disabled
+                    logger.info(f"Sync: Disabling schedule {schedule.name}")
+                    self._remove_job(schedule_id)
+                elif not old_enabled and new_enabled:
+                    # Schedule was enabled
+                    logger.info(f"Sync: Enabling schedule {schedule.name}")
+                    self._add_job(schedule)
+                elif new_enabled and old_updated != new_updated:
+                    # Schedule was updated (and still enabled)
+                    logger.info(f"Sync: Updating schedule {schedule.name}")
+                    self._remove_job(schedule_id)
+                    self._add_job(schedule)
+
+                self._schedule_snapshot[schedule_id] = new_state
+
+        if new_ids or deleted_ids:
+            logger.info(f"Sync complete: {len(new_ids)} added, {len(deleted_ids)} removed")
+
+    async def _sync_process_schedules(self):
+        """Sync process schedules with database."""
+        # Get all process schedules from database
+        all_schedules = self.db.list_all_process_schedules()
+
+        # Build current state map
+        current_state: Dict[str, tuple] = {}
+        schedule_map: Dict[str, ProcessSchedule] = {}
+        for schedule in all_schedules:
+            current_state[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
+            schedule_map[schedule.id] = schedule
+
+        # Detect changes
+        snapshot_ids = set(self._process_schedule_snapshot.keys())
+        current_ids = set(current_state.keys())
+
+        # New schedules
+        new_ids = current_ids - snapshot_ids
+        for schedule_id in new_ids:
+            schedule = schedule_map[schedule_id]
+            if schedule.enabled:
+                logger.info(f"Sync: Adding new process schedule {schedule.process_name}/{schedule.trigger_id}")
+                self._add_process_job(schedule)
+            self._process_schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+        # Deleted schedules
+        deleted_ids = snapshot_ids - current_ids
+        for schedule_id in deleted_ids:
+            logger.info(f"Sync: Removing deleted process schedule {schedule_id}")
+            self._remove_process_job(schedule_id)
+            del self._process_schedule_snapshot[schedule_id]
+
+        # Updated schedules
+        for schedule_id in (snapshot_ids & current_ids):
+            old_state = self._process_schedule_snapshot[schedule_id]
+            new_state = current_state[schedule_id]
+
+            if old_state != new_state:
+                schedule = schedule_map[schedule_id]
+                old_enabled, old_updated = old_state
+                new_enabled, new_updated = new_state
+
+                if old_enabled and not new_enabled:
+                    logger.info(f"Sync: Disabling process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._remove_process_job(schedule_id)
+                elif not old_enabled and new_enabled:
+                    logger.info(f"Sync: Enabling process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._add_process_job(schedule)
+                elif new_enabled and old_updated != new_updated:
+                    logger.info(f"Sync: Updating process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._remove_process_job(schedule_id)
+                    self._add_process_job(schedule)
+
+                self._process_schedule_snapshot[schedule_id] = new_state
 
     # =========================================================================
     # Schedule Execution

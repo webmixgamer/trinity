@@ -1,6 +1,6 @@
 # Feature: Dashboard Replay Timeline
 
-> **Last Updated**: 2026-01-15 (Added pink color for MCP executions)
+> **Last Updated**: 2026-01-29 (Added Timeline Schedule Markers - TSM-001)
 
 ## Overview
 
@@ -311,7 +311,127 @@ const agentRows = computed(() => {
 - Active bars: `#3b82f6` (blue-500) at 100% opacity
 - Inactive bars: `#93c5fd` (blue-300) at 70% opacity
 
-#### 5a. Real-Time In-Progress Bar Extension (Added 2026-01-13)
+#### 5a. Schedule Markers (Added 2026-01-29, TSM-001)
+
+Visual markers showing when agent schedules are configured to run. Purple triangles appear at the `next_run_at` position for each enabled schedule.
+
+**Requirements Doc**: `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
+
+**Props** (Line 386):
+```javascript
+schedules: { type: Array, default: () => [] }
+```
+
+**Computed Property** (`ReplayTimeline.vue:799-834`):
+```javascript
+const scheduleMarkers = computed(() => {
+  if (!props.schedules.length || !startTime.value || !duration.value) return []
+
+  const markers = []
+
+  props.schedules.forEach(schedule => {
+    if (!schedule.next_run_at || !schedule.enabled) return
+
+    // Find the agent row index
+    const rowIndex = filteredAgentRows.value.findIndex(row => row.name === schedule.agent_name)
+    if (rowIndex === -1) return
+
+    // Parse the next_run_at timestamp
+    const nextRunMs = getTimestampMs(schedule.next_run_at)
+
+    // Only show markers within the visible timeline range
+    if (nextRunMs < startTime.value || nextRunMs > endTime.value) return
+
+    // Calculate x position
+    const x = ((nextRunMs - startTime.value) / duration.value) * actualGridWidth.value
+
+    markers.push({
+      x,
+      rowIndex,
+      id: schedule.id,
+      name: schedule.name,
+      agentName: schedule.agent_name,
+      nextRun: schedule.next_run_at,
+      cronExpression: schedule.cron_expression,
+      message: schedule.message,
+      enabled: schedule.enabled
+    })
+  })
+
+  return markers
+})
+```
+
+**SVG Rendering** (`ReplayTimeline.vue:312-322`):
+```vue
+<!-- Schedule markers (show when schedules are set to run) -->
+<g v-for="(marker, i) in scheduleMarkers" :key="'sched-' + i">
+  <polygon
+    :points="getScheduleMarkerPoints(marker)"
+    fill="#8b5cf6"
+    opacity="0.8"
+    class="cursor-pointer hover:opacity-100 transition-opacity"
+    @click="navigateToSchedule(marker)"
+  >
+    <title>{{ getScheduleTooltip(marker) }}</title>
+  </polygon>
+</g>
+```
+
+**Helper Functions** (`ReplayTimeline.vue:1014-1034`):
+```javascript
+function getScheduleMarkerPoints(marker) {
+  const x = marker.x
+  const y = marker.rowIndex * rowHeight + 4
+  // Downward-pointing triangle
+  return `${x},${y} ${x - 4},${y + 8} ${x + 4},${y + 8}`
+}
+
+function getScheduleTooltip(marker) {
+  const nextRun = formatLocalTime(marker.nextRun)
+  const messagePreview = marker.message && marker.message.length > 50
+    ? marker.message.substring(0, 50) + '...'
+    : (marker.message || 'No message')
+  return `Schedule: ${marker.name}\nNext Run: ${nextRun}\nCron: ${marker.cronExpression}\nMessage: ${messagePreview}`
+}
+
+function navigateToSchedule(marker) {
+  router.push({
+    path: `/agents/${marker.agentName}`,
+    query: { tab: 'schedules' }
+  })
+}
+```
+
+**Visual Design**:
+- Shape: Downward-pointing triangle (8px wide x 8px tall)
+- Color: Purple (`#8b5cf6`) to match scheduled execution bars
+- Position: Top of agent row (y = rowIndex * rowHeight + 4)
+- Interaction: Hover shows tooltip, click navigates to Schedules tab
+
+**Timeline Extension Limit** (Updated 2026-01-29):
+- Timeline extends into the future **max 2 hours** for schedule markers
+- Far-off schedules (beyond 2 hours) don't extend the timeline to prevent scale distortion
+- Markers only appear if `next_run_at` falls within the visible time range
+
+**Scheduler Sync (FIXED 2026-01-29)**:
+> New schedules now work without container restart.
+>
+> **Fix Details**:
+> 1. **Database layer** (`src/backend/db/schedules.py`): `create_schedule()`, `update_schedule()`, and `set_schedule_enabled()` now calculate `next_run_at` using croniter before INSERT/UPDATE
+> 2. **Dedicated scheduler** (`src/scheduler/service.py`): Added periodic sync (`_sync_schedules()`) every 60 seconds that detects new, updated, and deleted schedules
+>
+> See `scheduling.md` and `scheduler-service.md` for full details.
+
+**Legend Entry** (`ReplayTimeline.vue:85-88`):
+```html
+<span class="flex items-center space-x-1" title="Schedule marker (shows next scheduled run time)">
+  <span class="text-purple-500 text-xs font-bold">▼</span>
+  <span>Next Run</span>
+</span>
+```
+
+#### 5b. Real-Time In-Progress Bar Extension (Added 2026-01-13)
 
 In-progress task bars now grow in real-time as the task executes, providing live visual feedback.
 
@@ -869,6 +989,9 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer; dedicated scheduler syncs every 60s. Schedule markers appear immediately after schedule creation without container restart. |
+| 2026-01-29 | **Fix (TSM-001)**: Timeline scale issue - far-off schedules (days away) no longer extend timeline excessively. Added 2-hour max limit for future extension. Markers only visible if `next_run_at` within 2 hours of NOW |
+| 2026-01-29 | **Feature (TSM-001)**: Timeline Schedule Markers - purple triangles at `next_run_at` position for enabled schedules; hover tooltip shows schedule details; click navigates to Schedules tab. Data from `GET /api/ops/schedules?enabled_only=true` via `network.js:fetchSchedules()` |
 | 2026-01-15 | **Timezone-aware timestamps**: Code examples updated to use `getTimestampMs()` from `@/utils/timestamps`. Ensures events display at correct positions regardless of server/user timezone. See `docs/TIMEZONE_HANDLING.md` |
 | 2026-01-15 | **Feature**: Added pink color (#ec4899) for MCP executions (`triggered_by='mcp'`); updated Visual Elements Summary with trigger-based color scheme |
 | 2026-01-13 | **Feature**: In-progress bars now extend in real-time - added `startTimestamp` storage, dynamic `effectiveDuration` calculation, and 1-second reactive updates |
@@ -879,9 +1002,18 @@ onUnmounted(() => {
 ## References
 
 ### Code Files
-- `src/frontend/src/components/ReplayTimeline.vue` - Timeline component (664 lines)
-- `src/frontend/src/views/Dashboard.vue` - Parent integration (Lines 142-158, 495-510)
-- `src/frontend/src/stores/network.js` - Replay state (Lines 53-60, 79-107, 797-1020)
+- `src/frontend/src/components/ReplayTimeline.vue` - Timeline component (~1060 lines)
+  - Props: Line 370-387 (includes `schedules` prop at line 386)
+  - Schedule markers computed: Lines 799-834
+  - Schedule marker SVG: Lines 312-322
+  - Schedule helper functions: Lines 1014-1034
+- `src/frontend/src/views/Dashboard.vue` - Parent integration
+  - ReplayTimeline props: Lines 142-165 (includes `:schedules="schedules"` at line 159)
+  - onMounted with `fetchSchedules()`: Lines 416-434 (line 424)
+- `src/frontend/src/stores/network.js` - Network state
+  - `schedules` ref: Line 54
+  - `fetchSchedules()` action: Lines 1214-1225
+  - Export: Line 1350
 
 ### Visual Elements Summary
 
@@ -894,6 +1026,7 @@ onUnmounted(() => {
 | Activity bars (in-progress) | `#f59e0b` (amber-500) | Currently running tasks (grows in real-time) |
 | Activity bars (error) | `#ef4444` (red-500) | Failed executions |
 | Activity bars (inactive) | Lighter variant | Events after cursor (30% opacity reduction) |
+| **Schedule markers** | `#8b5cf6` (purple-500) | Shows `next_run_at` for enabled schedules (TSM-001) |
 | Communication arrows (active) | `#06b6d4` (cyan-500) | Active connections |
 | Communication arrows (inactive) | `#67e8f9` (cyan-300) | Future connections |
 | Playback cursor | `#ef4444` (red-500) | Current playback position |

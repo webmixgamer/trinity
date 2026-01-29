@@ -848,6 +848,85 @@ The previous scheduler was embedded in `src/backend/services/scheduler_service.p
 
 ---
 
+## Flow 6: Periodic Schedule Sync
+
+**Purpose**: Detect new/updated/deleted schedules without container restart
+
+**Trigger**: Every 60 seconds (configurable via `SCHEDULE_RELOAD_INTERVAL`)
+
+```
+run_forever()                 _sync_schedules()             _sync_agent_schedules()
+(main loop)      -->          (every 60s)      -->          Compare DB with snapshot
+|                             |                              |
+v                             v                              v
+heartbeat (30s)               _sync_agent_schedules()        Build current_state map
+|                             _sync_process_schedules()      from list_all_schedules()
+v                                                            |
+check sync_interval                                          v
+(>= 60s since last?)                                         Detect changes:
+|                                                            - new_ids (add jobs)
+v                                                            - deleted_ids (remove jobs)
+_sync_schedules()                                            - updated (cron/tz/enabled)
+last_sync = now                                              |
+                                                             v
+                                                             Update _schedule_snapshot
+```
+
+**Key Implementation** (`service.py:224-316`):
+
+```python
+async def _sync_agent_schedules(self):
+    """Sync agent schedules with database."""
+    all_schedules = self.db.list_all_schedules()
+
+    # Build current state map: schedule_id -> (enabled, updated_at_iso)
+    current_state: Dict[str, tuple] = {}
+    for schedule in all_schedules:
+        current_state[schedule.id] = (schedule.enabled, schedule.updated_at.isoformat())
+
+    # Detect changes
+    snapshot_ids = set(self._schedule_snapshot.keys())
+    current_ids = set(current_state.keys())
+
+    # New schedules
+    for schedule_id in (current_ids - snapshot_ids):
+        schedule = schedule_map[schedule_id]
+        if schedule.enabled:
+            self._add_job(schedule)  # Add to APScheduler
+        self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+    # Deleted schedules
+    for schedule_id in (snapshot_ids - current_ids):
+        self._remove_job(schedule_id)  # Remove from APScheduler
+        del self._schedule_snapshot[schedule_id]
+
+    # Updated schedules (enabled/disabled or cron changed)
+    for schedule_id in (snapshot_ids & current_ids):
+        if self._schedule_snapshot[schedule_id] != current_state[schedule_id]:
+            # Re-add job with updated config
+            self._remove_job(schedule_id)
+            if schedule.enabled:
+                self._add_job(schedule)
+            self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+```
+
+**Configuration** (`config.py:46-48`):
+```python
+schedule_reload_interval: int = field(default_factory=lambda: int(os.getenv(
+    "SCHEDULE_RELOAD_INTERVAL", "60"
+)))  # seconds
+```
+
+**Log Examples**:
+```
+INFO - Sync: Adding new schedule Daily Report for agent my-agent
+INFO - Sync: Disabling schedule Weekly Digest
+INFO - Sync: Updating schedule Hourly Check
+INFO - Sync complete: 2 added, 1 removed
+```
+
+---
+
 ## Future Enhancements
 
 1. **APScheduler 4.0 Migration**: When stable, migrate to native distributed scheduling
@@ -862,6 +941,7 @@ The previous scheduler was embedded in `src/backend/services/scheduler_service.p
 
 | Date | Change |
 |------|--------|
+| 2026-01-29 | Added periodic schedule sync - new schedules work without restart |
 | 2026-01-13 | Initial documentation - standalone scheduler service |
 
 ---

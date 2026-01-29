@@ -5,14 +5,20 @@ Handles schedule CRUD, execution tracking, and Git configuration.
 """
 
 import json
+import logging
 import secrets
 import sqlite3
 from datetime import datetime
 from typing import Optional, List, Dict
 
+import pytz
+from croniter import croniter
+
 from .connection import get_db_connection
 from db_models import Schedule, ScheduleCreate, ScheduleExecution, AgentGitConfig
 from utils.helpers import utc_now_iso, to_utc_iso, parse_iso_timestamp
+
+logger = logging.getLogger(__name__)
 
 
 class ScheduleOperations:
@@ -27,6 +33,30 @@ class ScheduleOperations:
     def _generate_id() -> str:
         """Generate a unique ID."""
         return secrets.token_urlsafe(16)
+
+    @staticmethod
+    def _calculate_next_run_at(cron_expression: str, timezone: str = "UTC") -> Optional[datetime]:
+        """Calculate the next run time for a cron expression.
+
+        This is calculated in the database layer to ensure next_run_at is always
+        set when schedules are created or updated, independent of the scheduler service.
+
+        Args:
+            cron_expression: Cron expression (5-field format)
+            timezone: Timezone for schedule (default: UTC)
+
+        Returns:
+            Next run time as datetime, or None if calculation fails
+        """
+        try:
+            tz = pytz.timezone(timezone) if timezone else pytz.UTC
+            now = datetime.now(tz)
+            cron = croniter(cron_expression, now)
+            next_time = cron.get_next(datetime)
+            return next_time
+        except Exception as e:
+            logger.warning(f"Failed to calculate next_run_at for cron '{cron_expression}': {e}")
+            return None
 
     @staticmethod
     def _row_to_schedule(row) -> Schedule:
@@ -109,14 +139,25 @@ class ScheduleOperations:
         schedule_id = self._generate_id()
         now = utc_now_iso()
 
+        # Calculate next_run_at if schedule is enabled
+        next_run_at = None
+        next_run_at_iso = None
+        if schedule_data.enabled:
+            next_run_at = self._calculate_next_run_at(
+                schedule_data.cron_expression,
+                schedule_data.timezone or "UTC"
+            )
+            if next_run_at:
+                next_run_at_iso = next_run_at.isoformat()
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("""
                     INSERT INTO agent_schedules (
                         id, agent_name, name, cron_expression, message, enabled,
-                        timezone, description, owner_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        timezone, description, owner_id, created_at, updated_at, next_run_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     schedule_id,
                     agent_name,
@@ -128,7 +169,8 @@ class ScheduleOperations:
                     schedule_data.description,
                     user["id"],
                     now,
-                    now
+                    now,
+                    next_run_at_iso
                 ))
                 conn.commit()
 
@@ -143,7 +185,8 @@ class ScheduleOperations:
                     description=schedule_data.description,
                     owner_id=user["id"],
                     created_at=datetime.fromisoformat(now),
-                    updated_at=datetime.fromisoformat(now)
+                    updated_at=datetime.fromisoformat(now),
+                    next_run_at=next_run_at
                 )
             except sqlite3.IntegrityError:
                 return None
@@ -227,6 +270,29 @@ class ScheduleOperations:
             if not set_clauses:
                 return schedule
 
+            # Check if we need to recalculate next_run_at
+            # Recalculate if cron_expression, timezone, or enabled status changed
+            needs_next_run_recalc = (
+                "cron_expression" in updates or
+                "timezone" in updates or
+                "enabled" in updates
+            )
+
+            if needs_next_run_recalc:
+                # Determine final values after update
+                new_cron = updates.get("cron_expression", schedule.cron_expression)
+                new_timezone = updates.get("timezone", schedule.timezone) or "UTC"
+                new_enabled = updates.get("enabled", schedule.enabled)
+
+                if new_enabled:
+                    next_run_at = self._calculate_next_run_at(new_cron, new_timezone)
+                    set_clauses.append("next_run_at = ?")
+                    params.append(next_run_at.isoformat() if next_run_at else None)
+                else:
+                    # Clear next_run_at if schedule is disabled
+                    set_clauses.append("next_run_at = ?")
+                    params.append(None)
+
             set_clauses.append("updated_at = ?")
             params.append(utc_now_iso())
             params.append(schedule_id)
@@ -262,12 +328,29 @@ class ScheduleOperations:
             return cursor.rowcount > 0
 
     def set_schedule_enabled(self, schedule_id: str, enabled: bool) -> bool:
-        """Enable or disable a schedule."""
+        """Enable or disable a schedule.
+
+        When enabling, calculates and stores next_run_at.
+        When disabling, clears next_run_at.
+        """
+        schedule = self.get_schedule(schedule_id)
+        if not schedule:
+            return False
+
+        next_run_at_iso = None
+        if enabled:
+            next_run_at = self._calculate_next_run_at(
+                schedule.cron_expression,
+                schedule.timezone or "UTC"
+            )
+            if next_run_at:
+                next_run_at_iso = next_run_at.isoformat()
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                UPDATE agent_schedules SET enabled = ?, updated_at = ? WHERE id = ?
-            """, (1 if enabled else 0, utc_now_iso(), schedule_id))
+                UPDATE agent_schedules SET enabled = ?, updated_at = ?, next_run_at = ? WHERE id = ?
+            """, (1 if enabled else 0, utc_now_iso(), next_run_at_iso, schedule_id))
             conn.commit()
             return cursor.rowcount > 0
 

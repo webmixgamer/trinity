@@ -859,7 +859,63 @@ See `mcp-orchestration.md` for full MCP authentication and access control detail
 
 ---
 
+## Known Issues
+
+None currently. Previous issues have been resolved.
+
+### FIXED: New schedules don't execute until scheduler restart
+
+**Fixed**: 2026-01-29
+
+**Original Symptoms**:
+- `next_run_at` field was `None` for newly created schedules
+- Schedule never executed until scheduler container was restarted
+- Timeline markers didn't show (they depend on `next_run_at`)
+
+**Root Cause**: The backend created schedules without calculating `next_run_at`, and the dedicated scheduler only loaded schedules on startup with no sync mechanism.
+
+**Solution** (two parts):
+
+1. **Calculate `next_run_at` in database layer** (`src/backend/db/schedules.py`):
+   - `create_schedule()` now calculates `next_run_at` using croniter before INSERT
+   - `update_schedule()` recalculates when cron_expression, timezone, or enabled status changes
+   - `set_schedule_enabled()` recalculates when enabling, clears when disabling
+
+2. **Periodic schedule sync in dedicated scheduler** (`src/scheduler/service.py`):
+   - Added `_sync_schedules()` method that compares database state with in-memory APScheduler jobs
+   - Detects new, updated, and deleted schedules
+   - Called every 60 seconds (configurable via `SCHEDULE_RELOAD_INTERVAL` env var)
+   - Automatically adds/removes/updates jobs without restart
+
+**Data Flow (Fixed)**:
+```
+API Request                  Backend                    Scheduler Container
+-----------                  -------                    -------------------
+POST /schedules  ------>  db/schedules.py:create_schedule()
+                          - Calculate next_run_at via croniter
+                          - INSERT with next_run_at populated
+                          - Return 201 Created
+
+                                                        (within 60s sync interval)
+                                                        service.py:_sync_schedules()
+                                                        - Detect new schedule
+                                                        - Add APScheduler job
+                                                        - Log: "Adding new schedule X"
+```
+
+**Related Files**:
+- `src/backend/db/schedules.py:26-50` - `_calculate_next_run_at()` helper
+- `src/backend/db/schedules.py:99-168` - `create_schedule()` with next_run_at
+- `src/backend/db/schedules.py:199-261` - `update_schedule()` with recalculation
+- `src/backend/db/schedules.py:290-315` - `set_schedule_enabled()` with recalculation
+- `src/scheduler/service.py:224-316` - `_sync_schedules()` and `_sync_agent_schedules()`
+- `src/scheduler/config.py:46-48` - `schedule_reload_interval` setting
+
+---
+
 ## Status
+**Updated 2026-01-29** - FIXED: Scheduler sync bug - new schedules now work without restart (next_run_at calculated in DB layer + periodic sync)
+**Updated 2026-01-29** - Added Dashboard Timeline Integration section (TSM-001) with full data flow, frontend implementation, and visual design details
 **Updated 2026-01-29** - Added MCP Integration section with 8 schedule management tools
 **Updated 2026-01-15** - Added timezone handling note for UTC timestamps with 'Z' suffix
 **Updated 2026-01-12** - Added "Make Repeatable" flow documentation - create schedule from existing task via calendar icon in Tasks tab
@@ -871,11 +927,103 @@ See `mcp-orchestration.md` for full MCP authentication and access control detail
 
 ---
 
+## Dashboard Timeline Integration (TSM-001)
+
+**Added**: 2026-01-29
+
+Enabled schedules are visualized on the Dashboard Timeline as purple triangle markers at their `next_run_at` positions.
+
+### Data Flow
+
+```
+Dashboard.vue                    network.js                     Backend
+     |                               |                              |
+     | onMounted()                   |                              |
+     +----> fetchSchedules() -----> GET /api/ops/schedules -----> ops.py:427
+     |                               |   ?enabled_only=true         |
+     |                               |                              |
+     |      schedules.value <------ [{id, agent_name, name, --------|
+     |                               |   cron_expression,           |
+     |                               |   next_run_at, enabled}]     |
+     |                               |                              |
+     | :schedules="schedules"        |                              |
+     +----> ReplayTimeline.vue       |                              |
+                |                    |                              |
+                | scheduleMarkers    |                              |
+                | (computed)         |                              |
+                v                    |                              |
+          Purple triangles at        |                              |
+          next_run_at positions      |                              |
+```
+
+### Frontend Implementation
+
+**Store** (`network.js:54, 1214-1225`):
+```javascript
+const schedules = ref([])
+
+async function fetchSchedules() {
+  const response = await axios.get('/api/ops/schedules', {
+    params: { enabled_only: true }
+  })
+  schedules.value = response.data.schedules || []
+}
+```
+
+**Dashboard** (`Dashboard.vue:159, 424`):
+```javascript
+// In onMounted
+await networkStore.fetchSchedules()
+
+// Pass to ReplayTimeline
+<ReplayTimeline :schedules="schedules" ... />
+```
+
+**ReplayTimeline** (`ReplayTimeline.vue:799-834, 312-322, 1014-1034`):
+- `scheduleMarkers` computed property filters and positions markers
+- SVG `<polygon>` renders purple downward triangles
+- Click navigates to `/agents/{agent_name}?tab=schedules`
+- Hover shows tooltip with schedule name, next run time, cron expression, message preview
+
+### Timeline Extension for Future Schedules
+
+The timeline now extends into the future to show upcoming schedule markers (`ReplayTimeline.vue:534-545`):
+
+```javascript
+// Extend timeline into future to show upcoming schedule markers
+if (props.schedules && props.schedules.length > 0) {
+  const futureScheduleTimes = props.schedules
+    .filter(s => s.next_run_at && s.enabled)
+    .map(s => getTimestampMs(s.next_run_at))
+
+  if (futureScheduleTimes.length > 0) {
+    const furthestSchedule = Math.max(...futureScheduleTimes)
+    maxEnd = Math.max(maxEnd, furthestSchedule + futurePaddingMs)
+  }
+}
+```
+
+### Visual Design
+
+- **Shape**: Downward-pointing triangle (8px wide x 8px tall)
+- **Color**: Purple (`#8b5cf6`) - matches scheduled execution bar color
+- **Position**: Top of agent row at `next_run_at` timestamp
+- **Interaction**: Hover shows tooltip, click navigates to Schedules tab
+
+### See Also
+
+- `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md` - Requirements document
+- `dashboard-timeline-view.md` - Full timeline documentation with Test Case 9
+- `replay-timeline.md` - ReplayTimeline component with Section 5a
+
+---
+
 ## Related Flows
 
 - **Integrates With**:
   - Execution Queue (`execution-queue.md`) - All scheduled executions go through queue (Added 2025-12-06)
   - Activity Stream (`activity-stream.md`) - Schedule activities tracked persistently
+  - **Dashboard Timeline** (`dashboard-timeline-view.md`, `replay-timeline.md`) - Schedule markers show `next_run_at` on timeline (TSM-001, Added 2026-01-29)
 - **Upstream**:
   - Tasks Tab (`tasks-tab.md`) - "Make Repeatable" button emits `create-schedule` event to pre-fill schedule creation form (Added 2026-01-12)
 - **Related**:

@@ -3,6 +3,22 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-29)**: Scheduler Sync Bug Fix:
+> - **scheduling.md**: Known Issues section marked as FIXED, added fix details for `next_run_at` calculation and periodic sync
+> - **scheduler-service.md**: Added Flow 6 "Periodic Schedule Sync" documenting 60-second sync interval, snapshot tracking, job detection
+> - **replay-timeline.md**: Updated "Known Issue" to "Scheduler Sync (FIXED)" with fix summary
+> - **dashboard-timeline-view.md**: Added revision history entry for scheduler sync fix
+> - **Database layer changes** (`src/backend/db/schedules.py`): `create_schedule()`, `update_schedule()`, `set_schedule_enabled()` now calculate `next_run_at` using croniter
+> - **Dedicated scheduler changes** (`src/scheduler/service.py`): `_sync_schedules()` method syncs every 60s; new schedules appear in APScheduler without container restart
+>
+> **Updated (2026-01-29)**: Timeline Schedule Markers (TSM-001):
+> - **replay-timeline.md**: Added Section 5a "Schedule Markers" with full implementation details (computed property, SVG rendering, helper functions)
+> - **dashboard-timeline-view.md**: Added `schedules` prop to Props table, Test Case 9, edge cases for schedule markers
+> - **scheduling.md**: Added Dashboard Timeline to Related Flows for cross-reference
+> - Purple triangle markers at `next_run_at` position; hover shows tooltip; click navigates to Schedules tab
+> - Data flow: `network.js:fetchSchedules()` -> `GET /api/ops/schedules?enabled_only=true` -> `ReplayTimeline.vue:scheduleMarkers`
+> - **Fix**: Timeline extends max 2 hours into future (far-off schedules don't break scale)
+>
 > **Updated (2026-01-29)**: MCP Schedule Management (MCP-SCHED-001):
 > - **mcp-orchestration.md**: Already updated to 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule)
 > - **scheduling.md**: Already has MCP Integration section with 8 schedule tools table
@@ -376,8 +392,8 @@
 | File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` + `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
-| **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport (Updated 2026-01-15) |
-| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent), 30s arrow validation window - see dashboard-timeline-view.md (Updated 2026-01-15) |
+| **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport, **schedule markers** (TSM-001) (Updated 2026-01-29) |
+| **Replay Timeline Component** | High | [replay-timeline.md](feature-flows/replay-timeline.md) | Waterfall-style timeline - execution-only boxes (collaborations = arrows only), trigger-based colors (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent), 30s arrow validation window, **schedule markers at next_run_at** (TSM-001) - see dashboard-timeline-view.md (Updated 2026-01-29) |
 | Unified Activity Stream | High | [activity-stream.md](feature-flows/activity-stream.md) | Centralized persistent activity tracking with WebSocket broadcasting (Updated 2025-12-30, Req 9.7) |
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **2026-01-14 Race Condition Fixes**: Atomic `SET NX EX` for slot acquisition, Lua script for atomic pop-and-set, `SCAN` instead of `KEYS`. Service layer: queue.py, scheduler uses AgentClient.task() for raw log format |

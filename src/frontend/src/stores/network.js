@@ -51,6 +51,7 @@ export const useNetworkStore = defineStore('network', () => {
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
   const runningToggleLoading = ref({}) // Map of agent name -> boolean (loading state for start/stop)
+  const schedules = ref([]) // Enabled schedules for timeline markers
 
   // View mode state (graph vs timeline) - default to timeline, persist to localStorage
   const savedViewMode = localStorage.getItem('trinity-dashboard-view')
@@ -1209,6 +1210,20 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
+  // Fetch enabled schedules for timeline markers
+  async function fetchSchedules() {
+    try {
+      const response = await axios.get('/api/ops/schedules', {
+        params: { enabled_only: true }
+      })
+      schedules.value = response.data.schedules || []
+      console.log(`[Collaboration] Loaded ${schedules.value.length} enabled schedules for timeline markers`)
+    } catch (error) {
+      console.error('[Collaboration] Failed to fetch schedules:', error)
+      schedules.value = []
+    }
+  }
+
   // Toggle agent running state (start/stop)
   async function toggleAgentRunning(agentName) {
     const node = nodes.value.find(n => n.id === agentName)
@@ -1274,6 +1289,7 @@ export const useNetworkStore = defineStore('network', () => {
     isLoadingHistory,
     contextStats,
     executionStats,
+    schedules,
     // View mode / Replay state
     isTimelineMode,
     isPlaying,
@@ -1330,6 +1346,8 @@ export const useNetworkStore = defineStore('network', () => {
     handleTimelineClick,
     jumpToTimelinePosition,
     toggleAutonomy,
+    // Schedule markers
+    fetchSchedules,
     // Running state toggle
     toggleAgentRunning,
     isTogglingRunning,

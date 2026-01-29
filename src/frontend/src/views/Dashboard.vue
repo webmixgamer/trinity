@@ -156,6 +156,7 @@
       :execution-stats="executionStats"
       :is-live-mode="true"
       :time-range-hours="selectedTimeRange"
+      :schedules="schedules"
       @play="handlePlay"
       @pause="handlePause"
       @stop="handleStop"
@@ -383,6 +384,7 @@ const {
   isLoadingHistory,
   contextStats,
   executionStats,
+  schedules,
   // Timeline/Replay state
   isTimelineMode,
   isPlaying,
@@ -417,6 +419,9 @@ onMounted(async () => {
 
   // Fetch historical communication data from Activity Stream
   await networkStore.fetchHistoricalCommunications()
+
+  // Fetch enabled schedules for timeline markers
+  await networkStore.fetchSchedules()
 
   // Connect WebSocket for real-time updates
   networkStore.connectWebSocket()

@@ -1,8 +1,8 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-15 (Added timezone-aware timestamp handling)
+> **Last Updated**: 2026-01-29 (Added Timeline Schedule Markers - TSM-001)
 > **Status**: Implemented
-> **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`
+> **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`, `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
 
 ## Overview
 
@@ -55,6 +55,12 @@ The Dashboard offers two views for monitoring the agent fleet:
    - Zoom: +/- buttons and slider (0.5x to 20x)
    - "Active only" toggle: Hide agents with no activity
    - "Jump to Now" button: Re-enables auto-scroll when scrolled away
+
+8. **Schedule Markers (TSM-001)**
+   - Purple triangles show when enabled schedules will next run
+   - Position: At `next_run_at` timestamp for each enabled schedule
+   - Hover: Shows schedule name, next run time, cron expression, message preview
+   - Click: Navigates to AgentDetail page with Schedules tab open
 
 6. **NOW Marker Positioning**
    - NOW marker positioned at 90% of viewport width (not at far right edge)
@@ -120,6 +126,7 @@ The Dashboard offers two views for monitoring the agent fleet:
 | `executionStats` | `networkStore.executionStats` | Task stats per agent |
 | `isLiveMode` | Hardcoded `true` | Enables live features |
 | `timeRangeHours` | `selectedTimeRange` | For default zoom calculation |
+| `schedules` | `networkStore.schedules` | Enabled schedules for markers (TSM-001) |
 
 ### Events Emitted by ReplayTimeline
 
@@ -593,6 +600,22 @@ function getBarTooltip(activity) {
 - [x] Execution Detail page loads with correct data
 - [x] For executions without ID, opens Tasks tab in new tab
 
+#### 9. Schedule Markers (TSM-001, Added 2026-01-29)
+**Action**: View timeline for agents with enabled schedules
+**Expected**:
+- Purple triangle markers appear at `next_run_at` positions
+- Markers only visible for enabled schedules within time range
+- Hover shows schedule details (name, next run, cron, message preview)
+- Click navigates to AgentDetail with Schedules tab open
+
+**Verify**:
+- [ ] Markers positioned at correct `next_run_at` timestamp
+- [ ] Only enabled schedules show markers
+- [ ] Markers respect zoom level and time range
+- [ ] Markers hidden for agents filtered by "Active only" toggle
+- [ ] Tooltip shows: "Schedule: {name}\nNext Run: {time}\nCron: {expr}\nMessage: {preview}"
+- [ ] Click opens `/agents/{name}?tab=schedules`
+
 ### Edge Cases
 - [x] 0 agents: Empty timeline with just "Now" marker
 - [x] 0 events: Timeline grid visible with all agent rows, ready for live events (fixed 2026-01-15)
@@ -600,9 +623,12 @@ function getBarTooltip(activity) {
 - [x] Collaboration without target execution: Arrow not drawn
 - [x] Multiple rapid collaborations: Each gets own arrow if box exists
 - [x] Agent calls itself: Arrow from row to same row (if box exists)
+- [ ] Agent with no schedules: No markers shown on row (TSM-001)
+- [ ] Schedule with `next_run_at` outside time range: Marker not shown (TSM-001)
+- [ ] Disabled schedule: Marker not shown (filtered by `enabled_only=true`) (TSM-001)
 
-**Last Tested**: 2026-01-11
-**Status**: Fully implemented and tested
+**Last Tested**: 2026-01-29
+**Status**: Fully implemented and tested (TSM-001 added)
 
 ## Backend Bug Fixes
 
@@ -630,6 +656,8 @@ if collaboration_activity_id:
 
 | Date | Change |
 |------|--------|
+| 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer (`db/schedules.py`); dedicated scheduler syncs every 60s (`scheduler/service.py`). Schedule markers appear immediately after schedule creation without container restart. See `scheduling.md` and `scheduler-service.md` for details. |
+| 2026-01-29 | **Feature (TSM-001)**: Timeline Schedule Markers - purple triangles at `next_run_at` positions for enabled schedules; hover tooltip with details; click navigates to Schedules tab. Data fetched via `fetchSchedules()` from `GET /api/ops/schedules?enabled_only=true` |
 | 2026-01-15 | **Critical Fix**: Timezone-aware timestamp handling - All timestamps now use UTC with 'Z' suffix. Frontend uses `parseUTC()` and `getTimestampMs()` utilities. Events display at correct positions regardless of server/user timezone difference. See `docs/TIMEZONE_HANDLING.md` |
 | 2026-01-15 | **Fix**: MCP executions now appear on Timeline - Fixed API field mismatch (`timeline` → `activities`) and activity `triggered_by` (`user` → `mcp` for MCP calls) |
 | 2026-01-15 | **Fix**: Timeline now visible even with no events - `timelineStart`/`timelineEnd` always provide valid time range based on `timeRangeHours`, enabling live event streaming |
