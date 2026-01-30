@@ -119,7 +119,7 @@ async def execute_task(request: ParallelTaskRequest):
         model=request.model,
         allowed_tools=request.allowed_tools,
         system_prompt=request.system_prompt,
-        timeout_seconds=request.timeout_seconds or 300,
+        timeout_seconds=request.timeout_seconds or 900,  # Default 15 minutes for research tasks
         max_turns=request.max_turns,
         execution_id=request.execution_id  # Use provided ID for process registry (enables termination)
     )
