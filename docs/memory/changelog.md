@@ -1,3 +1,27 @@
+### 2026-01-30 14:30:00
+📋 **Roadmap: Feature Requests Batch Added to Backlog**
+
+Added 10 items to roadmap backlog from planning session:
+
+**High Priority**:
+- **Bug: Live Execution Logs** - SSE streaming broken on production, needs investigation
+- **Git Worktrees for Task Isolation** - Each execution gets own branch, human approves merge, audit trail
+- **MCP as Primary Integration Point** - Local agents connect via MCP, pull skills, minimal setup
+
+**Medium Priority**:
+- **Agent Org Structures** - Parent-child hierarchy with delegation/control permissions
+- **Any Repo / Empty Agent Creation** - Create from any GitHub repo or empty Trinity-compatible scaffold
+- **Empty Agent → GitHub Safety** - Block init to existing repos when workspace empty
+- **Centralized MCP Server Management** - UI/MCP tools to manage agent MCP connections
+
+**Low Priority**:
+- **GitHub Issues for Roadmap** - Replace roadmap.md with GitHub Issues
+- **Agent History in GitHub** - Repository as source of truth (design open)
+
+**Themes**: GitHub-centric workflow (repo as truth, worktrees, audit) + MCP-first experience (single integration point)
+
+---
+
 ### 2026-01-30 11:45:00
 🐛 **Fix: Allow Shared Users to Git Pull**
 
