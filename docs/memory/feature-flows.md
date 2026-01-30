@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-01-30)**: Async Mode for Parallel Execution:
+> - **parallel-headless-execution.md**: Added comprehensive "Async Mode (Fire-and-Forget)" section with architecture diagram, implementation details, API spec, use cases, and sync vs async comparison table
+> - **mcp-orchestration.md**: Added "Async Mode" section documenting `async` parameter for `chat_with_agent` tool, polling endpoint, and use cases
+> - **agent-to-agent-collaboration.md**: Added "Async Mode (Fire-and-Forget)" subsection to Parallel Delegation Mode
+> - Feature: When `parallel=true` and `async=true`, backend spawns task via `asyncio.create_task()` and returns immediately with `execution_id`
+> - Polling: `GET /api/agents/{name}/executions/{execution_id}` for status and results
+> - Implementation: `_execute_task_background()` helper in `chat.py:418-525`, `async_mode` field in `ParallelTaskRequest`
+
 > **Updated (2026-01-29)**: Scheduler Sync Bug Fix:
 > - **scheduling.md**: Known Issues section marked as FIXED, added fix details for `next_run_at` calculation and periodic sync
 > - **scheduler-service.md**: Added Flow 6 "Periodic Schedule Sync" documenting 60-second sync interval, snapshot tracking, job detection
@@ -409,7 +417,7 @@
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
-| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, execution_log persistence, max_turns runaway prevention, live SSE streaming (Updated 2026-01-23, Req 12.1) |
+| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, execution_log persistence, max_turns runaway prevention, live SSE streaming, **async mode** (fire-and-forget with polling) (Updated 2026-01-30, Req 12.1) |
 | **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |

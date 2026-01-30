@@ -415,6 +415,115 @@ async def chat_with_agent(
         await queue.complete(name, success=execution_success)
 
 
+async def _execute_task_background(
+    agent_name: str,
+    request: ParallelTaskRequest,
+    execution_id: str,
+    task_activity_id: str,
+    collaboration_activity_id: Optional[str],
+    x_source_agent: Optional[str]
+):
+    """
+    Background task execution for async mode.
+    Runs the task and updates execution record/activities when complete.
+    """
+    try:
+        payload = {
+            "message": request.message,
+            "model": request.model,
+            "allowed_tools": request.allowed_tools,
+            "system_prompt": request.system_prompt,
+            "timeout_seconds": request.timeout_seconds,
+            "execution_id": execution_id
+        }
+
+        start_time = datetime.utcnow()
+
+        response = await agent_post_with_retry(
+            agent_name,
+            "/api/task",
+            payload,
+            max_retries=3,
+            retry_delay=1.0,
+            timeout=float(request.timeout_seconds or 600) + 10
+        )
+        response.raise_for_status()
+
+        response_data = response.json()
+        execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        metadata = response_data.get("metadata", {})
+
+        # Update execution record with success
+        if execution_id:
+            execution_log = response_data.get("execution_log", [])
+            execution_log_json = json.dumps(execution_log) if execution_log else None
+            context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
+
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="success",
+                response=response_data.get("response"),
+                context_used=context_used if context_used > 0 else None,
+                context_max=metadata.get("context_window") or 200000,
+                cost=metadata.get("cost_usd"),
+                tool_calls=execution_log_json,
+                execution_log=execution_log_json
+            )
+
+        # Complete activities
+        await activity_service.complete_activity(
+            activity_id=task_activity_id,
+            status="completed",
+            details={
+                "cost_usd": metadata.get("cost_usd"),
+                "execution_time_ms": execution_time_ms,
+                "tool_count": len(response_data.get("execution_log", [])),
+                "async_mode": True
+            }
+        )
+
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
+                status="completed",
+                details={
+                    "response_length": len(response_data.get("response", "")),
+                    "execution_time_ms": execution_time_ms,
+                    "execution_id": execution_id
+                }
+            )
+
+        logger.info(f"[Task Async] Completed background task for agent '{agent_name}', execution_id={execution_id}")
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"[Task Async] Background task failed for agent '{agent_name}': {error_msg}")
+
+        # Update execution record with failure
+        if execution_id:
+            existing = db.get_execution(execution_id)
+            if not existing or existing.status != "cancelled":
+                db.update_execution_status(
+                    execution_id=execution_id,
+                    status="failed",
+                    error=error_msg
+                )
+
+        # Complete activities with failure
+        await activity_service.complete_activity(
+            activity_id=task_activity_id,
+            status="failed",
+            error=error_msg
+        )
+
+        if collaboration_activity_id:
+            await activity_service.complete_activity(
+                activity_id=collaboration_activity_id,
+                status="failed",
+                error=error_msg
+            )
+
+
 @router.post("/{name}/task")
 async def execute_parallel_task(
     name: str,
@@ -500,11 +609,40 @@ async def execute_parallel_task(
             "message_preview": request.message[:100],
             "source_agent": x_source_agent,
             "parallel_mode": True,
+            "async_mode": request.async_mode,
             "model": request.model,
             "timeout_seconds": request.timeout_seconds,
             "execution_id": execution_id  # Also in details for WebSocket events
         }
     )
+
+    # Async mode: spawn task in background and return immediately
+    if request.async_mode:
+        # Update execution status to "running"
+        if execution_id:
+            db.update_execution_status(execution_id=execution_id, status="running")
+
+        # Spawn background task
+        asyncio.create_task(
+            _execute_task_background(
+                agent_name=name,
+                request=request,
+                execution_id=execution_id,
+                task_activity_id=task_activity_id,
+                collaboration_activity_id=collaboration_activity_id,
+                x_source_agent=x_source_agent
+            )
+        )
+
+        # Return immediately with execution_id for polling
+        logger.info(f"[Task Async] Started background task for agent '{name}', execution_id={execution_id}")
+        return {
+            "status": "accepted",
+            "execution_id": execution_id,
+            "agent_name": name,
+            "message": "Task accepted. Poll GET /api/agents/{name}/executions/{execution_id} for results.",
+            "async_mode": True
+        }
 
     try:
         # Build payload for agent's /api/task endpoint

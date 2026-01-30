@@ -393,7 +393,7 @@ export class TrinityClient {
    *
    * @param name - Agent name
    * @param message - The task to execute
-   * @param options - Optional parameters
+   * @param options - Optional parameters including async_mode for fire-and-forget
    * @param sourceAgent - Optional source agent name for collaboration tracking
    */
   async task(
@@ -404,9 +404,10 @@ export class TrinityClient {
       allowed_tools?: string[];
       system_prompt?: string;
       timeout_seconds?: number;
+      async_mode?: boolean;
     },
     sourceAgent?: string
-  ): Promise<ChatResponse> {
+  ): Promise<ChatResponse | { status: "accepted"; execution_id: string; agent_name: string; message: string; async_mode: true }> {
     // Prepare headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -424,9 +425,11 @@ export class TrinityClient {
       allowed_tools: options?.allowed_tools,
       system_prompt: options?.system_prompt,
       timeout_seconds: options?.timeout_seconds,
+      async_mode: options?.async_mode,
     };
 
-    const timeout = (options?.timeout_seconds || 600) + 10; // Add buffer (default matches tool schema)
+    // Async mode returns immediately; sync mode waits for full execution
+    const timeout = options?.async_mode ? 30 : (options?.timeout_seconds || 600) + 10;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);

@@ -1,3 +1,38 @@
+### 2026-01-30 10:15:00
+🚀 **Feature: Async Mode for MCP chat_with_agent (Fire-and-Forget)**
+
+**Summary**: Added `async` parameter to `chat_with_agent` MCP tool for fire-and-forget task execution. When `async=true` (requires `parallel=true`), the call returns immediately with an `execution_id` that can be polled for results.
+
+**Usage**:
+```
+chat_with_agent(
+  agent_name: "worker-agent",
+  message: "Analyze this data...",
+  parallel: true,
+  async: true
+)
+// Returns immediately:
+// { status: "accepted", execution_id: "abc123", agent_name: "worker-agent", async_mode: true }
+
+// Poll for results:
+// GET /api/agents/worker-agent/executions/abc123
+```
+
+**Use Cases**:
+- Send tasks to multiple agents simultaneously without blocking
+- Fan-out patterns where orchestrator dispatches work to N workers
+- Long-running tasks that don't need immediate response
+
+**Files Changed**:
+- `src/backend/models.py` - Added `async_mode` to `ParallelTaskRequest`
+- `src/backend/routers/chat.py` - Added `_execute_task_background()` helper, async mode handling in `/task` endpoint
+- `src/mcp-server/src/client.ts` - Added `async_mode` option to `task()` method
+- `src/mcp-server/src/tools/chat.ts` - Added `async` parameter to `chat_with_agent` tool
+
+**Requirements**: Implements part of Req 17.4 (Async MCP Chat Commands)
+
+---
+
 ### 2026-01-29 18:30:00
 🐛 **Fix: Scheduler Sync Bug - New Schedules Now Work Without Restart**
 

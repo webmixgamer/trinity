@@ -582,6 +582,33 @@ for worker in ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"]:
 
 **Trade-off**: Parallel mode is stateless. For multi-turn collaborative reasoning, use standard chat mode.
 
+### Async Mode (Fire-and-Forget) - Added 2026-01-30
+
+For non-blocking delegation where you don't need to wait for results:
+
+```python
+# Spawn long-running task, continue immediately
+result = mcp__trinity__chat_with_agent(
+    agent_name="analysis-agent",
+    message="Analyze entire codebase",
+    parallel=true,   # Required for async
+    async=true,      # Return immediately
+    timeout_seconds=3600
+)
+# Returns: { "status": "accepted", "execution_id": "abc123", ... }
+
+# Poll later for results
+# GET /api/agents/analysis-agent/executions/abc123
+```
+
+**When to use async mode**:
+- Fan-out patterns where orchestrator spawns many workers
+- Background jobs that run independently
+- Long-running analysis that doesn't need immediate response
+- Load distribution across multiple agents
+
+See [Parallel Headless Execution](parallel-headless-execution.md) for complete async mode documentation.
+
 ---
 
 ## Revision History
@@ -595,3 +622,4 @@ for worker in ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"]:
 | 2025-12-30 | Line numbers updated |
 | 2026-01-23 | Full review: verified all line numbers, added code snippets, documented CORS config, activity tracking details |
 | 2026-01-29 | **MCP Schedule Management (MCP-SCHED-001)**: Added System Agent Schedule Management section - system-scoped agents can now manage schedules across all agents via 8 new MCP schedule tools. Updated Related Flows to reference scheduling.md |
+| 2026-01-30 | **Async Mode**: Added async mode (fire-and-forget) section to Parallel Delegation Mode. When `async=true` with `parallel=true`, orchestrator receives `execution_id` immediately and can poll for results later. |

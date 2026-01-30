@@ -10,6 +10,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-01-30 | **Async mode (fire-and-forget)**: Added `async_mode` parameter for non-blocking execution. Backend spawns background task, returns immediately with `execution_id`. Poll for results. New section documents implementation, use cases, and API. |
 | 2026-01-23 | Verified all line numbers against current codebase. Updated file references. |
 | 2026-01-12 | Added max_turns parameter for runaway prevention |
 | 2025-12-31 | Added execution log persistence details |
@@ -138,8 +139,10 @@ POST /api/task
 
 | File | Line | Purpose |
 |------|------|---------|
-| `models.py` | 109-116 | ParallelTaskRequest model with max_turns |
-| `routers/chat.py` | 418-630 | POST /api/agents/{name}/task endpoint |
+| `models.py` | 109-117 | ParallelTaskRequest model with max_turns and async_mode |
+| `routers/chat.py` | 418-525 | `_execute_task_background()` helper for async mode |
+| `routers/chat.py` | 527-817 | POST /api/agents/{name}/task endpoint (async mode at 619-645) |
+| `routers/schedules.py` | 323-336 | GET /api/agents/{name}/executions/{id} endpoint (polling) |
 | `routers/schedules.py` | 339-379 | GET /api/agents/{name}/executions/{id}/log endpoint |
 | `services/agent_client.py` | 194-287 | AgentClient.task() method |
 
@@ -147,8 +150,9 @@ POST /api/task
 
 | File | Line | Purpose |
 |------|------|---------|
-| `src/client.ts` | 393-445 | task() method for API calls |
-| `src/tools/chat.ts` | 130-270 | chat_with_agent tool with parallel parameter |
+| `src/client.ts` | 399-454 | task() method with async_mode option |
+| `src/tools/chat.ts` | 132-284 | chat_with_agent tool with parallel and async parameters |
+| `src/tools/chat.ts` | 187-194 | async parameter definition |
 
 ## API Specifications
 
@@ -232,6 +236,7 @@ Retrieve the full execution log for any task execution.
 | system_prompt | string | null | Additional instructions (parallel only) |
 | timeout_seconds | number | 300 | Timeout in seconds (parallel only) |
 | max_turns | number | null | Max agentic turns for runaway prevention (parallel only) |
+| async | boolean | false | Fire-and-forget mode - return immediately with execution_id (parallel only) |
 
 ## Key Differences: Chat vs Task
 
@@ -340,6 +345,293 @@ Use both together for comprehensive protection:
   "timeout_seconds": 900
 }
 ```
+
+## Async Mode (Fire-and-Forget)
+
+**Added**: 2026-01-30
+
+Async mode enables non-blocking task execution where the API returns immediately with an `execution_id` that can be polled later for results.
+
+### How It Works
+
+When `async_mode=true` is specified:
+
+1. **Backend creates execution record** with `status="running"`
+2. **Spawns background task** via `asyncio.create_task()`
+3. **Returns immediately** with `execution_id` for polling
+4. **Background task executes** the Claude Code command
+5. **Updates execution record** when complete (success/failed)
+6. **Completes activities** asynchronously
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Async Mode Flow                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Orchestrator                                                    │
+│       │                                                          │
+│       ├── POST /api/agents/worker/task {async_mode: true}       │
+│       │                                                          │
+│       v                                                          │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Backend (chat.py)                                       │    │
+│  │                                                          │    │
+│  │  1. Create execution record (status="running")           │    │
+│  │  2. Track activities (CHAT_START)                        │    │
+│  │  3. asyncio.create_task(_execute_task_background(...))   │    │
+│  │  4. Return immediately:                                  │    │
+│  │     { status: "accepted", execution_id: "abc123" }       │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│       │<────────────────────┘  (immediate response)              │
+│       │                                                          │
+│       │  Poll: GET /api/agents/worker/executions/abc123          │
+│       │                                                          │
+│                        (Background task runs independently)      │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  _execute_task_background()                               │   │
+│  │                                                           │   │
+│  │  - Calls agent container /api/task                        │   │
+│  │  - On success: db.update_execution_status("success")      │   │
+│  │  - On failure: db.update_execution_status("failed")       │   │
+│  │  - Completes activities                                   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Details
+
+**Backend Model** (`src/backend/models.py:117`):
+```python
+class ParallelTaskRequest(BaseModel):
+    # ... existing fields ...
+    async_mode: Optional[bool] = False  # If true, return immediately with execution_id
+```
+
+**Background Task Handler** (`src/backend/routers/chat.py:418-525`):
+```python
+async def _execute_task_background(
+    agent_name: str,
+    request: ParallelTaskRequest,
+    execution_id: str,
+    task_activity_id: str,
+    collaboration_activity_id: Optional[str],
+    x_source_agent: Optional[str]
+):
+    """
+    Background task execution for async mode.
+    Runs the task and updates execution record/activities when complete.
+    """
+    try:
+        # Call agent container
+        response = await agent_post_with_retry(agent_name, "/api/task", payload, ...)
+
+        # Update execution record with success
+        db.update_execution_status(execution_id=execution_id, status="success", ...)
+
+        # Complete activities
+        await activity_service.complete_activity(task_activity_id, ...)
+
+    except Exception as e:
+        # Update execution record with failure
+        db.update_execution_status(execution_id=execution_id, status="failed", error=str(e))
+
+        # Complete activities with failure
+        await activity_service.complete_activity(task_activity_id, status="failed", ...)
+```
+
+**Endpoint Logic** (`src/backend/routers/chat.py:619-645`):
+```python
+# Async mode: spawn task in background and return immediately
+if request.async_mode:
+    # Update execution status to "running"
+    if execution_id:
+        db.update_execution_status(execution_id=execution_id, status="running")
+
+    # Spawn background task
+    asyncio.create_task(
+        _execute_task_background(
+            agent_name=name,
+            request=request,
+            execution_id=execution_id,
+            task_activity_id=task_activity_id,
+            collaboration_activity_id=collaboration_activity_id,
+            x_source_agent=x_source_agent
+        )
+    )
+
+    # Return immediately with execution_id for polling
+    return {
+        "status": "accepted",
+        "execution_id": execution_id,
+        "agent_name": name,
+        "message": "Task accepted. Poll GET /api/agents/{name}/executions/{execution_id} for results.",
+        "async_mode": True
+    }
+```
+
+**MCP Client** (`src/mcp-server/src/client.ts:399-454`):
+```typescript
+async task(name: string, message: string, options?: {
+  // ... existing options ...
+  async_mode?: boolean;  // If true, return immediately with execution_id
+}, sourceAgent?: string) {
+  // Async mode returns immediately; sync mode waits for full execution
+  const timeout = options?.async_mode ? 30 : (options?.timeout_seconds || 600) + 10;
+  // ...
+}
+```
+
+**MCP Tool** (`src/mcp-server/src/tools/chat.ts:187-194`):
+```typescript
+async: z
+  .boolean()
+  .optional()
+  .default(false)
+  .describe(
+    "If true, return immediately with execution_id (fire-and-forget). " +
+    "Only applies when parallel=true. Poll the execution endpoint for results."
+  ),
+```
+
+### API Specification
+
+**Request**:
+```json
+{
+  "message": "Process large dataset",
+  "async_mode": true,
+  "model": "sonnet",
+  "timeout_seconds": 3600
+}
+```
+
+**Immediate Response** (HTTP 200):
+```json
+{
+  "status": "accepted",
+  "execution_id": "abc123xyz789",
+  "agent_name": "worker-1",
+  "message": "Task accepted. Poll GET /api/agents/{name}/executions/{execution_id} for results.",
+  "async_mode": true
+}
+```
+
+**Polling Endpoint**: `GET /api/agents/{name}/executions/{execution_id}`
+
+**Response when running**:
+```json
+{
+  "id": "abc123xyz789",
+  "agent_name": "worker-1",
+  "status": "running",
+  "message": "Process large dataset",
+  "triggered_by": "manual",
+  "started_at": "2026-01-30T10:00:00Z",
+  "completed_at": null,
+  "response": null,
+  "cost": null
+}
+```
+
+**Response when complete**:
+```json
+{
+  "id": "abc123xyz789",
+  "agent_name": "worker-1",
+  "status": "success",
+  "message": "Process large dataset",
+  "triggered_by": "manual",
+  "started_at": "2026-01-30T10:00:00Z",
+  "completed_at": "2026-01-30T10:05:00Z",
+  "response": "Dataset processed successfully. 10,000 records analyzed.",
+  "cost": 0.15,
+  "context_used": 50000,
+  "context_max": 200000
+}
+```
+
+### Use Cases
+
+#### 1. Fan-Out Pattern
+Spawn multiple long-running tasks without blocking:
+
+```python
+# Orchestrator spawns 10 workers, doesn't wait
+execution_ids = []
+for i, batch in enumerate(data_batches):
+    result = mcp__trinity__chat_with_agent(
+        agent_name=f"worker-{i}",
+        message=f"Process batch: {batch}",
+        parallel=true,
+        async=true
+    )
+    execution_ids.append(result["execution_id"])
+
+# Continue with other work while workers process...
+
+# Later: collect results
+for agent_name, exec_id in zip(worker_names, execution_ids):
+    result = poll_execution(agent_name, exec_id)  # Helper to wait for completion
+    results.append(result)
+```
+
+#### 2. Background Analysis
+Trigger analysis that runs independently:
+
+```python
+# Start long-running analysis
+result = mcp__trinity__chat_with_agent(
+    agent_name="analysis-agent",
+    message="Analyze codebase for security vulnerabilities",
+    parallel=true,
+    async=true,
+    timeout_seconds=7200  # 2 hours
+)
+
+# Don't wait - check results later via UI or API
+print(f"Analysis started: {result['execution_id']}")
+```
+
+#### 3. Scheduled Cleanup
+System agent triggers maintenance without blocking:
+
+```python
+# Nightly cleanup across fleet
+for agent in get_all_agents():
+    mcp__trinity__chat_with_agent(
+        agent_name=agent,
+        message="Run nightly cleanup: clear temp files, rotate logs",
+        parallel=true,
+        async=true
+    )
+# All cleanup jobs run concurrently, system agent continues
+```
+
+### Key Differences: Sync vs Async
+
+| Aspect | Sync (async_mode=false) | Async (async_mode=true) |
+|--------|------------------------|-------------------------|
+| Return time | After task completes | Immediately |
+| Response | Full result with execution_log | execution_id only |
+| HTTP timeout | timeout_seconds + 10 | 30 seconds |
+| Result retrieval | In response | Poll endpoint |
+| Error handling | Exception in response | Poll for error status |
+| Connection held | Yes, for duration | No, released immediately |
+
+### Limitations and Considerations
+
+1. **No streaming in async mode**: Cannot use SSE streaming with async; poll for final result only
+2. **Orphaned tasks**: If backend restarts, background tasks are lost (execution stays "running")
+3. **No cancellation via async**: Must use separate termination endpoint
+4. **Database required**: execution_id comes from database record; fails if DB unavailable
+5. **Activity completion async**: Activities complete after task finishes, not at request time
+
+---
 
 ## Live Execution Streaming
 

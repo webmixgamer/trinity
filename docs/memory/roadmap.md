@@ -321,7 +321,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Priority | Item | Requirement |
 |----------|------|-------------|
-| **High** | **Async MCP Chat Commands** | MCP `chat_with_agent` returns immediately with execution_id; caller polls for result or gets callback. Enables sending commands to multiple agents in parallel without blocking. |
+| ✅ | ~~**Async MCP Chat Commands**~~ | **Completed 2026-01-30**: `async=true` parameter on `chat_with_agent` MCP tool. Returns execution_id immediately; poll `/api/agents/{name}/executions/{id}` for results. |
 | Low | **Create Schedule from Task** | UX: Add icon in Tasks tab to create schedule from execution - switches to Schedules tab with message pre-filled |
 | **High** | **Horizontal Agent Scalability** | 13.1 - Agent pools with multiple instances for parallel workloads |
 | **High** | **Event Bus Infrastructure** | 13.2 - Platform-wide pub/sub for agent event broadcasting/subscription |

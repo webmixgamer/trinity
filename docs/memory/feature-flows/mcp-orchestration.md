@@ -419,6 +419,57 @@ chat_with_agent({
 
 See [Parallel Headless Execution](parallel-headless-execution.md) for full details.
 
+### Async Mode (Fire-and-Forget) (Added 2026-01-30)
+
+When `parallel=true`, you can additionally specify `async=true` for fire-and-forget execution:
+
+```typescript
+chat_with_agent({
+  agent_name: "worker-1",
+  message: "Process large dataset",
+  parallel: true,              // Required for async mode
+  async: true,                 // Return immediately with execution_id
+  timeout_seconds: 3600        // Long-running task
+})
+// Returns immediately:
+// {
+//   "status": "accepted",
+//   "execution_id": "abc123xyz",
+//   "agent_name": "worker-1",
+//   "message": "Task accepted. Poll GET /api/agents/{name}/executions/{execution_id} for results.",
+//   "async_mode": true
+// }
+```
+
+**When `async: true` (with `parallel: true`)**:
+- Backend spawns task in background thread via `asyncio.create_task()`
+- Returns immediately with `execution_id` for polling
+- Execution status set to "running" in database
+- Poll `GET /api/agents/{name}/executions/{execution_id}` for status and results
+- Background task updates execution record when complete (success/failed)
+- Activities tracked and completed asynchronously
+
+**Use cases for async mode**:
+- Fan-out patterns: spawn multiple long-running tasks without waiting
+- Non-blocking orchestration: orchestrator continues while workers process
+- Background jobs: trigger maintenance/analysis tasks that run independently
+- Load distribution: batch processing across multiple agents
+
+**Polling for results**:
+```bash
+# Check execution status
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/agents/worker-1/executions/abc123xyz
+
+# Response when running:
+# { "status": "running", "agent_name": "worker-1", ... }
+
+# Response when complete:
+# { "status": "success", "response": "...", "cost": 0.05, ... }
+```
+
+See [Parallel Headless Execution](parallel-headless-execution.md) for implementation details.
+
 ### Dynamic GitHub Templates (Added 2025-12-30)
 
 The `create_agent` tool now supports creating agents from **any** GitHub repository - not just pre-defined templates:
@@ -921,6 +972,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-01-30 | **Async mode (fire-and-forget)**: Added `async` parameter to `chat_with_agent` tool. When `parallel=true` and `async=true`, returns immediately with `execution_id` for polling. Backend spawns background task via `asyncio.create_task()`. Poll `GET /api/agents/{name}/executions/{id}` for results. |
 | 2026-01-29 | **Schedule tools (MCP-SCHED-001)**: Added 8 schedule management tools - list_agent_schedules, create_agent_schedule, get_agent_schedule, update_agent_schedule, delete_agent_schedule, toggle_agent_schedule, trigger_agent_schedule, get_schedule_executions. Total now 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). |
 | 2026-01-23 | **Flow verification**: Updated all line numbers to match current implementation. Verified 21 tools (13 agent, 3 chat, 4 system, 1 docs). Updated client.ts line refs (authenticate: 46-69, request: 103-155, chat: 336-378, task: 393-445). Updated dependencies.py refs (104-155). Updated mcp_keys.py refs (144-180). Added ensure-default endpoint. Fixed database table line (356-371). |
 | 2026-01-15 | **Docs**: Added Dashboard Timeline Visualization section noting pink (#ec4899) color for MCP executions |
