@@ -252,8 +252,10 @@ Git endpoints use FastAPI dependencies for access control (defined in `src/backe
 
 | Dependency | Path Parameter | Access Level | Used By |
 |------------|----------------|--------------|---------|
-| `AuthorizedAgentByName` | `{agent_name}` | Read access | `get_git_status`, `get_git_log`, `get_git_config` |
-| `OwnedAgentByName` | `{agent_name}` | Owner access | `sync_to_github`, `pull_from_github`, `initialize_github_sync` |
+| `AuthorizedAgentByName` | `{agent_name}` | Read access | `get_git_status`, `get_git_log`, `get_git_config`, `pull_from_github` |
+| `OwnedAgentByName` | `{agent_name}` | Owner access | `sync_to_github`, `initialize_github_sync` |
+
+> **Updated (2026-01-30)**: `pull_from_github` changed from `OwnedAgentByName` to `AuthorizedAgentByName` - shared users can now pull from GitHub.
 
 **Pattern:**
 ```python
@@ -278,7 +280,7 @@ The dependency automatically:
 | `GET /{agent_name}/git/status` | 43-92 | `AuthorizedAgentByName` | Read |
 | `POST /{agent_name}/git/sync` | 95-147 | `OwnedAgentByName` | Owner |
 | `GET /{agent_name}/git/log` | 150-174 | `AuthorizedAgentByName` | Read |
-| `POST /{agent_name}/git/pull` | 177-211 | `OwnedAgentByName` | Owner |
+| `POST /{agent_name}/git/pull` | 177-211 | `AuthorizedAgentByName` | Authorized (owner, shared, admin) |
 | `GET /{agent_name}/git/config` | 214-248 | `AuthorizedAgentByName` | Read |
 | `POST /{agent_name}/git/initialize` | 251-389 | `OwnedAgentByName` | Owner |
 
@@ -577,7 +579,7 @@ POST /api/agents/{name}/git/sync
 3. **Force Push Protection**: Uses `--force-with-lease` for normal pushes
 4. **Force Operations Warning**: UI shows red destructive warnings for force operations
 5. **Infrastructure Files**: `content/`, `.local/` auto-added to `.gitignore`
-6. **Access Control**: Read endpoints use `AuthorizedAgentByName`, write endpoints use `OwnedAgentByName`
+6. **Access Control**: Read endpoints and pull use `AuthorizedAgentByName` (owner/shared/admin), write endpoints (sync/initialize) use `OwnedAgentByName` (owner/admin only)
 
 ---
 
@@ -601,6 +603,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-01-30 | **Git pull permission fix**: `POST /{agent_name}/git/pull` changed from `OwnedAgentByName` to `AuthorizedAgentByName` - shared users can now pull from GitHub. Updated Access Control Dependencies, Endpoint Signatures, and Security Considerations sections. |
 | 2026-01-23 | **Line number verification**: Updated all line number references to match current implementation. Added GitSyncResult model, delete_agent_git_config function, agent-server endpoint table. Expanded useGitSync composable documentation with reactive state and computed properties. Added database indexes. |
 | 2026-01-12 | **Polling interval optimization**: Git status polling changed from 30s to 60s for reduced API load. Added polling behavior documentation to useGitSync composable section. |
 | 2026-01-12 | Renamed "Sync" button to "Push" for consistent Pull/Push terminology. Pull button now shows commits behind count when remote has updates. Both buttons use dynamic coloring (active color when action available, gray when up to date). |

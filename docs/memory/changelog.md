@@ -1,3 +1,27 @@
+### 2026-01-30 11:45:00
+🐛 **Fix: Allow Shared Users to Git Pull**
+
+**Problem**: Users with shared access to an agent received "Owner access required" error when trying to pull from GitHub. The `/git/pull` endpoint incorrectly required owner-level permissions.
+
+**Root Cause**: `POST /api/agents/{name}/git/pull` used `OwnedAgentByName` dependency which only allows agent owners and admins.
+
+**Solution**: Changed to `AuthorizedAgentByName` which allows any user with access (owner, admin, or shared user).
+
+**Permission Matrix After Fix**:
+| Endpoint | Permission Level | Shared Users |
+|----------|-----------------|--------------|
+| `GET /git/status` | Authorized | ✅ Allowed |
+| `GET /git/log` | Authorized | ✅ Allowed |
+| `GET /git/config` | Authorized | ✅ Allowed |
+| `POST /git/pull` | Authorized | ✅ **Now Allowed** |
+| `POST /git/sync` | Owner | ❌ Owner only |
+| `POST /git/initialize` | Owner | ❌ Owner only |
+
+**Files Changed**:
+- `src/backend/routers/git.py:178-179` - Changed `OwnedAgentByName` → `AuthorizedAgentByName`
+
+---
+
 ### 2026-01-30 10:15:00
 🚀 **Feature: Async Mode for MCP chat_with_agent (Fire-and-Forget)**
 
