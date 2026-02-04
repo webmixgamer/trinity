@@ -1,10 +1,52 @@
-# Trinity
+<div align="center">
+  <img src="docs/assets/trinity-logo.svg" alt="Trinity" width="120"/>
+  <h1>Trinity</h1>
+  <p><strong>Sovereign infrastructure for autonomous AI agents</strong></p>
+  <p>Deploy, orchestrate, and govern AI agent teams with visual interface, enterprise-grade controls, and complete audit trails.</p>
 
-**Deep Agent Orchestration Platform** — Sovereign infrastructure for deploying, orchestrating, and governing autonomous AI systems that plan, reason, and execute independently.
+  <p>
+    <a href="https://github.com/abilityai/trinity/stargazers"><img src="https://img.shields.io/github/stars/abilityai/trinity?style=social" alt="Stars"></a>
+    <a href="https://github.com/abilityai/trinity/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Polyform%20NC-blue.svg" alt="License"></a>
+    <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
+    <img src="https://img.shields.io/badge/vue-3.x-green.svg" alt="Vue">
+    <img src="https://img.shields.io/badge/docker-required-blue.svg" alt="Docker">
+  </p>
+
+  <p>
+    <a href="#-quick-start">Quick Start</a> •
+    <a href="#features">Features</a> •
+    <a href="https://youtu.be/SWpNphnuPpQ">Demo Video</a> •
+    <a href="#documentation">Docs</a> •
+    <a href="#community--support">Community</a>
+  </p>
+
+  <br/>
+  <a href="https://youtu.be/SWpNphnuPpQ">
+    <img src="https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube" alt="Watch the Demo">
+  </a>
+  <br/><br/>
+  <img src="docs/assets/screenshots/graph-view-collaboration.png" alt="Trinity Agent Collaboration" width="800"/>
+</div>
+
+---
+
+## Why Trinity?
+
+**The problem:** Everyone wants autonomous AI agents. But your options are terrible—SaaS platforms where data leaves your security perimeter, custom builds that take 6-12 months, or frameworks that don't handle governance and audit trails.
+
+**The solution:** Trinity is sovereign infrastructure with enterprise-grade controls. Human approvals where decisions matter. Your infrastructure, your security perimeter.
+
+| Option | Problem | Trinity |
+|--------|---------|---------|
+| **SaaS Platforms** | Data leaves your perimeter, vendor lock-in | Your infrastructure, data never leaves |
+| **Build Custom** | 6-12 months, $500K+ engineering | Deploy in minutes |
+| **Frameworks** | No governance, no audit trails | Enterprise controls built-in |
+
+---
+
+## Deep Agents vs Chatbots
 
 Unlike reactive chatbots ("System 1" AI), Deep Agents operate with deliberative reasoning ("System 2" AI): they decompose goals into task graphs, persist memory across sessions, delegate to specialized sub-agents, and recover from failures autonomously.
-
-[![Watch the Demo](https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/SWpNphnuPpQ)
 
 ## The Four Pillars of Deep Agency
 
@@ -36,6 +78,10 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Real-Time Monitoring** — Live execution progress with step-by-step visibility
 - **Analytics & Cost Tracking** — Metrics, trends, and cost threshold alerts per process
 
+<p align="center">
+  <img src="docs/assets/screenshots/process-editor.png" alt="Process Editor" width="700"/>
+</p>
+
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
 - **MCP Integration** — 21 tools for external agent orchestration via Model Context Protocol
@@ -58,6 +104,26 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
 - **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
+
+<p align="center">
+  <img src="docs/assets/screenshots/timeline-collaboration-active.png" alt="Execution Timeline" width="700"/>
+</p>
+
+## Comparison
+
+| Feature | Trinity | Custom Build | LangChain/CrewAI | SaaS Platforms |
+|---------|:-------:|:------------:|:----------------:|:--------------:|
+| Time to production | Minutes | 6-12 months | Weeks | Instant |
+| Sovereignty | ✅ | ✅ | ✅ | ❌ |
+| Workflow orchestration | ✅ | DIY | ❌ | Limited |
+| Human approval gates | ✅ | DIY | ❌ | ❌ |
+| Docker isolation per agent | ✅ | DIY | ❌ | ❌ |
+| Complete audit trail | ✅ | DIY | ❌ | Basic |
+| Cost tracking per workflow | ✅ | DIY | ❌ | Basic |
+| State persistence | GitHub sync | DIY | Partial | Session-only |
+| Open source | ✅ | N/A | ✅ | ❌ |
+
+---
 
 ## Quick Start
 
@@ -453,11 +519,16 @@ This project is licensed under the [Polyform Noncommercial License 1.0.0](LICENS
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Support
+## Community & Support
 
-- **Issues**: [GitHub Issues](https://github.com/abilityai/trinity/issues)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/abilityai/trinity/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/abilityai/trinity/discussions)
+- **Demo Video**: [Watch Trinity in action](https://youtu.be/SWpNphnuPpQ)
+- **Security Issues**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
 - **Commercial inquiries**: [hello@ability.ai](mailto:hello@ability.ai)
 
 ---
 
-Built by [Ability AI](https://ability.ai)
+<div align="center">
+  <sub>Built by <a href="https://ability.ai">Ability.ai</a> — Sovereign AI infrastructure for the autonomous enterprise</sub>
+</div>
