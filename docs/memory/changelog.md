@@ -1,3 +1,44 @@
+### 2026-02-05 11:45:00
+🐛 **Fix: Live Execution Logs on Production (SSE Streaming)**
+
+**Problem**: Live execution logs not appearing on production. The Execution Detail page loaded but no log entries streamed for running executions, even though the feature worked locally.
+
+**Root Cause**: nginx proxy buffering was blocking SSE (Server-Sent Events) streams. nginx buffers responses by default, which prevents SSE from streaming in real-time.
+
+**Fix**: Added SSE support directives to `/api/` location in `src/frontend/nginx.conf`:
+```nginx
+proxy_buffering off;
+proxy_cache off;
+chunked_transfer_encoding on;
+```
+
+**Files Changed**:
+- `src/frontend/nginx.conf` - Added SSE support directives
+
+---
+
+### 2026-02-05 10:30:00
+📋 **Roadmap: Multi-Agent Research Strategic Items**
+
+Added 5 items from Cornelius research report analysis (`Multi-Agent-Systems-Research-Report-2026-02-05.md`):
+
+**High Priority**:
+- **Agent Skills Spec Alignment** - Anthropic's standard (https://agentskills.io) adopted by Microsoft, OpenAI, GitHub, Cursor. Progressive disclosure architecture.
+- **A2A Protocol Support** - Google's agent-to-agent protocol for cross-platform collaboration (higher level than MCP)
+- **Platform Memory Primitives** - 3-tier memory (Episodic→Semantic→Procedural) with 2x reasoning improvement
+
+**Medium Priority**:
+- **Code Execution Mode** - Agents write code to call MCP servers → 98% token reduction
+- **Smart Model Routing** - Route by complexity (haiku→sonnet→opus) → 60-95% cost savings
+
+**Key Research Insights**:
+- Multi-agent orchestration: 100% actionable rate vs 1.7% single-agent, 140x correctness
+- 89% of organizations now treat observability as mission-critical
+- EU AI Act Article 14 mandates HITL for high-risk systems (Trinity Process Engine compliant)
+- "Competitive advantage shifted from foundation models to orchestration layers"
+
+---
+
 ### 2026-01-30 14:30:00
 📋 **Roadmap: Feature Requests Batch Added to Backlog**
 

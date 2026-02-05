@@ -319,6 +319,19 @@
 
 Items not yet scheduled. Will be prioritized as needed.
 
+### Multi-Agent Systems Research (2026-02-05)
+> Source: `~/Dropbox/Agents/Cornelius/resources/Multi-Agent-Systems-Research-Report-2026-02-05.md`
+
+| Priority | Item | Rationale |
+|----------|------|-----------|
+| **HIGH** | **Agent Skills Spec Alignment** | Anthropic's Agent Skills standard adopted by Microsoft, OpenAI, GitHub, Cursor. Progressive disclosure (few tokens when summarized). Align our `SKILL.md` format with https://agentskills.io for cross-platform interoperability. |
+| **HIGH** | **A2A Protocol Support** | Google's Agent-to-Agent protocol enables cross-platform agent collaboration at higher level than MCP (which is agent-to-tool). Required for true multi-agent ecosystems. |
+| **HIGH** | **Platform Memory Primitives** | Research shows 3-tier memory (Episodic→Semantic→Procedural) with Zettelkasten-style gives **2x multi-hop reasoning improvement**. Platform should provide memory APIs, not just let templates own it. |
+| **MEDIUM** | **Code Execution Mode** | Agents writing code to interact with MCP servers instead of direct tool calls achieves **98% token reduction**. New execution paradigm for tool-heavy workflows. |
+| **MEDIUM** | **Smart Model Routing** | Route queries by complexity: haiku→sonnet→opus. **300x price variance** between models enables 60-95% cost savings. Dynamic routing based on task classification. |
+
+### Previous Backlog
+
 | Priority | Item | Requirement |
 |----------|------|-------------|
 | ✅ | ~~**Async MCP Chat Commands**~~ | **Completed 2026-01-30**: `async=true` parameter on `chat_with_agent` MCP tool. Returns execution_id immediately; poll `/api/agents/{name}/executions/{id}` for results. |
@@ -339,7 +352,7 @@ Items not yet scheduled. Will be prioritized as needed.
 | Medium | **Convoy-like Work Bundles** | Group related tasks/executions into trackable units for multi-agent coordination. Track multi-agent projects as single unit. Inspired by Gastown. |
 | Medium | **Ephemeral Agent Spawning** | Let System Agent spawn temporary worker agents on-demand (create → run task → auto-cleanup). No pre-creation required. Inspired by Gastown. |
 | Low | **Ready Work Discovery MCP Tool** | `find_ready_work()` tool to discover unblocked tasks across fleet. System Agent can identify what can be worked on next. Inspired by Gastown. |
-| **High** | **Bug: Live Execution Logs on Production** | SSE streaming for live execution logs not working on production. Tasks tab → Execution Detail page loads but no log entries appear. Needs investigation. |
+| ✅ **High** | **Bug: Live Execution Logs on Production** | **Fixed 2026-02-05**: nginx proxy buffering was preventing SSE events from streaming. Added `proxy_buffering off; proxy_cache off; chunked_transfer_encoding on;` to `/api/` location in `src/frontend/nginx.conf`. |
 | **High** | **Git Worktrees for Task Isolation** | Each execution (Tasks tab) gets its own git worktree/branch. Enables parallel executions without interference. Human decides: merge to main or discard. Worktrees become audit trail. Significant architecture change - needs detailed design. |
 | **High** | **MCP as Primary Integration Point** | Local Claude Code agents connect to Trinity via MCP, pull default skills, become Trinity-compatible with minimal setup. MCP becomes single integration point for local→remote workflow. Goal: just add MCP connection, do rest via MCP tools. |
 | Medium | **Agent Org Structures (Hierarchy)** | Parent-child agent relationships. Parents can: delegate tasks, start/stop/delete, configure children. Parents cannot: access child credentials. Single-parent tree. Builds on current permissions model. Visual grouping on Dashboard. |
@@ -348,6 +361,7 @@ Items not yet scheduled. Will be prioritized as needed.
 | Medium | **Centralized MCP Server Management** | UI and MCP tools to manage MCP server connections for any agent. Add/remove MCP servers without editing templates. Design TBD - per-agent config vs platform-level library. |
 | Low | **GitHub Issues for Roadmap** | Use GitHub Issues instead of roadmap.md for Trinity platform development tracking. Migrate existing items when implemented. |
 | Low | **Agent History in GitHub** | Store agent history (chat transcripts, execution logs, config) in git repo. Repository becomes source of truth. History survives agent deletion. Design open. |
+| Medium | **Dashboard Quick Chat/Terminal** | Popup terminal or chat modal from agent card on Dashboard. Quick interactions without navigating to Agent Detail page. UX improvement for multi-agent workflows. |
 
 ---
 
@@ -355,6 +369,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-02-05 | Multi-Agent Research Items Added | Added 5 items from Cornelius research report (`Multi-Agent-Systems-Research-Report-2026-02-05.md`): (1) **Agent Skills Spec** - HIGH, Anthropic standard adopted by Microsoft/OpenAI/GitHub; (2) **A2A Protocol** - HIGH, Google's agent-to-agent for cross-platform; (3) **Platform Memory Primitives** - HIGH, 3-tier memory with 2x reasoning improvement; (4) **Code Execution Mode** - MEDIUM, 98% token reduction; (5) **Smart Model Routing** - MEDIUM, 60-95% cost savings. Key insight: "Competitive advantage shifted from foundation models to orchestration and operations layers." |
 | 2026-01-30 | Feature Requests Batch Added to Backlog | Added 10 items from planning session: (1) **Bug: Live logs** - HIGH, broken in production; (2) **Git worktrees** - HIGH, task isolation via branches, audit trail; (3) **MCP as primary integration** - HIGH, local agents connect via MCP, pull skills, minimal setup; (4) **Agent org structures** - MEDIUM, parent-child hierarchy; (5) **Any repo/empty agent** - MEDIUM, flexible creation modes; (6) **GitHub safety** - MEDIUM, prevent empty agent wiping repos; (7) **MCP server management** - MEDIUM, centralized UI; (8) **GitHub issues** - LOW, roadmap tracking; (9) **History in GitHub** - LOW, repo as source of truth. Theme: GitHub-centric workflow + MCP-first experience. |
 | 2026-01-27 | Gastown-Inspired Features Added to Backlog | After analyzing Gastown (Steve Yegge's multi-agent CLI tool), identified 4 features to adopt: (1) Claude Code Hooks for state persistence (HIGH - enables work to survive context compaction), (2) Convoy-like work bundles (MEDIUM - track multi-agent projects as units), (3) Ephemeral agent spawning (MEDIUM - on-demand workers), (4) Ready work discovery (LOW - find unblocked tasks). See `docs/research/gastown-comparison.md`. |
 | 2026-01-16 | Process Engine Completed (Phase 14) | Implemented full BPMN-inspired Process Engine with 15 sprints: YAML definitions, execution engine with 6 step handlers, human approvals, parallel execution, sub-processes, analytics/cost tracking, EMI roles, templates. Deferred Event Bus - using direct WebSocket broadcasting instead. Visual designer deferred (YAML editor with preview sufficient for now). See `docs/PROCESS_DRIVEN_PLATFORM/` and `docs/memory/feature-flows/process-engine/`. |

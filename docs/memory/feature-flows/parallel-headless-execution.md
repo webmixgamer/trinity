@@ -3,13 +3,14 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
-> **Updated**: 2026-01-23 (verified line numbers and code references)
-> **Verified**: 2026-01-23
+> **Updated**: 2026-02-05 (SSE streaming nginx configuration)
+> **Verified**: 2026-02-05
 
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **SSE streaming fix**: Documented nginx configuration required for live execution streaming. Added `proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on` directives. Added frontend implementation details using fetch with ReadableStream. |
 | 2026-01-30 | **Async mode (fire-and-forget)**: Added `async_mode` parameter for non-blocking execution. Backend spawns background task, returns immediately with `execution_id`. Poll for results. New section documents implementation, use cases, and API. |
 | 2026-01-23 | Verified all line numbers against current codebase. Updated file references. |
 | 2026-01-12 | Added max_turns parameter for runaway prevention |
@@ -640,10 +641,63 @@ Task executions can be monitored in real-time via Server-Sent Events (SSE).
 ### Endpoint
 
 **Backend**: `GET /api/agents/{name}/executions/{execution_id}/stream`
-**File**: `src/backend/routers/chat.py:1196-1257`
+**File**: `src/backend/routers/chat.py:1382-1443`
 
 **Agent Server**: `GET /api/executions/{execution_id}/stream`
 **File**: `docker/base-image/agent_server/routers/chat.py:295-369`
+
+### nginx Configuration (Required for Production)
+
+SSE streaming requires nginx proxy buffering to be disabled. Without this, nginx buffers the SSE response and events don't stream in real-time.
+
+**File**: `src/frontend/nginx.conf`
+
+```nginx
+location /api/ {
+    proxy_pass http://trinity-backend:8000/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 86400;
+
+    # SSE (Server-Sent Events) support - REQUIRED for live execution streaming
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding on;
+}
+```
+
+**Key SSE directives**:
+| Directive | Purpose |
+|-----------|---------|
+| `proxy_buffering off` | Disable response buffering so events stream immediately |
+| `proxy_cache off` | Prevent caching of SSE stream |
+| `chunked_transfer_encoding on` | Enable chunked transfer for streaming |
+
+### Frontend Implementation
+
+**File**: `src/frontend/src/views/ExecutionDetail.vue:446-519`
+
+The frontend uses `fetch` with `ReadableStream` instead of `EventSource` because:
+1. `EventSource` doesn't support custom headers (needed for JWT auth)
+2. `fetch` with `ReadableStream` allows proper SSE parsing with auth
+
+```javascript
+fetch(url, {
+  headers: {
+    'Authorization': `Bearer ${authStore.token}`,
+    'Accept': 'text/event-stream'
+  }
+}).then(response => {
+  const reader = response.body.getReader()
+  // Process SSE stream...
+})
+```
 
 ### Process Registry
 
@@ -651,6 +705,20 @@ The process registry (`docker/base-image/agent_server/services/process_registry.
 - Tracking running executions
 - Terminating executions
 - Live log streaming via pub/sub
+
+### SSE Message Format
+
+```
+data: {"type": "init", "execution_id": "abc123", "status": "running"}
+
+data: {"type": "assistant", "message": {...}, "timestamp": "..."}
+
+data: {"type": "tool_use", "name": "Read", "input": {...}}
+
+data: {"type": "tool_result", "content": [...]}
+
+data: {"type": "stream_end", "status": "success"}
+```
 
 ## Testing
 

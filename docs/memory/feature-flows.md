@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-05)**: SSE Streaming Fix for Live Execution Logs:
+> - **parallel-headless-execution.md**: Added nginx configuration requirements for SSE streaming (`proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on`). Documented frontend fetch/ReadableStream implementation.
+> - **execution-detail-page.md**: Added "Live SSE Streaming" section with nginx config, frontend implementation, and UI indicators.
+> - **Fix**: Live execution logs now work on production (nginx was buffering SSE events)
+> - Files changed: `src/frontend/nginx.conf` (added SSE directives to `/api/` location)
+
 > **Updated (2026-01-30)**: Git Pull Permission Fix:
 > - **github-sync.md**: `POST /api/agents/{name}/git/pull` changed from `OwnedAgentByName` to `AuthorizedAgentByName`
 > - Shared users can now pull from GitHub repositories (previously owner/admin only)
