@@ -231,6 +231,10 @@ trinity/
 │   ├── vector.yaml       # Vector log aggregation config
 │   ├── otel-collector.yaml # OpenTelemetry collector config
 │   └── trinity-meta-prompt/ # Platform injection templates
+├── plugins/
+│   └── trinity-onboard/  # Claude Code plugin for agent onboarding
+├── skill-library/
+│   └── trinity/          # Canonical Trinity management skills
 ├── scripts/
 │   └── deploy/           # Deployment and management scripts
 └── docs/                 # Documentation
@@ -291,6 +295,53 @@ These agents demonstrate:
 ```
 
 **Note**: You'll need to configure a `GITHUB_PAT` environment variable in `.env` to use GitHub templates.
+
+## Trinity Onboard Plugin
+
+Deploy any Claude Code agent to Trinity with zero friction using the Trinity Onboard Plugin.
+
+### Quick Start
+
+```bash
+# Add Trinity marketplace
+/plugin marketplace add abilityai/trinity
+
+# Install the onboard plugin
+/plugin install trinity-onboard@abilityai-trinity
+
+# Run onboarding
+/trinity-onboard:onboard
+```
+
+The onboarding skill guides you through:
+1. Creating required configuration files (template.yaml, .gitignore, etc.)
+2. Setting up git repository and pushing to GitHub
+3. Deploying agent to Trinity platform
+4. Installing Trinity management skills
+
+### Post-Onboarding Skills
+
+After onboarding, these skills are available for managing your agent:
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| `trinity-sync` | `/trinity-sync` | Synchronize local and remote agent via git |
+| `trinity-remote` | `/trinity-remote` | Execute tasks on remote agent |
+| `trinity-schedules` | `/trinity-schedules` | Manage scheduled autonomous tasks |
+| `trinity-compatibility` | `/trinity-compatibility` | Audit agent structure |
+
+### Example Workflow
+
+```bash
+# Push local changes to remote
+/trinity-sync push
+
+# Execute a task on remote
+/trinity-remote exec "Generate the weekly report"
+
+# Schedule a recurring task
+/trinity-schedules schedule procedure-daily-report "0 9 * * *" "Daily Report"
+```
 
 ## MCP Integration
 

@@ -1,0 +1,28 @@
+{
+  "name": "trinity-onboard",
+  "description": "Onboard any Claude Code agent to Trinity platform - deploy, sync, and run agents in the cloud",
+  "version": "1.0.0",
+  "author": {
+    "name": "Ability.ai",
+    "email": "support@ability.ai"
+  },
+  "homepage": "https://trinity.abilityai.dev",
+  "repository": "https://github.com/abilityai/trinity",
+  "license": "MIT",
+  "keywords": ["trinity", "deployment", "cloud", "agent", "automation"],
+  "skills": [
+    {
+      "name": "onboard",
+      "path": "./skills/onboard/SKILL.md",
+      "description": "Onboard this agent to Trinity platform"
+    }
+  ],
+  "dependencies": {
+    "mcp-servers": {
+      "trinity": {
+        "description": "Trinity platform MCP server for agent management",
+        "required": true
+      }
+    }
+  }
+}
