@@ -166,8 +166,12 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(agentTools.startAgent);
   server.addTool(agentTools.stopAgent);
   server.addTool(agentTools.listTemplates);
-  server.addTool(agentTools.reloadCredentials);
+  // CRED-002: New credential management tools (replaces old reloadCredentials)
   server.addTool(agentTools.getCredentialStatus);
+  server.addTool(agentTools.injectCredentials);
+  server.addTool(agentTools.exportCredentials);
+  server.addTool(agentTools.importCredentials);
+  server.addTool(agentTools.getCredentialEncryptionKey);
   server.addTool(agentTools.getAgentSshAccess);
   server.addTool(agentTools.deployLocalAgent);
   server.addTool(agentTools.initializeGithubSync);

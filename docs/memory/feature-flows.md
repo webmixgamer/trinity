@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-05)**: CRED-002 Credential System Audit - Multiple Feature Flows Updated:
+> - **mcp-orchestration.md**: Tool count updated 36 -> 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`
+> - **agent-lifecycle.md**: Updated `start_agent_internal()` to document 3-phase startup injection (Trinity, Credentials, Skills). Removed `credential_manager` references. Updated line numbers for lifecycle.py
+> - **local-agent-deploy.md**: Removed `credential_manager` parameter. Credentials now injected via `/api/agents/{name}/credentials/inject` endpoint
+> - **template-processing.md**: Removed Redis credential_manager references. GitHub PAT now via `get_github_pat()` from SQLite/env. Removed `initialize_github_pat()` documentation
+> - All flows now document CRED-002 system: direct file injection, encrypted `.credentials.enc` storage, no Redis
+
 > **Updated (2026-02-05)**: Trinity Connect (Local-Remote Agent Sync):
 > - **trinity-connect.md**: New feature flow for real-time event listening from local Claude Code
 > - New WebSocket endpoint `/ws/events` with MCP API key authentication
@@ -403,7 +410,7 @@
 |------|----------|----------|-------------|
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer (Updated 2026-01-23) |
-| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. Removed: Redis assignments, global /credentials page (Refactored 2026-02-05) |
+| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. New MCP tools: inject/export/import_credentials, get_credential_encryption_key. Removed: Redis assignments, global /credentials page, reload_credentials MCP tool (Refactored 2026-02-05) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
@@ -412,7 +419,7 @@
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 36 MCP tools: 13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule management (Updated 2026-01-29) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 39 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule management (Updated 2026-02-05) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional). **2026-01-30**: Shared users can now git pull (was owner-only) |

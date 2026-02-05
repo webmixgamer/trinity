@@ -96,12 +96,13 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 | `models.py` | All Pydantic request/response models |
 | `dependencies.py` | FastAPI dependencies (auth, token validation, agent access control) |
 | `database.py` | SQLite persistence (users, agent ownership, MCP API keys) |
-| `credentials.py` | Redis-backed credential manager with OAuth2 flows |
+| ~~`credentials.py`~~ | **REMOVED (2026-02-05)** - CRED-002 replaced with `routers/credentials.py` file injection system |
 
 **Routers (`routers/`):**
 - `auth.py` - Authentication endpoints (admin login, email auth, token validation)
 - `agents.py` - Agent CRUD, start/stop, logs, stats
-- `credentials.py` - Credential management (env files, MCP configs)
+- `credentials.py` - Credential injection/export/import (CRED-002 simplified system)
+- `internal.py` - Internal endpoints for agent startup (no auth)
 - `templates.py` - Template listing and GitHub repo fetching
 - `sharing.py` - Agent sharing between users
 - `mcp_keys.py` - MCP API key management
@@ -119,6 +120,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `github_service.py` - GitHub API client (repo creation, validation, org detection)
 - `settings_service.py` - Centralized settings retrieval (API keys, ops config)
 - `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
+- `credential_encryption.py` - AES-256-GCM encryption for .credentials.enc files (NEW: 2026-02-05)
 - `process_engine/` - Process Engine service (NEW: 2026-01-16, see below)
 
 **Logging (`logging_config.py`):**
@@ -136,9 +138,9 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 ### Frontend (`src/frontend/`)
 
 **Key Directories:**
-- `src/views/` - Page components (Dashboard, Agents, Credentials, Templates, ApiKeys, AgentCollaboration)
+- `src/views/` - Page components (Dashboard, Agents, Templates, ApiKeys, AgentCollaboration)
 - `src/stores/` - Pinia state (agents.js, auth.js, collaborations.js)
-- `src/components/` - Reusable UI components (NavBar, AgentNode)
+- `src/components/` - Reusable UI components (NavBar, CredentialsPanel, AgentNode)
 - `src/utils/` - WebSocket client, helpers
 
 **State Management:**
@@ -180,7 +182,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - Tools access auth context via `context.session` parameter
 - Agent-to-agent collaboration uses agent-scoped keys for access control
 
-**13 Tools:**
+**15 Tools:**
 1. `list_agents` - List all agents
 2. `get_agent` - Get agent details
 3. `create_agent` - Create new agent
@@ -191,9 +193,11 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 8. `chat_with_agent` - Send message to agent (enforces sharing rules)
 9. `get_chat_history` - Get conversation history
 10. `get_agent_logs` - Get container logs
-11. `reload_credentials` - Hot-reload credentials
-12. `get_credential_status` - Check credential files
-13. `get_agent_ssh_access` - Generate ephemeral SSH credentials (NEW: 2026-01-02)
+11. `get_credential_status` - Check credential files
+12. `get_agent_ssh_access` - Generate ephemeral SSH credentials (NEW: 2026-01-02)
+13. `inject_credentials` - Inject credential files into agent (NEW: 2026-02-05, CRED-002)
+14. `export_credentials` - Export to encrypted .credentials.enc (NEW: 2026-02-05, CRED-002)
+15. `import_credentials` - Import from encrypted file (NEW: 2026-02-05, CRED-002)
 
 ### Vector Log Aggregator (`config/vector.yaml`)
 
@@ -426,17 +430,18 @@ PENDING → RUNNING → COMPLETED
 
 **Access Control:** Only returns activities for agents the user can access (owner, shared, or admin).
 
-### Credentials (8 endpoints)
+### Credentials (4 endpoints - CRED-002 Simplified)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/credentials` | List credentials |
-| POST | `/api/credentials` | Add credential |
-| DELETE | `/api/credentials/{id}` | Delete credential |
-| POST | `/api/credentials/bulk` | Bulk import |
-| GET | `/api/agents/{name}/credentials` | Agent requirements |
-| POST | `/api/agents/{name}/credentials/reload` | Reload from store |
-| POST | `/api/agents/{name}/credentials/hot-reload` | Hot-reload (paste) |
-| GET | `/api/agents/{name}/credentials/status` | Check files |
+| GET | `/api/agents/{name}/credentials/status` | Check credential files in agent |
+| POST | `/api/agents/{name}/credentials/inject` | Inject files directly to agent (NEW) |
+| POST | `/api/agents/{name}/credentials/export` | Export to .credentials.enc (NEW) |
+| POST | `/api/agents/{name}/credentials/import` | Import from encrypted file (NEW) |
+
+### Internal (1 endpoint - no auth)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/internal/decrypt-and-inject` | Auto-import on agent startup (NEW) |
 
 ### Templates (4 endpoints)
 | Method | Path | Description |
@@ -841,18 +846,20 @@ CREATE INDEX idx_process_approvals_execution ON process_approvals(execution_id);
 
 ### Redis
 
-**Credential Storage:**
+**Credential Storage (DEPRECATED - CRED-002):**
+> Note: Credential storage moved to encrypted files in git. Redis storage kept for backward compatibility.
+
 ```
-credentials:{id} → {
-    "id": "uuid",
-    "name": "VARIABLE_NAME",
-    "value": "secret_value",
-    "service": "google",
-    "owner_id": "user_id",
-    "type": "api_key|oauth_token",
-    "created_at": "timestamp"
-}
+credentials:{id}:metadata → HASH { id, name, service, type, user_id, ... }
+credentials:{id}:secret → STRING (JSON blob of secret values)
+user:{user_id}:credentials → SET of credential IDs
+agent:{name}:credentials → SET of assigned credential IDs (deprecated)
 ```
+
+**New Credential Storage (CRED-002):**
+Credentials are now stored as files in agent workspaces:
+- `.env` - Source of truth for KEY=VALUE credentials
+- `.credentials.enc` - Encrypted backup (AES-256-GCM, safe for git)
 
 **OAuth State:**
 ```
@@ -1021,23 +1028,28 @@ The internal system agent (`trinity-system`) has special privileges.
 
 Credentials for external APIs (OpenAI, HeyGen, etc.) injected into agent containers.
 
-| Storage | Redis with separate metadata and secrets |
-|---------|------------------------------------------|
-| **Injection** | At agent creation + hot-reload at runtime |
-| **Files** | `.env` (KEY=VALUE) + `.mcp.json` (substituted) |
-| **Template** | `.mcp.json.template` with `${VAR_NAME}` placeholders |
-| **Hot-reload** | `POST /api/agents/{name}/credentials/hot-reload` |
+> **Refactored 2026-02-05 (CRED-002)**: Simplified from Redis-based assignment system to direct file injection with encrypted git storage.
+
+| Storage | Files in agent workspace (`.env`, `.credentials.enc`) |
+|---------|-------------------------------------------------------|
+| **Injection** | Direct file write via inject endpoint |
+| **Files** | `.env` (KEY=VALUE) + `.mcp.json` (edited directly) |
+| **Backup** | `.credentials.enc` (AES-256-GCM encrypted, safe for git) |
+| **Auto-import** | On startup if `.credentials.enc` exists without `.env` |
 
 **Flow**:
 ```
-User uploads credentials → Redis storage → Agent creation OR hot-reload
-                                              ↓
-                                    .env written to container
-                                              ↓
-                                    .mcp.json generated from template
-                                              ↓
-                                    MCP servers pick up credentials
+User pastes credentials → Quick Inject → .env written to agent
+        OR
+User clicks Export → Read files → Encrypt → Write .credentials.enc
+        OR
+Agent starts → If .credentials.enc exists → Decrypt → Write files
 ```
+
+**New Endpoints**:
+- `POST /api/agents/{name}/credentials/inject` - Write files to agent
+- `POST /api/agents/{name}/credentials/export` - Export to encrypted file
+- `POST /api/agents/{name}/credentials/import` - Import from encrypted file
 
 ### MCP Scope Summary
 
