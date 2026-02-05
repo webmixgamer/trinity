@@ -184,23 +184,23 @@ async def deploy_local_agent_logic(
     body: DeployLocalRequest,
     current_user: User,
     request: Request,
-    create_agent_fn,
-    credential_manager
+    create_agent_fn
 ) -> DeployLocalResponse:
     """
     Deploy a Trinity-compatible local agent.
 
     This receives a base64-encoded tar.gz archive of a local agent
     directory, validates it's Trinity-compatible (has template.yaml), handles
-    versioning if an agent with the same name exists, imports credentials,
-    and creates the agent.
+    versioning if an agent with the same name exists, and creates the agent.
+
+    CRED-002: Credentials are now injected after agent creation via
+    inject_credentials endpoint, not during deployment.
 
     Args:
         body: Deploy request with archive and credentials
         current_user: Authenticated user
         request: FastAPI request object
         create_agent_fn: Function to create agent (create_agent_internal)
-        credential_manager: Credential manager instance
 
     Returns:
         DeployLocalResponse with deployment details
@@ -306,17 +306,15 @@ async def deploy_local_agent_logic(
             except Exception as e:
                 logger.warning(f"Failed to stop previous version {previous_version.name}: {e}")
 
-        # 8. Import credentials
+        # 8. CRED-002: Credentials are passed to agent after creation via inject
+        # Just track what credentials were provided
         cred_results = {}
         if body.credentials:
             for key, value in body.credentials.items():
-                result = credential_manager.import_credential_with_conflict_resolution(
-                    key, value, current_user.username
-                )
                 cred_results[key] = CredentialImportResult(
-                    status=result["status"],
-                    name=result["name"],
-                    original=result.get("original")
+                    status="pending_injection",
+                    name=key,
+                    original=None
                 )
 
         # 9. Copy to templates directory
@@ -370,23 +368,31 @@ async def deploy_local_agent_logic(
             skip_name_sanitization=True
         )
 
-        # 11. Hot-reload credentials if any were imported
+        # 11. CRED-002: Inject credentials using new simplified system
         if body.credentials:
             try:
                 # Wait a moment for the agent to start
                 await asyncio.sleep(2)
 
+                # Build .env content from credentials
+                env_content = "\n".join(f"{k}={v}" for k, v in body.credentials.items())
+
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     await client.post(
-                        f"http://agent-{version_name}:8000/api/credentials/update",
-                        json={
-                            "credentials": {k: v for k, v in body.credentials.items()},
-                            "mcp_config": None
-                        }
+                        f"http://agent-{version_name}:8000/api/credentials/inject",
+                        json={"files": {".env": env_content}}
                     )
-                    logger.info(f"Hot-reloaded {len(body.credentials)} credentials into {version_name}")
+                    logger.info(f"Injected {len(body.credentials)} credentials into {version_name}")
+
+                # Update credential results to show success
+                for key in cred_results:
+                    cred_results[key] = CredentialImportResult(
+                        status="injected",
+                        name=key,
+                        original=None
+                    )
             except Exception as e:
-                logger.warning(f"Failed to hot-reload credentials: {e}")
+                logger.warning(f"Failed to inject credentials: {e}")
 
         # 12. Inject CLAUDE.md custom instructions if present
         claude_md_path = extract_root / "CLAUDE.md"

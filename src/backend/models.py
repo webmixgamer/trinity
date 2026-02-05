@@ -67,34 +67,6 @@ class Token(BaseModel):
     token_type: str
 
 
-class BulkCredentialImport(BaseModel):
-    """Request model for bulk credential import."""
-    content: str  # .env-style content: KEY=VALUE pairs
-
-
-class BulkCredentialResult(BaseModel):
-    """Result of bulk credential import."""
-    created: int
-    skipped: int
-    errors: List[str]
-    credentials: List[dict]
-
-
-class HotReloadCredentialsRequest(BaseModel):
-    """Request model for hot-reloading credentials."""
-    credentials_text: str  # .env-style KEY=VALUE text
-
-
-class CredentialAssignRequest(BaseModel):
-    """Request model for assigning a credential to an agent."""
-    credential_id: str
-
-
-class CredentialBulkAssignRequest(BaseModel):
-    """Request model for bulk assigning credentials to an agent."""
-    credential_ids: List[str]
-
-
 class ChatMessageRequest(BaseModel):
     """Request model for chat messages."""
     message: str
@@ -322,3 +294,38 @@ class DeployLocalResponse(BaseModel):
     credentials_injected: int = 0
     error: Optional[str] = None
     code: Optional[str] = None  # Error code for machine-readable errors
+
+
+# ============================================================================
+# Credential Injection Models (CRED-002: Simplified Credential System)
+# ============================================================================
+
+class CredentialInjectRequest(BaseModel):
+    """Request to inject credential files directly into an agent."""
+    files: Dict[str, str]  # {".env": "KEY=value\n...", ".mcp.json": "{}"}
+
+
+class CredentialInjectResponse(BaseModel):
+    """Response from credential injection."""
+    status: str  # "success"
+    files_written: List[str]
+    message: str
+
+
+class CredentialExportResponse(BaseModel):
+    """Response from exporting credentials to encrypted file."""
+    status: str  # "success"
+    encrypted_file: str  # Path to .credentials.enc
+    files_exported: int
+
+
+class CredentialImportResponse(BaseModel):
+    """Response from importing credentials from encrypted file."""
+    status: str  # "success"
+    files_imported: List[str]
+    message: str
+
+
+class InternalDecryptInjectRequest(BaseModel):
+    """Request for internal decrypt-and-inject (startup.sh)."""
+    agent_name: str

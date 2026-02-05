@@ -92,10 +92,11 @@ async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retr
 
 async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, retry_delay: float = 2.0) -> dict:
     """
-    Inject assigned credentials into a running agent.
+    Import credentials from encrypted .credentials.enc file on agent startup.
 
-    This is called after agent startup to push any credentials that were
-    assigned to this agent in the Credentials tab.
+    CRED-002: Credentials are now stored as encrypted files in the agent's
+    workspace (committed to git). On startup, we try to import from
+    .credentials.enc if it exists.
 
     Args:
         agent_name: Name of the agent
@@ -105,69 +106,46 @@ async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, ret
     Returns:
         dict with injection status
     """
-    import os
     import asyncio
-    from credentials import CredentialManager
+    from services.credential_encryption import get_credential_encryption_service
 
-    # Initialize credential manager
-    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
-    credential_manager = CredentialManager(redis_url)
+    try:
+        encryption_service = get_credential_encryption_service()
+    except ValueError as e:
+        # No encryption key configured - this is optional
+        logger.debug(f"Credential encryption not configured: {e}")
+        return {"status": "skipped", "reason": "encryption_not_configured"}
 
-    # Get the agent owner from database
-    owner = db.get_agent_owner(agent_name)
-    if not owner:
-        logger.warning(f"No owner found for agent {agent_name}, skipping credential injection")
-        return {"status": "skipped", "reason": "no_owner"}
-
-    # Extract owner username - get_agent_owner returns a dict with 'owner_username' key
-    owner_username = owner.get("owner_username")
-    if not owner_username:
-        logger.warning(f"No owner_username in owner data for agent {agent_name}, skipping credential injection")
-        return {"status": "skipped", "reason": "no_owner_username"}
-
-    # Get assigned credentials
-    credentials = credential_manager.get_assigned_credential_values(agent_name, owner_username)
-    file_credentials = credential_manager.get_assigned_file_credentials(agent_name, owner_username)
-
-    if not credentials and not file_credentials:
-        logger.debug(f"No assigned credentials for agent {agent_name} (owner: {owner_username})")
-        return {"status": "skipped", "reason": "no_credentials"}
-
-    logger.info(f"Injecting {len(credentials)} credentials and {len(file_credentials)} files into agent {agent_name} (owner: {owner_username})")
-
-    # Push to agent with retries
+    # Try to import from .credentials.enc with retries
     last_error = None
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://agent-{agent_name}:8000/api/credentials/update",
-                    json={
-                        "credentials": credentials,
-                        "mcp_config": None,
-                        "files": file_credentials if file_credentials else None
-                    },
-                    timeout=30.0
-                )
+            files = await encryption_service.import_to_agent(agent_name)
+            if files:
+                logger.info(f"Imported {len(files)} credential file(s) from .credentials.enc into {agent_name}")
+                return {
+                    "status": "success",
+                    "credential_count": len(files),
+                    "files": list(files.keys())
+                }
+            else:
+                return {"status": "skipped", "reason": "no_credentials_enc_file"}
 
-                if response.status_code == 200:
-                    return {
-                        "status": "success",
-                        "credential_count": len(credentials),
-                        "file_count": len(file_credentials)
-                    }
-                else:
-                    last_error = f"Agent returned status {response.status_code}"
-                    logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
-
-        except httpx.RequestError as e:
+        except ValueError as e:
+            # .credentials.enc doesn't exist - this is normal for new agents
+            if "not found" in str(e).lower():
+                logger.debug(f"No .credentials.enc found for agent {agent_name}")
+                return {"status": "skipped", "reason": "no_credentials_enc_file"}
             last_error = str(e)
-            logger.warning(f"Credential injection attempt {attempt + 1} failed: {last_error}")
+
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Credential import attempt {attempt + 1} failed: {last_error}")
 
         if attempt < max_retries - 1:
             await asyncio.sleep(retry_delay)
 
-    logger.error(f"Failed to inject credentials into agent {agent_name} after {max_retries} attempts: {last_error}")
+    logger.error(f"Failed to import credentials into agent {agent_name} after {max_retries} attempts: {last_error}")
     return {"status": "failed", "error": last_error}
 
 

@@ -230,3 +230,28 @@ class ParallelTaskResponse(BaseModel):
     metadata: ExecutionMetadata  # Cost, tokens, duration
     session_id: str  # Unique session ID for this task
     timestamp: str  # ISO timestamp
+
+
+# ============================================================================
+# New Credential Models (CRED-002: Simplified Credential System)
+# ============================================================================
+
+class CredentialReadRequest(BaseModel):
+    """Request to read credential files from workspace"""
+    paths: List[str]  # List of file paths to read
+
+
+class CredentialReadResponse(BaseModel):
+    """Response with credential file contents"""
+    files: Dict[str, str]  # {path: content} for files that exist
+
+
+class CredentialInjectRequest(BaseModel):
+    """Request to inject credential files into workspace"""
+    files: Dict[str, str]  # {path: content} to write
+
+
+class CredentialInjectResponse(BaseModel):
+    """Response from credential injection"""
+    status: str  # "success"
+    files_written: List[str]

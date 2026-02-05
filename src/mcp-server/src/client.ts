@@ -272,27 +272,6 @@ export class TrinityClient {
   }
 
   /**
-   * Reload credentials on a running agent
-   * Fetches latest credentials from Redis and pushes them to the agent container
-   */
-  async reloadCredentials(name: string): Promise<{
-    message: string;
-    credential_count: number;
-    updated_files: string[];
-    note: string;
-  }> {
-    return this.request<{
-      message: string;
-      credential_count: number;
-      updated_files: string[];
-      note: string;
-    }>(
-      "POST",
-      `/api/agents/${encodeURIComponent(name)}/credentials/reload`
-    );
-  }
-
-  /**
    * Get credential status from a running agent
    */
   async getCredentialStatus(name: string): Promise<{
@@ -308,6 +287,87 @@ export class TrinityClient {
       "GET",
       `/api/agents/${encodeURIComponent(name)}/credentials/status`
     );
+  }
+
+  /**
+   * Inject credential files directly into a running agent
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   * @param files - Map of file paths to contents (e.g., {".env": "KEY=value"})
+   */
+  async injectCredentials(name: string, files: Record<string, string>): Promise<{
+    status: string;
+    files_written: string[];
+    message: string;
+  }> {
+    return this.request<{
+      status: string;
+      files_written: string[];
+      message: string;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/inject`,
+      { files }
+    );
+  }
+
+  /**
+   * Export credentials from agent to encrypted .credentials.enc file
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   */
+  async exportCredentials(name: string): Promise<{
+    status: string;
+    encrypted_file: string;
+    files_exported: number;
+  }> {
+    return this.request<{
+      status: string;
+      encrypted_file: string;
+      files_exported: number;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/export`
+    );
+  }
+
+  /**
+   * Import credentials from encrypted .credentials.enc file to agent
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   */
+  async importCredentials(name: string): Promise<{
+    status: string;
+    files_imported: string[];
+    message: string;
+  }> {
+    return this.request<{
+      status: string;
+      files_imported: string[];
+      message: string;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/import`
+    );
+  }
+
+  /**
+   * Get the platform's credential encryption key
+   * Enables local agents to encrypt/decrypt .credentials.enc files
+   * New simplified credential system (CRED-002)
+   */
+  async getEncryptionKey(): Promise<{
+    key: string;
+    algorithm: string;
+    key_format: string;
+    note: string;
+  }> {
+    return this.request<{
+      key: string;
+      algorithm: string;
+      key_format: string;
+      note: string;
+    }>("GET", `/api/credentials/encryption-key`);
   }
 
   /**

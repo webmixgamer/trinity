@@ -272,6 +272,31 @@ if [ -f "/home/developer/.trinity/setup.sh" ]; then
     bash /home/developer/.trinity/setup.sh 2>&1 || echo "Warning: setup.sh had errors (continuing startup)"
 fi
 
+# === Auto-Import Encrypted Credentials ===
+# If .credentials.enc exists but .env doesn't, decrypt and inject credentials
+# This enables portable credential storage via git-committed encrypted files
+cd /home/developer
+if [ -f ".credentials.enc" ] && [ ! -f ".env" ]; then
+    echo "Found .credentials.enc without .env - attempting auto-import..."
+
+    # Wait for agent server to be ready (started above)
+    sleep 2
+
+    # Call internal backend endpoint to decrypt and inject
+    # Note: This requires CREDENTIAL_ENCRYPTION_KEY to be set on the backend
+    IMPORT_RESULT=$(curl -s -X POST "http://backend:8000/api/internal/decrypt-and-inject" \
+         -H "Content-Type: application/json" \
+         -d "{\"agent_name\": \"$AGENT_NAME\"}" 2>/dev/null || echo '{"status":"error"}')
+
+    if echo "$IMPORT_RESULT" | grep -q '"status":"success"'; then
+        echo "Auto-imported credentials from .credentials.enc"
+    elif echo "$IMPORT_RESULT" | grep -q '"status":"skipped"'; then
+        echo "Credential import skipped: $(echo "$IMPORT_RESULT" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4)"
+    else
+        echo "Warning: Could not auto-import credentials (key may not be configured)"
+    fi
+fi
+
 # === Content Folder Convention ===
 # Create content/ directory for large generated assets (videos, audio, images, exports)
 # These files persist across restarts but are NOT synced to GitHub

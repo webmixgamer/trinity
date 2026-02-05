@@ -1,3 +1,211 @@
+### 2026-02-05 22:15:00
+📋 **Spec: Trinity Connect - Local-Remote Agent Synchronization (SYNC-001)**
+
+Created requirements specification for real-time coordination between local Claude Code and Trinity agents.
+
+**New File**: `docs/requirements/TRINITY_CONNECT_LOCAL_REMOTE_SYNC.md`
+
+**Key Design**:
+- Event-driven loop using blocking Bash script as wake-up mechanism
+- Script connects to Trinity WebSocket, blocks until event arrives
+- When event received: print, exit → Claude Code reacts → restart listener
+- No daemons, hooks, or complex infrastructure needed
+
+**Components Specified**:
+- `trinity-listen.sh` - Listener script with event filtering
+- WebSocket API key authentication (backend change)
+- `/api/agents/{name}/notify` endpoint for explicit notifications
+- `notify_agent` MCP tool for agent-to-agent alerts
+- Trinity Connect skill template for local Claude Code
+
+**Event Types**:
+- `execution_complete` - Scheduled/manual task finished
+- `agent_collaboration` - Agent-to-agent MCP call
+- `agent_notification` - Explicit notification (new)
+- `agent_activity` - Agent state changes
+
+**Roadmap Updated**: Added "Local-Remote Agent Sync" backlog section with 4 items.
+
+---
+
+### 2026-02-05 21:30:00
+🧹 **Cleanup: Completed CRED-002 - Removed Old Redis Credential System**
+
+Fully removed the legacy Redis-based credential system. Trinity now uses only the simplified encrypted file system.
+
+**Removed ~1300 Lines**:
+- `src/backend/credentials.py` - CredentialManager class (677 lines) **DELETED**
+- Old Redis-based endpoints from `src/backend/routers/credentials.py`
+- `initialize_github_pat()` function from `src/backend/main.py`
+- Deprecated models from `src/backend/models.py`
+- `reload_credentials` MCP tool and client method
+- Old store methods from `src/frontend/src/stores/agents.js`
+
+**Added ~100 Lines**:
+- New MCP tool: `get_credential_encryption_key` - Returns encryption key for local agents
+- New endpoint: `GET /api/credentials/encryption-key`
+
+**Modified**:
+- `src/backend/routers/credentials.py` - Now only contains inject/export/import/status endpoints
+- `src/backend/services/agent_service/crud.py` - Agents now start without pre-injected credentials
+- `src/backend/services/agent_service/lifecycle.py` - On startup, imports from .credentials.enc
+- `src/backend/services/agent_service/deploy.py` - Uses inject endpoint for credential delivery
+- `src/mcp-server/src/client.ts` - Removed reloadCredentials, added getEncryptionKey
+- `src/mcp-server/src/tools/agents.ts` - Removed reloadCredentials, added getCredentialEncryptionKey
+
+**Breaking Changes**:
+- Old `/api/credentials` global CRUD endpoints return 404
+- Old credential assignment endpoints removed
+- `reload_credentials` MCP tool removed (use `import_credentials` instead)
+
+---
+
+### 2026-02-05 20:00:00
+🔧 **Feature: Implemented Credential System Refactor (CRED-002)**
+
+Major simplification of credential system - replaced Redis-based assignment model with encrypted file storage.
+
+**Key Changes**:
+- New `CredentialEncryptionService` using AES-256-GCM encryption
+- Encrypted credentials stored in `.credentials.enc` in agent workspace
+- Direct file injection to running agents (no Redis assignments)
+- Auto-import on agent startup from encrypted file
+- Removed global `/credentials` page (credentials now per-agent only)
+
+**New Endpoints**:
+- `POST /api/agents/{name}/credentials/inject` - Write files to agent
+- `POST /api/agents/{name}/credentials/export` - Export to `.credentials.enc`
+- `POST /api/agents/{name}/credentials/import` - Import from encrypted file
+- `POST /api/internal/decrypt-and-inject` - Internal endpoint for startup.sh
+
+**New MCP Tools**:
+- `inject_credentials(agent_name, files)` - Inject credential files
+- `export_credentials(agent_name)` - Export to encrypted file
+- `import_credentials(agent_name)` - Import from encrypted file
+
+**Files Created**:
+- `src/backend/services/credential_encryption.py` - Encryption service (~200 lines)
+- `src/backend/routers/internal.py` - Internal API router
+
+**Files Modified**:
+- `src/backend/routers/credentials.py` - Added inject/export/import endpoints
+- `src/backend/models.py` - Added new Pydantic models
+- `src/backend/main.py` - Added internal router
+- `src/frontend/src/components/CredentialsPanel.vue` - Rewritten for new system
+- `src/frontend/src/composables/useAgentCredentials.js` - Simplified API
+- `src/frontend/src/stores/agents.js` - New store methods
+- `src/frontend/src/router/index.js` - Removed /credentials route
+- `src/frontend/src/components/NavBar.vue` - Removed Credentials link
+- `docker/base-image/agent_server/routers/credentials.py` - Added read/inject endpoints
+- `docker/base-image/startup.sh` - Added auto-import logic
+- `src/mcp-server/src/tools/agents.ts` - Added new MCP tools
+- `src/mcp-server/src/client.ts` - Added client methods
+
+**Deleted**:
+- `src/frontend/src/views/Credentials.vue` - Global credentials page (674 lines)
+
+**Note**: Old Redis credential system kept for backward compatibility. Will be fully removed in future cleanup.
+
+---
+
+### 2026-02-05 17:30:00
+📝 **Docs: Consolidated Credential System Spec (CRED-002)**
+
+Merged and simplified two credential specs into one actionable plan:
+
+**Key Decisions**:
+- Remove entire Redis credential system (~677 lines)
+- Remove global `/credentials` page
+- Remove assignment model (create → assign → apply)
+- Remove template substitution (`.mcp.json.template`)
+- Replace with encrypted files in git (`.credentials.enc`)
+- Simple flow: decrypt → inject files
+
+**New Approach**:
+- Credentials = files stored encrypted in `.credentials.enc`
+- On agent start, decrypt and write files
+- Export/import buttons in agent Credentials tab
+- MCP tools: `inject_credentials`, `export_credentials`, `import_credentials`
+
+**Files Changed**:
+- `docs/requirements/CREDENTIAL_SYSTEM_REFACTOR.md` - Consolidated spec
+- `docs/requirements/ENCRYPTED_CREDENTIALS_IN_GIT.md` - Deleted (merged)
+- `docs/memory/roadmap.md` - Updated spec link
+
+---
+
+### 2026-02-05 16:00:00
+📝 **Docs: Requirement Specifications for Phase 16 High Priority Items**
+
+Created detailed requirement specifications for the four HIGH priority items in Phase 16:
+
+**1. Client/Viewer User Role** ([AUTH-002](../requirements/CLIENT_VIEWER_USER_ROLE.md))
+- New `client` role for simplified read-only/limited access
+- Permission matrix: admin > user > client
+- Frontend route guards and UI filtering by role
+- Admin user management in Settings
+
+**2. Encrypted Credentials in Git** ([CRED-002](../requirements/CREDENTIAL_SYSTEM_REFACTOR.md))
+- Replaced with consolidated spec (see 2026-02-05 17:30:00 entry above)
+
+**3. Unified Executions Dashboard** ([EXEC-022](../requirements/UNIFIED_EXECUTIONS_DASHBOARD.md))
+- New `/executions` page with cross-agent view
+- `GET /api/executions` endpoint with filters (agent, status, trigger, time)
+- `GET /api/executions/stats` for aggregate metrics
+- Real-time WebSocket updates
+- Stats cards, filter bar, paginated list
+
+**4. MCP Execution Query Tools** ([MCP-007](../requirements/MCP_EXECUTION_QUERY_TOOLS.md))
+- `list_recent_executions` - query fleet execution history
+- `get_execution_result` - fetch specific execution output
+- `get_agent_activity_summary` - high-level health/status
+- Enables orchestrator monitoring and async task polling
+
+**Files Created**:
+- `docs/requirements/CLIENT_VIEWER_USER_ROLE.md`
+- `docs/requirements/ENCRYPTED_CREDENTIALS_IN_GIT.md`
+- `docs/requirements/UNIFIED_EXECUTIONS_DASHBOARD.md`
+- `docs/requirements/MCP_EXECUTION_QUERY_TOOLS.md`
+
+**Files Modified**:
+- `docs/memory/roadmap.md` - Added spec links to Phase 16 table
+
+---
+
+### 2026-02-05 14:30:00
+📋 **Strategic: Phase 16 - Agent-as-a-Service & Commercialization**
+
+Planning session to define path to commercialization while maintaining orchestration vision.
+
+**Two Business Models Identified**:
+1. **Multi-Agent Orchestration** — "Run my company with AI agents" (long-term vision)
+2. **Agent-as-a-Service** — "Ruby for clients" (faster path to revenue)
+
+**Decision**: Pursue both sequentially. They share 80% of infrastructure needs.
+
+**Phase 16 Added to Roadmap** (10 items):
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| **HIGH** | Client/Viewer User Role | Simplified role using existing auth, sees basic UI only |
+| **HIGH** | Encrypted Credentials in Git | `.credentials.enc` in repos, decrypt on deploy |
+| **HIGH** | Unified Executions Dashboard | Cross-agent execution view with filters |
+| **HIGH** | MCP Execution Query Tools | `list_recent_executions`, `get_execution_result` |
+| MEDIUM | Quick Instance Deploy | One-command "Deploy Ruby for Client X" |
+| MEDIUM | Execution Notifications | Webhook/UI on task completion |
+| MEDIUM | Client Usage Dashboard | Per-client visibility for billing |
+| MEDIUM | Credential Usage Audit | Log credential reads and API calls |
+| MEDIUM | Monorepo Workspace Deploy | Deploy directory of agents as system |
+| LOW | Platform Simplification Mode | Hide advanced features behind toggle |
+
+**Key Insight**: "The 90% is built. Focus on the 10% that makes it usable."
+
+**Files Changed**:
+- `docs/planning/WORKFLOW_PRIORITIES_2026-02.md` - Added discussion summary and consolidated roadmap
+- `docs/memory/roadmap.md` - Added Phase 16, updated Decision Log
+
+---
+
 ### 2026-02-05 11:45:00
 🐛 **Fix: Live Execution Logs on Production (SSE Streaming)**
 

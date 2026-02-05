@@ -482,28 +482,36 @@ See [Gemini Support Guide](GEMINI_SUPPORT.md) for detailed setup instructions an
 
 ## Credential Management
 
-### Credential Injection Flow
+> **Updated 2026-02-05 (CRED-002)**: Simplified credential system using direct file injection with encrypted git storage.
 
-When Trinity deploys your agent:
+### Credential Flow
 
-1. **Reads `template.yaml`** - gets credential schema
-2. **Parses `.mcp.json.template`** - finds `${VAR}` placeholders
-3. **Fetches credentials** - from Trinity's secure credential store
-4. **Generates `.env`** - writes all credentials as KEY=VALUE pairs
-5. **Generates `.mcp.json`** - replaces placeholders with real values
-6. **Starts container** - with your repo as the working directory
+Credentials are managed as files in the agent workspace:
 
-### Hot-Reload
+1. **`.env`** — Source of truth for KEY=VALUE credentials
+2. **`.mcp.json`** — MCP server configuration (edit directly, no template substitution)
+3. **`.credentials.enc`** — Encrypted backup safe for git commits
 
-Credentials can be updated without restarting the agent:
-- Via UI: Credentials tab → paste new values
-- Via MCP: `reload_credentials` tool
+### Injecting Credentials
+
+- **Via UI**: Agent Detail → Credentials tab → Quick Inject (paste KEY=VALUE text)
+- **Via MCP**: `inject_credentials(agent_name, {".env": "KEY=value\n"})`
+- **Via API**: `POST /api/agents/{name}/credentials/inject`
+
+### Export/Import for Git
+
+To persist credentials across deployments:
+
+1. **Export**: Click "Export to Git" → encrypts `.env` and `.mcp.json` → writes `.credentials.enc`
+2. **Commit**: The `.credentials.enc` file is safe to commit (AES-256-GCM encrypted)
+3. **Auto-import**: On agent start, if `.credentials.enc` exists but `.env` doesn't, credentials are automatically decrypted and injected
 
 ### Your Agent Should
 
 - Read MCP credentials from `.mcp.json` (Claude Code does this automatically)
 - Read script credentials from `.env` or environment variables
-- Never store credentials in committed files
+- Never store plaintext credentials in committed files
+- Use `.credentials.enc` for secure credential persistence in git
 
 ---
 
@@ -1433,6 +1441,7 @@ allowed-tools: mcp__trinity__list_agents, mcp__trinity__get_agent
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **Credential System Refactor (CRED-002)**: Updated Credential Management section for new simplified system; Direct file injection replaces Redis-based assignments; Export/Import with encrypted `.credentials.enc` for git storage; Auto-import on agent startup |
 | 2026-01-27 | **Advanced Skills & CLAUDE.md**: Added 8 new skill frontmatter fields (`disable-model-invocation`, `user-invocable`, `argument-hint`, `model`, `context`, `agent`, `hooks`); Added invocation control table; Added string substitutions (`$ARGUMENTS`, `$N`, `${CLAUDE_SESSION_ID}`); Added dynamic context injection (`!`command``); Added skill size guidelines; Added CLAUDE.md imports (`@path` syntax) and best practices table |
 | 2026-01-26 | **Platform Skills Best Practices**: Expanded Platform Skills section with comprehensive skill writing guidance; Added SKILL.md format, frontmatter fields, description best practices, `allowed-tools` for restricting tool access, multi-file skill patterns, Skills vs Commands vs CLAUDE.md comparison table; Emphasized skills as the recommended way to encode reusable knowledge |
 | 2026-01-25 | **Platform Skills**: Added new section documenting centralized Skills Library; Skills managed at platform level, mounted read-only into agents; Three skill types (policy, procedure, methodology); Updated directory structure and .gitignore notes |

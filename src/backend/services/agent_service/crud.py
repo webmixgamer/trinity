@@ -50,7 +50,6 @@ async def create_agent_internal(
     current_user: User,
     request: Request,
     skip_name_sanitization: bool = False,
-    credential_manager=None,
     ws_manager=None
 ) -> AgentStatus:
     """
@@ -58,12 +57,15 @@ async def create_agent_internal(
 
     Used by both the API endpoint and system deployment.
 
+    CRED-002: Credentials are no longer auto-injected during creation.
+    They are added after creation via inject_credentials endpoint or
+    imported from .credentials.enc on startup.
+
     Args:
         config: Agent configuration
         current_user: Authenticated user
         request: FastAPI request object
         skip_name_sanitization: If True, don't sanitize the name (used when name is pre-validated)
-        credential_manager: The credential manager instance
         ws_manager: Optional WebSocket manager for broadcasts
 
     Returns:
@@ -99,19 +101,14 @@ async def create_agent_internal(
             if gh_template:
                 # Pre-defined GitHub template from config.py
                 github_repo = gh_template["github_repo"]
-                github_cred_id = gh_template["github_credential_id"]
 
-                github_cred = credential_manager.get_credential(github_cred_id, "admin")
-                if not github_cred:
-                    raise HTTPException(status_code=500, detail="GitHub credential not found in credential store")
-
-                github_secret = credential_manager.get_credential_secret(github_cred_id, "admin")
-                if not github_secret:
-                    raise HTTPException(status_code=500, detail="GitHub credential secret not found")
-
-                github_pat = github_secret.get("token") or github_secret.get("api_key")
+                # Get system GitHub PAT from settings (SQLite) or env var
+                github_pat = get_github_pat()
                 if not github_pat:
-                    raise HTTPException(status_code=500, detail="GitHub PAT not found in credential")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="GitHub PAT not configured. Set GITHUB_PAT in .env or add via Settings."
+                    )
 
                 github_repo_for_agent = github_repo
                 github_pat_for_agent = github_pat
@@ -183,30 +180,18 @@ async def create_agent_internal(
     if config.port is None:
         config.port = get_next_available_port()
 
-    # Get only explicitly assigned credentials (no longer auto-inject all user credentials)
-    flat_credentials = credential_manager.get_assigned_credential_values(config.name, current_user.username)
-
-    # For backward compatibility with MCP server assignments, also check those
-    agent_credentials = credential_manager.get_agent_credentials(config.name, config.mcp_servers, current_user.username)
-    for server, creds in agent_credentials.items():
-        if isinstance(creds, dict):
-            for key, value in creds.items():
-                if key.upper() not in flat_credentials:
-                    flat_credentials[key.upper()] = value
-        elif server.upper() not in flat_credentials:
-            flat_credentials[server.upper()] = creds
+    # CRED-002: Credentials are now injected directly into agents after creation
+    # via the inject_credentials endpoint, not auto-injected during creation.
+    # The agent starts without credentials and they are added via Quick Inject
+    # or imported from .credentials.enc files.
 
     generated_files = {}
     if template_data:
+        # Generate empty credential files structure from template
         generated_files = generate_credential_files(
-            template_data, flat_credentials, config.name,
+            template_data, {}, config.name,
             template_base_path=github_template_path
         )
-
-    # Get only explicitly assigned file-type credentials (e.g., service account JSON files)
-    file_credentials = credential_manager.get_assigned_file_credentials(config.name, current_user.username)
-    if file_credentials:
-        logger.info(f"Injecting {len(file_credentials)} assigned credential file(s) for agent {config.name}")
 
     cred_files_dir = Path(f"/tmp/agent-{config.name}-creds")
     cred_files_dir.mkdir(exist_ok=True)
@@ -218,16 +203,6 @@ async def create_agent_internal(
         with open(file_path, "w") as f:
             f.write(content)
 
-    # Write file-type credentials to their target paths
-    # These will be mounted at /generated-creds/ and copied by startup.sh
-    for filepath, content in file_credentials.items():
-        # Store in a special "credential-files" subdirectory to distinguish from other generated files
-        file_path = cred_files_dir / "credential-files" / filepath
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, "w") as f:
-            f.write(content)
-        logger.debug(f"Wrote credential file: {filepath}")
-
     agent_config = {
         "agent": {
             "type": config.type,
@@ -236,7 +211,7 @@ async def create_agent_internal(
             "tools": config.tools,
             "mcp_servers": config.mcp_servers,
             "custom_instructions": config.custom_instructions,
-            "credentials": {server: "injected" for server in config.mcp_servers}
+            "credentials": {}  # CRED-002: Credentials injected after creation
         }
     }
 
@@ -246,7 +221,7 @@ async def create_agent_internal(
 
     credentials_path = Path(f"/tmp/agent-{config.name}-credentials.json")
     with open(credentials_path, "w") as f:
-        json.dump(agent_credentials, f)
+        json.dump({}, f)  # CRED-002: Empty credentials, injected after creation
 
     template_volume = None
     cred_files_volume = None

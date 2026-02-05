@@ -22,7 +22,6 @@ from services.docker_service import (
 )
 from services.scheduler_service import scheduler_service
 from services import git_service
-from credentials import CredentialManager
 
 # Import service layer functions
 from services.agent_service import (
@@ -79,10 +78,6 @@ from services.agent_service import (
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-# Initialize credential manager
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
-credential_manager = CredentialManager(REDIS_URL)
-
 # WebSocket manager will be injected from main.py
 manager = None
 
@@ -120,7 +115,6 @@ async def create_agent_internal(
         current_user=current_user,
         request=request,
         skip_name_sanitization=skip_name_sanitization,
-        credential_manager=credential_manager,
         ws_manager=manager
     )
 
@@ -220,8 +214,7 @@ async def deploy_local_agent(
         body=body,
         current_user=current_user,
         request=request,
-        create_agent_fn=create_agent_internal,
-        credential_manager=credential_manager
+        create_agent_fn=create_agent_internal
     )
 
 
@@ -296,12 +289,6 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
             pass
     except Exception as e:
         logger.warning(f"Failed to delete shared folder config for agent {agent_name}: {e}")
-
-    # Delete credential assignments for this agent
-    try:
-        credential_manager.cleanup_agent_credentials(agent_name)
-    except Exception as e:
-        logger.warning(f"Failed to delete credential assignments for agent {agent_name}: {e}")
 
     db.delete_agent_ownership(agent_name)
 
