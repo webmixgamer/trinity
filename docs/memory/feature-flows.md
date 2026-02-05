@@ -3,6 +3,19 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-05)**: Trinity Connect (Local-Remote Agent Sync):
+> - **trinity-connect.md**: New feature flow for real-time event listening from local Claude Code
+> - New WebSocket endpoint `/ws/events` with MCP API key authentication
+> - Server-side event filtering based on user's accessible agents (owned + shared)
+> - New `trinity-listen.sh` blocking script for event-driven local-remote coordination
+> - Files: `main.py` (FilteredWebSocketManager, endpoint), `db/agents.py` (get_accessible_agent_names), `activity_service.py`, `scheduler_service.py`, `routers/agents.py` (broadcast hooks)
+> - **Updated existing flows** to document Trinity Connect integration:
+>   - **activity-stream.md**: Added dual broadcast pattern (main + filtered WebSocket)
+>   - **scheduling.md**: Added Trinity Connect section with schedule event broadcasts
+>   - **scheduler-service.md**: Added filtered broadcast callback documentation
+>   - **agent-lifecycle.md**: Added Trinity Connect filtered broadcasts for agent_started/agent_stopped
+>   - **mcp-api-keys.md**: Added WebSocket authentication documentation for `/ws/events`
+
 > **Updated (2026-02-05)**: SSE Streaming Fix for Live Execution Logs:
 > - **parallel-headless-execution.md**: Added nginx configuration requirements for SSE streaming (`proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on`). Documented frontend fetch/ReadableStream implementation.
 > - **execution-detail-page.md**: Added "Live SSE Streaming" section with nginx config, frontend implementation, and UI indicators.
@@ -390,8 +403,7 @@
 |------|----------|----------|-------------|
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer (Updated 2026-01-23) |
-| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | Redis storage, hot-reload, OAuth2 flows, assignment-based injection, file-type credentials (Updated 2026-01-23) |
-| **Credentials Page** | Medium | [credentials-page.md](feature-flows/credentials-page.md) | Global credential management UI at `/credentials` - create, view, delete, bulk import. Redis-backed storage with service/type auto-detection from key names (Created 2026-01-21) |
+| Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. Removed: Redis assignments, global /credentials page (Refactored 2026-02-05) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
@@ -453,6 +465,7 @@
 | **MCP Skill Tools** | High | [mcp-skill-tools.md](feature-flows/mcp-skill-tools.md) | 8 MCP tools for programmatic skill management - `list_skills`, `get_skill`, `create_skill`, `delete_skill`, `assign_skill_to_agent`, `remove_skill_from_agent`, `sync_agent_skills`, `execute_procedure`. Some require system scope. Files: `tools/skills.ts`, `client.ts:500-575` (Created 2026-01-25) |
 | **Skills Management UI** | High | [skills-management.md](feature-flows/skills-management.md) | Frontend UI documentation - Skills.vue admin page (CRUD modals, grid layout, type badges), SkillsPanel.vue agent tab (checkbox assignment, Save/Sync buttons). User flows for create/edit/delete skills and assign/sync to agents (Created 2026-01-25) |
 | **Skills Library Sync** | High | [skills-library-sync.md](feature-flows/skills-library-sync.md) | GitHub repository sync for skills library - Settings.vue configuration (URL/branch), git clone/pull operations, GitHub PAT for private repos. Service: `skill_service.py:sync_library()`, Settings: `settings_service.py` (Created 2026-01-25) |
+| **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
 
 ---
 

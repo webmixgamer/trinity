@@ -80,6 +80,7 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 # WebSocket manager will be injected from main.py
 manager = None
+filtered_manager = None  # For Trinity Connect /ws/events
 
 # Logger for terminal sessions
 logger = logging.getLogger(__name__)
@@ -92,6 +93,12 @@ def set_websocket_manager(ws_manager):
     """Set the WebSocket manager for broadcasting events."""
     global manager
     manager = ws_manager
+
+
+def set_filtered_websocket_manager(ws_manager):
+    """Set the filtered WebSocket manager for /ws/events (Trinity Connect)."""
+    global filtered_manager
+    filtered_manager = ws_manager
 
 
 # ============================================================================
@@ -314,11 +321,17 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
         credentials_status = result.get("credentials_injection", "unknown")
         credentials_result = result.get("credentials_result", {})
 
+        event = {
+            "event": "agent_started",
+            "type": "agent_started",  # Normalized type field for filtering
+            "name": agent_name,
+            "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
+        }
         if manager:
-            await manager.broadcast(json.dumps({
-                "event": "agent_started",
-                "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
-            }))
+            await manager.broadcast(json.dumps(event))
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if filtered_manager:
+            await filtered_manager.broadcast_filtered(event)
 
         return {
             "message": f"Agent {agent_name} started",
@@ -342,11 +355,17 @@ async def stop_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reques
     try:
         container.stop()
 
+        event = {
+            "event": "agent_stopped",
+            "type": "agent_stopped",  # Normalized type field for filtering
+            "name": agent_name,
+            "data": {"name": agent_name}
+        }
         if manager:
-            await manager.broadcast(json.dumps({
-                "event": "agent_stopped",
-                "data": {"name": agent_name}
-            }))
+            await manager.broadcast(json.dumps(event))
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if filtered_manager:
+            await filtered_manager.broadcast_filtered(event)
 
         return {"message": f"Agent {agent_name} stopped"}
     except Exception as e:

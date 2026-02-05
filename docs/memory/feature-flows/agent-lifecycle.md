@@ -644,6 +644,29 @@ if container_meta_prompt_path.exists():
 | `agent_stopped` | `{name}` | After container.stop() (line 1029-1033) |
 | `agent_deleted` | `{name}` | After container.remove() (line 803-807) |
 
+### Trinity Connect Filtered Broadcasts (Added 2026-02-05)
+
+Agent start/stop events are now broadcast to both the main WebSocket and the filtered Trinity Connect WebSocket endpoint.
+
+**Location**: `src/backend/routers/agents.py:324-340, 356-368`
+
+```python
+# Broadcast agent_started to main UI WebSocket
+await manager.broadcast(json.dumps({"type": "agent_started", "name": agent_name, "data": {...}}))
+
+# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
+await filtered_manager.broadcast_filtered({"type": "agent_started", "name": agent_name, "data": {...}})
+```
+
+**Events Broadcast to Trinity Connect:**
+
+| Event | Agent Name Field | Use Case |
+|-------|------------------|----------|
+| `agent_started` | `name` | External Claude Code waits for agent to be ready |
+| `agent_stopped` | `name` | External Claude Code detects agent shutdown |
+
+**Related Documentation**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
 ### Audit Logging
 ```python
 await log_audit_event(
@@ -800,6 +823,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **Trinity Connect Integration**: Agent start/stop events now broadcast to filtered WebSocket `/ws/events` for external listeners. Added Trinity Connect Filtered Broadcasts section with code example and event table. Related: trinity-connect.md |
 | 2026-01-26 | **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Component supports three sizes (sm/md/lg), loading spinner, dark mode, ARIA attributes. Updated AgentHeader.vue (emits `toggle` instead of `start`/`stop`), Agents.vue (uses `toggleAgentRunning()`), AgentNode.vue (new toggle in Dashboard). Added `toggleAgentRunning()` and `runningToggleLoading` state to agents.js and network.js stores. |
 | 2026-01-14 | **Security Bug Fixes (HIGH)**: (1) **Missing Auth on Lifecycle Endpoints**: Changed `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency instead of plain `get_current_user`. This ensures users can only start/stop/view logs for agents they have access to. (2) **Container Security Consistency**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. All container creation paths (`crud.py:464`, `lifecycle.py:361`, `system_agent_service.py:260`) now ALWAYS apply baseline security: `cap_drop=['ALL']`, AppArmor profile, `noexec,nosuid` on tmpfs. Previously some paths had inconsistent security settings. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added `get_all_agent_metadata()` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables. Rewrote `get_accessible_agents()` in `helpers.py:83-153` to use batch query instead of 8-10 individual queries per agent. Exposed on `DatabaseManager` (`database.py:845-850`). Database queries reduced from 160-200 to 2 per request. Orphaned agents (Docker-only, no DB record) now only visible to admin. |
@@ -876,3 +900,4 @@ fi
 - **Related**: Agent Sharing (ownership and access control)
 - **Related**: Git Sync (GitHub-native agents)
 - **Related**: Agent Scheduling (scheduled task management)
+- **Related**: Trinity Connect (`trinity-connect.md`) - Filtered event broadcast for external listeners (Added 2026-02-05)

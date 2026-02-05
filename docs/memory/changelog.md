@@ -1,3 +1,38 @@
+### 2026-02-05 23:45:00
+🚀 **Feature: Trinity Connect - Local-Remote Agent Sync (SYNC-001)**
+
+Implemented real-time event-driven coordination between local Claude Code and Trinity agents.
+
+**New WebSocket Endpoint**: `/ws/events`
+- MCP API key authentication via `?token=trinity_mcp_xxx` query parameter
+- Server-side event filtering based on user's accessible agents (owned + shared)
+- Ping/pong keepalive and agent list refresh commands
+- Events: agent_activity, agent_started, agent_stopped, schedule_execution_completed
+
+**New Script**: `scripts/trinity-listen.sh`
+- Blocking listener script for event-driven local-remote coordination
+- Supports websocat or wscat WebSocket clients
+- Filters by agent name and/or event state
+- Exits on first matching event (for event loop integration)
+
+**Backend Changes**:
+- `src/backend/main.py` - FilteredWebSocketManager class, /ws/events endpoint
+- `src/backend/db/agents.py` - `get_accessible_agent_names()` method
+- `src/backend/database.py` - Exposed new db method
+- `src/backend/services/activity_service.py` - Added filtered broadcast hook
+- `src/backend/services/scheduler_service.py` - Added filtered broadcast callback
+- `src/backend/routers/agents.py` - Added filtered broadcasts for agent_started/stopped
+
+**Usage**:
+```bash
+export TRINITY_API_KEY="trinity_mcp_xxx"
+./scripts/trinity-listen.sh my-agent completed  # Wait for agent to complete task
+```
+
+**Feature Flow**: `docs/memory/feature-flows/trinity-connect.md`
+
+---
+
 ### 2026-02-05 22:15:00
 📋 **Spec: Trinity Connect - Local-Remote Agent Synchronization (SYNC-001)**
 

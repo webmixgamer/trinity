@@ -566,11 +566,53 @@ curl http://localhost:8000/api/mcp/keys \
 
 ---
 
+## Trinity Connect Authentication (Added 2026-02-05)
+
+MCP API keys are also used to authenticate WebSocket connections to the `/ws/events` endpoint for Trinity Connect.
+
+### WebSocket Authentication Flow
+
+**Location**: `src/backend/main.py:370-435`
+
+```python
+# Client connects with MCP API key as query parameter
+ws://localhost:8000/ws/events?token=trinity_mcp_xxx
+
+# Server validates key via db.validate_mcp_api_key()
+result = db.validate_mcp_api_key(token)
+if not result:
+    await websocket.close(code=4001, reason="Invalid or inactive MCP API key")
+```
+
+### Access Control
+
+The validated key provides user identity, which determines accessible agents:
+
+```python
+# Get user's accessible agents for event filtering
+accessible_agents = db.get_accessible_agent_names(user_email, is_admin)
+```
+
+### Key Scopes for Trinity Connect
+
+| Scope | Access |
+|-------|--------|
+| `user` | Events for owned + shared agents |
+| `agent` | Events for specific agent only (not recommended for Trinity Connect) |
+| `system` | All events (admin-equivalent) |
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
+---
+
 ## Related Flows
 
 - **Upstream**: [email-authentication.md](email-authentication.md) - User authentication for JWT
 - **Downstream**: [mcp-orchestration.md](mcp-orchestration.md) - MCP tools that use these keys
 - **Related**: [agent-to-agent-collaboration.md](agent-to-agent-collaboration.md) - Agent-scoped key usage
+- **Related**: [trinity-connect.md](trinity-connect.md) - WebSocket authentication for event listening (Added 2026-02-05)
 
 ---
 
@@ -579,3 +621,4 @@ curl http://localhost:8000/api/mcp/keys \
 | Date | Change |
 |------|--------|
 | 2026-01-13 | Initial documentation |
+| 2026-02-05 | **Trinity Connect Authentication**: Added section documenting MCP API key usage for `/ws/events` WebSocket authentication. Keys provide user identity for server-side event filtering. |

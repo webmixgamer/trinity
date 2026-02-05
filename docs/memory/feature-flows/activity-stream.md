@@ -893,6 +893,59 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 
 ---
 
+## Trinity Connect Integration (Added 2026-02-05)
+
+Activity events are now broadcast to two WebSocket channels:
+
+1. **Main WebSocket Manager** (`/ws`): All connected UI clients receive all events
+2. **Filtered WebSocket Manager** (`/ws/events`): Trinity Connect clients receive only events for their accessible agents
+
+### Dual Broadcast Pattern
+
+**Location**: `src/backend/services/activity_service.py:200-207`
+
+```python
+# Broadcast to main UI WebSocket
+await manager.broadcast(json.dumps(event))
+
+# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
+await filtered_manager.broadcast_filtered(event)
+```
+
+### FilteredWebSocketManager
+
+**Location**: `src/backend/main.py:107-167`
+
+- Tracks connections with user identity and accessible agents list
+- Extracts agent name from various event field formats (`agent_name`, `name`, `agent`)
+- Filters events server-side before forwarding to external listeners
+- Admin users see all events
+
+### Event Types Broadcast to Trinity Connect
+
+| Event Type | Source | Agent Name Field |
+|------------|--------|------------------|
+| `agent_activity` | activity_service.py | `agent_name` |
+| `agent_started` | routers/agents.py | `name` |
+| `agent_stopped` | routers/agents.py | `name` |
+| `schedule_execution_completed` | scheduler_service.py | `agent` |
+| `agent_collaboration` | activity_service.py | `agent_name` |
+
+### Initialization
+
+**Location**: `src/backend/main.py:172-188`
+
+```python
+# Inject filtered manager into activity service
+activity_service.set_filtered_websocket_manager(filtered_manager)
+```
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -901,6 +954,7 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 | 2025-12-30 | Previous review |
 | 2026-01-15 | Added timezone handling documentation |
 | 2026-01-23 | Updated line numbers for database.py (schema at lines 474-497, indexes at 629-635), models.py (ActivityType at line 123, ActivityState at line 147), db/activities.py (create_activity at line 40, complete_activity at line 74). Added EXECUTION_CANCELLED activity type. Verified integration points in chat.py and scheduler_service.py. Added main.py:121 for websocket_manager initialization. |
+| 2026-02-05 | **Trinity Connect Integration**: Added dual broadcast pattern - events now sent to both main WebSocket (`/ws`) and filtered WebSocket (`/ws/events`). Added FilteredWebSocketManager section, event types table, and initialization details. |
 
 ---
 

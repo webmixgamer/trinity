@@ -313,11 +313,46 @@
 - Audit-ready documentation templates
 - Compliance dashboard/report generation
 
+### Phase 16: Agent-as-a-Service & Commercialization
+🚧 **In Progress** — *Path to revenue while building orchestration vision*
+
+> **Planning Document**: `docs/planning/WORKFLOW_PRIORITIES_2026-02.md`
+
+| Status | Item | Description | Spec | Priority |
+|--------|------|-------------|------|----------|
+| ⏳ | **Client/Viewer User Role** | Simplified user role using existing auth. Sees only basic UI (agent list, terminal, files). Hides advanced features (Collaboration Dashboard, Process Engine, Permissions, etc.). Enables sharing agents with paying clients. | [AUTH-002](../requirements/CLIENT_VIEWER_USER_ROLE.md) | **HIGH** |
+| ✅ | **Encrypted Credentials in Git** | **Completed 2026-02-05**: CRED-002 implemented. New `CredentialEncryptionService` (AES-256-GCM), direct file injection endpoints, MCP tools, auto-import on startup. Removed: global `/credentials` page, Redis assignments. See `credential-injection.md`. | [CRED-002](../requirements/CREDENTIAL_SYSTEM_REFACTOR.md) | **HIGH** |
+| ⏳ | **Unified Executions Dashboard** | Combined view of all executions across all agents. Filter by agent, time, trigger type. Real-time WebSocket updates. Click through to details. Extend existing `/executions` route. | [EXEC-022](../requirements/UNIFIED_EXECUTIONS_DASHBOARD.md) | **HIGH** |
+| ⏳ | **MCP Execution Query Tools** | `list_recent_executions` - query what happened across fleet. `get_execution_result` - fetch specific output. `get_agent_activity_summary` - high-level status. | [MCP-007](../requirements/MCP_EXECUTION_QUERY_TOOLS.md) | **HIGH** |
+| ⏳ | **Quick Instance Deploy** | One-command agent creation from template with credentials. "Deploy Ruby for Client X" flow. Streamline System Manifest for single-agent case. | MEDIUM |
+| ⏳ | **Execution Notifications** | Notify on task completion (success/failure). Start with webhook + UI toast. Email/Slack later. | MEDIUM |
+| ⏳ | **Client Usage Dashboard** | Per-client view: executions, costs, outcomes. "What has this agent done for me?" Supports billing conversations. | MEDIUM |
+| ⏳ | **Credential Usage Audit** | Log when credentials read, log external API calls where possible. Associate with executions. Foundation for SEC-001. | MEDIUM |
+| ⏳ | **Monorepo Workspace Deploy** | Deploy entire directory of agents as cohesive system. Skills inherited from parent `.claude/skills/`. Credentials decrypted. MCP connections configured. | MEDIUM |
+| ⏳ | **Platform Simplification Mode** | Hide advanced features (Collaboration Dashboard, Replay Timeline, Process Engine) behind toggle or role. Simpler default experience. | LOW |
+
+**Strategic Context**:
+- **Short-term goal**: Agent-as-a-Service (e.g., Ruby for clients) generates revenue
+- **Long-term goal**: Multi-agent orchestration ("run my company with AI")
+- **Key insight**: Both paths share 80% of infrastructure work (visibility, credentials, deployment)
+- **Sequencing**: Foundation → AaaS for revenue → Full orchestration
+
 ---
 
 ## Backlog
 
 Items not yet scheduled. Will be prioritized as needed.
+
+### Local-Remote Agent Sync (2026-02-05)
+> Spec: `docs/requirements/TRINITY_CONNECT_LOCAL_REMOTE_SYNC.md`
+> Feature Flow: `docs/memory/feature-flows/trinity-connect.md`
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| ✅ **HIGH** | **Trinity Connect (WebSocket Listener)** | **Implemented 2026-02-05**: Event-driven local↔remote agent sync. `/ws/events` endpoint with MCP API key auth. `trinity-listen.sh` script connects to Trinity WebSocket, wakes Claude Code when event arrives. |
+| ✅ **HIGH** | **WebSocket API Key Auth** | **Implemented 2026-02-05**: MCP API key authentication on `/ws/events` endpoint. Server-side event filtering based on user's accessible agents. |
+| MEDIUM | **Agent Notification Endpoint** | `POST /api/agents/{name}/notify` - explicit push notifications. MCP tool `notify_agent`. |
+| LOW | **Trinity Connect Skill Template** | Packaged skill for local Claude Code with listener script and instructions. |
 
 ### Multi-Agent Systems Research (2026-02-05)
 > Source: `~/Dropbox/Agents/Cornelius/resources/Multi-Agent-Systems-Research-Report-2026-02-05.md`
@@ -369,6 +404,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-02-05 | **Phase 16: Agent-as-a-Service & Commercialization** | Strategic planning session identified two business models: (1) Multi-agent orchestration ("run my company"), (2) Agent-as-a-Service (Ruby for clients). Decision: pursue both sequentially. AaaS provides faster path to revenue while building toward orchestration vision. Both share 80% of infrastructure needs. Key items: Client/Viewer user role (use existing auth, simplified UI), Encrypted credentials in git (portable agents), Unified Executions Dashboard (visibility), MCP execution tools (programmatic access). See `docs/planning/WORKFLOW_PRIORITIES_2026-02.md`. |
 | 2026-02-05 | Multi-Agent Research Items Added | Added 5 items from Cornelius research report (`Multi-Agent-Systems-Research-Report-2026-02-05.md`): (1) **Agent Skills Spec** - HIGH, Anthropic standard adopted by Microsoft/OpenAI/GitHub; (2) **A2A Protocol** - HIGH, Google's agent-to-agent for cross-platform; (3) **Platform Memory Primitives** - HIGH, 3-tier memory with 2x reasoning improvement; (4) **Code Execution Mode** - MEDIUM, 98% token reduction; (5) **Smart Model Routing** - MEDIUM, 60-95% cost savings. Key insight: "Competitive advantage shifted from foundation models to orchestration and operations layers." |
 | 2026-01-30 | Feature Requests Batch Added to Backlog | Added 10 items from planning session: (1) **Bug: Live logs** - HIGH, broken in production; (2) **Git worktrees** - HIGH, task isolation via branches, audit trail; (3) **MCP as primary integration** - HIGH, local agents connect via MCP, pull skills, minimal setup; (4) **Agent org structures** - MEDIUM, parent-child hierarchy; (5) **Any repo/empty agent** - MEDIUM, flexible creation modes; (6) **GitHub safety** - MEDIUM, prevent empty agent wiping repos; (7) **MCP server management** - MEDIUM, centralized UI; (8) **GitHub issues** - LOW, roadmap tracking; (9) **History in GitHub** - LOW, repo as source of truth. Theme: GitHub-centric workflow + MCP-first experience. |
 | 2026-01-27 | Gastown-Inspired Features Added to Backlog | After analyzing Gastown (Steve Yegge's multi-agent CLI tool), identified 4 features to adopt: (1) Claude Code Hooks for state persistence (HIGH - enables work to survive context compaction), (2) Convoy-like work bundles (MEDIUM - track multi-agent projects as units), (3) Ephemeral agent spawning (MEDIUM - on-demand workers), (4) Ready work discovery (LOW - find unblocked tasks). See `docs/research/gastown-comparison.md`. |

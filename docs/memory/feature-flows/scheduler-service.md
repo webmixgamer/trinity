@@ -815,6 +815,47 @@ async def shutdown(self):
 
 ---
 
+## Trinity Connect Integration (Added 2026-02-05)
+
+The scheduler service broadcasts events to both the main WebSocket and the filtered Trinity Connect WebSocket.
+
+### Dual Broadcast Callback
+
+**Location**: Configured in `src/backend/main.py:172-188`
+
+```python
+# Inject filtered broadcast callback into scheduler service
+scheduler_service.set_filtered_broadcast_callback(filtered_manager.broadcast_filtered)
+```
+
+### Events Broadcast to Trinity Connect
+
+Schedule execution events are forwarded to external listeners:
+
+| Event Type | Agent Name Field | Description |
+|------------|------------------|-------------|
+| `schedule_execution_started` | `agent` | Execution begins |
+| `schedule_execution_completed` | `agent` | Execution ends (success or failure) |
+
+### Use Case: External Coordination
+
+Local Claude Code instances can wait for scheduled task completion:
+
+```bash
+# Wait for report-agent's scheduled task to complete
+export TRINITY_API_KEY="trinity_mcp_xxx"
+./trinity-listen.sh report-agent completed
+
+# Event received: {"type": "schedule_execution_completed", "agent": "report-agent", "status": "success", ...}
+# Claude Code can now fetch results and continue processing
+```
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
+---
+
 ## Related Flows
 
 - **Upstream**:
@@ -826,6 +867,7 @@ async def shutdown(self):
 - **Related**:
   - [execution-queue.md](execution-queue.md) - Queue system (not used by scheduler)
   - [activity-stream.md](activity-stream.md) - Activity tracking (not yet integrated)
+  - [trinity-connect.md](trinity-connect.md) - Filtered event broadcast for external listeners (Added 2026-02-05)
 
 ---
 
@@ -941,6 +983,7 @@ INFO - Sync complete: 2 added, 1 removed
 
 | Date | Change |
 |------|--------|
+| 2026-02-05 | **Trinity Connect Integration**: Added section documenting filtered broadcast callback for external event listeners. Schedule events forwarded to `/ws/events` endpoint. |
 | 2026-01-29 | Added periodic schedule sync - new schedules work without restart |
 | 2026-01-13 | Initial documentation - standalone scheduler service |
 

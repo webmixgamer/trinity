@@ -1018,12 +1018,62 @@ if (props.schedules && props.schedules.length > 0) {
 
 ---
 
+## Trinity Connect Integration (Added 2026-02-05)
+
+Schedule execution events are now broadcast to Trinity Connect clients via the filtered WebSocket endpoint.
+
+### Dual Broadcast Pattern
+
+**Location**: `src/backend/services/scheduler_service.py:47-55`
+
+```python
+# Broadcast to main UI WebSocket
+await _broadcast_callback(json.dumps(message))
+
+# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
+await _filtered_broadcast_callback(message)
+```
+
+### Events Broadcast to Trinity Connect
+
+| Event Type | Trigger | Agent Name Field |
+|------------|---------|------------------|
+| `schedule_execution_started` | Schedule begins execution | `agent` |
+| `schedule_execution_completed` | Schedule completes (success or failure) | `agent` |
+
+### Initialization
+
+**Location**: `src/backend/main.py:172-188`
+
+```python
+# Inject filtered broadcast callback into scheduler service
+scheduler_service.set_filtered_broadcast_callback(filtered_manager.broadcast_filtered)
+```
+
+### Use Case: Event-Driven Coordination
+
+External Claude Code instances can listen for schedule completion events to coordinate work:
+
+```bash
+# Wait for my-agent's scheduled task to complete
+./trinity-listen.sh my-agent completed
+# On event: Claude Code receives JSON, can fetch results, continue work
+```
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+- **Scheduler Service**: [scheduler-service.md](scheduler-service.md) - Standalone scheduler implementation
+
+---
+
 ## Related Flows
 
 - **Integrates With**:
   - Execution Queue (`execution-queue.md`) - All scheduled executions go through queue (Added 2025-12-06)
   - Activity Stream (`activity-stream.md`) - Schedule activities tracked persistently
   - **Dashboard Timeline** (`dashboard-timeline-view.md`, `replay-timeline.md`) - Schedule markers show `next_run_at` on timeline (TSM-001, Added 2026-01-29)
+  - **Trinity Connect** (`trinity-connect.md`) - Filtered event broadcast for external listeners (Added 2026-02-05)
 - **Upstream**:
   - Tasks Tab (`tasks-tab.md`) - "Make Repeatable" button emits `create-schedule` event to pre-fill schedule creation form (Added 2026-01-12)
 - **Related**:

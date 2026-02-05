@@ -38,17 +38,25 @@ class SchedulerService:
     def __init__(self):
         self.scheduler: Optional[AsyncIOScheduler] = None
         self._broadcast_callback: Optional[Callable] = None
+        self._filtered_broadcast_callback: Optional[Callable] = None  # For Trinity Connect
         self._initialized = False
 
     def set_broadcast_callback(self, callback: Callable):
         """Set the WebSocket broadcast callback for real-time updates."""
         self._broadcast_callback = callback
 
+    def set_filtered_broadcast_callback(self, callback: Callable):
+        """Set the filtered WebSocket broadcast callback for /ws/events (Trinity Connect)."""
+        self._filtered_broadcast_callback = callback
+
     async def _broadcast(self, message: dict):
         """Broadcast a message to WebSocket clients."""
         if self._broadcast_callback:
             import json
             await self._broadcast_callback(json.dumps(message))
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if self._filtered_broadcast_callback:
+            await self._filtered_broadcast_callback(message)
 
     def initialize(self):
         """Initialize the scheduler and load all enabled schedules."""

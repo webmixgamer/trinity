@@ -96,10 +96,11 @@ Trinity implements four foundational capabilities that transform simple AI assis
 ### Operations
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
-- **Credential Management** — Redis-backed secrets with hot-reload capability
+- **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
 - **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
 - **Live Execution Streaming** — Real-time streaming of execution logs to the web UI
 - **Execution Termination** — Stop running executions gracefully via SIGINT/SIGKILL
+- **Trinity Connect** — WebSocket event streaming for local Claude Code integration with MCP key authentication
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
@@ -383,6 +384,32 @@ curl -X POST http://localhost:8000/api/systems/deploy \
 ```
 
 See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for architecture patterns and best practices.
+
+## Trinity Connect
+
+Trinity Connect enables real-time coordination between local Claude Code instances and Trinity-hosted agents via WebSocket event streaming.
+
+```bash
+# Install listener dependencies
+brew install websocat jq
+
+# Set your MCP API key (from Settings → API Keys)
+export TRINITY_API_KEY="trinity_mcp_xxx"
+
+# Listen for events from a specific agent
+./scripts/trinity-listen.sh my-agent completed
+```
+
+The listener blocks until a matching event arrives, then prints the event and exits—perfect for event-driven automation loops:
+
+```bash
+while true; do
+    ./scripts/trinity-listen.sh my-agent completed
+    # React to the completed event...
+done
+```
+
+Events include: `agent_started`, `agent_stopped`, `agent_activity` (chat/task completions), and `schedule_execution_completed`.
 
 ## Process Engine
 

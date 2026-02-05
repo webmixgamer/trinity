@@ -9,6 +9,7 @@ This service provides centralized activity tracking with:
 """
 
 import asyncio
+import json
 from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime
 from models import ActivityType, ActivityState, ActivityCreate
@@ -28,11 +29,16 @@ class ActivityService:
 
     def __init__(self):
         self.websocket_manager = None
+        self.filtered_websocket_manager = None  # For /ws/events (Trinity Connect)
         self.subscribers: List[Callable] = []
 
     def set_websocket_manager(self, manager):
         """Set the WebSocket manager for broadcasting."""
         self.websocket_manager = manager
+
+    def set_filtered_websocket_manager(self, manager):
+        """Set the filtered WebSocket manager for /ws/events (Trinity Connect)."""
+        self.filtered_websocket_manager = manager
 
     def subscribe(self, callback: Callable):
         """Register a callback to be notified of all activity events."""
@@ -197,7 +203,13 @@ class ActivityService:
                     "percentage": round((details["context_used"] / details["context_max"]) * 100, 2)
                 }
 
-        await self.websocket_manager.broadcast(event)
+        # Broadcast to main WebSocket manager (UI)
+        # Note: ConnectionManager.broadcast expects a string, so serialize to JSON
+        await self.websocket_manager.broadcast(json.dumps(event))
+
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if self.filtered_websocket_manager:
+            await self.filtered_websocket_manager.broadcast_filtered(event)
 
     async def _notify_subscribers(self, event: Dict):
         """Notify all subscribers of an activity event."""
