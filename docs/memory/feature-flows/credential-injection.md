@@ -493,6 +493,7 @@ import_credentials("my-agent")
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **Bug fix**: Removed orphaned credential injection loop in `crud.py:312-332` that referenced undefined `agent_credentials` variable. Added comment explaining that credentials are injected post-creation per CRED-002 design. |
 | 2026-02-05 | **Complete rewrite for CRED-002**: Replaced Redis-based assignment system with encrypted file injection. Removed all Redis credential management documentation. New flows: Quick Inject, Export, Import, Auto-Import. New MCP tools. |
 | 2026-01-23 | Previous version with Redis-based assignment system |
 
@@ -519,6 +520,20 @@ import_credentials("my-agent")
 | Template substitution | Direct `.mcp.json` editing |
 | OAuth token storage | Use external OAuth flows, inject tokens |
 | `initialize_github_pat()` | GitHub PAT read directly from env/settings |
+| Legacy credential injection loop in `create_agent` | Removed - credentials injected post-creation |
+
+### Bug Fix: Orphaned Credential Loop (2026-02-05)
+
+During the CRED-002 refactor (commit `6821f0d`), an orphaned code block was left behind in `src/backend/services/agent_service/crud.py` (lines 312-332). This code attempted to iterate over an undefined `agent_credentials` variable that had been removed earlier in the same refactor.
+
+**The bug**: The variable `agent_credentials` was removed from lines ~183-192, but a loop that tried to iterate over `agent_credentials.items()` to inject credentials as Docker environment variables was left behind.
+
+**The fix**: The orphaned loop was removed. Per CRED-002 design, credentials are NOT injected during agent creation. They are injected after creation via:
+- `inject_credentials` endpoint (Quick Inject in Credentials tab)
+- `.credentials.enc` auto-import on agent startup
+- `inject_credentials` MCP tool
+
+**Location**: `src/backend/services/agent_service/crud.py:312-315` now contains a comment explaining the design decision.
 
 ### New MCP Tool: get_credential_encryption_key
 

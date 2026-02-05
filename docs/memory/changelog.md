@@ -1,3 +1,31 @@
+### 2026-02-05 23:55:00
+🐛 **Bug Fix: Removed Orphaned Credential Injection Loop (CRED-002)**
+
+Fixed dead code in `src/backend/services/agent_service/crud.py` that referenced an undefined `agent_credentials` variable.
+
+**The Problem**:
+Commit `6821f0d` (CRED-002 refactor) removed the `agent_credentials` variable definition (lines ~183-192) but left behind a loop (lines 312-332) that attempted to iterate over `agent_credentials.items()` to inject credentials as Docker environment variables. This code would have caused a NameError if executed.
+
+**The Fix**:
+Removed the orphaned code block and replaced it with a comment explaining the CRED-002 design decision:
+```python
+# CRED-002: Legacy credential injection loop removed.
+# Credentials are now injected after agent creation via:
+# - inject_credentials endpoint (Quick Inject)
+# - .credentials.enc import on agent startup
+```
+
+**File Changed**:
+- `src/backend/services/agent_service/crud.py:312-315` - Orphaned loop replaced with explanatory comment
+
+**Documentation Updated**:
+- `docs/memory/feature-flows/credential-injection.md` - Added bug fix section under Legacy System
+- `docs/memory/feature-flows/agent-lifecycle.md` - Updated CRED-002 note and revision history
+
+**Impact**: None (the code was dead and never executed because `agent_credentials` was already undefined)
+
+---
+
 ### 2026-02-05 23:45:00
 🚀 **Feature: Trinity Connect - Local-Remote Agent Sync (SYNC-001)**
 

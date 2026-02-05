@@ -242,6 +242,8 @@ from services.settings_service import get_anthropic_api_key  # Line 29 - central
 > - Quick Inject (paste .env text in Credentials tab)
 > - Import from `.credentials.enc` on startup
 > - `inject_credentials` MCP tool
+>
+> **Bug Fix (2026-02-05)**: Removed orphaned credential injection loop (lines 312-332 in crud.py) that referenced undefined `agent_credentials` variable. This dead code was left behind during the CRED-002 refactor but never executed since the variable was already removed.
 
 #### Delete Agent (`src/backend/routers/agents.py:211-313`)
 ```python
@@ -848,6 +850,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **Bug fix: Orphaned credential injection loop**: Removed dead code in `crud.py:312-332` that iterated over undefined `agent_credentials` variable. This loop was left behind during CRED-002 refactor when the variable definition (lines ~183-192) was removed. Added comment explaining credentials are injected post-creation. |
 | 2026-02-05 | **CRED-002 + Skill Injection on Startup**: Updated `start_agent_internal()` documentation to include full startup injection order: Trinity meta-prompt, credentials (from `.credentials.enc`), skills. Updated lifecycle.py line numbers (now 193-250). Added `check_full_capabilities_match()` to container recreation triggers. |
 | 2026-02-05 | **Trinity Connect Integration**: Agent start/stop events now broadcast to filtered WebSocket `/ws/events` for external listeners. Added Trinity Connect Filtered Broadcasts section with code example and event table. Related: trinity-connect.md |
 | 2026-01-26 | **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Component supports three sizes (sm/md/lg), loading spinner, dark mode, ARIA attributes. Updated AgentHeader.vue (emits `toggle` instead of `start`/`stop`), Agents.vue (uses `toggleAgentRunning()`), AgentNode.vue (new toggle in Dashboard). Added `toggleAgentRunning()` and `runningToggleLoading` state to agents.js and network.js stores. |
