@@ -13,6 +13,7 @@
   </p>
 
   <p>
+    <a href="#ways-to-use-trinity">How to Use</a> •
     <a href="#-quick-start">Quick Start</a> •
     <a href="#features">Features</a> •
     <a href="https://youtu.be/SWpNphnuPpQ">Demo Video</a> •
@@ -41,6 +42,81 @@
 | **SaaS Platforms** | Data leaves your perimeter, vendor lock-in | Your infrastructure, data never leaves |
 | **Build Custom** | 6-12 months, $500K+ engineering | Deploy in minutes |
 | **Frameworks** | No governance, no audit trails | Enterprise controls built-in |
+
+---
+
+## Ways to Use Trinity
+
+Trinity supports three primary workflows depending on your starting point:
+
+### 1. Onboard an Existing Claude Code Agent
+
+**You have:** A Claude Code agent (local project with CLAUDE.md)
+**You want:** Deploy it to the cloud for autonomous operation, scheduling, and team access
+
+```bash
+# In Claude Code, install the Trinity plugin
+/plugin marketplace add abilityai/trinity
+/plugin install trinity-onboard@abilityai-trinity
+
+# Run the onboarding wizard
+/trinity-onboard:onboard
+```
+
+The plugin analyzes your agent, creates required configuration files, pushes to GitHub, and deploys to Trinity. After onboarding, you get management skills:
+
+| Skill | Description |
+|-------|-------------|
+| `/trinity-sync` | Sync local ↔ remote via git |
+| `/trinity-remote` | Execute tasks on remote agent |
+| `/trinity-schedules` | Manage cron-based automation |
+
+### 2. Create an Agent in Trinity
+
+**You have:** A Trinity instance running
+**You want:** Create a new agent from scratch or from a template
+
+1. Open Trinity web UI → **Create Agent**
+2. Choose a template:
+   - **Blank** — Start fresh, define behavior via chat
+   - **Built-in templates** — Pre-configured for common use cases
+   - **GitHub template** — `github:org/repo` for custom templates
+3. Configure credentials and start chatting
+
+### 3. Deploy a Multi-Agent System
+
+**You have:** A complex workflow requiring multiple specialized agents
+**You want:** Orchestrated agent fleet with shared state and coordination
+
+```yaml
+# system-manifest.yaml
+name: content-pipeline
+agents:
+  orchestrator:
+    template: github:abilityai/agent-corbin
+    schedules:
+      - cron: "0 9 * * *"
+        message: "Run daily content review"
+  writer:
+    template: github:abilityai/agent-ruby
+permissions:
+  preset: full-mesh
+```
+
+Deploy via MCP: `mcp__trinity__deploy_system(manifest="...")`
+
+See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for patterns.
+
+---
+
+### For AI Agents
+
+If you're an AI agent given this repository:
+
+1. **This repo is a Claude Code plugin** — Run `/plugin marketplace add abilityai/trinity` to install Trinity management skills
+2. **To deploy yourself to Trinity** — Run `/trinity-onboard:onboard` after installing the plugin
+3. **To interact with a Trinity instance** — Use the MCP tools (list_agents, chat_with_agent, etc.) after configuring the MCP server connection
+4. **To contribute to Trinity itself** — Read `CLAUDE.md` for development guidelines
 
 ---
 
@@ -298,50 +374,18 @@ These agents demonstrate:
 
 ## Trinity Onboard Plugin
 
-Deploy any Claude Code agent to Trinity with zero friction using the Trinity Onboard Plugin.
+> See [Ways to Use Trinity](#ways-to-use-trinity) for the quick start guide.
 
-### Quick Start
-
-```bash
-# Add Trinity marketplace
-/plugin marketplace add abilityai/trinity
-
-# Install the onboard plugin
-/plugin install trinity-onboard@abilityai-trinity
-
-# Run onboarding
-/trinity-onboard:onboard
-```
-
-The onboarding skill guides you through:
-1. Creating required configuration files (template.yaml, .gitignore, etc.)
-2. Setting up git repository and pushing to GitHub
-3. Deploying agent to Trinity platform
-4. Installing Trinity management skills
-
-### Post-Onboarding Skills
-
-After onboarding, these skills are available for managing your agent:
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| `trinity-sync` | `/trinity-sync` | Synchronize local and remote agent via git |
-| `trinity-remote` | `/trinity-remote` | Execute tasks on remote agent |
-| `trinity-schedules` | `/trinity-schedules` | Manage scheduled autonomous tasks |
-| `trinity-compatibility` | `/trinity-compatibility` | Audit agent structure |
-
-### Example Workflow
+The Trinity Onboard Plugin enables zero-friction deployment of any Claude Code agent to Trinity. After onboarding, you get management skills for ongoing operations:
 
 ```bash
-# Push local changes to remote
-/trinity-sync push
-
-# Execute a task on remote
-/trinity-remote exec "Generate the weekly report"
-
-# Schedule a recurring task
-/trinity-schedules schedule procedure-daily-report "0 9 * * *" "Daily Report"
+# Example post-onboarding workflow
+/trinity-sync push                    # Push local changes to remote
+/trinity-remote exec "Run my task"    # Execute on remote agent
+/trinity-schedules list               # View scheduled tasks
 ```
+
+For detailed plugin documentation, see [plugins/trinity-onboard/README.md](plugins/trinity-onboard/README.md).
 
 ## MCP Integration
 
