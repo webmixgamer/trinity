@@ -11,34 +11,7 @@
     {
       "name": "trinity-onboard",
       "source": "./plugins/trinity-onboard",
-      "description": "Onboard any Claude Code agent to Trinity platform - zero-friction deployment",
-      "version": "1.0.0",
-      "keywords": ["onboarding", "deployment", "setup"]
+      "description": "Onboard any Claude Code agent to Trinity platform - zero-friction deployment"
     }
-  ],
-  "skills": {
-    "library": "./skill-library/trinity",
-    "available": [
-      {
-        "name": "trinity-adopt",
-        "description": "Convert any agent to Trinity-compatible format"
-      },
-      {
-        "name": "trinity-compatibility",
-        "description": "Audit agent structure for Trinity requirements"
-      },
-      {
-        "name": "trinity-remote",
-        "description": "Execute tasks on remote Trinity agent"
-      },
-      {
-        "name": "trinity-sync",
-        "description": "Synchronize local and remote agent via git"
-      },
-      {
-        "name": "trinity-schedules",
-        "description": "Manage scheduled autonomous executions"
-      }
-    ]
-  }
+  ]
 }
