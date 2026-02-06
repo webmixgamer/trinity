@@ -173,7 +173,7 @@ cp deploy.config.example deploy.config
 ```
 project_trinity/
 ├── src/
-│   ├── backend/          # FastAPI backend (main.py, database.py, credentials.py)
+│   ├── backend/          # FastAPI backend (main.py, database.py)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS
 │   └── mcp-server/       # Trinity MCP server (12 tools)
 ├── docker/
@@ -198,7 +198,7 @@ project_trinity/
 |----------|------|-------------|
 | Backend | `src/backend/main.py` | FastAPI app, 35+ endpoints |
 | Backend | `src/backend/database.py` | SQLite persistence |
-| Backend | `src/backend/credentials.py` | Redis credential manager |
+| Backend | `src/backend/routers/credentials.py` | Credential injection (CRED-002) |
 | Frontend | `src/frontend/src/views/AgentDetail.vue` | Agent detail page |
 | Frontend | `src/frontend/src/stores/agents.js` | Agent state management |
 | Agent | `docker/base-image/agent-server.py` | Agent internal server |

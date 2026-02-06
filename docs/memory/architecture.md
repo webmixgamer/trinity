@@ -1137,7 +1137,7 @@ Local and production use the same ports for consistency:
 |------|---------|
 | `src/backend/main.py` | Main FastAPI app |
 | `src/backend/database.py` | SQLite persistence |
-| `src/backend/credentials.py` | Credential manager |
+| `src/backend/routers/credentials.py` | Credential injection (CRED-002) |
 | `src/frontend/src/views/AgentDetail.vue` | Agent detail page |
 | `src/frontend/src/stores/agents.js` | Agent state |
 | `src/frontend/src/stores/auth.js` | Auth state |

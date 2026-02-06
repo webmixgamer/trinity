@@ -30,7 +30,6 @@ COPY ../../src/backend/config.py /app/
 COPY ../../src/backend/models.py /app/
 COPY ../../src/backend/db_models.py /app/
 COPY ../../src/backend/dependencies.py /app/
-COPY ../../src/backend/credentials.py /app/
 COPY ../../src/backend/database.py /app/
 COPY ../../src/backend/logging_config.py /app/
 

@@ -1,6 +1,6 @@
 # Trinity Service Architecture
 
-> **Last Updated**: 2026-01-25
+> **Last Updated**: 2026-02-06
 
 ## What This Diagram Shows
 
@@ -17,7 +17,7 @@ This document visualizes Trinity's containerized service architecture:
 | Container Topology | `docker-compose.yml`, `docs/memory/architecture.md:20-45` |
 | Backend Routers | `src/backend/main.py:29-58`, `src/backend/routers/*.py` |
 | Backend Services | `src/backend/services/`, `src/backend/services/agent_service/` |
-| Data Layer | `src/backend/database.py`, `src/backend/credentials.py` |
+| Data Layer | `src/backend/database.py`, `src/backend/services/credential_encryption.py` |
 | MCP Server | `src/mcp-server/src/server.ts`, `src/mcp-server/src/tools/` |
 | Vector Logging | `config/vector.yaml`, `docs/memory/feature-flows/vector-logging.md` |
 | Process Engine | `src/backend/services/process_engine/`, `docs/memory/feature-flows/process-engine/` |
@@ -145,18 +145,18 @@ This document visualizes Trinity's containerized service architecture:
 |  |                           DATA LAYER                                      |   |
 |  |                                                                           |   |
 |  |  +------------------------------+  +--------------------------------+    |   |
-|  |  |         database.py          |  |         credentials.py         |    |   |
-|  |  |                              |  |                                |    |   |
-|  |  |  * Users                     |  |  * Credential storage          |    |   |
-|  |  |  * Agent ownership           |  |  * OAuth tokens                |    |   |
-|  |  |  * Sharing                   |  |  * API keys                    |    |   |
-|  |  |  * Permissions               |  |  * MCP configs                 |    |   |
-|  |  |  * Schedules                 |  |                                |    |   |
-|  |  |  * Chat sessions             |  |         +---------+            |    |   |
-|  |  |  * Activities                |  |         |  Redis  |            |    |   |
-|  |  |  * Process definitions       |  |         +---------+            |    |   |
+|  |  |         database.py          |  |    credential_encryption.py    |    |   |
+|  |  |                              |  |         (CRED-002)             |    |   |
+|  |  |  * Users                     |  |  * AES-256-GCM encryption      |    |   |
+|  |  |  * Agent ownership           |  |  * .credentials.enc files     |    |   |
+|  |  |  * Sharing                   |  |  * Auto-import on startup      |    |   |
+|  |  |  * Permissions               |  |                                |    |   |
+|  |  |  * Schedules                 |  |  Credentials stored in agent:  |    |   |
+|  |  |  * Chat sessions             |  |  * .env (KEY=VALUE)            |    |   |
+|  |  |  * Activities                |  |  * .mcp.json                   |    |   |
+|  |  |  * Process definitions       |  |  * .credentials.enc (backup)   |    |   |
 |  |  |  * Process executions        |  |                                |    |   |
-|  |  |  * Skills                    |  |                                |    |   |
+|  |  |  * Skills                    |  |  Redis: OAuth state only       |    |   |
 |  |  |         +---------+          |  |                                |    |   |
 |  |  |         | SQLite  |          |  |                                |    |   |
 |  |  |         +---------+          |  |                                |    |   |
