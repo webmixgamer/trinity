@@ -307,10 +307,6 @@ trinity/
 │   ├── vector.yaml       # Vector log aggregation config
 │   ├── otel-collector.yaml # OpenTelemetry collector config
 │   └── trinity-meta-prompt/ # Platform injection templates
-├── plugins/
-│   └── trinity-onboard/  # Claude Code plugin for agent onboarding
-├── skill-library/
-│   └── trinity/          # Canonical Trinity management skills
 ├── scripts/
 │   └── deploy/           # Deployment and management scripts
 └── docs/                 # Documentation

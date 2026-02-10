@@ -1,3 +1,42 @@
+### 2026-02-09 15:30:00
+🗑️ **Cleanup: Remove skill-library (Moved to abilities repo)**
+
+Removed `skill-library/` directory from trinity repo. All Trinity skills are now in the `abilityai/abilities` repository as the **system of record**.
+
+**Changes**:
+- Deleted `skill-library/trinity/` (5 skills: trinity-adopt, trinity-compatibility, trinity-remote, trinity-sync, trinity-schedules)
+- Updated CLAUDE.md: Enhanced abilities repo documentation with skill table
+- Updated README.md: Removed skill-library from project structure
+- Updated `docs/requirements/TRINITY_ONBOARD_PLUGIN.md`: All references now point to abilities repo
+
+**New location**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/`
+
+**Installation** (unchanged):
+```bash
+/plugin marketplace add abilityai/abilities
+/trinity-onboard:onboard
+```
+
+---
+
+### 2026-02-09 12:00:00
+📚 **Docs: Add Abilities Repository Reference**
+
+Updated CLAUDE.md to document the new [abilityai/abilities](https://github.com/abilityai/abilities) repository - a curated collection of Claude Code plugins extracted from Trinity.
+
+**Available Plugins**:
+- `git-workflow` - Version control with safety guardrails
+- `skill-builder` - Claude Code skill creation guidance
+- `process-miner` - Workflow pattern discovery from logs
+- `repo-tidy` - Repository auditing and cleanup
+- `validate-pr` - PR validation with security scanning
+- `workspace-tools` - File indexing and organization
+- `trinity-onboard` - Trinity platform deployment
+
+**Installation**: `/plugin marketplace add abilityai/abilities`
+
+---
+
 ### 2026-02-06 00:30:00
 🔌 **Feature: Trinity Onboard Plugin - Zero-Friction Agent Deployment (PLUGIN-001)**
 

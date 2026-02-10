@@ -1,18 +1,20 @@
 # Trinity Onboard Plugin - Requirements Specification
 
-**Version**: 1.0
+**Version**: 1.1
 **Created**: 2025-02-05
-**Status**: Draft
+**Updated**: 2026-02-09
+**Status**: Implemented
+
+> **System of Record**: All Trinity skills and onboarding are in the [abilityai/abilities](https://github.com/abilityai/abilities) repository.
 
 ---
 
 ## Executive Summary
 
-A Claude Code plugin that enables any Claude Code agent to onboard to the Trinity platform with minimal friction. The goal is three commands to full deployment:
+A Claude Code plugin that enables any Claude Code agent to onboard to the Trinity platform with minimal friction. The goal is two commands to full deployment:
 
 ```bash
-/plugin marketplace add abilityai/trinity
-/plugin install trinity-onboard@abilityai-trinity
+/plugin marketplace add abilityai/abilities
 /trinity-onboard:onboard
 ```
 
@@ -54,35 +56,22 @@ A Claude Code plugin that enables any Claude Code agent to onboard to the Trinit
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Claude Code Plugin System                     │
+│           abilityai/abilities Repository (System of Record)      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              trinity-onboard Plugin                       │  │
-│  │  ┌────────────────┐  ┌─────────────────────────────────┐ │  │
-│  │  │ skills/onboard │  │ templates/                      │ │  │
-│  │  │ (bootstrap)    │  │ - template.yaml.example         │ │  │
-│  │  └────────────────┘  │ - gitignore.example             │ │  │
-│  │                      │ - env.example                   │ │  │
-│  │                      │ - mcp-json.template.example     │ │  │
-│  │                      └─────────────────────────────────┘ │  │
-│  │  ┌────────────────────────────────────────────────────┐  │  │
-│  │  │ .mcp.json (Trinity MCP server config)              │  │  │
-│  │  └────────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  plugins/trinity-onboard/                                        │
+│  ├── skills/                                                     │
+│  │   ├── onboard/              # Main onboarding workflow        │
+│  │   ├── trinity-adopt/        # Convert to Trinity format       │
+│  │   ├── trinity-compatibility/ # Audit agent structure          │
+│  │   ├── trinity-remote/       # Remote exec, run, notify        │
+│  │   ├── trinity-sync/         # Git synchronization             │
+│  │   ├── trinity-schedules/    # Scheduled task management       │
+│  │   ├── credential-sync/      # Encryption helpers              │
+│  │   └── create-heartbeat/     # Heartbeat setup                 │
+│  ├── templates/                # File templates                  │
+│  └── .mcp.json                 # Trinity MCP config              │
 │                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Trinity Skill Library                         │
-│              (github.com/abilityai/trinity/skill-library/)      │
-├─────────────────────────────────────────────────────────────────┤
-│  trinity-adopt/          - Convert to Trinity format             │
-│  trinity-compatibility/  - Analyze agent compatibility           │
-│  trinity-remote/         - Remote exec, run, notify              │
-│  trinity-sync/           - Git synchronization                   │
-│  trinity-schedules/      - Scheduled task management             │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -107,15 +96,21 @@ A Claude Code plugin that enables any Claude Code agent to onboard to the Trinit
 
 ## 3. Plugin Structure
 
-Location: `plugins/trinity-onboard/`
+Location: `github.com/abilityai/abilities/plugins/trinity-onboard/`
 
 ```
 plugins/trinity-onboard/
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest (required)
 ├── skills/
-│   └── onboard/
-│       └── SKILL.md             # Main onboarding skill
+│   ├── onboard/                 # Main onboarding skill
+│   ├── trinity-adopt/           # Convert to Trinity format
+│   ├── trinity-compatibility/   # Audit agent structure
+│   ├── trinity-remote/          # Remote operations
+│   ├── trinity-sync/            # Git synchronization
+│   ├── trinity-schedules/       # Schedule management
+│   ├── credential-sync/         # Encryption helpers
+│   └── create-heartbeat/        # Heartbeat setup
 ├── templates/
 │   ├── template.yaml.example    # Agent metadata template
 │   ├── gitignore.example        # Required .gitignore entries
@@ -167,27 +162,20 @@ plugins/trinity-onboard/
 
 ## 4. Skill Library
 
-The Trinity skill library contains the canonical skills that get copied to target agents during onboarding.
+The Trinity skills are bundled directly inside the `trinity-onboard` plugin in the abilities repo.
 
-**Location**: `skill-library/trinity/`
+**Location**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/`
 
 ```
-skill-library/trinity/
-├── README.md
-├── trinity-adopt/
-│   └── SKILL.md
-├── trinity-compatibility/
-│   └── SKILL.md
-├── trinity-remote/
-│   └── SKILL.md
-├── trinity-sync/
-│   └── SKILL.md
-└── trinity-schedules/
-    ├── SKILL.md
-    ├── registry-template.json
-    ├── scripts/
-    │   └── registry.py
-    └── examples.md
+plugins/trinity-onboard/skills/
+├── onboard/                 # Main onboarding workflow
+├── trinity-adopt/           # Convert to Trinity format
+├── trinity-compatibility/   # Audit agent structure
+├── trinity-remote/          # Remote operations
+├── trinity-sync/            # Git synchronization
+├── trinity-schedules/       # Schedule management (with helper scripts)
+├── credential-sync/         # Encryption helpers
+└── create-heartbeat/        # Heartbeat setup
 ```
 
 ### 4.1 Skill Overview
@@ -202,17 +190,13 @@ skill-library/trinity/
 
 ---
 
-## 5. Source Skills Reference
+## 5. Skills Reference
 
-These skills are the canonical source to copy into the Trinity repository. They currently reside at:
-
-```
-/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/
-```
+> **System of Record**: All skills are in `github.com/abilityai/abilities/plugins/trinity-onboard/skills/`
 
 ### 5.1 trinity-adopt
 
-**Source**: `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-adopt/SKILL.md`
+**Source**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-adopt/SKILL.md`
 
 **Purpose**: Convert any Claude Code agent to Trinity-compatible format following best practices.
 
@@ -235,7 +219,7 @@ version: "3.0"
 
 ### 5.2 trinity-compatibility
 
-**Source**: `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-compatibility/SKILL.md`
+**Source**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-compatibility/SKILL.md`
 
 **Purpose**: Analyze current agent directory against Trinity requirements and produce a detailed compatibility report.
 
@@ -255,7 +239,7 @@ allowed-tools: Read, Glob, Grep, Bash(ls *), Bash(cat *)
 
 ### 5.3 trinity-remote
 
-**Source**: `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-remote/SKILL.md`
+**Source**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-remote/SKILL.md`
 
 **Purpose**: Remote agent operations - execute prompts, deploy-run workflows, and manage notifications.
 
@@ -280,7 +264,7 @@ version: "1.0"
 
 ### 5.4 trinity-sync
 
-**Source**: `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-sync/SKILL.md`
+**Source**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-sync/SKILL.md`
 
 **Purpose**: Synchronize local agent with remote counterpart via GitHub. Supports branch-based versioning.
 
@@ -321,7 +305,7 @@ allowed-tools: Bash, Read, Grep, mcp__trinity__list_agents, mcp__trinity__chat_w
 
 ### 5.5 trinity-schedules
 
-**Source**: `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-schedules/`
+**Source**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-schedules/`
 
 **Files**:
 - `SKILL.md` - Main skill definition (303 lines)
@@ -487,20 +471,20 @@ For each missing component, use templates from `templates/` directory:
 
 ### Phase 6: Install Trinity Skills
 
-Copy canonical Trinity skills from skill library to target agent:
+Copy Trinity skills from the plugin to target agent:
 
 ```bash
-# Clone skill library
+# Clone abilities repo (skills are bundled in the plugin)
 git clone --depth 1 --filter=blob:none --sparse \
-  https://github.com/abilityai/trinity.git /tmp/trinity-skills
-cd /tmp/trinity-skills
-git sparse-checkout set skill-library/trinity
+  https://github.com/abilityai/abilities.git /tmp/abilities
+cd /tmp/abilities
+git sparse-checkout set plugins/trinity-onboard/skills
 
 # Copy to target agent
-cp -r skill-library/trinity/* .claude/skills/
+cp -r plugins/trinity-onboard/skills/trinity-* .claude/skills/
 ```
 
-Or via Trinity MCP tool if available.
+Or the onboard skill can copy from its own plugin directory.
 
 ### Phase 7: Configure Local Connection
 
@@ -569,39 +553,32 @@ Used by `trinity-schedules` skill:
 
 ---
 
-## 9. Implementation Phases
+## 9. Implementation Status
 
-### Phase 1: Skill Library Setup
+> **Status**: ✅ Implemented - All phases complete
 
-1. Create `skill-library/trinity/` directory in Trinity repo
-2. Copy all 5 skills from Corbin20:
-   - `trinity-adopt/SKILL.md`
-   - `trinity-compatibility/SKILL.md`
-   - `trinity-remote/SKILL.md`
-   - `trinity-sync/SKILL.md`
-   - `trinity-schedules/` (full directory with helper files)
-3. Update skill paths and references for generic use
-4. Add `skill-library/trinity/README.md`
+### Location
 
-### Phase 2: Plugin Structure
+All Trinity skills and the onboard plugin are in: `github.com/abilityai/abilities/plugins/trinity-onboard/`
 
-1. Create `plugins/trinity-onboard/` directory
-2. Create `.claude-plugin/plugin.json`
-3. Create `templates/` with all example files
-4. Create `.mcp.json` for Trinity MCP connection
-5. Create `README.md` with installation instructions
+### What's Included
 
-### Phase 3: Onboard Skill
+- `skills/onboard/` - Main onboarding workflow
+- `skills/trinity-adopt/` - Convert to Trinity format
+- `skills/trinity-compatibility/` - Audit agent structure
+- `skills/trinity-remote/` - Remote operations
+- `skills/trinity-sync/` - Git synchronization
+- `skills/trinity-schedules/` - Schedule management
+- `skills/credential-sync/` - Encryption helpers
+- `skills/create-heartbeat/` - Heartbeat setup
+- `templates/` - File templates for new agents
+- `.mcp.json` - Trinity MCP connection config
 
-1. Create `skills/onboard/SKILL.md` implementing 8-phase workflow
-2. Test locally with `--plugin-dir` flag
-3. Iterate on error handling
+### Installation
 
-### Phase 4: Marketplace Configuration
-
-1. Create `.claude-plugin/marketplace.json` at repo root
-2. Configure plugin discovery metadata
-3. Test marketplace installation flow
+```bash
+/plugin marketplace add abilityai/abilities
+```
 
 ### Phase 5: Documentation
 
@@ -654,17 +631,17 @@ Used by `trinity-schedules` skill:
 
 ---
 
-## Appendix A: Full Skill File Contents
+## Appendix A: Skill Reference
 
-The complete skill files should be copied from:
+All skills are in the abilities repo (`github.com/abilityai/abilities`):
 
 | Skill | Source Path |
 |-------|-------------|
-| trinity-adopt | `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-adopt/SKILL.md` |
-| trinity-compatibility | `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-compatibility/SKILL.md` |
-| trinity-remote | `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-remote/SKILL.md` |
-| trinity-sync | `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-sync/SKILL.md` |
-| trinity-schedules | `/Users/eugene/Dropbox/Agents/Corbin20/.claude/skills/trinity-schedules/` (directory) |
+| trinity-adopt | `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-adopt/SKILL.md` |
+| trinity-compatibility | `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-compatibility/SKILL.md` |
+| trinity-remote | `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-remote/SKILL.md` |
+| trinity-sync | `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-sync/SKILL.md` |
+| trinity-schedules | `github.com/abilityai/abilities/plugins/trinity-onboard/skills/trinity-schedules/` (directory) |
 
 **trinity-schedules additional files**:
 - `registry-template.json` - Empty registry template
@@ -733,4 +710,5 @@ Marketplace JSON at repo root enables plugin discovery:
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2026-02-09 | Claude | Updated: abilities repo is now system of record. Skills bundled in plugin. Removed skill-library from trinity repo. |
 | 1.0 | 2025-02-05 | Eugene | Initial draft |
