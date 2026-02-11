@@ -191,19 +191,14 @@ async def get_dashboard():
 
 ### File Location
 
-**find_dashboard_yaml()** - Line 18-28
+**get_dashboard_path()** - Line 18-20
 ```python
-def find_dashboard_yaml() -> Optional[Path]:
-    home_dir = Path("/home/developer")
-    dashboard_paths = [
-        home_dir / "dashboard.yaml",           # ~/dashboard.yaml
-        home_dir / "workspace" / "dashboard.yaml",  # ~/workspace/dashboard.yaml
-    ]
-    for path in dashboard_paths:
-        if path.exists():
-            return path
-    return None
+def get_dashboard_path() -> Path:
+    """Get the fixed path to dashboard.yaml."""
+    return Path("/home/developer/dashboard.yaml")
 ```
+
+> **Note**: The agent home directory is `/home/developer`. All agent files live there directly (no workspace subdirectory).
 
 ### Validation
 
@@ -346,7 +341,7 @@ sections:
   "has_dashboard": false,
   "config": null,
   "last_modified": null,
-  "error": "No dashboard.yaml found in /home/developer/ or /home/developer/workspace/"
+  "error": "No dashboard.yaml found at /home/developer/dashboard.yaml"
 }
 ```
 
@@ -382,7 +377,7 @@ sections:
 ## Security Considerations
 
 - **Authorization**: User must have access to agent (owner or shared)
-- **File Path**: Dashboard file limited to `/home/developer/` or `/home/developer/workspace/`
+- **File Path**: Dashboard file located at `/home/developer/dashboard.yaml`
 - **Image URLs**: `/files/` paths converted to authenticated API paths
 - **YAML Parsing**: Uses `yaml.safe_load()` to prevent code execution
 - **Markdown Rendering**: Uses `marked` library (client-side)
@@ -461,4 +456,5 @@ const startRefresh = () => {
 
 | Date | Change |
 |------|--------|
+| 2026-02-11 | Fixed workspace path references - dashboard.yaml only at `/home/developer/dashboard.yaml` (no workspace fallback) |
 | 2026-01-12 | Initial documentation - 11 widget types, YAML-based configuration |

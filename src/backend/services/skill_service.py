@@ -385,8 +385,8 @@ class SkillService:
         answer questions like "what skills do you have?"
         """
         try:
-            # Read current CLAUDE.md
-            result = await client.read_file("workspace/CLAUDE.md")
+            # Read current CLAUDE.md (path is relative to /home/developer)
+            result = await client.read_file("CLAUDE.md")
 
             if not result.get("success"):
                 logger.warning(f"Could not read CLAUDE.md: {result.get('error')}")
@@ -423,8 +423,8 @@ Use these skills by invoking their slash commands (e.g., `/{skill_names[0] if sk
             # Append skills section
             content = content.rstrip() + skills_section
 
-            # Write back
-            write_result = await client.write_file("workspace/CLAUDE.md", content)
+            # Write back (path is relative to /home/developer)
+            write_result = await client.write_file("CLAUDE.md", content)
             if write_result.get("success"):
                 logger.info(f"Updated CLAUDE.md with {len(skill_names)} skills")
             else:

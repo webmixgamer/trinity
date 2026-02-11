@@ -12,6 +12,7 @@ As a **Trinity platform user**, I want to **enable GitHub synchronization for an
 
 | Date | Changes |
 |------|---------|
+| 2026-02-11 | Added LEGACY notes for workspace path checks - new agents (2026-02+) use `/home/developer` directly, workspace checks exist for backward compatibility with pre-2026-02 agents |
 | 2026-01-23 | Verified line numbers against current implementation, updated MCP tool lines (530-604), verified git_service.py structure |
 | 2025-12-31 | Refactored to clean architecture with service layer |
 
@@ -109,10 +110,11 @@ sequenceDiagram
 
     Note over Backend,Container: Phase 4: Git Initialization (via git_service)
     Backend->>GitService: initialize_git_in_container()
-    GitService->>Container: Check workspace exists and has content
-    alt Workspace has content
+    GitService->>Container: Check for existing git directory
+    alt Has existing /home/developer/workspace with content (LEGACY)
+        Note over GitService: LEGACY: Agents created before 2026-02
         GitService->>GitService: Use /home/developer/workspace
-    else Workspace empty or doesn't exist
+    else Standard (new agents)
         GitService->>GitService: Use /home/developer
         GitService->>Container: Create .gitignore
     end
@@ -389,7 +391,9 @@ async def initialize_git_in_container(
     """
     container_name = f"agent-{agent_name}"
 
-    # Step 1: Smart directory detection (lines 293-302)
+    # Step 1: Directory detection with LEGACY workspace support
+    # LEGACY: Agents created before 2026-02 may have /home/developer/workspace
+    # New agents use /home/developer directly (no workspace subdirectory)
     check_workspace = execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
@@ -400,9 +404,11 @@ async def initialize_git_in_container(
         check_workspace.get("exit_code") == 0 and
         "1" in check_workspace.get("output", "")
     )
+    # LEGACY support: use workspace if it exists with content (pre-2026-02 agents)
+    # Otherwise use home directory directly (new standard)
     git_dir = "/home/developer/workspace" if workspace_has_content else "/home/developer"
 
-    # Step 2: Create .gitignore (if using home directory, lines 311-327)
+    # Step 2: Create .gitignore (standard path - /home/developer)
     if git_dir == "/home/developer":
         gitignore_content = """# Exclude sensitive and temporary files
 .bash_logout
@@ -1025,7 +1031,8 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 ```
 
 **Verify Directory Detection**:
-- Check backend logs for: `Using workspace directory with existing content: /home/developer/workspace` OR `Using home directory (agent's files are here): /home/developer`
+- New agents (2026-02+): Check backend logs for `Using home directory: /home/developer`
+- LEGACY agents (pre-2026-02): May show `Using workspace directory: /home/developer/workspace` if workspace exists with content
 - Check for: `Git initialization verified successfully in {directory}`
 
 #### 3. MCP Tool Usage
@@ -1086,18 +1093,22 @@ sqlite3 ~/trinity-data/trinity.db "SELECT * FROM agent_git_config WHERE agent_na
 
 **Verify**: Check backend logs for cleanup message
 
-#### 4. Empty Workspace / Home Directory Detection
+#### 4. Directory Detection (Standard vs LEGACY)
 
-**Action**: Initialize git sync for an agent with:
-- **Case A**: Empty `/home/developer/workspace/` directory
-- **Case B**: No `/home/developer/workspace/` directory at all
+> **Note**: New agents (created 2026-02+) use `/home/developer` directly. LEGACY support exists for agents created before 2026-02 that may have `/home/developer/workspace`.
+
+**Action**: Initialize git sync for a new agent (created 2026-02+)
 
 **Expected**:
-- System detects workspace is empty or doesn't exist
-- Backend logs: `Using home directory (agent's files are here): /home/developer`
+- System uses `/home/developer` directly (no workspace subdirectory)
+- Backend logs: `Using home directory: /home/developer`
 - `.gitignore` created with system file exclusions
 - Agent files (CLAUDE.md, .claude/, .trinity/, .mcp.json) pushed to GitHub
 - System files (.bashrc, .ssh/, .cache/) excluded via .gitignore
+
+**LEGACY Case** (agents created before 2026-02):
+- If `/home/developer/workspace/` exists with content, that directory is used
+- Backend logs: `Using workspace directory: /home/developer/workspace`
 
 **Verify**:
 - Check GitHub repo contains agent files but not system files
@@ -1327,15 +1338,19 @@ your-repo/
 
 The system uses smart detection to find the correct directory (in `git_service.initialize_git_in_container()`):
 
-1. **Check workspace**: Does `/home/developer/workspace` exist and have content?
-   - Yes -> Use workspace
-   - No -> Use home directory
+1. **Standard path (new agents, 2026-02+)**: Use `/home/developer` directly
+   - Agent home directory is `/home/developer`
+   - All files live there directly (no workspace subdirectory)
 
-2. **If using home**: Create `.gitignore` to exclude system files
+2. **LEGACY support (agents created before 2026-02)**: Check for workspace
+   - If `/home/developer/workspace` exists AND has content -> Use workspace
+   - Otherwise -> Use `/home/developer`
 
-3. **Verify**: Run `git rev-parse --git-dir` before creating DB record
+3. **If using home directory**: Create `.gitignore` to exclude system files
 
-This fixes the critical "empty repository" bug where git was initialized in an empty workspace while agent files were in the home directory.
+4. **Verify**: Run `git rev-parse --git-dir` before creating DB record
+
+> **Note**: The workspace check is LEGACY backward compatibility for agents created before February 2026. New agents do not have a workspace subdirectory.
 
 ### Git Authentication
 

@@ -1124,12 +1124,9 @@ container = docker_client.containers.run(
     name=f"agent-{config.name}",
     ports={'22/tcp': config.port},
     volumes={
-        f"{agent_workdir}": {
-            'bind': '/home/developer/workspace',
-            'mode': 'rw'
-        },
-        f"{agent_trinity_dir}": {
-            'bind': '/home/developer/.trinity',
+        # Persistent volume mounted to agent home directory
+        agent_volume_name: {
+            'bind': '/home/developer',  # Agent home directory (no workspace subdirectory)
             'mode': 'rw'
         }
     },
@@ -1154,6 +1151,8 @@ container = docker_client.containers.run(
     restart_policy={'Name': 'unless-stopped'}
 )
 ```
+
+> **Note**: Agent files live directly in `/home/developer` (the home directory). There is no workspace subdirectory.
 
 **Container Start** (triggers Trinity injection):
 ```python
@@ -1772,6 +1771,7 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 | Date | Changes |
 |------|---------|
+| 2026-02-11 | Fixed Docker volume mount path - now mounts to `/home/developer` (not workspace subdirectory) |
 | 2026-01-23 | Line number verification: Updated models.py (248-286), systems.py (1-427), MCP tools. Removed outdated audit logging references (not in current implementation). Updated test section with correct class line numbers. |
 | 2025-12-30 | Line numbers verified |
 | 2025-12-18 | Bug fixes: YAML export serialization (P0), list systems prefix extraction (P1) |

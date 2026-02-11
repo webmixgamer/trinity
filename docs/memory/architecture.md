@@ -247,12 +247,16 @@ docker exec trinity-vector sh -c "tail -50 /data/logs/agents.json" | jq .
 
 **File Structure:**
 ```
-/home/developer/
-├── workspace/           # Agent workspace (from template)
-├── .env                 # Credentials (KEY=VALUE)
-├── .mcp.json           # Generated MCP config
-├── .mcp.json.template  # Template with ${VAR} placeholders
-└── .claude/            # Claude Code config
+/home/developer/           # Agent home directory (WORKDIR, all files live here)
+├── CLAUDE.md              # Agent instructions (from template)
+├── template.yaml          # Agent metadata
+├── .env                   # Credentials (KEY=VALUE)
+├── .mcp.json              # Generated MCP config
+├── .mcp.json.template     # Template with ${VAR} placeholders
+├── .claude/               # Claude Code config
+├── .trinity/              # Trinity-specific files
+├── content/               # Generated assets (gitignored)
+└── [template files...]    # Any other files from template
 ```
 
 ### Process Engine (`src/backend/services/process_engine/`)

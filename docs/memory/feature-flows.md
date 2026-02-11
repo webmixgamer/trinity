@@ -202,7 +202,7 @@
 > **Updated (2026-01-12)**: Agent Dashboard feature:
 > - **agent-dashboard.md**: New feature flow for agent-defined dashboard system replacing Metrics tab
 > - Dashboard tab renders `DashboardPanel.vue` component with 11 widget types
-> - Agent defines `dashboard.yaml` in `~/` or `~/workspace/` with declarative layout
+> - Agent defines `dashboard.yaml` at `~/dashboard.yaml` (i.e., `/home/developer/dashboard.yaml`)
 > - Backend: `/api/agent-dashboard/{name}` (routers/agent_dashboard.py) -> `services/agent_service/dashboard.py`
 > - Agent Server: `/api/dashboard` (agent_server/routers/dashboard.py) reads and validates YAML
 > - Widget types: metric, status, progress, text, markdown, table, list, link, image, divider, spacer

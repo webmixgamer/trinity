@@ -198,9 +198,10 @@ class SystemAgentService:
             env_vars['TRINITY_MCP_API_KEY'] = agent_mcp_key.api_key
 
         # Set up volumes
+        # Note: Volume name contains "workspace" but it mounts to /home/developer (consistent with all agents)
         agent_volume_name = f"agent-{SYSTEM_AGENT_NAME}-workspace"
         volumes = {
-            agent_volume_name: {'bind': '/home/developer/workspace', 'mode': 'rw'}
+            agent_volume_name: {'bind': '/home/developer', 'mode': 'rw'}
         }
 
         # Mount template directory
