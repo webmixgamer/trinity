@@ -784,8 +784,8 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
      timezone="UTC"
    )
    db.create_schedule("my-system-worker", current_user.username, schedule)
-   → INSERT INTO agent_schedules (...)
-   scheduler_service.add_schedule(schedule)
+   → INSERT INTO agent_schedules (next_run_at calculated)
+   # Dedicated scheduler syncs within 60s and adds APScheduler job
 
 8. Start agent:
    start_agent_internal("my-system-worker")

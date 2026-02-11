@@ -520,11 +520,7 @@ async def pause_all_schedules(
     for schedule in schedules:
         try:
             db.set_schedule_enabled(schedule.id, False)
-
-            # Remove from scheduler
-            from services.scheduler_service import scheduler_service
-            scheduler_service.disable_schedule(schedule.id)
-
+            # Dedicated scheduler syncs from database automatically
             paused += 1
         except Exception as e:
             logger.error(f"Failed to pause schedule {schedule.id}: {e}")
@@ -570,12 +566,7 @@ async def resume_all_schedules(
     for schedule in schedules:
         try:
             db.set_schedule_enabled(schedule.id, True)
-
-            # Add to scheduler
-            from services.scheduler_service import scheduler_service
-            schedule.enabled = True
-            scheduler_service.add_schedule(schedule)
-
+            # Dedicated scheduler syncs from database automatically
             resumed += 1
         except Exception as e:
             logger.error(f"Failed to resume schedule {schedule.id}: {e}")
@@ -639,8 +630,7 @@ async def emergency_stop(
             continue
         try:
             db.set_schedule_enabled(schedule.id, False)
-            from services.scheduler_service import scheduler_service
-            scheduler_service.disable_schedule(schedule.id)
+            # Dedicated scheduler syncs from database automatically
             results["schedules_paused"] += 1
         except Exception as e:
             results["errors"].append(f"Schedule {schedule.id}: {e}")

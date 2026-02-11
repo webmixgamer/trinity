@@ -505,7 +505,11 @@ class TestEnableDisableSchedule:
 
 
 class TestTriggerSchedule:
-    """REQ-SCHED-004: Trigger schedule endpoint tests."""
+    """REQ-SCHED-004: Trigger schedule endpoint tests.
+
+    Note (2026-02-11): Manual triggers are now routed through the dedicated
+    scheduler service, which handles activity tracking and distributed locking.
+    """
 
     @pytest.mark.slow
     def test_trigger_schedule(
@@ -534,19 +538,41 @@ class TestTriggerSchedule:
         schedule_id = data.get("id")
         resource_tracker.track_schedule(created_agent['name'], schedule_id)
 
-        # Trigger it
+        # Trigger it - now routes through dedicated scheduler
         response = api_client.post(
             f"/api/agents/{created_agent['name']}/schedules/{schedule_id}/trigger",
             timeout=120.0  # May take a while
         )
 
-        # May return 503 if agent busy
+        # May return 503 if scheduler or agent not ready
         if response.status_code == 503:
-            pytest.skip("Agent server not ready")
+            pytest.skip("Scheduler or agent server not ready")
+        if response.status_code == 504:
+            pytest.skip("Scheduler timeout")
         if response.status_code == 429:
             pytest.skip("Agent queue full")
 
         assert_status_in(response, [200, 202])
+
+        # Verify response structure (updated 2026-02-11)
+        if response.status_code == 200:
+            trigger_data = response.json()
+            assert trigger_data.get("status") == "triggered"
+            assert trigger_data.get("schedule_id") == schedule_id
+            # New fields from dedicated scheduler
+            assert "schedule_name" in trigger_data or "message" in trigger_data
+
+    def test_trigger_nonexistent_schedule(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST trigger on nonexistent schedule returns 404."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules/nonexistent-id/trigger"
+        )
+
+        assert_status(response, 404)
 
 
 class TestScheduleExecutions:

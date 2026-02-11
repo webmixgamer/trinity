@@ -136,6 +136,7 @@ The test suite covers:
 - **MCP Keys** (test_mcp_keys.py) - API key management [SMOKE]
 - **First-Time Setup** (test_setup.py) - Setup status, admin password validation [SMOKE]
 - **Skills Library** (test_skills.py) - List skills, get skill, library status, skill assignment [SMOKE + Agent]
+- **Internal API** (test_internal.py) - Internal health check, activity tracking endpoints [SMOKE + Agent] (Added 2026-02-11)
 
 ### Agent Lifecycle & Management
 - **Agent Lifecycle** (test_agent_lifecycle.py) - CRUD, start/stop, logs
@@ -229,6 +230,24 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 | Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
 | Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
 | Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
+
+## Recent Test Additions (2026-02-11)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_internal.py` | Internal API endpoints (NEW) | ~7 tests |
+| `scheduler_tests/test_service.py` | Activity tracking tests | ~7 tests |
+| `test_schedules.py` | Trigger endpoint update | Updated existing |
+
+Tests cover (2026-02-11 Scheduler Consolidation):
+- Internal health endpoint
+- `POST /api/internal/activities/track` - Create activity records
+- `POST /api/internal/activities/{id}/complete` - Complete activities
+- `_track_activity_start()` - Backend internal API call (scheduler tests)
+- `_complete_activity()` - Backend internal API call (scheduler tests)
+- Activity tracking during schedule execution
+- Manual trigger with `triggered_by="manual"`
+- Error handling when activity tracking fails
 
 ## Recent Test Additions (2026-02-05)
 

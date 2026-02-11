@@ -6,16 +6,18 @@
 
 ## Feature Overview
 
-The Agent Scheduling feature enables users to automate agent tasks by configuring cron-based schedules. The platform-managed scheduler (APScheduler) executes scheduled tasks by sending messages to agents at specified times.
+The Agent Scheduling feature enables users to automate agent tasks by configuring cron-based schedules. The **Dedicated Scheduler Service** (standalone container) executes scheduled tasks by sending messages to agents at specified times.
 
 **Important**: All scheduled executions go through the [Execution Queue System](execution-queue.md) to prevent collisions with user chat or agent-to-agent calls.
+
+**Architecture Change (2026-02-11):** The embedded scheduler (`src/backend/services/scheduler_service.py`) has been **completely removed**. Schedule execution is now handled exclusively by the [Dedicated Scheduler Service](scheduler-service.md).
 
 **Key Capabilities:**
 - Cron expression scheduling (5-field format)
 - Timezone support (UTC, EST, PST, etc.)
 - Execution history tracking
 - Enable/disable individual schedules
-- Manual trigger for testing
+- Manual trigger for testing (routed through dedicated scheduler)
 - WebSocket real-time updates
 - Queue-aware execution (429 on queue full)
 - **Make Repeatable** - Create schedule from existing task execution (2026-01-12)
@@ -30,6 +32,8 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 ---
 
 ## Architecture
+
+> **Note (2026-02-11)**: Architecture updated to reflect scheduler consolidation. The embedded scheduler has been removed. All schedule execution is handled by the **Dedicated Scheduler Service**.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -53,14 +57,7 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 │  │  └── Execution history endpoints                                 │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                    │                                     │
-│                                    ▼                                     │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  services/scheduler_service.py (APScheduler)                     │    │
-│  │  ├── Initialize: Load enabled schedules on startup               │    │
-│  │  ├── Add/Remove jobs based on schedule state                     │    │
-│  │  ├── Execute: Send message to agent via HTTP                     │    │
-│  │  └── Broadcast: WebSocket events for execution status            │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│                 [CRUD only - no direct scheduler calls]                  │
 │                                    │                                     │
 │                                    ▼                                     │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
@@ -70,7 +67,22 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
-                                    ▼ HTTP POST /api/chat
+    ┌───────────────────────────────┴───────────────────────────────┐
+    │                                                               │
+    ▼ [Syncs every 60s]                                             ▼ Manual Trigger
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Dedicated Scheduler Service                           │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  src/scheduler/service.py (APScheduler)                          │    │
+│  │  ├── Load schedules from database on startup                     │    │
+│  │  ├── Sync schedules from database every 60 seconds               │    │
+│  │  ├── Execute: Send message to agent via HTTP                     │    │
+│  │  ├── Track activity via internal API                             │    │
+│  │  └── Broadcast: WebSocket events for execution status            │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ HTTP POST /api/task
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          Agent Container                                 │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
@@ -88,24 +100,32 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 
 **User Action:** Click "New Schedule" → Fill form → Click "Create"
 
+> **Note (2026-02-11)**: Backend no longer calls scheduler directly. Schedules are created in the database, and the dedicated scheduler syncs automatically every 60 seconds.
+
 ```
 Frontend                          Backend                           Database
 --------                          -------                           --------
-SchedulesPanel.vue               schedules.py:85                 → database.py:1067
+SchedulesPanel.vue               schedules.py:85                 → db/schedules.py
 POST /api/agents/{name}/          create_schedule()                 create_schedule()
 schedules                         validate cron expression          INSERT agent_schedules
-                                  ↓
-                                  scheduler_service.py:510
-                                  add_schedule() → _add_job()
-                                  APScheduler.add_job()
+                                  ↓                                 (next_run_at calculated)
+                                  db/schedules.py:99-168
+                                  _calculate_next_run_at()
+                                  Return 201 Created
+
+                                                                    Dedicated Scheduler
+                                                                    ------------------
+                                                                    (within 60s sync interval)
+                                                                    _sync_schedules()
+                                                                    Detects new schedule
+                                                                    APScheduler.add_job()
 ```
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - Schedule creation form
 - `src/backend/routers/schedules.py:85-113` - create_schedule endpoint
-- `src/backend/database.py:1067-1117` - db.create_schedule()
-- `src/backend/services/scheduler_service.py:510-513` - add_schedule()
-- `src/backend/services/scheduler_service.py:111-143` - _add_job() APScheduler integration
+- `src/backend/db/schedules.py:99-168` - create_schedule() with next_run_at calculation
+- `src/scheduler/service.py:224-316` - _sync_schedules() auto-detects new schedules
 
 ### 1b. Make Repeatable Flow (Create Schedule from Task)
 
@@ -148,43 +168,46 @@ emit('create-schedule', msg)     - Switch to 'schedules' tab       - Pre-fill fo
 
 ### 2. Schedule Execution Flow (Automatic)
 
-**Trigger:** APScheduler cron trigger fires
+**Trigger:** APScheduler cron trigger fires in **Dedicated Scheduler Service**
+
+> **Note (2026-02-11)**: Execution now handled entirely by the dedicated scheduler service (`src/scheduler/`), not the backend. Activity tracking is done via internal API endpoints.
 
 ```
-Scheduler                         Backend                           Agent
----------                         -------                           -----
-APScheduler fires                 scheduler_service.py:169
-_execute_schedule()
-                                  # EXECUTION QUEUE (Added 2025-12-06)
-                                  queue.create_execution(source=SCHEDULE)
-
-                                  # CREATE DB RECORD FIRST (Fixed 2026-01-11)
-                                  # Execution record created BEFORE activity so we have
-                                  # the database ID for related_execution_id linkage
-                                  execution = db.create_schedule_execution()
-                                  |
-                                  # ACTIVITY TRACKING with related_execution_id
-                                  activity_service.track_activity(
-                                    related_execution_id=execution.id  # For SQL JOINs
-                                  )
-                                  |
-                                  broadcast(started)
-                                  queue.submit() -> "running" or QueueFullError
-                                  |
-                                  # AGENT CLIENT (Fixed 2025-01-02)
-                                  client = get_agent_client(agent_name)
-                                  task_response = await client.task(message)
-                                  |                                 POST /api/task
-                                  # Response parsing via _parse_task_response()
-                                  task_response.metrics.context_used
-                                  task_response.metrics.cost_usd
-                                  task_response.metrics.execution_log_json  # Raw Claude Code format
-                                  |
-                                  update_execution(success/failed)
-                                  broadcast(completed)
-                                  update_schedule_run_times()
-                                  |
-                                  queue.complete()  # Release queue slot
+Dedicated Scheduler               Backend Internal API              Agent
+-------------------               --------------------              -----
+APScheduler fires
+service.py:_execute_schedule()
+  |
+  v
+Check autonomy_enabled
+Check lock (Redis)
+  |
+  v
+Create execution record
+db.create_execution()
+  |
+  v
+Track activity start ----------> POST /api/internal/activities/track
+                                  activity_service.track_activity()
+  |                               broadcast(started)
+  v
+Get agent client
+client.task(message) -----------------------------------------> POST /api/task
+  |                                                             Claude Code exec
+  v
+Parse response
+task_response.metrics
+  |
+  v
+Update execution status
+db.update_execution_status()
+  |
+  v
+Track activity complete -------> POST /api/internal/activities/{id}/complete
+                                  activity_service.complete_activity()
+  |                               broadcast(completed)
+  v
+Release lock
 ```
 
 **Note**: Changed from `client.chat()` to `client.task()` on 2025-01-02. The `/api/task` endpoint returns raw Claude Code `stream-json` format which is required for the [Execution Log Viewer](execution-log-viewer.md) to properly render execution transcripts.
@@ -192,64 +215,66 @@ _execute_schedule()
 **Queue Full Handling**: If the agent's queue is full (3 pending requests), the scheduled execution fails with error "Agent queue full (N waiting), skipping scheduled execution".
 
 **Files:**
-- `src/backend/services/scheduler_service.py:169-381` - _execute_schedule() with queue and AgentClient.task()
-- `src/backend/services/agent_client.py:194-281` - AgentClient.task() and _parse_task_response()
-- `src/backend/services/execution_queue.py` - Execution queue service
-- `src/backend/database.py:1318-1348` - create_schedule_execution()
-- `src/backend/database.py:1350-1378` - update_execution_status()
+- `src/scheduler/service.py:237-345` - _execute_schedule_with_lock() execution logic
+- `src/scheduler/agent_client.py:44-100` - AgentClient.task() in dedicated scheduler
+- `src/scheduler/database.py:167-250` - create_execution(), update_execution_status()
+- `src/backend/routers/internal.py` - Internal API for activity tracking
+- `src/backend/services/activity_service.py` - Activity service
 
-**Key Implementation Detail (2026-01-11):**
-Execution record is created BEFORE tracking the activity (lines 206-215). This ensures we have the database execution ID available for `related_execution_id` field in the activity, enabling structured SQL queries to find all activities for a given execution.
+**Key Implementation Detail (2026-02-11):**
+The dedicated scheduler tracks activities via internal API endpoints (`POST /api/internal/activities/track` and `POST /api/internal/activities/{id}/complete`). This ensures cron-triggered executions appear on the Timeline dashboard alongside manually-triggered ones.
 
 ### 3. Manual Trigger Flow
 
 **User Action:** Click play button on schedule
 
+> **Note (2026-02-11)**: Manual triggers are now routed through the dedicated scheduler service to ensure consistent activity tracking.
+
 ```
-Frontend                          Backend                           Agent
---------                          -------                           -----
-SchedulesPanel.vue               schedules.py:236              →    agent-{name}:8000
-POST .../trigger                  trigger_schedule()                POST /api/task
-                                  ↓
-                                  scheduler_service.py:382
-                                  trigger_schedule()
-                                  create_execution(manual)
-                                  asyncio.create_task(_execute_manual_trigger)
-                                  ↓
-                                  scheduler_service.py:420
-                                  _execute_manual_trigger()
-                                  # FULL ACTIVITY TRACKING (Added 2026-01-11)
-                                  activity_service.track_activity(
-                                    related_execution_id=execution_id
-                                  )
-                                  queue.create_execution()
-                                  queue.submit()
-                                  client = get_agent_client(...)
-                                  client.task(message)  # Uses /api/task for raw log format
-                                  activity_service.complete_activity()
-                                  queue.complete()
+Frontend                          Backend                           Dedicated Scheduler
+--------                          -------                           -------------------
+SchedulesPanel.vue               schedules.py:trigger_schedule()   POST /api/schedules/{id}/trigger
+POST .../trigger                  |
+                                  v
+                                  httpx.post(SCHEDULER_URL +        main.py:_trigger_handler()
+                                    "/api/schedules/{id}/trigger")  |
+                                  |                                 v
+                                  v                                 Validate schedule exists
+                                  Return 200 OK                     create_task(_execute_manual_trigger)
+                                  {status: "triggered"}             Return immediately
+                                                                    |
+                                                                    v (background)
+                                                                    _execute_manual_trigger()
+                                                                    - acquire lock
+                                                                    - _execute_schedule_with_lock()
+                                                                    - track activity via internal API
+                                                                    - send task to agent
+                                                                    - complete activity
 ```
 
 **Note**: Manual triggers now have full activity tracking with `related_execution_id` linkage (added 2026-01-11), matching the automatic schedule execution flow.
 
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - triggerSchedule() method
-- `src/backend/routers/schedules.py:236-260` - trigger_schedule endpoint
-- `src/backend/services/scheduler_service.py:382-418` - trigger_schedule()
-- `src/backend/services/scheduler_service.py:420-568` - _execute_manual_trigger() with queue integration and activity tracking
+- `src/backend/routers/schedules.py` - trigger_schedule endpoint (proxies to scheduler)
+- `src/scheduler/main.py:_trigger_handler()` - Manual trigger endpoint in scheduler
+- `src/scheduler/service.py:_execute_manual_trigger()` - Execution with activity tracking
 
 ### 4. Enable/Disable Flow
 
 **User Action:** Toggle enable/disable button
 
+> **Note (2026-02-11)**: Backend only updates the database. The dedicated scheduler syncs changes automatically within 60 seconds.
+
 ```
-Frontend                          Backend                           Scheduler
---------                          -------                           ---------
-SchedulesPanel.vue               schedules.py:200/218         →    scheduler_service.py
-POST .../enable or disable        enable_schedule()                 enable_schedule():525
-                                  disable_schedule()                disable_schedule():533
-                                  ↓                                 APScheduler add/remove
-                                  db.set_schedule_enabled()
+Frontend                          Backend                           Dedicated Scheduler
+--------                          -------                           -------------------
+SchedulesPanel.vue               schedules.py:200/218              (within 60s)
+POST .../enable or disable        enable_schedule()                 _sync_schedules()
+                                  disable_schedule()                Detects enabled change
+                                  ↓                                 APScheduler add/remove job
+                                  db/schedules.py:set_schedule_enabled()
+                                  (recalculates next_run_at)
 ```
 
 **Access Control:** Uses `AuthorizedAgent` dependency - only users with agent access can toggle.
@@ -257,20 +282,24 @@ POST .../enable or disable        enable_schedule()                 enable_sched
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - toggleSchedule() method
 - `src/backend/routers/schedules.py:200-233` - enable/disable endpoints with AuthorizedAgent
-- `src/backend/services/scheduler_service.py:525-536` - enable/disable_schedule()
+- `src/backend/db/schedules.py:290-315` - set_schedule_enabled() with next_run_at recalculation
+- `src/scheduler/service.py:224-316` - _sync_schedules() detects enabled state changes
 
 ### 5. Delete Schedule Flow
 
 **User Action:** Click delete → Confirm
 
+> **Note (2026-02-11)**: Backend only deletes from database. The dedicated scheduler removes the job on next sync.
+
 ```
-Frontend                          Backend                           Database
---------                          -------                           --------
-SchedulesPanel.vue               schedules.py:174             →    database.py:1243
-DELETE .../schedules/{id}         delete_schedule()                 delete_schedule()
-                                  scheduler_service.remove():515    DELETE executions
-                                  ↓                                 DELETE schedule
-                                  db.delete_schedule()
+Frontend                          Backend                           Dedicated Scheduler
+--------                          -------                           -------------------
+SchedulesPanel.vue               schedules.py:174                  (within 60s)
+DELETE .../schedules/{id}         delete_schedule()                 _sync_schedules()
+                                  ↓                                 Detects deleted schedule
+                                  db.delete_schedule()              APScheduler remove_job()
+                                  DELETE executions
+                                  DELETE schedule
 ```
 
 **Access Control:** Uses `CurrentUser` dependency with manual ownership check via `db.delete_schedule()`.
@@ -278,8 +307,8 @@ DELETE .../schedules/{id}         delete_schedule()                 delete_sched
 **Files:**
 - `src/frontend/src/components/SchedulesPanel.vue` - deleteSchedule() method
 - `src/backend/routers/schedules.py:174-196` - delete_schedule endpoint
-- `src/backend/services/scheduler_service.py:515-517` - remove_schedule()
-- `src/backend/database.py:1243-1264` - db.delete_schedule()
+- `src/backend/db/schedules.py` - db.delete_schedule()
+- `src/scheduler/service.py:224-316` - _sync_schedules() detects deleted schedules
 
 ### 6. View All Executions (Executions Tab)
 
@@ -418,10 +447,10 @@ CREATE TABLE schedule_executions (
 
 ## WebSocket Events
 
-Broadcast via `scheduler_service._broadcast()` for real-time UI updates:
+Broadcast via dedicated scheduler -> Redis pub/sub -> backend WebSocket relay for real-time UI updates:
 
 ### schedule_execution_started
-**Location**: `src/backend/services/scheduler_service.py:226-233`
+**Source**: Dedicated scheduler (`src/scheduler/service.py`) via Redis `scheduler:events` channel
 
 ```json
 {
@@ -434,7 +463,7 @@ Broadcast via `scheduler_service._broadcast()` for real-time UI updates:
 ```
 
 ### schedule_execution_completed
-**Location**: `src/backend/services/scheduler_service.py:305-312` (success) or `333-340` (failure)
+**Source**: Dedicated scheduler (`src/scheduler/service.py`) via Redis `scheduler:events` channel
 
 ```json
 {
@@ -482,23 +511,23 @@ Broadcast via `scheduler_service._broadcast()` for real-time UI updates:
 ## Agent HTTP Client Service
 
 **Added**: 2025-12-31 (Plan 03 refactoring)
+**Updated**: 2026-02-11 - Dedicated scheduler has its own `AgentClient` at `src/scheduler/agent_client.py`
 
-The scheduler uses `AgentClient` from `src/backend/services/agent_client.py` for all HTTP communication with agent containers. This centralizes URL construction, timeout handling, and response parsing.
+The dedicated scheduler uses `AgentClient` from `src/scheduler/agent_client.py` for all HTTP communication with agent containers. This centralizes URL construction, timeout handling, and response parsing.
 
-### Usage in Scheduler
+### Usage in Dedicated Scheduler
 
-**Location**: `src/backend/services/scheduler_service.py:263-278`
+**Location**: `src/scheduler/agent_client.py`
 
 ```python
-from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
+from scheduler.agent_client import get_agent_client, AgentNotReachableError
 
 # Send task to agent using AgentClient.task() for raw log format
-# Changed from client.chat() to client.task() on 2025-01-02
 client = get_agent_client(schedule.agent_name)
-task_response = await client.task(schedule.message)
+task_response = await client.task(schedule.message, execution_id=execution.id)
 
 # Update execution status with parsed response
-db.update_execution_status(
+self.db.update_execution_status(
     execution_id=execution.id,
     status="success",
     response=task_response.response_text,
@@ -557,11 +586,11 @@ class AgentChatMetrics:
 | `AgentRequestError` | Agent returned error status | 4xx/5xx from agent |
 | `AgentClientError` | Base exception | General failure |
 
-**Scheduler error handling** (`scheduler_service.py:314-340`):
+**Scheduler error handling** (dedicated scheduler `src/scheduler/service.py:295-313`):
 ```python
 try:
     client = get_agent_client(schedule.agent_name)
-    chat_response = await client.chat(schedule.message, stream=False)
+    task_response = await client.task(schedule.message, execution_id=execution.id)
     # ... success handling
 except AgentNotReachableError as e:
     error_msg = f"Agent not reachable: {str(e)}"
@@ -575,19 +604,23 @@ except Exception as e:
 
 ## Related Files
 
+> **Note (2026-02-11)**: The embedded scheduler (`src/backend/services/scheduler_service.py`) has been **removed**. Schedule execution is now handled by the dedicated scheduler service.
+
 | Category | File | Purpose |
 |----------|------|---------|
-| Backend | `src/backend/routers/schedules.py` | REST API endpoints (78-366) |
-| Backend | `src/backend/services/scheduler_service.py` | APScheduler service (1-560) |
-| Backend | `src/backend/services/agent_client.py` | Agent HTTP client (NEW) |
-| Backend | `src/backend/services/execution_queue.py` | Execution queue service |
-| Backend | `src/backend/dependencies.py` | Access control dependencies (NEW) |
-| Backend | `src/backend/database.py` | Models & DB operations (1067-1492) |
-| Backend | `src/backend/main.py` | Scheduler lifecycle initialization |
+| **Scheduler** | `src/scheduler/service.py` | APScheduler service (execution, sync) |
+| **Scheduler** | `src/scheduler/main.py` | Service entry point, health endpoints, manual trigger |
+| **Scheduler** | `src/scheduler/database.py` | Schedule/execution DB operations |
+| **Scheduler** | `src/scheduler/agent_client.py` | Agent HTTP client for scheduler |
+| **Scheduler** | `src/scheduler/locking.py` | Redis distributed locks |
+| Backend | `src/backend/routers/schedules.py` | REST API endpoints (CRUD, proxies trigger) |
+| Backend | `src/backend/routers/internal.py` | Internal API for activity tracking |
+| Backend | `src/backend/db/schedules.py` | Schedule DB operations with next_run_at calculation |
+| Backend | `src/backend/dependencies.py` | Access control dependencies |
 | Frontend | `src/frontend/src/components/SchedulesPanel.vue` | Schedule management UI |
 | Frontend | `src/frontend/src/components/ExecutionsPanel.vue` | Execution history UI |
 | Frontend | `src/frontend/src/views/AgentDetail.vue` | Tab integration |
-| Docker | `docker/backend/Dockerfile` | Dependencies |
+| Docker | `docker/scheduler/Dockerfile` | Scheduler container |
 
 ---
 
@@ -622,39 +655,23 @@ Each execution now tracks detailed observability data extracted from the agent's
 
 ## Scheduler Service Implementation
 
-### Initialization
-**Location**: `src/backend/services/scheduler_service.py:53-76`
+> **Note (2026-02-11)**: This section documents the **Dedicated Scheduler Service** (`src/scheduler/`), not the removed embedded scheduler.
 
-```python
-def initialize(self):
-    """Initialize the scheduler and load all enabled schedules."""
-    if self._initialized:
-        return
+For complete scheduler service documentation, see [scheduler-service.md](scheduler-service.md).
 
-    # Create scheduler with memory job store
-    jobstores = {
-        'default': MemoryJobStore()
-    }
+### Key Implementation Details
 
-    self.scheduler = AsyncIOScheduler(
-        jobstores=jobstores,
-        timezone=pytz.UTC
-    )
+**Initialization** (`src/scheduler/service.py:71-98`):
+- Creates APScheduler with MemoryJobStore
+- Loads all enabled schedules from database on startup
+- Builds snapshot for change detection during sync
 
-    # Load all enabled schedules from database
-    schedules = db.list_all_enabled_schedules()
-    for schedule in schedules:
-        self._add_job(schedule)
+**Periodic Sync** (`src/scheduler/service.py:224-316`):
+- Every 60 seconds, compares database state with in-memory jobs
+- Detects new, deleted, and updated schedules
+- Adds/removes APScheduler jobs accordingly
 
-    # Start the scheduler
-    self.scheduler.start()
-    self._initialized = True
-    logger.info(f"Scheduler initialized with {len(schedules)} enabled schedules")
-```
-
-### Cron Parsing
-**Location**: `src/backend/services/scheduler_service.py:89-109`
-
+**Cron Parsing** (`src/scheduler/service.py:100-120`):
 ```python
 def _parse_cron(self, cron_expression: str) -> Dict:
     """
@@ -685,56 +702,62 @@ def _parse_cron(self, cron_expression: str) -> Dict:
 
 **Implemented**: 2025-12-02
 **Updated**: 2026-01-11 - `related_execution_id` now a top-level field for structured SQL queries
+**Updated**: 2026-02-11 - Activity tracking moved to internal API for dedicated scheduler
 
-Schedule executions now create persistent activity records in the unified activity stream for cross-platform observability.
+Schedule executions now create persistent activity records in the unified activity stream for cross-platform observability. The dedicated scheduler tracks activities via internal API endpoints.
 
 ### Activity Tracking Flow
 
-**Schedule Start** (`scheduler_service.py:217-231`):
-```python
-# Track schedule start activity WITH related_execution_id as top-level field
-# Note: Execution record is created FIRST (line 206) so we have the database ID
-schedule_activity_id = await activity_service.track_activity(
-    agent_name=schedule.agent_name,
-    activity_type=ActivityType.SCHEDULE_START,
-    user_id=schedule.owner_id,
-    triggered_by="schedule",
-    related_execution_id=execution.id,  # Database ID - enables SQL JOINs
-    details={
-        "schedule_id": schedule.id,
-        "schedule_name": schedule.name,
-        "cron_expression": schedule.cron_expression,
-        "execution_id": execution.id,  # Also in details for WebSocket events
-        "queue_execution_id": queue_execution.id
-    }
-)
-```
+**Internal API Endpoints** (used by dedicated scheduler):
+- `POST /api/internal/activities/track` - Start tracking an activity
+- `POST /api/internal/activities/{id}/complete` - Mark activity as completed/failed
 
-**Schedule Completion** (`scheduler_service.py:299-311`):
+**Schedule Start** (dedicated scheduler calls internal API):
 ```python
-# Track schedule completion
-await activity_service.complete_activity(
-    activity_id=schedule_activity_id,
-    status="completed",
-    details={
+# Dedicated scheduler makes HTTP call to backend
+response = await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/track",
+    json={
+        "agent_name": schedule.agent_name,
+        "activity_type": "schedule_start",
+        "user_id": schedule.owner_id,
+        "triggered_by": "schedule",  # or "manual"
         "related_execution_id": execution.id,
-        "context_used": task_response.metrics.context_used,
-        "context_max": task_response.metrics.context_max,
-        "cost_usd": task_response.metrics.cost_usd,
-        "tool_count": len(execution_log) if execution_log else 0,
-        "queue_execution_id": queue_execution.id
+        "details": {
+            "schedule_id": schedule.id,
+            "schedule_name": schedule.name,
+            "cron_expression": schedule.cron_expression
+        }
+    }
+)
+activity_id = response.json()["activity_id"]
+```
+
+**Schedule Completion** (dedicated scheduler calls internal API):
+```python
+# Dedicated scheduler makes HTTP call to backend
+await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/{activity_id}/complete",
+    json={
+        "status": "completed",
+        "details": {
+            "context_used": task_response.metrics.context_used,
+            "context_max": task_response.metrics.context_max,
+            "cost_usd": task_response.metrics.cost_usd,
+            "tool_count": len(execution_log) if execution_log else 0
+        }
     }
 )
 ```
 
-**Schedule Failure** (`scheduler_service.py:326-332`):
+**Schedule Failure** (dedicated scheduler calls internal API):
 ```python
-# Track schedule failure
-await activity_service.complete_activity(
-    activity_id=schedule_activity_id,
-    status="failed",
-    error=error_msg,
-    details={"related_execution_id": execution.id}
+await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/{activity_id}/complete",
+    json={
+        "status": "failed",
+        "error": error_msg
+    }
 )
 ```
 
@@ -914,6 +937,7 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-02-11** - **SCHEDULER CONSOLIDATION**: Embedded scheduler removed. All references updated to dedicated scheduler (`src/scheduler/`). Manual triggers routed through scheduler. Activity tracking via internal API.
 **Updated 2026-01-29** - FIXED: Scheduler sync bug - new schedules now work without restart (next_run_at calculated in DB layer + periodic sync)
 **Updated 2026-01-29** - Added Dashboard Timeline Integration section (TSM-001) with full data flow, frontend implementation, and visual design details
 **Updated 2026-01-29** - Added MCP Integration section with 8 schedule management tools
@@ -1022,16 +1046,23 @@ if (props.schedules && props.schedules.length > 0) {
 
 Schedule execution events are now broadcast to Trinity Connect clients via the filtered WebSocket endpoint.
 
-### Dual Broadcast Pattern
+### Event Publishing Pattern
 
-**Location**: `src/backend/services/scheduler_service.py:47-55`
+> **Note (2026-02-11)**: The dedicated scheduler publishes events to Redis pub/sub channel `scheduler:events`. The backend subscribes and relays to WebSocket managers.
+
+**Location**: `src/scheduler/service.py:387-401`
 
 ```python
-# Broadcast to main UI WebSocket
-await _broadcast_callback(json.dumps(message))
-
-# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
-await _filtered_broadcast_callback(message)
+async def _publish_event(self, event: dict):
+    """Publish an event to Redis for WebSocket compatibility."""
+    if not config.publish_events:
+        return
+    try:
+        event_json = json.dumps(event)
+        self.redis.publish("scheduler:events", event_json)
+        logger.debug(f"Published event: {event['type']}")
+    except Exception as e:
+        logger.error(f"Failed to publish event: {e}")
 ```
 
 ### Events Broadcast to Trinity Connect
@@ -1041,14 +1072,13 @@ await _filtered_broadcast_callback(message)
 | `schedule_execution_started` | Schedule begins execution | `agent` |
 | `schedule_execution_completed` | Schedule completes (success or failure) | `agent` |
 
-### Initialization
+### Backend Event Relay
 
-**Location**: `src/backend/main.py:172-188`
+**Location**: `src/backend/main.py` (Redis subscriber)
 
-```python
-# Inject filtered broadcast callback into scheduler service
-scheduler_service.set_filtered_broadcast_callback(filtered_manager.broadcast_filtered)
-```
+The backend subscribes to the `scheduler:events` Redis channel and relays events to both WebSocket managers:
+- Main WebSocket Manager: All UI clients
+- Filtered WebSocket Manager: Trinity Connect clients (server-side agent filtering)
 
 ### Use Case: Event-Driven Coordination
 

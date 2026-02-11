@@ -136,7 +136,7 @@ Events are broadcast from multiple sources and filtered by the `/ws/events` endp
 | `agent_activity` | `activity_service.py:138` | Chat, task, tool call completions |
 | `agent_started` | `routers/agents.py:324-329` | Agent container started |
 | `agent_stopped` | `routers/agents.py:356-361` | Agent container stopped |
-| `schedule_execution_completed` | `scheduler_service.py` | Scheduled task finished |
+| `schedule_execution_completed` | Dedicated scheduler (`src/scheduler/`) | Scheduled task finished |
 | `agent_collaboration` | `activity_service.py` | Agent-to-agent MCP call |
 
 ### Event Payloads
@@ -188,9 +188,11 @@ Events are broadcast to both the main WebSocket manager (UI) and the filtered ma
    - Main broadcast: `manager.broadcast(json.dumps(event))`
    - Filtered broadcast: `filtered_manager.broadcast_filtered(event)`
 
-2. **Scheduler Service** (`scheduler_service.py:47-55`):
-   - Main broadcast: `_broadcast_callback(json.dumps(message))`
-   - Filtered broadcast: `_filtered_broadcast_callback(message)`
+2. **Dedicated Scheduler Service** (`src/scheduler/service.py`):
+   - Publishes events to Redis channel `scheduler:events`
+   - Backend subscribes and relays to WebSocket managers
+   - Main broadcast: via Redis pub/sub
+   - Filtered broadcast: via Redis pub/sub to `filtered_manager.broadcast_filtered()`
 
 3. **Agents Router** (`routers/agents.py:324-340, 356-368`):
    - Both broadcasts for agent_started/agent_stopped events
@@ -202,8 +204,10 @@ Events are broadcast to both the main WebSocket manager (UI) and the filtered ma
 ```python
 # Inject filtered manager into routers and services
 set_agents_filtered_ws_manager(filtered_manager)
-scheduler_service.set_filtered_broadcast_callback(filtered_manager.broadcast_filtered)
 activity_service.set_filtered_websocket_manager(filtered_manager)
+
+# Subscribe to scheduler events from Redis and relay to filtered manager
+# (Dedicated scheduler publishes to scheduler:events channel)
 ```
 
 ## Data Layer
@@ -315,7 +319,7 @@ export TRINITY_API_KEY="trinity_mcp_xxx"
 | `src/backend/db/agents.py` | Added get_accessible_agent_names() method |
 | `src/backend/database.py` | Exposed get_accessible_agent_names() |
 | `src/backend/services/activity_service.py` | Added filtered broadcast calls |
-| `src/backend/services/scheduler_service.py` | Added filtered broadcast callback |
+| `src/scheduler/service.py` | Publishes events to Redis `scheduler:events` channel |
 | `src/backend/routers/agents.py` | Added filtered broadcasts for agent_started/stopped |
 | `scripts/trinity-listen.sh` | New listener script |
 
@@ -323,4 +327,5 @@ export TRINITY_API_KEY="trinity_mcp_xxx"
 
 | Date | Changes |
 |------|---------|
+| 2026-02-11 | Updated to reflect scheduler consolidation - schedule events now via Redis pub/sub from dedicated scheduler |
 | 2026-02-05 | Initial implementation |

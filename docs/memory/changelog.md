@@ -1,3 +1,32 @@
+### 2026-02-11 12:00:00
+🔧 **Fix: Scheduler Consolidation - Timeline Dashboard Missing Cron Executions**
+
+Consolidated scheduler architecture to fix bug where cron-triggered schedule executions didn't appear on the Timeline dashboard.
+
+**Root Cause**: The dedicated scheduler created `schedule_executions` records but NOT `agent_activities` records, which are required for Timeline visibility.
+
+**Changes**:
+- **Removed embedded scheduler**: Deleted `src/backend/services/scheduler_service.py` entirely
+- **Added internal API endpoints**: `POST /api/internal/activities/track` and `POST /api/internal/activities/{id}/complete` for scheduler→backend activity tracking
+- **Manual triggers routed to dedicated scheduler**: Backend now calls `http://scheduler:8001/api/schedules/{id}/trigger` instead of embedded scheduler
+- **Activity tracking in dedicated scheduler**: Both cron and manual triggers now create `agent_activities` records via internal API
+
+**Architecture**:
+- Single source of truth: Dedicated scheduler (`src/scheduler/`)
+- Database sync: Backend updates DB → Scheduler syncs every 60s
+- Activity tracking: Scheduler → Internal API → WebSocket broadcast
+
+**Files Modified**:
+- `src/backend/routers/schedules.py` - Delegate to dedicated scheduler
+- `src/backend/routers/internal.py` - Add activity tracking endpoints
+- `src/scheduler/service.py` - Add activity tracking calls
+- `src/scheduler/main.py` - Add manual trigger endpoint
+- Various: Remove scheduler_service imports
+
+**Documentation**: Updated `docs/memory/feature-flows/scheduler-service.md`
+
+---
+
 ### 2026-02-09 15:30:00
 🗑️ **Cleanup: Remove skill-library (Moved to abilities repo)**
 

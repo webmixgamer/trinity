@@ -58,9 +58,6 @@ from routers.docs import router as docs_router
 from routers.skills import router as skills_router
 from routers.internal import router as internal_router
 
-# Import scheduler service
-from services.scheduler_service import scheduler_service
-
 # Import activity service
 from services.activity_service import activity_service
 
@@ -179,9 +176,8 @@ set_public_links_ws_manager(manager)
 # Inject trinity meta-prompt function into system agent router
 set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
 
-# Set up scheduler broadcast callback
-scheduler_service.set_broadcast_callback(manager.broadcast)
-scheduler_service.set_filtered_broadcast_callback(filtered_manager.broadcast_filtered)
+# NOTE: Scheduler broadcast callbacks removed - dedicated scheduler (trinity-scheduler)
+# publishes events to Redis which backend subscribes to, or via internal API calls
 
 # Set up activity service WebSocket manager
 activity_service.set_websocket_manager(manager)
@@ -220,14 +216,12 @@ async def lifespan(app: FastAPI):
     else:
         print("Docker not available - running in demo mode")
 
-    # NOTE: Embedded scheduler DISABLED (2026-01-13)
-    # Schedule execution is now handled by the dedicated scheduler service (trinity-scheduler container)
-    # which uses Redis distributed locking to prevent duplicate executions.
-    # The scheduler_service module is still imported for:
-    # - Manual trigger functionality (trigger_schedule)
-    # - CRUD sync with APScheduler jobs (no-op when not initialized)
+    # NOTE: Embedded scheduler REMOVED (2026-02-11)
+    # All schedule execution is handled by the dedicated scheduler service (trinity-scheduler container)
+    # which uses Redis distributed locking and syncs schedules from database periodically.
+    # Manual triggers are also delegated to the dedicated scheduler.
     # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
-    print("Embedded scheduler disabled - using dedicated scheduler service (trinity-scheduler)")
+    print("Using dedicated scheduler service (trinity-scheduler)")
 
     # Initialize log archive service
     try:

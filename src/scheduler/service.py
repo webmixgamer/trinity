@@ -415,35 +415,49 @@ class SchedulerService:
         finally:
             lock.release()
 
-    async def _execute_schedule_with_lock(self, schedule_id: str):
-        """Execute schedule after acquiring lock."""
+    async def _execute_schedule_with_lock(self, schedule_id: str, triggered_by: str = "schedule"):
+        """Execute schedule after acquiring lock.
+
+        Args:
+            schedule_id: ID of the schedule to execute
+            triggered_by: Source of trigger - "schedule" (cron) or "manual"
+        """
         schedule = self.db.get_schedule(schedule_id)
         if not schedule:
             logger.error(f"Schedule {schedule_id} not found")
             return
 
-        if not schedule.enabled:
+        if not schedule.enabled and triggered_by == "schedule":
             logger.info(f"Schedule {schedule_id} is disabled, skipping")
             return
 
-        # Check if agent has autonomy enabled
-        if not self.db.get_autonomy_enabled(schedule.agent_name):
+        # Check if agent has autonomy enabled (only for cron-triggered, not manual)
+        if triggered_by == "schedule" and not self.db.get_autonomy_enabled(schedule.agent_name):
             logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
             return
 
-        logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name}")
+        logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name} (triggered_by={triggered_by})")
 
         # Create execution record
         execution = self.db.create_execution(
             schedule_id=schedule.id,
             agent_name=schedule.agent_name,
             message=schedule.message,
-            triggered_by="schedule"
+            triggered_by=triggered_by
         )
 
         if not execution:
             logger.error(f"Failed to create execution record for schedule {schedule_id}")
             return
+
+        # Track activity start via backend internal API
+        # This creates the agent_activities record and broadcasts via WebSocket
+        activity_id = await self._track_activity_start(
+            agent_name=schedule.agent_name,
+            schedule=schedule,
+            execution_id=execution.id,
+            triggered_by=triggered_by
+        )
 
         # Broadcast execution started
         await self._publish_event({
@@ -451,7 +465,8 @@ class SchedulerService:
             "agent": schedule.agent_name,
             "schedule_id": schedule.id,
             "execution_id": execution.id,
-            "schedule_name": schedule.name
+            "schedule_name": schedule.name,
+            "triggered_by": triggered_by
         })
 
         try:
@@ -478,6 +493,20 @@ class SchedulerService:
 
             logger.info(f"Schedule {schedule.name} executed successfully")
 
+            # Complete activity via backend internal API
+            execution_log = task_response.raw_response.get("execution_log")
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="completed",
+                details={
+                    "related_execution_id": execution.id,
+                    "context_used": task_response.metrics.context_used,
+                    "context_max": task_response.metrics.context_max,
+                    "cost_usd": task_response.metrics.cost_usd,
+                    "tool_count": len(execution_log) if execution_log else 0
+                }
+            )
+
             # Broadcast execution completed
             await self._publish_event({
                 "type": "schedule_execution_completed",
@@ -495,6 +524,14 @@ class SchedulerService:
                 execution_id=execution.id,
                 status="failed",
                 error=error_msg
+            )
+
+            # Complete activity as failed
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="failed",
+                error=error_msg,
+                details={"related_execution_id": execution.id}
             )
 
             await self._publish_event({
@@ -516,6 +553,14 @@ class SchedulerService:
                 error=error_msg
             )
 
+            # Complete activity as failed
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="failed",
+                error=error_msg,
+                details={"related_execution_id": execution.id}
+            )
+
             await self._publish_event({
                 "type": "schedule_execution_completed",
                 "agent": schedule.agent_name,
@@ -524,6 +569,90 @@ class SchedulerService:
                 "status": "failed",
                 "error": error_msg
             })
+
+    async def _track_activity_start(
+        self,
+        agent_name: str,
+        schedule,
+        execution_id: str,
+        triggered_by: str
+    ) -> Optional[str]:
+        """
+        Track activity start via backend internal API.
+
+        Creates an agent_activities record and broadcasts via WebSocket.
+        Returns the activity_id or None if the call fails.
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.backend_url}/api/internal/activities/track",
+                    json={
+                        "agent_name": agent_name,
+                        "activity_type": "schedule_start",
+                        "user_id": schedule.owner_id,
+                        "triggered_by": triggered_by,
+                        "related_execution_id": execution_id,
+                        "details": {
+                            "schedule_id": schedule.id,
+                            "schedule_name": schedule.name,
+                            "cron_expression": schedule.cron_expression,
+                            "execution_id": execution_id
+                        }
+                    },
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    activity_id = result.get("activity_id")
+                    logger.debug(f"Activity tracked: {activity_id}")
+                    return activity_id
+                else:
+                    logger.warning(f"Failed to track activity: {response.status_code} - {response.text[:200]}")
+                    return None
+
+        except Exception as e:
+            logger.warning(f"Failed to track activity via backend API: {e}")
+            # Don't fail the execution if activity tracking fails
+            return None
+
+    async def _complete_activity(
+        self,
+        activity_id: Optional[str],
+        status: str,
+        details: Optional[dict] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Complete an activity via backend internal API.
+
+        Updates the agent_activities record and broadcasts via WebSocket.
+        """
+        if not activity_id:
+            # Activity tracking was skipped, nothing to complete
+            return
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.backend_url}/api/internal/activities/{activity_id}/complete",
+                    json={
+                        "status": status,
+                        "details": details,
+                        "error": error
+                    },
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    logger.debug(f"Activity completed: {activity_id} ({status})")
+                else:
+                    logger.warning(f"Failed to complete activity: {response.status_code} - {response.text[:200]}")
+
+        except Exception as e:
+            logger.warning(f"Failed to complete activity via backend API: {e}")
+            # Don't fail the execution if activity completion fails
 
     # =========================================================================
     # Schedule Management (for runtime updates)

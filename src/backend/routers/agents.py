@@ -20,7 +20,6 @@ from services.docker_service import (
     get_agent_container,
     get_agent_by_name,
 )
-from services.scheduler_service import scheduler_service
 from services import git_service
 
 # Import service layer functions
@@ -259,9 +258,7 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
         logger.warning(f"Failed to delete workspace volume for agent {agent_name}: {e}")
 
     # Delete all schedules for this agent
-    schedules = db.list_agent_schedules(agent_name)
-    for schedule in schedules:
-        scheduler_service.remove_schedule(schedule.id)
+    # Dedicated scheduler syncs from database automatically
     db.delete_agent_schedules(agent_name)
 
     # Delete git config if exists

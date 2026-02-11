@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-11)**: Scheduler Consolidation - Embedded Scheduler Removed:
+> - **scheduling.md**: Major update - all references to `src/backend/services/scheduler_service.py` replaced with dedicated scheduler (`src/scheduler/`). Architecture diagram updated. Create/Enable/Disable/Delete flows now show database-only backend with 60s scheduler sync. Manual trigger flows through dedicated scheduler API.
+> - **autonomy-mode.md**: Updated Side Effects section - schedule toggling now database-only, dedicated scheduler syncs changes. Scheduler enforcement section references `src/scheduler/service.py`.
+> - **activity-stream.md**: Updated Schedule Integration section - activity tracking now via internal API endpoints called by dedicated scheduler.
+> - **execution-queue.md**: Updated Section 2 (Scheduler) to document dedicated scheduler execution flow with distributed locking.
+> - **trinity-connect.md**: Updated event source for `schedule_execution_completed` to reference dedicated scheduler.
+> - **scheduler-service.md**: Already updated (reference document for the new architecture).
+> - Key changes: Embedded scheduler fully removed. Manual triggers route through scheduler API. Activity tracking via internal endpoints. Database sync every 60 seconds.
+
 > **Updated (2026-02-05)**: CRED-002 Credential System Audit - Multiple Feature Flows Updated:
 > - **mcp-orchestration.md**: Tool count updated 36 -> 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`
 > - **agent-lifecycle.md**: Updated `start_agent_internal()` to document 3-phase startup injection (Trinity, Credentials, Skills). Removed `credential_manager` references. Updated line numbers for lifecycle.py
