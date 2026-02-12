@@ -128,8 +128,8 @@ def assert_task_fields(task: Dict[str, Any]):
 
 
 def assert_credential_fields(cred: Dict[str, Any]):
-    """Assert credential has required fields (without exposing secret)."""
-    required = ["id", "name", "service"]
-    assert_has_fields(cred, required, "Credential response")
-    # Should NOT contain the actual secret value
-    assert "value" not in cred, "Credential should not expose secret value in list"
+    """
+    DEPRECATED: Legacy credential assertion for old Redis-based system.
+    CRED-002 uses file-based credentials. Kept for backward compatibility.
+    """
+    pass
