@@ -10,6 +10,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` (in `tests/test_execution_queue.py`) now uses `async_mode: True` to avoid 30s timeout. The test verifies that parallel tasks bypass the execution queue. |
 | 2026-02-05 | **SSE streaming fix**: Documented nginx configuration required for live execution streaming. Added `proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on` directives. Added frontend implementation details using fetch with ReadableStream. |
 | 2026-01-30 | **Async mode (fire-and-forget)**: Added `async_mode` parameter for non-blocking execution. Backend spawns background task, returns immediately with `execution_id`. Poll for results. New section documents implementation, use cases, and API. |
 | 2026-01-23 | Verified all line numbers against current codebase. Updated file references. |
@@ -736,6 +737,11 @@ Run tests:
 ```bash
 cd tests && pytest test_parallel_task.py -v
 ```
+
+### Related Tests in Other Files
+
+**`tests/test_execution_queue.py`**:
+- `TestQueueWithParallelTasks::test_parallel_task_does_not_show_in_queue` - Verifies parallel tasks bypass the execution queue. Uses `async_mode: True` to return immediately (avoids waiting for task completion which could timeout).
 
 ## Use Cases
 

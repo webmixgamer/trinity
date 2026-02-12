@@ -1090,6 +1090,7 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 | Date | Changes |
 |------|---------|
+| 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` now uses `async_mode: True` to return immediately instead of waiting for task completion (was timing out after 30s). |
 | 2026-02-11 | **Scheduler Consolidation**: Updated Section 2 to reflect removal of embedded scheduler. Schedule execution now handled by dedicated scheduler (`src/scheduler/`). Updated Key Files Summary table. |
 | 2026-01-29 | **MCP Schedule Management (MCP-SCHED-001)**: Added `trigger_agent_schedule` MCP tool to Entry Points. Updated Related Flows to note that MCP schedule tools go through the queue. |
 | 2026-01-14 | **Race Condition Bug Fixes (HIGH)**: Fixed three race conditions in execution queue. (1) `submit()` now uses atomic `SET NX EX` instead of separate EXISTS/SET - prevents two concurrent requests from acquiring the same execution slot. (2) `complete()` now uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice. (3) `get_all_busy_agents()` replaced `KEYS` with `SCAN` - avoids blocking Redis on large datasets. Added Thread Safety section with Lua script documentation. Updated all method line numbers. |

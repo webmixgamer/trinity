@@ -3,6 +3,11 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-12)**: Test Fix - Parallel Task Queue Test:
+> - **execution-queue.md**: Added revision history entry for `test_parallel_task_does_not_show_in_queue` fix
+> - **parallel-headless-execution.md**: Added revision history entry and Related Tests section
+> - **Fix**: Test now uses `async_mode: True` to return immediately instead of timing out after 30s
+
 > **Updated (2026-02-11)**: Scheduler Consolidation - Embedded Scheduler Removed:
 > - **scheduling.md**: Major update - all references to `src/backend/services/scheduler_service.py` replaced with dedicated scheduler (`src/scheduler/`). Architecture diagram updated. Create/Enable/Disable/Delete flows now show database-only backend with 60s scheduler sync. Manual trigger flows through dedicated scheduler API.
 > - **autonomy-mode.md**: Updated Side Effects section - schedule toggling now database-only, dedicated scheduler syncs changes. Scheduler enforcement section references `src/scheduler/service.py`.
