@@ -1,3 +1,37 @@
+### 2026-02-12 12:15:00
+🎨 **Fix: Standardize Toggle Positions on Agents Page**
+
+Aligned toggle positions on Agents page to match Dashboard Graph layout.
+
+**Changes**:
+- Moved Running toggle from bottom action row to same row as Autonomy toggle
+- Both toggles now on same row: Running (left), Autonomy (right)
+- View Details button now alone at bottom
+
+**Result**: Consistent toggle layout between Agents page and Dashboard Graph.
+
+---
+
+### 2026-02-12 10:30:00
+🎨 **Refactor: Standardize Autonomy Toggle Across All Locations**
+
+Created reusable `AutonomyToggle.vue` component and standardized autonomy toggle appearance across all 4 locations in the application.
+
+**Changes**:
+- **New Component**: `src/frontend/src/components/AutonomyToggle.vue`
+  - Matches RunningStateToggle pattern with amber color scheme
+  - Props: modelValue, disabled, loading, showLabel, size (sm/md/lg)
+  - Shows "AUTO" when enabled, "Manual" when disabled
+- **Updated Locations**:
+  - `AgentNode.vue` (Dashboard graph) - Replaced ~35 lines inline code
+  - `ReplayTimeline.vue` (Dashboard timeline) - Replaced compact inline toggle
+  - `AgentHeader.vue` (Agent detail page) - Replaced inconsistent button-style
+  - `Agents.vue` (Agents list page) - Replaced inline toggle
+
+**Result**: Consistent toggle appearance and behavior across all agent views.
+
+---
+
 ### 2026-02-11 12:00:00
 🔧 **Fix: Scheduler Consolidation - Timeline Dashboard Missing Cron Executions**
 

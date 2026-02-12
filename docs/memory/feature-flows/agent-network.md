@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-01-26 - UX: Added `RunningStateToggle` to AgentNode.vue for Dashboard start/stop control. Added `toggleAgentRunning()` to network.js store.
+> **Last Updated**: 2026-02-12 - UI Standardization: AutonomyToggle now uses reusable `AutonomyToggle.vue` component. Running and Autonomy toggles on same row in AgentNode.vue (lines 57-86).
+>
+> **Previous (2026-01-26)** - UX: Added `RunningStateToggle` to AgentNode.vue for Dashboard start/stop control. Added `toggleAgentRunning()` to network.js store.
 >
 > **Previous (2026-01-15)** - Timezone-aware timestamps: All timestamps now use UTC with 'Z' suffix. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md).
 
@@ -89,17 +91,18 @@ Custom node component for each agent (updated 2025-12-30).
 - Line 45: Pulsing animation for active agents (`active-pulse` class)
 
 **Status Display**:
-- Lines 57-65: **Running State Toggle** (NEW 2026-01-26) - for non-system agents:
+- Lines 57-66: **Running State Toggle** - for non-system agents:
   - `RunningStateToggle` component (size: sm, nodrag class)
   - Shows "Running" (green) or "Stopped" (gray)
   - Clicking calls `handleRunningToggle()` -> `networkStore.toggleAgentRunning()`
   - Loading spinner during API call
-- Lines 67-100: Autonomy toggle switch (not shown for system agent):
-  - Toggle switch (36x20px) with sliding knob animation
-  - Label shows "AUTO" (amber) or "Manual" (gray)
-  - Clicking calls `networkStore.toggleAutonomy(agentName)`
-  - Loading state disables toggle during API call
-- Lines 103-117: GitHub repo display (if from GitHub template)
+- Lines 77-85: **Autonomy Toggle** (Updated 2026-02-12) - Uses reusable `AutonomyToggle.vue` component:
+  - `AutonomyToggle` component (size: sm, nodrag class)
+  - Shows "AUTO" (amber) or "Manual" (gray) label
+  - Clicking calls `handleAutonomyToggle()` -> `networkStore.toggleAutonomy()`
+  - See [autonomy-toggle-component.md](autonomy-toggle-component.md) for component details
+- **Same Row Layout**: Running and Autonomy toggles positioned on same row (lines 57-86) for visual consistency with Agents page
+- Lines 88-102: GitHub repo display (if from GitHub template)
 
 **Progress Bars**:
 - Lines 71-84: Context usage progress bar with percentage and color coding
@@ -1470,6 +1473,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (imported at AgentNode.vue:189). Running and Autonomy toggles positioned on same row (AgentNode.vue:57-86) for visual consistency with Agents page. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |
 | 2026-01-26 | **UX: Running State Toggle on Dashboard**: Added `RunningStateToggle.vue` component to AgentNode.vue (lines 57-65) for start/stop control from Dashboard. Added `toggleAgentRunning()` (lines 1211-1250), `isTogglingRunning()` (lines 1252-1254), and `runningToggleLoading` ref to network.js store. Users can now start/stop agents directly from the Dashboard without navigating to detail page. |
 | 2026-01-15 | **Timezone-aware timestamps**: All timestamps now use UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. Frontend uses `parseUTC()` and `getTimestampMs()` from `@/utils/timestamps.js`. Added timezone notes to WebSocket events and timestamp parsing sections. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md). |
 | 2026-01-12 | **Polling interval optimization**: Context/execution stats polling changed from 5s to 10s. Agent list refresh changed from 10s to 15s. Updated polling strategy documentation and performance considerations. |

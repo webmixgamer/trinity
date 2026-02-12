@@ -95,51 +95,31 @@
               ></div>
             </div>
 
-            <!-- Activity state and Autonomy toggle -->
+            <!-- Activity state -->
+            <div
+              :class="[
+                'text-xs font-medium capitalize mb-2',
+                getActivityLabelClass(agent.name)
+              ]"
+            >
+              {{ getActivityState(agent.name) }}
+            </div>
+
+            <!-- Running and Autonomy toggles (same row) -->
             <div class="flex items-center justify-between mb-2">
-              <div
-                :class="[
-                  'text-xs font-medium capitalize',
-                  getActivityLabelClass(agent.name)
-                ]"
-              >
-                {{ getActivityState(agent.name) }}
-              </div>
-              <!-- Autonomy toggle switch with label -->
-              <div class="flex items-center gap-1.5">
-                <span
-                  :class="[
-                    'text-xs font-medium transition-colors',
-                    agent.autonomy_enabled
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-gray-400 dark:text-gray-500'
-                  ]"
-                >
-                  {{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}
-                </span>
-                <button
-                  @click.stop="handleAutonomyToggle(agent)"
-                  :disabled="autonomyLoading === agent.name"
-                  :class="[
-                    'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2',
-                    agent.autonomy_enabled
-                      ? 'bg-amber-500 focus:ring-amber-500'
-                      : 'bg-gray-200 dark:bg-gray-600 focus:ring-gray-400',
-                    autonomyLoading === agent.name ? 'opacity-50 cursor-wait' : ''
-                  ]"
-                  :title="agent.autonomy_enabled ? 'Autonomy Mode ON - Click to disable' : 'Autonomy Mode OFF - Click to enable'"
-                  role="switch"
-                  :aria-checked="agent.autonomy_enabled"
-                >
-                  <span class="sr-only">Toggle autonomy mode</span>
-                  <span
-                    :class="[
-                      'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                      agent.autonomy_enabled ? 'translate-x-4' : 'translate-x-0'
-                    ]"
-                  />
-                </button>
-              </div>
+              <RunningStateToggle
+                :model-value="agent.status === 'running'"
+                :loading="actionInProgress === agent.name"
+                size="sm"
+                @toggle="toggleAgentRunning(agent)"
+              />
+              <AutonomyToggle
+                v-if="!agent.is_system"
+                :model-value="agent.autonomy_enabled"
+                :loading="autonomyLoading === agent.name"
+                size="sm"
+                @toggle="handleAutonomyToggle(agent)"
+              />
             </div>
 
             <!-- Type display -->
@@ -182,15 +162,7 @@
             </div>
 
             <!-- Action buttons -->
-            <div class="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
-              <!-- Running State Toggle -->
-              <RunningStateToggle
-                :model-value="agent.status === 'running'"
-                :loading="actionInProgress === agent.name"
-                size="md"
-                @toggle="toggleAgentRunning(agent)"
-              />
-
+            <div class="flex items-center justify-end mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
               <!-- View Details button -->
               <router-link
                 :to="`/agents/${agent.name}`"
@@ -232,6 +204,7 @@ import AgentSubNav from '../components/AgentSubNav.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import RunningStateToggle from '../components/RunningStateToggle.vue'
+import AutonomyToggle from '../components/AutonomyToggle.vue'
 import { ServerIcon } from '@heroicons/vue/24/outline'
 import axios from 'axios'
 

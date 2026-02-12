@@ -1,6 +1,8 @@
 # Feature: Dashboard Replay Timeline
 
-> **Last Updated**: 2026-01-29 (Added Timeline Schedule Markers - TSM-001)
+> **Last Updated**: 2026-02-12 - UI Standardization: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (lines 155-161).
+>
+> **Previous (2026-01-29)**: Added Timeline Schedule Markers - TSM-001
 
 ## Overview
 
@@ -989,6 +991,7 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (lines 155-161, imported at line 356). No label shown (`showLabel="false"`) for compact timeline rows. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |
 | 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer; dedicated scheduler syncs every 60s. Schedule markers appear immediately after schedule creation without container restart. |
 | 2026-01-29 | **Fix (TSM-001)**: Timeline scale issue - far-off schedules (days away) no longer extend timeline excessively. Added 2-hour max limit for future extension. Markers only visible if `next_run_at` within 2 hours of NOW |
 | 2026-01-29 | **Feature (TSM-001)**: Timeline Schedule Markers - purple triangles at `next_run_at` position for enabled schedules; hover tooltip shows schedule details; click navigates to Schedules tab. Data from `GET /api/ops/schedules?enabled_only=true` via `network.js:fetchSchedules()` |

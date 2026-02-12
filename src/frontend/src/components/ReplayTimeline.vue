@@ -152,24 +152,13 @@
                 </span>
               </div>
               <!-- Autonomy toggle (compact) -->
-              <button
+              <AutonomyToggle
                 v-if="!row.isSystemAgent"
-                @click.stop="toggleAutonomy(row.name)"
-                :class="[
-                  'relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                  row.autonomyEnabled
-                    ? 'bg-amber-500'
-                    : 'bg-gray-200 dark:bg-gray-600'
-                ]"
-                :title="row.autonomyEnabled ? 'AUTO mode' : 'Manual mode'"
-              >
-                <span
-                  :class="[
-                    'pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                    row.autonomyEnabled ? 'translate-x-3' : 'translate-x-0'
-                  ]"
-                />
-              </button>
+                :model-value="row.autonomyEnabled"
+                :show-label="false"
+                size="sm"
+                @toggle="toggleAutonomy(row.name)"
+              />
             </div>
 
             <!-- Row 2: Context bar (inline) -->
@@ -364,6 +353,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseUTC, getTimestampMs, formatLocalTime } from '@/utils/timestamps'
+import AutonomyToggle from './AutonomyToggle.vue'
 
 const router = useRouter()
 

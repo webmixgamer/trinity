@@ -117,26 +117,12 @@
         <!-- Autonomy Mode Toggle (not for system agents) -->
         <template v-if="!agent.is_system && agent.can_share">
           <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
-          <button
-            @click="$emit('toggle-autonomy')"
-            :disabled="autonomyLoading"
-            :class="[
-              'inline-flex items-center text-sm font-medium py-1.5 px-3 rounded transition-colors',
-              agent.autonomy_enabled
-                ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/70'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            ]"
-            :title="agent.autonomy_enabled ? 'Autonomy Mode ON - Scheduled tasks are running' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
-          >
-            <svg v-if="autonomyLoading" class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <svg v-else class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}
-          </button>
+          <AutonomyToggle
+            :model-value="agent.autonomy_enabled"
+            :loading="autonomyLoading"
+            size="md"
+            @toggle="$emit('toggle-autonomy')"
+          />
         </template>
         <button
           v-if="agent.can_delete"
@@ -244,6 +230,7 @@
 import RuntimeBadge from './RuntimeBadge.vue'
 import SparklineChart from './SparklineChart.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
+import AutonomyToggle from './AutonomyToggle.vue'
 import { useFormatters } from '../composables'
 
 const props = defineProps({

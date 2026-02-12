@@ -1,5 +1,7 @@
 # Feature: Autonomy Mode
 
+> **Last Updated**: 2026-02-12 - UI Standardization: New `AutonomyToggle.vue` reusable component used in 4 locations. Running and Autonomy toggles now on same row in Dashboard and Agents page.
+
 ## Overview
 Autonomy Mode enables or disables all scheduled tasks for an agent with a single toggle. When autonomy is enabled, all schedules run automatically. When disabled, all schedules are paused.
 
@@ -7,11 +9,23 @@ Autonomy Mode enables or disables all scheduled tasks for an agent with a single
 As an agent owner, I want to toggle autonomous operation for my agent so that I can quickly enable or disable all scheduled tasks without managing each schedule individually.
 
 ## Entry Points
-- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:66-100` - Toggle switch with "AUTO/Manual" label
-- **Agent Detail UI**: `src/frontend/src/components/AgentHeader.vue:134-157` - AUTO/Manual toggle button in header
-- **API**: `GET /api/agents/autonomy-status` - Bulk status for dashboard
-- **API**: `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
-- **API**: `PUT /api/agents/{name}/autonomy` - Toggle autonomy on/off
+
+### UI Locations (via AutonomyToggle component)
+| Location | File | Lines | Notes |
+|----------|------|-------|-------|
+| Dashboard Graph | `AgentNode.vue` | 78-85 | Same row as RunningStateToggle |
+| Dashboard Timeline | `ReplayTimeline.vue` | 155-161 | No label (compact) |
+| Agent Detail Header | `AgentHeader.vue` | 120-125 | Medium size, owners only |
+| Agents List Page | `Agents.vue` | 116-122 | Same row as RunningStateToggle |
+
+### Component
+- **Reusable Component**: `src/frontend/src/components/AutonomyToggle.vue` (151 lines)
+- See [autonomy-toggle-component.md](autonomy-toggle-component.md) for component documentation
+
+### API
+- `GET /api/agents/autonomy-status` - Bulk status for dashboard
+- `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
+- `PUT /api/agents/{name}/autonomy` - Toggle autonomy on/off
 
 ---
 
@@ -670,6 +684,7 @@ Response:
 
 | Date | Change |
 |------|--------|
+| 2026-02-12 | **UI Standardization**: Extracted `AutonomyToggle.vue` reusable component (151 lines) used in 4 locations: AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue. Running and Autonomy toggles now on same row in Dashboard Graph (AgentNode.vue:57-86) and Agents page (Agents.vue:108-123). Created dedicated [autonomy-toggle-component.md](autonomy-toggle-component.md) for component documentation. |
 | 2026-02-11 | **Scheduler Consolidation**: Updated to reflect removal of embedded scheduler. Schedule toggling now uses database only; dedicated scheduler syncs changes within 60s. Scheduler enforcement section updated to reference `src/scheduler/service.py`. |
 | 2026-01-23 | **Line Number Update**: Verified and updated all line numbers against current codebase. AgentNode.vue toggle at lines 66-100 (handler 352-365). AgentHeader.vue toggle at lines 134-157. network.js toggleAutonomy at lines 1172-1209. AgentDetail.vue handler at lines 322-360. Router endpoints at lines 168, 772, 781. autonomy.py logic unchanged. db/agents.py operations at lines 330-362. |
 | 2026-01-03 | **Dashboard Toggle Switch**: Replaced static "AUTO" badge with interactive toggle switch. Users can now enable/disable autonomy directly from Dashboard agent tiles. Added `toggleAutonomy()` action to network.js store. Toggle includes "AUTO/Manual" label with amber/gray styling. |

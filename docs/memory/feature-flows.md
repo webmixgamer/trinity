@@ -3,7 +3,16 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-02-12)**: Test Fix - Parallel Task Queue Test:
+> **Updated (2026-02-12)**: UI Component Standardization - AutonomyToggle & Dashboard Tab:
+> - **NEW: autonomy-toggle-component.md**: Reusable `AutonomyToggle.vue` component (151 lines) used in 4 locations: AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue
+> - **autonomy-mode.md**: Updated entry points section with component table showing 4 UI locations
+> - **agent-network.md**: Updated AgentNode.vue toggle documentation, Running + Autonomy toggles now same row (lines 57-86)
+> - **agents-page-ui-improvements.md**: Updated revision history, Running + Autonomy toggles now same row (lines 108-123)
+> - **replay-timeline.md**: Updated with AutonomyToggle component usage (lines 155-161, no label mode)
+> - **agent-dashboard.md**: Dashboard tab now conditionally hidden when agent lacks `dashboard.yaml`. Added `hasDashboard` ref, `checkDashboardExists()` function, conditional tab visibility
+> - **Toggle Position Standardization**: Running and Autonomy toggles now on same row in both Dashboard Graph and Agents page
+
+> **Previous (2026-02-12)**: Test Fix - Parallel Task Queue Test:
 > - **execution-queue.md**: Added revision history entry for `test_parallel_task_does_not_show_in_queue` fix
 > - **parallel-headless-execution.md**: Added revision history entry and Related Tests section
 > - **Fix**: Test now uses `async_mode: True` to return immediately instead of timing out after 30s
@@ -472,10 +481,11 @@
 | **Execution Detail Page** | High | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details - metadata cards, timestamps, task input, response, full transcript. Entry points: TasksPanel **Live button** (running tasks, green pulsing badge) or icon (completed), Timeline click (Updated 2026-01-13) |
 | **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - **2026-01-14**: Added RESTRICTED/FULL_CAPABILITIES constants for consistent security across all container creation paths. System-wide setting + per-agent API, automatic recreation on start (CFG-004) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
-| **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, dashboard toggle switch with "AUTO/Manual" label, owner-only access (Updated 2026-01-03) |
+| **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, uses AutonomyToggle component in 4 locations, owner-only access (Updated 2026-02-12) |
+| **AutonomyToggle Component** | Medium | [autonomy-toggle-component.md](feature-flows/autonomy-toggle-component.md) | Reusable Vue toggle component (151 lines) for autonomy mode - used in AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue - sm/md/lg sizes, v-model support, loading states (Created 2026-02-12) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in AgentHeader.vue opens ResourceModal.vue, values stored in DB, auto-restart if running, container recreation on start if mismatch (Updated 2026-01-23) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, Tailscale-aware host detection, Redis metadata with auto-expiry - **service layer: ssh_service.py** (Created 2026-01-02) |
-| **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - replaces Metrics tab (Created 2026-01-12) |
+| **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - **Dashboard tab now conditionally hidden when agent lacks dashboard.yaml** (Updated 2026-02-12) |
 | **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
 | **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
 | **Alerts Page** | Medium | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts for process executions - NavBar badge with 60s polling, filter by status, dismiss alerts, severity levels (warning/critical), threshold types (per_execution/daily/weekly). Service: CostAlertService, DB: trinity_alerts.db (Created 2026-01-21) |
