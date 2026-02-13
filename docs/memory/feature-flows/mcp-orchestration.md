@@ -982,6 +982,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-02-13 | **SSH host detection fix (cross-ref)**: The `get_agent_ssh_access` tool now returns correct host in production deployments. See [ssh-access.md](ssh-access.md) for details on the `FRONTEND_URL` domain extraction fix. |
 | 2026-02-05 | **CRED-002 Credential System**: Tool count updated from 36 to 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new credential tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`. Updated all line numbers for agents.ts. |
 | 2026-01-30 | **Async mode (fire-and-forget)**: Added `async` parameter to `chat_with_agent` tool. When `parallel=true` and `async=true`, returns immediately with `execution_id` for polling. Backend spawns background task via `asyncio.create_task()`. Poll `GET /api/agents/{name}/executions/{id}` for results. |
 | 2026-01-29 | **Schedule tools (MCP-SCHED-001)**: Added 8 schedule management tools - list_agent_schedules, create_agent_schedule, get_agent_schedule, update_agent_schedule, delete_agent_schedule, toggle_agent_schedule, trigger_agent_schedule, get_schedule_executions. Total now 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). |
@@ -1009,4 +1010,5 @@ Working - All 39 MCP tools functional with API key authentication, agent-to-agen
   - Execution Queue (`execution-queue.md`) - `chat_with_agent` calls go through queue with 429 handling (unless `parallel: true`)
   - Parallel Headless Execution (`parallel-headless-execution.md`) - When `parallel: true`, bypasses queue and uses `/task` endpoint (Added 2025-12-22)
   - Agent Permissions (`agent-permissions.md`) - Agent-scoped keys use permission system (Phase 9.10)
+  - SSH Access (`ssh-access.md`) - `get_agent_ssh_access` tool implementation with host detection priority
 - **Downstream**: Agent Lifecycle, Agent Chat, Credential Injection, Agent Sharing (access control)

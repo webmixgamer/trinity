@@ -13,6 +13,7 @@
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
+| ✅ | **SSH Connection String Returns Localhost** | **Fixed 2026-02-13**: Added `FRONTEND_URL` domain extraction as priority #2 in `get_ssh_host()`. Production deployments now correctly return domain (e.g., `trinity.abilityai.dev`) instead of `localhost`. See `ssh_service.py:479-567`. | **HIGH** |
 | ✅ | **Execution Queue Race Conditions** | **Fixed 2026-01-14**: (1) `submit()` now uses atomic `SET NX EX` for slot acquisition, (2) `complete()` uses Lua script for atomic pop-and-set, (3) `get_all_busy_agents()` uses `SCAN` instead of blocking `KEYS`. All 20 queue tests pass. See `docs/memory/feature-flows/execution-queue.md` (EQ-H1, EQ-H2, EQ-M1 from audit report). | **HIGH** |
 | ✅ | **Missing Auth on Lifecycle Endpoints** | **Fixed 2026-01-21**: Verified endpoints `start_agent` (line 316), `stop_agent` (line 343), and `get_logs` (line 368) all use `AuthorizedAgentByName` dependency which calls `db.can_user_access_agent()`. See `dependencies.py:228-255` (AL-H1, AL-H2). | **HIGH** |
 | ✅ | **Container Security Inconsistency** | **Fixed 2026-01-14**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. Both `crud.py` and `lifecycle.py` now use these constants with consistent security: always `cap_drop=['ALL']`, always `apparmor:docker-default`, always `tmpfs noexec,nosuid`. See `lifecycle.py:343-368`, `crud.py:462-464` (AL-H3). | **HIGH** |
@@ -365,6 +366,21 @@ Items not yet scheduled. Will be prioritized as needed.
 | **MEDIUM** | **Code Execution Mode** | Agents writing code to interact with MCP servers instead of direct tool calls achieves **98% token reduction**. New execution paradigm for tool-heavy workflows. |
 | **MEDIUM** | **Smart Model Routing** | Route queries by complexity: haiku→sonnet→opus. **300x price variance** between models enables 60-95% cost savings. Dynamic routing based on task classification. |
 
+### Orphaned Execution Recovery (2026-02-12)
+> Problem: When backend/scheduler restarts, executions marked "running" become orphaned forever.
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| **HIGH** | **Orphaned Execution Recovery on Startup** | On scheduler startup, mark all "running" executions as failed before starting jobs. Update `status='failed'`, set `error='Orphaned execution - service restarted before completion'`, set `completed_at`. Log warning with count. Implementation: Add `recover_orphaned_executions(db)` call early in scheduler init, before `scheduler.start()`. |
+
+### OpenClaw-Inspired Features (2026-02-13)
+> Source: `docs/research/openclaw-vs-trinity-comparison.md`
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| **MEDIUM** | **MEMORY.md Convention** | Agents maintain curated long-term memory in `MEMORY.md` file. Two-layer system: (1) Daily logs at `memory/YYYY-MM-DD.md` - raw session notes, (2) Long-term memory at `MEMORY.md` - curated insights distilled from daily logs. Agents explicitly told "mental notes don't survive, write to file." Platform injects memory section into CLAUDE.md on startup. Enables agents to get better over time through accumulated corrections. |
+| **MEDIUM** | **Telegram Channel Integration** | Mobile-first interface via Telegram bot. Agent executions send push notifications. Users can approve/reject task outputs, trigger manual executions, and chat with agents from phone. Start with one channel (Telegram), architecture should support adding WhatsApp/Discord/Slack later. Key UX: review agent work while drinking coffee. |
+
 ### Previous Backlog
 
 | Priority | Item | Requirement |
@@ -404,6 +420,7 @@ Items not yet scheduled. Will be prioritized as needed.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-02-13 | OpenClaw-Inspired Features Added to Backlog | After analyzing OpenClaw (personal AI assistant platform), identified 2 features to adopt: (1) **MEMORY.md Convention** - MEDIUM, agents curate long-term memory with daily logs + distilled insights, gets better over time; (2) **Telegram Channel Integration** - MEDIUM, mobile-first interface for push notifications and approvals. OpenClaw's file-based coordination is elegantly simple. Key insight: "Files don't crash, files don't need auth." See `docs/research/openclaw-vs-trinity-comparison.md`. |
 | 2026-02-05 | **Phase 16: Agent-as-a-Service & Commercialization** | Strategic planning session identified two business models: (1) Multi-agent orchestration ("run my company"), (2) Agent-as-a-Service (Ruby for clients). Decision: pursue both sequentially. AaaS provides faster path to revenue while building toward orchestration vision. Both share 80% of infrastructure needs. Key items: Client/Viewer user role (use existing auth, simplified UI), Encrypted credentials in git (portable agents), Unified Executions Dashboard (visibility), MCP execution tools (programmatic access). See `docs/planning/WORKFLOW_PRIORITIES_2026-02.md`. |
 | 2026-02-05 | Multi-Agent Research Items Added | Added 5 items from Cornelius research report (`Multi-Agent-Systems-Research-Report-2026-02-05.md`): (1) **Agent Skills Spec** - HIGH, Anthropic standard adopted by Microsoft/OpenAI/GitHub; (2) **A2A Protocol** - HIGH, Google's agent-to-agent for cross-platform; (3) **Platform Memory Primitives** - HIGH, 3-tier memory with 2x reasoning improvement; (4) **Code Execution Mode** - MEDIUM, 98% token reduction; (5) **Smart Model Routing** - MEDIUM, 60-95% cost savings. Key insight: "Competitive advantage shifted from foundation models to orchestration and operations layers." |
 | 2026-01-30 | Feature Requests Batch Added to Backlog | Added 10 items from planning session: (1) **Bug: Live logs** - HIGH, broken in production; (2) **Git worktrees** - HIGH, task isolation via branches, audit trail; (3) **MCP as primary integration** - HIGH, local agents connect via MCP, pull skills, minimal setup; (4) **Agent org structures** - MEDIUM, parent-child hierarchy; (5) **Any repo/empty agent** - MEDIUM, flexible creation modes; (6) **GitHub safety** - MEDIUM, prevent empty agent wiping repos; (7) **MCP server management** - MEDIUM, centralized UI; (8) **GitHub issues** - LOW, roadmap tracking; (9) **History in GitHub** - LOW, repo as source of truth. Theme: GitHub-centric workflow + MCP-first experience. |

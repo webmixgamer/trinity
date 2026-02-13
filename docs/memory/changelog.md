@@ -1,3 +1,101 @@
+### 2026-02-13 12:00:00
+📝 **Docs: SSH Host Detection Fix Cross-References**
+
+Updated feature flows impacted by the SSH host detection fix.
+
+**Files Updated**:
+- `docs/memory/feature-flows/mcp-orchestration.md` - Added revision history entry and ssh-access.md to Related Flows
+- `docs/memory/feature-flows.md` - Updated SSH Access entry with new detection priority (FRONTEND_URL)
+
+**Already Updated**:
+- `docs/memory/feature-flows/ssh-access.md` - Full documentation with revision history, environment variables table
+
+**Not Impacted** (reference only, no host detection details):
+- `agent-lifecycle.md` - Only references SSH port allocation, not host detection
+- `platform-settings.md` - Only references `ssh_access_enabled` toggle, not host detection
+- `web-terminal.md`, `agent-terminal.md` - Use Docker exec, not SSH
+- `file-browser.md` - Mentions SSH as alternative, no host detection
+
+---
+
+### 2026-02-13 11:30:00
+🐛 **Fix: SSH Connection String Returns Production Domain**
+
+Fixed bug where `get_agent_ssh_access` MCP tool returned `localhost` instead of the actual host address, preventing remote SSH connections.
+
+**Root Cause**: The `get_ssh_host()` function in `ssh_service.py` had detection methods that all failed in production:
+- `SSH_HOST` env var: Not typically set
+- Tailscale: Not installed in backend container
+- `host.docker.internal`: Only works on Docker Desktop (Mac/Windows), not Linux servers
+- Default gateway: Often Docker's internal `172.x.x.x` network (filtered out)
+- Result: Fell back to `localhost`
+
+**Fix**: Added `FRONTEND_URL` domain extraction as priority #2 in host detection. Production deployments set `FRONTEND_URL` to the domain (e.g., `https://trinity.abilityai.dev`), so the function now extracts the hostname and returns it for SSH commands.
+
+**New Detection Priority**:
+1. `SSH_HOST` env var (explicit override)
+2. `FRONTEND_URL` domain (production auto-detect) ← **NEW**
+3. Tailscale IP
+4. `host.docker.internal` (Docker Desktop)
+5. Default gateway IP
+6. Fallback to `localhost`
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py:479-567` - Added `FRONTEND_URL` parsing
+- `.env.example` - Documented `SSH_HOST` option
+- `docs/memory/feature-flows/ssh-access.md` - Updated detection priority docs
+
+---
+
+### 2026-02-13 10:15:00
+🐛 **Bug: SSH Connection String Returns Localhost**
+
+Added bug to roadmap for SSH access feature.
+
+**Problem**: MCP tool `get_agent_ssh_access` returns SSH connection string with `localhost` instead of actual host address. Remote users cannot connect to agents.
+
+**Expected**: Should return production domain or configurable host address.
+
+**Files**: `ssh_service.py`, `agents.py:905-1072`
+
+**Priority**: HIGH
+
+---
+
+### 2026-02-13 10:00:00
+📋 **Backlog: OpenClaw-Inspired Features**
+
+Added two features to backlog after analyzing OpenClaw agent platform.
+
+**New Items**:
+1. **MEMORY.md Convention** (MEDIUM) - Agents maintain curated long-term memory
+   - Daily logs: `memory/YYYY-MM-DD.md` (raw session notes)
+   - Long-term: `MEMORY.md` (distilled insights)
+   - Agents get better over time through accumulated corrections
+
+2. **Telegram Channel Integration** (MEDIUM) - Mobile-first interface
+   - Push notifications for task completion
+   - Approve/reject from phone
+   - Chat with agents via Telegram
+   - Architecture supports adding WhatsApp/Discord/Slack later
+
+**Source**: `docs/research/openclaw-vs-trinity-comparison.md`
+
+---
+
+### 2026-02-12 14:30:00
+📋 **Backlog: Orphaned Execution Recovery on Startup**
+
+Added backlog item for scheduler reliability improvement.
+
+**Problem**: When backend/scheduler restarts during deploys or crashes, executions marked as "running" become orphaned and remain stuck in "running" status forever.
+
+**Solution**: On scheduler startup, mark all "running" executions as failed before starting scheduler jobs. Set `error='Orphaned execution - service restarted before completion'`, set `completed_at`, log warning with count.
+
+**Priority**: HIGH (affects reliability)
+
+---
+
 ### 2026-02-12 12:15:00
 🎨 **Fix: Standardize Toggle Positions on Agents Page**
 
