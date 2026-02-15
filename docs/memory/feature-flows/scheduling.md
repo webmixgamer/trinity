@@ -212,6 +212,13 @@ Release lock
 
 **Note**: Changed from `client.chat()` to `client.task()` on 2025-01-02. The `/api/task` endpoint returns raw Claude Code `stream-json` format which is required for the [Execution Log Viewer](execution-log-viewer.md) to properly render execution transcripts.
 
+**Authentication** (Updated 2026-02-15):
+Claude Code uses whatever authentication is available in the agent container:
+1. **OAuth session** (Claude Pro/Max subscription): If user ran `/login` in web terminal, session stored in `~/.claude.json` is used
+2. **API key**: If `ANTHROPIC_API_KEY` environment variable is set (platform key or user-injected)
+
+This enables scheduled tasks to use Claude Max subscription billing instead of API billing. The mandatory `ANTHROPIC_API_KEY` check was removed from `execute_headless_task()` in `docker/base-image/agent_server/services/claude_code.py` to support this flow.
+
 **Queue Full Handling**: If the agent's queue is full (3 pending requests), the scheduled execution fails with error "Agent queue full (N waiting), skipping scheduled execution".
 
 **Files:**
@@ -937,6 +944,7 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-02-15** - **Claude Max Subscription Support**: Scheduled executions now work with Claude Max subscription authentication. If agent has OAuth session from `/login` stored in `~/.claude.json`, scheduled tasks use the subscription instead of requiring `ANTHROPIC_API_KEY`. See "Authentication" section in Schedule Execution Flow.
 **Updated 2026-02-11** - **SCHEDULER CONSOLIDATION**: Embedded scheduler removed. All references updated to dedicated scheduler (`src/scheduler/`). Manual triggers routed through scheduler. Activity tracking via internal API.
 **Updated 2026-01-29** - FIXED: Scheduler sync bug - new schedules now work without restart (next_run_at calculated in DB layer + periodic sync)
 **Updated 2026-01-29** - Added Dashboard Timeline Integration section (TSM-001) with full data flow, frontend implementation, and visual design details

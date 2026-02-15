@@ -493,9 +493,42 @@ import_credentials("my-agent")
 
 | Date | Changes |
 |------|---------|
+| 2026-02-15 | **Claude Max subscription support**: Added documentation about OAuth session authentication as an alternative to API key injection. When "Authenticate in Terminal" is enabled, user can log in via `/login` in web terminal. The OAuth session stored in `~/.claude.json` is then used for all Claude Code executions (including headless), eliminating the need for `ANTHROPIC_API_KEY`. |
 | 2026-02-05 | **Bug fix**: Removed orphaned credential injection loop in `crud.py:312-332` that referenced undefined `agent_credentials` variable. Added comment explaining that credentials are injected post-creation per CRED-002 design. |
 | 2026-02-05 | **Complete rewrite for CRED-002**: Replaced Redis-based assignment system with encrypted file injection. Removed all Redis credential management documentation. New flows: Quick Inject, Export, Import, Auto-Import. New MCP tools. |
 | 2026-01-23 | Previous version with Redis-based assignment system |
+
+---
+
+## Claude Max Subscription Authentication (Alternative to API Key)
+
+**Added 2026-02-15**
+
+As an alternative to injecting `ANTHROPIC_API_KEY`, agents can use Claude Pro/Max subscription authentication:
+
+### Setup Flow
+1. Agent owner sets "Authenticate in Terminal" in Terminal tab (disables platform API key injection)
+2. User restarts the agent (container recreated without `ANTHROPIC_API_KEY`)
+3. User connects to web terminal and runs `/login` in Claude Code TUI
+4. OAuth flow completes, session stored in `~/.claude.json`
+
+### What This Enables
+- **Interactive terminal**: Claude Code TUI works with subscription
+- **Headless executions**: Scheduled tasks use subscription instead of API billing
+- **MCP-triggered calls**: `chat_with_agent` and parallel tasks use subscription
+- **Persistence**: OAuth session survives container restarts (in persistent volume)
+
+### Technical Details
+- OAuth session stored in `/home/developer/.claude.json` (persistent volume)
+- The mandatory `ANTHROPIC_API_KEY` check was removed from:
+  - `execute_claude_code()` (line 410-414 removed)
+  - `execute_headless_task()` (line 586-590 removed)
+- Location: `docker/base-image/agent_server/services/claude_code.py`
+
+### Use Cases
+- **Cost management**: Use Claude Max subscription instead of API billing
+- **Personal agents**: Each user authenticates with their own subscription
+- **Development**: Test agents without platform API key configured
 
 ---
 
@@ -504,6 +537,7 @@ import_credentials("my-agent")
 - **Agent Lifecycle** - Credentials auto-imported on agent start
 - **Template Processing** - Templates may include `.mcp.json.template` files
 - **Settings Management** - Platform API keys in system_settings table
+- **Agent Terminal** - OAuth login flow via `/login` command
 
 ---
 

@@ -353,6 +353,16 @@ async def start_agent_internal(agent_name: str) -> dict:
 - **API key setting changes**: `ANTHROPIC_API_KEY` added/removed based on `use_platform_api_key`
 - API key retrieval uses `get_anthropic_api_key()` from `services/settings_service.py` (line 118)
 
+**Authentication Model** (Updated 2026-02-15):
+When agent starts, Claude Code can authenticate via two methods:
+1. **OAuth session** (Claude Pro/Max subscription): User runs `/login` in web terminal after start
+   - Session stored in `~/.claude.json` inside the container
+   - All subsequent executions (interactive AND headless) use subscription
+   - Persists across container restarts (stored in persistent volume)
+2. **API key**: `ANTHROPIC_API_KEY` environment variable injected if `use_platform_api_key=true`
+
+The mandatory `ANTHROPIC_API_KEY` check was removed from Claude Code execution functions, allowing headless calls (scheduled tasks, MCP triggers, parallel tasks) to work with subscription authentication.
+
 **Trinity Meta-Prompt Injection** (`src/backend/services/agent_service/lifecycle.py:23-51`)
 
 Now uses centralized `AgentClient` service instead of raw httpx calls:
@@ -850,6 +860,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that agents can now use Claude Max subscription for all executions (including headless). When "Authenticate in Terminal" is enabled and user logs in via `/login`, the OAuth session in `~/.claude.json` is used for scheduled tasks, MCP calls, and parallel tasks instead of requiring `ANTHROPIC_API_KEY`. |
 | 2026-02-05 | **Bug fix: Orphaned credential injection loop**: Removed dead code in `crud.py:312-332` that iterated over undefined `agent_credentials` variable. This loop was left behind during CRED-002 refactor when the variable definition (lines ~183-192) was removed. Added comment explaining credentials are injected post-creation. |
 | 2026-02-05 | **CRED-002 + Skill Injection on Startup**: Updated `start_agent_internal()` documentation to include full startup injection order: Trinity meta-prompt, credentials (from `.credentials.enc`), skills. Updated lifecycle.py line numbers (now 193-250). Added `check_full_capabilities_match()` to container recreation triggers. |
 | 2026-02-05 | **Trinity Connect Integration**: Agent start/stop events now broadcast to filtered WebSocket `/ws/events` for external listeners. Added Trinity Connect Filtered Broadcasts section with code example and event table. Related: trinity-connect.md |

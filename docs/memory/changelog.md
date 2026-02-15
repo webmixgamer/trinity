@@ -1,3 +1,23 @@
+### 2026-02-15 10:00:00
+✨ **Feature: Claude Max Subscription Support for Headless Calls**
+
+Removed mandatory `ANTHROPIC_API_KEY` check from Claude Code execution service. Now agents can use Claude Max subscription for scheduled tasks and headless calls.
+
+**Before**: Headless calls (`/api/task`, scheduled executions) required `ANTHROPIC_API_KEY` env var even if user was logged in via web terminal.
+
+**After**: Claude Code uses whatever authentication is available:
+1. OAuth session from `/login` (Claude Pro/Max subscription) - stored in `~/.claude.json`
+2. `ANTHROPIC_API_KEY` environment variable (API billing) - if set
+
+**Use Case**: Login once via web terminal with `/login`, then all scheduled tasks and MCP-triggered executions use your Claude Max subscription instead of API billing.
+
+**Files Changed**:
+- `docker/base-image/agent_server/services/claude_code.py:410-414,586-590` - Removed mandatory API key check
+
+**Deployment**: Requires base image rebuild (`./scripts/deploy/build-base-image.sh`) and agent restart.
+
+---
+
 ### 2026-02-13 12:00:00
 📝 **Docs: SSH Host Detection Fix Cross-References**
 

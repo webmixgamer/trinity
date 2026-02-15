@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-15)**: Claude Max Subscription Support for Headless Calls:
+> - Removed mandatory `ANTHROPIC_API_KEY` check from `execute_claude_code()` (line 410-414) and `execute_headless_task()` (line 586-590) in `docker/base-image/agent_server/services/claude_code.py`
+> - Claude Code now uses whatever authentication is available: OAuth session from `/login` (Claude Pro/Max) stored in `~/.claude.json`, OR `ANTHROPIC_API_KEY` env var
+> - Enables headless calls (schedules, MCP triggers, parallel tasks) to use Claude Max subscription billing
+> - Updated flows: **agent-terminal.md** (Claude Max subscription flow, test cases), **scheduling.md** (authentication section), **execution-queue.md** (revision history), **parallel-headless-execution.md** (authentication section + revision history), **agent-lifecycle.md** (authentication model), **credential-injection.md** (Claude Max as alternative)
+
 > **Updated (2026-02-12)**: UI Component Standardization - AutonomyToggle & Dashboard Tab:
 > - **NEW: autonomy-toggle-component.md**: Reusable `AutonomyToggle.vue` component (151 lines) used in 4 locations: AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue
 > - **autonomy-mode.md**: Updated entry points section with component table showing 4 UI locations

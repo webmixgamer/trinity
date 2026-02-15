@@ -408,13 +408,10 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         )
 
     try:
-        # Get ANTHROPIC_API_KEY from environment
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="ANTHROPIC_API_KEY not configured in agent container"
-            )
+        # Note: Claude Code will use whatever authentication is available:
+        # 1. OAuth session from /login (Claude Pro/Max subscription) - stored in ~/.claude.json
+        # 2. ANTHROPIC_API_KEY environment variable (API billing)
+        # We don't require ANTHROPIC_API_KEY since users may be logged in with their subscription.
 
         # Update model if specified (persists for session)
         if model:
@@ -587,13 +584,10 @@ async def execute_headless_task(
         )
 
     try:
-        # Get ANTHROPIC_API_KEY from environment
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="ANTHROPIC_API_KEY not configured in agent container"
-            )
+        # Note: Claude Code will use whatever authentication is available:
+        # 1. OAuth session from /login (Claude Pro/Max subscription) - stored in ~/.claude.json
+        # 2. ANTHROPIC_API_KEY environment variable (API billing)
+        # We don't require ANTHROPIC_API_KEY since users may be logged in with their subscription.
 
         # Build command - NO --continue flag (stateless)
         cmd = ["claude", "--print", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"]

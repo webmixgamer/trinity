@@ -10,6 +10,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-02-15 | **Claude Max subscription support**: Headless task execution now supports Claude Max subscription authentication. If user ran `/login` in web terminal, the OAuth session stored in `~/.claude.json` is used instead of requiring `ANTHROPIC_API_KEY`. The mandatory API key check was removed from `execute_headless_task()` in `docker/base-image/agent_server/services/claude_code.py`. |
 | 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` (in `tests/test_execution_queue.py`) now uses `async_mode: True` to avoid 30s timeout. The test verifies that parallel tasks bypass the execution queue. |
 | 2026-02-05 | **SSE streaming fix**: Documented nginx configuration required for live execution streaming. Added `proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on` directives. Added frontend implementation details using fetch with ReadableStream. |
 | 2026-01-30 | **Async mode (fire-and-forget)**: Added `async_mode` parameter for non-blocking execution. Backend spawns background task, returns immediately with `execution_id`. Poll for results. New section documents implementation, use cases, and API. |
@@ -773,6 +774,20 @@ Orchestrator gathers info from multiple sources:
 
 Combine results after all complete.
 ```
+
+## Authentication (Updated 2026-02-15)
+
+Claude Code uses whatever authentication is available in the agent container:
+
+1. **OAuth session** (Claude Pro/Max subscription): If user ran `/login` in web terminal, session stored in `~/.claude.json` is used
+2. **API key**: If `ANTHROPIC_API_KEY` environment variable is set (platform key or user-injected)
+
+The mandatory `ANTHROPIC_API_KEY` check was removed from `execute_headless_task()` to support Claude Max subscriptions. This means:
+- Agents with "Authenticate in Terminal" setting can run parallel tasks after user logs in via web terminal
+- Scheduled tasks and MCP-triggered executions use the subscription instead of API billing
+- API key is still supported for agents that have it configured
+
+**Implementation**: `docker/base-image/agent_server/services/claude_code.py:586-590` - Removed mandatory API key check
 
 ## Security Considerations
 
