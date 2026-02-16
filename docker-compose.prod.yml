@@ -48,6 +48,8 @@ services:
       - OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-otlp}
       - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
       - OTEL_METRIC_EXPORT_INTERVAL=${OTEL_METRIC_EXPORT_INTERVAL:-60000}
+      # Public external access URL (Tailscale Funnel, Cloudflare Tunnel, etc.)
+      - PUBLIC_CHAT_URL=${PUBLIC_CHAT_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
