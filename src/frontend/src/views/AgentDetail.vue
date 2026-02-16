@@ -266,6 +266,7 @@ const activeTab = ref('info')
 const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
 const schedulePrefillMessage = ref('')
+const hasDashboard = ref(false)
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -434,13 +435,20 @@ const visibleTabs = computed(() => {
 
   const tabs = [
     { id: 'info', label: 'Info' },
-    { id: 'tasks', label: 'Tasks' },
-    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'tasks', label: 'Tasks' }
+  ]
+
+  // Dashboard tab - only show if agent has a dashboard.yaml file
+  if (hasDashboard.value) {
+    tabs.push({ id: 'dashboard', label: 'Dashboard' })
+  }
+
+  tabs.push(
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
     { id: 'credentials', label: 'Credentials' },
     { id: 'skills', label: 'Skills' }
-  ]
+  )
 
   // Sharing/Permissions - hide for system agent (system agent has full access)
   if (agent.value?.can_share && !isSystem) {
@@ -479,11 +487,27 @@ async function loadAgent() {
   }
 }
 
+// Check if agent has a dashboard.yaml file
+async function checkDashboardExists() {
+  if (!agent.value?.name) {
+    hasDashboard.value = false
+    return
+  }
+  try {
+    const response = await agentsStore.getAgentDashboard(agent.value.name)
+    hasDashboard.value = response?.has_dashboard === true
+  } catch (err) {
+    hasDashboard.value = false
+  }
+}
+
 // Watch for route changes (when navigating to a different agent)
 watch(() => route.params.name, async (newName, oldName) => {
   if (newName && newName !== oldName) {
     // Stop polling for old agent
     stopAllPolling()
+    // Reset dashboard state for new agent
+    hasDashboard.value = false
     // Disconnect terminal from old agent
     if (terminalRef.value?.disconnect) {
       terminalRef.value.disconnect()
@@ -493,6 +517,10 @@ watch(() => route.params.name, async (newName, oldName) => {
     await loadSessionInfo()
     await loadApiKeySetting()
     await loadResourceLimits()
+    // Check if new agent has dashboard (only when running)
+    if (agent.value?.status === 'running') {
+      await checkDashboardExists()
+    }
     startAllPolling()
     // Connect terminal to new agent if on terminal tab and agent is running
     if (activeTab.value === 'terminal' && agent.value?.status === 'running') {
@@ -505,19 +533,23 @@ watch(() => route.params.name, async (newName, oldName) => {
   }
 })
 
-// Watch agent status for stats, activity, and git polling
-watch(() => agent.value?.status, (newStatus) => {
+// Watch agent status for stats, activity, git polling, and dashboard check
+watch(() => agent.value?.status, async (newStatus) => {
   if (newStatus === 'running') {
     startStatsPolling()
     startActivityPolling()
     if (hasGitSync.value) {
       startGitStatusPolling()
     }
+    // Check for dashboard when agent starts running
+    await checkDashboardExists()
   } else {
     stopStatsPolling()
     stopActivityPolling()
     stopGitStatusPolling()
     resetSessionActivity()
+    // Reset dashboard state when agent stops
+    hasDashboard.value = false
   }
 })
 
@@ -552,12 +584,16 @@ onMounted(async () => {
   await loadSessionInfo()
   await loadApiKeySetting()
   await loadResourceLimits()
+  // Check for dashboard if agent is running
+  if (agent.value?.status === 'running') {
+    await checkDashboardExists()
+  }
   startAllPolling()
 
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['info', 'tasks', 'metrics', 'terminal', 'logs', 'credentials', 'sharing', 'permissions', 'schedules', 'git', 'files', 'folders', 'public-links']
+    const validTabs = ['info', 'tasks', 'dashboard', 'terminal', 'logs', 'credentials', 'sharing', 'permissions', 'schedules', 'git', 'files', 'folders', 'public-links']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }
@@ -565,11 +601,15 @@ onMounted(async () => {
 })
 
 // onActivated fires when component is shown (after being cached by KeepAlive)
-onActivated(() => {
+onActivated(async () => {
   // Restart polling when returning to this view
   startAllPolling()
   // Refresh agent data
-  loadAgent()
+  await loadAgent()
+  // Re-check for dashboard if agent is running
+  if (agent.value?.status === 'running') {
+    await checkDashboardExists()
+  }
   // Refit terminal if on terminal tab
   if (activeTab.value === 'terminal') {
     nextTick(() => {

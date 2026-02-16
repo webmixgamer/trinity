@@ -133,14 +133,15 @@ async def reinitialize_system_agent(
             steps_completed.append("stopped")
             logger.info(f"System agent {SYSTEM_AGENT_NAME} stopped for re-initialization")
 
-        # Step 2: Clear workspace content (not the volume, just files)
+        # Step 2: Clear user-generated content (not the volume, just files)
         try:
             container.start()
             container.reload()
 
             # Execute cleanup command inside container
+            # Clear Trinity-specific directories but preserve template files
             cleanup_result = container.exec_run(
-                "bash -c 'rm -rf /home/developer/workspace/* /home/developer/.claude /home/developer/.trinity'",
+                "bash -c 'rm -rf /home/developer/.claude /home/developer/.trinity /home/developer/content /home/developer/plans'",
                 user="developer"
             )
             if cleanup_result.exit_code == 0:

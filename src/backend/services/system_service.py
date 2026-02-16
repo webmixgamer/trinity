@@ -11,7 +11,6 @@ from typing import Dict, List, Tuple, Optional
 from models import SystemManifest, SystemAgentConfig, SystemPermissions
 from database import db
 from db_models import ScheduleCreate
-from services.scheduler_service import scheduler_service
 
 logger = logging.getLogger(__name__)
 
@@ -372,11 +371,7 @@ def create_schedules(
             if schedule:
                 schedules_count += 1
                 logger.info(f"Created schedule '{schedule_data['name']}' for {final_name}")
-
-                # Add to scheduler if enabled
-                if schedule.enabled:
-                    scheduler_service.add_schedule(schedule)
-                    logger.info(f"Added schedule '{schedule_data['name']}' to scheduler")
+                # Dedicated scheduler syncs from database automatically
             else:
                 logger.warning(f"Failed to create schedule '{schedule_data['name']}' for {final_name}")
 

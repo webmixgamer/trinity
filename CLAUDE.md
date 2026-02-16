@@ -173,7 +173,7 @@ cp deploy.config.example deploy.config
 ```
 project_trinity/
 ├── src/
-│   ├── backend/          # FastAPI backend (main.py, database.py, credentials.py)
+│   ├── backend/          # FastAPI backend (main.py, database.py)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS
 │   └── mcp-server/       # Trinity MCP server (12 tools)
 ├── docker/
@@ -198,7 +198,7 @@ project_trinity/
 |----------|------|-------------|
 | Backend | `src/backend/main.py` | FastAPI app, 35+ endpoints |
 | Backend | `src/backend/database.py` | SQLite persistence |
-| Backend | `src/backend/credentials.py` | Redis credential manager |
+| Backend | `src/backend/routers/credentials.py` | Credential injection (CRED-002) |
 | Frontend | `src/frontend/src/views/AgentDetail.vue` | Agent detail page |
 | Frontend | `src/frontend/src/stores/agents.js` | Agent state management |
 | Agent | `docker/base-image/agent-server.py` | Agent internal server |
@@ -265,6 +265,38 @@ curl -X POST http://localhost:8000/api/agents \
 
 ---
 
+## Related Repositories
+
+| Repository | Description |
+|------------|-------------|
+| [abilityai/trinity](https://github.com/abilityai/trinity) | This repository - Deep Agent Orchestration Platform |
+| [abilityai/abilities](https://github.com/abilityai/abilities) | **System of record for Trinity skills & plugins** - All onboarding, management, and workflow skills |
+
+### Trinity Onboarding (abilities repo)
+
+The `abilities` repo contains **all Trinity skills** bundled in the `trinity-onboard` plugin:
+
+| Skill | Purpose |
+|-------|---------|
+| `onboard` | Zero-friction agent deployment to Trinity |
+| `trinity-adopt` | Convert any agent to Trinity-compatible format |
+| `trinity-compatibility` | Audit agent structure for requirements |
+| `trinity-remote` | Remote agent operations (exec, run, notify) |
+| `trinity-sync` | Git-based synchronization with remote |
+| `trinity-schedules` | Manage scheduled autonomous executions |
+
+**Installation:**
+```bash
+/plugin marketplace add abilityai/abilities
+```
+
+**Onboarding a new agent:**
+```bash
+/trinity-onboard:onboard
+```
+
+---
+
 ## See Also
 
 - **Development Workflow**: `docs/DEVELOPMENT_WORKFLOW.md` ← Start here for dev process
@@ -275,3 +307,4 @@ curl -X POST http://localhost:8000/api/agents \
 - **Template Spec**: `docs/AGENT_TEMPLATE_SPEC.md`
 - **Deployment Guide**: `docs/DEPLOYMENT.md`
 - **Agent Network Demo**: `docs/AGENT_NETWORK_DEMO.md`
+- **Claude Code Plugins**: https://github.com/abilityai/abilities

@@ -1,167 +1,128 @@
 <template>
   <div class="p-6 space-y-6">
     <!-- Loading State -->
-    <div v-if="assignmentsLoading" class="text-center py-8">
+    <div v-if="loading" class="text-center py-8">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
       <p class="text-gray-500 dark:text-gray-400 mt-2">Loading credentials...</p>
     </div>
 
     <template v-else>
-      <!-- Filter Input -->
-      <div class="mb-4">
-        <input
-          v-model="credentialFilter"
-          type="text"
-          placeholder="Filter credentials..."
-          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      <!-- Assigned Credentials Section -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-            Assigned Credentials
-            <span class="ml-2 text-sm font-normal text-gray-500">({{ filteredAssignedCredentials.length }})</span>
-          </h3>
-          <button
-            v-if="agentStatus === 'running' && assignedCredentials.length > 0"
-            @click="applyToAgent"
-            :disabled="applying"
-            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg v-if="applying" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {{ applying ? 'Applying...' : 'Apply to Agent' }}
-          </button>
-          <span
-            v-else-if="agentStatus !== 'running' && assignedCredentials.length > 0"
-            class="text-sm text-yellow-600 dark:text-yellow-400"
-          >
-            Start agent to apply
-          </span>
-        </div>
-
-        <div v-if="filteredAssignedCredentials.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
-          <svg class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-          </svg>
-          <p v-if="credentialFilter">No matching credentials.</p>
-          <p v-else>No credentials assigned to this agent.</p>
-          <p v-if="!credentialFilter" class="text-sm mt-1">Add credentials from the list below.</p>
-        </div>
-
-        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
-          <div
-            v-for="cred in filteredAssignedCredentials"
-            :key="cred.id"
-            class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50"
-          >
-            <div class="flex items-center space-x-3">
-              <div class="flex-shrink-0">
-                <span v-if="cred.type === 'file'" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </span>
-                <span v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                </span>
-              </div>
-              <div>
-                <p class="font-medium text-gray-900 dark:text-white">{{ cred.name }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ cred.service }} &middot; {{ cred.type }}
-                  <span v-if="cred.file_path" class="ml-1 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                    &rarr; {{ cred.file_path }}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <button
-              @click="unassignCredential(cred.id)"
-              class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Available Credentials Section -->
+      <!-- Credential Files Section -->
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-            Available Credentials
-            <span class="ml-2 text-sm font-normal text-gray-500">({{ filteredAvailableCredentials.length }})</span>
-          </h3>
-        </div>
-
-        <div v-if="filteredAvailableCredentials.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
-          <p v-if="credentialFilter">No matching credentials.</p>
-          <p v-else>All your credentials are assigned.</p>
-          <router-link v-if="!credentialFilter" to="/credentials" class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm mt-1 inline-block">
-            Create more credentials &rarr;
-          </router-link>
-        </div>
-
-        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
-          <div
-            v-for="cred in filteredAvailableCredentials"
-            :key="cred.id"
-            class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50"
-          >
-            <div class="flex items-center space-x-3">
-              <div class="flex-shrink-0">
-                <span v-if="cred.type === 'file'" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </span>
-                <span v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                </span>
-              </div>
-              <div>
-                <p class="font-medium text-gray-900 dark:text-white">{{ cred.name }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ cred.service }} &middot; {{ cred.type }}
-                  <span v-if="cred.file_path" class="ml-1 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                    &rarr; {{ cred.file_path }}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <button
-              @click="assignCredential(cred.id)"
-              class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
-            >
-              + Add
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Add Section -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Quick Add</h3>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Credential Files</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Paste KEY=VALUE pairs to create, assign, and apply credentials in one step
+            Manage credential files in the agent workspace
+          </p>
+        </div>
+
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+          <div
+            v-for="file in credentialFiles"
+            :key="file.name"
+            class="px-4 py-3 flex items-center justify-between"
+          >
+            <div class="flex items-center space-x-3">
+              <span
+                :class="[
+                  'inline-flex items-center justify-center w-8 h-8 rounded-full',
+                  file.exists
+                    ? 'bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                ]"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path v-if="file.exists" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </span>
+              <div>
+                <p class="font-mono text-sm text-gray-900 dark:text-white">{{ file.name }}</p>
+                <p v-if="file.exists" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatFileSize(file.size) }} &middot; Modified {{ formatDate(file.modified) }}
+                </p>
+                <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+                  Not present
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button
+                v-if="file.exists"
+                @click="viewFile(file.name)"
+                :disabled="agentStatus !== 'running'"
+                class="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                View
+              </button>
+              <button
+                @click="editFile(file.name)"
+                :disabled="agentStatus !== 'running'"
+                class="text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {{ file.exists ? 'Edit' : 'Add' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export/Import Buttons -->
+        <div class="px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <button
+              @click="exportToGit"
+              :disabled="agentStatus !== 'running' || exporting || !hasCredentialFiles"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              <svg v-if="exporting" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              {{ exporting ? 'Exporting...' : 'Export to Git' }}
+            </button>
+            <button
+              @click="importFromGit"
+              :disabled="agentStatus !== 'running' || importing || !hasEncryptedFile"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg v-if="importing" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              {{ importing ? 'Importing...' : 'Import from Git' }}
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            <span v-if="hasEncryptedFile" class="text-green-600 dark:text-green-400">
+              .credentials.enc exists
+            </span>
+            <span v-else class="text-gray-400 dark:text-gray-500">
+              No encrypted backup
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Inject Section -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Quick Inject</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Paste KEY=VALUE pairs to add credentials to .env
           </p>
         </div>
 
         <div class="p-4 space-y-4">
           <div class="relative">
             <textarea
-              v-model="quickAddText"
-              :disabled="agentStatus !== 'running' || quickAddLoading"
+              v-model="quickInjectText"
+              :disabled="agentStatus !== 'running' || quickInjectLoading"
               rows="5"
               placeholder="OPENAI_API_KEY=sk-...&#10;ANTHROPIC_API_KEY=sk-ant-...&#10;&#10;# Lines starting with # are ignored"
               class="w-full font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
@@ -176,47 +137,94 @@
 
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{ quickAddText ? countCredentials(quickAddText) : 0 }} credential(s) detected
+              {{ quickInjectText ? countCredentials(quickInjectText) : 0 }} credential(s) detected
             </span>
             <button
-              @click="quickAddCredentials"
-              :disabled="agentStatus !== 'running' || quickAddLoading || !quickAddText.trim()"
-              class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              @click="quickInject"
+              :disabled="agentStatus !== 'running' || quickInjectLoading || !quickInjectText.trim()"
+              class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              <svg v-if="quickAddLoading" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <svg v-if="quickInjectLoading" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              {{ quickAddLoading ? 'Adding...' : 'Add & Apply' }}
+              {{ quickInjectLoading ? 'Injecting...' : 'Inject' }}
             </button>
           </div>
 
-          <!-- Quick add result -->
+          <!-- Quick inject result -->
           <div
-            v-if="quickAddResult"
+            v-if="quickInjectResult"
             :class="[
               'p-4 rounded-lg',
-              quickAddResult.success ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
+              quickInjectResult.success ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
             ]"
           >
             <div class="flex items-start">
-              <svg v-if="quickAddResult.success" class="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <svg v-if="quickInjectResult.success" class="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
               </svg>
               <svg v-else class="w-5 h-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
               </svg>
               <div>
-                <p :class="quickAddResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'" class="font-medium">
-                  {{ quickAddResult.message }}
-                </p>
-                <p v-if="quickAddResult.credentials && quickAddResult.credentials.length" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Added: {{ quickAddResult.credentials.join(', ') }}
-                </p>
-                <p v-if="quickAddResult.note" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {{ quickAddResult.note }}
+                <p :class="quickInjectResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'" class="font-medium">
+                  {{ quickInjectResult.message }}
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File Editor Modal -->
+      <div v-if="editingFile" class="fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-80" @click="closeEditor"></div>
+
+          <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white font-mono">
+                {{ editingFile }}
+              </h3>
+              <button
+                @click="closeEditor"
+                class="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
+              >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4">
+              <textarea
+                v-model="editingContent"
+                :disabled="savingFile"
+                rows="20"
+                class="w-full font-mono text-sm border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800"
+                :placeholder="getPlaceholder(editingFile)"
+              ></textarea>
+            </div>
+
+            <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+              <button
+                @click="closeEditor"
+                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                @click="saveFile"
+                :disabled="savingFile"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <svg v-if="savingFile" class="animate-spin -ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ savingFile ? 'Saving...' : 'Save' }}
+              </button>
             </div>
           </div>
         </div>
@@ -228,7 +236,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAgentsStore } from '../stores/agents'
-import { useAgentCredentials } from '../composables/useAgentCredentials'
 import { useNotification } from '../composables'
 
 const props = defineProps({
@@ -245,58 +252,286 @@ const props = defineProps({
 const agentsStore = useAgentsStore()
 const { showNotification } = useNotification()
 
-// Local state
-const credentialFilter = ref('')
+// State
+const loading = ref(false)
+const credentialStatus = ref(null)
+const exporting = ref(false)
+const importing = ref(false)
+const quickInjectText = ref('')
+const quickInjectLoading = ref(false)
+const quickInjectResult = ref(null)
+const editingFile = ref(null)
+const editingContent = ref('')
+const savingFile = ref(false)
 
-// Create agent ref for composable
-const agent = computed(() => ({
-  name: props.agentName,
-  status: props.agentStatus
-}))
-
-const {
-  assignedCredentials,
-  availableCredentials,
-  loading: assignmentsLoading,
-  applying,
-  hasChanges,
-  quickAddText,
-  quickAddLoading,
-  quickAddResult,
-  loadCredentials,
-  assignCredential,
-  unassignCredential,
-  applyToAgent,
-  quickAddCredentials,
-  countCredentials
-} = useAgentCredentials(agent, agentsStore, showNotification)
-
-// Filtered credentials for search
-const filteredAssignedCredentials = computed(() => {
-  if (!credentialFilter.value) return assignedCredentials.value
-  const filter = credentialFilter.value.toLowerCase()
-  return assignedCredentials.value.filter(cred =>
-    cred.name.toLowerCase().includes(filter) ||
-    cred.service.toLowerCase().includes(filter)
-  )
+// Computed
+const credentialFiles = computed(() => {
+  const files = credentialStatus.value?.files || {}
+  return [
+    { name: '.env', ...files['.env'] },
+    { name: '.mcp.json', ...files['.mcp.json'] },
+    { name: '.mcp.json.template', ...files['.mcp.json.template'] }
+  ]
 })
 
-const filteredAvailableCredentials = computed(() => {
-  if (!credentialFilter.value) return availableCredentials.value
-  const filter = credentialFilter.value.toLowerCase()
-  return availableCredentials.value.filter(cred =>
-    cred.name.toLowerCase().includes(filter) ||
-    cred.service.toLowerCase().includes(filter)
-  )
+const hasCredentialFiles = computed(() => {
+  const files = credentialStatus.value?.files || {}
+  return files['.env']?.exists || files['.mcp.json']?.exists
 })
 
-// Load credentials on mount
+const hasEncryptedFile = computed(() => {
+  const files = credentialStatus.value?.files || {}
+  return files['.credentials.enc']?.exists
+})
+
+// Methods
+const loadCredentialStatus = async () => {
+  if (!props.agentName) return
+  if (props.agentStatus !== 'running') {
+    credentialStatus.value = null
+    return
+  }
+
+  loading.value = true
+  try {
+    credentialStatus.value = await agentsStore.getCredentialStatus(props.agentName)
+  } catch (err) {
+    console.error('Failed to load credential status:', err)
+    credentialStatus.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+const countCredentials = (text) => {
+  if (!text) return 0
+  let count = 0
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      count++
+    }
+  }
+  return count
+}
+
+const parseEnvText = (text) => {
+  const credentials = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex > 0) {
+      const key = trimmed.substring(0, eqIndex).trim()
+      let value = trimmed.substring(eqIndex + 1).trim()
+      // Remove surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1)
+      }
+      if (key) {
+        credentials[key] = value
+      }
+    }
+  }
+  return credentials
+}
+
+const formatEnvContent = (credentials) => {
+  const lines = ['# Credential file - managed by Trinity', '']
+  for (const [key, value] of Object.entries(credentials)) {
+    // Escape quotes in values
+    const escapedValue = String(value).replace(/"/g, '\\"')
+    lines.push(`${key}="${escapedValue}"`)
+  }
+  return lines.join('\n') + '\n'
+}
+
+const quickInject = async () => {
+  if (!quickInjectText.value.trim()) return
+
+  quickInjectLoading.value = true
+  quickInjectResult.value = null
+
+  try {
+    const credentials = parseEnvText(quickInjectText.value)
+    const credCount = Object.keys(credentials).length
+
+    if (credCount === 0) {
+      quickInjectResult.value = {
+        success: false,
+        message: 'No valid KEY=VALUE pairs found'
+      }
+      return
+    }
+
+    // Get existing .env content and merge
+    let existingEnv = {}
+    try {
+      const content = await agentsStore.downloadAgentFile(props.agentName, '/home/developer/.env')
+      existingEnv = parseEnvText(content)
+    } catch (e) {
+      // File doesn't exist, start fresh
+    }
+
+    // Merge new credentials (overwrite existing keys)
+    const merged = { ...existingEnv, ...credentials }
+    const envContent = formatEnvContent(merged)
+
+    // Inject the merged .env file
+    await agentsStore.injectCredentials(props.agentName, {
+      '.env': envContent
+    })
+
+    quickInjectResult.value = {
+      success: true,
+      message: `Injected ${credCount} credential(s) into .env`
+    }
+    quickInjectText.value = ''
+    await loadCredentialStatus()
+
+    if (showNotification) {
+      showNotification('Credentials injected', 'success')
+    }
+  } catch (err) {
+    console.error('Quick inject failed:', err)
+    quickInjectResult.value = {
+      success: false,
+      message: err.response?.data?.detail || err.message || 'Failed to inject credentials'
+    }
+  } finally {
+    quickInjectLoading.value = false
+  }
+}
+
+const exportToGit = async () => {
+  exporting.value = true
+  try {
+    const result = await agentsStore.exportCredentials(props.agentName)
+    await loadCredentialStatus()
+    if (showNotification) {
+      showNotification(`Exported ${result.files_exported} file(s) to .credentials.enc`, 'success')
+    }
+  } catch (err) {
+    console.error('Export failed:', err)
+    if (showNotification) {
+      showNotification(err.response?.data?.detail || 'Export failed', 'error')
+    }
+  } finally {
+    exporting.value = false
+  }
+}
+
+const importFromGit = async () => {
+  importing.value = true
+  try {
+    const result = await agentsStore.importCredentials(props.agentName)
+    await loadCredentialStatus()
+    if (showNotification) {
+      showNotification(`Imported ${result.files_imported.length} file(s) from .credentials.enc`, 'success')
+    }
+  } catch (err) {
+    console.error('Import failed:', err)
+    if (showNotification) {
+      showNotification(err.response?.data?.detail || 'Import failed', 'error')
+    }
+  } finally {
+    importing.value = false
+  }
+}
+
+const viewFile = async (filename) => {
+  try {
+    const content = await agentsStore.downloadAgentFile(props.agentName, `/home/developer/${filename}`)
+    editingFile.value = filename
+    editingContent.value = content
+  } catch (err) {
+    console.error('Failed to read file:', err)
+    if (showNotification) {
+      showNotification('Failed to read file', 'error')
+    }
+  }
+}
+
+const editFile = async (filename) => {
+  editingFile.value = filename
+  try {
+    const content = await agentsStore.downloadAgentFile(props.agentName, `/home/developer/${filename}`)
+    editingContent.value = content
+  } catch (err) {
+    // File doesn't exist, start with empty content or placeholder
+    editingContent.value = ''
+  }
+}
+
+const saveFile = async () => {
+  if (!editingFile.value) return
+
+  savingFile.value = true
+  try {
+    await agentsStore.injectCredentials(props.agentName, {
+      [editingFile.value]: editingContent.value
+    })
+
+    await loadCredentialStatus()
+    closeEditor()
+
+    if (showNotification) {
+      showNotification(`Saved ${editingFile.value}`, 'success')
+    }
+  } catch (err) {
+    console.error('Failed to save file:', err)
+    if (showNotification) {
+      showNotification(err.response?.data?.detail || 'Failed to save file', 'error')
+    }
+  } finally {
+    savingFile.value = false
+  }
+}
+
+const closeEditor = () => {
+  editingFile.value = null
+  editingContent.value = ''
+}
+
+const getPlaceholder = (filename) => {
+  const placeholders = {
+    '.env': 'OPENAI_API_KEY=sk-...\nANTHROPIC_API_KEY=sk-ant-...',
+    '.mcp.json': '{\n  "mcpServers": {\n    "trinity": {\n      "command": "npx",\n      "args": ["-y", "@anthropic-ai/trinity-mcp-server"]\n    }\n  }\n}',
+    '.mcp.json.template': '{\n  "mcpServers": {}\n}'
+  }
+  return placeholders[filename] || ''
+}
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let unitIndex = 0
+  let size = bytes
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
+  }
+  return `${size.toFixed(unitIndex > 0 ? 1 : 0)} ${units[unitIndex]}`
+}
+
+const formatDate = (isoString) => {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+}
+
+// Lifecycle
 onMounted(() => {
-  loadCredentials()
+  loadCredentialStatus()
 })
 
-// Reload when agent changes
+// Watch for agent status changes
+watch(() => props.agentStatus, () => {
+  loadCredentialStatus()
+})
+
 watch(() => props.agentName, () => {
-  loadCredentials()
+  loadCredentialStatus()
 })
 </script>

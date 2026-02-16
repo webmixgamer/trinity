@@ -1,10 +1,128 @@
-# Trinity
+<div align="center">
+  <img src="docs/assets/trinity-logo.svg" alt="Trinity" width="120"/>
+  <h1>Trinity</h1>
+  <p><strong>Sovereign infrastructure for autonomous AI agents</strong></p>
+  <p>Deploy, orchestrate, and govern AI agent teams with visual interface, enterprise-grade controls, and complete audit trails.</p>
 
-**Deep Agent Orchestration Platform** — Sovereign infrastructure for deploying, orchestrating, and governing autonomous AI systems that plan, reason, and execute independently.
+  <p>
+    <a href="https://github.com/abilityai/trinity/stargazers"><img src="https://img.shields.io/github/stars/abilityai/trinity?style=social" alt="Stars"></a>
+    <a href="https://github.com/abilityai/trinity/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Polyform%20NC-blue.svg" alt="License"></a>
+    <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
+    <img src="https://img.shields.io/badge/vue-3.x-green.svg" alt="Vue">
+    <img src="https://img.shields.io/badge/docker-required-blue.svg" alt="Docker">
+  </p>
+
+  <p>
+    <a href="#ways-to-use-trinity">How to Use</a> •
+    <a href="#-quick-start">Quick Start</a> •
+    <a href="#features">Features</a> •
+    <a href="https://youtu.be/SWpNphnuPpQ">Demo Video</a> •
+    <a href="#documentation">Docs</a> •
+    <a href="#community--support">Community</a>
+  </p>
+
+  <br/>
+  <a href="https://youtu.be/SWpNphnuPpQ">
+    <img src="https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube" alt="Watch the Demo">
+  </a>
+  <br/><br/>
+  <img src="docs/assets/screenshots/graph-view-collaboration.png" alt="Trinity Agent Collaboration" width="800"/>
+</div>
+
+---
+
+## Why Trinity?
+
+**The problem:** Everyone wants autonomous AI agents. But your options are terrible—SaaS platforms where data leaves your security perimeter, custom builds that take 6-12 months, or frameworks that don't handle governance and audit trails.
+
+**The solution:** Trinity is sovereign infrastructure with enterprise-grade controls. Human approvals where decisions matter. Your infrastructure, your security perimeter.
+
+| Option | Problem | Trinity |
+|--------|---------|---------|
+| **SaaS Platforms** | Data leaves your perimeter, vendor lock-in | Your infrastructure, data never leaves |
+| **Build Custom** | 6-12 months, $500K+ engineering | Deploy in minutes |
+| **Frameworks** | No governance, no audit trails | Enterprise controls built-in |
+
+---
+
+## Ways to Use Trinity
+
+Trinity supports three primary workflows depending on your starting point:
+
+### 1. Onboard an Existing Claude Code Agent
+
+**You have:** A Claude Code agent (local project with CLAUDE.md)
+**You want:** Deploy it to the cloud for autonomous operation, scheduling, and team access
+
+```bash
+# In Claude Code, install the Trinity plugin
+/plugin marketplace add abilityai/trinity
+/plugin install trinity-onboard@abilityai-trinity
+
+# Run the onboarding wizard
+/trinity-onboard:onboard
+```
+
+The plugin analyzes your agent, creates required configuration files, pushes to GitHub, and deploys to Trinity. After onboarding, you get management skills:
+
+| Skill | Description |
+|-------|-------------|
+| `/trinity-sync` | Sync local ↔ remote via git |
+| `/trinity-remote` | Execute tasks on remote agent |
+| `/trinity-schedules` | Manage cron-based automation |
+
+### 2. Create an Agent in Trinity
+
+**You have:** A Trinity instance running
+**You want:** Create a new agent from scratch or from a template
+
+1. Open Trinity web UI → **Create Agent**
+2. Choose a template:
+   - **Blank** — Start fresh, define behavior via chat
+   - **Built-in templates** — Pre-configured for common use cases
+   - **GitHub template** — `github:org/repo` for custom templates
+3. Configure credentials and start chatting
+
+### 3. Deploy a Multi-Agent System
+
+**You have:** A complex workflow requiring multiple specialized agents
+**You want:** Orchestrated agent fleet with shared state and coordination
+
+```yaml
+# system-manifest.yaml
+name: content-pipeline
+agents:
+  orchestrator:
+    template: github:abilityai/agent-corbin
+    schedules:
+      - cron: "0 9 * * *"
+        message: "Run daily content review"
+  writer:
+    template: github:abilityai/agent-ruby
+permissions:
+  preset: full-mesh
+```
+
+Deploy via MCP: `mcp__trinity__deploy_system(manifest="...")`
+
+See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for patterns.
+
+---
+
+### For AI Agents
+
+If you're an AI agent given this repository:
+
+1. **This repo is a Claude Code plugin** — Run `/plugin marketplace add abilityai/trinity` to install Trinity management skills
+2. **To deploy yourself to Trinity** — Run `/trinity-onboard:onboard` after installing the plugin
+3. **To interact with a Trinity instance** — Use the MCP tools (list_agents, chat_with_agent, etc.) after configuring the MCP server connection
+4. **To contribute to Trinity itself** — Read `CLAUDE.md` for development guidelines
+
+---
+
+## Deep Agents vs Chatbots
 
 Unlike reactive chatbots ("System 1" AI), Deep Agents operate with deliberative reasoning ("System 2" AI): they decompose goals into task graphs, persist memory across sessions, delegate to specialized sub-agents, and recover from failures autonomously.
-
-[![Watch the Demo](https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/SWpNphnuPpQ)
 
 ## The Four Pillars of Deep Agency
 
@@ -36,6 +154,10 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Real-Time Monitoring** — Live execution progress with step-by-step visibility
 - **Analytics & Cost Tracking** — Metrics, trends, and cost threshold alerts per process
 
+<p align="center">
+  <img src="docs/assets/screenshots/process-editor.png" alt="Process Editor" width="700"/>
+</p>
+
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
 - **MCP Integration** — 21 tools for external agent orchestration via Model Context Protocol
@@ -50,14 +172,35 @@ Trinity implements four foundational capabilities that transform simple AI assis
 ### Operations
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
-- **Credential Management** — Redis-backed secrets with hot-reload capability
+- **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
 - **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
 - **Live Execution Streaming** — Real-time streaming of execution logs to the web UI
 - **Execution Termination** — Stop running executions gracefully via SIGINT/SIGKILL
+- **Trinity Connect** — WebSocket event streaming for local Claude Code integration with MCP key authentication
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
 - **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
+
+<p align="center">
+  <img src="docs/assets/screenshots/timeline-collaboration-active.png" alt="Execution Timeline" width="700"/>
+</p>
+
+## Comparison
+
+| Feature | Trinity | Custom Build | LangChain/CrewAI | SaaS Platforms |
+|---------|:-------:|:------------:|:----------------:|:--------------:|
+| Time to production | Minutes | 6-12 months | Weeks | Instant |
+| Sovereignty | ✅ | ✅ | ✅ | ❌ |
+| Workflow orchestration | ✅ | DIY | ❌ | Limited |
+| Human approval gates | ✅ | DIY | ❌ | ❌ |
+| Docker isolation per agent | ✅ | DIY | ❌ | ❌ |
+| Complete audit trail | ✅ | DIY | ❌ | Basic |
+| Cost tracking per workflow | ✅ | DIY | ❌ | Basic |
+| State persistence | GitHub sync | DIY | Partial | Session-only |
+| Open source | ✅ | N/A | ✅ | ❌ |
+
+---
 
 ## Quick Start
 
@@ -225,6 +368,21 @@ These agents demonstrate:
 
 **Note**: You'll need to configure a `GITHUB_PAT` environment variable in `.env` to use GitHub templates.
 
+## Trinity Onboard Plugin
+
+> See [Ways to Use Trinity](#ways-to-use-trinity) for the quick start guide.
+
+The Trinity Onboard Plugin enables zero-friction deployment of any Claude Code agent to Trinity. After onboarding, you get management skills for ongoing operations:
+
+```bash
+# Example post-onboarding workflow
+/trinity-sync push                    # Push local changes to remote
+/trinity-remote exec "Run my task"    # Execute on remote agent
+/trinity-schedules list               # View scheduled tasks
+```
+
+For detailed plugin documentation, see [plugins/trinity-onboard/README.md](plugins/trinity-onboard/README.md).
+
 ## MCP Integration
 
 Trinity includes an MCP server for external orchestration of agents:
@@ -317,6 +475,32 @@ curl -X POST http://localhost:8000/api/systems/deploy \
 ```
 
 See the [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) for architecture patterns and best practices.
+
+## Trinity Connect
+
+Trinity Connect enables real-time coordination between local Claude Code instances and Trinity-hosted agents via WebSocket event streaming.
+
+```bash
+# Install listener dependencies
+brew install websocat jq
+
+# Set your MCP API key (from Settings → API Keys)
+export TRINITY_API_KEY="trinity_mcp_xxx"
+
+# Listen for events from a specific agent
+./scripts/trinity-listen.sh my-agent completed
+```
+
+The listener blocks until a matching event arrives, then prints the event and exits—perfect for event-driven automation loops:
+
+```bash
+while true; do
+    ./scripts/trinity-listen.sh my-agent completed
+    # React to the completed event...
+done
+```
+
+Events include: `agent_started`, `agent_stopped`, `agent_activity` (chat/task completions), and `schedule_execution_completed`.
 
 ## Process Engine
 
@@ -453,11 +637,16 @@ This project is licensed under the [Polyform Noncommercial License 1.0.0](LICENS
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Support
+## Community & Support
 
-- **Issues**: [GitHub Issues](https://github.com/abilityai/trinity/issues)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/abilityai/trinity/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/abilityai/trinity/discussions)
+- **Demo Video**: [Watch Trinity in action](https://youtu.be/SWpNphnuPpQ)
+- **Security Issues**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
 - **Commercial inquiries**: [hello@ability.ai](mailto:hello@ability.ai)
 
 ---
 
-Built by [Ability AI](https://ability.ai)
+<div align="center">
+  <sub>Built by <a href="https://ability.ai">Ability.ai</a> — Sovereign AI infrastructure for the autonomous enterprise</sub>
+</div>

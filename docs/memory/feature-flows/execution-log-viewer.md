@@ -559,8 +559,12 @@ if execution_id:
 
 1. **Authorization**: Uses `AuthorizedAgent` dependency that calls `db.can_user_access_agent()` check before returning log
 2. **Agent Ownership**: Only agent owners/shared users can view execution logs
-3. **Log Content**: Logs may contain sensitive file contents from tool results
-4. **Truncation**: Tool results >2000 chars are truncated in display (not storage)
+3. **Credential Sanitization** (Added 2026-02-16): All execution logs are sanitized before storage to prevent credential leakage:
+   - **Agent-side**: `sanitize_subprocess_line()` and `sanitize_dict()` filter credentials from subprocess output in real-time (`docker/base-image/agent_server/services/claude_code.py:491-529`)
+   - **Backend-side**: `sanitize_execution_log()` provides defense-in-depth before database persistence (`src/backend/routers/chat.py:283-286, 699-712`)
+   - **Patterns detected**: API keys (sk-*, ghp_*, trinity_mcp_*), OAuth tokens, Bearer/Basic auth, sensitive env vars
+4. **Log Content**: Logs may contain file contents from tool results (but credentials are redacted)
+5. **Truncation**: Tool results >2000 chars are truncated in display (not storage)
 
 ---
 
@@ -618,6 +622,7 @@ All execution types now produce logs that `parseExecutionLog()` can render:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-16 | **Security Fix (Credential Sanitization)**: Execution logs are now sanitized at two layers before storage. Agent-side: `sanitize_subprocess_line()` filters Claude Code output in real-time. Backend-side: `sanitize_execution_log()` provides defense-in-depth. Sensitive patterns (API keys, tokens, auth headers) are replaced with `***REDACTED***`. Updated Security Considerations section. |
 | 2026-01-23 | **Line number update**: Updated all line number references to match current implementation. View Log Button moved to lines 234-243. Modal at lines 316-432. Modal state at lines 499-503. viewExecutionLog() at lines 803-820. parseExecutionLog() at lines 839-930. Visual components at lines 357-425. Backend endpoint at lines 339-379 (using AuthorizedAgent dependency). Agent server execute_claude_code() at lines 389-546, execute_headless_task() at lines 553-766. |
 | 2026-01-10 | **Chat endpoint log fix**: Updated `/api/chat` to return raw Claude Code format. Modified `execute_claude_code()` to capture `raw_messages`. Backend now extracts both formats for activity tracking and UI. All execution types including MCP calls now produce parseable logs. |
 | 2025-01-02 | **Scheduler log fix**: Documented switch from `/api/chat` to `/api/task` for scheduled executions. Added `AgentClient.task()` method and `_parse_task_response()`. All execution types now produce parseable logs. |

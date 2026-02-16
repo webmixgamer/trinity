@@ -720,10 +720,11 @@ POST /api/system-agent/reinitialize (admin-only)
          │
          ▼
 ┌──────────────────────────────────────────────────────────┐
-│ Step 2: WORKSPACE_CLEARED                                │
+│ Step 2: FILES_CLEARED                                    │
 │ - container.start()                                      │
-│ - exec: rm -rf /home/developer/workspace/*               │
-│         /home/developer/.claude /home/developer/.trinity │
+│ - exec: rm -rf /home/developer/.claude                   │
+│         /home/developer/.trinity /home/developer/content │
+│         /home/developer/plans                            │
 └────────┬─────────────────────────────────────────────────┘
          │
          ▼
@@ -746,7 +747,7 @@ POST /api/system-agent/reinitialize (admin-only)
 │ Step 5: TRINITY_INJECTED         │
 │ - inject_trinity_meta_prompt()   │
 │ - Copies /trinity-meta-prompt/*  │
-│   to agent workspace             │
+│   to /home/developer/            │
 └────────┬─────────────────────────┘
          │
          ▼
@@ -951,6 +952,7 @@ ls -1 ~/reports/fleet/ | tail -1
 
 | Date | Changes |
 |------|---------|
+| 2026-02-11 | Fixed reinitialize flow diagram - cleanup command now shows actual paths (`/home/developer/.claude`, `.trinity`, `content`, `plans`) instead of obsolete workspace reference |
 | 2026-01-27 | **Emergency Stop Prefix Filter**: Added `system_prefix` query parameter to `POST /api/ops/emergency-stop` (`routers/ops.py:607-696`). Allows targeting specific agents/schedules by name prefix. Schedule pausing respects prefix (line 638-639), agent stopping respects prefix (line 658-659). Enables safe testing with nonexistent prefix. |
 | 2026-01-14 | **Emergency Stop Parallel Execution (LOW)**: Implemented parallel agent stopping with `ThreadPoolExecutor(max_workers=10)` in `routers/ops.py:591-696`. Added `_stop_agent_container()` helper function for thread pool execution. Reduces emergency stop time from 200+ seconds (sequential) to 20-30 seconds for a 20-agent fleet. Uses 60-second timeout for all futures with `concurrent.futures.as_completed()`. |
 | 2026-01-13 | **Report Storage**: Added organized report storage in `~/reports/` with subdirectories per report type. All slash commands now save reports with timestamped filenames. Added `.gitignore` to exclude reports from sync. |

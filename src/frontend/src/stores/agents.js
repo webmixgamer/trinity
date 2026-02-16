@@ -266,55 +266,39 @@ export const useAgentsStore = defineStore('agents', {
       return response.data
     },
 
-    async getAgentCredentials(name) {
+    // Simplified Credential System (CRED-002)
+    async injectCredentials(name, files) {
       const authStore = useAuthStore()
-      const response = await axios.get(`/api/agents/${name}/credentials`, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async hotReloadCredentials(name, credentialsText) {
-      const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/credentials/hot-reload`,
-        { credentials_text: credentialsText },
+      const response = await axios.post(`/api/agents/${name}/credentials/inject`,
+        { files },
         { headers: authStore.authHeader }
       )
       return response.data
     },
 
-    // Credential Assignment Actions
-    async getCredentialAssignments(name) {
+    async exportCredentials(name) {
       const authStore = useAuthStore()
-      const response = await axios.get(`/api/agents/${name}/credentials/assignments`, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async assignCredential(name, credentialId) {
-      const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/credentials/assign`,
-        { credential_id: credentialId },
-        { headers: authStore.authHeader }
-      )
-      return response.data
-    },
-
-    async unassignCredential(name, credentialId) {
-      const authStore = useAuthStore()
-      const response = await axios.delete(`/api/agents/${name}/credentials/assign/${credentialId}`, {
-        headers: authStore.authHeader
-      })
-      return response.data
-    },
-
-    async applyCredentials(name) {
-      const authStore = useAuthStore()
-      const response = await axios.post(`/api/agents/${name}/credentials/apply`,
+      const response = await axios.post(`/api/agents/${name}/credentials/export`,
         {},
         { headers: authStore.authHeader }
       )
+      return response.data
+    },
+
+    async importCredentials(name) {
+      const authStore = useAuthStore()
+      const response = await axios.post(`/api/agents/${name}/credentials/import`,
+        {},
+        { headers: authStore.authHeader }
+      )
+      return response.data
+    },
+
+    async getCredentialStatus(name) {
+      const authStore = useAuthStore()
+      const response = await axios.get(`/api/agents/${name}/credentials/status`, {
+        headers: authStore.authHeader
+      })
       return response.data
     },
 

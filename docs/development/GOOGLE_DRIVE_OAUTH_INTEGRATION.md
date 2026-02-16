@@ -1,7 +1,12 @@
 # Google Drive OAuth Integration Requirements
 
+> **⚠️ OUTDATED (2026-02-06)**: This document references the old Redis-based credential system (`credentials.py`).
+> As of CRED-002 (2026-02-05), credentials are now stored as files in agent containers (`.env`, `.credentials.enc`).
+> The OAuth flow may still work, but the storage/injection mechanism described here is no longer accurate.
+> See `docs/memory/feature-flows/credential-injection.md` for the current system.
+
 **Date**: 2025-12-01
-**Status**: Ready for Implementation
+**Status**: ⚠️ Needs Update (CRED-002)
 **Priority**: High
 **Estimated Effort**: 2-3 hours
 

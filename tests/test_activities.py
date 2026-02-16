@@ -442,7 +442,7 @@ class TestTimelineForDashboard:
         activities = response.json().get("activities", [])
 
         # Valid trigger types for Dashboard color coding
-        valid_triggers = {"schedule", "agent", "manual", "user", None}
+        valid_triggers = {"schedule", "agent", "manual", "user", "mcp", None}
 
         for activity in activities:
             triggered_by = activity.get("triggered_by")

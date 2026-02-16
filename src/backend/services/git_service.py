@@ -289,7 +289,9 @@ async def initialize_git_in_container(
     container_name = f"agent-{agent_name}"
 
     # Step 1: Determine git directory
-    # Check if workspace exists and has content
+    # NOTE: All agents use /home/developer as their home directory.
+    # The /home/developer/workspace check is LEGACY support for agents created before 2026-02.
+    # New agents should never have a workspace subdirectory.
     check_workspace = execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
@@ -302,11 +304,13 @@ async def initialize_git_in_container(
     )
 
     if workspace_has_content:
+        # Legacy agent with workspace subdirectory
         git_dir = "/home/developer/workspace"
-        logger.info(f"Using workspace directory with existing content: {git_dir}")
+        logger.info(f"[LEGACY] Using workspace directory with existing content: {git_dir}")
     else:
+        # Standard path for all current agents
         git_dir = "/home/developer"
-        logger.info(f"Using home directory (agent's files are here): {git_dir}")
+        logger.info(f"Using home directory: {git_dir}")
 
     # Step 2: Create .gitignore (if using home directory)
     if git_dir == "/home/developer":
@@ -411,6 +415,8 @@ def check_git_initialized(agent_name: str) -> Optional[str]:
     """
     container_name = f"agent-{agent_name}"
 
+    # NOTE: The workspace check is LEGACY support for agents created before 2026-02.
+    # New agents use /home/developer directly.
     result = execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace/.git ] && echo workspace || ([ -d /home/developer/.git ] && echo home || echo notexists)"',
@@ -420,8 +426,10 @@ def check_git_initialized(agent_name: str) -> Optional[str]:
     output = result.get("output", "").strip()
 
     if "workspace" in output:
+        # Legacy agent with workspace subdirectory
         return "/home/developer/workspace"
     elif "home" in output:
+        # Standard path for all current agents
         return "/home/developer"
 
     return None

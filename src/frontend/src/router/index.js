@@ -50,12 +50,8 @@ const routes = [
     component: () => import('../views/FileManager.vue'),
     meta: { requiresAuth: true }
   },
-  {
-    path: '/credentials',
-    name: 'Credentials',
-    component: () => import('../views/Credentials.vue'),
-    meta: { requiresAuth: true }
-  },
+  // REMOVED: /credentials route - credentials are now managed per-agent only
+  // Old global credential management is replaced by per-agent CredentialsPanel
   {
     path: '/templates',
     name: 'Templates',

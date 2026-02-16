@@ -932,6 +932,10 @@ class DatabaseManager:
     def get_all_agent_metadata(self, user_email: str = None):
         return self._agent_ops.get_all_agent_metadata(user_email)
 
+    def get_accessible_agent_names(self, user_email: str, is_admin: bool = False):
+        """Get list of agent names the user can access (owned + shared, or all if admin)."""
+        return self._agent_ops.get_accessible_agent_names(user_email, is_admin)
+
     # =========================================================================
     # Agent Resource Limits (delegated to db/agents.py)
     # =========================================================================

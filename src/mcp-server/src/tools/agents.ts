@@ -339,35 +339,15 @@ export function createAgentTools(
     },
 
     // ========================================================================
-    // reload_credentials - Reload credentials on a running agent
-    // ========================================================================
-    reloadCredentials: {
-      name: "reload_credentials",
-      description:
-        "Reload credentials on a running agent. " +
-        "This fetches the latest credentials from the Trinity credential store and pushes them to the agent container. " +
-        "Use this after adding or updating credentials to apply them without restarting the agent. " +
-        "The agent must be running for this to work.",
-      parameters: z.object({
-        name: z.string().describe("The name of the agent to reload credentials for"),
-      }),
-      execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
-        const authContext = context?.session;
-        const apiClient = getClient(authContext);
-        const result = await apiClient.reloadCredentials(name);
-        return JSON.stringify(result, null, 2);
-      },
-    },
-
-    // ========================================================================
     // get_credential_status - Get credential status from a running agent
     // ========================================================================
     getCredentialStatus: {
       name: "get_credential_status",
       description:
-        "Get the credential status from a running agent. " +
-        "Returns information about credential files inside the agent container, " +
-        "including whether .env and .mcp.json exist and when they were last modified.",
+        "Get credential file status from a running agent. " +
+        "Returns information about credential files (.env, .mcp.json, .credentials.enc) " +
+        "inside the agent container, including whether they exist and when last modified. " +
+        "Part of the simplified credential system (CRED-002).",
       parameters: z.object({
         name: z.string().describe("The name of the agent to check credential status for"),
       }),
@@ -376,6 +356,107 @@ export function createAgentTools(
         const apiClient = getClient(authContext);
         const status = await apiClient.getCredentialStatus(name);
         return JSON.stringify(status, null, 2);
+      },
+    },
+
+    // ========================================================================
+    // inject_credentials - Inject credential files directly into an agent
+    // ========================================================================
+    injectCredentials: {
+      name: "inject_credentials",
+      description:
+        "Inject credential files directly into a running agent's workspace. " +
+        "This is the new simplified credential system that writes files directly " +
+        "without Redis or template processing. Supports .env, .mcp.json, and other files. " +
+        "The agent must be running.",
+      parameters: z.object({
+        name: z.string().describe("The name of the agent to inject credentials into"),
+        files: z.record(z.string()).describe(
+          'Map of file paths to contents. Example: {".env": "KEY=value\\nSECRET=xxx", ".mcp.json": "{}"}'
+        ),
+      }),
+      execute: async (
+        { name, files }: { name: string; files: Record<string, string> },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(`[inject_credentials] Injecting ${Object.keys(files).length} file(s) into agent '${name}'`);
+
+        const result = await apiClient.injectCredentials(name, files);
+        return JSON.stringify(result, null, 2);
+      },
+    },
+
+    // ========================================================================
+    // export_credentials - Export credentials to encrypted file in git
+    // ========================================================================
+    exportCredentials: {
+      name: "export_credentials",
+      description:
+        "Export credential files from an agent to an encrypted .credentials.enc file. " +
+        "Reads .env and .mcp.json from the agent, encrypts them, and writes .credentials.enc " +
+        "to the agent's workspace. This file can be committed to git for portable credential storage. " +
+        "Requires CREDENTIAL_ENCRYPTION_KEY to be configured on the backend. " +
+        "The agent must be running.",
+      parameters: z.object({
+        name: z.string().describe("The name of the agent to export credentials from"),
+      }),
+      execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(`[export_credentials] Exporting credentials from agent '${name}'`);
+
+        const result = await apiClient.exportCredentials(name);
+        return JSON.stringify(result, null, 2);
+      },
+    },
+
+    // ========================================================================
+    // import_credentials - Import credentials from encrypted file
+    // ========================================================================
+    importCredentials: {
+      name: "import_credentials",
+      description:
+        "Import credentials from an encrypted .credentials.enc file into an agent. " +
+        "Reads .credentials.enc from the agent's workspace, decrypts it, and writes " +
+        "the credential files (.env, .mcp.json, etc.) to the workspace. " +
+        "This is useful after cloning an agent's git repo. " +
+        "Requires CREDENTIAL_ENCRYPTION_KEY to be configured on the backend. " +
+        "The agent must be running.",
+      parameters: z.object({
+        name: z.string().describe("The name of the agent to import credentials into"),
+      }),
+      execute: async ({ name }: { name: string }, context?: { session?: McpAuthContext }) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+
+        console.log(`[import_credentials] Importing credentials into agent '${name}'`);
+
+        const result = await apiClient.importCredentials(name);
+        return JSON.stringify(result, null, 2);
+      },
+    },
+
+    // ========================================================================
+    // get_credential_encryption_key - Get encryption key for local agents
+    // ========================================================================
+    getCredentialEncryptionKey: {
+      name: "get_credential_encryption_key",
+      description:
+        "Get the platform's credential encryption key for local agents. " +
+        "This allows local agents to encrypt/decrypt .credentials.enc files themselves, " +
+        "enabling portable agents that work both locally and on Trinity. " +
+        "Returns the key as a hex string (64 chars for AES-256). " +
+        "SECURITY: Store securely and never commit to git.",
+      parameters: z.object({}),
+      execute: async (_params: unknown, context?: { session?: McpAuthContext }) => {
+        const authContext = context?.session;
+        const apiClient = getClient(authContext);
+        const result = await apiClient.getEncryptionKey();
+        return JSON.stringify(result, null, 2);
       },
     },
 

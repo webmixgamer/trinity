@@ -82,6 +82,10 @@
             <span class="w-2 h-2 rounded" style="background-color: #06b6d4"></span>
             <span>Agent-Triggered</span>
           </span>
+          <span class="flex items-center space-x-1" title="Schedule marker (shows next scheduled run time)">
+            <span class="text-purple-500 text-xs font-bold">▼</span>
+            <span>Next Run</span>
+          </span>
         </div>
         <span v-if="isLiveMode" class="flex items-center space-x-1">
           <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
@@ -148,24 +152,13 @@
                 </span>
               </div>
               <!-- Autonomy toggle (compact) -->
-              <button
+              <AutonomyToggle
                 v-if="!row.isSystemAgent"
-                @click.stop="toggleAutonomy(row.name)"
-                :class="[
-                  'relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                  row.autonomyEnabled
-                    ? 'bg-amber-500'
-                    : 'bg-gray-200 dark:bg-gray-600'
-                ]"
-                :title="row.autonomyEnabled ? 'AUTO mode' : 'Manual mode'"
-              >
-                <span
-                  :class="[
-                    'pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                    row.autonomyEnabled ? 'translate-x-3' : 'translate-x-0'
-                  ]"
-                />
-              </button>
+                :model-value="row.autonomyEnabled"
+                :show-label="false"
+                size="sm"
+                @toggle="toggleAutonomy(row.name)"
+              />
             </div>
 
             <!-- Row 2: Context bar (inline) -->
@@ -304,6 +297,19 @@
               </rect>
             </g>
 
+            <!-- Schedule markers (show when schedules are set to run) -->
+            <g v-for="(marker, i) in scheduleMarkers" :key="'sched-' + i">
+              <polygon
+                :points="getScheduleMarkerPoints(marker)"
+                fill="#8b5cf6"
+                opacity="0.8"
+                class="cursor-pointer hover:opacity-100 transition-opacity"
+                @click="navigateToSchedule(marker)"
+              >
+                <title>{{ getScheduleTooltip(marker) }}</title>
+              </polygon>
+            </g>
+
             <!-- Communication arrows -->
             <g v-for="(arrow, i) in communicationArrows" :key="'arrow-' + i">
               <!-- Arrow line (offset outside boxes) -->
@@ -347,6 +353,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseUTC, getTimestampMs, formatLocalTime } from '@/utils/timestamps'
+import AutonomyToggle from './AutonomyToggle.vue'
 
 const router = useRouter()
 
@@ -365,7 +372,8 @@ const props = defineProps({
   contextStats: { type: Object, default: () => ({}) },
   executionStats: { type: Object, default: () => ({}) },
   isLiveMode: { type: Boolean, default: false },
-  timeRangeHours: { type: Number, default: 24 }
+  timeRangeHours: { type: Number, default: 24 },
+  schedules: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['play', 'pause', 'stop', 'speed-change', 'seek', 'toggle-autonomy'])
@@ -442,18 +450,30 @@ function handleScroll() {
   if (!timelineContainer.value || !props.isLiveMode) return
   const container = timelineContainer.value
 
-  // Calculate the max scroll position (NOW at 90% of viewport, 10% space on right)
+  // Calculate the "now" scroll position (for auto-scroll toggle detection)
   const viewportWidth = container.clientWidth - labelWidth
   const nowPosition = labelWidth + nowX.value
-  const maxAllowedScroll = Math.max(0, nowPosition - (viewportWidth * 0.9))
+  const nowScrollPosition = Math.max(0, nowPosition - (viewportWidth * 0.9))
 
-  // Clamp scroll to prevent scrolling into the future
-  if (container.scrollLeft > maxAllowedScroll + 10) {
-    container.scrollLeft = maxAllowedScroll
+  // Allow scrolling into future only if there are nearby schedules (within 2 hours)
+  // Otherwise clamp to prevent going past NOW
+  const maxFutureExtensionMs = 2 * 60 * 60 * 1000
+  const futureLimit = currentNow.value + maxFutureExtensionMs
+  const hasNearbySchedules = props.schedules && props.schedules.some(s => {
+    if (!s.next_run_at || !s.enabled) return false
+    const nextRunMs = getTimestampMs(s.next_run_at)
+    return nextRunMs > currentNow.value && nextRunMs <= futureLimit
+  })
+
+  if (!hasNearbySchedules) {
+    // No nearby schedules - clamp scroll to prevent going past NOW
+    if (container.scrollLeft > nowScrollPosition + 10) {
+      container.scrollLeft = nowScrollPosition
+    }
   }
 
   // Check if we're near the "now" position to enable/disable auto-scroll
-  if (Math.abs(container.scrollLeft - maxAllowedScroll) > 50) {
+  if (Math.abs(container.scrollLeft - nowScrollPosition) > 50) {
     autoScrollEnabled.value = false
   } else {
     autoScrollEnabled.value = true
@@ -497,10 +517,32 @@ function handleWheel(event) {
 const startTime = computed(() => props.timelineStart ? getTimestampMs(props.timelineStart) : 0)
 const endTime = computed(() => {
   const eventEnd = props.timelineEnd ? getTimestampMs(props.timelineEnd) : 0
+  let maxEnd = eventEnd
+
   if (props.isLiveMode) {
-    return Math.max(eventEnd, currentNow.value)
+    maxEnd = Math.max(maxEnd, currentNow.value)
   }
-  return eventEnd
+
+  // Extend timeline into future for schedule markers, but with a reasonable limit
+  // Max 2 hours into the future to avoid breaking the scale for far-off schedules
+  if (props.schedules && props.schedules.length > 0 && props.isLiveMode) {
+    const maxFutureExtensionMs = 2 * 60 * 60 * 1000  // 2 hours max
+    const futureLimit = currentNow.value + maxFutureExtensionMs
+
+    const nearbyScheduleTimes = props.schedules
+      .filter(s => s.next_run_at && s.enabled)
+      .map(s => getTimestampMs(s.next_run_at))
+      .filter(t => t <= futureLimit)  // Only consider schedules within 2 hours
+
+    if (nearbyScheduleTimes.length > 0) {
+      const furthestNearbySchedule = Math.max(...nearbyScheduleTimes)
+      // Add small padding (5 min) for visual clarity
+      const futurePaddingMs = 5 * 60 * 1000
+      maxEnd = Math.max(maxEnd, furthestNearbySchedule + futurePaddingMs)
+    }
+  }
+
+  return maxEnd
 })
 const duration = computed(() => endTime.value - startTime.value)
 
@@ -777,6 +819,44 @@ const communicationArrows = computed(() => {
   }).filter(a => a !== null)
 })
 
+// Schedule markers - show where enabled schedules will next run
+const scheduleMarkers = computed(() => {
+  if (!props.schedules.length || !startTime.value || !duration.value) return []
+
+  const markers = []
+
+  props.schedules.forEach(schedule => {
+    if (!schedule.next_run_at || !schedule.enabled) return
+
+    // Find the agent row index
+    const rowIndex = filteredAgentRows.value.findIndex(row => row.name === schedule.agent_name)
+    if (rowIndex === -1) return
+
+    // Parse the next_run_at timestamp
+    const nextRunMs = getTimestampMs(schedule.next_run_at)
+
+    // Only show markers within the visible timeline range
+    if (nextRunMs < startTime.value || nextRunMs > endTime.value) return
+
+    // Calculate x position
+    const x = ((nextRunMs - startTime.value) / duration.value) * actualGridWidth.value
+
+    markers.push({
+      x,
+      rowIndex,
+      id: schedule.id,
+      name: schedule.name,
+      agentName: schedule.agent_name,
+      nextRun: schedule.next_run_at,
+      cronExpression: schedule.cron_expression,
+      message: schedule.message,
+      enabled: schedule.enabled
+    })
+  })
+
+  return markers
+})
+
 // Helper functions
 function navigateToAgent(agentName) {
   router.push(`/agents/${agentName}`)
@@ -952,6 +1032,29 @@ function getBarTooltip(activity) {
     : formatDuration(activity.durationMs)
 
   return `${prefix} ${status} - ${duration}`.trim().replace('  ', ' ')
+}
+
+// Schedule marker helper functions
+function getScheduleMarkerPoints(marker) {
+  const x = marker.x
+  const y = marker.rowIndex * rowHeight + 4
+  // Downward-pointing triangle (▼)
+  return `${x},${y} ${x - 4},${y + 8} ${x + 4},${y + 8}`
+}
+
+function getScheduleTooltip(marker) {
+  const nextRun = formatLocalTime(marker.nextRun)
+  const messagePreview = marker.message && marker.message.length > 50
+    ? marker.message.substring(0, 50) + '...'
+    : (marker.message || 'No message')
+  return `Schedule: ${marker.name}\nNext Run: ${nextRun}\nCron: ${marker.cronExpression}\nMessage: ${messagePreview}`
+}
+
+function navigateToSchedule(marker) {
+  router.push({
+    path: `/agents/${marker.agentName}`,
+    query: { tab: 'schedules' }
+  })
 }
 </script>
 

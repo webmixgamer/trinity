@@ -464,6 +464,40 @@ class AgentOperations:
     # Batch Metadata Query (N+1 Fix)
     # =========================================================================
 
+    def get_accessible_agent_names(self, user_email: str, is_admin: bool = False) -> List[str]:
+        """
+        Get list of agent names the user can access.
+
+        Used by /ws/events endpoint to filter events to user's accessible agents.
+
+        Args:
+            user_email: User's email address
+            is_admin: True if user is admin (sees all agents)
+
+        Returns:
+            List of agent names the user can access (owned + shared, or all if admin)
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            if is_admin:
+                # Admin sees all agents
+                cursor.execute("SELECT agent_name FROM agent_ownership")
+                return [row["agent_name"] for row in cursor.fetchall()]
+
+            # Get owned + shared agents
+            cursor.execute("""
+                SELECT DISTINCT agent_name FROM (
+                    SELECT ao.agent_name FROM agent_ownership ao
+                    JOIN users u ON ao.owner_id = u.id
+                    WHERE LOWER(u.email) = LOWER(?)
+                    UNION
+                    SELECT agent_name FROM agent_sharing
+                    WHERE LOWER(shared_with_email) = LOWER(?)
+                )
+            """, (user_email, user_email))
+            return [row["agent_name"] for row in cursor.fetchall()]
+
     def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
         """
         Fetch all agent metadata in a SINGLE query.

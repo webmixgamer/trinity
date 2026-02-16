@@ -140,7 +140,9 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
         "- `parallel=false` (default): Sequential chat mode. Uses execution queue, maintains conversation history. " +
         "Best for multi-turn conversations requiring context.\n" +
         "- `parallel=true`: Parallel task mode. Stateless, no queue, can run N tasks concurrently. " +
-        "Best for independent tasks, batch processing, orchestrator delegation.",
+        "Best for independent tasks, batch processing, orchestrator delegation.\n" +
+        "- `async=true` (with parallel=true): Fire-and-forget mode. Returns immediately with execution_id. " +
+        "Poll GET /api/agents/{name}/executions/{execution_id} for results.",
       parameters: z.object({
         agent_name: z.string().describe("The name of the agent to chat with"),
         message: z
@@ -178,9 +180,17 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
         timeout_seconds: z
           .number()
           .optional()
-          .default(300)
+          .default(600)
           .describe(
-            "Execution timeout in seconds (default: 300). Only applies when parallel=true."
+            "Execution timeout in seconds (default: 600). Only applies when parallel=true."
+          ),
+        async: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "If true, return immediately with execution_id (fire-and-forget). " +
+            "Only applies when parallel=true. Poll the execution endpoint for results."
           ),
       }),
       execute: async (
@@ -192,6 +202,7 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
           allowed_tools,
           system_prompt,
           timeout_seconds,
+          async: asyncMode,
         }: {
           agent_name: string;
           message: string;
@@ -200,6 +211,7 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
           allowed_tools?: string[];
           system_prompt?: string;
           timeout_seconds?: number;
+          async?: boolean;
         },
         context: any
       ) => {
@@ -232,7 +244,8 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
         // Use parallel task mode or sequential chat mode based on parameter
         if (parallel) {
           // Parallel task mode - stateless, no queue
-          console.log(`[Parallel Task] Sending task to ${agent_name}`);
+          const modeDesc = asyncMode ? 'async (fire-and-forget)' : 'sync';
+          console.log(`[Parallel Task] Sending task to ${agent_name} (${modeDesc})`);
           const response = await apiClient.task(
             agent_name,
             message,
@@ -241,6 +254,7 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
               allowed_tools,
               system_prompt,
               timeout_seconds,
+              async_mode: asyncMode,
             },
             sourceAgent
           );

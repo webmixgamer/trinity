@@ -11,7 +11,7 @@
 > **Previous (2025-12-31)**: Updated for settings service and AgentClient refactoring. API key retrieval now uses `services/settings_service.py`. Trinity injection uses centralized `AgentClient` with built-in retry logic.
 
 ## Overview
-Complete lifecycle management for Trinity agents: create, start, stop, and delete Docker containers with credential injection, network isolation, Trinity meta-prompt injection, and WebSocket broadcasts.
+Complete lifecycle management for Trinity agents: create, start, stop, and delete Docker containers with credential injection (CRED-002), skill injection, network isolation, Trinity meta-prompt injection, and WebSocket broadcasts.
 
 ## User Story
 As a Trinity platform user, I want to create, start, stop, and delete agents so that I can manage isolated Claude Code execution environments with custom configurations, credentials, and Trinity planning capabilities.
@@ -220,22 +220,30 @@ from services.settings_service import get_anthropic_api_key  # Line 29 - central
 ```
 
 **Business Logic:**
-1. **Sanitize name** (line 63-67): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
-2. **Check existence** (line 69-70): Query Docker for existing container via `get_agent_by_name()`
-3. **Load template** (line 80-169): GitHub or local template processing
-4. **Auto-assign port** (line 171-172): Find next available SSH port (2289+) via `get_next_available_port()`
-5. **Get credentials** (line 175-185): `credential_manager.get_assigned_credential_values()` and `get_agent_credentials()`
-6. **Generate credential files** (line 187-217): Process template placeholders via `generate_credential_files()`
-7. **Create MCP API key** (line 260-271): Generate agent-scoped Trinity MCP access key
-8. **Build env vars** (line 273-344): `ANTHROPIC_API_KEY` via `get_anthropic_api_key()` (line 277), MCP server credentials, GitHub repo/PAT
-9. **Create persistent volume** (line 348-360): Per-agent workspace volume for Pillar III compliance
-10. **Mount Trinity meta-prompt** (line 374-379): Mount `/trinity-meta-prompt` volume for planning commands
-11. **Create container** (line 428-454): Docker SDK `containers.run()` with security options
-12. **Register ownership** (line 472): `db.register_agent_owner(current_user.username)`
-13. **Grant default permissions** (line 475-480): Same-owner agent permissions (Phase 9.10)
+1. **Sanitize name** (line 78-82): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
+2. **Check existence** (line 84-85): Query Docker for existing container via `get_agent_by_name()`
+3. **Load template** (line 97-179): GitHub or local template processing, extract shared folder config
+4. **Auto-assign port** (line 180-181): Find next available SSH port (2289+) via `get_next_available_port()`
+5. **Generate credential files** (line 188-200): Create empty template structure (CRED-002: no longer auto-injects credentials)
+6. **Create MCP API key** (line 260-271): Generate agent-scoped Trinity MCP access key
+7. **Build env vars** (line 273-344): `ANTHROPIC_API_KEY` via `get_anthropic_api_key()`, GitHub repo/PAT
+8. **Create persistent volume** (line 348-360): Per-agent workspace volume for Pillar III compliance
+9. **Mount Trinity meta-prompt** (line 374-379): Mount `/trinity-meta-prompt` volume for planning commands
+10. **Create container** (line 428-454): Docker SDK `containers.run()` with security options
+11. **Register ownership** (line 472): `db.register_agent_owner(current_user.username)`
+12. **Grant default permissions** (line 475-480): Same-owner agent permissions (Phase 9.10)
+13. **Upsert shared folder config** (line 394-404): Persist config from template BEFORE container creation
 14. **Create git config** (line 483-496): For GitHub-native agents (Phase 7)
 15. **Broadcast WebSocket** (line 458-470): `agent_created` event
 16. **Audit log**: Handled by router after service call
+
+> **CRED-002 (2026-02-05)**: Credentials are NO LONGER auto-injected during agent creation.
+> They are added after creation via:
+> - Quick Inject (paste .env text in Credentials tab)
+> - Import from `.credentials.enc` on startup
+> - `inject_credentials` MCP tool
+>
+> **Bug Fix (2026-02-05)**: Removed orphaned credential injection loop (lines 312-332 in crud.py) that referenced undefined `agent_credentials` variable. This dead code was left behind during the CRED-002 refactor but never executed since the variable was already removed.
 
 #### Delete Agent (`src/backend/routers/agents.py:211-313`)
 ```python
@@ -284,12 +292,13 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
     # Return start result with Trinity injection status
 ```
 
-**Service Function** (`src/backend/services/agent_service/lifecycle.py:53-97`):
+**Service Function** (`src/backend/services/agent_service/lifecycle.py:193-250`):
 
-**Imports** (lines 1-20):
+**Imports** (lines 1-22):
 ```python
-from services.settings_service import get_anthropic_api_key  # Line 16 - centralized settings
-from services.agent_client import get_agent_client           # Line 17 - centralized HTTP client
+from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities  # Line 17
+from services.agent_client import get_agent_client           # Line 18 - centralized HTTP client
+from services.skill_service import skill_service             # Line 19 - skill injection
 ```
 
 ```python
@@ -298,33 +307,61 @@ async def start_agent_internal(agent_name: str) -> dict:
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check if container needs recreation for shared folders or API key settings
+    # Check if container needs recreation for shared folders, API key, resources, or capabilities
     container.reload()
     needs_recreation = (
         not check_shared_folder_mounts_match(container, agent_name) or
-        not check_api_key_env_matches(container, agent_name)
+        not check_api_key_env_matches(container, agent_name) or
+        not check_resource_limits_match(container, agent_name) or
+        not check_full_capabilities_match(container, agent_name)
     )
 
     if needs_recreation:
-        # Recreate container with updated config (shared folders, API key)
+        # Recreate container with updated config
         await recreate_container_with_updated_config(agent_name, container, "system")
         container = get_agent_container(agent_name)
 
     container.start()
 
-    # Inject Trinity meta-prompt via AgentClient
+    # 1. Inject Trinity meta-prompt via AgentClient
     trinity_result = await inject_trinity_meta_prompt(agent_name)
+
+    # 2. Import credentials from encrypted .credentials.enc file (CRED-002)
+    credentials_result = await inject_assigned_credentials(agent_name)
+
+    # 3. Inject assigned skills from the Skills page
+    skills_result = await inject_assigned_skills(agent_name)
+
     return {
         "message": f"Agent {agent_name} started",
         "trinity_injection": trinity_result.get("status", "unknown"),
-        "trinity_result": trinity_result
+        "trinity_result": trinity_result,
+        "credentials_injection": credentials_result.get("status", "unknown"),
+        "credentials_result": credentials_result,
+        "skills_injection": skills_result.get("status", "unknown"),
+        "skills_result": skills_result
     }
 ```
+
+**Startup Injection Order** (After container.start()):
+1. **Trinity Meta-Prompt** (`inject_trinity_meta_prompt`) - Planning commands and `.trinity/` directory
+2. **Credentials** (`inject_assigned_credentials`) - CRED-002: Decrypt `.credentials.enc` and write files
+3. **Skills** (`inject_assigned_skills`) - Write skill files to `~/.claude/skills/{name}/SKILL.md`
 
 **Container Recreation Triggers:**
 - **Shared folder changes**: Mounts added/removed based on `shared_folder_config`
 - **API key setting changes**: `ANTHROPIC_API_KEY` added/removed based on `use_platform_api_key`
 - API key retrieval uses `get_anthropic_api_key()` from `services/settings_service.py` (line 118)
+
+**Authentication Model** (Updated 2026-02-15):
+When agent starts, Claude Code can authenticate via two methods:
+1. **OAuth session** (Claude Pro/Max subscription): User runs `/login` in web terminal after start
+   - Session stored in `~/.claude.json` inside the container
+   - All subsequent executions (interactive AND headless) use subscription
+   - Persists across container restarts (stored in persistent volume)
+2. **API key**: `ANTHROPIC_API_KEY` environment variable injected if `use_platform_api_key=true`
+
+The mandatory `ANTHROPIC_API_KEY` check was removed from Claude Code execution functions, allowing headless calls (scheduled tasks, MCP triggers, parallel tasks) to work with subscription authentication.
 
 **Trinity Meta-Prompt Injection** (`src/backend/services/agent_service/lifecycle.py:23-51`)
 
@@ -644,6 +681,29 @@ if container_meta_prompt_path.exists():
 | `agent_stopped` | `{name}` | After container.stop() (line 1029-1033) |
 | `agent_deleted` | `{name}` | After container.remove() (line 803-807) |
 
+### Trinity Connect Filtered Broadcasts (Added 2026-02-05)
+
+Agent start/stop events are now broadcast to both the main WebSocket and the filtered Trinity Connect WebSocket endpoint.
+
+**Location**: `src/backend/routers/agents.py:324-340, 356-368`
+
+```python
+# Broadcast agent_started to main UI WebSocket
+await manager.broadcast(json.dumps({"type": "agent_started", "name": agent_name, "data": {...}}))
+
+# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
+await filtered_manager.broadcast_filtered({"type": "agent_started", "name": agent_name, "data": {...}})
+```
+
+**Events Broadcast to Trinity Connect:**
+
+| Event | Agent Name Field | Use Case |
+|-------|------------------|----------|
+| `agent_started` | `name` | External Claude Code waits for agent to be ready |
+| `agent_stopped` | `name` | External Claude Code detects agent shutdown |
+
+**Related Documentation**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
 ### Audit Logging
 ```python
 await log_audit_event(
@@ -800,6 +860,10 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that agents can now use Claude Max subscription for all executions (including headless). When "Authenticate in Terminal" is enabled and user logs in via `/login`, the OAuth session in `~/.claude.json` is used for scheduled tasks, MCP calls, and parallel tasks instead of requiring `ANTHROPIC_API_KEY`. |
+| 2026-02-05 | **Bug fix: Orphaned credential injection loop**: Removed dead code in `crud.py:312-332` that iterated over undefined `agent_credentials` variable. This loop was left behind during CRED-002 refactor when the variable definition (lines ~183-192) was removed. Added comment explaining credentials are injected post-creation. |
+| 2026-02-05 | **CRED-002 + Skill Injection on Startup**: Updated `start_agent_internal()` documentation to include full startup injection order: Trinity meta-prompt, credentials (from `.credentials.enc`), skills. Updated lifecycle.py line numbers (now 193-250). Added `check_full_capabilities_match()` to container recreation triggers. |
+| 2026-02-05 | **Trinity Connect Integration**: Agent start/stop events now broadcast to filtered WebSocket `/ws/events` for external listeners. Added Trinity Connect Filtered Broadcasts section with code example and event table. Related: trinity-connect.md |
 | 2026-01-26 | **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Component supports three sizes (sm/md/lg), loading spinner, dark mode, ARIA attributes. Updated AgentHeader.vue (emits `toggle` instead of `start`/`stop`), Agents.vue (uses `toggleAgentRunning()`), AgentNode.vue (new toggle in Dashboard). Added `toggleAgentRunning()` and `runningToggleLoading` state to agents.js and network.js stores. |
 | 2026-01-14 | **Security Bug Fixes (HIGH)**: (1) **Missing Auth on Lifecycle Endpoints**: Changed `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` to use `AuthorizedAgentByName` dependency instead of plain `get_current_user`. This ensures users can only start/stop/view logs for agents they have access to. (2) **Container Security Consistency**: Added `RESTRICTED_CAPABILITIES` and `FULL_CAPABILITIES` constants in `lifecycle.py:31-49`. All container creation paths (`crud.py:464`, `lifecycle.py:361`, `system_agent_service.py:260`) now ALWAYS apply baseline security: `cap_drop=['ALL']`, AppArmor profile, `noexec,nosuid` on tmpfs. Previously some paths had inconsistent security settings. |
 | 2026-01-12 | **Database Batch Queries (N+1 Fix)**: Added `get_all_agent_metadata()` in `db/agents.py:467-529` - single JOIN query across `agent_ownership`, `users`, `agent_git_config`, `agent_sharing` tables. Rewrote `get_accessible_agents()` in `helpers.py:83-153` to use batch query instead of 8-10 individual queries per agent. Exposed on `DatabaseManager` (`database.py:845-850`). Database queries reduced from 160-200 to 2 per request. Orphaned agents (Docker-only, no DB record) now only visible to admin. |
@@ -876,3 +940,4 @@ fi
 - **Related**: Agent Sharing (ownership and access control)
 - **Related**: Git Sync (GitHub-native agents)
 - **Related**: Agent Scheduling (scheduled task management)
+- **Related**: Trinity Connect (`trinity-connect.md`) - Filtered event broadcast for external listeners (Added 2026-02-05)

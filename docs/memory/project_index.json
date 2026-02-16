@@ -113,7 +113,8 @@
     "backend": [
       "src/backend/main.py",
       "src/backend/database.py",
-      "src/backend/credentials.py"
+      "src/backend/routers/credentials.py",
+      "src/backend/services/credential_encryption.py"
     ],
     "frontend": [
       "src/frontend/src/views/AgentDetail.vue",

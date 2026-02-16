@@ -110,6 +110,16 @@ class SchedulerDatabase:
             """)
             return [self._row_to_schedule(row) for row in cursor.fetchall()]
 
+    def list_all_schedules(self) -> List[Schedule]:
+        """List all schedules (enabled and disabled) for sync detection."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM agent_schedules
+                ORDER BY agent_name, name
+            """)
+            return [self._row_to_schedule(row) for row in cursor.fetchall()]
+
     def list_agent_schedules(self, agent_name: str) -> List[Schedule]:
         """List all schedules for a specific agent."""
         with self.get_connection() as conn:
@@ -380,6 +390,16 @@ class SchedulerDatabase:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM process_schedules WHERE enabled = 1
+                ORDER BY process_name, trigger_id
+            """)
+            return [self._row_to_process_schedule(row) for row in cursor.fetchall()]
+
+    def list_all_process_schedules(self) -> List[ProcessSchedule]:
+        """List all process schedules (enabled and disabled) for sync detection."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM process_schedules
                 ORDER BY process_name, trigger_id
             """)
             return [self._row_to_process_schedule(row) for row in cursor.fetchall()]

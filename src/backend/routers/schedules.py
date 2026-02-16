@@ -13,11 +13,18 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import json
+import os
+import logging
+import httpx
 
 from models import User
 from dependencies import get_current_user, get_authorized_agent, AuthorizedAgent, CurrentUser
 from database import db, Schedule, ScheduleCreate, ScheduleExecution
-from services.scheduler_service import scheduler_service
+
+logger = logging.getLogger(__name__)
+
+# Dedicated scheduler URL (scheduler service runs on port 8001)
+SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://scheduler:8001")
 
 router = APIRouter(prefix="/api/agents", tags=["schedules"])
 
@@ -33,7 +40,8 @@ async def get_scheduler_status(
     """
     Get scheduler status (admin only).
 
-    Returns information about the scheduler state and scheduled jobs.
+    Returns information about the scheduler state and scheduled jobs
+    from the dedicated scheduler service.
     """
     if current_user.role != "admin":
         raise HTTPException(
@@ -41,7 +49,26 @@ async def get_scheduler_status(
             detail="Admin access required"
         )
 
-    return scheduler_service.get_scheduler_status()
+    # Call dedicated scheduler service for status
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{SCHEDULER_URL}/status",
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Scheduler status failed: {response.status_code}")
+                return {"running": False, "error": "Scheduler unavailable"}
+
+    except httpx.ConnectError:
+        logger.warning(f"Cannot connect to scheduler at {SCHEDULER_URL}")
+        return {"running": False, "error": "Scheduler unavailable"}
+    except httpx.TimeoutException:
+        logger.warning(f"Timeout connecting to scheduler")
+        return {"running": False, "error": "Scheduler timeout"}
 
 
 # Request/Response Models
@@ -132,9 +159,8 @@ async def create_schedule(
             detail="Cannot create schedule - access denied or agent not found"
         )
 
-    # Add to scheduler if enabled
-    if schedule.enabled:
-        scheduler_service.add_schedule(schedule)
+    # Dedicated scheduler syncs from database automatically
+    # No need to notify it directly - it will pick up new schedules on next sync cycle
 
     return ScheduleResponse(**schedule.model_dump())
 
@@ -191,8 +217,8 @@ async def update_schedule(
             detail="Cannot update schedule - access denied"
         )
 
-    # Update in scheduler
-    scheduler_service.update_schedule(updated_schedule)
+    # Dedicated scheduler syncs from database automatically
+    # It will detect the update on next sync cycle
 
     return ScheduleResponse(**updated_schedule.model_dump())
 
@@ -211,8 +237,8 @@ async def delete_schedule(
             detail="Schedule not found"
         )
 
-    # Remove from scheduler first
-    scheduler_service.remove_schedule(schedule_id)
+    # Dedicated scheduler syncs from database automatically
+    # It will detect the deletion on next sync cycle
 
     if not db.delete_schedule(schedule_id, current_user.username):
         raise HTTPException(
@@ -236,7 +262,8 @@ async def enable_schedule(
             detail="Schedule not found"
         )
 
-    scheduler_service.enable_schedule(schedule_id)
+    # Update database - dedicated scheduler syncs automatically
+    db.set_schedule_enabled(schedule_id, True)
 
     return {"status": "enabled", "schedule_id": schedule_id}
 
@@ -254,7 +281,8 @@ async def disable_schedule(
             detail="Schedule not found"
         )
 
-    scheduler_service.disable_schedule(schedule_id)
+    # Update database - dedicated scheduler syncs automatically
+    db.set_schedule_enabled(schedule_id, False)
 
     return {"status": "disabled", "schedule_id": schedule_id}
 
@@ -264,7 +292,15 @@ async def trigger_schedule(
     name: AuthorizedAgent,
     schedule_id: str
 ):
-    """Manually trigger a schedule execution."""
+    """
+    Manually trigger a schedule execution.
+
+    Delegates to the dedicated scheduler service which handles:
+    - Distributed locking (prevents concurrent execution)
+    - Execution record creation
+    - Activity tracking (appears on Timeline)
+    - Agent execution
+    """
     schedule = db.get_schedule(schedule_id)
     if not schedule or schedule.agent_name != name:
         raise HTTPException(
@@ -272,18 +308,55 @@ async def trigger_schedule(
             detail="Schedule not found"
         )
 
-    execution_id = await scheduler_service.trigger_schedule(schedule_id)
-    if not execution_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to trigger schedule"
-        )
+    # Call dedicated scheduler service for manual trigger
+    # The scheduler handles locking, activity tracking, and execution
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{SCHEDULER_URL}/api/schedules/{schedule_id}/trigger",
+                timeout=10.0
+            )
 
-    return {
-        "status": "triggered",
-        "schedule_id": schedule_id,
-        "execution_id": execution_id
-    }
+            if response.status_code == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Schedule not found in scheduler"
+                )
+            elif response.status_code == 503:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Scheduler service unavailable"
+                )
+            elif response.status_code != 200:
+                logger.error(f"Scheduler trigger failed: {response.status_code} - {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to trigger schedule"
+                )
+
+            result = response.json()
+            logger.info(f"Manual trigger delegated to scheduler: {schedule_id}")
+
+            return {
+                "status": "triggered",
+                "schedule_id": schedule_id,
+                "schedule_name": result.get("schedule_name"),
+                "agent_name": result.get("agent_name"),
+                "message": result.get("message", "Execution started")
+            }
+
+    except httpx.ConnectError:
+        logger.error(f"Cannot connect to scheduler at {SCHEDULER_URL}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scheduler service unavailable"
+        )
+    except httpx.TimeoutException:
+        logger.error(f"Timeout connecting to scheduler at {SCHEDULER_URL}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Scheduler service timeout"
+        )
 
 
 # Execution History Endpoints

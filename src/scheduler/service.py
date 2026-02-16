@@ -37,6 +37,7 @@ class SchedulerService:
     - APScheduler with AsyncIO for non-blocking execution
     - Distributed locking to prevent duplicate executions
     - Event publishing for WebSocket compatibility
+    - Periodic sync to detect new/updated/deleted schedules
     """
 
     def __init__(
@@ -62,6 +63,11 @@ class SchedulerService:
         self._initialized = False
         self._start_time: Optional[datetime] = None
         self._instance_id: str = f"scheduler-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+        # Schedule state snapshots for sync detection
+        # Maps schedule_id -> (enabled, updated_at_iso)
+        self._schedule_snapshot: Dict[str, tuple] = {}
+        self._process_schedule_snapshot: Dict[str, tuple] = {}
 
     @property
     def redis(self) -> redis.Redis:
@@ -93,11 +99,21 @@ class SchedulerService:
         schedules = self.db.list_all_enabled_schedules()
         for schedule in schedules:
             self._add_job(schedule)
+            # Capture snapshot for sync detection
+            self._schedule_snapshot[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
 
         # Load all enabled process schedules from database
         process_schedules = self.db.list_all_enabled_process_schedules()
         for process_schedule in process_schedules:
             self._add_process_job(process_schedule)
+            # Capture snapshot for sync detection
+            self._process_schedule_snapshot[process_schedule.id] = (
+                process_schedule.enabled,
+                process_schedule.updated_at.isoformat() if process_schedule.updated_at else None
+            )
 
         # Start the scheduler
         self.scheduler.start()
@@ -106,6 +122,7 @@ class SchedulerService:
 
         logger.info(f"Scheduler initialized with {len(schedules)} agent schedules, {len(process_schedules)} process schedules")
         logger.info(f"Instance ID: {self._instance_id}")
+        logger.info(f"Schedule sync interval: {config.schedule_reload_interval}s")
 
     def shutdown(self):
         """Shutdown the scheduler gracefully."""
@@ -124,11 +141,22 @@ class SchedulerService:
         """Run the scheduler until interrupted."""
         self.initialize()
 
+        sync_interval = config.schedule_reload_interval
+        heartbeat_interval = 30
+        last_sync = datetime.utcnow()
+
         try:
-            # Keep the service running with periodic heartbeat
+            # Keep the service running with periodic heartbeat and sync
             while True:
                 self.lock_manager.set_heartbeat(self._instance_id)
-                await asyncio.sleep(30)
+
+                # Check if it's time to sync schedules
+                now = datetime.utcnow()
+                if (now - last_sync).total_seconds() >= sync_interval:
+                    await self._sync_schedules()
+                    last_sync = now
+
+                await asyncio.sleep(heartbeat_interval)
         except asyncio.CancelledError:
             logger.info("Scheduler received cancel signal")
         finally:
@@ -223,6 +251,149 @@ class SchedulerService:
             return None
 
     # =========================================================================
+    # Schedule Sync (detect new/updated/deleted schedules)
+    # =========================================================================
+
+    async def _sync_schedules(self):
+        """
+        Sync in-memory APScheduler jobs with database schedules.
+
+        This is called periodically to detect:
+        - New schedules created since last sync
+        - Deleted schedules
+        - Updated schedules (cron, timezone, enabled status changed)
+
+        This allows new schedules to work without restarting the scheduler container.
+        """
+        try:
+            await self._sync_agent_schedules()
+            await self._sync_process_schedules()
+        except Exception as e:
+            logger.error(f"Schedule sync failed: {e}")
+
+    async def _sync_agent_schedules(self):
+        """Sync agent schedules with database."""
+        # Get all schedules from database (enabled and disabled)
+        all_schedules = self.db.list_all_schedules()
+
+        # Build current state map
+        current_state: Dict[str, tuple] = {}
+        schedule_map: Dict[str, Schedule] = {}
+        for schedule in all_schedules:
+            current_state[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
+            schedule_map[schedule.id] = schedule
+
+        # Detect changes
+        snapshot_ids = set(self._schedule_snapshot.keys())
+        current_ids = set(current_state.keys())
+
+        # New schedules (in database but not in snapshot)
+        new_ids = current_ids - snapshot_ids
+        for schedule_id in new_ids:
+            schedule = schedule_map[schedule_id]
+            if schedule.enabled:
+                logger.info(f"Sync: Adding new schedule {schedule.name} for agent {schedule.agent_name}")
+                self._add_job(schedule)
+            self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+        # Deleted schedules (in snapshot but not in database)
+        deleted_ids = snapshot_ids - current_ids
+        for schedule_id in deleted_ids:
+            logger.info(f"Sync: Removing deleted schedule {schedule_id}")
+            self._remove_job(schedule_id)
+            del self._schedule_snapshot[schedule_id]
+
+        # Updated schedules (still exists but state changed)
+        for schedule_id in (snapshot_ids & current_ids):
+            old_state = self._schedule_snapshot[schedule_id]
+            new_state = current_state[schedule_id]
+
+            if old_state != new_state:
+                schedule = schedule_map[schedule_id]
+                old_enabled, old_updated = old_state
+                new_enabled, new_updated = new_state
+
+                if old_enabled and not new_enabled:
+                    # Schedule was disabled
+                    logger.info(f"Sync: Disabling schedule {schedule.name}")
+                    self._remove_job(schedule_id)
+                elif not old_enabled and new_enabled:
+                    # Schedule was enabled
+                    logger.info(f"Sync: Enabling schedule {schedule.name}")
+                    self._add_job(schedule)
+                elif new_enabled and old_updated != new_updated:
+                    # Schedule was updated (and still enabled)
+                    logger.info(f"Sync: Updating schedule {schedule.name}")
+                    self._remove_job(schedule_id)
+                    self._add_job(schedule)
+
+                self._schedule_snapshot[schedule_id] = new_state
+
+        if new_ids or deleted_ids:
+            logger.info(f"Sync complete: {len(new_ids)} added, {len(deleted_ids)} removed")
+
+    async def _sync_process_schedules(self):
+        """Sync process schedules with database."""
+        # Get all process schedules from database
+        all_schedules = self.db.list_all_process_schedules()
+
+        # Build current state map
+        current_state: Dict[str, tuple] = {}
+        schedule_map: Dict[str, ProcessSchedule] = {}
+        for schedule in all_schedules:
+            current_state[schedule.id] = (
+                schedule.enabled,
+                schedule.updated_at.isoformat() if schedule.updated_at else None
+            )
+            schedule_map[schedule.id] = schedule
+
+        # Detect changes
+        snapshot_ids = set(self._process_schedule_snapshot.keys())
+        current_ids = set(current_state.keys())
+
+        # New schedules
+        new_ids = current_ids - snapshot_ids
+        for schedule_id in new_ids:
+            schedule = schedule_map[schedule_id]
+            if schedule.enabled:
+                logger.info(f"Sync: Adding new process schedule {schedule.process_name}/{schedule.trigger_id}")
+                self._add_process_job(schedule)
+            self._process_schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+        # Deleted schedules
+        deleted_ids = snapshot_ids - current_ids
+        for schedule_id in deleted_ids:
+            logger.info(f"Sync: Removing deleted process schedule {schedule_id}")
+            self._remove_process_job(schedule_id)
+            del self._process_schedule_snapshot[schedule_id]
+
+        # Updated schedules
+        for schedule_id in (snapshot_ids & current_ids):
+            old_state = self._process_schedule_snapshot[schedule_id]
+            new_state = current_state[schedule_id]
+
+            if old_state != new_state:
+                schedule = schedule_map[schedule_id]
+                old_enabled, old_updated = old_state
+                new_enabled, new_updated = new_state
+
+                if old_enabled and not new_enabled:
+                    logger.info(f"Sync: Disabling process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._remove_process_job(schedule_id)
+                elif not old_enabled and new_enabled:
+                    logger.info(f"Sync: Enabling process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._add_process_job(schedule)
+                elif new_enabled and old_updated != new_updated:
+                    logger.info(f"Sync: Updating process schedule {schedule.process_name}/{schedule.trigger_id}")
+                    self._remove_process_job(schedule_id)
+                    self._add_process_job(schedule)
+
+                self._process_schedule_snapshot[schedule_id] = new_state
+
+    # =========================================================================
     # Schedule Execution
     # =========================================================================
 
@@ -244,35 +415,49 @@ class SchedulerService:
         finally:
             lock.release()
 
-    async def _execute_schedule_with_lock(self, schedule_id: str):
-        """Execute schedule after acquiring lock."""
+    async def _execute_schedule_with_lock(self, schedule_id: str, triggered_by: str = "schedule"):
+        """Execute schedule after acquiring lock.
+
+        Args:
+            schedule_id: ID of the schedule to execute
+            triggered_by: Source of trigger - "schedule" (cron) or "manual"
+        """
         schedule = self.db.get_schedule(schedule_id)
         if not schedule:
             logger.error(f"Schedule {schedule_id} not found")
             return
 
-        if not schedule.enabled:
+        if not schedule.enabled and triggered_by == "schedule":
             logger.info(f"Schedule {schedule_id} is disabled, skipping")
             return
 
-        # Check if agent has autonomy enabled
-        if not self.db.get_autonomy_enabled(schedule.agent_name):
+        # Check if agent has autonomy enabled (only for cron-triggered, not manual)
+        if triggered_by == "schedule" and not self.db.get_autonomy_enabled(schedule.agent_name):
             logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
             return
 
-        logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name}")
+        logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name} (triggered_by={triggered_by})")
 
         # Create execution record
         execution = self.db.create_execution(
             schedule_id=schedule.id,
             agent_name=schedule.agent_name,
             message=schedule.message,
-            triggered_by="schedule"
+            triggered_by=triggered_by
         )
 
         if not execution:
             logger.error(f"Failed to create execution record for schedule {schedule_id}")
             return
+
+        # Track activity start via backend internal API
+        # This creates the agent_activities record and broadcasts via WebSocket
+        activity_id = await self._track_activity_start(
+            agent_name=schedule.agent_name,
+            schedule=schedule,
+            execution_id=execution.id,
+            triggered_by=triggered_by
+        )
 
         # Broadcast execution started
         await self._publish_event({
@@ -280,7 +465,8 @@ class SchedulerService:
             "agent": schedule.agent_name,
             "schedule_id": schedule.id,
             "execution_id": execution.id,
-            "schedule_name": schedule.name
+            "schedule_name": schedule.name,
+            "triggered_by": triggered_by
         })
 
         try:
@@ -307,6 +493,20 @@ class SchedulerService:
 
             logger.info(f"Schedule {schedule.name} executed successfully")
 
+            # Complete activity via backend internal API
+            execution_log = task_response.raw_response.get("execution_log")
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="completed",
+                details={
+                    "related_execution_id": execution.id,
+                    "context_used": task_response.metrics.context_used,
+                    "context_max": task_response.metrics.context_max,
+                    "cost_usd": task_response.metrics.cost_usd,
+                    "tool_count": len(execution_log) if execution_log else 0
+                }
+            )
+
             # Broadcast execution completed
             await self._publish_event({
                 "type": "schedule_execution_completed",
@@ -324,6 +524,14 @@ class SchedulerService:
                 execution_id=execution.id,
                 status="failed",
                 error=error_msg
+            )
+
+            # Complete activity as failed
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="failed",
+                error=error_msg,
+                details={"related_execution_id": execution.id}
             )
 
             await self._publish_event({
@@ -345,6 +553,14 @@ class SchedulerService:
                 error=error_msg
             )
 
+            # Complete activity as failed
+            await self._complete_activity(
+                activity_id=activity_id,
+                status="failed",
+                error=error_msg,
+                details={"related_execution_id": execution.id}
+            )
+
             await self._publish_event({
                 "type": "schedule_execution_completed",
                 "agent": schedule.agent_name,
@@ -353,6 +569,90 @@ class SchedulerService:
                 "status": "failed",
                 "error": error_msg
             })
+
+    async def _track_activity_start(
+        self,
+        agent_name: str,
+        schedule,
+        execution_id: str,
+        triggered_by: str
+    ) -> Optional[str]:
+        """
+        Track activity start via backend internal API.
+
+        Creates an agent_activities record and broadcasts via WebSocket.
+        Returns the activity_id or None if the call fails.
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.backend_url}/api/internal/activities/track",
+                    json={
+                        "agent_name": agent_name,
+                        "activity_type": "schedule_start",
+                        "user_id": schedule.owner_id,
+                        "triggered_by": triggered_by,
+                        "related_execution_id": execution_id,
+                        "details": {
+                            "schedule_id": schedule.id,
+                            "schedule_name": schedule.name,
+                            "cron_expression": schedule.cron_expression,
+                            "execution_id": execution_id
+                        }
+                    },
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    activity_id = result.get("activity_id")
+                    logger.debug(f"Activity tracked: {activity_id}")
+                    return activity_id
+                else:
+                    logger.warning(f"Failed to track activity: {response.status_code} - {response.text[:200]}")
+                    return None
+
+        except Exception as e:
+            logger.warning(f"Failed to track activity via backend API: {e}")
+            # Don't fail the execution if activity tracking fails
+            return None
+
+    async def _complete_activity(
+        self,
+        activity_id: Optional[str],
+        status: str,
+        details: Optional[dict] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Complete an activity via backend internal API.
+
+        Updates the agent_activities record and broadcasts via WebSocket.
+        """
+        if not activity_id:
+            # Activity tracking was skipped, nothing to complete
+            return
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.backend_url}/api/internal/activities/{activity_id}/complete",
+                    json={
+                        "status": status,
+                        "details": details,
+                        "error": error
+                    },
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    logger.debug(f"Activity completed: {activity_id} ({status})")
+                else:
+                    logger.warning(f"Failed to complete activity: {response.status_code} - {response.text[:200]}")
+
+        except Exception as e:
+            logger.warning(f"Failed to complete activity via backend API: {e}")
+            # Don't fail the execution if activity completion fails
 
     # =========================================================================
     # Schedule Management (for runtime updates)

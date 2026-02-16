@@ -1,8 +1,10 @@
 # Feature: Agent Dashboard
 
+> **Last Updated**: 2026-02-12 - Dashboard tab now conditionally hidden when agent doesn't have `dashboard.yaml` file.
+
 ## Overview
 
-Agent-defined dashboard system that replaces the static Metrics tab. Agents define a `dashboard.yaml` file with declarative widget configuration, and Trinity renders it in the Dashboard tab.
+Agent-defined dashboard system that replaces the static Metrics tab. Agents define a `dashboard.yaml` file with declarative widget configuration, and Trinity renders it in the Dashboard tab. The Dashboard tab is now **conditionally visible** - it only appears when the agent has a `dashboard.yaml` file.
 
 ## User Story
 
@@ -10,8 +12,54 @@ As an agent developer, I want to define a custom dashboard in YAML so that I can
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/views/AgentDetail.vue:88-89` - Dashboard tab renders `DashboardPanel` component
+- **UI**: `src/frontend/src/views/AgentDetail.vue:88-90` - Dashboard tab renders `DashboardPanel` component
+- **Tab Visibility**: `src/frontend/src/views/AgentDetail.vue:442-444` - Dashboard tab only shown if `hasDashboard.value === true`
 - **API**: `GET /api/agent-dashboard/{name}` - Fetches dashboard configuration from agent
+
+## Dashboard Tab Conditional Visibility (2026-02-12)
+
+The Dashboard tab is now **conditionally hidden** when an agent doesn't have a `dashboard.yaml` file. This provides a cleaner UI for agents that don't define custom dashboards.
+
+### Implementation
+
+**State** (`AgentDetail.vue:269`):
+```javascript
+const hasDashboard = ref(false)
+```
+
+**Check Function** (`AgentDetail.vue:491-502`):
+```javascript
+async function checkDashboardExists() {
+  if (!agent.value?.name) {
+    hasDashboard.value = false
+    return
+  }
+  try {
+    const response = await agentsStore.getAgentDashboard(agent.value.name)
+    hasDashboard.value = response?.has_dashboard === true
+  } catch (err) {
+    hasDashboard.value = false
+  }
+}
+```
+
+**Tab Definition** (`AgentDetail.vue:442-444`):
+```javascript
+// Dashboard tab - only show if agent has a dashboard.yaml file
+if (hasDashboard.value) {
+  tabs.push({ id: 'dashboard', label: 'Dashboard' })
+}
+```
+
+**Triggers**:
+1. On mount - if agent is running (`AgentDetail.vue:588-590`)
+2. On agent status change to 'running' (`AgentDetail.vue:545`)
+3. On route change to different agent (`AgentDetail.vue:521-523`)
+4. On component reactivation (`AgentDetail.vue:610-612`)
+
+**Reset**:
+- When agent stops, `hasDashboard` is reset to `false` (`AgentDetail.vue:552`)
+- When navigating to different agent (`AgentDetail.vue:510`)
 
 ## Architecture
 
@@ -191,19 +239,14 @@ async def get_dashboard():
 
 ### File Location
 
-**find_dashboard_yaml()** - Line 18-28
+**get_dashboard_path()** - Line 18-20
 ```python
-def find_dashboard_yaml() -> Optional[Path]:
-    home_dir = Path("/home/developer")
-    dashboard_paths = [
-        home_dir / "dashboard.yaml",           # ~/dashboard.yaml
-        home_dir / "workspace" / "dashboard.yaml",  # ~/workspace/dashboard.yaml
-    ]
-    for path in dashboard_paths:
-        if path.exists():
-            return path
-    return None
+def get_dashboard_path() -> Path:
+    """Get the fixed path to dashboard.yaml."""
+    return Path("/home/developer/dashboard.yaml")
 ```
+
+> **Note**: The agent home directory is `/home/developer`. All agent files live there directly (no workspace subdirectory).
 
 ### Validation
 
@@ -346,7 +389,7 @@ sections:
   "has_dashboard": false,
   "config": null,
   "last_modified": null,
-  "error": "No dashboard.yaml found in /home/developer/ or /home/developer/workspace/"
+  "error": "No dashboard.yaml found at /home/developer/dashboard.yaml"
 }
 ```
 
@@ -382,7 +425,7 @@ sections:
 ## Security Considerations
 
 - **Authorization**: User must have access to agent (owner or shared)
-- **File Path**: Dashboard file limited to `/home/developer/` or `/home/developer/workspace/`
+- **File Path**: Dashboard file located at `/home/developer/dashboard.yaml`
 - **Image URLs**: `/files/` paths converted to authenticated API paths
 - **YAML Parsing**: Uses `yaml.safe_load()` to prevent code execution
 - **Markdown Rendering**: Uses `marked` library (client-side)
@@ -461,4 +504,6 @@ const startRefresh = () => {
 
 | Date | Change |
 |------|--------|
+| 2026-02-12 | **Conditional Tab Visibility**: Dashboard tab now hidden when agent doesn't have `dashboard.yaml`. Added `hasDashboard` ref (line 269), `checkDashboardExists()` function (lines 491-502), and conditional tab inclusion (lines 442-444). Tab checked on mount, status change, route change, and component reactivation. |
+| 2026-02-11 | Fixed workspace path references - dashboard.yaml only at `/home/developer/dashboard.yaml` (no workspace fallback) |
 | 2026-01-12 | Initial documentation - 11 widget types, YAML-based configuration |

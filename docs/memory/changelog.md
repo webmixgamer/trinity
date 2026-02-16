@@ -1,3 +1,931 @@
+### 2026-02-16 14:30:00
+🔒 **Security Fix: Agent Credential Leakage Prevention**
+
+Fixed HIGH severity security vulnerability where sensitive environment variables (API keys, tokens, secrets) were being exposed in execution logs stored in the database.
+
+**Vulnerability**: Two attack vectors allowed credential exposure:
+1. **Command Leak**: Agent runs `env`/`printenv` and dumps all secrets to stdout → persisted to database
+2. **Direct Ask**: User asks "What is my API key?" and agent retrieves/outputs the secret
+
+**Fix**: Implemented multi-layer credential sanitization:
+
+**Agent-Side (Primary)**:
+- New `credential_sanitizer.py` utility in agent server
+- Sanitizes subprocess output before storing in `raw_messages`
+- Sanitizes response text before returning to backend
+- Detects and redacts known credential patterns and env var values
+
+**Backend-Side (Defense-in-Depth)**:
+- New `credential_sanitizer.py` utility in backend
+- Sanitizes `execution_log`, `tool_calls`, and `response` before database persistence
+- Pattern-based detection for API keys, tokens, and sensitive key=value pairs
+
+**Patterns Redacted**:
+- OpenAI keys (`sk-*`), Anthropic keys (`sk-ant-*`)
+- GitHub tokens (`ghp_*`, `gho_*`, `ghs_*`)
+- Slack tokens (`xoxb-*`, `xoxp-*`)
+- AWS keys (`AKIA*`), Trinity MCP keys (`trinity_mcp_*`)
+- Bearer/Basic auth headers
+- Sensitive environment variables
+
+**Files Changed**:
+- `docker/base-image/agent_server/utils/credential_sanitizer.py` (NEW)
+- `docker/base-image/agent_server/services/claude_code.py` - Applied sanitization
+- `docker/base-image/agent_server/routers/credentials.py` - Refresh cache on update
+- `src/backend/utils/credential_sanitizer.py` (NEW)
+- `src/backend/routers/chat.py` - Applied sanitization before persistence
+
+**Bug Report**: `docs/bugs/AGENT_CREDENTIAL_LEAKAGE.md`
+
+**Deployment**: Requires base image rebuild (`./scripts/deploy/build-base-image.sh`) and backend restart.
+
+---
+
+### 2026-02-15 10:00:00
+✨ **Feature: Claude Max Subscription Support for Headless Calls**
+
+Removed mandatory `ANTHROPIC_API_KEY` check from Claude Code execution service. Now agents can use Claude Max subscription for scheduled tasks and headless calls.
+
+**Before**: Headless calls (`/api/task`, scheduled executions) required `ANTHROPIC_API_KEY` env var even if user was logged in via web terminal.
+
+**After**: Claude Code uses whatever authentication is available:
+1. OAuth session from `/login` (Claude Pro/Max subscription) - stored in `~/.claude.json`
+2. `ANTHROPIC_API_KEY` environment variable (API billing) - if set
+
+**Use Case**: Login once via web terminal with `/login`, then all scheduled tasks and MCP-triggered executions use your Claude Max subscription instead of API billing.
+
+**Files Changed**:
+- `docker/base-image/agent_server/services/claude_code.py:410-414,586-590` - Removed mandatory API key check
+
+**Deployment**: Requires base image rebuild (`./scripts/deploy/build-base-image.sh`) and agent restart.
+
+---
+
+### 2026-02-13 12:00:00
+📝 **Docs: SSH Host Detection Fix Cross-References**
+
+Updated feature flows impacted by the SSH host detection fix.
+
+**Files Updated**:
+- `docs/memory/feature-flows/mcp-orchestration.md` - Added revision history entry and ssh-access.md to Related Flows
+- `docs/memory/feature-flows.md` - Updated SSH Access entry with new detection priority (FRONTEND_URL)
+
+**Already Updated**:
+- `docs/memory/feature-flows/ssh-access.md` - Full documentation with revision history, environment variables table
+
+**Not Impacted** (reference only, no host detection details):
+- `agent-lifecycle.md` - Only references SSH port allocation, not host detection
+- `platform-settings.md` - Only references `ssh_access_enabled` toggle, not host detection
+- `web-terminal.md`, `agent-terminal.md` - Use Docker exec, not SSH
+- `file-browser.md` - Mentions SSH as alternative, no host detection
+
+---
+
+### 2026-02-13 11:30:00
+🐛 **Fix: SSH Connection String Returns Production Domain**
+
+Fixed bug where `get_agent_ssh_access` MCP tool returned `localhost` instead of the actual host address, preventing remote SSH connections.
+
+**Root Cause**: The `get_ssh_host()` function in `ssh_service.py` had detection methods that all failed in production:
+- `SSH_HOST` env var: Not typically set
+- Tailscale: Not installed in backend container
+- `host.docker.internal`: Only works on Docker Desktop (Mac/Windows), not Linux servers
+- Default gateway: Often Docker's internal `172.x.x.x` network (filtered out)
+- Result: Fell back to `localhost`
+
+**Fix**: Added `FRONTEND_URL` domain extraction as priority #2 in host detection. Production deployments set `FRONTEND_URL` to the domain (e.g., `https://trinity.abilityai.dev`), so the function now extracts the hostname and returns it for SSH commands.
+
+**New Detection Priority**:
+1. `SSH_HOST` env var (explicit override)
+2. `FRONTEND_URL` domain (production auto-detect) ← **NEW**
+3. Tailscale IP
+4. `host.docker.internal` (Docker Desktop)
+5. Default gateway IP
+6. Fallback to `localhost`
+
+**Files Changed**:
+- `src/backend/services/ssh_service.py:479-567` - Added `FRONTEND_URL` parsing
+- `.env.example` - Documented `SSH_HOST` option
+- `docs/memory/feature-flows/ssh-access.md` - Updated detection priority docs
+
+---
+
+### 2026-02-13 10:15:00
+🐛 **Bug: SSH Connection String Returns Localhost**
+
+Added bug to roadmap for SSH access feature.
+
+**Problem**: MCP tool `get_agent_ssh_access` returns SSH connection string with `localhost` instead of actual host address. Remote users cannot connect to agents.
+
+**Expected**: Should return production domain or configurable host address.
+
+**Files**: `ssh_service.py`, `agents.py:905-1072`
+
+**Priority**: HIGH
+
+---
+
+### 2026-02-13 10:00:00
+📋 **Backlog: OpenClaw-Inspired Features**
+
+Added two features to backlog after analyzing OpenClaw agent platform.
+
+**New Items**:
+1. **MEMORY.md Convention** (MEDIUM) - Agents maintain curated long-term memory
+   - Daily logs: `memory/YYYY-MM-DD.md` (raw session notes)
+   - Long-term: `MEMORY.md` (distilled insights)
+   - Agents get better over time through accumulated corrections
+
+2. **Telegram Channel Integration** (MEDIUM) - Mobile-first interface
+   - Push notifications for task completion
+   - Approve/reject from phone
+   - Chat with agents via Telegram
+   - Architecture supports adding WhatsApp/Discord/Slack later
+
+**Source**: `docs/research/openclaw-vs-trinity-comparison.md`
+
+---
+
+### 2026-02-12 14:30:00
+📋 **Backlog: Orphaned Execution Recovery on Startup**
+
+Added backlog item for scheduler reliability improvement.
+
+**Problem**: When backend/scheduler restarts during deploys or crashes, executions marked as "running" become orphaned and remain stuck in "running" status forever.
+
+**Solution**: On scheduler startup, mark all "running" executions as failed before starting scheduler jobs. Set `error='Orphaned execution - service restarted before completion'`, set `completed_at`, log warning with count.
+
+**Priority**: HIGH (affects reliability)
+
+---
+
+### 2026-02-12 12:15:00
+🎨 **Fix: Standardize Toggle Positions on Agents Page**
+
+Aligned toggle positions on Agents page to match Dashboard Graph layout.
+
+**Changes**:
+- Moved Running toggle from bottom action row to same row as Autonomy toggle
+- Both toggles now on same row: Running (left), Autonomy (right)
+- View Details button now alone at bottom
+
+**Result**: Consistent toggle layout between Agents page and Dashboard Graph.
+
+---
+
+### 2026-02-12 10:30:00
+🎨 **Refactor: Standardize Autonomy Toggle Across All Locations**
+
+Created reusable `AutonomyToggle.vue` component and standardized autonomy toggle appearance across all 4 locations in the application.
+
+**Changes**:
+- **New Component**: `src/frontend/src/components/AutonomyToggle.vue`
+  - Matches RunningStateToggle pattern with amber color scheme
+  - Props: modelValue, disabled, loading, showLabel, size (sm/md/lg)
+  - Shows "AUTO" when enabled, "Manual" when disabled
+- **Updated Locations**:
+  - `AgentNode.vue` (Dashboard graph) - Replaced ~35 lines inline code
+  - `ReplayTimeline.vue` (Dashboard timeline) - Replaced compact inline toggle
+  - `AgentHeader.vue` (Agent detail page) - Replaced inconsistent button-style
+  - `Agents.vue` (Agents list page) - Replaced inline toggle
+
+**Result**: Consistent toggle appearance and behavior across all agent views.
+
+---
+
+### 2026-02-11 12:00:00
+🔧 **Fix: Scheduler Consolidation - Timeline Dashboard Missing Cron Executions**
+
+Consolidated scheduler architecture to fix bug where cron-triggered schedule executions didn't appear on the Timeline dashboard.
+
+**Root Cause**: The dedicated scheduler created `schedule_executions` records but NOT `agent_activities` records, which are required for Timeline visibility.
+
+**Changes**:
+- **Removed embedded scheduler**: Deleted `src/backend/services/scheduler_service.py` entirely
+- **Added internal API endpoints**: `POST /api/internal/activities/track` and `POST /api/internal/activities/{id}/complete` for scheduler→backend activity tracking
+- **Manual triggers routed to dedicated scheduler**: Backend now calls `http://scheduler:8001/api/schedules/{id}/trigger` instead of embedded scheduler
+- **Activity tracking in dedicated scheduler**: Both cron and manual triggers now create `agent_activities` records via internal API
+
+**Architecture**:
+- Single source of truth: Dedicated scheduler (`src/scheduler/`)
+- Database sync: Backend updates DB → Scheduler syncs every 60s
+- Activity tracking: Scheduler → Internal API → WebSocket broadcast
+
+**Files Modified**:
+- `src/backend/routers/schedules.py` - Delegate to dedicated scheduler
+- `src/backend/routers/internal.py` - Add activity tracking endpoints
+- `src/scheduler/service.py` - Add activity tracking calls
+- `src/scheduler/main.py` - Add manual trigger endpoint
+- Various: Remove scheduler_service imports
+
+**Documentation**: Updated `docs/memory/feature-flows/scheduler-service.md`
+
+---
+
+### 2026-02-09 15:30:00
+🗑️ **Cleanup: Remove skill-library (Moved to abilities repo)**
+
+Removed `skill-library/` directory from trinity repo. All Trinity skills are now in the `abilityai/abilities` repository as the **system of record**.
+
+**Changes**:
+- Deleted `skill-library/trinity/` (5 skills: trinity-adopt, trinity-compatibility, trinity-remote, trinity-sync, trinity-schedules)
+- Updated CLAUDE.md: Enhanced abilities repo documentation with skill table
+- Updated README.md: Removed skill-library from project structure
+- Updated `docs/requirements/TRINITY_ONBOARD_PLUGIN.md`: All references now point to abilities repo
+
+**New location**: `github.com/abilityai/abilities/plugins/trinity-onboard/skills/`
+
+**Installation** (unchanged):
+```bash
+/plugin marketplace add abilityai/abilities
+/trinity-onboard:onboard
+```
+
+---
+
+### 2026-02-09 12:00:00
+📚 **Docs: Add Abilities Repository Reference**
+
+Updated CLAUDE.md to document the new [abilityai/abilities](https://github.com/abilityai/abilities) repository - a curated collection of Claude Code plugins extracted from Trinity.
+
+**Available Plugins**:
+- `git-workflow` - Version control with safety guardrails
+- `skill-builder` - Claude Code skill creation guidance
+- `process-miner` - Workflow pattern discovery from logs
+- `repo-tidy` - Repository auditing and cleanup
+- `validate-pr` - PR validation with security scanning
+- `workspace-tools` - File indexing and organization
+- `trinity-onboard` - Trinity platform deployment
+
+**Installation**: `/plugin marketplace add abilityai/abilities`
+
+---
+
+### 2026-02-06 00:30:00
+🔌 **Feature: Trinity Onboard Plugin - Zero-Friction Agent Deployment (PLUGIN-001)**
+
+Implemented a complete plugin system enabling any Claude Code agent to deploy to Trinity in 3 commands.
+
+**Quick Start**:
+```bash
+/plugin marketplace add abilityai/trinity
+/plugin install trinity-onboard@abilityai-trinity
+/trinity-onboard:onboard
+```
+
+**New Directories**:
+- `skill-library/trinity/` - 5 canonical Trinity management skills
+- `plugins/trinity-onboard/` - Onboarding plugin with templates
+- `.claude-plugin/` - Marketplace configuration
+
+**Skill Library** (`skill-library/trinity/`):
+| Skill | Description |
+|-------|-------------|
+| `trinity-adopt` | Convert any agent to Trinity-compatible format |
+| `trinity-compatibility` | Audit agent structure for requirements |
+| `trinity-remote` | Remote agent operations (exec, run, notify) |
+| `trinity-sync` | Git-based synchronization with remote |
+| `trinity-schedules` | Manage scheduled autonomous executions |
+
+**Plugin Files** (`plugins/trinity-onboard/`):
+- `.claude-plugin/plugin.json` - Plugin manifest
+- `skills/onboard/SKILL.md` - 8-phase onboarding workflow
+- `templates/` - template.yaml, .gitignore, .env, .mcp.json templates
+- `.mcp.json` - Trinity MCP server configuration
+
+**Onboarding Workflow** (8 phases):
+1. Discovery - Identify agent name, check existing files
+2. Compatibility Analysis - Generate requirements report
+3. User Confirmation - Present report, ask to proceed
+4. Create Required Files - template.yaml, .gitignore, etc.
+5. Git Setup - Initialize, commit, push
+6. Deploy to Trinity - Create/update agent via MCP
+7. Install Trinity Skills - Copy management skills
+8. Completion Report - Show next steps
+
+**Key Design Decisions**:
+- Skills are copied (not symlinked) for portability
+- Agent name detection: template.yaml > directory name > env var
+- Idempotent design: running onboard multiple times is safe
+- Generic skills: Removed hardcoded agent names, added dynamic detection
+
+**Files Created**: 17 new files
+- Skill Library: 9 files (5 SKILL.md + 4 supporting files)
+- Plugin: 6 files (manifest, skill, templates, readme)
+- Marketplace: 2 files (marketplace.json, plugin.json)
+
+**Specification**: `docs/requirements/TRINITY_ONBOARD_PLUGIN.md`
+
+---
+
+### 2026-02-05 23:55:00
+🐛 **Bug Fix: Removed Orphaned Credential Injection Loop (CRED-002)**
+
+Fixed dead code in `src/backend/services/agent_service/crud.py` that referenced an undefined `agent_credentials` variable.
+
+**The Problem**:
+Commit `6821f0d` (CRED-002 refactor) removed the `agent_credentials` variable definition (lines ~183-192) but left behind a loop (lines 312-332) that attempted to iterate over `agent_credentials.items()` to inject credentials as Docker environment variables. This code would have caused a NameError if executed.
+
+**The Fix**:
+Removed the orphaned code block and replaced it with a comment explaining the CRED-002 design decision:
+```python
+# CRED-002: Legacy credential injection loop removed.
+# Credentials are now injected after agent creation via:
+# - inject_credentials endpoint (Quick Inject)
+# - .credentials.enc import on agent startup
+```
+
+**File Changed**:
+- `src/backend/services/agent_service/crud.py:312-315` - Orphaned loop replaced with explanatory comment
+
+**Documentation Updated**:
+- `docs/memory/feature-flows/credential-injection.md` - Added bug fix section under Legacy System
+- `docs/memory/feature-flows/agent-lifecycle.md` - Updated CRED-002 note and revision history
+
+**Impact**: None (the code was dead and never executed because `agent_credentials` was already undefined)
+
+---
+
+### 2026-02-05 23:45:00
+🚀 **Feature: Trinity Connect - Local-Remote Agent Sync (SYNC-001)**
+
+Implemented real-time event-driven coordination between local Claude Code and Trinity agents.
+
+**New WebSocket Endpoint**: `/ws/events`
+- MCP API key authentication via `?token=trinity_mcp_xxx` query parameter
+- Server-side event filtering based on user's accessible agents (owned + shared)
+- Ping/pong keepalive and agent list refresh commands
+- Events: agent_activity, agent_started, agent_stopped, schedule_execution_completed
+
+**New Script**: `scripts/trinity-listen.sh`
+- Blocking listener script for event-driven local-remote coordination
+- Supports websocat or wscat WebSocket clients
+- Filters by agent name and/or event state
+- Exits on first matching event (for event loop integration)
+
+**Backend Changes**:
+- `src/backend/main.py` - FilteredWebSocketManager class, /ws/events endpoint
+- `src/backend/db/agents.py` - `get_accessible_agent_names()` method
+- `src/backend/database.py` - Exposed new db method
+- `src/backend/services/activity_service.py` - Added filtered broadcast hook
+- `src/backend/services/scheduler_service.py` - Added filtered broadcast callback
+- `src/backend/routers/agents.py` - Added filtered broadcasts for agent_started/stopped
+
+**Usage**:
+```bash
+export TRINITY_API_KEY="trinity_mcp_xxx"
+./scripts/trinity-listen.sh my-agent completed  # Wait for agent to complete task
+```
+
+**Feature Flow**: `docs/memory/feature-flows/trinity-connect.md`
+
+---
+
+### 2026-02-05 22:15:00
+📋 **Spec: Trinity Connect - Local-Remote Agent Synchronization (SYNC-001)**
+
+Created requirements specification for real-time coordination between local Claude Code and Trinity agents.
+
+**New File**: `docs/requirements/TRINITY_CONNECT_LOCAL_REMOTE_SYNC.md`
+
+**Key Design**:
+- Event-driven loop using blocking Bash script as wake-up mechanism
+- Script connects to Trinity WebSocket, blocks until event arrives
+- When event received: print, exit → Claude Code reacts → restart listener
+- No daemons, hooks, or complex infrastructure needed
+
+**Components Specified**:
+- `trinity-listen.sh` - Listener script with event filtering
+- WebSocket API key authentication (backend change)
+- `/api/agents/{name}/notify` endpoint for explicit notifications
+- `notify_agent` MCP tool for agent-to-agent alerts
+- Trinity Connect skill template for local Claude Code
+
+**Event Types**:
+- `execution_complete` - Scheduled/manual task finished
+- `agent_collaboration` - Agent-to-agent MCP call
+- `agent_notification` - Explicit notification (new)
+- `agent_activity` - Agent state changes
+
+**Roadmap Updated**: Added "Local-Remote Agent Sync" backlog section with 4 items.
+
+---
+
+### 2026-02-05 21:30:00
+🧹 **Cleanup: Completed CRED-002 - Removed Old Redis Credential System**
+
+Fully removed the legacy Redis-based credential system. Trinity now uses only the simplified encrypted file system.
+
+**Removed ~1300 Lines**:
+- `src/backend/credentials.py` - CredentialManager class (677 lines) **DELETED**
+- Old Redis-based endpoints from `src/backend/routers/credentials.py`
+- `initialize_github_pat()` function from `src/backend/main.py`
+- Deprecated models from `src/backend/models.py`
+- `reload_credentials` MCP tool and client method
+- Old store methods from `src/frontend/src/stores/agents.js`
+
+**Added ~100 Lines**:
+- New MCP tool: `get_credential_encryption_key` - Returns encryption key for local agents
+- New endpoint: `GET /api/credentials/encryption-key`
+
+**Modified**:
+- `src/backend/routers/credentials.py` - Now only contains inject/export/import/status endpoints
+- `src/backend/services/agent_service/crud.py` - Agents now start without pre-injected credentials
+- `src/backend/services/agent_service/lifecycle.py` - On startup, imports from .credentials.enc
+- `src/backend/services/agent_service/deploy.py` - Uses inject endpoint for credential delivery
+- `src/mcp-server/src/client.ts` - Removed reloadCredentials, added getEncryptionKey
+- `src/mcp-server/src/tools/agents.ts` - Removed reloadCredentials, added getCredentialEncryptionKey
+
+**Breaking Changes**:
+- Old `/api/credentials` global CRUD endpoints return 404
+- Old credential assignment endpoints removed
+- `reload_credentials` MCP tool removed (use `import_credentials` instead)
+
+---
+
+### 2026-02-05 20:00:00
+🔧 **Feature: Implemented Credential System Refactor (CRED-002)**
+
+Major simplification of credential system - replaced Redis-based assignment model with encrypted file storage.
+
+**Key Changes**:
+- New `CredentialEncryptionService` using AES-256-GCM encryption
+- Encrypted credentials stored in `.credentials.enc` in agent workspace
+- Direct file injection to running agents (no Redis assignments)
+- Auto-import on agent startup from encrypted file
+- Removed global `/credentials` page (credentials now per-agent only)
+
+**New Endpoints**:
+- `POST /api/agents/{name}/credentials/inject` - Write files to agent
+- `POST /api/agents/{name}/credentials/export` - Export to `.credentials.enc`
+- `POST /api/agents/{name}/credentials/import` - Import from encrypted file
+- `POST /api/internal/decrypt-and-inject` - Internal endpoint for startup.sh
+
+**New MCP Tools**:
+- `inject_credentials(agent_name, files)` - Inject credential files
+- `export_credentials(agent_name)` - Export to encrypted file
+- `import_credentials(agent_name)` - Import from encrypted file
+
+**Files Created**:
+- `src/backend/services/credential_encryption.py` - Encryption service (~200 lines)
+- `src/backend/routers/internal.py` - Internal API router
+
+**Files Modified**:
+- `src/backend/routers/credentials.py` - Added inject/export/import endpoints
+- `src/backend/models.py` - Added new Pydantic models
+- `src/backend/main.py` - Added internal router
+- `src/frontend/src/components/CredentialsPanel.vue` - Rewritten for new system
+- `src/frontend/src/composables/useAgentCredentials.js` - Simplified API
+- `src/frontend/src/stores/agents.js` - New store methods
+- `src/frontend/src/router/index.js` - Removed /credentials route
+- `src/frontend/src/components/NavBar.vue` - Removed Credentials link
+- `docker/base-image/agent_server/routers/credentials.py` - Added read/inject endpoints
+- `docker/base-image/startup.sh` - Added auto-import logic
+- `src/mcp-server/src/tools/agents.ts` - Added new MCP tools
+- `src/mcp-server/src/client.ts` - Added client methods
+
+**Deleted**:
+- `src/frontend/src/views/Credentials.vue` - Global credentials page (674 lines)
+
+**Note**: Old Redis credential system kept for backward compatibility. Will be fully removed in future cleanup.
+
+---
+
+### 2026-02-05 17:30:00
+📝 **Docs: Consolidated Credential System Spec (CRED-002)**
+
+Merged and simplified two credential specs into one actionable plan:
+
+**Key Decisions**:
+- Remove entire Redis credential system (~677 lines)
+- Remove global `/credentials` page
+- Remove assignment model (create → assign → apply)
+- Remove template substitution (`.mcp.json.template`)
+- Replace with encrypted files in git (`.credentials.enc`)
+- Simple flow: decrypt → inject files
+
+**New Approach**:
+- Credentials = files stored encrypted in `.credentials.enc`
+- On agent start, decrypt and write files
+- Export/import buttons in agent Credentials tab
+- MCP tools: `inject_credentials`, `export_credentials`, `import_credentials`
+
+**Files Changed**:
+- `docs/requirements/CREDENTIAL_SYSTEM_REFACTOR.md` - Consolidated spec
+- `docs/requirements/ENCRYPTED_CREDENTIALS_IN_GIT.md` - Deleted (merged)
+- `docs/memory/roadmap.md` - Updated spec link
+
+---
+
+### 2026-02-05 16:00:00
+📝 **Docs: Requirement Specifications for Phase 16 High Priority Items**
+
+Created detailed requirement specifications for the four HIGH priority items in Phase 16:
+
+**1. Client/Viewer User Role** ([AUTH-002](../requirements/CLIENT_VIEWER_USER_ROLE.md))
+- New `client` role for simplified read-only/limited access
+- Permission matrix: admin > user > client
+- Frontend route guards and UI filtering by role
+- Admin user management in Settings
+
+**2. Encrypted Credentials in Git** ([CRED-002](../requirements/CREDENTIAL_SYSTEM_REFACTOR.md))
+- Replaced with consolidated spec (see 2026-02-05 17:30:00 entry above)
+
+**3. Unified Executions Dashboard** ([EXEC-022](../requirements/UNIFIED_EXECUTIONS_DASHBOARD.md))
+- New `/executions` page with cross-agent view
+- `GET /api/executions` endpoint with filters (agent, status, trigger, time)
+- `GET /api/executions/stats` for aggregate metrics
+- Real-time WebSocket updates
+- Stats cards, filter bar, paginated list
+
+**4. MCP Execution Query Tools** ([MCP-007](../requirements/MCP_EXECUTION_QUERY_TOOLS.md))
+- `list_recent_executions` - query fleet execution history
+- `get_execution_result` - fetch specific execution output
+- `get_agent_activity_summary` - high-level health/status
+- Enables orchestrator monitoring and async task polling
+
+**Files Created**:
+- `docs/requirements/CLIENT_VIEWER_USER_ROLE.md`
+- `docs/requirements/ENCRYPTED_CREDENTIALS_IN_GIT.md`
+- `docs/requirements/UNIFIED_EXECUTIONS_DASHBOARD.md`
+- `docs/requirements/MCP_EXECUTION_QUERY_TOOLS.md`
+
+**Files Modified**:
+- `docs/memory/roadmap.md` - Added spec links to Phase 16 table
+
+---
+
+### 2026-02-05 14:30:00
+📋 **Strategic: Phase 16 - Agent-as-a-Service & Commercialization**
+
+Planning session to define path to commercialization while maintaining orchestration vision.
+
+**Two Business Models Identified**:
+1. **Multi-Agent Orchestration** — "Run my company with AI agents" (long-term vision)
+2. **Agent-as-a-Service** — "Ruby for clients" (faster path to revenue)
+
+**Decision**: Pursue both sequentially. They share 80% of infrastructure needs.
+
+**Phase 16 Added to Roadmap** (10 items):
+
+| Priority | Item | Description |
+|----------|------|-------------|
+| **HIGH** | Client/Viewer User Role | Simplified role using existing auth, sees basic UI only |
+| **HIGH** | Encrypted Credentials in Git | `.credentials.enc` in repos, decrypt on deploy |
+| **HIGH** | Unified Executions Dashboard | Cross-agent execution view with filters |
+| **HIGH** | MCP Execution Query Tools | `list_recent_executions`, `get_execution_result` |
+| MEDIUM | Quick Instance Deploy | One-command "Deploy Ruby for Client X" |
+| MEDIUM | Execution Notifications | Webhook/UI on task completion |
+| MEDIUM | Client Usage Dashboard | Per-client visibility for billing |
+| MEDIUM | Credential Usage Audit | Log credential reads and API calls |
+| MEDIUM | Monorepo Workspace Deploy | Deploy directory of agents as system |
+| LOW | Platform Simplification Mode | Hide advanced features behind toggle |
+
+**Key Insight**: "The 90% is built. Focus on the 10% that makes it usable."
+
+**Files Changed**:
+- `docs/planning/WORKFLOW_PRIORITIES_2026-02.md` - Added discussion summary and consolidated roadmap
+- `docs/memory/roadmap.md` - Added Phase 16, updated Decision Log
+
+---
+
+### 2026-02-05 11:45:00
+🐛 **Fix: Live Execution Logs on Production (SSE Streaming)**
+
+**Problem**: Live execution logs not appearing on production. The Execution Detail page loaded but no log entries streamed for running executions, even though the feature worked locally.
+
+**Root Cause**: nginx proxy buffering was blocking SSE (Server-Sent Events) streams. nginx buffers responses by default, which prevents SSE from streaming in real-time.
+
+**Fix**: Added SSE support directives to `/api/` location in `src/frontend/nginx.conf`:
+```nginx
+proxy_buffering off;
+proxy_cache off;
+chunked_transfer_encoding on;
+```
+
+**Files Changed**:
+- `src/frontend/nginx.conf` - Added SSE support directives
+
+---
+
+### 2026-02-05 10:30:00
+📋 **Roadmap: Multi-Agent Research Strategic Items**
+
+Added 5 items from Cornelius research report analysis (`Multi-Agent-Systems-Research-Report-2026-02-05.md`):
+
+**High Priority**:
+- **Agent Skills Spec Alignment** - Anthropic's standard (https://agentskills.io) adopted by Microsoft, OpenAI, GitHub, Cursor. Progressive disclosure architecture.
+- **A2A Protocol Support** - Google's agent-to-agent protocol for cross-platform collaboration (higher level than MCP)
+- **Platform Memory Primitives** - 3-tier memory (Episodic→Semantic→Procedural) with 2x reasoning improvement
+
+**Medium Priority**:
+- **Code Execution Mode** - Agents write code to call MCP servers → 98% token reduction
+- **Smart Model Routing** - Route by complexity (haiku→sonnet→opus) → 60-95% cost savings
+
+**Key Research Insights**:
+- Multi-agent orchestration: 100% actionable rate vs 1.7% single-agent, 140x correctness
+- 89% of organizations now treat observability as mission-critical
+- EU AI Act Article 14 mandates HITL for high-risk systems (Trinity Process Engine compliant)
+- "Competitive advantage shifted from foundation models to orchestration layers"
+
+---
+
+### 2026-01-30 14:30:00
+📋 **Roadmap: Feature Requests Batch Added to Backlog**
+
+Added 10 items to roadmap backlog from planning session:
+
+**High Priority**:
+- **Bug: Live Execution Logs** - SSE streaming broken on production, needs investigation
+- **Git Worktrees for Task Isolation** - Each execution gets own branch, human approves merge, audit trail
+- **MCP as Primary Integration Point** - Local agents connect via MCP, pull skills, minimal setup
+
+**Medium Priority**:
+- **Agent Org Structures** - Parent-child hierarchy with delegation/control permissions
+- **Any Repo / Empty Agent Creation** - Create from any GitHub repo or empty Trinity-compatible scaffold
+- **Empty Agent → GitHub Safety** - Block init to existing repos when workspace empty
+- **Centralized MCP Server Management** - UI/MCP tools to manage agent MCP connections
+
+**Low Priority**:
+- **GitHub Issues for Roadmap** - Replace roadmap.md with GitHub Issues
+- **Agent History in GitHub** - Repository as source of truth (design open)
+
+**Themes**: GitHub-centric workflow (repo as truth, worktrees, audit) + MCP-first experience (single integration point)
+
+---
+
+### 2026-01-30 11:45:00
+🐛 **Fix: Allow Shared Users to Git Pull**
+
+**Problem**: Users with shared access to an agent received "Owner access required" error when trying to pull from GitHub. The `/git/pull` endpoint incorrectly required owner-level permissions.
+
+**Root Cause**: `POST /api/agents/{name}/git/pull` used `OwnedAgentByName` dependency which only allows agent owners and admins.
+
+**Solution**: Changed to `AuthorizedAgentByName` which allows any user with access (owner, admin, or shared user).
+
+**Permission Matrix After Fix**:
+| Endpoint | Permission Level | Shared Users |
+|----------|-----------------|--------------|
+| `GET /git/status` | Authorized | ✅ Allowed |
+| `GET /git/log` | Authorized | ✅ Allowed |
+| `GET /git/config` | Authorized | ✅ Allowed |
+| `POST /git/pull` | Authorized | ✅ **Now Allowed** |
+| `POST /git/sync` | Owner | ❌ Owner only |
+| `POST /git/initialize` | Owner | ❌ Owner only |
+
+**Files Changed**:
+- `src/backend/routers/git.py:178-179` - Changed `OwnedAgentByName` → `AuthorizedAgentByName`
+
+---
+
+### 2026-01-30 10:15:00
+🚀 **Feature: Async Mode for MCP chat_with_agent (Fire-and-Forget)**
+
+**Summary**: Added `async` parameter to `chat_with_agent` MCP tool for fire-and-forget task execution. When `async=true` (requires `parallel=true`), the call returns immediately with an `execution_id` that can be polled for results.
+
+**Usage**:
+```
+chat_with_agent(
+  agent_name: "worker-agent",
+  message: "Analyze this data...",
+  parallel: true,
+  async: true
+)
+// Returns immediately:
+// { status: "accepted", execution_id: "abc123", agent_name: "worker-agent", async_mode: true }
+
+// Poll for results:
+// GET /api/agents/worker-agent/executions/abc123
+```
+
+**Use Cases**:
+- Send tasks to multiple agents simultaneously without blocking
+- Fan-out patterns where orchestrator dispatches work to N workers
+- Long-running tasks that don't need immediate response
+
+**Files Changed**:
+- `src/backend/models.py` - Added `async_mode` to `ParallelTaskRequest`
+- `src/backend/routers/chat.py` - Added `_execute_task_background()` helper, async mode handling in `/task` endpoint
+- `src/mcp-server/src/client.ts` - Added `async_mode` option to `task()` method
+- `src/mcp-server/src/tools/chat.ts` - Added `async` parameter to `chat_with_agent` tool
+
+**Requirements**: Implements part of Req 17.4 (Async MCP Chat Commands)
+
+---
+
+### 2026-01-29 18:30:00
+🐛 **Fix: Scheduler Sync Bug - New Schedules Now Work Without Restart**
+
+**Problem**: New schedules created via API wouldn't execute until the scheduler container was restarted. The `next_run_at` field was `None` for newly created schedules, and timeline markers wouldn't show.
+
+**Solution** (two parts):
+
+1. **Database Layer** (`src/backend/db/schedules.py`):
+   - Added `_calculate_next_run_at()` helper using croniter
+   - `create_schedule()` now calculates `next_run_at` before INSERT
+   - `update_schedule()` recalculates when cron_expression, timezone, or enabled changes
+   - `set_schedule_enabled()` recalculates when enabling, clears when disabling
+
+2. **Dedicated Scheduler** (`src/scheduler/service.py`):
+   - Added `_sync_schedules()` method that compares database state with in-memory APScheduler jobs
+   - Detects new, updated, and deleted schedules
+   - Called every 60 seconds (configurable via `SCHEDULE_RELOAD_INTERVAL`)
+   - Added `list_all_schedules()` and `list_all_process_schedules()` to `src/scheduler/database.py`
+
+**Behavior**:
+- New schedules have `next_run_at` populated immediately
+- Scheduler detects and loads new schedules within 60 seconds
+- Timeline markers show immediately (no restart needed)
+- Enable/disable triggers recalculation of `next_run_at`
+
+**Files Changed**:
+- `src/backend/db/schedules.py` - Added croniter import and `_calculate_next_run_at()` helper
+- `src/scheduler/service.py` - Added `_sync_schedules()`, `_sync_agent_schedules()`, `_sync_process_schedules()`
+- `src/scheduler/database.py` - Added `list_all_schedules()` and `list_all_process_schedules()`
+- `docs/memory/feature-flows/scheduling.md` - Updated Known Issues to FIXED
+- `docs/memory/feature-flows/scheduler-service.md` - Added Flow 6: Periodic Schedule Sync
+
+---
+
+### 2026-01-29 17:00:00
+🐛 **Bug Documented: New Schedules Don't Execute Until Scheduler Restart**
+
+**Discovered During TSM-001 Testing**: Schedule markers weren't appearing for newly created schedules.
+
+**Root Cause Analysis**:
+1. Backend creates schedule in database but does NOT calculate `next_run_at`
+2. Backend's embedded scheduler is disabled (`main.py` lines 214-220)
+3. `scheduler_service.add_schedule()` returns early because `self.scheduler` is `None`
+4. Dedicated scheduler container (`trinity-scheduler`) only loads schedules on startup
+5. No mechanism exists to notify the scheduler container when new schedules are created
+
+**Impact**:
+- `next_run_at` field is `None` for newly created schedules
+- Schedule will never execute until scheduler restarts
+- Timeline markers won't show (they depend on `next_run_at`)
+
+**Workaround**: `docker restart trinity-scheduler`
+
+**Planned Fix**: Calculate `next_run_at` in the database layer when creating/updating schedules, independent of the scheduler service.
+
+**Documentation Updated**:
+- `docs/memory/feature-flows/scheduling.md` - Added "Known Issues" section with full details
+- `docs/memory/feature-flows/replay-timeline.md` - Added note in Section 5a Schedule Markers
+
+---
+
+### 2026-01-29 16:20:00
+🐛 **Fix: Timeline Scale Issue with Schedule Markers (TSM-001)**
+
+**Problem**: Timeline was extending days into the future when schedules had far-off `next_run_at` times (e.g., weekly schedules 4+ days away), breaking the timeline scale.
+
+**Root Cause**: The `endTime` computed property extended to show ALL schedule markers regardless of how far in the future they were.
+
+**Fix** (`src/frontend/src/components/ReplayTimeline.vue`):
+- Added **2-hour max limit** for future timeline extension
+- Only schedules within 2 hours of NOW extend the timeline
+- Far-off schedules (beyond 2 hours) are simply not shown as markers
+- Updated scroll handling to match the 2-hour limit logic
+
+**Behavior**:
+- Timeline shows past + NOW (as before)
+- If a schedule is within 2 hours, timeline extends slightly to show it
+- Weekly/monthly schedules (days away) don't break the scale
+
+---
+
+### 2026-01-29 15:45:00
+📚 **Docs: Updated Feature Flows for Timeline Schedule Markers (TSM-001)**
+
+Updated feature flow documentation to reflect the Timeline Schedule Markers implementation:
+
+- **`docs/memory/feature-flows/scheduling.md`**: Added new "Dashboard Timeline Integration (TSM-001)" section with:
+  - Complete data flow diagram (Dashboard -> network.js -> Backend -> ReplayTimeline)
+  - Frontend implementation details (store, Dashboard, ReplayTimeline)
+  - Timeline extension for future schedules explanation
+  - Visual design specifications
+
+- **`docs/memory/feature-flows/dashboard-timeline-view.md`**: Already updated with:
+  - Section 8 "Schedule Markers (TSM-001)"
+  - `schedules` prop in Props table
+  - Test Case 9 for schedule marker verification
+  - Edge cases for schedules
+
+- **`docs/memory/feature-flows/replay-timeline.md`**: Already updated with:
+  - Section 5a "Schedule Markers" with computed property, SVG rendering, helpers
+  - Legend entry documentation
+  - Visual Elements Summary table entry
+
+- **`docs/memory/feature-flows.md`**: Already updated at lines 6-11 with TSM-001 summary
+
+---
+
+### 2026-01-29 14:30:00
+🎨 **Feature: Timeline Schedule Markers (TSM-001)**
+
+**Summary**: Added visual markers on the Dashboard timeline showing when agent schedules are configured to run. Users can hover to see schedule details and click to navigate to the schedule configuration. **Timeline extends into the future** to show upcoming schedule markers.
+
+**Changes**:
+- `src/frontend/src/stores/network.js`:
+  - Added `schedules` ref to store enabled schedules
+  - Added `fetchSchedules()` action to fetch from `/api/ops/schedules?enabled_only=true`
+  - Exported `schedules` and `fetchSchedules` from store
+
+- `src/frontend/src/views/Dashboard.vue`:
+  - Added `schedules` to storeToRefs extraction
+  - Call `fetchSchedules()` on component mount
+  - Pass `schedules` prop to ReplayTimeline component
+
+- `src/frontend/src/components/ReplayTimeline.vue`:
+  - Added `schedules` prop
+  - Added `scheduleMarkers` computed property to calculate marker positions
+  - Added schedule marker rendering (purple triangles ▼ at top of agent rows)
+  - Added `getScheduleMarkerPoints()`, `getScheduleTooltip()`, `navigateToSchedule()` helpers
+  - Added "Next Run" legend item
+  - **Extended `endTime` computation** to include future schedule `next_run_at` times
+  - **Updated scroll handling** to allow scrolling into future when schedules exist
+
+**Visual Design**:
+- Purple (▼) triangles at top of each agent's row
+- Positioned at `next_run_at` timestamp (can be in the future)
+- Timeline automatically extends to show furthest scheduled run time + 10% padding
+- Hover shows tooltip with schedule name, next run time, cron expression, and message preview
+- Click navigates to `/agents/{agent_name}?tab=schedules`
+
+**Requirements**: `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
+
+---
+
+### 2026-01-29 11:30:00
+🚀 **Feature: MCP Schedule Management Tools (MCP-SCHED-001)**
+
+**Summary**: Added 8 new MCP tools for programmatic schedule management, enabling head agents (Claude Code instances) to create, list, modify, and control schedules on Trinity agents through the Model Context Protocol.
+
+**New MCP Tools (8 total)**:
+1. `list_agent_schedules` - List all schedules for an agent
+2. `create_agent_schedule` - Create a new cron-based schedule
+3. `get_agent_schedule` - Get schedule details
+4. `update_agent_schedule` - Update schedule configuration
+5. `delete_agent_schedule` - Delete a schedule
+6. `toggle_agent_schedule` - Enable/disable a schedule
+7. `trigger_agent_schedule` - Manually trigger execution
+8. `get_schedule_executions` - Get execution history
+
+**Files Changed**:
+- `src/mcp-server/src/types.ts` - Added Schedule, ScheduleCreate, ScheduleUpdate, ScheduleExecution types
+- `src/mcp-server/src/client.ts` - Added 10 schedule-related client methods
+- `src/mcp-server/src/tools/schedules.ts` - **NEW** All 8 schedule tools with access control
+- `src/mcp-server/src/server.ts` - Register schedule tools (36 total tools now)
+
+**Access Control**:
+- Agent-scoped keys can manage their OWN schedules (self-scheduling)
+- Agent-scoped keys can read/toggle/trigger on permitted agents
+- Agent-scoped keys CANNOT create/update/delete schedules on OTHER agents
+- System-scoped keys have full access to all agents
+
+**Testing**: All 13 backend schedule tests pass, MCP server registers 36 tools successfully
+
+**Requirements**: `docs/requirements/MCP_SCHEDULE_MANAGEMENT.md`
+
+---
+
+### 2026-01-27 12:30:00
+📋 **Roadmap: Added Gastown-Inspired Features to Backlog**
+
+**Summary**: After competitive analysis of Gastown (Steve Yegge's multi-agent CLI tool), added 4 features to the roadmap backlog.
+
+**Features Added**:
+1. **Claude Code Hooks for State Persistence** (HIGH) - Use `.claude/hooks/` to persist agent work state before context compaction
+2. **Convoy-like Work Bundles** (MEDIUM) - Group related tasks into trackable units for multi-agent coordination
+3. **Ephemeral Agent Spawning** (MEDIUM) - Let System Agent spawn temporary workers on-demand with auto-cleanup
+4. **Ready Work Discovery MCP Tool** (LOW) - Find unblocked tasks across the fleet
+
+**Analysis**: `docs/research/gastown-comparison.md`
+
+---
+
+### 2026-01-27 11:58:00
+🐛 **Fix: Dashboard Arrows for Agent-to-Agent Orchestration via /api/task**
+
+**Summary**: Fixed Dashboard not showing arrows when agents call other agents via `chat_with_agent` MCP tool with `parallel=true` mode.
+
+**Root Cause**: The `/api/task` endpoint was only creating a `CHAT_START` activity on the target agent, not the `AGENT_COLLABORATION` activity on the source agent that the Dashboard needs for arrows.
+
+**Fixes** (`src/backend/routers/chat.py`):
+- Aligned `/api/task` with `/api/chat` pattern: now creates TWO activities for agent-to-agent calls:
+  1. `AGENT_COLLABORATION` activity with `agent_name=x_source_agent` (the caller)
+  2. `CHAT_START` activity with `agent_name=name` (the target), linked via `parent_activity_id`
+- Added completion handling for `collaboration_activity_id` in success, timeout, and error cases
+
+**Pattern Match**: Now mirrors `/api/chat` endpoint (lines 196-210) per feature-flows/activity-stream-collaboration-tracking.md
+
+**Before**: Only target agent had activity, Dashboard couldn't draw arrows
+**After**: Source agent has `agent_collaboration` activity with `source_agent` and `target_agent` in details
+
+**Testing**: Verified activity has `agent_name: "vc-due-diligence-dd-lead"` (source), `target_agent: "vc-due-diligence-dd-market"`
+
+---
+
 ### 2026-01-27 11:00:00
 📝 **Docs: Feature Flow Updates for Bug Fixes**
 

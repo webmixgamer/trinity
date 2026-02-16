@@ -37,6 +37,8 @@ services:
       - LOG_CLEANUP_HOUR=${LOG_CLEANUP_HOUR:-3}
       - LOG_ARCHIVE_PATH=/data/archives  # Local path for archived logs
       - TRINITY_DB_PATH=/data/trinity.db
+      # Credential Encryption
+      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app

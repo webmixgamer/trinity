@@ -508,10 +508,10 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Concepts**: Event matching with filters, debouncing/throttling
 
 ### 17.4 Async MCP Chat Commands
-- **Status**: ⏳ Not Started
+- **Status**: ✅ Implemented (2026-01-30)
 - **Priority**: High
 - **Description**: Non-blocking MCP `chat_with_agent` for parallel multi-agent orchestration
-- **Key Concepts**: Returns execution_id immediately, poll for result or webhook callback, enables fan-out patterns
+- **Key Features**: `async=true` parameter (requires `parallel=true`), returns `execution_id` immediately, poll `GET /api/agents/{name}/executions/{id}` for results
 - **Use Case**: Orchestrator sends tasks to 5 worker agents simultaneously, collects results as they complete
 
 ### 17.5 Automated Git Sync

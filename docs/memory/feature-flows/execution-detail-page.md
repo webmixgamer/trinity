@@ -432,6 +432,82 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 
 ---
 
+## Live SSE Streaming
+
+For running executions, the Execution Detail page supports real-time log streaming via Server-Sent Events (SSE).
+
+### How It Works
+
+1. **Page detects running status**: If `execution.status === 'running'`, starts SSE stream
+2. **Connects to stream endpoint**: `GET /api/agents/{name}/executions/{id}/stream`
+3. **Parses SSE events**: Each `data: {...}` line is parsed and added to the transcript
+4. **Auto-scrolls**: Keeps the latest log entries in view
+5. **Completes when done**: On `stream_end` event, fetches final execution state
+
+### Frontend Implementation
+
+**File**: `src/frontend/src/views/ExecutionDetail.vue:446-519`
+
+The frontend uses `fetch` with `ReadableStream` (not `EventSource`) because `EventSource` doesn't support custom Authorization headers:
+
+```javascript
+fetch(url, {
+  headers: {
+    'Authorization': `Bearer ${authStore.token}`,
+    'Accept': 'text/event-stream'
+  }
+}).then(response => {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  function processStream() {
+    reader.read().then(({ done, value }) => {
+      if (done) { handleStreamEnd(); return }
+      buffer += decoder.decode(value, { stream: true })
+      // Process SSE lines...
+    })
+  }
+  processStream()
+})
+```
+
+### nginx Configuration (Required for Production)
+
+SSE streaming requires nginx proxy buffering to be disabled. Without this configuration, nginx buffers the SSE response and events don't stream in real-time.
+
+**File**: `src/frontend/nginx.conf`
+
+```nginx
+location /api/ {
+    # ... standard proxy settings ...
+
+    # SSE (Server-Sent Events) support - REQUIRED for live streaming
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding on;
+}
+```
+
+| Directive | Purpose |
+|-----------|---------|
+| `proxy_buffering off` | Disable response buffering so events stream immediately |
+| `proxy_cache off` | Prevent caching of SSE stream |
+| `chunked_transfer_encoding on` | Enable chunked transfer for streaming |
+
+**Note**: Without these directives, the page loads but no log entries appear for running executions (bug fixed 2026-02-05).
+
+### UI Indicators
+
+| Element | Location | Description |
+|---------|----------|-------------|
+| "Live" badge | Header status area | Green badge shown when streaming |
+| Entry counter | Transcript header | Shows "X entries" updating in real-time |
+| Auto-scroll toggle | Transcript header | Button to enable/disable auto-scroll |
+| Pulsing status | Header | Status badge pulses when streaming |
+
+---
+
 ## Related Flows
 
 | Direction | Flow | Description |
@@ -439,7 +515,7 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 | **Upstream** | [tasks-tab.md](tasks-tab.md) | Lists executions with link to detail page |
 | **Upstream** | [dashboard-timeline-view.md](dashboard-timeline-view.md) | Timeline bars link to detail page |
 | **Related** | [execution-log-viewer.md](execution-log-viewer.md) | Modal viewer (still available for quick view) |
-| **Related** | [parallel-headless-execution.md](parallel-headless-execution.md) | How executions are created and stored |
+| **Related** | [parallel-headless-execution.md](parallel-headless-execution.md) | How executions are created and stored, SSE streaming details |
 | **Related** | [scheduling.md](scheduling.md) | Scheduled execution creation |
 
 ---
@@ -448,6 +524,7 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | Added "Live SSE Streaming" section documenting real-time log streaming. Documented nginx configuration requirements (`proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on`) needed for production streaming. Added frontend fetch/ReadableStream implementation details. |
 | 2026-01-13 | Added "Live" button for running tasks in TasksPanel (lines 213-232). Green badge with animated pulsing dot navigates to Execution Detail for live monitoring. Explicit ID logic: server executions use `task.id`, local pending tasks use `task.execution_id` from process registry. |
 | 2026-01-11 | Clarified Database Execution ID format (`token_urlsafe(16)`) vs Queue Execution ID (UUID). Navigation uses Database ID from `task_execution_id` in chat response. |
 | 2026-01-10 | Initial implementation - dedicated execution detail page with metadata cards, timestamps, task input, error panel, response summary, and full transcript |

@@ -21,6 +21,11 @@ from ..state import agent_state
 from .activity_tracking import start_tool_execution, complete_tool_execution
 from .runtime_adapter import AgentRuntime
 from .process_registry import get_process_registry
+from ..utils.credential_sanitizer import (
+    sanitize_text,
+    sanitize_dict,
+    sanitize_subprocess_line,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -408,13 +413,10 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         )
 
     try:
-        # Get ANTHROPIC_API_KEY from environment
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="ANTHROPIC_API_KEY not configured in agent container"
-            )
+        # Note: Claude Code will use whatever authentication is available:
+        # 1. OAuth session from /login (Claude Pro/Max subscription) - stored in ~/.claude.json
+        # 2. ANTHROPIC_API_KEY environment variable (API billing)
+        # We don't require ANTHROPIC_API_KEY since users may be logged in with their subscription.
 
         # Update model if specified (persists for session)
         if model:
@@ -486,18 +488,24 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
                     # Capture raw JSON for full execution log (same as execute_headless_task)
                     try:
                         raw_msg = json.loads(line.strip())
+                        # SECURITY: Sanitize credentials from output before storing
+                        raw_msg = sanitize_dict(raw_msg)
                         raw_messages.append(raw_msg)
                         # Publish to live streaming subscribers
                         registry.publish_log_entry(execution_id, raw_msg)
                     except json.JSONDecodeError:
                         pass
+                    # SECURITY: Sanitize the line before processing
+                    sanitized_line = sanitize_subprocess_line(line)
                     # Process each line immediately - updates session_activity in real-time
-                    process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+                    process_stream_line(sanitized_line, execution_log, metadata, tool_start_times, response_parts)
             except Exception as e:
                 logger.error(f"Error reading Claude output: {e}")
 
             # Wait for process to complete and get stderr
             stderr = process.stderr.read()
+            # SECURITY: Sanitize stderr output
+            stderr = sanitize_text(stderr) if stderr else stderr
             return_code = process.wait()
             return stderr, return_code
 
@@ -517,6 +525,8 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
 
             # Build final response text
             response_text = "\n".join(response_parts) if response_parts else ""
+            # SECURITY: Sanitize credentials from response text
+            response_text = sanitize_text(response_text)
 
             if not response_text:
                 raise HTTPException(
@@ -587,13 +597,10 @@ async def execute_headless_task(
         )
 
     try:
-        # Get ANTHROPIC_API_KEY from environment
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="ANTHROPIC_API_KEY not configured in agent container"
-            )
+        # Note: Claude Code will use whatever authentication is available:
+        # 1. OAuth session from /login (Claude Pro/Max subscription) - stored in ~/.claude.json
+        # 2. ANTHROPIC_API_KEY environment variable (API billing)
+        # We don't require ANTHROPIC_API_KEY since users may be logged in with their subscription.
 
         # Build command - NO --continue flag (stateless)
         cmd = ["claude", "--print", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"]
@@ -683,13 +690,17 @@ async def execute_headless_task(
                     # Capture raw JSON for full execution log
                     try:
                         raw_msg = json.loads(line.strip())
+                        # SECURITY: Sanitize credentials from output before storing
+                        raw_msg = sanitize_dict(raw_msg)
                         raw_messages.append(raw_msg)
                         # Publish to live streaming subscribers
                         registry.publish_log_entry(task_session_id, raw_msg)
                     except json.JSONDecodeError:
                         pass
+                    # SECURITY: Sanitize the line before processing
+                    sanitized_line = sanitize_subprocess_line(line)
                     # Process each line for metadata/tool tracking
-                    process_stream_line(line, execution_log, metadata, tool_start_times, response_parts)
+                    process_stream_line(sanitized_line, execution_log, metadata, tool_start_times, response_parts)
             except Exception as e:
                 logger.error(f"[Headless Task] Error reading stdout: {e}")
 
@@ -717,6 +728,8 @@ async def execute_headless_task(
                 )
 
             # Build verbose transcript from stderr (the human-readable execution log)
+            # SECURITY: Sanitize stderr output
+            verbose_output_lines = [sanitize_text(line) for line in verbose_output_lines]
             verbose_transcript = "\n".join(verbose_output_lines)
 
             # Check for errors
@@ -730,6 +743,8 @@ async def execute_headless_task(
 
             # Build final response text
             response_text = "\n".join(response_parts) if response_parts else ""
+            # SECURITY: Sanitize credentials from response text
+            response_text = sanitize_text(response_text)
 
             if not response_text:
                 raise HTTPException(

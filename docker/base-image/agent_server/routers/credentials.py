@@ -5,12 +5,20 @@ import os
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
-from ..models import CredentialUpdateRequest
+from ..models import (
+    CredentialUpdateRequest,
+    CredentialReadRequest,
+    CredentialReadResponse,
+    CredentialInjectRequest,
+    CredentialInjectResponse,
+)
 from ..state import agent_state
 from ..services.trinity_mcp import inject_trinity_mcp_if_configured
+from ..utils.credential_sanitizer import refresh_credential_values
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,6 +92,9 @@ async def update_credentials(request: CredentialUpdateRequest):
         for var_name, value in request.credentials.items():
             os.environ[var_name] = str(value)
 
+        # SECURITY: Refresh credential sanitizer cache after updating credentials
+        refresh_credential_values()
+
         # 4. Write file-type credentials (e.g., service account JSON files)
         files_written = []
         if request.files:
@@ -132,7 +143,8 @@ async def get_credentials_status():
     credential_files = [
         ".env",
         ".mcp.json",
-        ".mcp.json.template"
+        ".mcp.json.template",
+        ".credentials.enc"  # New encrypted credentials file
     ]
 
     for filename in credential_files:
@@ -162,3 +174,130 @@ async def get_credentials_status():
         "files": files_status,
         "credential_count": credential_count
     }
+
+
+# ============================================================================
+# New Credential Endpoints (CRED-002: Simplified Credential System)
+# ============================================================================
+
+@router.get("/api/credentials/read")
+async def read_credential_files(paths: str = Query(..., description="Comma-separated list of file paths")):
+    """
+    Read credential files from workspace.
+
+    Used by the backend to read existing credential files before encrypting.
+
+    Args:
+        paths: Comma-separated list of file paths relative to /home/developer
+               e.g., ".env,.mcp.json"
+    """
+    home_dir = Path("/home/developer")
+    files = {}
+
+    path_list = [p.strip() for p in paths.split(",") if p.strip()]
+
+    for rel_path in path_list:
+        # Security: prevent path traversal
+        clean_path = rel_path.lstrip("/").lstrip(".")
+        if ".." in clean_path:
+            logger.warning(f"Path traversal attempt blocked: {rel_path}")
+            continue
+
+        # Handle paths starting with . (like .env, .mcp.json)
+        if rel_path.startswith("."):
+            filepath = home_dir / rel_path
+        else:
+            filepath = home_dir / clean_path
+
+        try:
+            if filepath.exists() and filepath.is_file():
+                # Verify the resolved path is still under home_dir
+                resolved = filepath.resolve()
+                if str(resolved).startswith(str(home_dir.resolve())):
+                    content = filepath.read_text()
+                    files[rel_path] = content
+                    logger.debug(f"Read credential file: {rel_path} ({len(content)} bytes)")
+                else:
+                    logger.warning(f"Path resolved outside home directory: {rel_path}")
+        except Exception as e:
+            logger.warning(f"Failed to read {rel_path}: {e}")
+
+    return CredentialReadResponse(files=files)
+
+
+@router.post("/api/credentials/inject")
+async def inject_credential_files(request: CredentialInjectRequest):
+    """
+    Inject credential files directly into workspace.
+
+    This is the simplified credential injection that writes files directly
+    without template processing. Used by the new credential system.
+
+    Args:
+        request: Contains files dict mapping paths to contents
+    """
+    home_dir = Path("/home/developer")
+    files_written = []
+
+    for rel_path, content in request.files.items():
+        # Security: prevent path traversal
+        clean_path = rel_path.lstrip("/")
+        if ".." in clean_path:
+            logger.warning(f"Path traversal attempt blocked: {rel_path}")
+            continue
+
+        # Handle paths starting with . (like .env, .mcp.json)
+        if clean_path.startswith(".") or rel_path.startswith("."):
+            filepath = home_dir / rel_path
+        else:
+            filepath = home_dir / clean_path
+
+        try:
+            # Verify the resolved path is still under home_dir
+            resolved = filepath.resolve()
+            if not str(resolved).startswith(str(home_dir.resolve())):
+                logger.warning(f"Path resolved outside home directory: {rel_path}")
+                continue
+
+            # Create parent directories if needed
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write the file
+            filepath.write_text(content)
+
+            # Set restrictive permissions for credential files (600 = owner read/write only)
+            filepath.chmod(0o600)
+
+            files_written.append(rel_path)
+            logger.info(f"Wrote credential file: {rel_path} ({len(content)} bytes)")
+
+        except Exception as e:
+            logger.error(f"Failed to write {rel_path}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to write {rel_path}: {str(e)}")
+
+    # Re-inject Trinity MCP if .mcp.json was updated
+    if ".mcp.json" in files_written:
+        if inject_trinity_mcp_if_configured():
+            logger.info("Re-injected Trinity MCP after credential injection")
+
+    # Export updated credentials to environment for this process
+    # (helps new subprocesses, though existing ones won't see changes)
+    if ".env" in files_written:
+        env_file = home_dir / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key:
+                        os.environ[key] = value
+
+        # SECURITY: Refresh credential sanitizer cache after updating credentials
+        refresh_credential_values()
+
+    return CredentialInjectResponse(
+        status="success",
+        files_written=files_written
+    )

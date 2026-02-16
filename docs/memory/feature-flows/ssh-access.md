@@ -9,6 +9,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-02-13 | **Fixed localhost bug**: Added FRONTEND_URL domain extraction as priority #2 in host detection. Production deployments now correctly return domain instead of localhost. |
 | 2026-01-23 | Updated line numbers: ssh_service.py, agents.py, agents.ts, client.ts, types.ts |
 | 2026-01-02 | Fixed password setting (sed → usermod), improved host detection |
 | 2026-01-02 | Added UI toggle in Settings.vue for ssh_access_enabled |
@@ -330,19 +331,20 @@ def store_credential_metadata(
     logger.info(f"Stored SSH {auth_type} metadata: {redis_key} (TTL: {ttl_hours}h)")
 ```
 
-#### Host Detection (Lines 479-553) - get_ssh_host()
+#### Host Detection (Lines 479-567) - get_ssh_host()
 
 ```python
 def get_ssh_host() -> str:
     """
-    Get the host IP for SSH connections.
+    Get the host IP/domain for SSH connections.
 
     Priority:
     1. SSH_HOST environment variable (explicit configuration)
-    2. Tailscale IP detection
-    3. host.docker.internal (Docker Desktop for Mac/Windows)
-    4. Default gateway IP (often the Docker host on Linux)
-    5. Fallback to localhost
+    2. FRONTEND_URL domain extraction (production deployment)
+    3. Tailscale IP detection
+    4. host.docker.internal (Docker Desktop for Mac/Windows)
+    5. Default gateway IP (often the Docker host on Linux)
+    6. Fallback to localhost
 
     Note: This runs inside the backend container, so we need special
     handling to get the actual Docker host IP, not the container's IP.
@@ -352,7 +354,16 @@ def get_ssh_host() -> str:
     if ssh_host:
         return ssh_host
 
-    # Option 2: Try to detect Tailscale IP
+    # Option 2: Extract host from FRONTEND_URL (production deployment)
+    # FRONTEND_URL is set to production domain like "https://trinity.abilityai.dev"
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url:
+        parsed = urlparse(frontend_url)
+        host = parsed.hostname or parsed.netloc
+        if host and host not in ("localhost", "127.0.0.1", ""):
+            return host
+
+    # Option 3: Try to detect Tailscale IP
     try:
         result = subprocess.run(["tailscale", "ip", "-4"], ...)
         if result.returncode == 0 and result.stdout.strip():
@@ -360,7 +371,7 @@ def get_ssh_host() -> str:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Option 3: Try host.docker.internal (Docker Desktop Mac/Windows)
+    # Option 4: Try host.docker.internal (Docker Desktop Mac/Windows)
     try:
         ip = socket.gethostbyname("host.docker.internal")
         if ip and not ip.startswith("172.") and not ip.startswith("127."):
@@ -368,7 +379,7 @@ def get_ssh_host() -> str:
     except socket.gaierror:
         pass
 
-    # Option 4: Get default gateway IP (Linux Docker host)
+    # Option 5: Get default gateway IP (Linux Docker host)
     try:
         result = subprocess.run(["ip", "route", "show", "default"], ...)
         # Parse "default via 192.168.1.1 dev eth0" → 192.168.1.1
@@ -377,7 +388,7 @@ def get_ssh_host() -> str:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Option 5: Fallback to localhost with warning
+    # Option 6: Fallback to localhost with warning
     return "localhost"
 ```
 
@@ -715,7 +726,8 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
 | `SSH_ACCESS_DEFAULT_TTL_HOURS` | 4 | Default credential lifetime |
 | `SSH_ACCESS_MAX_TTL_HOURS` | 24 | Maximum allowed TTL |
 | `SSH_ACCESS_CLEANUP_INTERVAL` | 900 | Background cleanup interval (seconds) |
-| `SSH_HOST` | (auto-detect) | Override host for SSH commands |
+| `SSH_HOST` | (auto-detect) | Override host for SSH commands (highest priority) |
+| `FRONTEND_URL` | `http://localhost` | Used to auto-detect SSH host in production (e.g., `https://trinity.abilityai.dev` → `trinity.abilityai.dev`) |
 
 ---
 

@@ -292,52 +292,66 @@ await activity_service.track_activity(
 )
 ```
 
-### Schedule Integration (`src/backend/services/scheduler_service.py`)
+### Schedule Integration (via Internal API)
 
-**Schedule Start Tracking** (lines 216-228)
-```python
-# Track schedule start activity
-schedule_activity_id = await activity_service.track_activity(
-    agent_name=schedule.agent_name,
-    activity_type=ActivityType.SCHEDULE_START,
-    user_id=schedule.owner_id,
-    triggered_by="schedule",
-    related_execution_id=execution.id,
-    details={
-        "schedule_id": schedule.id,
-        "schedule_name": schedule.name,
-        "cron_expression": schedule.cron_expression,
-        "execution_id": execution.id
-    }
-)
-```
+> **Note (2026-02-11)**: The embedded scheduler (`src/backend/services/scheduler_service.py`) has been removed. Schedule activity tracking is now handled by the **Dedicated Scheduler Service** (`src/scheduler/`) which calls internal API endpoints.
 
-**Schedule Completion** (lines 299-311)
+**Internal API Endpoints** (used by dedicated scheduler):
+- `POST /api/internal/activities/track` - Start tracking an activity
+- `POST /api/internal/activities/{id}/complete` - Mark activity as completed/failed
+
+**Schedule Start Tracking** (dedicated scheduler calls internal API):
 ```python
-# Track schedule completion
-await activity_service.complete_activity(
-    activity_id=schedule_activity_id,
-    status="completed",
-    details={
+# Dedicated scheduler makes HTTP call to backend
+response = await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/track",
+    json={
+        "agent_name": schedule.agent_name,
+        "activity_type": "schedule_start",
+        "user_id": schedule.owner_id,
+        "triggered_by": "schedule",  # or "manual" for manual triggers
         "related_execution_id": execution.id,
-        "context_used": task_response.metrics.context_used,
-        "context_max": task_response.metrics.context_max,
-        "cost_usd": task_response.metrics.cost_usd,
-        "tool_count": len(execution_log) if execution_log else 0
+        "details": {
+            "schedule_id": schedule.id,
+            "schedule_name": schedule.name,
+            "cron_expression": schedule.cron_expression
+        }
+    }
+)
+activity_id = response.json()["activity_id"]
+```
+
+**Schedule Completion** (dedicated scheduler calls internal API):
+```python
+await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/{activity_id}/complete",
+    json={
+        "status": "completed",
+        "details": {
+            "context_used": task_response.metrics.context_used,
+            "context_max": task_response.metrics.context_max,
+            "cost_usd": task_response.metrics.cost_usd,
+            "tool_count": len(execution_log) if execution_log else 0
+        }
     }
 )
 ```
 
-**Schedule Failure** (lines 326-333, 354-361)
+**Schedule Failure** (dedicated scheduler calls internal API):
 ```python
-# Track schedule failure
-await activity_service.complete_activity(
-    activity_id=schedule_activity_id,
-    status="failed",
-    error=error_msg,
-    details={"related_execution_id": execution.id}
+await httpx.post(
+    f"{BACKEND_URL}/api/internal/activities/{activity_id}/complete",
+    json={
+        "status": "failed",
+        "error": error_msg
+    }
 )
 ```
+
+**Backend Internal Router** (`src/backend/routers/internal.py`):
+- Receives activity tracking requests from scheduler
+- Calls `activity_service.track_activity()` and `activity_service.complete_activity()`
+- No external authentication (internal Docker network only)
 
 ### Agent Collaboration Tracking (`src/backend/routers/chat.py:194-206`)
 
@@ -893,6 +907,59 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 
 ---
 
+## Trinity Connect Integration (Added 2026-02-05)
+
+Activity events are now broadcast to two WebSocket channels:
+
+1. **Main WebSocket Manager** (`/ws`): All connected UI clients receive all events
+2. **Filtered WebSocket Manager** (`/ws/events`): Trinity Connect clients receive only events for their accessible agents
+
+### Dual Broadcast Pattern
+
+**Location**: `src/backend/services/activity_service.py:200-207`
+
+```python
+# Broadcast to main UI WebSocket
+await manager.broadcast(json.dumps(event))
+
+# Broadcast to filtered Trinity Connect WebSocket (server-side filtering)
+await filtered_manager.broadcast_filtered(event)
+```
+
+### FilteredWebSocketManager
+
+**Location**: `src/backend/main.py:107-167`
+
+- Tracks connections with user identity and accessible agents list
+- Extracts agent name from various event field formats (`agent_name`, `name`, `agent`)
+- Filters events server-side before forwarding to external listeners
+- Admin users see all events
+
+### Event Types Broadcast to Trinity Connect
+
+| Event Type | Source | Agent Name Field |
+|------------|--------|------------------|
+| `agent_activity` | activity_service.py | `agent_name` |
+| `agent_started` | routers/agents.py | `name` |
+| `agent_stopped` | routers/agents.py | `name` |
+| `schedule_execution_completed` | dedicated scheduler (src/scheduler/) | `agent` |
+| `agent_collaboration` | activity_service.py | `agent_name` |
+
+### Initialization
+
+**Location**: `src/backend/main.py:172-188`
+
+```python
+# Inject filtered manager into activity service
+activity_service.set_filtered_websocket_manager(filtered_manager)
+```
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -900,7 +967,9 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_activities WHERE agent_name
 | 2025-12-02 | Initial implementation |
 | 2025-12-30 | Previous review |
 | 2026-01-15 | Added timezone handling documentation |
-| 2026-01-23 | Updated line numbers for database.py (schema at lines 474-497, indexes at 629-635), models.py (ActivityType at line 123, ActivityState at line 147), db/activities.py (create_activity at line 40, complete_activity at line 74). Added EXECUTION_CANCELLED activity type. Verified integration points in chat.py and scheduler_service.py. Added main.py:121 for websocket_manager initialization. |
+| 2026-02-11 | **Scheduler Consolidation**: Updated Schedule Integration section. Embedded scheduler removed; activity tracking now via internal API endpoints (`/api/internal/activities/track`, `/api/internal/activities/{id}/complete`) called by dedicated scheduler. |
+| 2026-01-23 | Updated line numbers for database.py (schema at lines 474-497, indexes at 629-635), models.py (ActivityType at line 123, ActivityState at line 147), db/activities.py (create_activity at line 40, complete_activity at line 74). Added EXECUTION_CANCELLED activity type. Verified integration points in chat.py. Added main.py:121 for websocket_manager initialization. |
+| 2026-02-05 | **Trinity Connect Integration**: Added dual broadcast pattern - events now sent to both main WebSocket (`/ws`) and filtered WebSocket (`/ws/events`). Added FilteredWebSocketManager section, event types table, and initialization details. |
 
 ---
 

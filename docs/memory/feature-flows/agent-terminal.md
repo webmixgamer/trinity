@@ -66,13 +66,25 @@ When agent is stopped, the Terminal tab shows an authentication toggle (owner-on
 - **Use Platform API Key** (default): Agent uses Trinity's configured Anthropic API key
   - Platform key injected as `ANTHROPIC_API_KEY` environment variable
   - Claude commands work immediately without authentication
-  - Usage counts against Trinity's subscription
+  - Usage counts against Trinity's API subscription
 - **Authenticate in Terminal**: No API key injected; user runs `claude login` in terminal
   - Agent container starts without `ANTHROPIC_API_KEY` environment variable
-  - User must run `claude login` in terminal to authenticate with their own subscription
-  - Usage counts against user's personal Claude subscription
+  - User must run `claude login` in terminal to authenticate with their own subscription (Claude Pro/Max)
+  - OAuth session stored in `~/.claude.json` inside the container
+  - Usage counts against user's personal Claude subscription (Pro/Max)
+  - **Headless calls also use subscription**: Once logged in, scheduled tasks, MCP-triggered executions, and `/api/task` calls all use the OAuth session instead of requiring API billing
 
 **Important**: Changing this setting requires agent restart. Container is recreated with/without `ANTHROPIC_API_KEY` env var. The UI shows `restart_required: true` badge when setting changed but not yet applied.
+
+**Claude Max Subscription Flow** (Added 2026-02-15):
+1. Owner sets "Authenticate in Terminal" and restarts agent
+2. User connects to web terminal and runs `claude login` or `/login` in Claude Code TUI
+3. OAuth flow completes, session stored in `~/.claude.json`
+4. All subsequent Claude Code executions (interactive and headless) use the subscription:
+   - Interactive terminal sessions
+   - Scheduled task executions (`/api/task` via scheduler)
+   - MCP-triggered `chat_with_agent` calls
+   - Direct `/api/task` API calls
 
 #### AgentTerminal.vue (Terminal Component)
 - **File**: `src/frontend/src/components/AgentTerminal.vue` (526 lines)
@@ -729,6 +741,7 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
+| 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that Claude Code now uses whatever authentication is available: (1) OAuth session from `/login` (Claude Pro/Max subscription) stored in `~/.claude.json`, or (2) `ANTHROPIC_API_KEY` environment variable. Users can log in once via web terminal with Claude Max subscription, then all subsequent headless executions use their subscription instead of API billing. Updated Test Cases 13-14 to note this authentication model. |
 | 2026-01-23 | **Line number verification**: Updated all line numbers. Corrected database schema (uses `agent_ownership` table, not separate table). Added WebGL/Canvas renderer documentation. Clarified no audit logging for terminal sessions (uses Python logger). Added `--dangerously-skip-permissions` flag documentation. Added Gemini CLI test case. Added tab switching preservation note. |
 | 2025-12-30 | Line number verification. Added Gemini runtime support to terminal modes. Updated WebSocket query params documentation. |
 | 2025-12-27 | Service layer refactoring: Terminal session management moved to `services/agent_service/terminal.py`. API key logic moved to `api_key.py`. Router reduced to thin endpoint definitions. |

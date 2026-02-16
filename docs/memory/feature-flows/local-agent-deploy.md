@@ -1,6 +1,6 @@
 # Feature: Local Agent Deployment via MCP
 
-> **Updated**: 2026-01-23 - Verified line numbers against current implementation. All code paths confirmed accurate.
+> **Updated**: 2026-02-05 - CRED-002: Removed credential_manager dependency, credentials now injected via direct API call.
 
 ## Overview
 
@@ -160,10 +160,12 @@ async def deploy_local_agent(
         body=body,
         current_user=current_user,
         request=request,
-        create_agent_fn=create_agent_internal,
-        credential_manager=credential_manager
+        create_agent_fn=create_agent_internal
     )
 ```
+
+> **CRED-002 (2026-02-05)**: `credential_manager` parameter removed. Credentials are now injected
+> after agent creation via `inject_credentials` endpoint or imported from `.credentials.enc` on startup.
 
 **Request Model** (`src/backend/models.py:308-312`):
 ```python
@@ -216,23 +218,18 @@ class DeployLocalResponse(BaseModel):
    - Pattern: `my-agent` -> `my-agent-2` -> `my-agent-3`
    - Stops previous version if running via `get_latest_version()` (helpers.py:240-264)
 
-8. **Credential Import** (lines 309-320)
-   - `import_credential_with_conflict_resolution()` in credentials.py
-   - Same name + same value = reuse
-   - Same name + different value = rename with suffix (`_2`, `_3`)
-   - New name = create
-
-9. **Template Copy** (lines 322-343)
+8. **Template Copy** (lines 309-330)
    - Try `/agent-configs/templates` first (with write test)
    - Fall back to `./config/agent-templates/{version_name}/`
 
-10. **Agent Creation** (lines 346-371)
+9. **Agent Creation** (lines 332-357)
     - Extract runtime config from template
     - Call `create_agent_fn()` (injected `create_agent_internal`) with local template
 
-11. **Credential Hot-Reload** (lines 373-389)
-    - POST credentials to agent's internal API: `http://agent-{name}:8000/api/credentials/update`
-    - Agent writes `.env` and regenerates `.mcp.json`
+10. **Credential Injection** (lines 359-385) - CRED-002
+    - If credentials provided, inject via `POST /api/agents/{name}/credentials/inject`
+    - Writes .env file directly to agent workspace
+    - No longer uses credential_manager or Redis
 
 12. **CLAUDE.md Injection** (lines 391-407)
     - If CLAUDE.md exists, inject custom instructions via `/api/trinity/inject`
@@ -482,6 +479,7 @@ rm -f "$ARCHIVE"
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **CRED-002**: Removed `credential_manager` parameter from deploy flow. Credentials now injected via `POST /api/agents/{name}/credentials/inject` endpoint directly. Updated line numbers for deployment flow steps 8-10. |
 | 2026-01-23 | Verified all line numbers. Updated deploy.py references (now 437 lines). Added safe tar extraction details. Updated router line numbers (212-225). Added template validation location. |
 | 2025-12-30 | Verified line numbers |
 | 2025-12-27 | Service layer refactoring: Deploy logic moved to `services/agent_service/deploy.py` |

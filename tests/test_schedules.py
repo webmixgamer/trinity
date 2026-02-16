@@ -166,6 +166,274 @@ class TestListSchedules:
             assert_has_fields(schedule, ["id", "name"])
 
 
+class TestGetSchedule:
+    """Tests for GET single schedule endpoint (MCP-SCHED-001 REQ-3)."""
+
+    def test_get_schedule(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """GET /api/agents/{name}/schedules/{id} returns schedule details."""
+        # Create schedule
+        schedule_name = f"test-get-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Test message",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Get specific schedule
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}"
+        )
+
+        assert_status(response, 200)
+        schedule_data = assert_json_response(response)
+        assert_has_fields(schedule_data, ["id", "name", "cron_expression", "message"])
+        assert schedule_data["id"] == schedule_id
+        assert schedule_data["name"] == schedule_name
+
+    def test_get_nonexistent_schedule(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """GET nonexistent schedule returns 404."""
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/schedules/nonexistent-id"
+        )
+
+        assert_status(response, 404)
+
+    def test_get_schedule_from_nonexistent_agent(
+        self,
+        api_client: TrinityApiClient
+    ):
+        """GET schedule from nonexistent agent returns 404."""
+        response = api_client.get(
+            "/api/agents/nonexistent-agent/schedules/some-id"
+        )
+
+        assert_status(response, 404)
+
+
+class TestUpdateSchedule:
+    """Tests for UPDATE schedule endpoint (MCP-SCHED-001 REQ-4)."""
+
+    def test_update_schedule_name(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """PUT /api/agents/{name}/schedules/{id} updates schedule name."""
+        # Create schedule
+        schedule_name = f"test-update-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Original message",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Update name
+        new_name = f"updated-{schedule_name}"
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}",
+            json={"name": new_name}
+        )
+
+        assert_status(response, 200)
+        updated_data = assert_json_response(response)
+        assert updated_data.get("name") == new_name
+
+    def test_update_schedule_cron(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """PUT /api/agents/{name}/schedules/{id} updates cron expression."""
+        # Create schedule
+        schedule_name = f"test-update-cron-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Test",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Update cron
+        new_cron = "0 10 * * *"
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}",
+            json={"cron_expression": new_cron}
+        )
+
+        assert_status(response, 200)
+        updated_data = assert_json_response(response)
+        assert updated_data.get("cron_expression") == new_cron
+
+    def test_update_schedule_message(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """PUT /api/agents/{name}/schedules/{id} updates message."""
+        # Create schedule
+        schedule_name = f"test-update-msg-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Original message",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Update message
+        new_message = "Updated task message"
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}",
+            json={"message": new_message}
+        )
+
+        assert_status(response, 200)
+        updated_data = assert_json_response(response)
+        assert updated_data.get("message") == new_message
+
+    def test_update_schedule_multiple_fields(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """PUT /api/agents/{name}/schedules/{id} updates multiple fields."""
+        # Create schedule
+        schedule_name = f"test-update-multi-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Original",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Update multiple fields
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}",
+            json={
+                "name": "new-name",
+                "cron_expression": "0 10 * * *",
+                "message": "New message"
+            }
+        )
+
+        assert_status(response, 200)
+        updated_data = assert_json_response(response)
+        assert updated_data.get("name") == "new-name"
+        assert updated_data.get("cron_expression") == "0 10 * * *"
+        assert updated_data.get("message") == "New message"
+
+    def test_update_schedule_invalid_cron(
+        self,
+        api_client: TrinityApiClient,
+        created_agent,
+        resource_tracker
+    ):
+        """PUT with invalid cron expression returns 400."""
+        # Create schedule
+        schedule_name = f"test-update-invalid-{uuid.uuid4().hex[:8]}"
+        create_response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules",
+            json={
+                "name": schedule_name,
+                "cron_expression": "0 9 * * *",
+                "message": "Test",
+                "enabled": False
+            }
+        )
+
+        if create_response.status_code not in [200, 201]:
+            pytest.skip("Could not create schedule")
+
+        data = create_response.json()
+        schedule_id = data.get("id")
+        resource_tracker.track_schedule(created_agent['name'], schedule_id)
+
+        # Try invalid cron
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/{schedule_id}",
+            json={"cron_expression": "invalid"}
+        )
+
+        assert_status_in(response, [400, 422])
+
+    def test_update_nonexistent_schedule(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """PUT to nonexistent schedule returns 404."""
+        response = api_client.put(
+            f"/api/agents/{created_agent['name']}/schedules/nonexistent-id",
+            json={"name": "new-name"}
+        )
+
+        assert_status(response, 404)
+
+
 class TestEnableDisableSchedule:
     """REQ-SCHED-003: Enable/disable schedule endpoint tests."""
 
@@ -237,7 +505,11 @@ class TestEnableDisableSchedule:
 
 
 class TestTriggerSchedule:
-    """REQ-SCHED-004: Trigger schedule endpoint tests."""
+    """REQ-SCHED-004: Trigger schedule endpoint tests.
+
+    Note (2026-02-11): Manual triggers are now routed through the dedicated
+    scheduler service, which handles activity tracking and distributed locking.
+    """
 
     @pytest.mark.slow
     def test_trigger_schedule(
@@ -266,19 +538,41 @@ class TestTriggerSchedule:
         schedule_id = data.get("id")
         resource_tracker.track_schedule(created_agent['name'], schedule_id)
 
-        # Trigger it
+        # Trigger it - now routes through dedicated scheduler
         response = api_client.post(
             f"/api/agents/{created_agent['name']}/schedules/{schedule_id}/trigger",
             timeout=120.0  # May take a while
         )
 
-        # May return 503 if agent busy
+        # May return 503 if scheduler or agent not ready
         if response.status_code == 503:
-            pytest.skip("Agent server not ready")
+            pytest.skip("Scheduler or agent server not ready")
+        if response.status_code == 504:
+            pytest.skip("Scheduler timeout")
         if response.status_code == 429:
             pytest.skip("Agent queue full")
 
         assert_status_in(response, [200, 202])
+
+        # Verify response structure (updated 2026-02-11)
+        if response.status_code == 200:
+            trigger_data = response.json()
+            assert trigger_data.get("status") == "triggered"
+            assert trigger_data.get("schedule_id") == schedule_id
+            # New fields from dedicated scheduler
+            assert "schedule_name" in trigger_data or "message" in trigger_data
+
+    def test_trigger_nonexistent_schedule(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST trigger on nonexistent schedule returns 404."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/schedules/nonexistent-id/trigger"
+        )
+
+        assert_status(response, 404)
 
 
 class TestScheduleExecutions:

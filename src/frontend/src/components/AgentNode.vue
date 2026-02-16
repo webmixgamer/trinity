@@ -74,41 +74,15 @@
         >
           {{ activityStateLabel }}
         </div>
-        <!-- Autonomy toggle switch with label (not for system agent) -->
-        <div v-if="!isSystemAgent" class="flex items-center gap-1.5">
-          <span
-            :class="[
-              'text-xs font-medium transition-colors',
-              autonomyEnabled
-                ? 'text-amber-600 dark:text-amber-400'
-                : 'text-gray-400 dark:text-gray-500'
-            ]"
-          >
-            {{ autonomyEnabled ? 'AUTO' : 'Manual' }}
-          </span>
-          <button
-            @click="handleAutonomyToggle"
-            :disabled="autonomyLoading"
-            :class="[
-              'nodrag relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2',
-              autonomyEnabled
-                ? 'bg-amber-500 focus:ring-amber-500'
-                : 'bg-gray-200 dark:bg-gray-600 focus:ring-gray-400',
-              autonomyLoading ? 'opacity-50 cursor-wait' : ''
-            ]"
-            :title="autonomyEnabled ? 'Autonomy Mode ON - Click to disable scheduled tasks' : 'Autonomy Mode OFF - Click to enable scheduled tasks'"
-            role="switch"
-            :aria-checked="autonomyEnabled"
-          >
-            <span class="sr-only">Toggle autonomy mode</span>
-            <span
-              :class="[
-                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                autonomyEnabled ? 'translate-x-4' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
+        <!-- Autonomy toggle (not for system agent) -->
+        <AutonomyToggle
+          v-if="!isSystemAgent"
+          :model-value="autonomyEnabled"
+          :loading="autonomyLoading"
+          size="sm"
+          class="nodrag"
+          @toggle="handleAutonomyToggle"
+        />
       </div>
 
       <!-- GitHub repo or placeholder (always shown for consistent height) -->
@@ -212,6 +186,7 @@ import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
 import RuntimeBadge from './RuntimeBadge.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
+import AutonomyToggle from './AutonomyToggle.vue'
 import { useNetworkStore } from '../stores/network'
 
 const props = defineProps({
@@ -370,10 +345,7 @@ function viewDetails() {
 }
 
 // Handle autonomy toggle
-async function handleAutonomyToggle(event) {
-  // Stop propagation to prevent card drag
-  event.stopPropagation()
-
+async function handleAutonomyToggle() {
   if (autonomyLoading.value || isSystemAgent.value) return
 
   autonomyLoading.value = true

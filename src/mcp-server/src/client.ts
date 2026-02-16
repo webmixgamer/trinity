@@ -14,6 +14,12 @@ import type {
   AgentAccessInfo,
   SshAccessResponse,
   AgentTemplateInfo,
+  Schedule,
+  ScheduleCreate,
+  ScheduleUpdate,
+  ScheduleExecution,
+  ScheduleToggleResult,
+  ScheduleTriggerResult,
 } from "./types.js";
 
 /**
@@ -266,27 +272,6 @@ export class TrinityClient {
   }
 
   /**
-   * Reload credentials on a running agent
-   * Fetches latest credentials from Redis and pushes them to the agent container
-   */
-  async reloadCredentials(name: string): Promise<{
-    message: string;
-    credential_count: number;
-    updated_files: string[];
-    note: string;
-  }> {
-    return this.request<{
-      message: string;
-      credential_count: number;
-      updated_files: string[];
-      note: string;
-    }>(
-      "POST",
-      `/api/agents/${encodeURIComponent(name)}/credentials/reload`
-    );
-  }
-
-  /**
    * Get credential status from a running agent
    */
   async getCredentialStatus(name: string): Promise<{
@@ -302,6 +287,87 @@ export class TrinityClient {
       "GET",
       `/api/agents/${encodeURIComponent(name)}/credentials/status`
     );
+  }
+
+  /**
+   * Inject credential files directly into a running agent
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   * @param files - Map of file paths to contents (e.g., {".env": "KEY=value"})
+   */
+  async injectCredentials(name: string, files: Record<string, string>): Promise<{
+    status: string;
+    files_written: string[];
+    message: string;
+  }> {
+    return this.request<{
+      status: string;
+      files_written: string[];
+      message: string;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/inject`,
+      { files }
+    );
+  }
+
+  /**
+   * Export credentials from agent to encrypted .credentials.enc file
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   */
+  async exportCredentials(name: string): Promise<{
+    status: string;
+    encrypted_file: string;
+    files_exported: number;
+  }> {
+    return this.request<{
+      status: string;
+      encrypted_file: string;
+      files_exported: number;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/export`
+    );
+  }
+
+  /**
+   * Import credentials from encrypted .credentials.enc file to agent
+   * New simplified credential system (CRED-002)
+   * @param name - Agent name
+   */
+  async importCredentials(name: string): Promise<{
+    status: string;
+    files_imported: string[];
+    message: string;
+  }> {
+    return this.request<{
+      status: string;
+      files_imported: string[];
+      message: string;
+    }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/credentials/import`
+    );
+  }
+
+  /**
+   * Get the platform's credential encryption key
+   * Enables local agents to encrypt/decrypt .credentials.enc files
+   * New simplified credential system (CRED-002)
+   */
+  async getEncryptionKey(): Promise<{
+    key: string;
+    algorithm: string;
+    key_format: string;
+    note: string;
+  }> {
+    return this.request<{
+      key: string;
+      algorithm: string;
+      key_format: string;
+      note: string;
+    }>("GET", `/api/credentials/encryption-key`);
   }
 
   /**
@@ -387,7 +453,7 @@ export class TrinityClient {
    *
    * @param name - Agent name
    * @param message - The task to execute
-   * @param options - Optional parameters
+   * @param options - Optional parameters including async_mode for fire-and-forget
    * @param sourceAgent - Optional source agent name for collaboration tracking
    */
   async task(
@@ -398,9 +464,10 @@ export class TrinityClient {
       allowed_tools?: string[];
       system_prompt?: string;
       timeout_seconds?: number;
+      async_mode?: boolean;
     },
     sourceAgent?: string
-  ): Promise<ChatResponse> {
+  ): Promise<ChatResponse | { status: "accepted"; execution_id: string; agent_name: string; message: string; async_mode: true }> {
     // Prepare headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -418,9 +485,11 @@ export class TrinityClient {
       allowed_tools: options?.allowed_tools,
       system_prompt: options?.system_prompt,
       timeout_seconds: options?.timeout_seconds,
+      async_mode: options?.async_mode,
     };
 
-    const timeout = (options?.timeout_seconds || 600) + 10; // Add buffer (default matches tool schema)
+    // Async mode returns immediately; sync mode waits for full execution
+    const timeout = options?.async_mode ? 30 : (options?.timeout_seconds || 600) + 10;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);
@@ -484,6 +553,141 @@ export class TrinityClient {
     return this.request<Template>(
       "GET",
       `/api/templates/${encodeURIComponent(templateId)}`
+    );
+  }
+
+  // ============================================================================
+  // Schedule Management
+  // ============================================================================
+
+  /**
+   * List all schedules for an agent
+   */
+  async listAgentSchedules(agentName: string): Promise<Schedule[]> {
+    return this.request<Schedule[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules`
+    );
+  }
+
+  /**
+   * Create a new schedule for an agent
+   */
+  async createAgentSchedule(
+    agentName: string,
+    schedule: ScheduleCreate
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules`,
+      schedule
+    );
+  }
+
+  /**
+   * Get a specific schedule by ID
+   */
+  async getAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`
+    );
+  }
+
+  /**
+   * Update an existing schedule
+   */
+  async updateAgentSchedule(
+    agentName: string,
+    scheduleId: string,
+    updates: ScheduleUpdate
+  ): Promise<Schedule> {
+    return this.request<Schedule>(
+      "PUT",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`,
+      updates
+    );
+  }
+
+  /**
+   * Delete a schedule
+   */
+  async deleteAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<void> {
+    await this.request<void>(
+      "DELETE",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}`
+    );
+  }
+
+  /**
+   * Enable a schedule
+   */
+  async enableAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleToggleResult> {
+    return this.request<ScheduleToggleResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/enable`
+    );
+  }
+
+  /**
+   * Disable a schedule
+   */
+  async disableAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleToggleResult> {
+    return this.request<ScheduleToggleResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/disable`
+    );
+  }
+
+  /**
+   * Manually trigger a schedule execution
+   */
+  async triggerAgentSchedule(
+    agentName: string,
+    scheduleId: string
+  ): Promise<ScheduleTriggerResult> {
+    return this.request<ScheduleTriggerResult>(
+      "POST",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/trigger`
+    );
+  }
+
+  /**
+   * Get execution history for a specific schedule
+   */
+  async getScheduleExecutions(
+    agentName: string,
+    scheduleId: string,
+    limit: number = 20
+  ): Promise<ScheduleExecution[]> {
+    return this.request<ScheduleExecution[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/schedules/${encodeURIComponent(scheduleId)}/executions?limit=${limit}`
+    );
+  }
+
+  /**
+   * Get all executions for an agent across all schedules
+   */
+  async getAgentExecutions(
+    agentName: string,
+    limit: number = 20
+  ): Promise<ScheduleExecution[]> {
+    return this.request<ScheduleExecution[]>(
+      "GET",
+      `/api/agents/${encodeURIComponent(agentName)}/executions?limit=${limit}`
     );
   }
 

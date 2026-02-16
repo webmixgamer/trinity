@@ -327,11 +327,13 @@ def delete_agent_ownership(self, agent_name: str) -> bool:
 
 ## Access Levels
 
-| Level | View | Start/Stop | Delete | Share |
-|-------|------|------------|--------|-------|
-| Owner | Yes | Yes | Yes | Yes |
-| Shared | Yes | Yes | No | No |
-| Admin | Yes | Yes | Yes (non-system) | Yes |
+| Level | View | Start/Stop | Delete | Share | Git Pull | Git Sync/Init |
+|-------|------|------------|--------|-------|----------|---------------|
+| Owner | Yes | Yes | Yes | Yes | Yes | Yes |
+| Shared | Yes | Yes | No | No | Yes | No |
+| Admin | Yes | Yes | Yes (non-system) | Yes | Yes | Yes |
+
+> **Note (2026-01-30)**: Git Pull was changed from Owner-only to Authorized (owner/shared/admin). See [github-sync.md](github-sync.md) for details.
 
 ---
 
@@ -412,6 +414,7 @@ Working - Agent sharing fully functional with email-based collaboration
 
 | Date | Changes |
 |------|---------|
+| 2026-01-30 | **Git Pull permission update**: Added Git Pull and Git Sync/Init columns to Access Levels table. Shared users can now pull from GitHub (was owner-only). |
 | 2026-01-23 | **Full verification**: Updated to use SharingPanel.vue component (not inline in AgentDetail.vue). Updated line numbers for routers/sharing.py (23-64, 67-89, 92-103). Added useAgentSharing.js composable documentation. Updated db/agents.py line numbers for sharing methods. Added OwnedAgentByName dependency documentation from dependencies.py. Documented tab visibility logic at AgentDetail.vue:428-432. Updated helpers.py reference for batch metadata query. |
 | 2025-12-30 | Flow verification: Updated line numbers for routers/sharing.py. Updated database layer to reference db/agents.py. Added auto-whitelist feature note. |
 

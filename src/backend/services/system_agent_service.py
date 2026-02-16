@@ -20,7 +20,6 @@ from services.docker_service import (
     get_agent_container,
     get_next_available_port,
 )
-from credentials import CredentialManager
 from services.settings_service import get_anthropic_api_key
 from services.agent_service.lifecycle import FULL_CAPABILITIES
 
@@ -34,10 +33,6 @@ SYSTEM_AGENT_OWNER = "admin"  # System agent is owned by admin
 
 class SystemAgentService:
     """Service for managing the Trinity system agent."""
-
-    def __init__(self):
-        self.redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
-        self.credential_manager = CredentialManager(self.redis_url)
 
     def is_deployed(self) -> bool:
         """Check if the system agent container exists."""
@@ -203,9 +198,10 @@ class SystemAgentService:
             env_vars['TRINITY_MCP_API_KEY'] = agent_mcp_key.api_key
 
         # Set up volumes
+        # Note: Volume name contains "workspace" but it mounts to /home/developer (consistent with all agents)
         agent_volume_name = f"agent-{SYSTEM_AGENT_NAME}-workspace"
         volumes = {
-            agent_volume_name: {'bind': '/home/developer/workspace', 'mode': 'rw'}
+            agent_volume_name: {'bind': '/home/developer', 'mode': 'rw'}
         }
 
         # Mount template directory

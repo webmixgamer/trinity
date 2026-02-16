@@ -20,9 +20,7 @@ from services.docker_service import (
     get_agent_container,
     get_agent_by_name,
 )
-from services.scheduler_service import scheduler_service
 from services import git_service
-from credentials import CredentialManager
 
 # Import service layer functions
 from services.agent_service import (
@@ -79,12 +77,9 @@ from services.agent_service import (
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-# Initialize credential manager
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
-credential_manager = CredentialManager(REDIS_URL)
-
 # WebSocket manager will be injected from main.py
 manager = None
+filtered_manager = None  # For Trinity Connect /ws/events
 
 # Logger for terminal sessions
 logger = logging.getLogger(__name__)
@@ -97,6 +92,12 @@ def set_websocket_manager(ws_manager):
     """Set the WebSocket manager for broadcasting events."""
     global manager
     manager = ws_manager
+
+
+def set_filtered_websocket_manager(ws_manager):
+    """Set the filtered WebSocket manager for /ws/events (Trinity Connect)."""
+    global filtered_manager
+    filtered_manager = ws_manager
 
 
 # ============================================================================
@@ -120,7 +121,6 @@ async def create_agent_internal(
         current_user=current_user,
         request=request,
         skip_name_sanitization=skip_name_sanitization,
-        credential_manager=credential_manager,
         ws_manager=manager
     )
 
@@ -220,8 +220,7 @@ async def deploy_local_agent(
         body=body,
         current_user=current_user,
         request=request,
-        create_agent_fn=create_agent_internal,
-        credential_manager=credential_manager
+        create_agent_fn=create_agent_internal
     )
 
 
@@ -259,9 +258,7 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
         logger.warning(f"Failed to delete workspace volume for agent {agent_name}: {e}")
 
     # Delete all schedules for this agent
-    schedules = db.list_agent_schedules(agent_name)
-    for schedule in schedules:
-        scheduler_service.remove_schedule(schedule.id)
+    # Dedicated scheduler syncs from database automatically
     db.delete_agent_schedules(agent_name)
 
     # Delete git config if exists
@@ -297,12 +294,6 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     except Exception as e:
         logger.warning(f"Failed to delete shared folder config for agent {agent_name}: {e}")
 
-    # Delete credential assignments for this agent
-    try:
-        credential_manager.cleanup_agent_credentials(agent_name)
-    except Exception as e:
-        logger.warning(f"Failed to delete credential assignments for agent {agent_name}: {e}")
-
     db.delete_agent_ownership(agent_name)
 
     if manager:
@@ -327,11 +318,17 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
         credentials_status = result.get("credentials_injection", "unknown")
         credentials_result = result.get("credentials_result", {})
 
+        event = {
+            "event": "agent_started",
+            "type": "agent_started",  # Normalized type field for filtering
+            "name": agent_name,
+            "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
+        }
         if manager:
-            await manager.broadcast(json.dumps({
-                "event": "agent_started",
-                "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
-            }))
+            await manager.broadcast(json.dumps(event))
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if filtered_manager:
+            await filtered_manager.broadcast_filtered(event)
 
         return {
             "message": f"Agent {agent_name} started",
@@ -355,11 +352,17 @@ async def stop_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reques
     try:
         container.stop()
 
+        event = {
+            "event": "agent_stopped",
+            "type": "agent_stopped",  # Normalized type field for filtering
+            "name": agent_name,
+            "data": {"name": agent_name}
+        }
         if manager:
-            await manager.broadcast(json.dumps({
-                "event": "agent_stopped",
-                "data": {"name": agent_name}
-            }))
+            await manager.broadcast(json.dumps(event))
+        # Also broadcast to filtered manager (Trinity Connect /ws/events)
+        if filtered_manager:
+            await filtered_manager.broadcast_filtered(event)
 
         return {"message": f"Agent {agent_name} stopped"}
     except Exception as e:

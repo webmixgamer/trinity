@@ -815,6 +815,55 @@ async def shutdown(self):
 
 ---
 
+## Trinity Connect Integration (Added 2026-02-05)
+
+The dedicated scheduler service publishes events to Redis, which the backend relays to both the main WebSocket and the filtered Trinity Connect WebSocket.
+
+### Event Publishing via Redis
+
+**Location**: `src/scheduler/service.py:387-401`
+
+The dedicated scheduler publishes events to the `scheduler:events` Redis channel:
+
+```python
+async def _publish_event(self, event: dict):
+    """Publish an event to Redis for WebSocket compatibility."""
+    event_json = json.dumps(event)
+    self.redis.publish("scheduler:events", event_json)
+```
+
+The backend subscribes to this channel and relays events to both WebSocket managers:
+- Main WebSocket Manager: All UI clients
+- Filtered WebSocket Manager: Trinity Connect clients (server-side agent filtering)
+
+### Events Broadcast to Trinity Connect
+
+Schedule execution events are forwarded to external listeners:
+
+| Event Type | Agent Name Field | Description |
+|------------|------------------|-------------|
+| `schedule_execution_started` | `agent` | Execution begins |
+| `schedule_execution_completed` | `agent` | Execution ends (success or failure) |
+
+### Use Case: External Coordination
+
+Local Claude Code instances can wait for scheduled task completion:
+
+```bash
+# Wait for report-agent's scheduled task to complete
+export TRINITY_API_KEY="trinity_mcp_xxx"
+./trinity-listen.sh report-agent completed
+
+# Event received: {"type": "schedule_execution_completed", "agent": "report-agent", "status": "success", ...}
+# Claude Code can now fetch results and continue processing
+```
+
+### Related Documentation
+
+- **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
+
+---
+
 ## Related Flows
 
 - **Upstream**:
@@ -826,35 +875,258 @@ async def shutdown(self):
 - **Related**:
   - [execution-queue.md](execution-queue.md) - Queue system (not used by scheduler)
   - [activity-stream.md](activity-stream.md) - Activity tracking (not yet integrated)
+  - [trinity-connect.md](trinity-connect.md) - Filtered event broadcast for external listeners (Added 2026-02-05)
 
 ---
 
 ## Migration Notes
 
-**From Embedded Scheduler**:
+**Embedded Scheduler Fully Removed (2026-02-11)**:
 
-The previous scheduler was embedded in `src/backend/services/scheduler_service.py` and initialized in `main.py`. With multiple uvicorn workers, each worker created its own scheduler instance, causing duplicate executions.
+The embedded scheduler (`src/backend/services/scheduler_service.py`) has been completely removed. The dedicated scheduler is now the single source of truth for all schedule execution.
 
-**Changes Required**:
-1. Disable embedded scheduler in backend (`SCHEDULER_ENABLED=false` or remove initialization)
-2. Add scheduler service to docker-compose.yml
-3. Ensure Redis is accessible to scheduler container
-4. Mount same SQLite database volume
+**Current Architecture**:
+1. Backend only manages schedule CRUD in database
+2. Dedicated scheduler syncs from database every 60 seconds
+3. All triggers (cron and manual) are executed by dedicated scheduler
+4. Activity tracking via internal API ensures Timeline visibility
 
-**Rollback**:
-1. Stop scheduler service container
-2. Re-enable embedded scheduler in backend
-3. Run backend with single worker (`--workers 1`)
+**For Rollback** (if needed, restore from git):
+1. Restore `src/backend/services/scheduler_service.py` from git history
+2. Re-add imports in affected files
+3. Stop dedicated scheduler container
+4. Run backend with single worker (`--workers 1`)
+
+**Note**: Rollback is not recommended as the consolidated architecture provides:
+- Cleaner separation of concerns
+- Consistent activity tracking
+- Single source of truth for schedule state
+
+---
+
+## Flow 6: Periodic Schedule Sync
+
+**Purpose**: Detect new/updated/deleted schedules without container restart
+
+**Trigger**: Every 60 seconds (configurable via `SCHEDULE_RELOAD_INTERVAL`)
+
+```
+run_forever()                 _sync_schedules()             _sync_agent_schedules()
+(main loop)      -->          (every 60s)      -->          Compare DB with snapshot
+|                             |                              |
+v                             v                              v
+heartbeat (30s)               _sync_agent_schedules()        Build current_state map
+|                             _sync_process_schedules()      from list_all_schedules()
+v                                                            |
+check sync_interval                                          v
+(>= 60s since last?)                                         Detect changes:
+|                                                            - new_ids (add jobs)
+v                                                            - deleted_ids (remove jobs)
+_sync_schedules()                                            - updated (cron/tz/enabled)
+last_sync = now                                              |
+                                                             v
+                                                             Update _schedule_snapshot
+```
+
+**Key Implementation** (`service.py:224-316`):
+
+```python
+async def _sync_agent_schedules(self):
+    """Sync agent schedules with database."""
+    all_schedules = self.db.list_all_schedules()
+
+    # Build current state map: schedule_id -> (enabled, updated_at_iso)
+    current_state: Dict[str, tuple] = {}
+    for schedule in all_schedules:
+        current_state[schedule.id] = (schedule.enabled, schedule.updated_at.isoformat())
+
+    # Detect changes
+    snapshot_ids = set(self._schedule_snapshot.keys())
+    current_ids = set(current_state.keys())
+
+    # New schedules
+    for schedule_id in (current_ids - snapshot_ids):
+        schedule = schedule_map[schedule_id]
+        if schedule.enabled:
+            self._add_job(schedule)  # Add to APScheduler
+        self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+
+    # Deleted schedules
+    for schedule_id in (snapshot_ids - current_ids):
+        self._remove_job(schedule_id)  # Remove from APScheduler
+        del self._schedule_snapshot[schedule_id]
+
+    # Updated schedules (enabled/disabled or cron changed)
+    for schedule_id in (snapshot_ids & current_ids):
+        if self._schedule_snapshot[schedule_id] != current_state[schedule_id]:
+            # Re-add job with updated config
+            self._remove_job(schedule_id)
+            if schedule.enabled:
+                self._add_job(schedule)
+            self._schedule_snapshot[schedule_id] = current_state[schedule_id]
+```
+
+**Configuration** (`config.py:46-48`):
+```python
+schedule_reload_interval: int = field(default_factory=lambda: int(os.getenv(
+    "SCHEDULE_RELOAD_INTERVAL", "60"
+)))  # seconds
+```
+
+**Log Examples**:
+```
+INFO - Sync: Adding new schedule Daily Report for agent my-agent
+INFO - Sync: Disabling schedule Weekly Digest
+INFO - Sync: Updating schedule Hourly Check
+INFO - Sync complete: 2 added, 1 removed
+```
+
+---
+
+## Flow 7: Manual Trigger (via Dedicated Scheduler)
+
+**Purpose**: Manual schedule triggers are now routed through the dedicated scheduler to ensure consistent activity tracking and locking.
+
+**Trigger**: User clicks "Run Now" button in UI or API call
+
+```
+Backend API                      Scheduler Service              Backend Internal API
+POST /api/agents/{name}/         POST /api/schedules/           POST /api/internal/
+    schedules/{id}/trigger       {id}/trigger                   activities/track
+|                                |                               |
+v                                v                               v
+schedules.py:trigger_schedule    main.py:_trigger_handler        internal.py:track_activity
+  → httpx.post to scheduler        → validate schedule              → activity_service.track_activity
+                                   → create_task(_execute_manual)   → WebSocket broadcast
+                                   → return immediately             |
+                                                                    v
+                                   _execute_manual_trigger()     POST /api/internal/
+                                     → acquire lock               activities/{id}/complete
+                                     → _execute_schedule_with_lock
+                                       → _track_activity_start
+                                       → send task to agent
+                                       → _complete_activity
+```
+
+**Endpoint**: `POST /api/schedules/{schedule_id}/trigger` (scheduler service port 8001)
+
+**Response**:
+```json
+{
+  "status": "triggered",
+  "schedule_id": "abc123",
+  "schedule_name": "Daily Report",
+  "agent_name": "my-agent",
+  "message": "Execution started in background"
+}
+```
+
+---
+
+## Flow 8: Activity Tracking via Internal API
+
+**Purpose**: Create `agent_activities` records for Timeline dashboard visibility
+
+**Trigger**: Both cron-triggered and manual schedule executions
+
+```
+Scheduler Service                     Backend Internal API
+_execute_schedule_with_lock()   -->   POST /api/internal/activities/track
+|                                     {agent_name, activity_type, ...}
+v                                     |
+Send task to agent                    v
+|                                     Creates agent_activities record
+v                                     Broadcasts via WebSocket
+_complete_activity()            -->   POST /api/internal/activities/{id}/complete
+                                      {status, details, error}
+                                      |
+                                      v
+                                      Updates activity record
+                                      Broadcasts completion via WebSocket
+```
+
+**Internal API Endpoints** (no authentication - internal Docker network only):
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/internal/activities/track` | POST | Start tracking an activity |
+| `/api/internal/activities/{id}/complete` | POST | Mark activity as completed/failed |
+
+**Request Model** (`ActivityTrackRequest`):
+```python
+{
+    "agent_name": "my-agent",
+    "activity_type": "schedule_start",
+    "user_id": 1,  # optional
+    "triggered_by": "schedule",  # or "manual"
+    "related_execution_id": "exec-123",
+    "details": {
+        "schedule_id": "abc123",
+        "schedule_name": "Daily Report"
+    }
+}
+```
+
+---
+
+## Scheduler Consolidation (2026-02-11)
+
+### What Changed
+
+The scheduler architecture was consolidated to make the dedicated scheduler the **single source of truth** for all schedule execution:
+
+1. **Embedded Scheduler Removed**: `src/backend/services/scheduler_service.py` was deleted
+2. **Manual Triggers Delegated**: Backend API now routes manual triggers to dedicated scheduler
+3. **Activity Tracking Added**: Dedicated scheduler creates `agent_activities` records via internal API
+4. **CRUD Simplified**: Backend only updates database; scheduler syncs automatically
+
+### Before vs After
+
+| Operation | Before (Dual Schedulers) | After (Consolidated) |
+|-----------|--------------------------|----------------------|
+| Cron triggers | Dedicated scheduler | Dedicated scheduler |
+| Manual triggers | Embedded scheduler | Dedicated scheduler (via API) |
+| Activity tracking | Only manual triggers | Both cron and manual |
+| Schedule CRUD | Backend updates APScheduler directly | Backend updates DB; scheduler syncs |
+| APScheduler jobs | Managed by both | Managed by dedicated scheduler only |
+
+### Timeline Dashboard Fix
+
+The consolidation fixes the bug where cron-triggered executions didn't appear on the Timeline dashboard:
+
+**Root Cause**: The dedicated scheduler created `schedule_executions` records but not `agent_activities` records.
+
+**Fix**: Added internal API endpoints for activity tracking. The dedicated scheduler now calls:
+- `POST /api/internal/activities/track` - on execution start
+- `POST /api/internal/activities/{id}/complete` - on execution end
+
+### Configuration
+
+Backend connects to dedicated scheduler via:
+```python
+# src/backend/routers/schedules.py
+SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://scheduler:8001")
+```
+
+### Database Sync
+
+The dedicated scheduler automatically syncs with the database every 60 seconds:
+- New schedules are detected and added to APScheduler
+- Deleted schedules are removed from APScheduler
+- Updated schedules (cron, timezone, enabled) are re-added
+
+No immediate notification is needed from the backend.
 
 ---
 
 ## Future Enhancements
 
 1. **APScheduler 4.0 Migration**: When stable, migrate to native distributed scheduling
-2. **Activity Stream Integration**: Track executions in unified activity stream
+2. ~~**Activity Stream Integration**: Track executions in unified activity stream~~ ✅ Completed 2026-02-11
 3. **Redis Job Store**: Persist jobs across restarts
 4. **PostgreSQL Support**: Shared data store for multi-instance coordination
 5. **Metrics Export**: Prometheus metrics for monitoring
+6. **Force-Sync Endpoint**: Trigger immediate schedule sync without waiting for interval
 
 ---
 
@@ -862,6 +1134,9 @@ The previous scheduler was embedded in `src/backend/services/scheduler_service.p
 
 | Date | Change |
 |------|--------|
+| 2026-02-11 | **Scheduler Consolidation**: Removed embedded scheduler, routed manual triggers through dedicated scheduler, added activity tracking via internal API. Fixes Timeline dashboard missing cron executions. |
+| 2026-02-05 | **Trinity Connect Integration**: Added section documenting filtered broadcast callback for external event listeners. Schedule events forwarded to `/ws/events` endpoint. |
+| 2026-01-29 | Added periodic schedule sync - new schedules work without restart |
 | 2026-01-13 | Initial documentation - standalone scheduler service |
 
 ---

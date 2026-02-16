@@ -16,18 +16,18 @@ import json
 from datetime import datetime
 from typing import List
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
-from config import CORS_ORIGINS, GITHUB_PAT, GITHUB_PAT_CREDENTIAL_ID, REDIS_URL
+from config import CORS_ORIGINS
 from models import User
 from dependencies import get_current_user
 from services.docker_service import docker_client, list_all_agents_fast
 
 # Import routers
 from routers.auth import router as auth_router
-from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, inject_trinity_meta_prompt
+from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, set_filtered_websocket_manager as set_agents_filtered_ws_manager, inject_trinity_meta_prompt
 from routers.credentials import router as credentials_router
 from routers.templates import router as templates_router
 from routers.sharing import router as sharing_router, set_websocket_manager as set_sharing_ws_manager
@@ -56,9 +56,7 @@ from routers.process_templates import router as process_templates_router
 from routers.audit import router as audit_router
 from routers.docs import router as docs_router
 from routers.skills import router as skills_router
-
-# Import scheduler service
-from services.scheduler_service import scheduler_service
+from routers.internal import router as internal_router
 
 # Import activity service
 from services.activity_service import activity_service
@@ -69,8 +67,6 @@ from services.system_agent_service import system_agent_service
 # Import log archive service
 from services.log_archive_service import log_archive_service
 
-# Import credentials manager for GitHub PAT initialization
-from credentials import CredentialManager, CredentialCreate
 
 # Import process engine WebSocket publisher
 from services.process_engine.events import set_websocket_publisher_broadcast
@@ -104,10 +100,75 @@ class ConnectionManager:
                 pass
 
 
+class FilteredWebSocketManager:
+    """
+    WebSocket manager that filters events based on user's accessible agents.
+
+    Used by /ws/events endpoint for external listeners (Trinity Connect).
+    Events are filtered server-side based on user's owned and shared agents.
+    """
+
+    def __init__(self):
+        from typing import Dict, Set
+        self.connections: Dict[WebSocket, Dict] = {}  # ws -> {email, is_admin, accessible_agents}
+
+    async def connect(self, websocket: WebSocket, email: str, is_admin: bool, accessible_agents: List[str]):
+        """Register a new connection with its accessible agents."""
+        self.connections[websocket] = {
+            "email": email,
+            "is_admin": is_admin,
+            "accessible_agents": set(accessible_agents)
+        }
+
+    def disconnect(self, websocket: WebSocket):
+        """Remove a connection."""
+        self.connections.pop(websocket, None)
+
+    def update_accessible_agents(self, websocket: WebSocket, accessible_agents: List[str]):
+        """Update the accessible agents list for a connection."""
+        if websocket in self.connections:
+            self.connections[websocket]["accessible_agents"] = set(accessible_agents)
+
+    async def broadcast_filtered(self, event: dict):
+        """
+        Broadcast event only to users who can access the event's agent.
+
+        Extracts agent name from various event fields and checks if
+        each connected user can access that agent.
+        """
+        # Extract agent name from event (different fields for different event types)
+        agent_name = (
+            event.get("agent_name") or
+            event.get("agent") or
+            event.get("name") or  # agent_started/agent_stopped events
+            event.get("source_agent") or
+            (event.get("details") or {}).get("source_agent") or
+            (event.get("details") or {}).get("target_agent")
+        )
+
+        if not agent_name:
+            return  # Can't filter without agent name
+
+        disconnected = []
+        for websocket, info in self.connections.items():
+            # Admin sees all, otherwise check accessible agents
+            if info["is_admin"] or agent_name in info["accessible_agents"]:
+                try:
+                    await websocket.send_json(event)
+                except Exception:
+                    disconnected.append(websocket)
+
+        # Clean up disconnected clients
+        for ws in disconnected:
+            self.disconnect(ws)
+
+
 manager = ConnectionManager()
+filtered_manager = FilteredWebSocketManager()
 
 # Inject WebSocket manager into routers that need it
 set_agents_ws_manager(manager)
+set_agents_filtered_ws_manager(filtered_manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
 set_public_links_ws_manager(manager)
@@ -115,70 +176,17 @@ set_public_links_ws_manager(manager)
 # Inject trinity meta-prompt function into system agent router
 set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
 
-# Set up scheduler broadcast callback
-scheduler_service.set_broadcast_callback(manager.broadcast)
+# NOTE: Scheduler broadcast callbacks removed - dedicated scheduler (trinity-scheduler)
+# publishes events to Redis which backend subscribes to, or via internal API calls
 
 # Set up activity service WebSocket manager
 activity_service.set_websocket_manager(manager)
+activity_service.set_filtered_websocket_manager(filtered_manager)
 
 # Set up process engine WebSocket publisher
 set_websocket_publisher_broadcast(manager.broadcast)
 
 
-def initialize_github_pat():
-    """
-    Upload GitHub PAT from environment to Redis on startup.
-    This enables local development without manually adding credentials.
-    """
-    if not GITHUB_PAT:
-        print("GitHub PAT not configured in environment (GITHUB_PAT)")
-        return
-
-    try:
-        credential_manager = CredentialManager(REDIS_URL)
-
-        # Check if credential already exists
-        existing = credential_manager.get_credential(GITHUB_PAT_CREDENTIAL_ID, "admin")
-        if existing:
-            # Update the secret if PAT changed
-            secret_key = f"credentials:{GITHUB_PAT_CREDENTIAL_ID}:secret"
-            import json
-            credential_manager.redis_client.set(secret_key, json.dumps({"token": GITHUB_PAT}))
-            print(f"GitHub PAT updated in Redis (credential_id: {GITHUB_PAT_CREDENTIAL_ID})")
-        else:
-            # Create new credential with fixed ID
-            from datetime import datetime
-            import json
-
-            cred_key = f"credentials:{GITHUB_PAT_CREDENTIAL_ID}"
-            secret_key = f"{cred_key}:secret"
-            metadata_key = f"{cred_key}:metadata"
-            user_creds_key = "user:admin:credentials"
-            now = datetime.utcnow()
-
-            # Store metadata
-            credential_manager.redis_client.hset(metadata_key, mapping={
-                "id": GITHUB_PAT_CREDENTIAL_ID,
-                "name": "GitHub PAT (Templates)",
-                "service": "github",
-                "type": "token",
-                "description": "Auto-configured from GITHUB_PAT environment variable",
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-                "status": "active",
-                "user_id": "admin"
-            })
-
-            # Store secret
-            credential_manager.redis_client.set(secret_key, json.dumps({"token": GITHUB_PAT}))
-
-            # Add to admin's credentials set
-            credential_manager.redis_client.sadd(user_creds_key, GITHUB_PAT_CREDENTIAL_ID)
-
-            print(f"GitHub PAT uploaded to Redis (credential_id: {GITHUB_PAT_CREDENTIAL_ID})")
-
-    except Exception as e:
-        print(f"Error initializing GitHub PAT: {e}")
 
 
 @asynccontextmanager
@@ -186,9 +194,6 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Set up structured JSON logging (captured by Vector)
     setup_logging()
-
-    # Initialize GitHub PAT from environment to Redis
-    initialize_github_pat()
 
     if docker_client:
         try:
@@ -211,14 +216,12 @@ async def lifespan(app: FastAPI):
     else:
         print("Docker not available - running in demo mode")
 
-    # NOTE: Embedded scheduler DISABLED (2026-01-13)
-    # Schedule execution is now handled by the dedicated scheduler service (trinity-scheduler container)
-    # which uses Redis distributed locking to prevent duplicate executions.
-    # The scheduler_service module is still imported for:
-    # - Manual trigger functionality (trigger_schedule)
-    # - CRUD sync with APScheduler jobs (no-op when not initialized)
+    # NOTE: Embedded scheduler REMOVED (2026-02-11)
+    # All schedule execution is handled by the dedicated scheduler service (trinity-scheduler container)
+    # which uses Redis distributed locking and syncs schedules from database periodically.
+    # Manual triggers are also delegated to the dedicated scheduler.
     # See: src/scheduler/, docs/memory/feature-flows/scheduler-service.md
-    print("Embedded scheduler disabled - using dedicated scheduler service (trinity-scheduler)")
+    print("Using dedicated scheduler service (trinity-scheduler)")
 
     # Initialize log archive service
     try:
@@ -305,6 +308,7 @@ app.include_router(process_templates_router)
 app.include_router(audit_router)  # IT5 P1: Audit logging
 app.include_router(docs_router)   # Process documentation serving
 app.include_router(skills_router) # Skills Management System
+app.include_router(internal_router)  # Internal agent-to-backend endpoints (no auth)
 
 
 # WebSocket endpoint
@@ -355,6 +359,81 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                     pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+# WebSocket endpoint for external listeners (Trinity Connect)
+@app.websocket("/ws/events")
+async def websocket_events_endpoint(
+    websocket: WebSocket,
+    token: str = Query(None, description="MCP API key for authentication")
+):
+    """
+    WebSocket endpoint for external event listeners (Trinity Connect).
+
+    Authentication: MCP API key via ?token= query parameter
+    Events: Filtered to only agents the authenticated user can access
+
+    Usage:
+        websocat "ws://localhost:8000/ws/events?token=trinity_mcp_xxx"
+        wscat -c "ws://localhost:8000/ws/events?token=trinity_mcp_xxx"
+
+    Events received:
+        - agent_activity (chat_start, schedule_start, tool_call completions)
+        - schedule_execution_completed
+        - agent_started / agent_stopped
+        - agent_collaboration
+
+    Commands (send as text):
+        - "ping" -> receives "pong"
+        - "refresh" -> refreshes accessible agents list
+    """
+    from database import db
+
+    # Validate MCP API key
+    if not token or not token.startswith("trinity_mcp_"):
+        await websocket.close(code=4001, reason="MCP API key required (use ?token=trinity_mcp_xxx)")
+        return
+
+    key_info = db.validate_mcp_api_key(token)
+    if not key_info:
+        await websocket.close(code=4001, reason="Invalid or inactive MCP API key")
+        return
+
+    user_email = key_info.get("user_email")
+    # Determine if admin by checking user role
+    user_data = db.get_user_by_username(key_info.get("user_id"))  # user_id is actually username
+    is_admin = user_data and user_data.get("role") == "admin"
+
+    # Get list of accessible agents for this user
+    accessible_agents = db.get_accessible_agent_names(user_email, is_admin)
+
+    await websocket.accept()
+    await websocket.send_json({
+        "type": "connected",
+        "user": user_email,
+        "accessible_agents": accessible_agents,
+        "message": "Listening for events. Events filtered to your accessible agents."
+    })
+
+    # Add to filtered connections manager
+    await filtered_manager.connect(websocket, user_email, is_admin, accessible_agents)
+
+    try:
+        while True:
+            # Keep connection alive, handle commands
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+            elif data == "refresh":
+                # Refresh accessible agents list (e.g., after sharing changes)
+                accessible_agents = db.get_accessible_agent_names(user_email, is_admin)
+                filtered_manager.update_accessible_agents(websocket, accessible_agents)
+                await websocket.send_json({
+                    "type": "refreshed",
+                    "accessible_agents": accessible_agents
+                })
+    except WebSocketDisconnect:
+        filtered_manager.disconnect(websocket)
 
 
 # Health check endpoint

@@ -1,6 +1,8 @@
 # Feature: Execution Queue System
 
-> **Updated**: 2026-01-14 - **Bug Fix (Race Conditions)**: Atomic Redis operations now prevent race conditions:
+> **Updated**: 2026-02-16 - **Security Fix (Credential Leakage Prevention)**: Execution logs, tool calls, and responses are now sanitized before database persistence to prevent credential leakage. Backend uses `sanitize_execution_log()` and `sanitize_response()` from `src/backend/utils/credential_sanitizer.py` in `routers/chat.py` for both `/chat` and `/task` endpoints.
+>
+> **Previous (2026-01-14)** - **Bug Fix (Race Conditions)**: Atomic Redis operations now prevent race conditions:
 > - `submit()` uses `SET NX EX` for atomic slot acquisition (prevents concurrent requests acquiring the same slot)
 > - `complete()` uses Lua script for atomic pop-and-set (prevents queue entries from being lost or processed twice)
 > - `get_all_busy_agents()` uses `SCAN` instead of `KEYS` to avoid blocking Redis on large datasets
@@ -15,8 +17,9 @@ As a Trinity platform operator, I want all agent execution requests (user chat, 
 
 ## Entry Points
 - **User Chat**: `POST /api/agents/{name}/chat` - User messages from UI
-- **Scheduler**: `scheduler_service._execute_schedule()` - Cron-triggered executions
+- **Dedicated Scheduler**: `src/scheduler/service.py:_execute_schedule()` - Cron-triggered executions
 - **MCP Server**: `chat_with_agent` tool - Agent-to-agent communication
+- **MCP Server**: `trigger_agent_schedule` tool - Manual schedule trigger via MCP (Added 2026-01-29)
 - **Queue Management**: `GET/POST /api/agents/{name}/queue/*` - Status, clear, release
 
 ---
@@ -362,72 +365,69 @@ async def chat_with_agent(
 - Adds execution metadata to response
 - **Agent-to-agent calls**: Creates `schedule_executions` record (added 2025-12-30) so they appear in Tasks tab
 
-### 2. Scheduler (`src/backend/services/scheduler_service.py:169-373`)
+### 2. Dedicated Scheduler (`src/scheduler/service.py`)
 
-**Entry Point**: APScheduler cron trigger -> `_execute_schedule()`
+> **Note (2026-02-11)**: The embedded scheduler (`src/backend/services/scheduler_service.py`) has been **removed**. Schedule execution is now handled by the Dedicated Scheduler Service. See [scheduler-service.md](scheduler-service.md) for complete documentation.
+
+**Entry Point**: APScheduler cron trigger -> `_execute_schedule()` in dedicated scheduler container
 
 ```python
+# src/scheduler/service.py
 async def _execute_schedule(self, schedule_id: str):
-    # Create queue execution request
-    queue = get_execution_queue()
-    queue_execution = queue.create_execution(
-        agent_name=schedule.agent_name,
-        message=schedule.message,
-        source=ExecutionSource.SCHEDULE,
-        source_user_id=str(schedule.owner_id) if schedule.owner_id else None
-    )
-
-    try:
-        queue_result, queue_execution = await queue.submit(queue_execution, wait_if_busy=True)
-        logger.info(f"[Schedule] Agent '{schedule.agent_name}' execution {queue_execution.id}: {queue_result}")
-    except QueueFullError as e:
-        error_msg = f"Agent queue full ({e.queue_length} waiting), skipping scheduled execution"
-        db.update_execution_status(execution_id=execution.id, status="failed", error=error_msg)
+    # Try to acquire distributed lock
+    lock = self.lock_manager.try_acquire_schedule_lock(schedule_id)
+    if not lock:
+        logger.info(f"Schedule {schedule_id} already being executed by another instance")
         return
 
-    # Execute using AgentClient.task() for raw Claude Code log format
-    # Changed from client.chat() to client.task() on 2025-01-02 to fix log viewer
+    try:
+        await self._execute_schedule_with_lock(schedule_id)
+    finally:
+        lock.release()
+
+async def _execute_schedule_with_lock(self, schedule_id: str):
+    # Check autonomy enabled
+    if not self.db.get_autonomy_enabled(schedule.agent_name):
+        logger.info(f"Schedule {schedule_id} skipped: agent autonomy disabled")
+        return
+
+    # Create execution record
+    execution = self.db.create_execution(...)
+
+    # Track activity via internal API
+    await self._track_activity_start(schedule, execution)
+
+    # Execute using AgentClient.task()
     client = get_agent_client(schedule.agent_name)
-    task_response = await client.task(schedule.message)
+    task_response = await client.task(schedule.message, execution_id=execution.id)
 
     # Update execution with parsed response metrics
-    db.update_execution_status(
-        execution_id=execution.id,
-        status="success",
-        response=task_response.response_text,
-        context_used=task_response.metrics.context_used,
-        context_max=task_response.metrics.context_max,
-        cost=task_response.metrics.cost_usd,
-        tool_calls=task_response.metrics.tool_calls_json,
-        execution_log=task_response.metrics.execution_log_json  # Raw Claude Code format
-    )
+    self.db.update_execution_status(...)
 
-    finally:
-        # Always release the queue slot when done
-        await queue.complete(schedule.agent_name, success=execution_success)
+    # Complete activity via internal API
+    await self._complete_activity(...)
 ```
 
 **Key Points:**
-- Uses `ExecutionSource.SCHEDULE`
-- Uses `AgentClient.task()` for stateless execution with raw log format (changed from `chat()` on 2025-01-02)
-- Response parsing via `AgentClient._parse_task_response()`
+- Runs in **dedicated scheduler container** (not backend)
+- Uses Redis distributed locks to prevent duplicate executions
+- Checks autonomy before execution
+- Activity tracking via internal API (`POST /api/internal/activities/track`)
+- Uses `AgentClient.task()` for stateless execution with raw log format
 - Execution log stored in raw Claude Code `stream-json` format for log viewer compatibility
-- Logs queue full as failure (doesn't retry)
-- Always releases queue in `finally`
 
-#### AgentClient Service (`src/backend/services/agent_client.py`)
+#### AgentClient Service (Scheduler Version)
 
-The scheduler uses the centralized `AgentClient` service for agent communication:
+The dedicated scheduler has its own `AgentClient` (`src/scheduler/agent_client.py`) for agent communication:
 
 ```python
-from services.agent_client import get_agent_client, AgentClientError, AgentNotReachableError
+from scheduler.agent_client import get_agent_client, AgentNotReachableError
 
 # Create client for agent
 client = get_agent_client(schedule.agent_name)
 
-# Send task message - returns AgentChatResponse with raw Claude Code log
-# Uses /api/task endpoint for stateless execution with proper log format
-task_response = await client.task(schedule.message)
+# Send task message - returns AgentTaskResponse with raw Claude Code log
+task_response = await client.task(schedule.message, execution_id=execution.id)
 
 # Access parsed metrics
 task_response.response_text          # The agent's response (truncated if > 10000 chars)
@@ -619,7 +619,8 @@ The queue management endpoints use a **thin router + service layer** architectur
 |------|-------|---------|
 | `src/backend/services/execution_queue.py` | 244 | Redis-backed queue implementation |
 | `src/backend/services/agent_client.py` | 379 | **NEW** Centralized agent HTTP client |
-| `src/backend/services/scheduler_service.py` | 560 | APScheduler integration (uses AgentClient) |
+| `src/scheduler/service.py` | - | Dedicated scheduler (APScheduler, activity tracking) |
+| `src/scheduler/agent_client.py` | - | Scheduler's agent HTTP client |
 | `src/backend/routers/chat.py` | 1004 | Chat endpoint (uses raw httpx with retry) |
 | `src/backend/models.py:189-236` | 47 | ExecutionSource, ExecutionStatus, Execution, QueueStatus |
 | `docker/base-image/agent_server/services/claude_code.py` | - | Defense-in-depth lock |
@@ -1074,8 +1075,8 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 - **Integrates With**:
   - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal
-  - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue
-  - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`)
+  - Agent Scheduling (`scheduling.md`) - Scheduled executions use queue; MCP `trigger_agent_schedule` also uses queue
+  - MCP Orchestration (`mcp-orchestration.md`) - Agent-to-agent calls use queue (unless `parallel: true`); schedule tools go through queue
   - Activity Stream (`activity-stream.md`) - Queue status tracked in activities
 
 - **Bypassed By**:
@@ -1091,6 +1092,11 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 | Date | Changes |
 |------|---------|
+| 2026-02-16 | **Security Fix (Credential Leakage Prevention)**: Backend now sanitizes execution logs, tool calls, and responses before database persistence. Uses `sanitize_execution_log()` and `sanitize_response()` from `src/backend/utils/credential_sanitizer.py`. Both `/chat` (lines 283-286) and `/task` (lines 468-470, 699-712) endpoints sanitize data before calling `db.update_execution_status()`. This is a defense-in-depth layer that catches any credentials that may have bypassed agent-side sanitization. |
+| 2026-02-15 | **Claude Max subscription support**: Documented that Claude Code now uses whatever authentication is available (OAuth session from `/login` or `ANTHROPIC_API_KEY`). The mandatory API key check was removed from `execute_claude_code()` and `execute_headless_task()`. This allows headless executions to use Claude Max subscription billing if user logged in via web terminal. |
+| 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` now uses `async_mode: True` to return immediately instead of waiting for task completion (was timing out after 30s). |
+| 2026-02-11 | **Scheduler Consolidation**: Updated Section 2 to reflect removal of embedded scheduler. Schedule execution now handled by dedicated scheduler (`src/scheduler/`). Updated Key Files Summary table. |
+| 2026-01-29 | **MCP Schedule Management (MCP-SCHED-001)**: Added `trigger_agent_schedule` MCP tool to Entry Points. Updated Related Flows to note that MCP schedule tools go through the queue. |
 | 2026-01-14 | **Race Condition Bug Fixes (HIGH)**: Fixed three race conditions in execution queue. (1) `submit()` now uses atomic `SET NX EX` instead of separate EXISTS/SET - prevents two concurrent requests from acquiring the same execution slot. (2) `complete()` now uses Lua script for atomic pop-and-set - prevents queue entries from being lost or processed twice. (3) `get_all_busy_agents()` replaced `KEYS` with `SCAN` - avoids blocking Redis on large datasets. Added Thread Safety section with Lua script documentation. Updated all method line numbers. |
 | 2026-01-12 | **Execution Termination**: Added section documenting process registry, termination flow, signal handling (SIGINT -> SIGKILL), and new endpoints. See [execution-termination.md](execution-termination.md) for full feature documentation. |
 | 2026-01-11 | **Execution ID tracking**: Documented two ID systems (Queue vs Database). Chat response now includes both `id` (queue) and `task_execution_id` (database). Activity tracking uses `related_execution_id` as top-level field for structured SQL queries. |

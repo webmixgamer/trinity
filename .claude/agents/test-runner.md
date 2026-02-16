@@ -136,6 +136,7 @@ The test suite covers:
 - **MCP Keys** (test_mcp_keys.py) - API key management [SMOKE]
 - **First-Time Setup** (test_setup.py) - Setup status, admin password validation [SMOKE]
 - **Skills Library** (test_skills.py) - List skills, get skill, library status, skill assignment [SMOKE + Agent]
+- **Internal API** (test_internal.py) - Internal health check, activity tracking endpoints [SMOKE + Agent] (Added 2026-02-11)
 
 ### Agent Lifecycle & Management
 - **Agent Lifecycle** (test_agent_lifecycle.py) - CRUD, start/stop, logs
@@ -147,7 +148,7 @@ The test suite covers:
 - **Agent Metrics** (test_agent_metrics.py) - Custom metrics endpoint (Req 9.9)
 - **Agent Shared Folders** (test_shared_folders.py) - Folder expose/consume configuration (Req 9.11)
 - **Agent API Key** (test_agent_api_key_setting.py) - Per-agent API key configuration
-- **Web Terminal** (test_web_terminal.py) - WebSocket terminal sessions
+- **Agent Dashboard** (test_agent_dashboard.py) - Agent dashboard configuration and retrieval
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
@@ -170,10 +171,15 @@ The test suite covers:
 - **Parallel Tasks** (test_parallel_task.py) - Parallel headless execution (Req 12.1)
 - **Log Archive** (test_log_archive.py) - Log archival service (requires docker package in test env)
 
+### Real-Time & WebSocket
+- **Web Terminal** (test_web_terminal.py) - WebSocket terminal sessions
+- **Execution Streaming** (test_execution_streaming.py) - SSE streaming for execution logs
+- **Trinity Connect** (test_trinity_connect.py) - [NOT YET IMPLEMENTED] /ws/events endpoint, MCP key auth, filtered event broadcasts (Req SYNC-001)
+
 ### Direct Agent Tests
 - **Agent Server Direct** (agent_server/) - Direct agent server tests [SKIPPED unless TEST_AGENT_NAME set]
 
-## Performance Notes (2026-01-09)
+## Performance Notes (2026-02-05)
 
 **Fixture Optimization**:
 - `created_agent` is now module-scoped (ONE agent per test FILE)
@@ -186,10 +192,11 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~535 tests across 30 test files
+**Total Tests**: ~540 tests across 32 test files
 **Smoke Tests**: ~100 tests (fast, no agent creation)
-**Agent-Requiring Tests**: ~385 tests
+**Agent-Requiring Tests**: ~390 tests
 **Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
+**WebSocket Tests**: ~10 tests (web terminal, execution streaming)
 
 ## Expected Skipped Tests (~38 tests)
 
@@ -216,14 +223,33 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
 
-## Known Issues (2026-01-12)
+## Known Issues (2026-02-05)
 
 | Issue | Test | Severity | Status |
 |-------|------|----------|--------|
 | Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
 | Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
+| Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
 
-## Recent Test Additions (2026-01-12)
+## Recent Test Additions (2026-02-11)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_internal.py` | Internal API endpoints (NEW) | ~7 tests |
+| `scheduler_tests/test_service.py` | Activity tracking tests | ~7 tests |
+| `test_schedules.py` | Trigger endpoint update | Updated existing |
+
+Tests cover (2026-02-11 Scheduler Consolidation):
+- Internal health endpoint
+- `POST /api/internal/activities/track` - Create activity records
+- `POST /api/internal/activities/{id}/complete` - Complete activities
+- `_track_activity_start()` - Backend internal API call (scheduler tests)
+- `_complete_activity()` - Backend internal API call (scheduler tests)
+- Activity tracking during schedule execution
+- Manual trigger with `triggered_by="manual"`
+- Error handling when activity tracking fails
+
+## Recent Test Additions (2026-02-05)
 
 | Test File | Description | Tests Added |
 |-----------|-------------|-------------|
@@ -234,6 +260,37 @@ Tests cover:
 - `POST /api/agents/{name}/executions/{execution_id}/terminate` - Stop running executions
 - Activity tracking for EXECUTION_CANCELLED events
 
+## Tests Needed (2026-02-05)
+
+### Trinity Connect (test_trinity_connect.py)
+
+Feature implemented 2026-02-05, tests not yet written. Should cover:
+
+**WebSocket Authentication**
+- Connect with valid MCP API key → receive connected message
+- Connect with invalid key → connection closed with code 4001
+- Connect without token → connection closed with code 4001
+
+**Event Filtering**
+- User receives events only for accessible agents (owned + shared)
+- Admin user receives all events
+- Events for non-accessible agents are filtered out server-side
+
+**Event Types**
+- `agent_activity` events broadcast to filtered listeners
+- `agent_started`/`agent_stopped` events broadcast
+- `schedule_execution_completed` events broadcast
+
+**Protocol**
+- Ping/pong keepalive support
+- Refresh command updates accessible agents list
+
+**Database**
+- `get_accessible_agent_names()` returns correct agents for user
+- `get_accessible_agent_names()` returns all agents for admin
+
+See: `docs/memory/feature-flows/trinity-connect.md` for full specification
+
 ## Important Notes
 
 1. Tests require the Trinity backend to be running at http://localhost:8000
@@ -242,6 +299,8 @@ Tests cover:
 4. Agent server direct tests require TEST_AGENT_NAME environment variable
 5. Git tests require a git-enabled agent
 6. **NEVER run multiple pytest processes simultaneously** - causes resource contention
+7. WebSocket tests (Trinity Connect) require `websockets` package and valid MCP API key
+8. Trinity Connect tests require at least one agent to be accessible to the test user
 
 ## Output Format
 

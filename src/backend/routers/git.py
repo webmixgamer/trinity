@@ -176,7 +176,7 @@ async def get_git_log(
 
 @router.post("/{agent_name}/git/pull")
 async def pull_from_github(
-    agent_name: OwnedAgentByName,
+    agent_name: AuthorizedAgentByName,
     request: Request,
     body: GitPullRequest = GitPullRequest()
 ):

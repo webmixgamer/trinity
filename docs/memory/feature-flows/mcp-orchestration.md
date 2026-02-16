@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 21 tools for agent lifecycle, chat, system management, credential management, and SSH access through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 39 tools for agent lifecycle, chat, system management, credential management (CRED-002), SSH access, skills, and schedule management through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 
@@ -345,9 +345,9 @@ console.log(`Registered ${totalTools} tools`);
 
 ---
 
-## MCP Tools (21 total)
+## MCP Tools (39 total)
 
-### Agent Management (`src/mcp-server/src/tools/agents.ts`)
+### Agent Management (`src/mcp-server/src/tools/agents.ts`) - 16 tools
 
 | Tool | Line | Parameters | Backend Endpoint |
 |------|------|------------|------------------|
@@ -359,11 +359,20 @@ console.log(`Registered ${totalTools} tools`);
 | `start_agent` | 286-301 | `{name}` | `POST /api/agents/{name}/start` |
 | `stop_agent` | 306-321 | `{name}` | `POST /api/agents/{name}/stop` |
 | `list_templates` | 326-339 | `{}` | `GET /api/templates` |
-| `reload_credentials` | 344-360 | `{name}` | `POST /api/agents/{name}/credentials/reload` |
-| `get_credential_status` | 365-380 | `{name}` | `GET /api/agents/{name}/credentials/status` |
-| `get_agent_ssh_access` | 385-420 | `{agent_name, ttl_hours?, auth_method?}` | `POST /api/agents/{name}/ssh-access` |
-| `deploy_local_agent` | 425-525 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
-| `initialize_github_sync` | 530-606 | `{agent_name, repo_owner, repo_name, create_repo?, private?, description?}` | `POST /api/agents/{name}/git/initialize` |
+| `get_credential_status` | 344-362 | `{name}` | `GET /api/agents/{name}/credentials/status` |
+| `inject_credentials` | 365-392 | `{name, files}` | `POST /api/agents/{name}/credentials/inject` |
+| `export_credentials` | 395-416 | `{name}` | `POST /api/agents/{name}/credentials/export` |
+| `import_credentials` | 420-442 | `{name}` | `POST /api/agents/{name}/credentials/import` |
+| `get_credential_encryption_key` | 446-462 | `{}` | `GET /api/credentials/encryption-key` |
+| `get_agent_ssh_access` | 466-503 | `{agent_name, ttl_hours?, auth_method?}` | `POST /api/agents/{name}/ssh-access` |
+| `deploy_local_agent` | 506-607 | `{archive, credentials?, name?}` | `POST /api/agents/deploy-local` |
+| `initialize_github_sync` | 611-686 | `{agent_name, repo_owner, repo_name, create_repo?, private?, description?}` | `POST /api/agents/{name}/git/initialize` |
+
+> **CRED-002 Update (2026-02-05)**: The old `reload_credentials` tool has been replaced with 4 new credential management tools:
+> - `inject_credentials` - Directly inject files into agent workspace
+> - `export_credentials` - Export to encrypted `.credentials.enc` file
+> - `import_credentials` - Import from encrypted `.credentials.enc` file
+> - `get_credential_encryption_key` - Get platform encryption key for local agents
 
 ### Chat Tools (`src/mcp-server/src/tools/chat.ts`)
 
@@ -418,6 +427,57 @@ chat_with_agent({
 - Agent-to-agent calls (with `X-Source-Agent` header) now create `schedule_executions` record (visible in Tasks tab)
 
 See [Parallel Headless Execution](parallel-headless-execution.md) for full details.
+
+### Async Mode (Fire-and-Forget) (Added 2026-01-30)
+
+When `parallel=true`, you can additionally specify `async=true` for fire-and-forget execution:
+
+```typescript
+chat_with_agent({
+  agent_name: "worker-1",
+  message: "Process large dataset",
+  parallel: true,              // Required for async mode
+  async: true,                 // Return immediately with execution_id
+  timeout_seconds: 3600        // Long-running task
+})
+// Returns immediately:
+// {
+//   "status": "accepted",
+//   "execution_id": "abc123xyz",
+//   "agent_name": "worker-1",
+//   "message": "Task accepted. Poll GET /api/agents/{name}/executions/{execution_id} for results.",
+//   "async_mode": true
+// }
+```
+
+**When `async: true` (with `parallel: true`)**:
+- Backend spawns task in background thread via `asyncio.create_task()`
+- Returns immediately with `execution_id` for polling
+- Execution status set to "running" in database
+- Poll `GET /api/agents/{name}/executions/{execution_id}` for status and results
+- Background task updates execution record when complete (success/failed)
+- Activities tracked and completed asynchronously
+
+**Use cases for async mode**:
+- Fan-out patterns: spawn multiple long-running tasks without waiting
+- Non-blocking orchestration: orchestrator continues while workers process
+- Background jobs: trigger maintenance/analysis tasks that run independently
+- Load distribution: batch processing across multiple agents
+
+**Polling for results**:
+```bash
+# Check execution status
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/agents/worker-1/executions/abc123xyz
+
+# Response when running:
+# { "status": "running", "agent_name": "worker-1", ... }
+
+# Response when complete:
+# { "status": "success", "response": "...", "cost": 0.05, ... }
+```
+
+See [Parallel Headless Execution](parallel-headless-execution.md) for implementation details.
 
 ### Dynamic GitHub Templates (Added 2025-12-30)
 
@@ -876,18 +936,26 @@ npm start
 # Test with MCP inspector
 npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 
-# Verify 21 tools are registered:
-# Agent tools (13):
+# Verify 39 tools are registered:
+# Agent tools (16):
 # - list_agents, get_agent, get_agent_info, create_agent, delete_agent
 # - start_agent, stop_agent, list_templates
-# - reload_credentials, get_credential_status, get_agent_ssh_access
-# - deploy_local_agent, initialize_github_sync
+# - get_credential_status, inject_credentials, export_credentials
+# - import_credentials, get_credential_encryption_key
+# - get_agent_ssh_access, deploy_local_agent, initialize_github_sync
 # Chat tools (3):
 # - chat_with_agent, get_chat_history, get_agent_logs
 # System tools (4):
 # - deploy_system, list_systems, restart_system, get_system_manifest
 # Docs tools (1):
 # - get_agent_requirements
+# Skills tools (7):
+# - list_skills, get_skill, get_skills_library_status
+# - assign_skill_to_agent, set_agent_skills, sync_agent_skills, get_agent_skills
+# Schedule tools (8):
+# - list_agent_schedules, create_agent_schedule, get_agent_schedule
+# - update_agent_schedule, delete_agent_schedule, toggle_agent_schedule
+# - trigger_agent_schedule, get_schedule_executions
 ```
 
 ### Race Condition Testing
@@ -914,6 +982,10 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-02-13 | **SSH host detection fix (cross-ref)**: The `get_agent_ssh_access` tool now returns correct host in production deployments. See [ssh-access.md](ssh-access.md) for details on the `FRONTEND_URL` domain extraction fix. |
+| 2026-02-05 | **CRED-002 Credential System**: Tool count updated from 36 to 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new credential tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`. Updated all line numbers for agents.ts. |
+| 2026-01-30 | **Async mode (fire-and-forget)**: Added `async` parameter to `chat_with_agent` tool. When `parallel=true` and `async=true`, returns immediately with `execution_id` for polling. Backend spawns background task via `asyncio.create_task()`. Poll `GET /api/agents/{name}/executions/{id}` for results. |
+| 2026-01-29 | **Schedule tools (MCP-SCHED-001)**: Added 8 schedule management tools - list_agent_schedules, create_agent_schedule, get_agent_schedule, update_agent_schedule, delete_agent_schedule, toggle_agent_schedule, trigger_agent_schedule, get_schedule_executions. Total now 36 tools (13 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). |
 | 2026-01-23 | **Flow verification**: Updated all line numbers to match current implementation. Verified 21 tools (13 agent, 3 chat, 4 system, 1 docs). Updated client.ts line refs (authenticate: 46-69, request: 103-155, chat: 336-378, task: 393-445). Updated dependencies.py refs (104-155). Updated mcp_keys.py refs (144-180). Added ensure-default endpoint. Fixed database table line (356-371). |
 | 2026-01-15 | **Docs**: Added Dashboard Timeline Visualization section noting pink (#ec4899) color for MCP executions |
 | 2026-01-03 | **get_agent_info tool**: Added new tool to retrieve full template.yaml metadata for agents. Supports access control - agent-scoped keys can only access self + permitted agents. Returns capabilities, commands, MCP servers, tools, skills, use cases. |
@@ -927,7 +999,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 ---
 
 ## Status
-Working - All 21 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, and race condition fixed
+Working - All 39 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, CRED-002 credential system, and race condition fixed
 
 ---
 
@@ -938,4 +1010,5 @@ Working - All 21 MCP tools functional with API key authentication, agent-to-agen
   - Execution Queue (`execution-queue.md`) - `chat_with_agent` calls go through queue with 429 handling (unless `parallel: true`)
   - Parallel Headless Execution (`parallel-headless-execution.md`) - When `parallel: true`, bypasses queue and uses `/task` endpoint (Added 2025-12-22)
   - Agent Permissions (`agent-permissions.md`) - Agent-scoped keys use permission system (Phase 9.10)
+  - SSH Access (`ssh-access.md`) - `get_agent_ssh_access` tool implementation with host detection priority
 - **Downstream**: Agent Lifecycle, Agent Chat, Credential Injection, Agent Sharing (access control)

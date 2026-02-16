@@ -161,21 +161,22 @@ if config.template.startswith("github:"):
     if gh_template:
         # Pre-defined GitHub template from config.py
         github_repo = gh_template["github_repo"]
-        github_cred_id = gh_template["github_credential_id"]
 
-        # Get GitHub PAT from credential store (lines 104-114)
-        github_cred = credential_manager.get_credential(github_cred_id, "admin")
-        github_secret = credential_manager.get_credential_secret(github_cred_id, "admin")
-        github_pat = github_secret.get("token") or github_secret.get("api_key")
+        # Get system GitHub PAT from settings (SQLite) or env var (lines 105-111)
+        github_pat = get_github_pat()
+        if not github_pat:
+            raise HTTPException(500, "GitHub PAT not configured. Set GITHUB_PAT in .env or add via Settings.")
 
         github_repo_for_agent = github_repo
         github_pat_for_agent = github_pat
         config.resources = gh_template.get("resources", config.resources)
         config.mcp_servers = gh_template.get("mcp_servers", config.mcp_servers)
     else:
-        # Dynamic GitHub template - use any github:owner/repo format (lines 121-140)
+        # Dynamic GitHub template - use any github:owner/repo format (lines 117-137)
         repo_path = config.template[7:]  # Remove "github:" prefix
-        github_pat = get_github_pat()  # From settings or env var
+        github_pat = get_github_pat()  # From settings (SQLite) or env var
+        if not github_pat:
+            raise HTTPException(500, "GitHub PAT not configured.")
         github_repo_for_agent = repo_path
         github_pat_for_agent = github_pat
 
@@ -454,26 +455,28 @@ GITHUB_TEMPLATES = [
 ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES  # Line 164
 ```
 
-### GitHub PAT Auto-Upload (`main.py`)
+### GitHub PAT Configuration
 
-On backend startup, the `initialize_github_pat()` function automatically uploads the `GITHUB_PAT` environment variable to Redis:
+> **CRED-002 (2026-02-05)**: The Redis-based credential system has been removed.
+> GitHub PAT is now stored in SQLite system_settings or read from environment variable.
+
+The `get_github_pat()` function in `services/settings_service.py` retrieves the PAT:
 
 ```python
-def initialize_github_pat():
-    """Upload GitHub PAT from environment to Redis on startup."""
-    if not GITHUB_PAT:
-        print("GitHub PAT not configured in environment (GITHUB_PAT)")
-        return
-
-    credential_manager = CredentialManager(REDIS_URL)
-    # Creates/updates credential with ID "github-pat-templates"
-    # Stores: {"token": "<PAT value>"}
+def get_github_pat() -> Optional[str]:
+    """Get GitHub PAT from system settings or environment variable."""
+    # First check SQLite system_settings table
+    setting = db.get_setting_value("github_pat")
+    if setting:
+        return setting
+    # Fall back to environment variable
+    return os.environ.get("GITHUB_PAT")
 ```
 
 **Configuration:**
-1. Set `GITHUB_PAT` in `.env` file
-2. Restart backend to sync to Redis
-3. Templates automatically reference credential via `GITHUB_PAT_CREDENTIAL_ID`
+1. **Option A**: Set `GITHUB_PAT` in `.env` file (environment variable)
+2. **Option B**: Configure via Settings page in UI (saved to SQLite)
+3. Settings page value takes precedence over environment variable
 
 ---
 
@@ -530,8 +533,8 @@ labels={
 
 ## Security Considerations
 
-1. **GitHub PAT Storage**: Stored in Redis with fixed credential ID (`github-pat-templates`)
-2. **PAT Auto-Upload**: Backend uploads PAT from `GITHUB_PAT` env var on startup
+1. **GitHub PAT Storage**: Stored in SQLite `system_settings` table (encrypted at rest via SQLite)
+2. **PAT Retrieval**: `get_github_pat()` checks settings first, then env var
 3. **PAT Injection**: Passed to agent container via `GITHUB_PAT` environment variable
 4. **Shallow Clone**: `--depth 1` limits history exposure (when git sync disabled)
 5. **Read-Only Mount**: Template volume mounted as `:ro`
@@ -586,6 +589,7 @@ curl -X POST http://localhost:8000/api/agents \
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | **CRED-002**: Removed Redis credential_manager references. GitHub PAT now retrieved via `get_github_pat()` from SQLite settings or env var. Removed `initialize_github_pat()` documentation. Updated Security Considerations. |
 | 2026-01-23 | **Full verification**: Updated all line numbers for Templates.vue (16-24, 55-134, 137-216, 218-247, 262-267, 290-296, 299-302, 304-332), CreateAgentModal.vue (191-196, 198, 208-210, 219-230, 263-285), template_service.py (64-103, 106-118, 121-140, 143-225, 228-299, 309-358, 361-380), crud.py (96-144, 145-182), config.py (91-164), and startup.sh (6-125, 127-157, 164-222, 275-286). Added multi-runtime support and shared_folders template config. Updated credential file handling details. |
 | 2025-12-30 | **Flow verification**: Updated line numbers for Templates.vue, CreateAgentModal.vue. Updated template processing to reference services/agent_service/create.py. Added startup.sh Git Sync details, content folder convention, Trinity-compatible validation. Updated config.py line numbers for GITHUB_TEMPLATES. |
 | 2025-12-11 | **GitHub PAT Auto-Upload**: Added `GITHUB_PAT` env var support. Backend auto-uploads PAT to Redis on startup with fixed credential ID `github-pat-templates`. All templates now reference `GITHUB_PAT_CREDENTIAL_ID` constant. |

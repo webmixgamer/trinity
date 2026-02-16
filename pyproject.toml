@@ -4,7 +4,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-pythonpath = ["src"]
+pythonpath = ["tests", "src/backend", "src"]
 markers = [
     "asyncio: mark test as async",
     "smoke: mark test as smoke test (fast, no agent)",

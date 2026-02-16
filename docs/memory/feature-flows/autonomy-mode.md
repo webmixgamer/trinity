@@ -1,5 +1,7 @@
 # Feature: Autonomy Mode
 
+> **Last Updated**: 2026-02-12 - UI Standardization: New `AutonomyToggle.vue` reusable component used in 4 locations. Running and Autonomy toggles now on same row in Dashboard and Agents page.
+
 ## Overview
 Autonomy Mode enables or disables all scheduled tasks for an agent with a single toggle. When autonomy is enabled, all schedules run automatically. When disabled, all schedules are paused.
 
@@ -7,11 +9,23 @@ Autonomy Mode enables or disables all scheduled tasks for an agent with a single
 As an agent owner, I want to toggle autonomous operation for my agent so that I can quickly enable or disable all scheduled tasks without managing each schedule individually.
 
 ## Entry Points
-- **Dashboard UI**: `src/frontend/src/components/AgentNode.vue:66-100` - Toggle switch with "AUTO/Manual" label
-- **Agent Detail UI**: `src/frontend/src/components/AgentHeader.vue:134-157` - AUTO/Manual toggle button in header
-- **API**: `GET /api/agents/autonomy-status` - Bulk status for dashboard
-- **API**: `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
-- **API**: `PUT /api/agents/{name}/autonomy` - Toggle autonomy on/off
+
+### UI Locations (via AutonomyToggle component)
+| Location | File | Lines | Notes |
+|----------|------|-------|-------|
+| Dashboard Graph | `AgentNode.vue` | 78-85 | Same row as RunningStateToggle |
+| Dashboard Timeline | `ReplayTimeline.vue` | 155-161 | No label (compact) |
+| Agent Detail Header | `AgentHeader.vue` | 120-125 | Medium size, owners only |
+| Agents List Page | `Agents.vue` | 116-122 | Same row as RunningStateToggle |
+
+### Component
+- **Reusable Component**: `src/frontend/src/components/AutonomyToggle.vue` (151 lines)
+- See [autonomy-toggle-component.md](autonomy-toggle-component.md) for component documentation
+
+### API
+- `GET /api/agents/autonomy-status` - Bulk status for dashboard
+- `GET /api/agents/{name}/autonomy` - Per-agent status with schedule counts
+- `PUT /api/agents/{name}/autonomy` - Toggle autonomy on/off
 
 ---
 
@@ -341,16 +355,13 @@ async def set_autonomy_status_logic(
     db.set_autonomy_enabled(agent_name, enabled)
 
     # Enable/disable all schedules for this agent
-    # IMPORTANT: Use scheduler_service methods to sync both database AND APScheduler
+    # NOTE (2026-02-11): Now uses database-only updates. Dedicated scheduler syncs within 60s.
     schedules = db.list_agent_schedules(agent_name)
     updated_count = 0
     for schedule in schedules:
         schedule_id = schedule.id
         if schedule_id:
-            if enabled:
-                scheduler_service.enable_schedule(schedule_id)
-            else:
-                scheduler_service.disable_schedule(schedule_id)
+            db.set_schedule_enabled(schedule_id, enabled)  # Also recalculates next_run_at
             updated_count += 1
 
     logger.info(
@@ -367,7 +378,7 @@ async def set_autonomy_status_logic(
     }
 ```
 
-> **Note**: The service uses `scheduler_service.enable_schedule()` and `scheduler_service.disable_schedule()` (not `db.set_schedule_enabled()` directly) to ensure schedules are synced to APScheduler immediately. This was fixed in 2026-01-11.
+> **Note (2026-02-11)**: The service now uses `db.set_schedule_enabled()` directly since the embedded scheduler has been removed. The dedicated scheduler (`src/scheduler/`) automatically syncs schedule state changes from the database every 60 seconds.
 
 #### Bulk Status Logic (lines 120-143)
 ```python
@@ -479,31 +490,38 @@ def get_all_agents_autonomy_status(self) -> Dict[str, bool]:
 ## Side Effects
 
 ### Schedule Toggling
-When autonomy is toggled, all schedules for the agent are enabled/disabled via `scheduler_service`:
+When autonomy is toggled, all schedules for the agent are enabled/disabled in the database:
+
+> **Note (2026-02-11)**: The embedded scheduler service has been removed. Schedule state changes are now detected by the dedicated scheduler via 60-second periodic sync.
+
 ```python
 schedules = db.list_agent_schedules(agent_name)
 for schedule in schedules:
     if enabled:
-        scheduler_service.enable_schedule(schedule.id)
+        db.set_schedule_enabled(schedule.id, True)  # Also recalculates next_run_at
     else:
-        scheduler_service.disable_schedule(schedule.id)
+        db.set_schedule_enabled(schedule.id, False)  # Clears next_run_at
+# Dedicated scheduler syncs changes within 60 seconds
 ```
 
 ### Scheduler Enforcement
-The scheduler service double-checks autonomy before executing any schedule:
+The **dedicated scheduler service** double-checks autonomy before executing any schedule:
 
-**File**: `src/backend/services/scheduler_service.py` (lines 182-189)
+**File**: `src/scheduler/service.py` (lines 237-242)
 
 ```python
-async def _execute_schedule(self, schedule_id: str):
-    # ... get schedule ...
+async def _execute_schedule_with_lock(self, schedule_id: str):
+    schedule = self.db.get_schedule(schedule_id)
+    if not schedule:
+        logger.error(f"Schedule {schedule_id} not found")
+        return
 
     if not schedule.enabled:
         logger.info(f"Schedule {schedule_id} is disabled, skipping")
         return
 
     # Check if agent has autonomy enabled (master switch for all schedules)
-    if not db.get_autonomy_enabled(schedule.agent_name):
+    if not self.db.get_autonomy_enabled(schedule.agent_name):
         logger.info(f"Schedule {schedule_id} skipped: agent {schedule.agent_name} autonomy is disabled")
         return
 
@@ -512,23 +530,28 @@ async def _execute_schedule(self, schedule_id: str):
 
 This provides defense-in-depth: even if a schedule is somehow enabled in the database, it won't execute unless the agent's autonomy is also enabled.
 
-### Scheduler Service Methods
+### Database Schedule State
 
-**File**: `src/backend/services/scheduler_service.py` (lines 587-598)
+**File**: `src/backend/db/schedules.py` (lines 290-315)
 
 ```python
-def enable_schedule(self, schedule_id: str):
-    """Enable a schedule and add it to the scheduler."""
-    schedule = db.get_schedule(schedule_id)
-    if schedule:
-        db.set_schedule_enabled(schedule_id, True)
-        schedule.enabled = True
-        self._add_job(schedule)
-
-def disable_schedule(self, schedule_id: str):
-    """Disable a schedule and remove it from the scheduler."""
-    db.set_schedule_enabled(schedule_id, False)
-    self._remove_job(schedule_id)
+def set_schedule_enabled(schedule_id: str, enabled: bool):
+    """Enable or disable a schedule with next_run_at recalculation."""
+    if enabled:
+        # Calculate next_run_at when enabling
+        next_run = _calculate_next_run_at(cron_expression, timezone)
+        cursor.execute("""
+            UPDATE agent_schedules
+            SET enabled = 1, next_run_at = ?, updated_at = ?
+            WHERE id = ?
+        """, (next_run, utc_now_iso(), schedule_id))
+    else:
+        # Clear next_run_at when disabling
+        cursor.execute("""
+            UPDATE agent_schedules
+            SET enabled = 0, next_run_at = NULL, updated_at = ?
+            WHERE id = ?
+        """, (utc_now_iso(), schedule_id))
 ```
 
 ### Logging
@@ -651,6 +674,7 @@ Response:
 ## Related Flows
 
 - **Upstream**: [Scheduling](scheduling.md) - Autonomy controls schedule enabled/disabled state
+- **Related**: [Scheduler Service](scheduler-service.md) - Dedicated scheduler enforces autonomy check before execution
 - **Related**: [Agent Lifecycle](agent-lifecycle.md) - Agent must exist for autonomy to apply
 - **Related**: [Agent Sharing](agent-sharing.md) - Shares `can_share` permission check for toggle access
 
@@ -660,7 +684,9 @@ Response:
 
 | Date | Change |
 |------|--------|
-| 2026-01-23 | **Line Number Update**: Verified and updated all line numbers against current codebase. AgentNode.vue toggle at lines 66-100 (handler 352-365). AgentHeader.vue toggle at lines 134-157. network.js toggleAutonomy at lines 1172-1209. AgentDetail.vue handler at lines 322-360. Router endpoints at lines 168, 772, 781. autonomy.py logic unchanged. db/agents.py operations at lines 330-362. scheduler_service methods at lines 587-598. |
+| 2026-02-12 | **UI Standardization**: Extracted `AutonomyToggle.vue` reusable component (151 lines) used in 4 locations: AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue. Running and Autonomy toggles now on same row in Dashboard Graph (AgentNode.vue:57-86) and Agents page (Agents.vue:108-123). Created dedicated [autonomy-toggle-component.md](autonomy-toggle-component.md) for component documentation. |
+| 2026-02-11 | **Scheduler Consolidation**: Updated to reflect removal of embedded scheduler. Schedule toggling now uses database only; dedicated scheduler syncs changes within 60s. Scheduler enforcement section updated to reference `src/scheduler/service.py`. |
+| 2026-01-23 | **Line Number Update**: Verified and updated all line numbers against current codebase. AgentNode.vue toggle at lines 66-100 (handler 352-365). AgentHeader.vue toggle at lines 134-157. network.js toggleAutonomy at lines 1172-1209. AgentDetail.vue handler at lines 322-360. Router endpoints at lines 168, 772, 781. autonomy.py logic unchanged. db/agents.py operations at lines 330-362. |
 | 2026-01-03 | **Dashboard Toggle Switch**: Replaced static "AUTO" badge with interactive toggle switch. Users can now enable/disable autonomy directly from Dashboard agent tiles. Added `toggleAutonomy()` action to network.js store. Toggle includes "AUTO/Manual" label with amber/gray styling. |
 | 2026-01-03 | Added scheduler enforcement section - scheduler now double-checks autonomy before executing |
 | 2026-01-01 | Initial documentation of Autonomy Mode feature |

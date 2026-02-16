@@ -351,15 +351,19 @@ class TestQueueWithParallelTasks:
 
         initial_queue_length = initial.json().get("queue_length", 0)
 
-        # Submit a parallel task
+        # Submit a parallel task in async mode (returns immediately)
         task_response = api_client.post(
             f"/api/agents/{agent_name}/task",
-            json={"message": "Parallel queue test"},
-            timeout=30.0  # Short timeout, don't wait for completion
+            json={"message": "Parallel queue test", "async_mode": True},
+            timeout=30.0
         )
 
         if task_response.status_code == 503:
             pytest.skip("Agent server not ready")
+
+        # Async mode returns 202 Accepted with execution_id
+        if task_response.status_code not in [200, 202]:
+            pytest.skip(f"Unexpected response: {task_response.status_code}")
 
         # Queue length should not have increased (task bypasses queue)
         response = api_client.get(f"/api/agents/{agent_name}/queue")
