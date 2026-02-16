@@ -1,6 +1,8 @@
 # Feature: Execution Queue System
 
-> **Updated**: 2026-01-14 - **Bug Fix (Race Conditions)**: Atomic Redis operations now prevent race conditions:
+> **Updated**: 2026-02-16 - **Security Fix (Credential Leakage Prevention)**: Execution logs, tool calls, and responses are now sanitized before database persistence to prevent credential leakage. Backend uses `sanitize_execution_log()` and `sanitize_response()` from `src/backend/utils/credential_sanitizer.py` in `routers/chat.py` for both `/chat` and `/task` endpoints.
+>
+> **Previous (2026-01-14)** - **Bug Fix (Race Conditions)**: Atomic Redis operations now prevent race conditions:
 > - `submit()` uses `SET NX EX` for atomic slot acquisition (prevents concurrent requests acquiring the same slot)
 > - `complete()` uses Lua script for atomic pop-and-set (prevents queue entries from being lost or processed twice)
 > - `get_all_busy_agents()` uses `SCAN` instead of `KEYS` to avoid blocking Redis on large datasets
@@ -1090,6 +1092,7 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 
 | Date | Changes |
 |------|---------|
+| 2026-02-16 | **Security Fix (Credential Leakage Prevention)**: Backend now sanitizes execution logs, tool calls, and responses before database persistence. Uses `sanitize_execution_log()` and `sanitize_response()` from `src/backend/utils/credential_sanitizer.py`. Both `/chat` (lines 283-286) and `/task` (lines 468-470, 699-712) endpoints sanitize data before calling `db.update_execution_status()`. This is a defense-in-depth layer that catches any credentials that may have bypassed agent-side sanitization. |
 | 2026-02-15 | **Claude Max subscription support**: Documented that Claude Code now uses whatever authentication is available (OAuth session from `/login` or `ANTHROPIC_API_KEY`). The mandatory API key check was removed from `execute_claude_code()` and `execute_headless_task()`. This allows headless executions to use Claude Max subscription billing if user logged in via web terminal. |
 | 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` now uses `async_mode: True` to return immediately instead of waiting for task completion (was timing out after 30s). |
 | 2026-02-11 | **Scheduler Consolidation**: Updated Section 2 to reflect removal of embedded scheduler. Schedule execution now handled by dedicated scheduler (`src/scheduler/`). Updated Key Files Summary table. |

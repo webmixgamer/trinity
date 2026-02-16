@@ -18,6 +18,7 @@ from services.docker_service import get_agent_container
 from services.activity_service import activity_service
 from services.execution_queue import get_execution_queue, QueueFullError, AgentBusyError
 from database import db
+from utils.credential_sanitizer import sanitize_execution_log, sanitize_response
 
 logger = logging.getLogger(__name__)
 
@@ -279,14 +280,20 @@ async def chat_with_agent(
         execution_log_json = json.dumps(execution_log) if execution_log is not None else None
         tool_calls_json = json.dumps(execution_log_simplified) if execution_log_simplified is not None else None
 
+        # SECURITY: Sanitize credentials from execution logs and response before persistence
+        execution_log_json = sanitize_execution_log(execution_log_json)
+        tool_calls_json = sanitize_execution_log(tool_calls_json)
+        sanitized_response = sanitize_response(response_data.get("response", ""))
+
         # Log assistant response to database with observability data
+        # SECURITY: Use sanitized response
         assistant_message = db.add_chat_message(
             session_id=session.id,
             agent_name=name,
             user_id=current_user.id,
             user_email=current_user.email or current_user.username,
             role="assistant",
-            content=response_data.get("response", ""),
+            content=sanitized_response,
             cost=metadata.get("cost_usd"),
             context_used=session_data.get("context_tokens"),
             context_max=session_data.get("context_window"),
@@ -341,12 +348,13 @@ async def chat_with_agent(
             )
 
         # Update task execution record for MCP calls (agent-to-agent or user MCP)
+        # SECURITY: Use sanitized response and execution logs
         if task_execution_id:
             context_used = session_data.get("context_tokens", 0)
             db.update_execution_status(
                 execution_id=task_execution_id,
                 status="success",
-                response=response_data.get("response"),
+                response=sanitized_response,
                 context_used=context_used if context_used > 0 else None,
                 context_max=session_data.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),
@@ -454,15 +462,18 @@ async def _execute_task_background(
         metadata = response_data.get("metadata", {})
 
         # Update execution record with success
+        # SECURITY: Sanitize credentials from execution logs and response
         if execution_id:
             execution_log = response_data.get("execution_log", [])
             execution_log_json = json.dumps(execution_log) if execution_log else None
+            execution_log_json = sanitize_execution_log(execution_log_json)
+            sanitized_resp = sanitize_response(response_data.get("response"))
             context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
 
             db.update_execution_status(
                 execution_id=execution_id,
                 status="success",
-                response=response_data.get("response"),
+                response=sanitized_resp,
                 context_used=context_used if context_used > 0 else None,
                 context_max=metadata.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),
@@ -675,6 +686,7 @@ async def execute_parallel_task(
         metadata = response_data.get("metadata", {})
 
         # Update execution record with success
+        # SECURITY: Sanitize credentials from execution logs and response
         if execution_id:
             tool_calls_json = None
             execution_log_json = None
@@ -684,6 +696,8 @@ async def execute_parallel_task(
                 if isinstance(execution_log, list) and len(execution_log) > 0:
                     try:
                         execution_log_json = json.dumps(execution_log)
+                        # SECURITY: Sanitize credentials before persistence
+                        execution_log_json = sanitize_execution_log(execution_log_json)
                         tool_calls_json = execution_log_json  # Keep for backwards compatibility
                         logger.debug(f"[Task] Execution {execution_id}: captured {len(execution_log)} log entries")
                     except Exception as e:
@@ -695,11 +709,12 @@ async def execute_parallel_task(
 
             # Agent returns metadata with input_tokens, output_tokens, context_window
             context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
+            sanitized_resp = sanitize_response(response_data.get("response"))
 
             db.update_execution_status(
                 execution_id=execution_id,
                 status="success",
-                response=response_data.get("response"),
+                response=sanitized_resp,
                 context_used=context_used if context_used > 0 else None,
                 context_max=metadata.get("context_window") or 200000,
                 cost=metadata.get("cost_usd"),

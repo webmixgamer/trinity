@@ -1,3 +1,46 @@
+### 2026-02-16 14:30:00
+🔒 **Security Fix: Agent Credential Leakage Prevention**
+
+Fixed HIGH severity security vulnerability where sensitive environment variables (API keys, tokens, secrets) were being exposed in execution logs stored in the database.
+
+**Vulnerability**: Two attack vectors allowed credential exposure:
+1. **Command Leak**: Agent runs `env`/`printenv` and dumps all secrets to stdout → persisted to database
+2. **Direct Ask**: User asks "What is my API key?" and agent retrieves/outputs the secret
+
+**Fix**: Implemented multi-layer credential sanitization:
+
+**Agent-Side (Primary)**:
+- New `credential_sanitizer.py` utility in agent server
+- Sanitizes subprocess output before storing in `raw_messages`
+- Sanitizes response text before returning to backend
+- Detects and redacts known credential patterns and env var values
+
+**Backend-Side (Defense-in-Depth)**:
+- New `credential_sanitizer.py` utility in backend
+- Sanitizes `execution_log`, `tool_calls`, and `response` before database persistence
+- Pattern-based detection for API keys, tokens, and sensitive key=value pairs
+
+**Patterns Redacted**:
+- OpenAI keys (`sk-*`), Anthropic keys (`sk-ant-*`)
+- GitHub tokens (`ghp_*`, `gho_*`, `ghs_*`)
+- Slack tokens (`xoxb-*`, `xoxp-*`)
+- AWS keys (`AKIA*`), Trinity MCP keys (`trinity_mcp_*`)
+- Bearer/Basic auth headers
+- Sensitive environment variables
+
+**Files Changed**:
+- `docker/base-image/agent_server/utils/credential_sanitizer.py` (NEW)
+- `docker/base-image/agent_server/services/claude_code.py` - Applied sanitization
+- `docker/base-image/agent_server/routers/credentials.py` - Refresh cache on update
+- `src/backend/utils/credential_sanitizer.py` (NEW)
+- `src/backend/routers/chat.py` - Applied sanitization before persistence
+
+**Bug Report**: `docs/bugs/AGENT_CREDENTIAL_LEAKAGE.md`
+
+**Deployment**: Requires base image rebuild (`./scripts/deploy/build-base-image.sh`) and backend restart.
+
+---
+
 ### 2026-02-15 10:00:00
 ✨ **Feature: Claude Max Subscription Support for Headless Calls**
 

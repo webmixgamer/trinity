@@ -10,6 +10,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-02-16 | **Security Fix (Credential Leakage Prevention)**: Agent-side and backend-side credential sanitization now prevents secrets from appearing in execution logs. Agent sanitizes subprocess output via `sanitize_subprocess_line()` and response text via `sanitize_text()` (claude_code.py:491-529, 693-747). Backend provides defense-in-depth via `sanitize_execution_log()` and `sanitize_response()` (chat.py:468-470, 699-712). |
 | 2026-02-15 | **Claude Max subscription support**: Headless task execution now supports Claude Max subscription authentication. If user ran `/login` in web terminal, the OAuth session stored in `~/.claude.json` is used instead of requiring `ANTHROPIC_API_KEY`. The mandatory API key check was removed from `execute_headless_task()` in `docker/base-image/agent_server/services/claude_code.py`. |
 | 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` (in `tests/test_execution_queue.py`) now uses `async_mode: True` to avoid 30s timeout. The test verifies that parallel tasks bypass the execution queue. |
 | 2026-02-05 | **SSE streaming fix**: Documented nginx configuration required for live execution streaming. Added `proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on` directives. Added frontend implementation details using fetch with ReadableStream. |

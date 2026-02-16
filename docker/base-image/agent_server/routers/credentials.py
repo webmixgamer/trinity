@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..state import agent_state
 from ..services.trinity_mcp import inject_trinity_mcp_if_configured
+from ..utils.credential_sanitizer import refresh_credential_values
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -90,6 +91,9 @@ async def update_credentials(request: CredentialUpdateRequest):
         # Note: This won't affect already-running subprocesses, but helps for new ones
         for var_name, value in request.credentials.items():
             os.environ[var_name] = str(value)
+
+        # SECURITY: Refresh credential sanitizer cache after updating credentials
+        refresh_credential_values()
 
         # 4. Write file-type credentials (e.g., service account JSON files)
         files_written = []
@@ -289,6 +293,9 @@ async def inject_credential_files(request: CredentialInjectRequest):
                     value = value.strip().strip('"').strip("'")
                     if key:
                         os.environ[key] = value
+
+        # SECURITY: Refresh credential sanitizer cache after updating credentials
+        refresh_credential_values()
 
     return CredentialInjectResponse(
         status="success",
