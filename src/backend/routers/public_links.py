@@ -13,7 +13,7 @@ from models import User
 from database import db, PublicLinkCreate, PublicLinkUpdate, PublicLinkWithUrl
 from dependencies import get_current_user, OwnedAgentByName, CurrentUser
 from services.docker_service import get_agent_container
-from config import FRONTEND_URL
+from config import FRONTEND_URL, PUBLIC_CHAT_URL
 
 router = APIRouter(prefix="/api/agents", tags=["public-links"])
 
@@ -28,8 +28,15 @@ def set_websocket_manager(ws_manager):
 
 
 def _build_public_url(token: str) -> str:
-    """Build the public URL for a link token."""
+    """Build the internal public URL for a link token."""
     return f"{FRONTEND_URL}/chat/{token}"
+
+
+def _build_external_url(token: str) -> str | None:
+    """Build the external public URL for a link token (if configured)."""
+    if PUBLIC_CHAT_URL:
+        return f"{PUBLIC_CHAT_URL}/chat/{token}"
+    return None
 
 
 def _link_to_response(link: dict, include_usage: bool = True) -> PublicLinkWithUrl:
@@ -49,6 +56,7 @@ def _link_to_response(link: dict, include_usage: bool = True) -> PublicLinkWithU
         name=link.get("name"),
         require_email=link["require_email"],
         url=_build_public_url(link["token"]),
+        external_url=_build_external_url(link["token"]),
         usage_stats=usage_stats
     )
 

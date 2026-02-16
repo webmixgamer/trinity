@@ -328,7 +328,8 @@ class PublicLink(BaseModel):
 
 class PublicLinkWithUrl(PublicLink):
     """Public link with generated URL."""
-    url: str
+    url: str  # Internal URL (VPN/tailnet)
+    external_url: Optional[str] = None  # External URL (public internet via Funnel/Tunnel)
     usage_stats: Optional[dict] = None
 
 
