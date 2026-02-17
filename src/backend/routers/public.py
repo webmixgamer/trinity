@@ -17,7 +17,6 @@ from database import (
     PublicChatRequest,
     PublicChatResponse
 )
-from db.agents import AgentsDB
 from services.docker_service import get_agent_container
 from services.email_service import email_service
 
@@ -67,9 +66,8 @@ async def get_public_link_info(token: str, request: Request):
     agent_available = container is not None and container.status == "running"
 
     # Get agent metadata from database
-    agents_db = AgentsDB()
-    is_autonomous = agents_db.get_autonomy_enabled(agent_name)
-    read_only_data = agents_db.get_read_only_mode(agent_name)
+    is_autonomous = db.get_autonomy_enabled(agent_name)
+    read_only_data = db.get_read_only_mode(agent_name)
     is_read_only = read_only_data.get("enabled", False)
 
     # Get display name and description from template.yaml (if agent running)
