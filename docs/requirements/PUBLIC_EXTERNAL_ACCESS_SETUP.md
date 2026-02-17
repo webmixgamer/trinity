@@ -2,216 +2,280 @@
 
 > **Purpose**: Enable external (non-VPN) access to Trinity's public agent chat links while keeping the main platform internal.
 > **Infrastructure**: GCP + Tailscale VPN
-> **Priority**: Medium
-> **Requester**: Eugene
-> **Date**: 2026-02-16
+> **Status**: Implemented (Option 2 - GCP Load Balancer)
+> **Date**: 2026-02-17
 
 ---
 
 ## Current State
 
 - Trinity runs on GCP VM (`ability-services` in `us-central1-a`)
-- Platform accessible only via Tailscale VPN
-- Public Agent Links feature exists but links only work for VPN users
-- Production URL: `https://trinity.abilityai.dev` (internal)
+- Platform accessible via Tailscale VPN at `https://trinity.abilityai.dev`
+- **External public access** available at `https://public.abilityai.dev`
+- Cloud Armor security policy restricts external access to public routes only
 
-## Goal
+## Architecture
 
-Allow agent owners to share public chat links with external users (clients, prospects) who are NOT on the Tailscale VPN, while keeping the admin/management interface internal.
-
-## Use Case
-
-- Occasional sharing with trusted people
-- Stable external URL that doesn't change
-- Security via unguessable tokens (192-bit random strings)
-- No per-link external/internal toggle needed - just one external gateway
+```
+                                    ┌─────────────────────────────────────┐
+                                    │         ability-services VM         │
+                                    │         (10.128.0.5 internal)       │
+                                    │         (34.121.25.80 external)     │
+┌──────────────┐                    │                                     │
+│ VPN Users    │ ──► Tailscale ──► │ Caddy (:443) ──► Frontend (:80)    │
+│              │     (internal)     │       └──────► Backend (:8000)     │
+└──────────────┘                    │                                     │
+                                    │                                     │
+┌──────────────┐    ┌───────────┐   │                                     │
+│ Public Users │ ──►│ GCP LB    │──►│ Frontend (:80) ──► Backend (:8000) │
+│              │    │ + Cloud   │   │ (nginx proxy)                       │
+└──────────────┘    │ Armor     │   │                                     │
+                    │ (filtered)│   └─────────────────────────────────────┘
+                    └───────────┘
+                    34.160.193.214
+                    public.abilityai.dev
+```
 
 ---
 
-## Endpoints to Expose Externally
+## Endpoints Exposed Externally
 
-Only these routes need external access:
+Only these routes are allowed through Cloud Armor:
 
 | Route | Type | Purpose |
 |-------|------|---------|
-| `/chat/:token` | Frontend | Public chat UI |
-| `/api/public/link/{token}` | Backend | Validate link |
-| `/api/public/verify/request` | Backend | Request email code |
-| `/api/public/verify/confirm` | Backend | Confirm email code |
-| `/api/public/chat/{token}` | Backend | Send chat message |
+| `/` | Frontend | Root (loads SPA) |
+| `/chat/*` | Frontend | Public chat UI |
+| `/api/public/*` | Backend | Public API endpoints |
+| `/assets/*` | Frontend | Static assets (JS, CSS) |
+| `/vite.svg`, `/favicon.ico` | Frontend | Icons |
 
-Everything else (admin, agents, credentials, etc.) stays VPN-only.
-
----
-
-## Option 1: Tailscale Funnel (Recommended)
-
-Tailscale Funnel exposes services to the public internet through Tailscale's infrastructure.
-
-### Pros
-- No firewall changes on GCP
-- Automatic HTTPS with Tailscale certs
-- Simple setup
-- Traffic goes through Tailscale's CDN
-
-### Cons
-- Requires Tailscale plan that supports Funnel
-- URL will be `https://<machine>.<tailnet>.ts.net/...`
-- Less control over domain name
-
-### Setup Steps
-
-1. **Check Tailscale plan supports Funnel**
-   ```bash
-   tailscale funnel status
-   ```
-
-2. **Enable Funnel on the Trinity server**
-   ```bash
-   # SSH to ability-services
-   gcloud compute ssh ability-services --zone=us-central1-a
-
-   # Enable HTTPS serving
-   tailscale serve --bg --https=443 / proxy http://localhost:80
-
-   # Enable Funnel (exposes to internet)
-   tailscale funnel 443 on
-   ```
-
-3. **Verify**
-   ```bash
-   tailscale funnel status
-   # Should show: https://<machine>.<tailnet>.ts.net/ -> proxy http://localhost:80
-   ```
-
-4. **Get the public URL**
-   ```bash
-   tailscale funnel status
-   # Note the URL, e.g.: https://ability-services.tail12345.ts.net
-   ```
-
-5. **Optional: Restrict to public routes only**
-
-   If you want to be extra careful, configure nginx on the server to only allow public routes on a specific port, then funnel that port:
-
-   ```nginx
-   # /etc/nginx/sites-available/public-only
-   server {
-       listen 8888;
-
-       location /chat {
-           proxy_pass http://localhost:80;
-       }
-
-       location /api/public {
-           proxy_pass http://localhost:8000;
-       }
-
-       location / {
-           return 403 "Not available";
-       }
-   }
-   ```
-
-   Then funnel port 8888 instead:
-   ```bash
-   tailscale serve --bg --https=443 / proxy http://localhost:8888
-   tailscale funnel 443 on
-   ```
+Everything else returns **403 Forbidden**.
 
 ---
 
-## Option 2: GCP Load Balancer + Cloud Armor
+## Option 1: Tailscale Funnel
 
-Use GCP's native load balancer with path-based routing.
+> **Note**: Tailscale Funnel conflicts with Caddy when both try to serve HTTPS on port 443 via the Tailscale interface. If you use Caddy for internal HTTPS (like `trinity.abilityai.dev`), Funnel will break internal access.
+
+### When to Use
+- No existing HTTPS reverse proxy on the server
+- Quick setup needed
+- Don't need custom domain
+
+### Conflict Warning
+If Caddy handles internal HTTPS on port 443, enabling Tailscale Funnel will intercept all HTTPS traffic on the Tailscale interface, breaking internal access. Choose one:
+- **Funnel only**: Use `https://<machine>.ts.net` for both internal and external
+- **Caddy only**: Use GCP LB or Cloudflare Tunnel for external access
+
+---
+
+## Option 2: GCP Load Balancer + Cloud Armor (Implemented)
+
+This is the **production setup** for `ability-services`.
 
 ### Pros
-- Use your own domain (e.g., `public.abilityai.dev`)
-- Full control over routing rules
-- Cloud Armor for DDoS protection
-- Native GCP integration
+- Custom domain (`public.abilityai.dev`)
+- Cloud Armor path-based filtering (only public routes exposed)
+- Google-managed SSL certificate
+- No conflict with Tailscale/Caddy internal access
+- DDoS protection included
 
 ### Cons
+- Monthly cost (~$18/month)
 - More complex setup
-- Monthly cost (~$18/month for LB + backend)
-- Requires opening firewall ports
+- Requires VM to have external IP for health checks
 
-### Setup Steps
+### Resources Created
 
-1. **Reserve a static external IP**
-   ```bash
-   gcloud compute addresses create trinity-public-ip --global
-   ```
+| Resource | Name | Purpose |
+|----------|------|---------|
+| Static IP | `trinity-public-ip` | 34.160.193.214 |
+| Instance Group | `trinity-ig` | Contains ability-services VM |
+| Health Check | `trinity-health-check` | HTTP check on port 80 |
+| Backend Service | `trinity-backend-service` | Routes to instance group |
+| URL Map | `trinity-url-map` | Routes all traffic to backend |
+| SSL Certificate | `trinity-public-cert` | Google-managed for public.abilityai.dev |
+| HTTPS Proxy | `trinity-https-proxy` | Terminates SSL |
+| HTTP Proxy | `trinity-http-proxy` | For HTTP access |
+| Forwarding Rules | `trinity-https-forwarding`, `trinity-http-forwarding` | Connect IP to proxies |
+| Security Policy | `trinity-public-policy` | Cloud Armor path filtering |
+| Firewall Rule | `allow-trinity-web` | Allow ports 80, 443 to VM |
+| DNS Record | `public.abilityai.dev` | A record → 34.160.193.214 |
 
-2. **Create a serverless NEG or instance group**
-   ```bash
-   # Point to your VM
-   gcloud compute instance-groups unmanaged create trinity-ig \
-     --zone=us-central1-a
-   gcloud compute instance-groups unmanaged add-instances trinity-ig \
-     --zone=us-central1-a \
-     --instances=ability-services
-   ```
+### Complete Setup Commands
 
-3. **Create backend service**
-   ```bash
-   gcloud compute backend-services create trinity-public-backend \
-     --protocol=HTTP \
-     --port-name=http \
-     --health-checks=trinity-health-check \
-     --global
-   ```
+```bash
+PROJECT=mcp-server-project-455215
+ZONE=us-central1-a
+VM_NAME=ability-services
 
-4. **Create URL map with path rules**
-   ```bash
-   # Only allow /chat/* and /api/public/*
-   gcloud compute url-maps create trinity-public-lb \
-     --default-service=trinity-public-backend
+# 1. Reserve static external IP
+gcloud compute addresses create trinity-public-ip --global --project=$PROJECT
 
-   # Add path matcher (detailed config in YAML)
-   ```
+# Get the IP address
+gcloud compute addresses describe trinity-public-ip --global --project=$PROJECT --format='value(address)'
+# Result: 34.160.193.214
 
-5. **Create HTTPS frontend with managed cert**
-   ```bash
-   gcloud compute ssl-certificates create trinity-public-cert \
-     --domains=public.abilityai.dev \
-     --global
+# 2. Ensure VM has external IP (required for health checks)
+gcloud compute instances add-access-config $VM_NAME --zone=$ZONE --project=$PROJECT
 
-   gcloud compute target-https-proxies create trinity-public-proxy \
-     --url-map=trinity-public-lb \
-     --ssl-certificates=trinity-public-cert
+# 3. Create firewall rule for VM
+gcloud compute firewall-rules create allow-trinity-web \
+  --allow=tcp:80,tcp:443 \
+  --source-ranges=0.0.0.0/0 \
+  --target-tags=ability-services \
+  --project=$PROJECT
 
-   gcloud compute forwarding-rules create trinity-public-https \
-     --global \
-     --target-https-proxy=trinity-public-proxy \
-     --ports=443 \
-     --address=trinity-public-ip
-   ```
+# 4. Create instance group and add VM
+gcloud compute instance-groups unmanaged create trinity-ig \
+  --zone=$ZONE --project=$PROJECT
 
-6. **Update DNS**
-   - Point `public.abilityai.dev` to the static IP
+gcloud compute instance-groups unmanaged add-instances trinity-ig \
+  --zone=$ZONE --instances=$VM_NAME --project=$PROJECT
 
-7. **Add Cloud Armor policy (optional)**
-   ```bash
-   gcloud compute security-policies create trinity-public-policy
-   # Add rate limiting rules
-   ```
+gcloud compute instance-groups unmanaged set-named-ports trinity-ig \
+  --zone=$ZONE --named-ports=http:80 --project=$PROJECT
+
+# 5. Create health check
+gcloud compute health-checks create http trinity-health-check \
+  --port=80 --request-path=/ --project=$PROJECT
+
+# 6. Create backend service
+gcloud compute backend-services create trinity-backend-service \
+  --protocol=HTTP --port-name=http \
+  --health-checks=trinity-health-check \
+  --global --project=$PROJECT
+
+gcloud compute backend-services add-backend trinity-backend-service \
+  --instance-group=trinity-ig \
+  --instance-group-zone=$ZONE \
+  --global --project=$PROJECT
+
+# 7. Create URL map
+gcloud compute url-maps create trinity-url-map \
+  --default-service=trinity-backend-service \
+  --global --project=$PROJECT
+
+# 8. Create SSL certificate (Google-managed)
+gcloud compute ssl-certificates create trinity-public-cert \
+  --domains=public.abilityai.dev \
+  --global --project=$PROJECT
+
+# 9. Create HTTPS proxy and forwarding rule
+gcloud compute target-https-proxies create trinity-https-proxy \
+  --url-map=trinity-url-map \
+  --ssl-certificates=trinity-public-cert \
+  --global --project=$PROJECT
+
+gcloud compute forwarding-rules create trinity-https-forwarding \
+  --address=trinity-public-ip \
+  --target-https-proxy=trinity-https-proxy \
+  --ports=443 \
+  --global --project=$PROJECT
+
+# 10. Create HTTP proxy and forwarding rule (optional, for redirect)
+gcloud compute target-http-proxies create trinity-http-proxy \
+  --url-map=trinity-url-map \
+  --global --project=$PROJECT
+
+gcloud compute forwarding-rules create trinity-http-forwarding \
+  --address=trinity-public-ip \
+  --target-http-proxy=trinity-http-proxy \
+  --ports=80 \
+  --global --project=$PROJECT
+
+# 11. Add DNS record
+gcloud dns record-sets create public.abilityai.dev \
+  --zone=abilityai-dev-zone \
+  --type=A --ttl=300 \
+  --rrdatas=34.160.193.214 \
+  --project=$PROJECT
+
+# 12. Wait for SSL certificate (can take up to 60 minutes)
+watch -n 30 "gcloud compute ssl-certificates describe trinity-public-cert \
+  --global --project=$PROJECT --format='value(managed.status)'"
+# Wait until status shows: ACTIVE
+```
+
+### Cloud Armor Security Policy
+
+This is **critical** - without this, the entire platform is exposed publicly.
+
+```bash
+PROJECT=mcp-server-project-455215
+
+# 1. Create security policy
+gcloud compute security-policies create trinity-public-policy \
+  --description="Only allow public chat routes" \
+  --project=$PROJECT
+
+# 2. Add allow rules for public routes
+gcloud compute security-policies rules create 1000 \
+  --security-policy=trinity-public-policy \
+  --action=allow \
+  --expression="request.path.matches('/chat/.*')" \
+  --description="Allow public chat pages" \
+  --project=$PROJECT
+
+gcloud compute security-policies rules create 1001 \
+  --security-policy=trinity-public-policy \
+  --action=allow \
+  --expression="request.path.matches('/api/public/.*')" \
+  --description="Allow public API endpoints" \
+  --project=$PROJECT
+
+gcloud compute security-policies rules create 1002 \
+  --security-policy=trinity-public-policy \
+  --action=allow \
+  --expression="request.path.matches('/assets/.*')" \
+  --description="Allow frontend assets" \
+  --project=$PROJECT
+
+gcloud compute security-policies rules create 1003 \
+  --security-policy=trinity-public-policy \
+  --action=allow \
+  --expression="request.path == '/' || request.path == '/vite.svg' || request.path == '/favicon.ico'" \
+  --description="Allow root and static files" \
+  --project=$PROJECT
+
+# 3. Set default rule to deny
+gcloud compute security-policies rules update 2147483647 \
+  --security-policy=trinity-public-policy \
+  --action=deny-403 \
+  --project=$PROJECT
+
+# 4. Attach policy to backend service
+gcloud compute backend-services update trinity-backend-service \
+  --security-policy=trinity-public-policy \
+  --global --project=$PROJECT
+```
+
+### Verify Security Policy
+
+```bash
+# Should return 200:
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/"
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/chat/test-token"
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/api/public/link/test"
+
+# Should return 403:
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/api/agents"
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/login"
+curl -s -o /dev/null -w "%{http_code}" "https://public.abilityai.dev/api/auth/mode"
+```
 
 ---
 
-## Option 3: Cloudflare Tunnel (Simple Alternative)
+## Option 3: Cloudflare Tunnel
 
-Run cloudflared on the GCP VM to create a tunnel.
+Alternative if you don't want GCP LB costs or complexity.
 
 ### Pros
 - Free tier available
-- Use your own domain via Cloudflare
-- No firewall changes
-- Built-in DDoS protection
-
-### Cons
-- Requires Cloudflare account
-- Domain must use Cloudflare DNS
+- Built-in path filtering in config
+- No firewall changes needed
+- DDoS protection included
 
 ### Setup Steps
 
@@ -238,13 +302,20 @@ Run cloudflared on the GCP VM to create a tunnel.
        service: http://localhost:80
      - hostname: public.abilityai.dev
        path: /api/public/*
-       service: http://localhost:8000
-     - service: http_status:404
+       service: http://localhost:80
+     - hostname: public.abilityai.dev
+       path: /assets/*
+       service: http://localhost:80
+     - hostname: public.abilityai.dev
+       path: /
+       service: http://localhost:80
+     - service: http_status:403
    ```
 
 4. **Run as service**
    ```bash
    sudo cloudflared service install
+   sudo systemctl enable cloudflared
    sudo systemctl start cloudflared
    ```
 
@@ -253,80 +324,172 @@ Run cloudflared on the GCP VM to create a tunnel.
 
 ---
 
-## Trinity Code Changes Required
+## Trinity Configuration
 
-Regardless of which option you choose, Trinity needs a small code change to generate external URLs.
+### Environment Variable
 
-### 1. Add Environment Variable
-
-Add to `.env` on the server:
+Add to `~/trinity/.env` on the server:
 ```bash
-# External URL for public chat links (optional)
-# When set, "Copy External Link" button appears in PublicLinksPanel
+# External URL for public chat links
 PUBLIC_CHAT_URL=https://public.abilityai.dev
-# Or for Tailscale Funnel:
-PUBLIC_CHAT_URL=https://ability-services.tail12345.ts.net
 ```
 
-### 2. Backend Changes
+### Restart Backend
 
-**File**: `src/backend/config.py`
+```bash
+cd ~/trinity
+sudo docker compose -f docker-compose.prod.yml up -d backend
+```
+
+### Verify Configuration
+
+```bash
+sudo docker exec trinity-backend python -c "from config import PUBLIC_CHAT_URL; print('PUBLIC_CHAT_URL:', PUBLIC_CHAT_URL)"
+# Should show: PUBLIC_CHAT_URL: https://public.abilityai.dev
+```
+
+---
+
+## Code Changes (Already Implemented)
+
+The following code changes were made to support external URLs:
+
+### Backend
+
+**`src/backend/config.py`**
 ```python
 PUBLIC_CHAT_URL = os.getenv("PUBLIC_CHAT_URL", "")
+
+# Auto-add to CORS if set
+if PUBLIC_CHAT_URL:
+    _extra_origins.append(PUBLIC_CHAT_URL)
 ```
 
-**File**: `src/backend/routers/public_links.py`
-- Modify `create_public_link()` and `list_public_links()` to include `external_url` field when `PUBLIC_CHAT_URL` is set
+**`src/backend/db_models.py`**
+```python
+class PublicLinkWithUrl(PublicLink):
+    url: str  # Internal URL
+    external_url: Optional[str] = None  # External URL (if configured)
+```
 
-### 3. Frontend Changes
+**`src/backend/routers/public_links.py`**
+```python
+def _build_external_url(token: str) -> str | None:
+    if PUBLIC_CHAT_URL:
+        return f"{PUBLIC_CHAT_URL}/chat/{token}"
+    return None
+```
 
-**File**: `src/frontend/src/components/PublicLinksPanel.vue`
-- Add "Copy External Link" button when external URL is available
-- Show both internal and external URLs in the link list
+**`docker-compose.prod.yml`**
+```yaml
+environment:
+  - PUBLIC_CHAT_URL=${PUBLIC_CHAT_URL:-}
+```
+
+### Frontend
+
+**`src/frontend/src/components/PublicLinksPanel.vue`**
+- Shows external URL in link preview when available
+- "Copy Internal Link" button (clipboard icon)
+- "Copy External Link" button (globe icon) - only shown when external_url exists
 
 ---
 
-## Recommendation
+## Security Summary
 
-**Start with Tailscale Funnel** (Option 1) because:
-1. You're already using Tailscale
-2. Zero GCP configuration changes
-3. Can be set up in 5 minutes
-4. Can always migrate to GCP LB later if needed
-
-If Tailscale Funnel isn't available on your plan, use **Cloudflare Tunnel** (Option 3) as it's free and simple.
-
----
-
-## Security Considerations
-
-1. **Token Security**: Public link tokens are 192-bit random strings - effectively unguessable
-2. **Rate Limiting**: Already implemented (30 requests/min per IP)
-3. **Email Verification**: Optional per-link setting for tracking
-4. **Link Expiration**: Can set expiration dates on links
-5. **Disable/Delete**: Links can be disabled or deleted anytime
-6. **Audit Logging**: All public access is logged
+| Layer | Protection |
+|-------|------------|
+| **Cloud Armor** | Path-based filtering (403 for non-public routes) |
+| **Token Security** | 192-bit random strings (unguessable) |
+| **Rate Limiting** | 30 requests/min per IP (backend) |
+| **Email Verification** | Optional per-link |
+| **Link Expiration** | Optional per-link |
+| **Audit Logging** | All public access logged |
 
 ---
 
 ## Testing Checklist
 
-After setup:
+- [x] `https://public.abilityai.dev/chat/<token>` accessible from outside VPN
+- [x] `https://public.abilityai.dev/api/public/link/<token>` returns link info
+- [x] `https://public.abilityai.dev/api/agents` returns 403
+- [x] `https://public.abilityai.dev/login` returns 403
+- [x] `https://trinity.abilityai.dev/` still works for VPN users
+- [ ] Public chat works end-to-end with real agent
+- [ ] Email verification works (if enabled)
+- [ ] Rate limiting works (31+ requests in a minute)
 
-- [ ] Can access `https://<public-url>/chat/<token>` from outside VPN
-- [ ] Cannot access `https://<public-url>/` (should 403 or redirect)
-- [ ] Cannot access `https://<public-url>/api/agents` (should 403)
-- [ ] Public chat works end-to-end
-- [ ] Email verification works (if enabled on link)
-- [ ] Rate limiting works (try 31+ requests in a minute)
-- [ ] Internal URL still works for VPN users
+---
+
+## Troubleshooting
+
+### SSL Certificate Stuck in PROVISIONING
+
+```bash
+# Check status
+gcloud compute ssl-certificates describe trinity-public-cert \
+  --global --project=$PROJECT --format='yaml(managed)'
+
+# Verify DNS points to LB IP
+dig +short public.abilityai.dev
+# Should return: 34.160.193.214
+```
+
+Certificate provisioning requires DNS to be correctly configured. Can take up to 60 minutes.
+
+### Backend Shows UNHEALTHY
+
+```bash
+# Check health
+gcloud compute backend-services get-health trinity-backend-service \
+  --global --project=$PROJECT
+
+# Verify VM has external IP
+gcloud compute instances describe ability-services \
+  --zone=us-central1-a --project=$PROJECT \
+  --format='value(networkInterfaces[0].accessConfigs[0].natIP)'
+
+# Verify firewall rule
+gcloud compute firewall-rules describe allow-trinity-web --project=$PROJECT
+```
+
+### Security Policy Not Working
+
+```bash
+# Verify policy is attached
+gcloud compute backend-services describe trinity-backend-service \
+  --global --project=$PROJECT --format='value(securityPolicy)'
+
+# Re-attach if needed
+gcloud compute backend-services update trinity-backend-service \
+  --security-policy=trinity-public-policy \
+  --global --project=$PROJECT
+
+# Wait 30-60 seconds for propagation
+```
+
+---
+
+## Cost Estimate
+
+| Resource | Monthly Cost |
+|----------|--------------|
+| Global forwarding rule | ~$18 |
+| Backend service | Included |
+| Cloud Armor | Free (basic) |
+| Static IP | ~$7 (if unused) |
+| **Total** | ~$18-25/month |
 
 ---
 
 ## Files Referenced
 
-- `src/backend/routers/public.py` - Public endpoints (no auth)
-- `src/backend/routers/public_links.py` - Owner CRUD endpoints
-- `src/frontend/src/views/PublicChat.vue` - Public chat UI
-- `src/frontend/src/components/PublicLinksPanel.vue` - Link management
-- `docs/memory/feature-flows/public-agent-links.md` - Full feature documentation
+- `src/backend/config.py` - PUBLIC_CHAT_URL config
+- `src/backend/db_models.py` - PublicLinkWithUrl model
+- `src/backend/routers/public_links.py` - External URL generation
+- `src/frontend/src/components/PublicLinksPanel.vue` - Copy External Link button
+- `docker-compose.prod.yml` - Environment variable exposure
+
+---
+
+*Last updated: 2026-02-17*
