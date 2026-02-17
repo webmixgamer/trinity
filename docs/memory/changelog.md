@@ -1,3 +1,16 @@
+### 2026-02-17 19:55:00
+🎨 **UI: Add Trinity Logo and Branding to Public Chat**
+
+Added Trinity logo and text to the public chat header for brand consistency.
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Added Trinity branding row with logo and "Trinity" text at top of header
+- Logo uses `dark:invert` for proper display in dark mode
+- Moved "New" conversation button to top right (next to branding)
+- Agent info (status, name, badges, description) now in second row
+
+---
+
 ### 2026-02-17 19:50:00
 🎨 **UI: Bottom-aligned Chat Messages in Public Chat**
 
