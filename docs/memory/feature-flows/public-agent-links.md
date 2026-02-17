@@ -122,7 +122,7 @@ Public User -> POST /api/public/chat/{token}
 | `src/frontend/src/views/AgentDetail.vue` | 230 | Import statement |
 | `src/frontend/src/views/AgentDetail.vue` | 443-446 | Tab configuration logic |
 | `src/frontend/src/components/PublicLinksPanel.vue` | 1-503 | Owner management panel |
-| `src/frontend/src/views/PublicChat.vue` | 1-538 | Public chat interface (PUB-003 intro, PUB-004 header metadata) |
+| `src/frontend/src/views/PublicChat.vue` | 1-684 | Public chat interface (PUB-003 intro, PUB-004 header metadata, PUB-005 session persistence, PUB-006 bottom-aligned messages) |
 
 ### PublicLinksPanel.vue Methods
 
@@ -139,11 +139,14 @@ Public User -> POST /api/public/chat/{token}
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `loadLinkInfo()` | 306 | Validate link token, receives agent metadata |
-| `requestCode()` | 344 | Request verification email |
-| `verifyCode()` | 367 | Confirm 6-digit code, calls `fetchIntro()` |
-| `fetchIntro()` | 406 | Fetch agent introduction (PUB-003) |
-| `sendMessage()` | 441 | Send chat message |
+| `loadLinkInfo()` | 348 | Validate link token, receives agent metadata |
+| `requestCode()` | 386 | Request verification email |
+| `verifyCode()` | 409 | Confirm 6-digit code, calls `fetchIntro()` |
+| `loadHistory()` | 456 | Load chat history from server (PUB-005) |
+| `fetchIntro()` | 495 | Fetch agent introduction (PUB-003) |
+| `confirmNewConversation()` | 530 | Clear session and restart (PUB-005) |
+| `sendMessage()` | 571 | Send chat message |
+| `scrollToBottom()` | 643 | Scroll messages container to bottom |
 
 ### Router Configuration
 
@@ -1117,11 +1120,13 @@ onMounted(async () => {
 
 ### Context Injection
 
-**Method**: `build_context_prompt()` (`db/public_chat.py:242-276`)
+**Method**: `build_context_prompt()` (`db/public_chat.py:245-280`)
 
-Last 10 exchanges (20 messages) formatted as:
+Last 10 exchanges (20 messages) formatted with public mode header (PUB-006):
 
 ```
+### Trinity: Public Link Access Mode
+
 Previous conversation:
 User: [message 1]
 Assistant: [response 1]
@@ -1133,7 +1138,16 @@ Current message:
 User: [new message]
 ```
 
-If no history exists, returns just the new message without context prefix.
+If no history exists, still includes the public mode header:
+
+```
+### Trinity: Public Link Access Mode
+
+Current message:
+User: [new message]
+```
+
+The `PUBLIC_LINK_MODE_HEADER` constant is defined at `db/public_chat.py:17-18`. See [PUB-006 Public Client Mode Awareness](#public-client-mode-awareness-pub-006) for details.
 
 ### Cost Tracking
 
@@ -1149,11 +1163,11 @@ if usage:
 
 | File | Lines | Changes |
 |------|-------|---------|
-| `src/backend/db/public_chat.py` | 303 | **NEW**: PublicChatOperations class |
+| `src/backend/db/public_chat.py` | 307 | PublicChatOperations class, `PUBLIC_LINK_MODE_HEADER` constant (line 18), `build_context_prompt()` (245-280) |
 | `src/backend/database.py` | 1437 | Tables (660-687), indexes (781-783), delegation (1404-1432) |
 | `src/backend/db_models.py` | 483 | PublicChatSession (389-398), PublicChatMessage (401-408), updated Request/Response (370-382) |
 | `src/backend/routers/public.py` | 603 | Updated chat (214-370), new history (465-538), new session (541-602), response models (28-38) |
-| `src/frontend/src/views/PublicChat.vue` | 658 | State (305-306), loadHistory (429-465), sendMessage (544-606), confirmNewConversation (503-541), New button (17-27) |
+| `src/frontend/src/views/PublicChat.vue` | 684 | State (325-339), loadHistory (456-492), sendMessage (571-633), confirmNewConversation (530-568), New button (17-27), messagesContainer ref (334), bottom-aligned layout (191-193) |
 
 ### Error Handling
 
@@ -1184,6 +1198,167 @@ Test scenarios:
 
 ---
 
+## Public Client Mode Awareness (PUB-006)
+
+**Status**: Implemented (2026-02-17)
+
+Agents now know when they are serving public users via public links, enabling them to adjust their behavior accordingly.
+
+### Data Flow
+
+```
+User sends message via /chat/{token}
+        |
+        v
+POST /api/public/chat/{token}
+        |
+        v
+db.build_context_prompt(session_id, message)
+        |
+        v
+Prepends PUBLIC_LINK_MODE_HEADER to prompt:
+  "### Trinity: Public Link Access Mode\n\n..."
+        |
+        v
+Agent receives context-aware prompt
+        |
+        v
+Agent can detect public mode and adjust behavior
+```
+
+### Backend Implementation
+
+**Constant** (`db/public_chat.py:17-18`):
+```python
+# Header injected into every public chat request so agents know they're serving a public user
+PUBLIC_LINK_MODE_HEADER = "### Trinity: Public Link Access Mode"
+```
+
+**Context Building** (`db/public_chat.py:245-280`):
+```python
+def build_context_prompt(
+    self,
+    session_id: str,
+    new_message: str,
+    max_turns: int = 10
+) -> str:
+    """Build a prompt with conversation history for context injection."""
+    messages = self.get_recent_messages(session_id, limit=max_turns * 2)
+
+    # Start with public link mode header
+    parts = [PUBLIC_LINK_MODE_HEADER, ""]
+
+    if messages:
+        parts.append("Previous conversation:")
+        for msg in messages:
+            role_label = "User" if msg.role == "user" else "Assistant"
+            parts.append(f"{role_label}: {msg.content}")
+        parts.append("")
+
+    parts.append("Current message:")
+    parts.append(f"User: {new_message}")
+
+    return "\n".join(parts)
+```
+
+### Context Injection Format
+
+Every public chat message is formatted as:
+
+```
+### Trinity: Public Link Access Mode
+
+Previous conversation:
+User: [message 1]
+Assistant: [response 1]
+...
+
+Current message:
+User: [new message]
+```
+
+For first messages (no history):
+
+```
+### Trinity: Public Link Access Mode
+
+Current message:
+User: [new message]
+```
+
+### Agent Use Cases
+
+Agents can detect the `### Trinity: Public Link Access Mode` header to:
+1. Use more formal/professional language
+2. Avoid revealing internal implementation details
+3. Limit responses to public-appropriate information
+4. Skip internal tool usage that requires authentication
+5. Provide external documentation links instead of internal resources
+
+---
+
+## Bottom-Aligned Chat Messages (UI)
+
+**Status**: Implemented (2026-02-17)
+
+The public chat interface now displays messages aligned to the bottom of the chat area, similar to iMessage, Slack, and other modern chat applications.
+
+### UI Behavior
+
+| Before | After |
+|--------|-------|
+| Messages start at top, scroll down | Messages appear near input field |
+| Empty space at bottom | Empty space at top |
+| Traditional forum-style layout | Modern messaging app layout |
+
+### Implementation
+
+**HTML Structure** (`PublicChat.vue:190-259`):
+```vue
+<!-- Messages area - flex container that pushes content to bottom -->
+<div class="flex-1 overflow-y-auto flex flex-col" ref="messagesContainer">
+  <!-- Spacer that pushes content to bottom -->
+  <div class="flex-1"></div>
+
+  <!-- Messages content wrapper -->
+  <div class="space-y-4 pb-4">
+    <!-- Loading intro, welcome message, message list, etc. -->
+  </div>
+</div>
+```
+
+**Scroll Handling** (`PublicChat.vue:334,642-647`):
+```javascript
+const messagesContainer = ref(null)
+
+const scrollToBottom = () => {
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
+}
+```
+
+### Flexbox Layout Strategy
+
+1. **Container**: `flex-1 overflow-y-auto flex flex-col` - Takes available space, allows scrolling, arranges children vertically
+2. **Spacer**: `flex-1` empty div - Expands to fill available space, pushing content down
+3. **Content**: Messages wrapper with fixed content - Stays at bottom of container
+
+### Scroll Behavior
+
+- `scrollToBottom()` called after user sends message (`sendMessage()` lines 585, 631)
+- `scrollToBottom()` called after message history loads
+- Container automatically scrolls to show new messages
+- User can scroll up to see older messages
+
+### Files Changed
+
+| File | Lines | Changes |
+|------|-------|---------|
+| `src/frontend/src/views/PublicChat.vue` | 684 | Added `messagesContainer` ref (334), spacer div (193), flexbox layout (191-192), updated scroll handling (642-647) |
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -1198,3 +1373,4 @@ Test scenarios:
 | 2026-02-17 | **Implemented PUB-004 Public Chat Header Metadata**: `GET /api/public/link/{token}` now returns `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`. PublicChat.vue header displays agent name, description, and status badges (AUTO amber, READ-ONLY rose with lock). Updated PublicLinkInfo model (db_models.py:336-346), public.py endpoint (lines 44-103), PublicChat.vue header (lines 4-46). Refreshed method line numbers (306, 344, 367, 406, 441). File now 538 lines. |
 | 2026-02-17 | **Implemented PUB-005 Public Chat Session Persistence**: Multi-turn conversation persistence with `public_chat_sessions` and `public_chat_messages` tables. New `db/public_chat.py` with operations class. Updated `POST /api/public/chat/{token}` to persist messages and build context prompt. New `GET /api/public/history/{token}` and `DELETE /api/public/session/{token}` endpoints. Frontend session management with localStorage for anonymous links, history loading on mount, "New Conversation" button. |
 | 2026-02-17 | **PUB-005 documentation refresh**: Added exact line numbers for all backend endpoints (chat:214, history:465, session:541), db operations (public_chat.py methods with lines), database schema locations (660-687, 781-783), delegation methods (1404-1432), and frontend methods (loadHistory:429, sendMessage:544, confirmNewConversation:503). Added response model documentation, error handling table, cost tracking details, and expanded test scenarios. Updated file line counts (public.py:603, PublicChat.vue:658, db_models.py:483). |
+| 2026-02-17 | **Implemented PUB-006 Public Client Mode Awareness**: Agents now receive `PUBLIC_LINK_MODE_HEADER` constant ("### Trinity: Public Link Access Mode") prepended to all public chat prompts via `build_context_prompt()` in `db/public_chat.py:17-18,265-266`. **UI: Bottom-aligned messages**: Chat messages now stack from bottom up (like iMessage/Slack) using flexbox with spacer div (lines 191-193), new `messagesContainer` ref for scroll handling (line 334). File line count: PublicChat.vue now 684 lines. |

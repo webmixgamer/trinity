@@ -187,66 +187,72 @@
 
       <!-- Chat interface -->
       <div v-else class="flex-1 flex flex-col">
-        <!-- Messages area -->
-        <div class="flex-1 overflow-y-auto space-y-4 pb-4">
-          <!-- Loading intro -->
-          <div v-if="introLoading" class="text-center py-12">
-            <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-indigo-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Getting ready...</h3>
-            <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
-              The agent is preparing to assist you.
-            </p>
-          </div>
+        <!-- Messages area - flex container that pushes content to bottom -->
+        <div class="flex-1 overflow-y-auto flex flex-col" ref="messagesContainer">
+          <!-- Spacer that pushes content to bottom -->
+          <div class="flex-1"></div>
 
-          <!-- Fallback welcome message (only if intro failed or not fetched yet) -->
-          <div v-else-if="messages.length === 0 && !introLoading" class="text-center py-12">
-            <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
+          <!-- Messages content wrapper -->
+          <div class="space-y-4 pb-4">
+            <!-- Loading intro -->
+            <div v-if="introLoading" class="text-center py-12">
+              <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-indigo-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Getting ready...</h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+                The agent is preparing to assist you.
+              </p>
             </div>
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Start a Conversation</h3>
-            <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
-              Type a message below to begin chatting.
-            </p>
-          </div>
 
-          <!-- Message list -->
-          <div v-for="(msg, index) in messages" :key="index" class="px-2">
-            <!-- User message (plain text) -->
-            <div
-              v-if="msg.role === 'user'"
-              class="rounded-xl px-4 py-3 max-w-[85%] bg-indigo-600 text-white ml-auto"
-            >
-              <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+            <!-- Fallback welcome message (only if intro failed or not fetched yet) -->
+            <div v-else-if="messages.length === 0 && !introLoading" class="text-center py-12">
+              <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Start a Conversation</h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+                Type a message below to begin chatting.
+              </p>
             </div>
-            <!-- Assistant message (markdown rendered) -->
-            <div
-              v-else
-              class="rounded-xl px-4 py-3 max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm"
-            >
+
+            <!-- Message list -->
+            <div v-for="(msg, index) in messages" :key="index" class="px-2">
+              <!-- User message (plain text) -->
               <div
-                class="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-pre:my-2 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
-                v-html="renderMarkdown(msg.content)"
-              ></div>
+                v-if="msg.role === 'user'"
+                class="rounded-xl px-4 py-3 max-w-[85%] bg-indigo-600 text-white ml-auto"
+              >
+                <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+              </div>
+              <!-- Assistant message (markdown rendered) -->
+              <div
+                v-else
+                class="rounded-xl px-4 py-3 max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm"
+              >
+                <div
+                  class="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-pre:my-2 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+                  v-html="renderMarkdown(msg.content)"
+                ></div>
+              </div>
             </div>
-          </div>
 
-          <!-- Loading indicator -->
-          <div v-if="chatLoading" class="px-2">
-            <div class="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm max-w-[85%]">
-              <div class="flex items-center space-x-2">
-                <div class="flex space-x-1">
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            <!-- Loading indicator -->
+            <div v-if="chatLoading" class="px-2">
+              <div class="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm max-w-[85%]">
+                <div class="flex items-center space-x-2">
+                  <div class="flex space-x-1">
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                  </div>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Thinking...</span>
                 </div>
-                <span class="text-sm text-gray-500 dark:text-gray-400">Thinking...</span>
               </div>
             </div>
           </div>
@@ -325,6 +331,7 @@ const messages = ref([])
 const chatLoading = ref(false)
 const chatError = ref(null)
 const messageInput = ref(null)
+const messagesContainer = ref(null)
 
 // Intro
 const introLoading = ref(false)
@@ -634,9 +641,8 @@ const autoResize = (event) => {
 
 // Scroll to bottom of messages
 const scrollToBottom = () => {
-  const container = document.querySelector('main .overflow-y-auto')
-  if (container) {
-    container.scrollTop = container.scrollHeight
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
 

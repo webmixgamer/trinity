@@ -1,3 +1,46 @@
+### 2026-02-17 19:50:00
+🎨 **UI: Bottom-aligned Chat Messages in Public Chat**
+
+Changed public chat message layout to stack from the bottom up, with new messages appearing near the input field (like iMessage/Slack).
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Messages container now uses `flex flex-col` with a spacer div that pushes content to bottom
+- Added `messagesContainer` ref for proper scroll handling
+- Updated `scrollToBottom()` to use the ref instead of querySelector
+
+---
+
+### 2026-02-17 19:45:00
+✨ **Feature: Public Client Mode Awareness (PUB-006)**
+
+Agents now know when they're serving public users. Every public chat request includes a "Trinity: Public Link Access Mode" header so agents can adjust their behavior accordingly.
+
+**Changes** (`src/backend/db/public_chat.py`):
+- Added `PUBLIC_LINK_MODE_HEADER` constant
+- Modified `build_context_prompt()` to prepend header to all prompts
+
+**Prompt Format** (with history):
+```
+### Trinity: Public Link Access Mode
+
+Previous conversation:
+User: Hello
+Assistant: Hi there!
+
+Current message:
+User: What can you help me with?
+```
+
+**Prompt Format** (first message):
+```
+### Trinity: Public Link Access Mode
+
+Current message:
+User: Hello
+```
+
+---
+
 ### 2026-02-17 19:30:00
 ✨ **Enhancement: Markdown Rendering in Public Chat**
 

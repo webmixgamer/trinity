@@ -3,15 +3,24 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-17)**: Public Client Mode Awareness (PUB-006) + Bottom-Aligned Chat:
+> - **public-agent-links.md**: Agents now know when serving public users via `PUBLIC_LINK_MODE_HEADER` constant
+> - Header `"### Trinity: Public Link Access Mode"` prepended to all public chat prompts (`db/public_chat.py:17-18,265-266`)
+> - Enables agents to adjust behavior for public vs internal users (formal language, limited internal details)
+> - **UI: Bottom-aligned messages**: Chat messages now stack from bottom up like iMessage/Slack
+> - Flexbox layout with spacer div pushes content to bottom (`PublicChat.vue:191-193`)
+> - New `messagesContainer` ref for scroll handling (`PublicChat.vue:334`)
+> - File line count: PublicChat.vue now 684 lines
+>
 > **Updated (2026-02-17)**: Public Chat Session Persistence (PUB-005):
 > - **public-agent-links.md**: Multi-turn conversation persistence with database-backed sessions
 > - New tables: `public_chat_sessions` (database.py:662-674), `public_chat_messages` (database.py:678-686)
 > - New endpoints: `GET /api/public/history/{token}` (public.py:465), `DELETE /api/public/session/{token}` (public.py:541)
 > - Updated: `POST /api/public/chat/{token}` (public.py:214) now persists messages and builds context prompt
-> - New backend: `db/public_chat.py` - PublicChatOperations class (303 lines) with session/message management
-> - Frontend: `loadHistory()` (PublicChat.vue:429), `confirmNewConversation()` (PublicChat.vue:503), "New" button (lines 17-27)
+> - New backend: `db/public_chat.py` - PublicChatOperations class (307 lines) with session/message management
+> - Frontend: `loadHistory()` (PublicChat.vue:456), `confirmNewConversation()` (PublicChat.vue:530), "New" button (lines 17-27)
 > - Session strategy: Email links use verified email as identifier, anonymous links use localStorage session_id
-> - Context injection: Last 10 exchanges formatted as "Previous conversation:\nUser:...\nAssistant:...\n\nCurrent message:\nUser:..."
+> - Context injection: Last 10 exchanges formatted as "### Trinity: Public Link Access Mode\n\nPrevious conversation:\nUser:...\nAssistant:...\n\nCurrent message:\nUser:..."
 >
 > **Updated (2026-02-17)**: Public Chat Header Metadata (PUB-004):
 > - **public-agent-links.md**: `GET /api/public/link/{token}` now returns agent metadata
@@ -520,7 +529,7 @@
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction - auto-fetches intro via `/api/public/intro/{token}`. **PUB-004**: Header metadata - displays agent name, description, AUTO/READ-ONLY badges. **PUB-005**: Session persistence - multi-turn conversations survive page refresh (Updated 2026-02-17) |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction - auto-fetches intro via `/api/public/intro/{token}`. **PUB-004**: Header metadata - displays agent name, description, AUTO/READ-ONLY badges. **PUB-005**: Session persistence - multi-turn conversations survive page refresh. **PUB-006**: Public mode awareness - agents receive mode header, UI uses bottom-aligned messages (Updated 2026-02-17) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |

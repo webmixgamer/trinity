@@ -14,6 +14,9 @@ from typing import Optional, List
 from .connection import get_db_connection
 from db_models import PublicChatSession, PublicChatMessage
 
+# Header injected into every public chat request so agents know they're serving a public user
+PUBLIC_LINK_MODE_HEADER = "### Trinity: Public Link Access Mode"
+
 
 class PublicChatOperations:
     """Operations for managing public chat sessions and messages."""
@@ -254,26 +257,27 @@ class PublicChatOperations:
             max_turns: Maximum number of previous exchanges (user+assistant pairs)
 
         Returns:
-            Formatted prompt with history and new message
+            Formatted prompt with history and new message, prefixed with public mode header
         """
         # Get recent messages (max_turns * 2 to get pairs)
         messages = self.get_recent_messages(session_id, limit=max_turns * 2)
 
-        if not messages:
-            # No history, just return the message
-            return new_message
+        # Start with public link mode header
+        parts = [PUBLIC_LINK_MODE_HEADER, ""]
 
-        # Build context section
-        context_parts = ["Previous conversation:"]
-        for msg in messages:
-            role_label = "User" if msg.role == "user" else "Assistant"
-            context_parts.append(f"{role_label}: {msg.content}")
+        if messages:
+            # Add conversation history
+            parts.append("Previous conversation:")
+            for msg in messages:
+                role_label = "User" if msg.role == "user" else "Assistant"
+                parts.append(f"{role_label}: {msg.content}")
+            parts.append("")
 
-        context_parts.append("")
-        context_parts.append("Current message:")
-        context_parts.append(f"User: {new_message}")
+        # Add current message
+        parts.append("Current message:")
+        parts.append(f"User: {new_message}")
 
-        return "\n".join(context_parts)
+        return "\n".join(parts)
 
     def delete_link_sessions(self, link_id: str) -> int:
         """
