@@ -4,9 +4,12 @@ Public endpoints for unauthenticated access (Phase 12.2: Public Agent Links).
 These endpoints do NOT require authentication and are used by public users
 to access agents via shareable links.
 """
+import secrets
 import httpx
 import logging
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from database import (
     db,
@@ -15,10 +18,24 @@ from database import (
     VerificationConfirm,
     VerificationResponse,
     PublicChatRequest,
-    PublicChatResponse
+    PublicChatResponse,
+    PublicChatMessage
 )
 from services.docker_service import get_agent_container
 from services.email_service import email_service
+
+
+class PublicChatHistoryResponse(BaseModel):
+    """Response model for chat history endpoint."""
+    messages: List[dict]
+    session_id: str
+    message_count: int
+
+
+class ClearSessionResponse(BaseModel):
+    """Response model for clear session endpoint."""
+    cleared: bool
+    new_session_id: Optional[str] = None
 
 
 
@@ -201,10 +218,11 @@ async def public_chat(
     request: Request
 ):
     """
-    Send a chat message via a public link.
+    Send a chat message via a public link with conversation persistence.
 
-    Uses the parallel task execution endpoint (stateless, no conversation context).
     For links requiring email verification, a valid session_token must be provided.
+    For anonymous links, a session_id can be provided to maintain conversation context.
+    Returns session_id for anonymous links to store in localStorage.
     """
     client_ip = _get_client_ip(request)
 
@@ -213,9 +231,13 @@ async def public_chat(
     if not is_valid:
         raise HTTPException(status_code=404, detail=f"Invalid link: {reason}")
 
-    # Verify session if email required
+    # Determine session identifier and type
+    session_identifier = None
+    identifier_type = None
     verified_email = None
+
     if link["require_email"]:
+        # Email-required link: use verified email as identifier
         if not chat_request.session_token:
             raise HTTPException(
                 status_code=401,
@@ -229,6 +251,15 @@ async def public_chat(
                 detail="Invalid or expired session. Please verify your email again."
             )
         verified_email = email
+        session_identifier = email.lower()
+        identifier_type = "email"
+    else:
+        # Anonymous link: use provided session_id or generate new one
+        if chat_request.session_id:
+            session_identifier = chat_request.session_id
+        else:
+            session_identifier = secrets.token_urlsafe(16)
+        identifier_type = "anonymous"
 
     # Rate limiting by IP
     recent_messages = db.count_recent_messages_by_ip(client_ip, minutes=1)
@@ -248,21 +279,41 @@ async def public_chat(
 
     agent_name = link["agent_name"]
 
-    # Record usage BEFORE making the request
+    # Get or create chat session
+    chat_session = db.get_or_create_public_chat_session(
+        link_id=link["id"],
+        session_identifier=session_identifier,
+        identifier_type=identifier_type
+    )
+
+    # Store user message
+    db.add_public_chat_message(
+        session_id=chat_session.id,
+        role="user",
+        content=chat_request.message
+    )
+
+    # Record usage
     db.record_public_link_usage(
         link_id=link["id"],
         email=verified_email,
         ip_address=client_ip
     )
 
-    # Execute via parallel task endpoint (stateless)
-    # Uses Docker network to reach agent container directly
+    # Build context-enriched prompt with conversation history
+    context_prompt = db.build_public_chat_context(
+        session_id=chat_session.id,
+        new_message=chat_request.message,
+        max_turns=10
+    )
+
+    # Execute via parallel task endpoint
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(
                 f"http://agent-{agent_name}:8000/api/task",
                 json={
-                    "message": chat_request.message,
+                    "message": context_prompt,
                     "timeout_seconds": 120
                 }
             )
@@ -275,10 +326,34 @@ async def public_chat(
                 )
 
             result = response.json()
+            assistant_response = result.get("response", result.get("result", ""))
+
+            # Calculate cost from usage if available
+            cost = None
+            usage = result.get("usage")
+            if usage:
+                # Rough cost estimate (adjust rates as needed)
+                input_tokens = usage.get("input_tokens", 0)
+                output_tokens = usage.get("output_tokens", 0)
+                cost = (input_tokens * 0.000003) + (output_tokens * 0.000015)
+
+            # Store assistant response
+            db.add_public_chat_message(
+                session_id=chat_session.id,
+                role="assistant",
+                content=assistant_response,
+                cost=cost
+            )
+
+            # Get updated message count
+            updated_session = db.get_public_chat_session(chat_session.id)
+            message_count = updated_session.message_count if updated_session else 0
 
             return PublicChatResponse(
-                response=result.get("response", result.get("result", "")),
-                usage=result.get("usage")
+                response=assistant_response,
+                session_id=session_identifier if identifier_type == "anonymous" else None,
+                message_count=message_count,
+                usage=usage
             )
 
     except httpx.TimeoutException:
@@ -385,3 +460,143 @@ async def get_agent_intro(
             status_code=502,
             detail="Failed to reach the agent. Please try again."
         )
+
+
+@router.get("/history/{token}", response_model=PublicChatHistoryResponse)
+async def get_public_chat_history(
+    token: str,
+    request: Request,
+    session_token: str = None,
+    session_id: str = None
+):
+    """
+    Get chat history for a public link session.
+
+    For email-required links, provide session_token query param.
+    For anonymous links, provide session_id query param.
+    Returns messages array for current session, or empty if no history.
+    """
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail=f"Invalid link: {reason}")
+
+    # Determine session identifier
+    session_identifier = None
+
+    if link["require_email"]:
+        if not session_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Session token required for this link"
+            )
+
+        session_valid, email = db.validate_session(link["id"], session_token)
+        if not session_valid:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired session. Please verify your email again."
+            )
+        session_identifier = email.lower()
+    else:
+        if not session_id:
+            # No session_id means no history yet
+            return PublicChatHistoryResponse(
+                messages=[],
+                session_id="",
+                message_count=0
+            )
+        session_identifier = session_id
+
+    # Look up session
+    chat_session = db.get_public_chat_session_by_identifier(
+        link_id=link["id"],
+        session_identifier=session_identifier
+    )
+
+    if not chat_session:
+        return PublicChatHistoryResponse(
+            messages=[],
+            session_id=session_identifier if not link["require_email"] else "",
+            message_count=0
+        )
+
+    # Get messages (oldest first for display)
+    messages = db.get_recent_public_chat_messages(chat_session.id, limit=100)
+
+    return PublicChatHistoryResponse(
+        messages=[
+            {
+                "role": msg.role,
+                "content": msg.content,
+                "timestamp": msg.timestamp.isoformat()
+            }
+            for msg in messages
+        ],
+        session_id=session_identifier if not link["require_email"] else "",
+        message_count=chat_session.message_count
+    )
+
+
+@router.delete("/session/{token}", response_model=ClearSessionResponse)
+async def clear_public_session(
+    token: str,
+    request: Request,
+    session_token: str = None,
+    session_id: str = None
+):
+    """
+    Clear a public chat session (start new conversation).
+
+    For email-required links, provide session_token query param.
+    For anonymous links, provide session_id query param.
+    Returns new_session_id for anonymous links to update localStorage.
+    """
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail=f"Invalid link: {reason}")
+
+    # Determine session identifier
+    session_identifier = None
+
+    if link["require_email"]:
+        if not session_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Session token required for this link"
+            )
+
+        session_valid, email = db.validate_session(link["id"], session_token)
+        if not session_valid:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired session. Please verify your email again."
+            )
+        session_identifier = email.lower()
+    else:
+        if not session_id:
+            raise HTTPException(
+                status_code=400,
+                detail="session_id required for anonymous links"
+            )
+        session_identifier = session_id
+
+    # Look up and delete session
+    chat_session = db.get_public_chat_session_by_identifier(
+        link_id=link["id"],
+        session_identifier=session_identifier
+    )
+
+    if chat_session:
+        db.clear_public_chat_session(chat_session.id)
+
+    # For anonymous links, generate new session_id
+    new_session_id = None
+    if not link["require_email"]:
+        new_session_id = secrets.token_urlsafe(16)
+
+    return ClearSessionResponse(
+        cleared=True,
+        new_session_id=new_session_id
+    )

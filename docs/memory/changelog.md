@@ -1,3 +1,68 @@
+### 2026-02-17 19:30:00
+✨ **Enhancement: Markdown Rendering in Public Chat**
+
+Added markdown rendering for assistant messages in public chat, providing formatted output for code blocks, lists, headers, and emphasis.
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Import `marked` library (already in project dependencies)
+- Configure marked with `breaks: true` and `gfm: true` (GitHub Flavored Markdown)
+- Add `renderMarkdown()` function
+- User messages: Plain text (unchanged)
+- Assistant messages: Rendered with `v-html` and Tailwind prose classes
+
+**Styling**:
+- Uses `@tailwindcss/typography` prose classes
+- Custom prose modifiers for compact spacing
+- Code styling: indigo text with gray background
+- Dark mode support via `dark:prose-invert`
+
+---
+
+### 2026-02-17 19:00:00
+✨ **Feature: Public Chat Session Persistence (PUB-005)**
+
+Added multi-turn conversation persistence to public chat, enabling users to maintain context across page refreshes and return visits.
+
+**How It Works**:
+1. User sends message via public chat
+2. Backend creates/retrieves session based on identifier (email for email-required links, anonymous token for open links)
+3. Messages stored in `public_chat_sessions` and `public_chat_messages` tables
+4. Context prompt built from last 10 exchanges and injected into agent call
+5. Page refresh restores conversation via `GET /api/public/history/{token}`
+6. "New Conversation" button clears session and starts fresh
+
+**Backend** (`src/backend/`):
+- New `db/public_chat.py` with `PublicChatOperations` class
+- `database.py`: Added `public_chat_sessions` and `public_chat_messages` tables with indexes
+- `db_models.py`: Added `PublicChatSession`, `PublicChatMessage` models; updated `PublicChatRequest/Response`
+- `routers/public.py`:
+  - `POST /api/public/chat/{token}` - Now persists messages and builds context prompt
+  - `GET /api/public/history/{token}` - Returns chat history for session
+  - `DELETE /api/public/session/{token}` - Clears session (New Conversation)
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- `chatSessionId` ref for anonymous links (localStorage persistence)
+- `loadHistory()` fetches previous messages on mount
+- "New Conversation" button in header (visible when messages exist)
+- Session ID passed in chat requests and persisted from responses
+
+**Session Identifier Strategy**:
+- Email-required links: verified email (lowercase) from session validation
+- Anonymous links: localStorage `public_chat_session_id_{token}`
+
+**Context Injection Format**:
+```
+Previous conversation:
+User: [message 1]
+Assistant: [response 1]
+...
+
+Current message:
+User: [new message]
+```
+
+---
+
 ### 2026-02-17 16:45:00
 ✨ **Feature: Public Chat Header Metadata (PUB-004)**
 

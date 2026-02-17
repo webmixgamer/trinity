@@ -12,8 +12,19 @@
                 {{ linkInfo.agent_display_name || 'Agent' }}
               </span>
             </div>
-            <!-- Status badges -->
+            <!-- Status badges and New Conversation button -->
             <div class="flex items-center space-x-2">
+              <button
+                v-if="messages.length > 0 && isVerified"
+                @click="confirmNewConversation"
+                class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                :disabled="chatLoading"
+              >
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                New
+              </button>
               <span
                 v-if="linkInfo.is_autonomous"
                 class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
@@ -207,15 +218,22 @@
 
           <!-- Message list -->
           <div v-for="(msg, index) in messages" :key="index" class="px-2">
+            <!-- User message (plain text) -->
             <div
-              :class="[
-                'rounded-xl px-4 py-3 max-w-[85%]',
-                msg.role === 'user'
-                  ? 'bg-indigo-600 text-white ml-auto'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-              ]"
+              v-if="msg.role === 'user'"
+              class="rounded-xl px-4 py-3 max-w-[85%] bg-indigo-600 text-white ml-auto"
             >
               <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+            </div>
+            <!-- Assistant message (markdown rendered) -->
+            <div
+              v-else
+              class="rounded-xl px-4 py-3 max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm"
+            >
+              <div
+                class="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-pre:my-2 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+                v-html="renderMarkdown(msg.content)"
+              ></div>
             </div>
           </div>
 
@@ -272,6 +290,13 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { marked } from 'marked'
+
+// Configure marked for safe, simple output
+marked.setOptions({
+  breaks: true,  // Convert \n to <br>
+  gfm: true      // GitHub Flavored Markdown
+})
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -290,6 +315,10 @@ const verifyError = ref(null)
 const sessionToken = ref(localStorage.getItem(`public_session_${token.value}`) || '')
 const isVerified = computed(() => !linkInfo.value?.require_email || !!sessionToken.value)
 
+// Chat session persistence (for anonymous links)
+const chatSessionId = ref(localStorage.getItem(`public_chat_session_id_${token.value}`) || '')
+const historyLoading = ref(false)
+
 // Chat
 const message = ref('')
 const messages = ref([])
@@ -301,6 +330,12 @@ const messageInput = ref(null)
 const introLoading = ref(false)
 const introError = ref(null)
 const introFetched = ref(false)
+
+// Render markdown to HTML
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  return marked(text)
+}
 
 // Load link info
 const loadLinkInfo = async () => {
@@ -378,8 +413,16 @@ const verifyCode = async () => {
     if (response.data.verified) {
       sessionToken.value = response.data.session_token
       localStorage.setItem(`public_session_${token.value}`, response.data.session_token)
-      // Fetch intro after successful verification
-      await fetchIntro()
+
+      // Try to load history first (returning user)
+      const hasHistory = await loadHistory()
+
+      // Only fetch intro if no history exists
+      if (!hasHistory) {
+        await fetchIntro()
+      } else {
+        introFetched.value = true
+      }
     } else {
       verifyError.value = getVerifyErrorMessage(response.data.error)
     }
@@ -399,6 +442,45 @@ const getVerifyErrorMessage = (error) => {
       return 'Code has expired. Please request a new one.'
     default:
       return 'Verification failed. Please try again.'
+  }
+}
+
+// Load chat history from server
+const loadHistory = async () => {
+  historyLoading.value = true
+
+  try {
+    // Build URL with appropriate session credentials
+    let url = `/api/public/history/${token.value}`
+    const params = []
+
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      params.push(`session_token=${encodeURIComponent(sessionToken.value)}`)
+    } else if (chatSessionId.value) {
+      params.push(`session_id=${encodeURIComponent(chatSessionId.value)}`)
+    }
+
+    if (params.length > 0) {
+      url += '?' + params.join('&')
+    }
+
+    const response = await axios.get(url)
+
+    if (response.data.messages && response.data.messages.length > 0) {
+      // Load history into messages array
+      messages.value = response.data.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+      return true // History was loaded
+    }
+
+    return false // No history
+  } catch (err) {
+    console.error('Failed to load history:', err)
+    return false
+  } finally {
+    historyLoading.value = false
   }
 }
 
@@ -437,6 +519,47 @@ const fetchIntro = async () => {
   }
 }
 
+// Confirm and start new conversation
+const confirmNewConversation = async () => {
+  if (!confirm('Start a new conversation? This will clear your chat history.')) {
+    return
+  }
+
+  try {
+    // Build URL with appropriate session credentials
+    let url = `/api/public/session/${token.value}`
+    const params = []
+
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      params.push(`session_token=${encodeURIComponent(sessionToken.value)}`)
+    } else if (chatSessionId.value) {
+      params.push(`session_id=${encodeURIComponent(chatSessionId.value)}`)
+    }
+
+    if (params.length > 0) {
+      url += '?' + params.join('&')
+    }
+
+    const response = await axios.delete(url)
+
+    // Clear local messages
+    messages.value = []
+    introFetched.value = false
+
+    // Update session_id for anonymous links
+    if (response.data.new_session_id) {
+      chatSessionId.value = response.data.new_session_id
+      localStorage.setItem(`public_chat_session_id_${token.value}`, response.data.new_session_id)
+    }
+
+    // Fetch fresh intro
+    await fetchIntro()
+  } catch (err) {
+    console.error('Failed to clear session:', err)
+    chatError.value = 'Failed to start new conversation. Please refresh the page.'
+  }
+}
+
 // Send chat message
 const sendMessage = async () => {
   if (!message.value.trim() || chatLoading.value) return
@@ -465,9 +588,18 @@ const sendMessage = async () => {
     // Include session token if email verification was required
     if (linkInfo.value?.require_email && sessionToken.value) {
       payload.session_token = sessionToken.value
+    } else if (chatSessionId.value) {
+      // Include session_id for anonymous links
+      payload.session_id = chatSessionId.value
     }
 
     const response = await axios.post(`/api/public/chat/${token.value}`, payload)
+
+    // Store session_id from response for anonymous links
+    if (response.data.session_id && !linkInfo.value?.require_email) {
+      chatSessionId.value = response.data.session_id
+      localStorage.setItem(`public_chat_session_id_${token.value}`, response.data.session_id)
+    }
 
     // Add assistant response to chat
     messages.value.push({
@@ -512,13 +644,21 @@ const scrollToBottom = () => {
 onMounted(async () => {
   await loadLinkInfo()
 
-  // If link is valid and chat is accessible (no email needed or already verified), fetch intro
+  // If link is valid and chat is accessible (no email needed or already verified)
   if (linkInfo.value?.valid && linkInfo.value?.agent_available) {
     const needsEmail = linkInfo.value.require_email
     const hasSession = !!sessionToken.value
 
     if (!needsEmail || hasSession) {
-      await fetchIntro()
+      // Try to load history first
+      const hasHistory = await loadHistory()
+
+      // Only fetch intro if no history exists
+      if (!hasHistory) {
+        await fetchIntro()
+      } else {
+        introFetched.value = true // Mark intro as done since we have history
+      }
     }
   }
 })

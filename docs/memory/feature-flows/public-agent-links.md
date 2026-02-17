@@ -853,6 +853,337 @@ class PublicLinkInfo(BaseModel):
 
 ---
 
+## Public Chat Session Persistence (PUB-005)
+
+**Status**: Implemented (2026-02-17)
+**Spec**: `docs/requirements/PUBLIC_CHAT_SESSIONS.md`
+
+Multi-turn conversation persistence for public chat, enabling context across page refreshes and return visits.
+
+### Data Flow
+
+```
+User sends message via /chat/{token}
+        |
+        v
+POST /api/public/chat/{token}
+        |
+        v
+Determine session identifier:
+  - Email links: verified email from session_token
+  - Anonymous links: session_id from request or generate new
+        |
+        v
+db.get_or_create_public_chat_session(link_id, identifier, type)
+        |
+        v
+db.add_public_chat_message(session_id, "user", message)
+        |
+        v
+db.build_public_chat_context(session_id, message, max_turns=10)
+  -> "Previous conversation:\nUser: ...\nAssistant: ...\n\nCurrent message:\nUser: ..."
+        |
+        v
+POST to agent /api/task with context-enriched prompt
+        |
+        v
+db.add_public_chat_message(session_id, "assistant", response)
+        |
+        v
+Return {response, session_id (for anonymous), message_count}
+```
+
+### Database Schema
+
+#### public_chat_sessions
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT PK | Session UUID (`secrets.token_urlsafe(16)`) |
+| link_id | TEXT FK | Parent public link |
+| session_identifier | TEXT | Email (lowercase) or anonymous token |
+| identifier_type | TEXT | 'email' or 'anonymous' |
+| created_at | TEXT | ISO timestamp |
+| last_message_at | TEXT | ISO timestamp |
+| message_count | INTEGER | Total messages in session |
+| total_cost | REAL | Accumulated cost |
+
+**Unique Constraint**: `(link_id, session_identifier)`
+**Schema Location**: `database.py:662-674`
+
+#### public_chat_messages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT PK | Message UUID (`secrets.token_urlsafe(16)`) |
+| session_id | TEXT FK | Parent session (CASCADE DELETE) |
+| role | TEXT | 'user' or 'assistant' |
+| content | TEXT | Message text |
+| timestamp | TEXT | ISO timestamp |
+| cost | REAL | Cost (assistant only, calculated from usage) |
+
+**Schema Location**: `database.py:678-686`
+
+**Indexes** (`database.py:781-783`):
+- `idx_public_chat_sessions_link` on `link_id`
+- `idx_public_chat_sessions_identifier` on `session_identifier`
+- `idx_public_chat_messages_session` on `session_id`
+
+### API Endpoints
+
+| Endpoint | Method | File:Line | Description |
+|----------|--------|-----------|-------------|
+| `/api/public/chat/{token}` | POST | `public.py:214` | Chat with persistence (updated) |
+| `/api/public/history/{token}` | GET | `public.py:465` | Get chat history |
+| `/api/public/session/{token}` | DELETE | `public.py:541` | Clear session (New Conversation) |
+
+### Request/Response Models
+
+**PublicChatRequest** (`db_models.py:370-374`):
+```python
+class PublicChatRequest(BaseModel):
+    message: str
+    session_token: Optional[str] = None  # Email links
+    session_id: Optional[str] = None     # Anonymous links (from localStorage)
+```
+
+**PublicChatResponse** (`db_models.py:377-382`):
+```python
+class PublicChatResponse(BaseModel):
+    response: str
+    session_id: Optional[str] = None      # Returned for anonymous links
+    message_count: Optional[int] = None   # Total messages in session
+    usage: Optional[dict] = None          # {input_tokens, output_tokens}
+```
+
+**PublicChatHistoryResponse** (`public.py:28-32`):
+```python
+class PublicChatHistoryResponse(BaseModel):
+    messages: List[dict]  # [{role, content, timestamp}]
+    session_id: str
+    message_count: int
+```
+
+**ClearSessionResponse** (`public.py:35-38`):
+```python
+class ClearSessionResponse(BaseModel):
+    cleared: bool
+    new_session_id: Optional[str] = None  # For anonymous links
+```
+
+**PublicChatSession** (`db_models.py:389-398`):
+```python
+class PublicChatSession(BaseModel):
+    id: str
+    link_id: str
+    session_identifier: str
+    identifier_type: str  # 'email' or 'anonymous'
+    created_at: datetime
+    last_message_at: datetime
+    message_count: int = 0
+    total_cost: float = 0.0
+```
+
+**PublicChatMessage** (`db_models.py:401-408`):
+```python
+class PublicChatMessage(BaseModel):
+    id: str
+    session_id: str
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime
+    cost: Optional[float] = None
+```
+
+### Backend Implementation
+
+**Database Operations** (`db/public_chat.py` - 303 lines):
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `get_or_create_session()` | 47 | Get existing or create new session |
+| `get_session_by_identifier()` | 99 | Lookup by link_id + identifier |
+| `get_session()` | 115 | Get session by ID |
+| `add_message()` | 123 | Add message and update session stats |
+| `get_session_messages()` | 172 | Get messages oldest-first (all) |
+| `get_recent_messages()` | 198 | Get most recent N messages oldest-first |
+| `clear_session()` | 221 | Delete session and messages |
+| `build_context_prompt()` | 242 | Build prompt with history |
+| `delete_link_sessions()` | 278 | Cascade delete on link deletion |
+
+**Delegation Methods** (`database.py:1404-1432`):
+- `get_or_create_public_chat_session()`
+- `get_public_chat_session_by_identifier()`
+- `get_public_chat_session()`
+- `add_public_chat_message()`
+- `get_public_chat_messages()`
+- `get_recent_public_chat_messages()`
+- `clear_public_chat_session()`
+- `build_public_chat_context()`
+- `delete_public_link_sessions()`
+
+**Chat Endpoint** (`routers/public.py:214-370`):
+1. Validate link token (line 230)
+2. Determine session identifier (lines 234-262)
+   - Email links: validate session_token, extract email
+   - Anonymous links: use provided session_id or generate new
+3. Rate limit check (lines 264-270)
+4. Check agent availability (lines 272-278)
+5. Get or create session (lines 283-287)
+6. Store user message (lines 289-294)
+7. Record usage (lines 296-301)
+8. Build context-enriched prompt (lines 303-308)
+9. Call agent /api/task (lines 311-328)
+10. Calculate cost from usage (lines 331-338)
+11. Store assistant response (lines 340-346)
+12. Get updated message count (lines 348-350)
+13. Return with session_id for anonymous links (lines 352-357)
+
+**History Endpoint** (`routers/public.py:465-538`):
+1. Validate link token (line 480)
+2. Determine session identifier based on link type (lines 484-509)
+3. Look up session (lines 512-515)
+4. Return empty array if no session (lines 517-522)
+5. Get messages (oldest first, limit 100) (line 525)
+6. Return formatted response (lines 527-538)
+
+**Clear Session Endpoint** (`routers/public.py:541-602`):
+1. Validate link token (line 556)
+2. Determine session identifier (lines 560-583)
+3. Look up and delete session (lines 586-592)
+4. Generate new session_id for anonymous links (lines 594-597)
+5. Return response (lines 599-602)
+
+### Frontend Implementation
+
+**State** (`PublicChat.vue:305-306`):
+```javascript
+const chatSessionId = ref(localStorage.getItem(`public_chat_session_id_${token.value}`) || '')
+const historyLoading = ref(false)
+```
+
+**Methods**:
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `loadHistory()` | 429-465 | Fetch previous messages on mount |
+| `sendMessage()` | 544-606 | Send message, store session_id |
+| `confirmNewConversation()` | 503-541 | Clear session, update session_id |
+
+**loadHistory()** (`PublicChat.vue:429-465`):
+- Builds URL with session_token (email) or session_id (anonymous)
+- Returns `true` if history loaded, `false` if no history
+- Called before `fetchIntro()` on mount
+
+**sendMessage()** (`PublicChat.vue:544-606`):
+- Includes session_id in payload for anonymous links (line 573)
+- Stores returned session_id in localStorage (lines 579-581)
+
+**confirmNewConversation()** (`PublicChat.vue:503-541`):
+- Shows confirmation dialog (line 504)
+- Calls DELETE endpoint with credentials (lines 509-523)
+- Clears local messages (line 526)
+- Updates chatSessionId from response (lines 530-532)
+- Fetches fresh intro (line 536)
+
+**New Conversation Button** (`PublicChat.vue:17-27`):
+- Visible when `messages.length > 0 && isVerified`
+- Disabled during `chatLoading`
+- Refresh icon with "New" label
+
+**Initialization** (`onMounted`, `PublicChat.vue:624-644`):
+```javascript
+onMounted(async () => {
+  await loadLinkInfo()
+  if (linkInfo.value?.valid && linkInfo.value?.agent_available) {
+    if (!needsEmail || hasSession) {
+      const hasHistory = await loadHistory()
+      if (!hasHistory) {
+        await fetchIntro()
+      } else {
+        introFetched.value = true
+      }
+    }
+  }
+})
+```
+
+### Session Identifier Strategy
+
+| Link Type | Identifier | Storage | Generation |
+|-----------|------------|---------|------------|
+| Email Required | `email.lower()` | Server (via session_token validation) | N/A |
+| Anonymous | `secrets.token_urlsafe(16)` | localStorage `public_chat_session_id_{token}` | Backend generates, frontend stores |
+
+### Context Injection
+
+**Method**: `build_context_prompt()` (`db/public_chat.py:242-276`)
+
+Last 10 exchanges (20 messages) formatted as:
+
+```
+Previous conversation:
+User: [message 1]
+Assistant: [response 1]
+User: [message 2]
+Assistant: [response 2]
+...
+
+Current message:
+User: [new message]
+```
+
+If no history exists, returns just the new message without context prefix.
+
+### Cost Tracking
+
+Assistant message cost is calculated from agent response usage (`public.py:331-338`):
+```python
+if usage:
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    cost = (input_tokens * 0.000003) + (output_tokens * 0.000015)
+```
+
+### Files
+
+| File | Lines | Changes |
+|------|-------|---------|
+| `src/backend/db/public_chat.py` | 303 | **NEW**: PublicChatOperations class |
+| `src/backend/database.py` | 1437 | Tables (660-687), indexes (781-783), delegation (1404-1432) |
+| `src/backend/db_models.py` | 483 | PublicChatSession (389-398), PublicChatMessage (401-408), updated Request/Response (370-382) |
+| `src/backend/routers/public.py` | 603 | Updated chat (214-370), new history (465-538), new session (541-602), response models (28-38) |
+| `src/frontend/src/views/PublicChat.vue` | 658 | State (305-306), loadHistory (429-465), sendMessage (544-606), confirmNewConversation (503-541), New button (17-27) |
+
+### Error Handling
+
+| Error Case | HTTP Status | Handler |
+|------------|-------------|---------|
+| Invalid link token | 404 | `public.py:231-232` |
+| Session token required (email link) | 401 | `public.py:241-245` |
+| Invalid/expired session | 401 | `public.py:248-252` |
+| Rate limited | 429 | `public.py:266-270` |
+| Agent unavailable | 503 | `public.py:274-278` |
+| Agent timeout | 504 | `public.py:359-364` |
+| Agent error | 502 | `public.py:321-326, 365-370` |
+| Missing session_id for clear | 400 | `public.py:578-582` |
+
+### Testing
+
+Prerequisites:
+- Running agent with `/api/task` endpoint
+- Backend and frontend running
+
+Test scenarios:
+1. **Anonymous flow**: Open link, send messages, refresh page, verify history loads
+2. **Email flow**: Verify email, send messages, refresh, verify history loads
+3. **New Conversation**: Click button, confirm, verify history cleared, new session ID
+4. **Context injection**: Send follow-up question, verify agent responds with conversation awareness
+5. **Session isolation**: Different users on same link should have separate sessions
+6. **Cost tracking**: Verify assistant messages have cost field populated
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -865,3 +1196,5 @@ class PublicLinkInfo(BaseModel):
 | 2026-02-17 | **Implemented PUB-003 Agent Introduction**: New `GET /api/public/intro/{token}` endpoint sends intro prompt to agent. Frontend `fetchIntro()` displays response as first chat message. Added Agent Introduction section with full implementation details. |
 | 2026-02-17 | **Updated for PUB-003**: Refreshed PublicChat.vue method line numbers (276, 314, 337, 376, 411), added `fetchIntro()` to methods table, updated file line count (508 lines), corrected PUB-003 section line number (376-408). |
 | 2026-02-17 | **Implemented PUB-004 Public Chat Header Metadata**: `GET /api/public/link/{token}` now returns `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`. PublicChat.vue header displays agent name, description, and status badges (AUTO amber, READ-ONLY rose with lock). Updated PublicLinkInfo model (db_models.py:336-346), public.py endpoint (lines 44-103), PublicChat.vue header (lines 4-46). Refreshed method line numbers (306, 344, 367, 406, 441). File now 538 lines. |
+| 2026-02-17 | **Implemented PUB-005 Public Chat Session Persistence**: Multi-turn conversation persistence with `public_chat_sessions` and `public_chat_messages` tables. New `db/public_chat.py` with operations class. Updated `POST /api/public/chat/{token}` to persist messages and build context prompt. New `GET /api/public/history/{token}` and `DELETE /api/public/session/{token}` endpoints. Frontend session management with localStorage for anonymous links, history loading on mount, "New Conversation" button. |
+| 2026-02-17 | **PUB-005 documentation refresh**: Added exact line numbers for all backend endpoints (chat:214, history:465, session:541), db operations (public_chat.py methods with lines), database schema locations (660-687, 781-783), delegation methods (1404-1432), and frontend methods (loadHistory:429, sendMessage:544, confirmNewConversation:503). Added response model documentation, error handling table, cost tracking details, and expanded test scenarios. Updated file line counts (public.py:603, PublicChat.vue:658, db_models.py:483). |

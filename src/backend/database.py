@@ -65,6 +65,9 @@ from db_models import (
     VerificationResponse,
     PublicChatRequest,
     PublicChatResponse,
+    # Public Chat Persistence (Phase 12.2.5)
+    PublicChatSession,
+    PublicChatMessage,
     # Email Authentication (Phase 12.4)
     EmailWhitelistEntry,
     EmailWhitelistAdd,
@@ -89,6 +92,7 @@ from db.settings import SettingsOperations
 from db.public_links import PublicLinkOperations
 from db.email_auth import EmailAuthOperations
 from db.skills import SkillsOperations
+from db.public_chat import PublicChatOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -653,6 +657,35 @@ def init_database():
             )
         """)
 
+        # Public chat sessions table (Phase 12.2.5: Public Chat Persistence)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_chat_sessions (
+                id TEXT PRIMARY KEY,
+                link_id TEXT NOT NULL,
+                session_identifier TEXT NOT NULL,
+                identifier_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_message_at TEXT NOT NULL,
+                message_count INTEGER DEFAULT 0,
+                total_cost REAL DEFAULT 0.0,
+                FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+                UNIQUE(link_id, session_identifier)
+            )
+        """)
+
+        # Public chat messages table (Phase 12.2.5: Public Chat Persistence)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                cost REAL,
+                FOREIGN KEY (session_id) REFERENCES public_chat_sessions(id) ON DELETE CASCADE
+            )
+        """)
+
         # Email whitelist table (Phase 12.4: Email-Based Authentication)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS email_whitelist (
@@ -744,6 +777,10 @@ def init_database():
         # Agent skills indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_name)")
+        # Public chat session indexes (Phase 12.2.5)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_link ON public_chat_sessions(link_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_identifier ON public_chat_sessions(session_identifier)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_messages_session ON public_chat_messages(session_id)")
 
         conn.commit()
 
@@ -842,6 +879,7 @@ class DatabaseManager:
         self._public_link_ops = PublicLinkOperations(self._user_ops, self._agent_ops)
         self._email_auth_ops = EmailAuthOperations(self._user_ops)
         self._skills_ops = SkillsOperations()
+        self._public_chat_ops = PublicChatOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1361,6 +1399,37 @@ class DatabaseManager:
 
     def get_agents_with_skill(self, skill_name: str):
         return self._skills_ops.get_agents_with_skill(skill_name)
+
+    # =========================================================================
+    # Public Chat Sessions (delegated to db/public_chat.py) - Phase 12.2.5
+    # =========================================================================
+
+    def get_or_create_public_chat_session(self, link_id: str, session_identifier: str, identifier_type: str):
+        return self._public_chat_ops.get_or_create_session(link_id, session_identifier, identifier_type)
+
+    def get_public_chat_session_by_identifier(self, link_id: str, session_identifier: str):
+        return self._public_chat_ops.get_session_by_identifier(link_id, session_identifier)
+
+    def get_public_chat_session(self, session_id: str):
+        return self._public_chat_ops.get_session(session_id)
+
+    def add_public_chat_message(self, session_id: str, role: str, content: str, cost: float = None):
+        return self._public_chat_ops.add_message(session_id, role, content, cost)
+
+    def get_public_chat_messages(self, session_id: str, limit: int = 20):
+        return self._public_chat_ops.get_session_messages(session_id, limit)
+
+    def get_recent_public_chat_messages(self, session_id: str, limit: int = 20):
+        return self._public_chat_ops.get_recent_messages(session_id, limit)
+
+    def clear_public_chat_session(self, session_id: str):
+        return self._public_chat_ops.clear_session(session_id)
+
+    def build_public_chat_context(self, session_id: str, new_message: str, max_turns: int = 10):
+        return self._public_chat_ops.build_context_prompt(session_id, new_message, max_turns)
+
+    def delete_public_link_sessions(self, link_id: str):
+        return self._public_chat_ops.delete_link_sessions(link_id)
 
 
 # Global database manager instance

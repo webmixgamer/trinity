@@ -425,6 +425,12 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: Optional email verification, rate limiting, usage tracking
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md`
 
+### 15.1a Public Chat Session Persistence (PUB-005)
+- **Status**: ✅ Implemented (2026-02-17)
+- **Description**: Multi-turn conversation persistence for public chat links
+- **Key Features**: Session management (email-based or anonymous), message history, New Conversation button, page refresh recovery, context injection for continuity
+- **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
+
 ### 15.2 First-Time Setup
 - **Status**: ✅ Implemented (2025-12-23)
 - **Description**: Admin password wizard on fresh install

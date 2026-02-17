@@ -371,12 +371,41 @@ class PublicChatRequest(BaseModel):
     """Request to chat via a public link."""
     message: str
     session_token: Optional[str] = None  # Required if link requires email verification
+    session_id: Optional[str] = None  # For anonymous links (stored in localStorage)
 
 
 class PublicChatResponse(BaseModel):
     """Response from a public chat."""
     response: str
+    session_id: Optional[str] = None  # Returned for anonymous links
+    message_count: Optional[int] = None  # Number of messages in this session
     usage: Optional[dict] = None  # {"input_tokens": N, "output_tokens": N}
+
+
+# =========================================================================
+# Public Chat Session Models (Phase 12.2.5: Public Chat Persistence)
+# =========================================================================
+
+class PublicChatSession(BaseModel):
+    """Persistent public chat session."""
+    id: str
+    link_id: str
+    session_identifier: str  # email (for email links) or anonymous token
+    identifier_type: str  # 'email' or 'anonymous'
+    created_at: datetime
+    last_message_at: datetime
+    message_count: int = 0
+    total_cost: float = 0.0
+
+
+class PublicChatMessage(BaseModel):
+    """A message in a public chat session."""
+    id: str
+    session_id: str
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime
+    cost: Optional[float] = None
 
 
 # =========================================================================
