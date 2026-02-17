@@ -484,7 +484,7 @@
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var - enables sharing with users outside VPN, globe icon copy button, auto-CORS (Updated 2026-02-17) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
@@ -572,6 +572,13 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Document | Priority | Status | Description |
 |----------|----------|--------|-------------|
 | [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | **IMPLEMENTED** | Standalone scheduler service - fixes duplicate execution bug with multiple workers, Redis distributed locks, single-instance design. See [scheduler-service.md](feature-flows/scheduler-service.md) (Implemented 2026-01-13) |
+| [EXTERNAL_PUBLIC_URL.md](../requirements/EXTERNAL_PUBLIC_URL.md) | **MEDIUM** | **IMPLEMENTED** | External URL support for public agent links - enables sharing with users outside VPN. Adds `PUBLIC_CHAT_URL` env var, `external_url` field in API, "Copy External Link" button in UI (Implemented 2026-02-16) |
+
+## Requirements Specs (Pending)
+
+| Document | Priority | Status | Description |
+|----------|----------|--------|-------------|
+| [PUBLIC_EXTERNAL_ACCESS_SETUP.md](../requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md) | **MEDIUM** | **NOT STARTED** | Infrastructure setup guide for exposing public endpoints outside VPN - Tailscale Funnel, GCP Load Balancer, or Cloudflare Tunnel options (Created 2026-02-16) |
 
 ---
 

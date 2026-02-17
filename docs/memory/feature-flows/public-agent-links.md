@@ -162,11 +162,11 @@ Public User -> POST /api/public/chat/{token}
 
 | Endpoint | File:Line | Handler |
 |----------|-----------|---------|
-| `POST /api/agents/{name}/public-links` | `public_links.py:56` | `create_public_link()` |
-| `GET /api/agents/{name}/public-links` | `public_links.py:92` | `list_public_links()` |
-| `GET /api/agents/{name}/public-links/{id}` | `public_links.py:107` | `get_public_link()` |
-| `PUT /api/agents/{name}/public-links/{id}` | `public_links.py:126` | `update_public_link()` |
-| `DELETE /api/agents/{name}/public-links/{id}` | `public_links.py:167` | `delete_public_link()` |
+| `POST /api/agents/{name}/public-links` | `public_links.py:64` | `create_public_link()` |
+| `GET /api/agents/{name}/public-links` | `public_links.py:100` | `list_public_links()` |
+| `GET /api/agents/{name}/public-links/{id}` | `public_links.py:115` | `get_public_link()` |
+| `PUT /api/agents/{name}/public-links/{id}` | `public_links.py:134` | `update_public_link()` |
+| `DELETE /api/agents/{name}/public-links/{id}` | `public_links.py:175` | `delete_public_link()` |
 
 ### Public Endpoints (Unauthenticated)
 
@@ -308,10 +308,16 @@ SMTP_FROM=noreply@example.com
 # SendGrid
 SENDGRID_API_KEY=SG.xxx
 
-# Frontend URL (for link generation)
+# Frontend URL (for internal link generation)
 # Default: http://localhost (port 80, Docker deployment)
 # For Vite dev server: http://localhost:5173
 FRONTEND_URL=http://localhost
+
+# External URL for public chat links (PUB-002)
+# Set when you want to share links with users outside VPN
+# Examples: Tailscale Funnel, GCP Load Balancer, Cloudflare Tunnel
+# When set, enables "Copy External Link" button in PublicLinksPanel
+PUBLIC_CHAT_URL=
 ```
 
 ## Error Handling
@@ -338,13 +344,17 @@ FRONTEND_URL=http://localhost
 
 | File | Description |
 |------|-------------|
-| `src/backend/db/public_links.py` | Database operations class (439 lines) |
-| `src/backend/routers/public_links.py` | Owner CRUD endpoints (198 lines) |
-| `src/backend/routers/public.py` | Public endpoints (265 lines) |
+| `src/backend/db/public_links.py` | Database operations class |
+| `src/backend/routers/public_links.py` | Owner CRUD endpoints (206 lines) |
+| `src/backend/routers/public_links.py:30-39` | URL builders: `_build_public_url()`, `_build_external_url()` |
+| `src/backend/routers/public_links.py:42-61` | `_link_to_response()` - converts DB dict to API model |
+| `src/backend/routers/public.py` | Public endpoints |
 | `src/backend/services/email_service.py` | Email sending service |
 | `src/backend/db_models.py:301-374` | Pydantic models |
+| `src/backend/db_models.py:329-333` | `PublicLinkWithUrl` with `external_url` field |
 | `src/backend/database.py` | Schema, imports, delegation |
-| `src/backend/config.py` | Email configuration |
+| `src/backend/config.py:43-45` | `PUBLIC_CHAT_URL` environment variable |
+| `src/backend/config.py:86-88` | Auto-add `PUBLIC_CHAT_URL` to CORS origins |
 | `src/backend/main.py:44-45,112,292-293` | Router registration |
 
 ### Frontend
@@ -423,6 +433,185 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 - **Downstream**: Agent Chat (uses same `/api/task` endpoint)
 - **Related**: Agent Sharing (manages `can_share` permission)
 
+## External Public URL (PUB-002)
+
+**Status**: Implemented (2026-02-16)
+**Spec**: `docs/requirements/EXTERNAL_PUBLIC_URL.md`
+
+Support for an external (internet-accessible) URL for public links, enabling sharing with users outside the Tailscale VPN.
+
+### Data Flow
+
+```
++-----------------------------+     +----------------------------------+
+|  PublicLinksPanel.vue       |     |  Backend API                     |
++-----------------------------+     +----------------------------------+
+|                             |     |                                  |
+|  1. User clicks copy button |     |  GET /api/agents/{name}/public-links
+|     - Internal (clipboard)  | <-- |  Returns: {url, external_url, ...}
+|     - External (globe icon) |     |                                  |
+|                             |     +----------------------------------+
+|  2. copyLink(link, external)|                    |
+|     - external=false: link.url                   |
+|     - external=true: link.external_url           v
+|                             |     +----------------------------------+
+|  3. Notification:           |     |  config.py                       |
+|     - "Internal link copied!"|     +----------------------------------+
+|     - "External link copied!"|     |  PUBLIC_CHAT_URL env var        |
++-----------------------------+     |  (loaded at startup)             |
+                                    +----------------------------------+
+                                                   |
+                                                   v
+                                    +----------------------------------+
+                                    |  public_links.py                 |
+                                    +----------------------------------+
+                                    |  _build_external_url(token)      |
+                                    |    if PUBLIC_CHAT_URL:           |
+                                    |      return f"{URL}/chat/{token}"|
+                                    |    return None                   |
+                                    +----------------------------------+
+```
+
+### Configuration
+
+Set `PUBLIC_CHAT_URL` environment variable to your external URL:
+
+```bash
+# .env or docker-compose.yml
+PUBLIC_CHAT_URL=https://public.example.com
+```
+
+When set:
+1. The API returns `external_url` field in all public link responses
+2. The UI shows a globe icon button to copy the external link
+3. CORS is automatically configured to allow the external origin
+
+### Backend Implementation
+
+**Config (`src/backend/config.py:43-45`)**:
+```python
+# External URL for public chat links (Tailscale Funnel, Cloudflare Tunnel, etc.)
+# When set, enables "Copy External Link" button in PublicLinksPanel
+PUBLIC_CHAT_URL = os.getenv("PUBLIC_CHAT_URL", "")
+```
+
+**CORS Auto-Configuration (`src/backend/config.py:86-88`)**:
+```python
+# Automatically add PUBLIC_CHAT_URL to CORS if set
+if PUBLIC_CHAT_URL:
+    _extra_origins.append(PUBLIC_CHAT_URL)
+```
+
+**URL Builder (`src/backend/routers/public_links.py:35-39`)**:
+```python
+def _build_external_url(token: str) -> str | None:
+    """Build the external public URL for a link token (if configured)."""
+    if PUBLIC_CHAT_URL:
+        return f"{PUBLIC_CHAT_URL}/chat/{token}"
+    return None
+```
+
+**Response Assembly (`src/backend/routers/public_links.py:42-61`)**:
+```python
+def _link_to_response(link: dict, include_usage: bool = True) -> PublicLinkWithUrl:
+    # ...
+    return PublicLinkWithUrl(
+        # ... other fields ...
+        url=_build_public_url(link["token"]),        # Line 58: Internal URL
+        external_url=_build_external_url(link["token"]),  # Line 59: External URL
+        usage_stats=usage_stats
+    )
+```
+
+**Model (`src/backend/db_models.py:329-333`)**:
+```python
+class PublicLinkWithUrl(PublicLink):
+    """Public link with generated URL."""
+    url: str  # Internal URL (VPN/tailnet)
+    external_url: Optional[str] = None  # External URL (public internet via Funnel/Tunnel)
+    usage_stats: Optional[dict] = None
+```
+
+### Frontend Implementation
+
+**URL Preview (`src/frontend/src/components/PublicLinksPanel.vue:79-102`)**:
+- Line 81: Displays `external_url` if available, otherwise `url`
+- Lines 83-90: Internal copy button (clipboard icon)
+- Lines 92-101: External copy button (globe icon, conditionally rendered)
+
+```vue
+<!-- URL preview - shows external URL if available -->
+<code class="...">{{ link.external_url || link.url }}</code>
+
+<!-- Internal link copy -->
+<button @click="copyLink(link, false)" title="Copy internal link">
+  <!-- clipboard icon -->
+</button>
+
+<!-- External link copy (only if external_url exists) -->
+<button v-if="link.external_url" @click="copyLink(link, true)"
+        title="Copy external link (public internet)">
+  <!-- globe icon -->
+</button>
+```
+
+**Copy Method (`src/frontend/src/components/PublicLinksPanel.vue:461-473`)**:
+```javascript
+const copyLink = async (link, external = false) => {
+  try {
+    const url = external && link.external_url ? link.external_url : link.url
+    await navigator.clipboard.writeText(url)
+    copyNotification.value = external ? 'external' : 'internal'
+    setTimeout(() => {
+      copyNotification.value = false
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy link:', err)
+  }
+}
+```
+
+**Notification (`src/frontend/src/components/PublicLinksPanel.vue:311-317`)**:
+```vue
+<div v-if="copyNotification" class="...">
+  {{ copyNotification === 'external' ? 'External link copied!' : 'Internal link copied!' }}
+</div>
+```
+
+### UI Behavior
+
+| Scenario | Copy Icon | Globe Icon | URL Displayed |
+|----------|-----------|------------|---------------|
+| `PUBLIC_CHAT_URL` not set | Visible | Hidden | Internal URL (`FRONTEND_URL/chat/{token}`) |
+| `PUBLIC_CHAT_URL` set | Visible | Visible | External URL (`PUBLIC_CHAT_URL/chat/{token}`) |
+
+### Example API Response
+
+```json
+{
+  "id": "link_abc123",
+  "agent_name": "my-agent",
+  "token": "xyz789...",
+  "url": "http://localhost/chat/xyz789...",
+  "external_url": "https://public.example.com/chat/xyz789...",
+  "enabled": true,
+  "require_email": false,
+  "usage_stats": { "total_messages": 42, "unique_users": 5 }
+}
+```
+
+### Infrastructure Requirements
+
+The external URL requires separate infrastructure setup. Options:
+- **Tailscale Funnel**: `tailscale funnel 80` (simplest)
+- **GCP Load Balancer**: External IP with SSL termination
+- **Cloudflare Tunnel**: `cloudflared tunnel`
+- **ngrok**: `ngrok http 80`
+
+See `docs/requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md` for setup guides.
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -430,3 +619,5 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 | 2025-12-22 | Initial documentation |
 | 2025-12-30 | Verified line numbers, updated file references, added detailed method tables, expanded testing section |
 | 2026-01-23 | Refreshed line numbers for all backend files: public_links.py endpoints (56, 92, 107, 126, 167), public.py endpoints (43, 73, 130, 166), db_models.py models (301-374). Updated AgentDetail.vue references (167, 169, 230, 443-446). Added delete_agent_public_links() at db/public_links.py:156. Updated main.py references (44-45, 112, 292-293). Corrected file line counts. |
+| 2026-02-16 | **Implemented PUB-002 External Public URL**: Added `PUBLIC_CHAT_URL` env var, `external_url` field in API response, globe icon button in UI for copying external links. Configuration section updated. |
+| 2026-02-17 | **Expanded PUB-002 documentation**: Added detailed data flow diagram, CORS auto-configuration, complete code snippets with exact line numbers (config.py:43-45,86-88; public_links.py:35-39,42-61,58-59; db_models.py:329-333; PublicLinksPanel.vue:79-102,311-317,461-473). Added API response example and infrastructure options. |

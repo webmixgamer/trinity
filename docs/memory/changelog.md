@@ -1,3 +1,32 @@
+### 2026-02-16 16:00:00
+🔗 **Feature: External Public URL Support (PUB-002)**
+
+Added support for external (internet-accessible) URL for public agent links, separate from the internal VPN URL. This enables sharing public chat links with external users who are not on the Tailscale VPN.
+
+**Configuration**:
+- New `PUBLIC_CHAT_URL` environment variable (e.g., `https://public.abilityai.dev`)
+- When set, enables "Copy External Link" button in PublicLinksPanel
+
+**Implementation**:
+- Backend: `PUBLIC_CHAT_URL` config, `external_url` field in `PublicLinkWithUrl` model
+- Frontend: Globe icon button to copy external URL, distinct notification messages
+- API: `external_url` field included in public link responses when configured
+
+**Files Changed**:
+- `src/backend/config.py` - `PUBLIC_CHAT_URL` constant (already present)
+- `src/backend/db_models.py` - `external_url` field (already present)
+- `src/backend/routers/public_links.py` - `_build_external_url()` helper (already present)
+- `src/frontend/src/components/PublicLinksPanel.vue` - External link button, notification
+- `.env.example` - Added `PUBLIC_CHAT_URL` documentation
+
+**Documentation**:
+- `docs/requirements/EXTERNAL_PUBLIC_URL.md` - Requirements spec (marked implemented)
+- `docs/memory/feature-flows/public-agent-links.md` - Updated with PUB-002 section
+
+**Requirement**: PUB-002 (docs/requirements/EXTERNAL_PUBLIC_URL.md)
+
+---
+
 ### 2026-02-16 14:30:00
 🔒 **Security Fix: Agent Credential Leakage Prevention**
 
