@@ -175,11 +175,16 @@ async def inject_read_only_hooks(agent_name: str, config: Optional[dict] = None)
 
     client = get_agent_client(agent_name)
 
-    # Load the guard script from config/hooks/
-    guard_script_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-        "config", "hooks", "read-only-guard.py"
-    )
+    # Load the guard script from mounted config/hooks directory
+    # In Docker: /config/hooks/read-only-guard.py (mounted volume)
+    # In dev: relative path from backend/services/agent_service/
+    guard_script_path = "/config/hooks/read-only-guard.py"
+    if not os.path.exists(guard_script_path):
+        # Fallback for local development
+        guard_script_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            "config", "hooks", "read-only-guard.py"
+        )
 
     try:
         with open(guard_script_path, "r") as f:
@@ -188,18 +193,20 @@ async def inject_read_only_hooks(agent_name: str, config: Optional[dict] = None)
         logger.error(f"Guard script not found at {guard_script_path}")
         return {"success": False, "error": "Guard script not found"}
 
-    # 1. Write the config file
+    # 1. Write the config file (platform=True to bypass .trinity protection)
     config_result = await client.write_file(
         ".trinity/read-only-config.json",
-        json.dumps(config, indent=2)
+        json.dumps(config, indent=2),
+        platform=True
     )
     if not config_result.get("success"):
         return {"success": False, "error": f"Failed to write config: {config_result.get('error')}"}
 
-    # 2. Write the guard script
+    # 2. Write the guard script (platform=True to bypass .trinity protection)
     script_result = await client.write_file(
         ".trinity/hooks/read-only-guard.py",
-        guard_script_content
+        guard_script_content,
+        platform=True
     )
     if not script_result.get("success"):
         return {"success": False, "error": f"Failed to write guard script: {script_result.get('error')}"}

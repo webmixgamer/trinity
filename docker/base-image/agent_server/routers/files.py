@@ -312,16 +312,17 @@ async def preview_file(path: str):
 
 
 @router.put("/api/files")
-async def update_file(path: str, request: FileUpdateRequest):
+async def update_file(path: str, request: FileUpdateRequest, platform: bool = False):
     """
     Update or create a file's content in the workspace.
     Only allows access to /home/developer for security.
-    Cannot modify protected paths (.trinity, .git, etc.)
+    Cannot modify protected paths (.trinity, .git, etc.) unless platform=true.
     Creates parent directories if they don't exist.
 
     Args:
         path: File path to update/create (query parameter)
         request: Request body with content
+        platform: If true, allows writes to .trinity directory (platform-initiated)
 
     Returns:
         Success status and file info
@@ -340,11 +341,15 @@ async def update_file(path: str, request: FileUpdateRequest):
         raise HTTPException(status_code=403, detail="Access denied: only /home/developer accessible")
 
     # Check if it's a protected path (for editing)
+    # Platform writes can bypass .trinity protection (but not .git, .env, etc.)
     if _is_edit_protected_path(requested_path):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Cannot edit protected path: {requested_path.name}"
-        )
+        # Allow platform writes to .trinity directory only
+        is_trinity_path = any(p.name == ".trinity" for p in [requested_path] + list(requested_path.parents))
+        if not (platform and is_trinity_path):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Cannot edit protected path: {requested_path.name}"
+            )
 
     # If path exists and is a directory, reject
     if requested_path.exists() and not requested_path.is_file():
