@@ -418,6 +418,8 @@ PENDING → RUNNING → COMPLETED
 | GET | `/api/agents/{name}/autonomy` | Get autonomy status with schedule counts (NEW: 2026-01-01) |
 | PUT | `/api/agents/{name}/autonomy` | Enable/disable autonomy (toggles all schedules) |
 | POST | `/api/agents/{name}/ssh-access` | Generate ephemeral SSH credentials (NEW: 2026-01-02) |
+| GET | `/api/agents/{name}/read-only` | Get read-only mode status and config (NEW: 2026-02-17) |
+| PUT | `/api/agents/{name}/read-only` | Enable/disable read-only mode (blocks source file writes) |
 
 **Note**: Route ordering is critical. `/context-stats` and `/autonomy-status` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
 

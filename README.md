@@ -167,6 +167,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
 - **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types
 - **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
+- **Read-Only Mode** — Protect source code from modification while allowing output to designated directories
 - **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
 ### Operations

@@ -445,6 +445,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Per-agent memory and CPU configuration
 - **Flow**: `docs/memory/feature-flows/agent-resource-allocation.md`
 
+### 16.1a Read-Only Mode
+- **Status**: ✅ Implemented (2026-02-17)
+- **Description**: Per-agent code protection preventing modification of source files
+- **Key Features**: Toggle in AgentHeader, PreToolUse hooks intercept Write/Edit/NotebookEdit, blocked patterns (*.py, *.js, etc.), allowed patterns (output/*, content/*)
+- **Flow**: `docs/memory/feature-flows/read-only-mode.md`
+- **Spec**: `docs/requirements/READ_ONLY_MODE.md`
+
 ### 16.2 SSH Access
 - **Status**: ✅ Implemented (2026-01-02)
 - **Description**: Ephemeral SSH credentials via MCP tool
