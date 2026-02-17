@@ -17,6 +17,7 @@ from database import (
     PublicChatRequest,
     PublicChatResponse
 )
+from db.agents import AgentsDB
 from services.docker_service import get_agent_container
 from services.email_service import email_service
 
@@ -46,6 +47,7 @@ async def get_public_link_info(token: str, request: Request):
     Get information about a public link.
 
     Returns whether the link is valid and if email verification is required.
+    Also includes agent metadata (name, description, status flags).
     Does NOT expose sensitive data like the link ID.
     """
     is_valid, reason, link = db.is_public_link_valid(token)
@@ -58,15 +60,46 @@ async def get_public_link_info(token: str, request: Request):
             reason=reason
         )
 
+    agent_name = link["agent_name"]
+
     # Check if agent is available
-    container = get_agent_container(link["agent_name"])
+    container = get_agent_container(agent_name)
     agent_available = container is not None and container.status == "running"
+
+    # Get agent metadata from database
+    agents_db = AgentsDB()
+    is_autonomous = agents_db.get_autonomy_enabled(agent_name)
+    read_only_data = agents_db.get_read_only_mode(agent_name)
+    is_read_only = read_only_data.get("enabled", False)
+
+    # Get display name and description from template.yaml (if agent running)
+    agent_display_name = agent_name  # Fallback to agent name
+    agent_description = None
+
+    if agent_available:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"http://agent-{agent_name}:8000/api/template/info")
+                if response.status_code == 200:
+                    info = response.json()
+                    agent_display_name = info.get("name") or info.get("display_name") or agent_name
+                    agent_description = info.get("description")
+        except Exception as e:
+            logger.warning(f"Failed to fetch template info for {agent_name}: {e}")
+            # Use container labels as fallback
+            if container:
+                labels = container.labels or {}
+                agent_display_name = labels.get("trinity.agent-type", agent_name)
 
     return PublicLinkInfo(
         valid=True,
         require_email=link["require_email"],
         agent_available=agent_available,
-        reason=None
+        reason=None,
+        agent_display_name=agent_display_name,
+        agent_description=agent_description,
+        is_autonomous=is_autonomous,
+        is_read_only=is_read_only
     )
 
 
@@ -258,6 +291,98 @@ async def public_chat(
         )
     except httpx.RequestError as e:
         logger.error(f"Agent request failed: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to reach the agent. Please try again."
+        )
+
+
+# Introduction prompt - asks agent to introduce itself
+INTRO_PROMPT = """Provide a brief 2-paragraph introduction of yourself.
+
+First paragraph: Who you are and what you do.
+Second paragraph: Your purpose and how you can help the user.
+
+Be concise, welcoming, and conversational. Do not use headers, bullet points, or markdown formatting."""
+
+
+@router.get("/intro/{token}")
+async def get_agent_intro(
+    token: str,
+    request: Request,
+    session_token: str = None
+):
+    """
+    Get an introduction message from the agent.
+
+    Sends a prompt asking the agent to introduce itself.
+    Used to provide context to users before they start chatting.
+    For links requiring email verification, a valid session_token query param must be provided.
+    """
+    client_ip = _get_client_ip(request)
+
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail=f"Invalid link: {reason}")
+
+    # Verify session if email required
+    if link["require_email"]:
+        if not session_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Session token required for this link"
+            )
+
+        session_valid, email = db.validate_session(link["id"], session_token)
+        if not session_valid:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired session. Please verify your email again."
+            )
+
+    # Check agent is available
+    container = get_agent_container(link["agent_name"])
+    if not container or container.status != "running":
+        raise HTTPException(
+            status_code=503,
+            detail="Agent is not available. Please try again later."
+        )
+
+    agent_name = link["agent_name"]
+
+    # Execute intro prompt via parallel task endpoint
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"http://agent-{agent_name}:8000/api/task",
+                json={
+                    "message": INTRO_PROMPT,
+                    "timeout_seconds": 60
+                }
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Agent intro failed: {response.status_code} - {response.text}")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Failed to get introduction. Please try again."
+                )
+
+            result = response.json()
+
+            return {
+                "intro": result.get("response", result.get("result", ""))
+            }
+
+    except httpx.TimeoutException:
+        logger.error(f"Agent intro request timed out for {link['agent_name']}")
+        raise HTTPException(
+            status_code=504,
+            detail="Request timed out. Please try again."
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Agent intro request failed: {e}")
         raise HTTPException(
             status_code=502,
             detail="Failed to reach the agent. Please try again."

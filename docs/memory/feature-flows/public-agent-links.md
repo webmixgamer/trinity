@@ -122,7 +122,7 @@ Public User -> POST /api/public/chat/{token}
 | `src/frontend/src/views/AgentDetail.vue` | 230 | Import statement |
 | `src/frontend/src/views/AgentDetail.vue` | 443-446 | Tab configuration logic |
 | `src/frontend/src/components/PublicLinksPanel.vue` | 1-503 | Owner management panel |
-| `src/frontend/src/views/PublicChat.vue` | 1-441 | Public chat interface |
+| `src/frontend/src/views/PublicChat.vue` | 1-538 | Public chat interface (PUB-003 intro, PUB-004 header metadata) |
 
 ### PublicLinksPanel.vue Methods
 
@@ -139,10 +139,11 @@ Public User -> POST /api/public/chat/{token}
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `loadLinkInfo()` | 257 | Validate link token |
-| `requestCode()` | 295 | Request verification email |
-| `verifyCode()` | 318 | Confirm 6-digit code |
-| `sendMessage()` | 355 | Send chat message |
+| `loadLinkInfo()` | 306 | Validate link token, receives agent metadata |
+| `requestCode()` | 344 | Request verification email |
+| `verifyCode()` | 367 | Confirm 6-digit code, calls `fetchIntro()` |
+| `fetchIntro()` | 406 | Fetch agent introduction (PUB-003) |
+| `sendMessage()` | 441 | Send chat message |
 
 ### Router Configuration
 
@@ -176,6 +177,7 @@ Public User -> POST /api/public/chat/{token}
 | `POST /api/public/verify/request` | `public.py:73` | `request_verification_code()` |
 | `POST /api/public/verify/confirm` | `public.py:130` | `confirm_verification_code()` |
 | `POST /api/public/chat/{token}` | `public.py:166` | `public_chat()` |
+| `GET /api/public/intro/{token}` | `public.py:276` | `get_agent_intro()` |
 
 ### Database Operations
 
@@ -205,7 +207,7 @@ Public User -> POST /api/public/chat/{token}
 | `PublicLinkUpdate` | `db_models.py:308` | Update link request |
 | `PublicLink` | `db_models.py:316` | Base link model |
 | `PublicLinkWithUrl` | `db_models.py:329` | Link with generated URL |
-| `PublicLinkInfo` | `db_models.py:335` | Public-facing link info |
+| `PublicLinkInfo` | `db_models.py:336` | Public-facing link info (includes agent metadata) |
 | `VerificationRequest` | `db_models.py:343` | Request verification code |
 | `VerificationConfirm` | `db_models.py:349` | Confirm verification code |
 | `VerificationResponse` | `db_models.py:356` | Verification result |
@@ -361,7 +363,7 @@ PUBLIC_CHAT_URL=
 
 | File | Description |
 |------|-------------|
-| `src/frontend/src/views/PublicChat.vue` | Public chat page (441 lines) |
+| `src/frontend/src/views/PublicChat.vue` | Public chat page (538 lines) |
 | `src/frontend/src/components/PublicLinksPanel.vue` | Owner panel (503 lines) |
 | `src/frontend/src/views/AgentDetail.vue` | Public Links tab integration |
 | `src/frontend/src/router/index.js:18-22` | Route definition |
@@ -612,6 +614,245 @@ See `docs/requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md` for setup guides.
 
 ---
 
+## Agent Introduction (PUB-003)
+
+**Status**: Implemented (2026-02-17)
+
+When users access a public chat link, the agent automatically introduces itself before they start chatting.
+
+### Data Flow
+
+```
+User opens /chat/{token}
+        ↓
+loadLinkInfo() - validate link
+        ↓
+Email verification (if required)
+        ↓
+fetchIntro() called
+        ↓
+GET /api/public/intro/{token}?session_token=...
+        ↓
+Backend sends INTRO_PROMPT to agent via /api/task
+        ↓
+Agent responds with 2-paragraph introduction
+        ↓
+Response displayed as first assistant message
+```
+
+### Backend Implementation
+
+**Intro Prompt** (`public.py:267-273`):
+```python
+INTRO_PROMPT = """Provide a brief 2-paragraph introduction of yourself.
+
+First paragraph: Who you are and what you do.
+Second paragraph: Your purpose and how you can help the user.
+
+Be concise, welcoming, and conversational. Do not use headers, bullet points, or markdown formatting."""
+```
+
+**Endpoint** (`public.py:276-356`):
+- Validates link token and session (if email required)
+- Sends intro prompt to agent via `/api/task`
+- Returns `{"intro": "..."}`
+- 60-second timeout for generation
+
+### Frontend Implementation
+
+**State** (`PublicChat.vue:270-273`):
+```javascript
+const introLoading = ref(false)
+const introError = ref(null)
+const introFetched = ref(false)
+```
+
+**fetchIntro()** (`PublicChat.vue:376-408`):
+- Builds URL with session token if needed
+- Adds response as first assistant message
+- Sets `introFetched = true` on success or error
+
+**Trigger Points**:
+1. After email verification succeeds (`verifyCode()`)
+2. On mount if no email needed or already verified (`onMounted()`)
+
+**UI States**:
+- Loading: "Getting ready..." with spinner
+- Success: Intro message displayed in chat
+- Error: Falls back to generic "Start a Conversation"
+
+### User Experience
+
+| Before | After |
+|--------|-------|
+| Generic "Start a Conversation" | Personalized agent introduction |
+| User must ask what agent does | Agent proactively explains purpose |
+| Cold start | Warm, welcoming interaction |
+
+---
+
+## Public Chat Header Metadata (PUB-004)
+
+**Status**: Implemented (2026-02-17)
+
+The public chat page header now displays agent metadata to provide users with context about who they are chatting with.
+
+### Data Flow
+
+```
+User opens /chat/{token}
+        |
+        v
+GET /api/public/link/{token}
+        |
+        v
+Backend validates link token
+        |
+        v
+Backend fetches agent metadata:
+  1. AgentsDB.get_autonomy_enabled(agent_name) -> is_autonomous
+  2. AgentsDB.get_read_only_mode(agent_name) -> is_read_only
+  3. GET http://agent-{name}:8000/api/template/info -> display_name, description
+        |
+        v
+Returns PublicLinkInfo with metadata fields
+        |
+        v
+PublicChat.vue header displays:
+  - Agent display name (or fallback to agent name)
+  - Agent description (if available)
+  - AUTO badge (amber) if is_autonomous
+  - READ-ONLY badge (rose with lock icon) if is_read_only
+```
+
+### Backend Implementation
+
+**Endpoint** (`public.py:44-103`):
+```python
+@router.get("/link/{token}", response_model=PublicLinkInfo)
+async def get_public_link_info(token: str, request: Request):
+    # ... validation ...
+
+    # Get agent metadata from database
+    agents_db = AgentsDB()
+    is_autonomous = agents_db.get_autonomy_enabled(agent_name)
+    read_only_data = agents_db.get_read_only_mode(agent_name)
+    is_read_only = read_only_data.get("enabled", False)
+
+    # Get display name and description from template.yaml (if agent running)
+    if agent_available:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"http://agent-{agent_name}:8000/api/template/info")
+            if response.status_code == 200:
+                info = response.json()
+                agent_display_name = info.get("name") or info.get("display_name") or agent_name
+                agent_description = info.get("description")
+
+    return PublicLinkInfo(
+        valid=True,
+        # ... other fields ...
+        agent_display_name=agent_display_name,
+        agent_description=agent_description,
+        is_autonomous=is_autonomous,
+        is_read_only=is_read_only
+    )
+```
+
+**Model** (`db_models.py:336-346`):
+```python
+class PublicLinkInfo(BaseModel):
+    """Public-facing link information (no sensitive data)."""
+    valid: bool
+    require_email: bool = False
+    agent_available: bool = True
+    reason: Optional[str] = None
+    # Agent metadata (only populated when valid)
+    agent_display_name: Optional[str] = None
+    agent_description: Optional[str] = None
+    is_autonomous: bool = False
+    is_read_only: bool = False
+```
+
+### Frontend Implementation
+
+**Header Template** (`PublicChat.vue:4-46`):
+```vue
+<header class="bg-white dark:bg-gray-800 shadow-sm py-3 px-4">
+  <div class="max-w-3xl mx-auto">
+    <div v-if="linkInfo && linkInfo.valid" class="space-y-1">
+      <!-- Top row: Status dot, name, badges -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+          <span class="font-semibold text-gray-900 dark:text-white">
+            {{ linkInfo.agent_display_name || 'Agent' }}
+          </span>
+        </div>
+        <!-- Status badges -->
+        <div class="flex items-center space-x-2">
+          <span v-if="linkInfo.is_autonomous"
+            class="... bg-amber-100 text-amber-800 ...">
+            AUTO
+          </span>
+          <span v-if="linkInfo.is_read_only"
+            class="... bg-rose-100 text-rose-800 ...">
+            <svg><!-- lock icon --></svg>
+            READ-ONLY
+          </span>
+        </div>
+      </div>
+      <!-- Description row -->
+      <p v-if="linkInfo.agent_description"
+        class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+        {{ linkInfo.agent_description }}
+      </p>
+    </div>
+  </div>
+</header>
+```
+
+### API Response Example
+
+```json
+{
+  "valid": true,
+  "require_email": false,
+  "agent_available": true,
+  "reason": null,
+  "agent_display_name": "Sales Assistant",
+  "agent_description": "I help answer questions about our products and services.",
+  "is_autonomous": true,
+  "is_read_only": false
+}
+```
+
+### UI Behavior
+
+| Field | Display |
+|-------|---------|
+| `agent_display_name` | Header title (fallback: "Agent") |
+| `agent_description` | Subtitle below name (truncated to 2 lines) |
+| `is_autonomous` | Amber "AUTO" badge |
+| `is_read_only` | Rose "READ-ONLY" badge with lock icon |
+
+### Status Badges
+
+| Badge | Color | Icon | Meaning |
+|-------|-------|------|---------|
+| AUTO | Amber (`bg-amber-100 text-amber-800`) | None | Agent runs autonomous scheduled executions |
+| READ-ONLY | Rose (`bg-rose-100 text-rose-800`) | Lock | Agent cannot modify filesystem outside `.trinity` |
+
+### Metadata Sources
+
+| Field | Primary Source | Fallback |
+|-------|---------------|----------|
+| `agent_display_name` | `template.yaml` via `/api/template/info` | Container label `trinity.agent-type`, then agent name |
+| `agent_description` | `template.yaml` via `/api/template/info` | None |
+| `is_autonomous` | `agents` table `autonomy_enabled` column | `false` |
+| `is_read_only` | `agents` table `read_only_enabled` column | `false` |
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -621,3 +862,6 @@ See `docs/requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md` for setup guides.
 | 2026-01-23 | Refreshed line numbers for all backend files: public_links.py endpoints (56, 92, 107, 126, 167), public.py endpoints (43, 73, 130, 166), db_models.py models (301-374). Updated AgentDetail.vue references (167, 169, 230, 443-446). Added delete_agent_public_links() at db/public_links.py:156. Updated main.py references (44-45, 112, 292-293). Corrected file line counts. |
 | 2026-02-16 | **Implemented PUB-002 External Public URL**: Added `PUBLIC_CHAT_URL` env var, `external_url` field in API response, globe icon button in UI for copying external links. Configuration section updated. |
 | 2026-02-17 | **Expanded PUB-002 documentation**: Added detailed data flow diagram, CORS auto-configuration, complete code snippets with exact line numbers (config.py:43-45,86-88; public_links.py:35-39,42-61,58-59; db_models.py:329-333; PublicLinksPanel.vue:79-102,311-317,461-473). Added API response example and infrastructure options. |
+| 2026-02-17 | **Implemented PUB-003 Agent Introduction**: New `GET /api/public/intro/{token}` endpoint sends intro prompt to agent. Frontend `fetchIntro()` displays response as first chat message. Added Agent Introduction section with full implementation details. |
+| 2026-02-17 | **Updated for PUB-003**: Refreshed PublicChat.vue method line numbers (276, 314, 337, 376, 411), added `fetchIntro()` to methods table, updated file line count (508 lines), corrected PUB-003 section line number (376-408). |
+| 2026-02-17 | **Implemented PUB-004 Public Chat Header Metadata**: `GET /api/public/link/{token}` now returns `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`. PublicChat.vue header displays agent name, description, and status badges (AUTO amber, READ-ONLY rose with lock). Updated PublicLinkInfo model (db_models.py:336-346), public.py endpoint (lines 44-103), PublicChat.vue header (lines 4-46). Refreshed method line numbers (306, 344, 367, 406, 441). File now 538 lines. |

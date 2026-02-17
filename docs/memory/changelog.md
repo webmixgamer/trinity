@@ -1,3 +1,58 @@
+### 2026-02-17 16:45:00
+✨ **Feature: Public Chat Header Metadata (PUB-004)**
+
+Enhanced the public chat page header to display meaningful agent metadata.
+
+**Header Now Shows**:
+- Agent display name (from template.yaml, bold text)
+- Agent description (from template.yaml, below name)
+- Status badges: AUTO (amber) if autonomous, READ-ONLY (rose with lock icon) if read-only
+- Green dot indicates running status
+
+**Backend** (`src/backend/routers/public.py`):
+- `GET /api/public/link/{token}` now fetches template info from agent container
+- Returns `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`
+- Falls back to agent name if template info unavailable
+
+**Model** (`src/backend/db_models.py`):
+- `PublicLinkInfo` extended with 4 new optional fields
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- Header redesigned with two rows: name+badges, description
+- Badges use consistent styling (amber for AUTO, rose for READ-ONLY)
+
+---
+
+### 2026-02-17 15:30:00
+✨ **Feature: Public Chat Agent Introduction (PUB-003)**
+
+Added automatic agent introduction for public chat links. When users access a public link, the agent introduces itself before they start chatting.
+
+**How It Works**:
+1. User opens public chat link and verifies email (if required)
+2. Frontend calls `GET /api/public/intro/{token}` endpoint
+3. Backend sends introduction prompt to agent via `/api/task`
+4. Agent response displayed as first message in chat
+
+**Backend** (`src/backend/routers/public.py`):
+- New `GET /api/public/intro/{token}` endpoint
+- `INTRO_PROMPT` constant asks for 2-paragraph introduction
+- Session token validation for email-required links
+- 60-second timeout for intro generation
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- `fetchIntro()` function calls intro endpoint
+- Called after email verification or on mount (if no email needed)
+- "Getting ready..." loading state while fetching
+- Graceful error handling (doesn't block user if intro fails)
+
+**User Experience**:
+- Public users see personalized welcome from the agent
+- Agent describes who it is and how it can help
+- Natural conversation start instead of generic "Start a Conversation"
+
+---
+
 ### 2026-02-17 13:45:00
 🧪 **Tests: Read-Only Mode API Tests (CFG-007)**
 

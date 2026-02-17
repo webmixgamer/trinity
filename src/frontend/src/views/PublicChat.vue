@@ -1,16 +1,46 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-    <!-- Minimal header -->
+    <!-- Header with agent metadata -->
     <header class="bg-white dark:bg-gray-800 shadow-sm py-3 px-4">
       <div class="max-w-3xl mx-auto">
-        <div class="flex items-center justify-between">
-          <div v-if="linkInfo && linkInfo.valid" class="flex items-center space-x-2">
-            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Chat</span>
+        <div v-if="linkInfo && linkInfo.valid" class="space-y-1">
+          <!-- Top row: Status dot, name, badges -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span class="font-semibold text-gray-900 dark:text-white">
+                {{ linkInfo.agent_display_name || 'Agent' }}
+              </span>
+            </div>
+            <!-- Status badges -->
+            <div class="flex items-center space-x-2">
+              <span
+                v-if="linkInfo.is_autonomous"
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+              >
+                AUTO
+              </span>
+              <span
+                v-if="linkInfo.is_read_only"
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400"
+              >
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                READ-ONLY
+              </span>
+            </div>
           </div>
-          <div v-else class="text-sm text-gray-500 dark:text-gray-400">
-            Loading...
-          </div>
+          <!-- Description row -->
+          <p
+            v-if="linkInfo.agent_description"
+            class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2"
+          >
+            {{ linkInfo.agent_description }}
+          </p>
+        </div>
+        <div v-else class="text-sm text-gray-500 dark:text-gray-400">
+          Loading...
         </div>
       </div>
     </header>
@@ -148,8 +178,22 @@
       <div v-else class="flex-1 flex flex-col">
         <!-- Messages area -->
         <div class="flex-1 overflow-y-auto space-y-4 pb-4">
-          <!-- Welcome message -->
-          <div v-if="messages.length === 0" class="text-center py-12">
+          <!-- Loading intro -->
+          <div v-if="introLoading" class="text-center py-12">
+            <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-indigo-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Getting ready...</h3>
+            <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+              The agent is preparing to assist you.
+            </p>
+          </div>
+
+          <!-- Fallback welcome message (only if intro failed or not fetched yet) -->
+          <div v-else-if="messages.length === 0 && !introLoading" class="text-center py-12">
             <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -253,6 +297,11 @@ const chatLoading = ref(false)
 const chatError = ref(null)
 const messageInput = ref(null)
 
+// Intro
+const introLoading = ref(false)
+const introError = ref(null)
+const introFetched = ref(false)
+
 // Load link info
 const loadLinkInfo = async () => {
   loading.value = true
@@ -329,6 +378,8 @@ const verifyCode = async () => {
     if (response.data.verified) {
       sessionToken.value = response.data.session_token
       localStorage.setItem(`public_session_${token.value}`, response.data.session_token)
+      // Fetch intro after successful verification
+      await fetchIntro()
     } else {
       verifyError.value = getVerifyErrorMessage(response.data.error)
     }
@@ -348,6 +399,41 @@ const getVerifyErrorMessage = (error) => {
       return 'Code has expired. Please request a new one.'
     default:
       return 'Verification failed. Please try again.'
+  }
+}
+
+// Fetch agent introduction
+const fetchIntro = async () => {
+  if (introFetched.value || introLoading.value) return
+
+  introLoading.value = true
+  introError.value = null
+
+  try {
+    // Build URL with session token if needed
+    let url = `/api/public/intro/${token.value}`
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      url += `?session_token=${encodeURIComponent(sessionToken.value)}`
+    }
+
+    const response = await axios.get(url)
+
+    if (response.data.intro) {
+      // Add intro as first assistant message
+      messages.value.push({
+        role: 'assistant',
+        content: response.data.intro
+      })
+    }
+
+    introFetched.value = true
+  } catch (err) {
+    console.error('Failed to fetch intro:', err)
+    // Don't block the user - just skip the intro on error
+    introError.value = 'Could not load introduction.'
+    introFetched.value = true
+  } finally {
+    introLoading.value = false
   }
 }
 
@@ -423,8 +509,18 @@ const scrollToBottom = () => {
 }
 
 // Initialize
-onMounted(() => {
-  loadLinkInfo()
+onMounted(async () => {
+  await loadLinkInfo()
+
+  // If link is valid and chat is accessible (no email needed or already verified), fetch intro
+  if (linkInfo.value?.valid && linkInfo.value?.agent_available) {
+    const needsEmail = linkInfo.value.require_email
+    const hasSession = !!sessionToken.value
+
+    if (!needsEmail || hasSession) {
+      await fetchIntro()
+    }
+  }
 })
 </script>
 

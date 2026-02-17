@@ -339,6 +339,11 @@ class PublicLinkInfo(BaseModel):
     require_email: bool = False
     agent_available: bool = True
     reason: Optional[str] = None  # "expired", "disabled", "not_found"
+    # Agent metadata (only populated when valid)
+    agent_display_name: Optional[str] = None
+    agent_description: Optional[str] = None
+    is_autonomous: bool = False
+    is_read_only: bool = False
 
 
 class VerificationRequest(BaseModel):

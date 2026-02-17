@@ -3,6 +3,22 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-17)**: Public Chat Header Metadata (PUB-004):
+> - **public-agent-links.md**: `GET /api/public/link/{token}` now returns agent metadata
+> - New fields: `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`
+> - Backend fetches display name/description from agent's `/api/template/info` endpoint
+> - Backend fetches autonomy/read-only status from `agents_db`
+> - PublicChat.vue header (lines 4-46) displays agent name, description, and status badges
+> - Status badges: AUTO (amber) if autonomous, READ-ONLY (rose with lock icon) if read-only
+> - Model: `PublicLinkInfo` (db_models.py:336-346) extended with 4 new fields
+>
+> **Updated (2026-02-17)**: Public Chat Agent Introduction (PUB-003):
+> - **public-agent-links.md**: New `GET /api/public/intro/{token}` endpoint sends intro prompt to agent via `/api/task`
+> - Frontend `fetchIntro()` (PublicChat.vue:406-438) displays agent introduction as first chat message
+> - Backend `INTRO_PROMPT` (public.py:300-306) requests 2-paragraph intro
+> - Triggered after email verification or on mount if no verification needed
+> - UI shows "Getting ready..." spinner during fetch, falls back to generic welcome on error
+>
 > **Updated (2026-02-17)**: Read-Only Mode (CFG-007):
 > - **read-only-mode.md**: New feature flow for code protection via Claude Code PreToolUse hooks
 > - Prevents agents from modifying source files (*.py, *.js, CLAUDE.md, etc.) while allowing output directories (content/, output/, reports/)
@@ -494,7 +510,7 @@
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var - enables sharing with users outside VPN, globe icon copy button, auto-CORS (Updated 2026-02-17) |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction - auto-fetches intro via `/api/public/intro/{token}`. **PUB-004**: Header metadata - displays agent name, description, AUTO/READ-ONLY badges (Updated 2026-02-17) |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
