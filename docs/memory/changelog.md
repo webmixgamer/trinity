@@ -1,3 +1,28 @@
+### 2026-02-17 13:45:00
+🧪 **Tests: Read-Only Mode API Tests (CFG-007)**
+
+Added comprehensive test suite for Read-Only Mode feature.
+
+**Test File**: `tests/test_read_only_mode.py` (27 tests)
+
+**Test Categories**:
+- Authentication requirements (2 tests)
+- CRUD operations - GET/PUT endpoints (7 tests)
+- Config patterns - default and custom (5 tests)
+- System agent protection (2 tests)
+- Permission checks (2 tests)
+- Hook injection response (3 tests)
+- Agent state handling (1 test)
+- Response format consistency (3 tests)
+- Input validation (2 tests)
+
+**Test Runner Updated**: `.claude/agents/test-runner.md`
+- Added to "Agent Lifecycle & Management" category
+- Updated test count: ~567 tests across 33 files
+- Updated smoke test count: ~127 tests
+
+---
+
 ### 2026-02-17 10:00:00
 🔒 **Feature: Read-Only Mode for Agents (CFG-007)**
 

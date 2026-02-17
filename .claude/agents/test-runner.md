@@ -149,6 +149,7 @@ The test suite covers:
 - **Agent Shared Folders** (test_shared_folders.py) - Folder expose/consume configuration (Req 9.11)
 - **Agent API Key** (test_agent_api_key_setting.py) - Per-agent API key configuration
 - **Agent Dashboard** (test_agent_dashboard.py) - Agent dashboard configuration and retrieval
+- **Agent Read-Only Mode** (test_read_only_mode.py) - Read-only mode toggle, hook injection, pattern configuration (CFG-007)
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
@@ -192,8 +193,8 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~540 tests across 32 test files
-**Smoke Tests**: ~100 tests (fast, no agent creation)
+**Total Tests**: ~567 tests across 33 test files
+**Smoke Tests**: ~127 tests (fast, no agent creation)
 **Agent-Requiring Tests**: ~390 tests
 **Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
 **WebSocket Tests**: ~10 tests (web terminal, execution streaming)
@@ -230,6 +231,22 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 | Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
 | Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
 | Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
+
+## Recent Test Additions (2026-02-17)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_read_only_mode.py` | Read-Only Mode endpoints (CFG-007) | ~27 tests |
+
+Tests cover:
+- `GET /api/agents/{name}/read-only` - Read-only status and config
+- `PUT /api/agents/{name}/read-only` - Enable/disable with pattern configuration
+- Authentication requirements
+- System agent protection (cannot enable on trinity-system)
+- Default and custom config patterns
+- Hook injection response fields
+- Permission checks (owner-only modification)
+- Input validation (config type, pattern types)
 
 ## Recent Test Additions (2026-02-11)
 
