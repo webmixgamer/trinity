@@ -74,6 +74,12 @@ from .autonomy import (
     set_autonomy_status_logic,
     get_all_autonomy_status_logic,
 )
+from .read_only import (
+    get_read_only_status_logic,
+    set_read_only_status_logic,
+    inject_read_only_hooks,
+    remove_read_only_hooks,
+)
 
 __all__ = [
     # Helpers
@@ -132,4 +138,9 @@ __all__ = [
     "get_autonomy_status_logic",
     "set_autonomy_status_logic",
     "get_all_autonomy_status_logic",
+    # Read-Only Mode
+    "get_read_only_status_logic",
+    "set_read_only_status_logic",
+    "inject_read_only_hooks",
+    "remove_read_only_hooks",
 ]

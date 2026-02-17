@@ -193,6 +193,8 @@ async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request
     agent_dict["can_share"] = db.can_user_share_agent(current_user.username, agent_name)
     agent_dict["can_delete"] = db.can_user_delete_agent(current_user.username, agent_name)
     agent_dict["autonomy_enabled"] = db.get_autonomy_enabled(agent_name)
+    read_only_data = db.get_read_only_mode(agent_name)
+    agent_dict["read_only_enabled"] = read_only_data["enabled"]
 
     if agent_dict["can_share"]:
         shares = db.get_agent_shares(agent_name)
@@ -803,6 +805,46 @@ async def set_agent_autonomy_status(
     When disabled, all schedules are paused.
     """
     return await set_autonomy_status_logic(agent_name, body, current_user)
+
+
+# ============================================================================
+# Read-Only Mode Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/read-only")
+async def get_agent_read_only_status(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the read-only mode status for an agent.
+
+    Returns:
+    - enabled: Whether read-only mode is enabled
+    - config: Current configuration with blocked_patterns and allowed_patterns
+    """
+    from services.agent_service.read_only import get_read_only_status_logic
+    return await get_read_only_status_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/read-only")
+async def set_agent_read_only_status(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the read-only mode status for an agent.
+
+    Body:
+    - enabled: True to enable read-only mode, False to disable
+    - config: Optional dict with 'blocked_patterns' and 'allowed_patterns' lists
+
+    When enabled, the agent cannot modify files matching blocked patterns.
+    Files matching allowed patterns can still be written (e.g., content/, output/).
+    """
+    from services.agent_service.read_only import set_read_only_status_logic
+    return await set_read_only_status_logic(agent_name, body, current_user)
 
 
 # ============================================================================

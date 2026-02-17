@@ -123,6 +123,7 @@ def get_accessible_agents(current_user: User) -> list:
             agent_dict["is_shared"] = False
             agent_dict["is_system"] = False
             agent_dict["autonomy_enabled"] = False
+            agent_dict["read_only_enabled"] = False
             agent_dict["github_repo"] = None
             agent_dict["memory_limit"] = None
             agent_dict["cpu_limit"] = None
@@ -144,6 +145,7 @@ def get_accessible_agents(current_user: User) -> list:
         agent_dict["is_shared"] = is_shared and not is_owner and not is_admin
         agent_dict["is_system"] = metadata.get("is_system", False)
         agent_dict["autonomy_enabled"] = metadata.get("autonomy_enabled", False)
+        agent_dict["read_only_enabled"] = metadata.get("read_only_enabled", False)
         agent_dict["github_repo"] = metadata.get("github_repo")
         agent_dict["memory_limit"] = metadata.get("memory_limit")
         agent_dict["cpu_limit"] = metadata.get("cpu_limit")

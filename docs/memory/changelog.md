@@ -1,3 +1,47 @@
+### 2026-02-17 10:00:00
+🔒 **Feature: Read-Only Mode for Agents (CFG-007)**
+
+Added per-agent read-only mode that prevents agents from modifying source code, configuration files, and other protected paths while allowing output to designated directories.
+
+**How It Works**:
+- Uses Claude Code's PreToolUse hooks to intercept Write/Edit/NotebookEdit operations
+- Pattern-based protection: blocked patterns (e.g., `*.py`) take precedence, allowed patterns (e.g., `output/*`) provide exceptions
+- Hooks are injected at agent startup or when toggling the setting on a running agent
+
+**Frontend**:
+- ReadOnlyToggle component in AgentHeader (rose/red color when enabled, lock icon)
+- Toggle shows loading state during API call
+- Only visible for non-system agents to owners
+
+**Backend**:
+- GET/PUT `/api/agents/{name}/read-only` endpoints
+- Database columns: `read_only_mode` (boolean), `read_only_config` (JSON)
+- Hook injection writes config file, guard script, and merges into `settings.local.json`
+
+**Guard Script** (`config/hooks/read-only-guard.py`):
+- Reads config from `~/.trinity/read-only-config.json`
+- Uses fnmatch for glob pattern matching
+- Exit 0 = allow, Exit 2 = block with stderr feedback
+
+**Default Patterns**:
+- Blocked: `*.py`, `*.js`, `*.ts`, `*.vue`, `*.yaml`, `CLAUDE.md`, `.claude/*`, `.env`, etc.
+- Allowed: `content/*`, `output/*`, `reports/*`, `exports/*`, `*.log`, `*.txt`
+
+**Files Changed**:
+- `src/backend/database.py` - Migration for new columns
+- `src/backend/db/agents.py` - `get_read_only_mode`, `set_read_only_mode`, batch metadata query
+- `src/backend/services/agent_service/read_only.py` - Service layer (new)
+- `src/backend/services/agent_service/lifecycle.py` - Hook injection on agent start
+- `src/backend/routers/agents.py` - GET/PUT endpoints, `read_only_enabled` in agent response
+- `config/hooks/read-only-guard.py` - Guard script (new)
+- `src/frontend/src/components/ReadOnlyToggle.vue` - Toggle component (new)
+- `src/frontend/src/components/AgentHeader.vue` - Added ReadOnlyToggle
+- `src/frontend/src/views/AgentDetail.vue` - Toggle handler
+
+**Requirement**: CFG-007 (docs/requirements/READ_ONLY_MODE.md)
+
+---
+
 ### 2026-02-16 16:00:00
 🔗 **Feature: External Public URL Support (PUB-002)**
 

@@ -3,6 +3,16 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-17)**: Read-Only Mode (CFG-007):
+> - **read-only-mode.md**: New feature flow for code protection via Claude Code PreToolUse hooks
+> - Prevents agents from modifying source files (*.py, *.js, CLAUDE.md, etc.) while allowing output directories (content/, output/, reports/)
+> - Frontend: `ReadOnlyToggle.vue` component in AgentHeader.vue with rose/red color scheme
+> - Backend: `services/agent_service/read_only.py` for hook injection logic
+> - Guard script: `config/hooks/read-only-guard.py` - intercepts Write/Edit/NotebookEdit operations
+> - Database: `read_only_mode` and `read_only_config` columns in `agent_ownership` table
+> - Hooks auto-injected on agent start via `lifecycle.py:243-256`, immediate injection if agent running
+> - Files: `~/.trinity/read-only-config.json`, `~/.trinity/hooks/read-only-guard.py`, merged into `~/.claude/settings.local.json`
+
 > **Updated (2026-02-16)**: Credential Leakage Security Fix - Multi-Layer Sanitization:
 > - **Agent-Side Sanitization**: New `credential_sanitizer.py` utility in `docker/base-image/agent_server/utils/` sanitizes subprocess output and response text before storing
 > - **Backend-Side Sanitization**: New `credential_sanitizer.py` utility in `src/backend/utils/` provides defense-in-depth sanitization before database persistence
@@ -510,6 +520,7 @@
 | **Skills Management UI** | High | [skills-management.md](feature-flows/skills-management.md) | Frontend UI documentation - Skills.vue admin page (CRUD modals, grid layout, type badges), SkillsPanel.vue agent tab (checkbox assignment, Save/Sync buttons). User flows for create/edit/delete skills and assign/sync to agents (Created 2026-01-25) |
 | **Skills Library Sync** | High | [skills-library-sync.md](feature-flows/skills-library-sync.md) | GitHub repository sync for skills library - Settings.vue configuration (URL/branch), git clone/pull operations, GitHub PAT for private repos. Service: `skill_service.py:sync_library()`, Settings: `settings_service.py` (Created 2026-01-25) |
 | **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
+| **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle component in AgentHeader, auto-injection on agent start - **service layer: read_only.py** (CFG-007, Created 2026-02-17) |
 
 ---
 

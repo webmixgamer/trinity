@@ -124,6 +124,16 @@
             @toggle="$emit('toggle-autonomy')"
           />
         </template>
+        <!-- Read-Only Mode Toggle (not for system agents) -->
+        <template v-if="!agent.is_system && agent.can_share">
+          <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+          <ReadOnlyToggle
+            :model-value="agent.read_only_enabled"
+            :loading="readOnlyLoading"
+            size="md"
+            @toggle="$emit('toggle-read-only')"
+          />
+        </template>
         <button
           v-if="agent.can_delete"
           @click="$emit('delete')"
@@ -231,6 +241,7 @@ import RuntimeBadge from './RuntimeBadge.vue'
 import SparklineChart from './SparklineChart.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
 import AutonomyToggle from './AutonomyToggle.vue'
+import ReadOnlyToggle from './ReadOnlyToggle.vue'
 import { useFormatters } from '../composables'
 
 const props = defineProps({
@@ -243,6 +254,10 @@ const props = defineProps({
     default: false
   },
   autonomyLoading: {
+    type: Boolean,
+    default: false
+  },
+  readOnlyLoading: {
     type: Boolean,
     default: false
   },
@@ -306,6 +321,7 @@ defineEmits([
   'toggle',
   'delete',
   'toggle-autonomy',
+  'toggle-read-only',
   'open-resource-modal',
   'git-pull',
   'git-push',

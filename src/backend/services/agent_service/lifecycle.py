@@ -18,6 +18,7 @@ from services.settings_service import get_anthropic_api_key, get_agent_full_capa
 from services.agent_client import get_agent_client
 from services.skill_service import skill_service
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match, check_full_capabilities_match
+from .read_only import inject_read_only_hooks
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,20 @@ async def start_agent_internal(agent_name: str) -> dict:
     skills_result = await inject_assigned_skills(agent_name)
     skills_status = skills_result.get("status", "unknown")
 
+    # Inject read-only hooks if enabled
+    read_only_result = {"status": "skipped", "reason": "not_enabled"}
+    read_only_data = db.get_read_only_mode(agent_name)
+    if read_only_data.get("enabled"):
+        try:
+            read_only_result = await inject_read_only_hooks(agent_name, read_only_data.get("config"))
+            if read_only_result.get("success"):
+                read_only_result["status"] = "success"
+            else:
+                read_only_result["status"] = "failed"
+        except Exception as e:
+            logger.warning(f"Failed to inject read-only hooks into agent {agent_name}: {e}")
+            read_only_result = {"status": "failed", "error": str(e)}
+
     return {
         "message": f"Agent {agent_name} started",
         "trinity_injection": trinity_status,
@@ -246,7 +261,9 @@ async def start_agent_internal(agent_name: str) -> dict:
         "credentials_injection": credentials_status,
         "credentials_result": credentials_result,
         "skills_injection": skills_status,
-        "skills_result": skills_result
+        "skills_result": skills_result,
+        "read_only_injection": read_only_result.get("status", "unknown"),
+        "read_only_result": read_only_result
     }
 
 

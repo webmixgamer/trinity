@@ -257,6 +257,24 @@ def _migrate_agent_ownership_full_capabilities(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_ownership_read_only_mode(cursor, conn):
+    """Add read_only_mode and read_only_config columns to agent_ownership table for code protection."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("read_only_mode", "INTEGER DEFAULT 0"),  # 0 = disabled, 1 = enabled
+        ("read_only_config", "TEXT")  # JSON config for blocked/allowed patterns
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_ownership for read-only mode...")
+            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_def}")
+
+    conn.commit()
+
+
 def _migrate_agent_skills_table(cursor, conn):
     """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
@@ -358,6 +376,11 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_skills): {e}")
 
+        try:
+            _migrate_agent_ownership_read_only_mode(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership read_only_mode): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -387,6 +410,8 @@ def init_database():
                 autonomy_enabled INTEGER DEFAULT 0,
                 memory_limit TEXT,
                 cpu_limit TEXT,
+                read_only_mode INTEGER DEFAULT 0,
+                read_only_config TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -945,6 +970,16 @@ class DatabaseManager:
 
     def set_resource_limits(self, agent_name: str, memory: str = None, cpu: str = None):
         return self._agent_ops.set_resource_limits(agent_name, memory, cpu)
+
+    # =========================================================================
+    # Agent Read-Only Mode (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_read_only_mode(self, agent_name: str):
+        return self._agent_ops.get_read_only_mode(agent_name)
+
+    def set_read_only_mode(self, agent_name: str, enabled: bool, config: dict = None):
+        return self._agent_ops.set_read_only_mode(agent_name, enabled, config)
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)

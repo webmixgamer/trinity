@@ -29,6 +29,7 @@
             :agent="agent"
             :action-loading="actionLoading"
             :autonomy-loading="autonomyLoading"
+            :read-only-loading="readOnlyLoading"
             :agent-stats="agentStats"
             :stats-loading="statsLoading"
             :cpu-history="cpuHistory"
@@ -45,6 +46,7 @@
             @toggle="toggleRunning"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
+            @toggle-read-only="toggleReadOnly"
             @open-resource-modal="showResourceModal = true"
             @git-pull="pullFromGithub"
             @git-push="syncToGithub"
@@ -325,6 +327,9 @@ const {
 // Autonomy mode state
 const autonomyLoading = ref(false)
 
+// Read-only mode state
+const readOnlyLoading = ref(false)
+
 async function toggleAutonomy() {
   if (!agent.value || autonomyLoading.value) return
 
@@ -362,6 +367,46 @@ async function toggleAutonomy() {
     showNotification(error.message || 'Failed to update autonomy mode', 'error')
   } finally {
     autonomyLoading.value = false
+  }
+}
+
+async function toggleReadOnly() {
+  if (!agent.value || readOnlyLoading.value) return
+
+  readOnlyLoading.value = true
+  const newState = !agent.value.read_only_enabled
+
+  try {
+    const response = await fetch(`/api/agents/${agent.value.name}/read-only`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ enabled: newState })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to update read-only mode')
+    }
+
+    const result = await response.json()
+
+    // Update local state
+    agent.value.read_only_enabled = newState
+
+    showNotification(
+      newState
+        ? `Read-only mode enabled. Agent cannot modify source files.${result.hooks_injected ? '' : ' Hooks will be applied on next agent start.'}`
+        : 'Read-only mode disabled. Agent can modify all files.',
+      'success'
+    )
+  } catch (error) {
+    console.error('Failed to toggle read-only mode:', error)
+    showNotification(error.message || 'Failed to update read-only mode', 'error')
+  } finally {
+    readOnlyLoading.value = false
   }
 }
 
