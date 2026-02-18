@@ -1,3 +1,47 @@
+### 2026-02-18 12:00:00
+📝 **Docs: Feature Flow Updates for UI-001 Redesign**
+
+Updated feature flow documentation to reflect Agent Detail Page Redesign changes.
+
+**Files Updated**:
+- `docs/memory/feature-flows.md`: Added UI-001 redesign summary to index with line numbers
+- `docs/memory/feature-flows/tasks-tab.md`: Updated section order (Stats -> Input -> History), new line numbers
+- `docs/memory/feature-flows/agent-resource-allocation.md`: Updated AgentHeader structure (3-row layout), gear button location
+- `docs/memory/feature-flows/agent-lifecycle.md`: Updated AgentHeader line numbers, default tab change note
+
+**Key Changes Documented**:
+- AgentHeader 3-row structure: Row 1 (Identity + Actions), Row 2 (Settings + Stats), Row 3 (Git)
+- TasksPanel reordered: Stats first, then Task Input, then History
+- Default tab: 'tasks' instead of 'info'
+- Fixed-width stats to prevent layout jumping
+
+---
+
+### 2026-02-18 11:00:00
+✨ **Feature: Agent Detail Page Redesign (UI-001)**
+
+Improved visual hierarchy and workflow optimization for the Agent Detail page.
+
+**AgentHeader.vue Restructure** (3 rows):
+- **Row 1 (lines 4-57)**: Agent name `text-2xl`, status badges below name, Running toggle + delete on right
+- **Row 2 (lines 59-163)**: Settings (Autonomy, Read-Only, Tags) on left + Stats (CPU/MEM sparklines, uptime) on right. Fixed widths (`w-10`, `w-14`, `w-16`) prevent layout jumping when stats update. Network stats removed.
+- **Row 3 (lines 165-250)**: Git controls - only when `hasGitSync`, shows "Git enabled" indicator when stopped
+
+**AgentDetail.vue Tab Changes**:
+- Default tab changed from `info` to `tasks` (line 275)
+- New tab order optimized for workflow: Tasks → Terminal → Logs → Files → Schedules → Credentials → Skills → Sharing → Permissions → Git → Folders → Public Links → Info
+- Info tab moved to end (reference/metadata)
+
+**Benefits**:
+- Cleaner visual hierarchy with grouped controls
+- Git controls hidden when not relevant (reduces clutter)
+- Tasks as default landing (where users interact most)
+- Most-used tabs easier to reach
+
+**Spec**: `docs/requirements/AGENT_DETAIL_PAGE_REDESIGN.md`
+
+---
+
 ### 2026-02-18 10:00:00
 🐛 **Bug Fix: Tag API Authentication in AgentDetail.vue**
 

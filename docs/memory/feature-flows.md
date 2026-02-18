@@ -3,6 +3,22 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-18)**: Agent Detail Page Redesign (UI-001):
+> - **AgentHeader.vue**: Restructured into 3 rows for cleaner layout:
+>   - Row 1 (lines 4-57): Identity (name, badges) + Primary Action (toggle, delete)
+>   - Row 2 (lines 59-163): Settings (toggles, tags) on left + Stats (CPU/MEM sparklines, uptime) on right
+>   - Row 3 (lines 165-250): Git controls (conditional, only when hasGitSync)
+>   - Stats display: Fixed widths (`w-10` for CPU%, `w-14` for MEM bytes, `w-16` for uptime) prevent layout jumping
+>   - Network stats removed from display
+> - **AgentDetail.vue**: Default tab changed from 'info' to 'tasks' (line 275: `activeTab = ref('tasks')`)
+>   - Tab order reordered (lines 491-534): Tasks first, Info moved to end
+>   - Order: Tasks, Dashboard*, Terminal, Logs, Files, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Folders*, Public Links*, Info
+>   - (*) = conditional tabs
+> - **TasksPanel.vue**: Tasks tab layout reordered for better UX:
+>   - Section order: Stats (lines 49-69) → Task Input (lines 71-101) → Task History (lines 103-315)
+>   - Stats section more compact: smaller padding (`px-3 py-2`), smaller text (`text-base`, `text-[10px]`)
+>   - Run button now matches textarea height (uses `items-stretch` on container)
+>
 > **Updated (2026-02-18)**: Agent Tags Bug Fix:
 > - **agent-tags.md**: Fixed tag API authentication in AgentDetail.vue - now uses `axios` + `authStore.authHeader` instead of Pinia store wrapper
 > - Tag operations (add, remove, load) now work correctly with proper JWT authentication

@@ -9,6 +9,7 @@ As an agent owner, I want to configure memory and CPU allocation for my agents s
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-02-18 | **UI-001 Redesign**: AgentHeader restructured into 3 rows. Gear button now at line 150-161 in Row 2 (stats row). Stats display inline with CPU/MEM sparklines. Fixed widths prevent layout jumping. |
 | 2026-01-23 | Updated line numbers for all components; AgentHeader gear icons at 224 and 247; ResourceModal extracted to separate component; useAgentSettings composable at 78-110 |
 | 2026-01-02 | Initial documentation |
 
@@ -16,7 +17,7 @@ As an agent owner, I want to configure memory and CPU allocation for my agents s
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/components/AgentHeader.vue:224,247` - Gear icon button in agent header (shown when agent.can_share)
+- **UI**: `src/frontend/src/components/AgentHeader.vue:150-161` - Gear icon button in Row 2 (stats row), shown when agent.can_share
 - **API GET**: `GET /api/agents/{name}/resources` - Fetch current limits
 - **API PUT**: `PUT /api/agents/{name}/resources` - Update limits
 
@@ -28,15 +29,20 @@ As an agent owner, I want to configure memory and CPU allocation for my agents s
 
 **AgentHeader.vue** (`src/frontend/src/components/AgentHeader.vue`)
 
+**Layout**: Header now structured into 3 rows (UI-001 redesign):
+- **Row 1 (lines 4-57)**: Identity (name, badges) + Primary Action (toggle, delete)
+- **Row 2 (lines 59-163)**: Settings (toggles, tags) on left + Stats/Resources on right
+- **Row 3 (lines 165-250)**: Git controls (conditional)
+
 | Line | Element | Description |
 |------|---------|-------------|
-| 222-232 | Gear button (running state) | `@click="$emit('open-resource-modal')"` - next to sparklines |
-| 245-255 | Gear button (stopped state) | `@click="$emit('open-resource-modal')"` - next to "Created X ago" |
-| 192 | CPU limit display | Shows `resourceLimits.current_cpu` |
-| 208 | Memory limit display | Shows `resourceLimits.current_memory` |
-| 242-243 | Stopped state resources | Shows CPU/RAM in stopped state |
-| 295-298 | resourceLimits prop | Receives limits from AgentDetail |
-| 339 | emit definition | `'open-resource-modal'` |
+| 150-161 | Gear button | `@click="$emit('open-resource-modal')"` - in Row 2, after stats/resources |
+| 111-114 | CPU display (running) | Shows `agentStats.cpu_percent` with sparkline, fixed width `w-10` |
+| 127-129 | Memory display (running) | Shows formatted bytes with sparkline, fixed width `w-14` |
+| 132-134 | Uptime display | Shows `formatUptime(agentStats.uptime_seconds)`, fixed width `w-16` |
+| 144-148 | Stopped state resources | Shows "X CPU" and "Xg" from `resourceLimits` |
+| 297-300 | resourceLimits prop | Receives limits from AgentDetail |
+| 350 | emit definition | `'open-resource-modal'` |
 
 **AgentDetail.vue** (`src/frontend/src/views/AgentDetail.vue`)
 
@@ -374,8 +380,8 @@ These labels are read to determine current container resources and compared agai
 
 ```
 1. User clicks gear icon in AgentHeader
-   ├─ AgentHeader.vue:224 or :247 → $emit('open-resource-modal')
-   └─ AgentDetail.vue:49 → showResourceModal = true
+   ├─ AgentHeader.vue:150-161 (Row 2) → $emit('open-resource-modal')
+   └─ AgentDetail.vue:52 → showResourceModal = true
 
 2. Modal opens, shows current limits from composable
    ├─ loadResourceLimits() called on component mount (useAgentSettings.js:78)
@@ -456,12 +462,12 @@ These labels are read to determine current container resources and compared agai
 
 1. **View Resource Settings (Running Agent)**
    - Action: Navigate to agent detail page for a running agent
-   - Expected: Gear icon visible next to CPU/MEM sparklines
-   - Verify: Click opens modal with current values
+   - Expected: Row 2 shows CPU/MEM sparklines with live stats; gear icon visible at end of row
+   - Verify: Click opens modal with current values; stats have fixed widths (no layout jumping)
 
 2. **View Resource Settings (Stopped Agent)**
    - Action: Navigate to agent detail page for a stopped agent
-   - Expected: Gear icon visible in "Created X ago" row
+   - Expected: Row 2 shows "Created X ago | X CPU | Xg" format with gear icon
    - Verify: Click opens modal with current values
 
 3. **Change Memory Limit**

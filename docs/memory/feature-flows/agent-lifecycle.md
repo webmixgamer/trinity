@@ -55,13 +55,15 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 - Line 391-405: `toggleAgentRunning()` method (unified toggle)
 
 **Agent Detail View** - `src/frontend/src/views/AgentDetail.vue`
-- Lines 28-53: AgentHeader with `@toggle="toggleRunning"` event
-- Lines 371-379: `toggleRunning()` function (calls start or stop based on status)
-- Line 137-146: Delete button (conditional on `agent.can_delete`)
+- Lines 28-59: AgentHeader with `@toggle="toggleRunning"` event
+- Line 275: Default tab is now 'tasks' (changed from 'info' in UI-001)
+- Lines 425-434: `toggleRunning()` function (calls start or stop based on status)
+- Lines 44-49: Delete button passed to AgentHeader (conditional on `agent.can_delete`)
 - Lifecycle methods via composable (see below)
 
 **Agent Header** - `src/frontend/src/components/AgentHeader.vue`
-- Lines 48-54: RunningStateToggle (size: lg)
+- **Layout (UI-001)**: 3-row structure - Row 1 (Identity + Actions), Row 2 (Settings + Stats), Row 3 (Git)
+- Lines 38-43: RunningStateToggle (size: lg) in Row 1
 - Emits `toggle` event instead of separate `start`/`stop`
 
 **Agent Node (Dashboard)** - `src/frontend/src/components/AgentNode.vue`
@@ -860,6 +862,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 | **UI-001 Redesign**: Updated AgentHeader structure (3-row layout), RunningStateToggle now at lines 38-43 in Row 1. Default tab changed from 'info' to 'tasks' (line 275). Updated AgentDetail line numbers. |
 | 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that agents can now use Claude Max subscription for all executions (including headless). When "Authenticate in Terminal" is enabled and user logs in via `/login`, the OAuth session in `~/.claude.json` is used for scheduled tasks, MCP calls, and parallel tasks instead of requiring `ANTHROPIC_API_KEY`. |
 | 2026-02-05 | **Bug fix: Orphaned credential injection loop**: Removed dead code in `crud.py:312-332` that iterated over undefined `agent_credentials` variable. This loop was left behind during CRED-002 refactor when the variable definition (lines ~183-192) was removed. Added comment explaining credentials are injected post-creation. |
 | 2026-02-05 | **CRED-002 + Skill Injection on Startup**: Updated `start_agent_internal()` documentation to include full startup injection order: Trinity meta-prompt, credentials (from `.credentials.enc`), skills. Updated lifecycle.py line numbers (now 193-250). Added `check_full_capabilities_match()` to container recreation triggers. |

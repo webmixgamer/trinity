@@ -272,7 +272,7 @@ const authStore = useAuthStore()
 const agent = ref(null)
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref('info')
+const activeTab = ref('tasks')
 const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
 const schedulePrefillMessage = ref('')
@@ -487,15 +487,16 @@ const {
 } = useSessionActivity(agent, agentsStore)
 
 // Computed tabs based on agent permissions and system agent status
+// Tab order optimized for workflow: primary actions first, configuration/reference last
 const visibleTabs = computed(() => {
   const isSystem = agent.value?.is_system
 
+  // Primary tabs - most frequently used
   const tabs = [
-    { id: 'info', label: 'Info' },
     { id: 'tasks', label: 'Tasks' }
   ]
 
-  // Dashboard tab - only show if agent has a dashboard.yaml file
+  // Dashboard tab - only show if agent has a dashboard.yaml file (insert after Tasks)
   if (hasDashboard.value) {
     tabs.push({ id: 'dashboard', label: 'Dashboard' })
   }
@@ -503,30 +504,31 @@ const visibleTabs = computed(() => {
   tabs.push(
     { id: 'terminal', label: 'Terminal' },
     { id: 'logs', label: 'Logs' },
+    { id: 'files', label: 'Files' },
+    { id: 'schedules', label: 'Schedules' },
     { id: 'credentials', label: 'Credentials' },
     { id: 'skills', label: 'Skills' }
   )
 
-  // Sharing/Permissions - hide for system agent (system agent has full access)
+  // Access control tabs - hide for system agent (system agent has full access)
   if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'sharing', label: 'Sharing' })
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
-  // Schedules - show for all agents including system
-  tabs.push({ id: 'schedules', label: 'Schedules' })
-
+  // Git tab - only if git sync enabled
   if (hasGitSync.value) {
     tabs.push({ id: 'git', label: 'Git' })
   }
-
-  tabs.push({ id: 'files', label: 'Files' })
 
   // Folders and Public Links - hide for system agent
   if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'folders', label: 'Folders' })
     tabs.push({ id: 'public-links', label: 'Public Links' })
   }
+
+  // Info at the end (reference/metadata)
+  tabs.push({ id: 'info', label: 'Info' })
 
   return tabs
 })
@@ -722,7 +724,7 @@ onMounted(async () => {
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['info', 'tasks', 'dashboard', 'terminal', 'logs', 'credentials', 'sharing', 'permissions', 'schedules', 'git', 'files', 'folders', 'public-links']
+    const validTabs = ['tasks', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'public-links', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }

@@ -46,9 +46,31 @@
       </div>
     </div>
 
+    <!-- Summary Stats (only if we have history) -->
+    <div v-if="executions.length > 0" class="grid grid-cols-4 gap-3">
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</p>
+        <p class="text-base font-semibold text-gray-900 dark:text-white">{{ executions.length }}</p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">Success Rate</p>
+        <p class="text-base font-semibold" :class="successRate >= 90 ? 'text-green-600' : successRate >= 70 ? 'text-yellow-600' : 'text-red-600'">
+          {{ successRate }}%
+        </p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Cost</p>
+        <p class="text-base font-semibold text-gray-900 dark:text-white font-mono">${{ totalCost.toFixed(4) }}</p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">Avg Duration</p>
+        <p class="text-base font-semibold text-gray-900 dark:text-white">{{ formatDuration(avgDuration) || '-' }}</p>
+      </div>
+    </div>
+
     <!-- New Task Input -->
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-      <div class="flex items-start space-x-3">
+      <div class="flex items-stretch space-x-3">
         <div class="flex-1">
           <textarea
             v-model="newTaskMessage"
@@ -58,13 +80,13 @@
             @keydown.enter.exact.prevent="runNewTask"
             @keydown.meta.enter="runNewTask"
             @keydown.ctrl.enter="runNewTask"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed resize-none"
+            class="w-full h-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed resize-none"
           ></textarea>
         </div>
         <button
           @click="runNewTask"
           :disabled="taskLoading || !newTaskMessage.trim() || agentStatus !== 'running'"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed h-10"
+          class="inline-flex items-center justify-center px-4 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
         >
           <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -76,28 +98,6 @@
       <p v-if="agentStatus !== 'running'" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
         Agent must be running to execute tasks
       </p>
-    </div>
-
-    <!-- Summary Stats (only if we have history) -->
-    <div v-if="executions.length > 0" class="grid grid-cols-4 gap-4">
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total</p>
-        <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ executions.length }}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Success Rate</p>
-        <p class="text-xl font-semibold" :class="successRate >= 90 ? 'text-green-600' : successRate >= 70 ? 'text-yellow-600' : 'text-red-600'">
-          {{ successRate }}%
-        </p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Cost</p>
-        <p class="text-xl font-semibold text-gray-900 dark:text-white font-mono">${{ totalCost.toFixed(4) }}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg Duration</p>
-        <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ formatDuration(avgDuration) || '-' }}</p>
-      </div>
     </div>
 
     <!-- Task History -->
