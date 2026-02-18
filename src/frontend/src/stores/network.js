@@ -119,10 +119,22 @@ export const useNetworkStore = defineStore('network', () => {
     return historicalCollaborations.value[historicalCollaborations.value.length - currentEventIndex.value].timestamp
   })
 
+  // Filter tags for system views
+  const filterTags = ref([])
+
   // Actions
+  function setFilterTags(tags) {
+    filterTags.value = tags || []
+    fetchAgents() // Refetch when filter changes
+  }
+
   async function fetchAgents() {
     try {
-      const response = await axios.get('/api/agents')
+      const params = {}
+      if (filterTags.value.length > 0) {
+        params.tags = filterTags.value.join(',')
+      }
+      const response = await axios.get('/api/agents', { params })
       agents.value = response.data
       convertAgentsToNodes(response.data)
     } catch (error) {
@@ -1290,6 +1302,7 @@ export const useNetworkStore = defineStore('network', () => {
     contextStats,
     executionStats,
     schedules,
+    filterTags,
     // View mode / Replay state
     isTimelineMode,
     isPlaying,
@@ -1310,6 +1323,7 @@ export const useNetworkStore = defineStore('network', () => {
 
     // Actions
     fetchAgents,
+    setFilterTags,
     fetchHistoricalCollaborations,
     fetchHistoricalCommunications: fetchHistoricalCollaborations, // Alias for new terminology
     createHistoricalEdges,

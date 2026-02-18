@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 39 tools for agent lifecycle, chat, system management, credential management (CRED-002), SSH access, skills, and schedule management through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 44 tools for agent lifecycle, chat, system management, credential management (CRED-002), SSH access, skills, schedule management, and tag management through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 
@@ -396,6 +396,18 @@ console.log(`Registered ${totalTools} tools`);
 | Tool | Line | Parameters | Description |
 |------|------|------------|-------------|
 | `get_agent_requirements` | 97-109 | `{}` | Get Trinity Compatible Agent Guide |
+
+### Tag Tools (`src/mcp-server/src/tools/tags.ts`) - ORG-001 Phase 3
+
+| Tool | Line | Parameters | Description |
+|------|------|------------|-------------|
+| `list_tags` | 40-54 | `{}` | List all unique tags with agent counts |
+| `get_agent_tags` | 59-77 | `{agent_name}` | Get tags for a specific agent |
+| `tag_agent` | 82-118 | `{agent_name, tag}` | Add a tag to an agent (with validation) |
+| `untag_agent` | 123-145 | `{agent_name, tag}` | Remove a tag from an agent |
+| `set_agent_tags` | 150-189 | `{agent_name, tags}` | Replace all tags for an agent |
+
+See [Agent Tags & System Views](agent-tags.md) for full tag system documentation.
 
 ### Parallel Mode (Added 2025-12-22)
 
@@ -936,7 +948,7 @@ npm start
 # Test with MCP inspector
 npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 
-# Verify 39 tools are registered:
+# Verify 44 tools are registered:
 # Agent tools (16):
 # - list_agents, get_agent, get_agent_info, create_agent, delete_agent
 # - start_agent, stop_agent, list_templates
@@ -956,6 +968,8 @@ npx @modelcontextprotocol/inspector http://localhost:8080/mcp
 # - list_agent_schedules, create_agent_schedule, get_agent_schedule
 # - update_agent_schedule, delete_agent_schedule, toggle_agent_schedule
 # - trigger_agent_schedule, get_schedule_executions
+# Tag tools (5) - ORG-001 Phase 3:
+# - list_tags, get_agent_tags, tag_agent, untag_agent, set_agent_tags
 ```
 
 ### Race Condition Testing
@@ -982,6 +996,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | **Tag tools (ORG-001 Phase 3)**: Tool count updated from 39 to 44. Added 5 tag management tools: `list_tags`, `get_agent_tags`, `tag_agent`, `untag_agent`, `set_agent_tags`. See [agent-tags.md](agent-tags.md) for full documentation. |
 | 2026-02-13 | **SSH host detection fix (cross-ref)**: The `get_agent_ssh_access` tool now returns correct host in production deployments. See [ssh-access.md](ssh-access.md) for details on the `FRONTEND_URL` domain extraction fix. |
 | 2026-02-05 | **CRED-002 Credential System**: Tool count updated from 36 to 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new credential tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`. Updated all line numbers for agents.ts. |
 | 2026-01-30 | **Async mode (fire-and-forget)**: Added `async` parameter to `chat_with_agent` tool. When `parallel=true` and `async=true`, returns immediately with `execution_id` for polling. Backend spawns background task via `asyncio.create_task()`. Poll `GET /api/agents/{name}/executions/{id}` for results. |
@@ -999,7 +1014,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 ---
 
 ## Status
-Working - All 39 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, CRED-002 credential system, and race condition fixed
+Working - All 44 MCP tools functional with API key authentication, agent-to-agent access control, system agent bypass, CRED-002 credential system, tag management (ORG-001), and race condition fixed
 
 ---
 

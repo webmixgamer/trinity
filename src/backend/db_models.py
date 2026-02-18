@@ -480,3 +480,74 @@ class SkillsLibraryStatus(BaseModel):
     last_sync: Optional[datetime] = None
     commit_sha: Optional[str] = None
     skill_count: int = 0
+
+
+# =========================================================================
+# Agent Tags Models (ORG-001: Agent Systems & Tags)
+# =========================================================================
+
+class AgentTagList(BaseModel):
+    """Response model for agent tags."""
+    agent_name: str
+    tags: List[str]
+
+
+class AgentTagsUpdate(BaseModel):
+    """Request model for setting agent tags."""
+    tags: List[str]
+
+
+class TagWithCount(BaseModel):
+    """Tag with agent count."""
+    tag: str
+    count: int
+
+
+class AllTagsResponse(BaseModel):
+    """Response model for listing all tags."""
+    tags: List[TagWithCount]
+
+
+# =========================================================================
+# System Views Models (ORG-001 Phase 2: Agent Systems & Tags)
+# =========================================================================
+
+class SystemViewCreate(BaseModel):
+    """Request model for creating a system view."""
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None  # Emoji or icon identifier
+    color: Optional[str] = None  # Hex color (e.g., "#8B5CF6")
+    filter_tags: List[str]  # Tags to filter by (OR logic)
+    is_shared: bool = False  # Visible to all users?
+
+
+class SystemViewUpdate(BaseModel):
+    """Request model for updating a system view."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    filter_tags: Optional[List[str]] = None
+    is_shared: Optional[bool] = None
+
+
+class SystemView(BaseModel):
+    """A saved system view (filter for agents)."""
+    id: str
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    filter_tags: List[str]
+    owner_id: str
+    owner_email: Optional[str] = None
+    is_shared: bool = False
+    agent_count: int = 0  # Number of agents matching the filter
+    created_at: str
+    updated_at: str
+
+
+class SystemViewList(BaseModel):
+    """Response model for listing system views."""
+    views: List[SystemView]

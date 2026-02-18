@@ -43,6 +43,8 @@
             :git-has-changes="gitHasChanges"
             :git-changes-count="gitChangesCount"
             :git-behind="gitBehind"
+            :tags="agentTags"
+            :all-tags="allTags"
             @toggle="toggleRunning"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
@@ -51,6 +53,9 @@
             @git-pull="pullFromGithub"
             @git-push="syncToGithub"
             @git-refresh="refreshGitStatus"
+            @update-tags="updateTags"
+            @add-tag="addTag"
+            @remove-tag="removeTag"
           />
 
           <!-- Tabs -->
@@ -269,6 +274,10 @@ const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
 const schedulePrefillMessage = ref('')
 const hasDashboard = ref(false)
+
+// Tags state (ORG-001)
+const agentTags = ref([])
+const allTags = ref([])
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -532,6 +541,62 @@ async function loadAgent() {
   }
 }
 
+// Tags management (ORG-001)
+async function loadTags() {
+  if (!agent.value?.name) return
+  try {
+    const response = await agentsStore.api.get(`/api/agents/${agent.value.name}/tags`)
+    agentTags.value = response.tags || []
+  } catch (err) {
+    console.error('Failed to load tags:', err)
+  }
+}
+
+async function loadAllTags() {
+  try {
+    const response = await agentsStore.api.get('/api/tags')
+    allTags.value = (response.tags || []).map(t => t.tag)
+  } catch (err) {
+    console.error('Failed to load all tags:', err)
+  }
+}
+
+async function updateTags(newTags) {
+  if (!agent.value?.name) return
+  try {
+    const response = await agentsStore.api.put(`/api/agents/${agent.value.name}/tags`, { tags: newTags })
+    agentTags.value = response.tags || []
+    showNotification('Tags updated', 'success')
+  } catch (err) {
+    console.error('Failed to update tags:', err)
+    showNotification('Failed to update tags', 'error')
+  }
+}
+
+async function addTag(tag) {
+  if (!agent.value?.name) return
+  try {
+    const response = await agentsStore.api.post(`/api/agents/${agent.value.name}/tags/${tag}`)
+    agentTags.value = response.tags || []
+    // Refresh all tags to show new tag in autocomplete
+    await loadAllTags()
+  } catch (err) {
+    console.error('Failed to add tag:', err)
+    showNotification(err.response?.data?.detail || 'Failed to add tag', 'error')
+  }
+}
+
+async function removeTag(tag) {
+  if (!agent.value?.name) return
+  try {
+    const response = await agentsStore.api.delete(`/api/agents/${agent.value.name}/tags/${tag}`)
+    agentTags.value = response.tags || []
+  } catch (err) {
+    console.error('Failed to remove tag:', err)
+    showNotification('Failed to remove tag', 'error')
+  }
+}
+
 // Check if agent has a dashboard.yaml file
 async function checkDashboardExists() {
   if (!agent.value?.name) {
@@ -553,6 +618,8 @@ watch(() => route.params.name, async (newName, oldName) => {
     stopAllPolling()
     // Reset dashboard state for new agent
     hasDashboard.value = false
+    // Reset tags for new agent
+    agentTags.value = []
     // Disconnect terminal from old agent
     if (terminalRef.value?.disconnect) {
       terminalRef.value.disconnect()
@@ -562,6 +629,7 @@ watch(() => route.params.name, async (newName, oldName) => {
     await loadSessionInfo()
     await loadApiKeySetting()
     await loadResourceLimits()
+    await loadTags()
     // Check if new agent has dashboard (only when running)
     if (agent.value?.status === 'running') {
       await checkDashboardExists()
@@ -629,6 +697,9 @@ onMounted(async () => {
   await loadSessionInfo()
   await loadApiKeySetting()
   await loadResourceLimits()
+  // Load tags (ORG-001)
+  await loadTags()
+  await loadAllTags()
   // Check for dashboard if agent is running
   if (agent.value?.status === 'running') {
     await checkDashboardExists()

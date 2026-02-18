@@ -224,12 +224,21 @@ class SystemAgentConfig(BaseModel):
     resources: Optional[dict] = None  # {"cpu": "2", "memory": "4g"}
     folders: Optional[dict] = None  # {"expose": bool, "consume": bool}
     schedules: Optional[List[dict]] = None  # [{name, cron, message, ...}]
+    tags: Optional[List[str]] = None  # Additional tags for this agent (ORG-001 Phase 4)
 
 
 class SystemPermissions(BaseModel):
     """Permission configuration for system agents."""
     preset: Optional[str] = None  # "full-mesh", "orchestrator-workers", "none"
     explicit: Optional[Dict[str, List[str]]] = None  # {"orchestrator": ["worker1", "worker2"]}
+
+
+class SystemViewConfig(BaseModel):
+    """Configuration for auto-creating a System View on deploy (ORG-001 Phase 4)."""
+    name: str  # Display name for the view
+    icon: Optional[str] = None  # Emoji icon
+    color: Optional[str] = None  # Hex color
+    shared: bool = True  # Visible to all users?
 
 
 class SystemManifest(BaseModel):
@@ -239,6 +248,9 @@ class SystemManifest(BaseModel):
     prompt: Optional[str] = None
     agents: Dict[str, SystemAgentConfig]
     permissions: Optional[SystemPermissions] = None
+    # ORG-001 Phase 4: Tags and System View support
+    default_tags: Optional[List[str]] = None  # Applied to all agents in manifest
+    system_view: Optional[SystemViewConfig] = None  # Auto-create System View on deploy
 
 
 class SystemDeployRequest(BaseModel):
@@ -256,6 +268,8 @@ class SystemDeployResponse(BaseModel):
     prompt_updated: bool
     permissions_configured: int = 0
     schedules_created: int = 0
+    tags_configured: int = 0  # ORG-001 Phase 4: Number of tags applied
+    system_view_created: Optional[str] = None  # ORG-001 Phase 4: View ID if created
     warnings: List[str] = []
 
 

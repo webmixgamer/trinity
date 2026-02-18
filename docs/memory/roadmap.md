@@ -381,6 +381,16 @@ Items not yet scheduled. Will be prioritized as needed.
 | **MEDIUM** | **MEMORY.md Convention** | Agents maintain curated long-term memory in `MEMORY.md` file. Two-layer system: (1) Daily logs at `memory/YYYY-MM-DD.md` - raw session notes, (2) Long-term memory at `MEMORY.md` - curated insights distilled from daily logs. Agents explicitly told "mental notes don't survive, write to file." Platform injects memory section into CLAUDE.md on startup. Enables agents to get better over time through accumulated corrections. |
 | **MEDIUM** | **Telegram Channel Integration** | Mobile-first interface via Telegram bot. Agent executions send push notifications. Users can approve/reject task outputs, trigger manual executions, and chat with agents from phone. Start with one channel (Telegram), architecture should support adding WhatsApp/Discord/Slack later. Key UX: review agent work while drinking coffee. |
 
+### Agent Systems & Tags (2026-02-17)
+> Spec: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md`
+
+| Status | Priority | Item | Description |
+|--------|----------|------|-------------|
+| ✅ | **MEDIUM** | **Agent Tags (Phase 1)** | Multi-tag support for agents. Tags enable flexible grouping (one agent can belong to multiple systems). API: GET/PUT `/api/agents/{name}/tags`, filter: `/api/agents?tags=dd,content`. Completed 2026-02-17. |
+| ✅ | **MEDIUM** | **System Views (Phase 2)** | Saved filter views for Dashboard. Each view defines a tag filter + metadata (name, icon, color). Click view to filter Dashboard to matching agents. Completed 2026-02-17. |
+| ✅ | **LOW** | **MCP Tag Tools (Phase 3)** | 5 tools: `list_tags`, `get_agent_tags`, `tag_agent`, `untag_agent`, `set_agent_tags`. Quick tag filter in Dashboard header. Bulk tag operations on Agents page. Completed 2026-02-17. |
+| ✅ | **LOW** | **System Manifest Integration (Phase 4)** | Add `tags` field to manifest YAML, auto-apply `system_prefix` as tag, optional auto-create System View. Migration script for existing prefixes. Completed 2026-02-17. |
+
 ### Previous Backlog
 
 | Priority | Item | Requirement |

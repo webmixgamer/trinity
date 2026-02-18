@@ -147,6 +147,19 @@
       </div>
     </div>
 
+    <!-- Tags Row -->
+    <div class="mt-2 flex items-center">
+      <span class="text-xs text-gray-400 dark:text-gray-500 mr-2">Tags:</span>
+      <TagsEditor
+        :model-value="tags"
+        :editable="agent.can_share"
+        :all-tags="allTags"
+        @update:model-value="$emit('update-tags', $event)"
+        @add="$emit('add-tag', $event)"
+        @remove="$emit('remove-tag', $event)"
+      />
+    </div>
+
     <!-- Live Stats Row (only when running) -->
     <div v-if="agent.status === 'running'" class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
       <div v-if="statsLoading && !agentStats" class="flex items-center space-x-2 text-xs text-gray-400 dark:text-gray-500">
@@ -242,6 +255,7 @@ import SparklineChart from './SparklineChart.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
 import AutonomyToggle from './AutonomyToggle.vue'
 import ReadOnlyToggle from './ReadOnlyToggle.vue'
+import TagsEditor from './TagsEditor.vue'
 import { useFormatters } from '../composables'
 
 const props = defineProps({
@@ -314,6 +328,15 @@ const props = defineProps({
   gitBehind: {
     type: Number,
     default: 0
+  },
+  // Tags props (ORG-001)
+  tags: {
+    type: Array,
+    default: () => []
+  },
+  allTags: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -325,7 +348,10 @@ defineEmits([
   'open-resource-modal',
   'git-pull',
   'git-push',
-  'git-refresh'
+  'git-refresh',
+  'update-tags',
+  'add-tag',
+  'remove-tag'
 ])
 
 const { formatBytes, formatUptime, formatRelativeTime } = useFormatters()

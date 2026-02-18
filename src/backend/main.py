@@ -57,6 +57,8 @@ from routers.audit import router as audit_router
 from routers.docs import router as docs_router
 from routers.skills import router as skills_router
 from routers.internal import router as internal_router
+from routers.tags import router as tags_router
+from routers.system_views import router as system_views_router
 
 # Import activity service
 from services.activity_service import activity_service
@@ -309,6 +311,8 @@ app.include_router(audit_router)  # IT5 P1: Audit logging
 app.include_router(docs_router)   # Process documentation serving
 app.include_router(skills_router) # Skills Management System
 app.include_router(internal_router)  # Internal agent-to-backend endpoints (no auth)
+app.include_router(tags_router)  # Agent Tags (ORG-001)
+app.include_router(system_views_router)  # System Views (ORG-001 Phase 2)
 
 
 # WebSocket endpoint

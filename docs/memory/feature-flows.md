@@ -3,6 +3,31 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-17)**: Agent Tags & System Views (ORG-001 Phase 1-4 COMPLETE):
+> - **Phase 1 (Tags)**: Lightweight agent tagging system for organizational grouping
+>   - Backend: `db/tags.py` (TagOperations), `routers/tags.py` (5 endpoints)
+>   - Frontend: `TagsEditor.vue` component with inline editing and autocomplete
+>   - Integration: Tags row in `AgentHeader.vue`, API calls in `AgentDetail.vue`
+>   - Database: `agent_tags` table with composite primary key
+>   - API: `GET /api/tags`, `GET/PUT/POST/DELETE /api/agents/{name}/tags`, `GET /api/agents?tags=` filtering
+> - **Phase 2 (System Views)**: Saved filters that group agents by tags
+>   - Backend: `db/system_views.py` (SystemViewOperations), `routers/system_views.py` (5 endpoints)
+>   - Frontend: `SystemViewsSidebar.vue` collapsible sidebar, `SystemViewEditor.vue` modal
+>   - Store: `systemViews.js` Pinia store with localStorage persistence
+>   - Dashboard: Sidebar integration, filter reactivity via `network.js:setFilterTags()`
+>   - Database: `system_views` table with owner_id FK, agent_count computed on fetch
+>   - API: `GET/POST /api/system-views`, `GET/PUT/DELETE /api/system-views/{id}`
+> - **Phase 3 (Polish)**: MCP tools, quick tag filter, bulk operations
+>   - MCP: 5 tools in `tools/tags.ts` (list_tags, get_agent_tags, tag_agent, untag_agent, set_agent_tags)
+>   - Dashboard: Quick tag filter pills in header with multi-select support
+>   - Agents Page: Bulk tag operations (select multiple agents, add/remove tags), tag filter dropdown
+> - **Phase 4 (System Manifest Integration)**: Auto-apply tags and System Views on system deployment
+>   - Models: `SystemAgentConfig.tags`, `SystemManifest.default_tags`, `SystemManifest.system_view`, `SystemViewConfig`
+>   - Service: `configure_tags()` (lines 429-480), `create_system_view()` (lines 483-534) in `system_service.py`
+>   - Router: `deploy_system()` steps 10-11 for tag/view creation, response includes `tags_configured`, `system_view_created`
+>   - Migration: `scripts/management/migrate_prefixes_to_tags.py` for existing agent prefixes
+> - Spec: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md`
+>
 > **Updated (2026-02-17)**: Public Client Mode Awareness (PUB-006) + Bottom-Aligned Chat:
 > - **public-agent-links.md**: Agents now know when serving public users via `PUBLIC_LINK_MODE_HEADER` constant
 > - Header `"### Trinity: Public Link Access Mode"` prepended to all public chat prompts (`db/public_chat.py:17-18,265-266`)
@@ -500,7 +525,7 @@
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 39 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule management (Updated 2026-02-05) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 44 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule, 5 tag (ORG-001) (Updated 2026-02-17) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional). **2026-01-30**: Shared users can now git pull (was owner-only) |
@@ -524,7 +549,7 @@
 | **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File collaboration via shared volumes - **service layer: folders.py** (Updated 2025-12-27) |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
-| **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
+| **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - permissions, folders, schedules, auto-start. **ORG-001 Phase 4**: `default_tags`, per-agent `tags`, `system_view` auto-creation. `configure_tags()`, `create_system_view()` in system_service.py. Response: `tags_configured`, `system_view_created` (Updated 2026-02-17) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
@@ -556,6 +581,7 @@
 | **Skills Library Sync** | High | [skills-library-sync.md](feature-flows/skills-library-sync.md) | GitHub repository sync for skills library - Settings.vue configuration (URL/branch), git clone/pull operations, GitHub PAT for private repos. Service: `skill_service.py:sync_library()`, Settings: `settings_service.py` (Created 2026-01-25) |
 | **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
 | **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle component in AgentHeader, auto-injection on agent start - **service layer: read_only.py** (CFG-007, Created 2026-02-17) |
+| **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page. **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Phase 1-3 Complete, 2026-02-17) |
 
 ---
 
@@ -624,6 +650,7 @@ The Process Engine is a major platform feature that enables defining, executing,
 
 | Document | Priority | Status | Description |
 |----------|----------|--------|-------------|
+| [AGENT_SYSTEMS_AND_TAGS.md](../requirements/AGENT_SYSTEMS_AND_TAGS.md) | **MEDIUM** | **IMPLEMENTED** | Lightweight agent organization via tags and saved system views. **Phase 1 (Tags)**: `db/tags.py`, `routers/tags.py`, `TagsEditor.vue`, AgentHeader/AgentDetail integration, `/api/agents?tags=` filtering. **Phase 2 (System Views)**: `db/system_views.py`, `routers/system_views.py`, `SystemViewsSidebar.vue`, `SystemViewEditor.vue`, `systemViews.js` store, Dashboard integration with filter reactivity. (Completed 2026-02-17) |
 | [PUBLIC_EXTERNAL_ACCESS_SETUP.md](../requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md) | **MEDIUM** | **NOT STARTED** | Infrastructure setup guide for exposing public endpoints outside VPN - Tailscale Funnel, GCP Load Balancer, or Cloudflare Tunnel options (Created 2026-02-16) |
 
 ---

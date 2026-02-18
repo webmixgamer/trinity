@@ -1,3 +1,131 @@
+### 2026-02-17 22:30:00
+✨ **Feature: System Manifest Integration (ORG-001 Phase 4)**
+
+Integrated agent tags with system manifest deployment. Tags are now automatically applied when deploying multi-agent systems via YAML.
+
+**Backend Models** (`src/backend/models.py`):
+- `SystemAgentConfig`: Added `tags` field for per-agent tags
+- `SystemViewConfig`: New model for auto-creating System Views on deploy
+- `SystemManifest`: Added `default_tags` and `system_view` fields
+- `SystemDeployResponse`: Added `tags_configured` and `system_view_created` fields
+
+**Backend Service** (`src/backend/services/system_service.py`):
+- `parse_manifest()`: Parses tags and system_view from YAML
+- `validate_manifest()`: Validates tag format (alphanumeric + hyphens)
+- `configure_tags()`: Applies system prefix + default_tags + per-agent tags
+- `create_system_view()`: Creates System View with filter tags from manifest
+- `export_manifest()`: Includes tags in exported YAML
+
+**Backend Router** (`src/backend/routers/systems.py`):
+- `deploy_system()`: Integrated tag and system view creation after agent creation
+- Response now includes tag count and system view ID
+
+**Migration Script** (`scripts/management/migrate_prefixes_to_tags.py`):
+- Extracts existing agent prefixes as tags
+- Supports `--dry-run` mode for preview
+- Example: `research-team-analyst` → tag `research-team`
+
+**YAML Schema Extension**:
+```yaml
+default_tags: [research, production]  # Applied to all agents
+system_view:                          # Auto-create System View
+  name: Research Team
+  icon: "🔬"
+  shared: true
+agents:
+  orchestrator:
+    template: github:Org/repo
+    tags: [lead]                      # Per-agent tags
+```
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 4 complete)
+
+---
+
+### 2026-02-17 22:00:00
+✨ **Feature: Tags Polish & Integration (ORG-001 Phase 3)**
+
+Completed Phase 3 with MCP tools, quick tag filter, and bulk tag operations.
+
+**MCP Server** (`src/mcp-server/src/`):
+- `tools/tags.ts`: 5 new tag management tools
+  - `list_tags` - List all tags with agent counts
+  - `get_agent_tags` - Get tags for an agent
+  - `tag_agent` - Add tag to an agent
+  - `untag_agent` - Remove tag from an agent
+  - `set_agent_tags` - Replace all tags for an agent
+- `client.ts`: Added 5 tag-related client methods
+- `server.ts`: Registered tag tools (total 45+ tools now)
+
+**Frontend** (`src/frontend/src/`):
+- `views/Dashboard.vue`: Quick tag filter in header
+  - Inline tag pills for fast filtering
+  - Dropdown for additional tags
+  - Syncs with System Views selection
+- `views/Agents.vue`: Bulk tag operations
+  - Selection checkboxes on agent cards
+  - Tag chips display on cards
+  - Tag filter dropdown
+  - Bulk actions toolbar (add/remove tags to selected)
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 3 complete)
+
+---
+
+### 2026-02-17 21:15:00
+✨ **Feature: System Views (ORG-001 Phase 2)**
+
+Implemented System Views - saved filters that group agents by tags. Views appear in a collapsible sidebar on the Dashboard.
+
+**Backend** (`src/backend/`):
+- `db/system_views.py`: SystemViewOperations class with CRUD methods, access control
+- `routers/system_views.py`: System Views API endpoints
+  - `GET /api/system-views` - List user's views + shared views
+  - `POST /api/system-views` - Create new view
+  - `GET /api/system-views/{id}` - Get view details
+  - `PUT /api/system-views/{id}` - Update view
+  - `DELETE /api/system-views/{id}` - Delete view
+- `database.py`: Added `system_views` table with indexes, delegated methods
+- `db_models.py`: Added `SystemView`, `SystemViewCreate`, `SystemViewUpdate`, `SystemViewList` models
+- `main.py`: Registered system_views_router
+
+**Frontend** (`src/frontend/src/`):
+- `stores/systemViews.js`: Pinia store for system views state management
+- `components/SystemViewsSidebar.vue`: Collapsible sidebar showing views list
+- `components/SystemViewEditor.vue`: Modal for create/edit with tag selection
+- `views/Dashboard.vue`: Integrated sidebar, added filtering watcher
+- `stores/network.js`: Added `setFilterTags()` for view-based filtering
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 2 complete)
+
+---
+
+### 2026-02-17 20:30:00
+✨ **Feature: Agent Tags (ORG-001 Phase 1)**
+
+Implemented agent tagging system for lightweight organizational grouping. Agents can have multiple tags, enabling multi-system membership.
+
+**Backend** (`src/backend/`):
+- `db/tags.py`: TagOperations class with CRUD methods
+- `routers/tags.py`: Tag API endpoints
+  - `GET /api/tags` - List all tags with counts
+  - `GET /api/agents/{name}/tags` - Get agent tags
+  - `PUT /api/agents/{name}/tags` - Replace all tags
+  - `POST /api/agents/{name}/tags/{tag}` - Add single tag
+  - `DELETE /api/agents/{name}/tags/{tag}` - Remove single tag
+- `routers/agents.py`: Added `?tags=` query parameter for filtering agents by tag
+- `database.py`: Added `agent_tags` table with indexes
+- `db_models.py`: Added `AgentTagList`, `AgentTagsUpdate`, `TagWithCount`, `AllTagsResponse` models
+
+**Frontend** (`src/frontend/src/`):
+- `components/TagsEditor.vue`: Reusable tag editor with autocomplete (94 lines)
+- `components/AgentHeader.vue`: Tags row with inline editing
+- `views/AgentDetail.vue`: Tag loading, updating, and API integration
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 1 complete)
+
+---
+
 ### 2026-02-17 19:55:00
 🎨 **UI: Add Trinity Logo and Branding to Public Chat**
 

@@ -313,6 +313,14 @@ marked.setOptions({
   gfm: true      // GitHub Flavored Markdown
 })
 
+// Custom renderer to open links in new window
+const renderer = new marked.Renderer()
+renderer.link = (href, title, text) => {
+  const titleAttr = title ? ` title="${title}"` : ''
+  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
+}
+marked.use({ renderer })
+
 const route = useRoute()
 const token = computed(() => route.params.token)
 

@@ -692,6 +692,61 @@ export class TrinityClient {
   }
 
   // ============================================================================
+  // Tags (ORG-001)
+  // ============================================================================
+
+  /**
+   * List all unique tags with agent counts
+   */
+  async listAllTags(): Promise<{ tags: Array<{ tag: string; count: number }> }> {
+    return this.request<{ tags: Array<{ tag: string; count: number }> }>(
+      "GET",
+      "/api/tags"
+    );
+  }
+
+  /**
+   * Get tags for a specific agent
+   */
+  async getAgentTags(name: string): Promise<{ agent_name: string; tags: string[] }> {
+    return this.request<{ agent_name: string; tags: string[] }>(
+      "GET",
+      `/api/agents/${encodeURIComponent(name)}/tags`
+    );
+  }
+
+  /**
+   * Add a single tag to an agent
+   */
+  async addAgentTag(name: string, tag: string): Promise<{ agent_name: string; tags: string[] }> {
+    return this.request<{ agent_name: string; tags: string[] }>(
+      "POST",
+      `/api/agents/${encodeURIComponent(name)}/tags/${encodeURIComponent(tag)}`
+    );
+  }
+
+  /**
+   * Remove a single tag from an agent
+   */
+  async removeAgentTag(name: string, tag: string): Promise<{ agent_name: string; tags: string[] }> {
+    return this.request<{ agent_name: string; tags: string[] }>(
+      "DELETE",
+      `/api/agents/${encodeURIComponent(name)}/tags/${encodeURIComponent(tag)}`
+    );
+  }
+
+  /**
+   * Replace all tags for an agent
+   */
+  async setAgentTags(name: string, tags: string[]): Promise<{ agent_name: string; tags: string[] }> {
+    return this.request<{ agent_name: string; tags: string[] }>(
+      "PUT",
+      `/api/agents/${encodeURIComponent(name)}/tags`,
+      { tags }
+    );
+  }
+
+  // ============================================================================
   // Health
   // ============================================================================
 

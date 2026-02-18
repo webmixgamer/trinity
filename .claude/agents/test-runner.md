@@ -150,6 +150,7 @@ The test suite covers:
 - **Agent API Key** (test_agent_api_key_setting.py) - Per-agent API key configuration
 - **Agent Dashboard** (test_agent_dashboard.py) - Agent dashboard configuration and retrieval
 - **Agent Read-Only Mode** (test_read_only_mode.py) - Read-only mode toggle, hook injection, pattern configuration (CFG-007)
+- **Agent Tags** (test_tags.py) - [TESTS NEEDED] Tag CRUD, validation, filtering, agent deletion cleanup (ORG-001)
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
@@ -160,7 +161,8 @@ The test suite covers:
 - **Execution Termination** (test_execution_termination.py) - Stop running executions, running execution list (Added 2026-01-12)
 
 ### System & Deployment
-- **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules (Req 10.7)
+- **System Manifest** (test_systems.py) - Multi-agent deployment from YAML, permissions, folders, schedules, tags (Req 10.7, ORG-001)
+- **System Views** (test_system_views.py) - [TESTS NEEDED] System view CRUD, agent_count, auto-creation from manifest (ORG-001)
 - **Local Deployment** (test_deploy_local.py) - Deploy local agents via MCP (Req 11.2)
 - **Public Links** (test_public_links.py) - Public agent sharing with email verification (Req 11.3)
 
@@ -193,11 +195,12 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~567 tests across 33 test files
+**Total Tests**: ~567 tests across 33 test files (excluding ORG-001 tests not yet implemented)
 **Smoke Tests**: ~127 tests (fast, no agent creation)
 **Agent-Requiring Tests**: ~390 tests
 **Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
 **WebSocket Tests**: ~10 tests (web terminal, execution streaming)
+**Tests Needed**: ~35 tests (ORG-001 tags ~20, system views ~15)
 
 ## Expected Skipped Tests (~38 tests)
 
@@ -224,13 +227,57 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
 
-## Known Issues (2026-02-05)
+## Known Issues (2026-02-18)
 
 | Issue | Test | Severity | Status |
 |-------|------|----------|--------|
 | Executions returns 200 for nonexistent agent | `test_executions.py::test_get_executions_nonexistent_agent_returns_404` | Low | API contract inconsistency |
 | Log archive tests need docker package | `test_log_archive.py` | Low | `pip install docker` in test env |
 | Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
+| ORG-001 Tags pytest tests not implemented | `test_tags.py` | Medium | Manual testing complete, pytest needed |
+| ORG-001 System Views pytest tests not implemented | `test_system_views.py` | Medium | Manual testing complete, pytest needed |
+
+## Recent Test Additions (2026-02-18)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_tags.py` | Agent Tags CRUD (ORG-001) | ~20 tests needed |
+| `test_system_views.py` | System Views CRUD (ORG-001) | ~15 tests needed |
+
+**Manual Testing Completed (2026-02-18)**:
+
+ORG-001 Agent Tags & System Views feature manually validated:
+
+**Phase 1: Tags CRUD** ✅
+- `GET /api/tags` - List all tags with counts
+- `GET /api/agents/{name}/tags` - Get agent tags
+- `POST /api/agents/{name}/tags/{tag}` - Add single tag
+- `PUT /api/agents/{name}/tags` - Replace all tags (with deduplication)
+- `DELETE /api/agents/{name}/tags/{tag}` - Remove tag
+- `GET /api/agents?tags=tag1,tag2` - Filter agents by tags (OR logic)
+- Tag validation: empty, length >50, special chars rejected
+- Tag normalization: uppercase → lowercase
+
+**Phase 2: System Views CRUD** ✅
+- `POST /api/system-views` - Create view with filter_tags, icon, color
+- `GET /api/system-views` - List views with agent_count
+- `GET /api/system-views/{id}` - Get single view
+- `PUT /api/system-views/{id}` - Partial update
+- `DELETE /api/system-views/{id}` - Delete view
+
+**Phase 3: MCP Tools** ⚠️ (code verified, SSE session required for runtime test)
+- `list_tags`, `get_agent_tags`, `tag_agent`, `untag_agent`, `set_agent_tags`
+
+**Phase 4: System Manifest Integration** ✅
+- `default_tags` applied to all agents in system
+- System prefix auto-applied as tag
+- Per-agent `tags` applied
+- `system_view` section auto-creates view with custom name/icon/color
+- Dry run shows `agents_to_create` preview
+
+**Bug Fixes During Testing**:
+- Fixed tags.py dependency mismatch (AuthorizedAgentByName → AuthorizedAgent)
+- Added agent tag cleanup on agent deletion
 
 ## Recent Test Additions (2026-02-17)
 
@@ -277,7 +324,74 @@ Tests cover:
 - `POST /api/agents/{name}/executions/{execution_id}/terminate` - Stop running executions
 - Activity tracking for EXECUTION_CANCELLED events
 
-## Tests Needed (2026-02-05)
+## Tests Needed (2026-02-18)
+
+### Agent Tags (test_tags.py) - ORG-001
+
+Feature implemented 2026-02-18, pytest tests needed. Should cover:
+
+**Tags CRUD**
+- List all tags → returns `{tags: [{tag, count}]}` sorted by count desc
+- Get agent tags → returns `{agent_name, tags}` sorted alphabetically
+- Add tag → normalizes to lowercase, validates format
+- Add duplicate tag → idempotent (no error)
+- Replace all tags → clears and sets new tags
+- Replace with duplicates → deduplicates
+- Clear tags → empty array removes all tags
+- Remove tag → removes from agent
+- Remove non-existent tag → idempotent (no error)
+
+**Tag Validation**
+- Empty tag → 400 error
+- Tag >50 chars → 400 error
+- Tag with special chars → 400 error
+- Tag with uppercase → normalized to lowercase
+
+**Filtering**
+- Filter agents by single tag → returns matching agents
+- Filter by multiple tags → OR logic (any tag matches)
+- Each agent in response includes `tags` array
+
+**Cleanup**
+- Agent deletion → tags cleaned up (no orphaned tags)
+
+### System Views (test_system_views.py) - ORG-001
+
+Feature implemented 2026-02-18, pytest tests needed. Should cover:
+
+**Views CRUD**
+- Create view with filter_tags, icon, color → returns view with ID
+- Create without required fields → 422 error
+- List views → includes agent_count, sorted alphabetically
+- Get view by ID → returns full details
+- Get non-existent view → 404
+- Update view (partial) → updated_at changes
+- Delete view → 204, removed from list
+
+**Access Control**
+- User sees own views + shared views
+- User cannot modify others' non-shared views
+- Admin can see all views
+
+**Agent Count**
+- agent_count reflects agents matching filter_tags
+- agent_count updates when tags change
+
+### System Manifest Tags (test_systems.py updates)
+
+Tests for tag integration in system deployment:
+
+**Tag Application**
+- `default_tags` applied to all agents
+- System prefix auto-applied as tag
+- Per-agent `tags` merged with defaults
+- Dry run shows tags to be configured
+
+**System View Auto-Creation**
+- `system_view` section creates view automatically
+- View filters by system prefix + default_tags
+- Custom name/icon/color applied
+- `system_view_created` in response contains view ID
 
 ### Trinity Connect (test_trinity_connect.py)
 

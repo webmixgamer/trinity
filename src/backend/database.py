@@ -93,6 +93,8 @@ from db.public_links import PublicLinkOperations
 from db.email_auth import EmailAuthOperations
 from db.skills import SkillsOperations
 from db.public_chat import PublicChatOperations
+from db.tags import TagOperations
+from db.system_views import SystemViewOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -723,6 +725,34 @@ def init_database():
             )
         """)
 
+        # Agent tags table (ORG-001: Agent Systems & Tags)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_tags (
+                agent_name TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (agent_name, tag),
+                FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name) ON DELETE CASCADE
+            )
+        """)
+
+        # System views table (ORG-001 Phase 2: Agent Systems & Tags)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_views (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                color TEXT,
+                filter_tags TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                is_shared INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(id)
+            )
+        """)
+
         # Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub)")
@@ -777,10 +807,15 @@ def init_database():
         # Agent skills indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_name)")
+        # Agent tags indexes (ORG-001)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_tags_tag ON agent_tags(tag)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_tags_agent ON agent_tags(agent_name)")
         # Public chat session indexes (Phase 12.2.5)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_link ON public_chat_sessions(link_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_identifier ON public_chat_sessions(session_identifier)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_messages_session ON public_chat_messages(session_id)")
+        # System views indexes (ORG-001 Phase 2)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_views_owner ON system_views(owner_id)")
 
         conn.commit()
 
@@ -880,6 +915,8 @@ class DatabaseManager:
         self._email_auth_ops = EmailAuthOperations(self._user_ops)
         self._skills_ops = SkillsOperations()
         self._public_chat_ops = PublicChatOperations()
+        self._tag_ops = TagOperations()
+        self._system_view_ops = SystemViewOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1430,6 +1467,65 @@ class DatabaseManager:
 
     def delete_public_link_sessions(self, link_id: str):
         return self._public_chat_ops.delete_link_sessions(link_id)
+
+    # =========================================================================
+    # Agent Tags (delegated to db/tags.py) - ORG-001
+    # =========================================================================
+
+    def get_agent_tags(self, agent_name: str):
+        return self._tag_ops.get_agent_tags(agent_name)
+
+    def set_agent_tags(self, agent_name: str, tags: list):
+        return self._tag_ops.set_agent_tags(agent_name, tags)
+
+    def add_agent_tag(self, agent_name: str, tag: str):
+        return self._tag_ops.add_tag(agent_name, tag)
+
+    def remove_agent_tag(self, agent_name: str, tag: str):
+        return self._tag_ops.remove_tag(agent_name, tag)
+
+    def list_all_tags(self):
+        return self._tag_ops.list_all_tags()
+
+    def get_agents_by_tag(self, tag: str):
+        return self._tag_ops.get_agents_by_tag(tag)
+
+    def get_agents_by_tags(self, tags: list):
+        return self._tag_ops.get_agents_by_tags(tags)
+
+    def delete_agent_tags(self, agent_name: str):
+        return self._tag_ops.delete_agent_tags(agent_name)
+
+    def get_tags_for_agents(self, agent_names: list):
+        return self._tag_ops.get_tags_for_agents(agent_names)
+
+    # =========================================================================
+    # System Views (delegated to db/system_views.py) - ORG-001 Phase 2
+    # =========================================================================
+
+    def create_system_view(self, owner_id: str, data):
+        return self._system_view_ops.create_view(owner_id, data)
+
+    def get_system_view(self, view_id: str):
+        return self._system_view_ops.get_view(view_id)
+
+    def list_user_system_views(self, user_id: str):
+        return self._system_view_ops.list_user_views(user_id)
+
+    def list_all_system_views(self):
+        return self._system_view_ops.list_all_views()
+
+    def update_system_view(self, view_id: str, data):
+        return self._system_view_ops.update_view(view_id, data)
+
+    def delete_system_view(self, view_id: str):
+        return self._system_view_ops.delete_view(view_id)
+
+    def can_user_view_system_view(self, user_id: str, view_id: str):
+        return self._system_view_ops.can_user_view(user_id, view_id)
+
+    def can_user_edit_system_view(self, user_id: str, view_id: str, is_admin: bool = False):
+        return self._system_view_ops.can_user_edit_view(user_id, view_id, is_admin)
 
 
 # Global database manager instance

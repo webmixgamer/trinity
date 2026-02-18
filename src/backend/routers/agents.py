@@ -130,9 +130,41 @@ async def create_agent_internal(
 # ============================================================================
 
 @router.get("")
-async def list_agents_endpoint(request: Request, current_user: User = Depends(get_current_user)):
-    """List all agents accessible to the current user."""
-    return get_accessible_agents(current_user)
+async def list_agents_endpoint(
+    request: Request,
+    tags: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all agents accessible to the current user.
+
+    Args:
+        tags: Optional comma-separated list of tags to filter by (OR logic).
+              Example: ?tags=due-diligence,content-ops
+
+    Returns:
+        List of agents with their metadata including tags.
+    """
+    from database import db
+
+    agents = get_accessible_agents(current_user)
+
+    # If tags filter specified, filter agents
+    if tags:
+        tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()]
+        if tag_list:
+            # Get agents that have any of the specified tags
+            matching_agents = set(db.get_agents_by_tags(tag_list))
+            agents = [a for a in agents if a.get("name") in matching_agents]
+
+    # Add tags to each agent in response
+    agent_names = [a.get("name") for a in agents]
+    all_tags = db.get_tags_for_agents(agent_names)
+
+    for agent in agents:
+        agent["tags"] = all_tags.get(agent.get("name"), [])
+
+    return agents
 
 
 @router.get("/context-stats")
@@ -295,6 +327,12 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
             pass
     except Exception as e:
         logger.warning(f"Failed to delete shared folder config for agent {agent_name}: {e}")
+
+    # Delete agent tags (ORG-001)
+    try:
+        db.delete_agent_tags(agent_name)
+    except Exception as e:
+        logger.warning(f"Failed to delete tags for agent {agent_name}: {e}")
 
     db.delete_agent_ownership(agent_name)
 
