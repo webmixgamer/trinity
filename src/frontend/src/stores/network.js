@@ -818,7 +818,12 @@ export const useNetworkStore = defineStore('network', () => {
     // Poll every 10 seconds
     agentRefreshInterval.value = setInterval(async () => {
       try {
-        const response = await axios.get('/api/agents')
+        // Respect filter tags when refreshing (ORG-001 fix)
+        const params = {}
+        if (filterTags.value.length > 0) {
+          params.tags = filterTags.value.join(',')
+        }
+        const response = await axios.get('/api/agents', { params })
         const newAgents = response.data
 
         // Check if agent list has changed (new agents or deleted agents)
