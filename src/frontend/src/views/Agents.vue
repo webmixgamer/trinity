@@ -237,13 +237,21 @@
               {{ getActivityState(agent.name) }}
             </div>
 
-            <!-- Running and Autonomy toggles (same row) -->
+            <!-- Running, Read-Only, and Autonomy toggles (same row) -->
             <div class="flex items-center justify-between mb-2">
               <RunningStateToggle
                 :model-value="agent.status === 'running'"
                 :loading="actionInProgress === agent.name"
                 size="sm"
                 @toggle="toggleAgentRunning(agent)"
+              />
+              <ReadOnlyToggle
+                v-if="!agent.is_system && !agent.is_shared"
+                :model-value="getAgentReadOnlyState(agent.name)"
+                :loading="readOnlyLoading === agent.name"
+                size="sm"
+                :show-label="false"
+                @toggle="handleReadOnlyToggle(agent)"
               />
               <AutonomyToggle
                 v-if="!agent.is_system"
@@ -259,21 +267,24 @@
               Type: {{ agent.type }}
             </div>
 
-            <!-- Tags display -->
-            <div v-if="getAgentTags(agent.name).length > 0" class="flex flex-wrap gap-1 mb-3">
-              <span
-                v-for="tag in getAgentTags(agent.name).slice(0, 3)"
-                :key="tag"
-                class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
-              >
-                #{{ tag }}
-              </span>
-              <span
-                v-if="getAgentTags(agent.name).length > 3"
-                class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500"
-              >
-                +{{ getAgentTags(agent.name).length - 3 }}
-              </span>
+            <!-- Tags display (fixed height for consistent layout) -->
+            <div class="h-6 mb-2 overflow-hidden">
+              <div v-if="getAgentTags(agent.name).length > 0" class="flex flex-wrap gap-1">
+                <span
+                  v-for="tag in getAgentTags(agent.name).slice(0, 3)"
+                  :key="tag"
+                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
+                  :title="'#' + tag"
+                >
+                  #{{ tag }}
+                </span>
+                <span
+                  v-if="getAgentTags(agent.name).length > 3"
+                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500"
+                >
+                  +{{ getAgentTags(agent.name).length - 3 }}
+                </span>
+              </div>
             </div>
 
             <!-- Context progress bar -->
@@ -354,6 +365,7 @@ import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import RunningStateToggle from '../components/RunningStateToggle.vue'
 import AutonomyToggle from '../components/AutonomyToggle.vue'
+import ReadOnlyToggle from '../components/ReadOnlyToggle.vue'
 import { ServerIcon } from '@heroicons/vue/24/outline'
 import axios from 'axios'
 
@@ -362,6 +374,8 @@ const showCreateModal = ref(false)
 const notification = ref(null)
 const actionInProgress = ref(null)
 const autonomyLoading = ref(null)
+const readOnlyLoading = ref(null)
+const agentReadOnlyStates = ref({}) // Map of agent_name -> boolean
 const isAdmin = ref(false)
 
 // Tag-related state
@@ -424,9 +438,10 @@ onMounted(async () => {
     isAdmin.value = false
   }
 
-  // Fetch tags
+  // Fetch tags and read-only states
   await fetchAvailableTags()
   await fetchAllAgentTags()
+  await fetchAllReadOnlyStates()
 })
 
 onUnmounted(() => {
@@ -518,6 +533,63 @@ const handleAutonomyToggle = async (agent) => {
     showNotification('Failed to toggle autonomy mode', 'error')
   } finally {
     autonomyLoading.value = null
+  }
+}
+
+// Read-only mode functions
+function getAgentReadOnlyState(agentName) {
+  return agentReadOnlyStates.value[agentName] || false
+}
+
+async function fetchAllReadOnlyStates() {
+  const agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
+  const states = {}
+
+  await Promise.all(
+    agents.filter(a => !a.is_system && !a.is_shared).map(async (agent) => {
+      try {
+        const token = localStorage.getItem('token')
+        const response = await axios.get(`/api/agents/${agent.name}/read-only`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        states[agent.name] = response.data.enabled || false
+      } catch (err) {
+        states[agent.name] = false
+      }
+    })
+  )
+
+  agentReadOnlyStates.value = states
+}
+
+async function handleReadOnlyToggle(agent) {
+  if (readOnlyLoading.value === agent.name) return
+  readOnlyLoading.value = agent.name
+
+  const newState = !getAgentReadOnlyState(agent.name)
+
+  try {
+    const token = localStorage.getItem('token')
+    const response = await axios.put(`/api/agents/${agent.name}/read-only`, {
+      enabled: newState
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (response.data) {
+      agentReadOnlyStates.value[agent.name] = newState
+      showNotification(
+        newState
+          ? `Read-only mode enabled for ${agent.name}`
+          : `Read-only mode disabled for ${agent.name}`,
+        'success'
+      )
+    }
+  } catch (error) {
+    console.error('Failed to toggle read-only mode:', error)
+    showNotification('Failed to toggle read-only mode', 'error')
+  } finally {
+    readOnlyLoading.value = null
   }
 }
 

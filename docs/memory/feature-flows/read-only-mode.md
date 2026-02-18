@@ -10,7 +10,8 @@ As an agent owner, I want to enable read-only mode so that the agent cannot modi
 
 ## Entry Points
 
-- **UI**: `src/frontend/src/components/AgentHeader.vue:128-136` - ReadOnlyToggle component
+- **UI (Agent Detail)**: `src/frontend/src/components/AgentHeader.vue:128-136` - ReadOnlyToggle component
+- **UI (Agents List)**: `src/frontend/src/views/Agents.vue:248-255` - ReadOnlyToggle in card toggles row (between Running and Autonomy)
 - **API**: `GET/PUT /api/agents/{name}/read-only`
 
 ---
@@ -571,8 +572,79 @@ Check file_path against patterns
 
 ---
 
+## Agents Page Integration
+
+### Entry Point
+
+`src/frontend/src/views/Agents.vue:248-255` - ReadOnlyToggle between Running and Autonomy toggles
+
+### Template Structure
+
+```vue
+<!-- Running, Read-Only, and Autonomy toggles (same row) -->
+<div class="flex items-center justify-between mb-2">
+  <RunningStateToggle ... />
+  <ReadOnlyToggle
+    v-if="!agent.is_system && !agent.is_shared"
+    :model-value="getAgentReadOnlyState(agent.name)"
+    :loading="readOnlyLoading === agent.name"
+    size="sm"
+    :show-label="false"
+    @toggle="handleReadOnlyToggle(agent)"
+  />
+  <AutonomyToggle ... />
+</div>
+```
+
+### State Management
+
+| Line | Element | Description |
+|------|---------|-------------|
+| 377 | `readOnlyLoading` | Ref tracking which agent's toggle is loading |
+| 378 | `agentReadOnlyStates` | Map of agent_name -> boolean read-only state |
+| 444 | onMounted | Calls `fetchAllReadOnlyStates()` |
+
+### Functions
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 540-542 | `getAgentReadOnlyState(agentName)` | Returns boolean from `agentReadOnlyStates` map |
+| 544-563 | `fetchAllReadOnlyStates()` | Parallel fetch of read-only status for all owned agents |
+| 565-594 | `handleReadOnlyToggle(agent)` | Toggles read-only mode via PUT API, updates local state |
+
+### Visibility Conditions
+
+ReadOnlyToggle only shown when:
+- `!agent.is_system` - Not the system agent
+- `!agent.is_shared` - User owns the agent (not viewing someone else's shared agent)
+
+### Data Flow
+
+```
+User clicks ReadOnlyToggle on agent card
+        |
+        v
+handleReadOnlyToggle(agent) [line 565]
+        |
+        +-- Set readOnlyLoading = agent.name
+        |
+        v
+PUT /api/agents/{name}/read-only
+        |
+        +-- Success: Update agentReadOnlyStates[agent.name]
+        |            Show notification
+        |
+        +-- Error: Show error notification
+        |
+        v
+Finally: readOnlyLoading = null
+```
+
+---
+
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-02-18 | **Agents Page Integration**: Added ReadOnlyToggle to Agents.vue card tiles (lines 248-255). Shows for owned agents (not system, not shared). Added `agentReadOnlyStates` state (line 378), `readOnlyLoading` (line 377), `fetchAllReadOnlyStates()` (lines 544-563), `handleReadOnlyToggle()` (lines 565-594). Toggle positioned between Running and Autonomy toggles in same row. |
 | 2026-02-17 | Initial documentation (CFG-007) |

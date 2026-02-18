@@ -708,8 +708,8 @@ Multi-select checkboxes and bulk add/remove tag actions on the Agents page.
 
 | Entry Point | Location | Description |
 |-------------|----------|-------------|
-| **Selection Checkboxes** | `src/frontend/src/views/Agents.vue:186-192` | Per-agent selection |
-| **Bulk Actions Toolbar** | `src/frontend/src/views/Agents.vue:58-167` | Floating toolbar when agents selected |
+| **Selection Checkboxes** | `src/frontend/src/views/Agents.vue:189-193` | Per-agent selection |
+| **Bulk Actions Toolbar** | `src/frontend/src/views/Agents.vue:57-167` | Floating toolbar when agents selected |
 | **Tag Filter Dropdown** | `src/frontend/src/views/Agents.vue:22-33` | Filter agents by tag |
 
 #### Agents.vue Bulk Operations
@@ -717,23 +717,54 @@ Multi-select checkboxes and bulk add/remove tag actions on the Agents page.
 | Line | Element | Description |
 |------|---------|-------------|
 | 22-33 | Tag Filter Dropdown | Select dropdown to filter agents by tag |
-| 58-167 | Bulk Actions Toolbar | Appears when agents selected |
+| 57-167 | Bulk Actions Toolbar | Appears when agents selected |
 | 62-71 | Selection Counter | "N agent(s) selected" with Clear button |
 | 74-129 | Add Tag Dropdown | Input + existing tags picker |
-| 131-166 | Remove Tag Dropdown | Shows tags common to selected agents |
-| 186-192 | Checkbox | Per-agent selection checkbox |
-| 266-280 | Tags Display | Show up to 3 tags, "+N" for more |
-| 371-377 | State | `availableTags`, `agentTags`, `selectedFilterTag`, `selectedAgents`, bulk UI refs |
-| 380-392 | `displayAgents` | Computed - filters by `selectedFilterTag` |
-| 395-403 | `commonTagsInSelection` | Computed - union of tags across selected agents |
-| 431-432 | onMounted | Calls `fetchAvailableTags()`, `fetchAllAgentTags()` |
-| 547-555 | `fetchAvailableTags()` | GET /api/tags for filter dropdown |
-| 557-574 | `fetchAllAgentTags()` | Batch fetch tags for all agents |
-| 576-578 | `getAgentTags(agentName)` | Get tags for specific agent from local cache |
-| 580-587 | `toggleSelection(agentName)` | Add/remove from selectedAgents array |
-| 589-593 | `clearSelection()` | Clear all selections and close dropdowns |
-| 595-619 | `applyBulkTag()` | Add tag to all selected agents via parallel API calls |
-| 621-637 | `removeBulkTag(tag)` | Remove tag from all selected agents via parallel API calls |
+| 130-166 | Remove Tag Dropdown | Shows tags common to selected agents |
+| 189-193 | Checkbox | Per-agent selection checkbox |
+| 270-288 | Tags Display | Fixed-height container (`h-6 overflow-hidden`), show up to 3 tags with truncation (`max-w-20 truncate`), "+N" for more |
+| 381-388 | State | `availableTags`, `agentTags`, `selectedFilterTag`, `selectedAgents`, bulk UI refs |
+| 391-403 | `displayAgents` | Computed - filters by `selectedFilterTag` |
+| 405-414 | `commonTagsInSelection` | Computed - union of tags across selected agents |
+| 441-444 | onMounted | Calls `fetchAvailableTags()`, `fetchAllAgentTags()`, `fetchAllReadOnlyStates()` |
+| 616-624 | `fetchAvailableTags()` | GET /api/tags for filter dropdown |
+| 626-643 | `fetchAllAgentTags()` | Batch fetch tags for all agents |
+| 645-647 | `getAgentTags(agentName)` | Get tags for specific agent from local cache |
+| 649-656 | `toggleSelection(agentName)` | Add/remove from selectedAgents array |
+| 658-662 | `clearSelection()` | Clear all selections and close dropdowns |
+| 664-689 | `applyBulkTag()` | Add tag to all selected agents via parallel API calls |
+| 691-706 | `removeBulkTag(tag)` | Remove tag from all selected agents via parallel API calls |
+
+#### Tags Display Layout Fix (2026-02-18)
+
+Tags on agent cards now use a fixed-height container to prevent layout breaking:
+
+```vue
+<!-- Tags display (fixed height for consistent layout) -->
+<div class="h-6 mb-2 overflow-hidden">
+  <div v-if="getAgentTags(agent.name).length > 0" class="flex flex-wrap gap-1">
+    <span
+      v-for="tag in getAgentTags(agent.name).slice(0, 3)"
+      :key="tag"
+      class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
+      :title="'#' + tag"
+    >
+      #{{ tag }}
+    </span>
+    <span
+      v-if="getAgentTags(agent.name).length > 3"
+      class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500"
+    >
+      +{{ getAgentTags(agent.name).length - 3 }}
+    </span>
+  </div>
+</div>
+```
+
+Key styling:
+- **Container**: `h-6 overflow-hidden` - Fixed 24px height, hides overflow
+- **Tag pills**: `max-w-20 truncate` - Max 80px width with ellipsis for long tags
+- **Shows 3 tags max** with "+N" overflow indicator
 
 **Bulk Add Tag Flow:**
 
@@ -1329,3 +1360,4 @@ const response = await axios.get(`/api/agents/${name}/tags`, {
 | 2026-02-17 | Added ORG-001 Phase 4 (System Manifest Integration) - auto tags, system views, migration |
 | 2026-02-18 | **Bug Fix**: AgentDetail.vue now uses axios + authStore.authHeader for tag API calls (was using Pinia store wrapper without proper auth) |
 | 2026-02-18 | Updated line numbers for AgentDetail.vue tag methods (548-611, 714-715) |
+| 2026-02-18 | **Tags Layout Fix**: Agents.vue tags container now uses fixed height (`h-6 overflow-hidden`, line 271) and truncation (`max-w-20 truncate`, line 276) to prevent tile layout breaking. Updated bulk operations line numbers. |

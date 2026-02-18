@@ -1,3 +1,45 @@
+### 2026-02-18 16:00:00
+📝 **Docs: Feature Flow Documentation Update for Agents Page Changes**
+
+Updated feature flow documentation with accurate line numbers and implementation details for recent Agents page changes.
+
+**Files Updated**:
+- `docs/memory/feature-flows/agent-tags.md`: Updated bulk operations line numbers (391-706), added Tags Display Layout Fix section documenting fixed-height container and truncation
+- `docs/memory/feature-flows/read-only-mode.md`: Added comprehensive "Agents Page Integration" section with template structure, state management table, functions table, and data flow diagram
+- `docs/memory/feature-flows/agents-page-ui-improvements.md`: Updated revision history with accurate line numbers for all recent changes
+- `docs/memory/feature-flows.md`: Updated index with Agents Page Enhancements summary, updated table entries for all three related flows
+
+**Documentation Accuracy**:
+- Verified all line numbers against current `Agents.vue` (729 lines)
+- Documented toggle row structure: Running -> ReadOnly -> Autonomy (lines 240-263)
+- Documented tags container styling: `h-6 overflow-hidden` (line 271), `max-w-20 truncate` (line 276)
+- Added function line references: `fetchAllReadOnlyStates()` (544-563), `handleReadOnlyToggle()` (565-594)
+
+---
+
+### 2026-02-18 15:00:00
+🐛 **Fix: Agents Page Tags Layout + Read-Only Toggle**
+
+Fixed tags breaking tile layout on Agents page and added Read-Only toggle to agent cards.
+
+**Tags Layout Fix** (`Agents.vue:270-288`):
+- Wrapped tags in fixed-height container (`h-6 overflow-hidden`)
+- Added `max-w-20 truncate` to individual tag pills to prevent overflow
+- Tags now have consistent height regardless of content
+
+**Read-Only Toggle** (`Agents.vue:248-255`):
+- Added `ReadOnlyToggle` component between Running and Autonomy toggles
+- Only shown for owned agents (not system, not shared)
+- Added `agentReadOnlyStates` map and `fetchAllReadOnlyStates()` on mount
+- `handleReadOnlyToggle()` calls `PUT /api/agents/{name}/read-only`
+
+**Files Changed**:
+- `src/frontend/src/views/Agents.vue`: Import, state, template, functions
+- `docs/memory/feature-flows/agents-page-ui-improvements.md`: Revision history
+- `docs/memory/feature-flows/read-only-mode.md`: Entry points, revision history
+
+---
+
 ### 2026-02-18 12:00:00
 📝 **Docs: Feature Flow Updates for UI-001 Redesign**
 
