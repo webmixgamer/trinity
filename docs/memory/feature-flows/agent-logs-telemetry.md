@@ -1,18 +1,20 @@
 # Feature: Agent Logs & Live Telemetry
 
 ## Overview
-Real-time monitoring of agent containers through logs viewing and live telemetry metrics. Provides visibility into container health (CPU, memory, network) and debugging capability through log output.
+Real-time monitoring of agent containers through live telemetry metrics. Provides visibility into container health (CPU, memory, uptime) in the AgentHeader.
+
+> **Note (2026-02-18)**: The Logs tab has been **removed** from AgentDetail.vue. Logs can still be accessed via the API endpoint for programmatic use. Container logs are also available via the Terminal tab (bash mode) or the MCP `get_agent_logs` tool.
 
 ## User Story
-As a platform user, I want to monitor my agent's resource usage and view logs so that I can debug issues and ensure healthy operation.
+As a platform user, I want to monitor my agent's resource usage so that I can ensure healthy operation.
 
 ---
 
 ## Entry Points
 
-### Logs Viewing
-- **UI**: `src/frontend/src/views/AgentDetail.vue:124-126` - Logs tab
-- **API**: `GET /api/agents/{name}/logs?tail=100`
+### Logs API (No UI Tab)
+- **UI**: Logs tab removed from AgentDetail.vue (2026-02-18)
+- **API**: `GET /api/agents/{name}/logs?tail=100` - Still available for programmatic access
 
 ### Live Telemetry
 - **UI**: `src/frontend/src/views/AgentDetail.vue:28-36` - Stats props passed to AgentHeader
@@ -40,36 +42,31 @@ const {
 ```
 
 #### AgentHeader.vue - Live Stats Bar
-**Location**: `src/frontend/src/components/AgentHeader.vue:172-235`
+**Location**: `src/frontend/src/components/AgentHeader.vue:98-162` (Row 2, right side)
 
 Displays real-time telemetry in the agent header when status is "running":
 
 | Line | Element | Purpose |
 |------|---------|---------|
-| 173-176 | Loading indicator | Shows "Loading stats..." with spinner |
-| 177-233 | Stats display row | CPU, Memory, Network, Uptime metrics |
-| 178-193 | CPU widget | SparklineChart + percentage with color coding |
-| 194-209 | Memory widget | SparklineChart + MB / GB with percentage |
-| 210-215 | Network widget | RX (green) and TX (blue) byte counts |
-| 216-220 | Uptime widget | Time since container started |
-| 221-232 | Resource config button | Opens resource modal |
-| 234 | Stats unavailable | Shown when stats null |
+| 137-142 | Loading indicator | Shows "Loading..." with spinner |
+| 100-135 | Stats display row | CPU, Memory, Uptime metrics |
+| 102-115 | CPU widget | SparklineChart + percentage with color coding (fixed width `w-10`) |
+| 117-130 | Memory widget | SparklineChart + bytes display (fixed width `w-14`) |
+| 132-134 | Uptime widget | Time since container started (fixed width `w-16`) |
+| 151-161 | Resource config button | Opens resource modal |
+| 144-149 | Stopped state | Shows creation date and resource allocation |
 
-**Color Thresholds** (line 190, 206):
+**Color Thresholds** (lines 113, 128):
 - Green: < 50%
 - Yellow: 50-80%
 - Red: > 80%
 
-#### LogsPanel.vue - Logs Tab
-**Location**: `src/frontend/src/components/LogsPanel.vue`
+**Note**: Network stats are collected by the backend but not displayed in the UI (removed for cleaner layout).
 
-Features:
-- Scrollable log container (line 6: `h-96 overflow-auto`)
-- Line count selector: 50, 100, 200, 500 (lines 25-30)
-- Auto-refresh toggle (line 19: labeled "10s" but actual interval is 15s - see Known Issue)
-- Manual refresh button (lines 12-17)
-- Smart auto-scroll (pauses when user scrolls up - handled by composable)
-- Monospace font display (line 8)
+#### LogsPanel.vue - REMOVED
+**Status**: Logs tab removed from AgentDetail.vue as of 2026-02-18.
+
+> The LogsPanel.vue component still exists in the codebase but is no longer rendered in the Agent Detail page. The logs API endpoint remains available for programmatic access via the MCP `get_agent_logs` tool or direct API calls.
 
 ### State Management
 
@@ -292,12 +289,14 @@ return {
     "memory_used_bytes": memory_used_actual,
     "memory_limit_bytes": memory_limit,
     "memory_percent": round((memory_used_actual / memory_limit * 100) if memory_limit > 0 else 0, 1),
-    "network_rx_bytes": network_rx,
-    "network_tx_bytes": network_tx,
+    "network_rx_bytes": network_rx,   # Returned but not displayed in UI
+    "network_tx_bytes": network_tx,   # Returned but not displayed in UI
     "uptime_seconds": uptime_seconds,
     "status": container.status
 }
 ```
+
+**UI Display**: Only `cpu_percent`, `memory_used_bytes`, `memory_percent`, and `uptime_seconds` are shown in the header. Network stats are available for programmatic use but not displayed.
 
 ---
 
@@ -318,18 +317,21 @@ This feature reads directly from Docker API - no database persistence.
 
 ### Telemetry Stats Bar (Header)
 
-**Component**: `AgentHeader.vue:172-235`
+**Component**: `AgentHeader.vue:98-162`
 
-| Metric | Display | Color Coding |
-|--------|---------|--------------|
-| CPU | `XX.X%` with sparkline chart | Green (<50%), Yellow (50-80%), Red (>80%) |
-| Memory | `847 MB / 4 GB` with sparkline | Similar thresholds |
-| Network | `↓1.2 MB ↑456 KB` | Green for RX, Blue for TX |
-| Uptime | `2h 15m` | Gray |
+| Metric | Display | Color Coding | Width |
+|--------|---------|--------------|-------|
+| CPU | `XX.X%` with sparkline chart | Green (<50%), Yellow (50-80%), Red (>80%) | `w-10` (fixed) |
+| Memory | `847 MB` with sparkline | Similar thresholds | `w-14` (fixed) |
+| Uptime | `2h 15m` | Gray | `w-16` (fixed) |
 
-### Logs Tab Features
+**Note**: Fixed widths prevent layout jumping when stats update.
 
-**Component**: `LogsPanel.vue`
+### Logs Tab Features (REMOVED)
+
+> **Note**: The Logs tab has been removed from AgentDetail.vue as of 2026-02-18. The functionality below is no longer exposed in the UI but remains available via API.
+
+**Component**: `LogsPanel.vue` (no longer rendered)
 
 - Scrollable container (h-96 = 384px)
 - Line count selector: 50, 100, 200, 500
@@ -378,10 +380,10 @@ Stats and logs are pull-based, not push-based.
 
 ## Known Issues
 
-### UI/Code Mismatch for Logs Auto-Refresh Interval
+### UI/Code Mismatch for Logs Auto-Refresh Interval (Historical)
 - **UI Label**: `LogsPanel.vue:20` says "Auto-refresh (10s)"
 - **Actual Interval**: `useAgentLogs.js:45` uses 15000ms (15 seconds)
-- **Impact**: Minor UX confusion, no functional impact
+- **Impact**: N/A - Logs tab removed from UI (2026-02-18)
 
 ---
 
@@ -404,8 +406,8 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 ---
 
 ## Status
-**Last Updated**: 2026-01-23
-**Verified**: All line numbers updated for current codebase structure
+**Last Updated**: 2026-02-18
+**Verified**: Stats display shows only CPU, Memory, Uptime (network removed from UI)
 
 ---
 
@@ -413,6 +415,8 @@ See [MCP Orchestration](mcp-orchestration.md) for MCP tool details.
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 | **Logs tab removed from UI**: The Logs tab has been removed from AgentDetail.vue visibleTabs. Logs API endpoint remains available for programmatic access via MCP tools or direct API calls. Updated Overview, Entry Points, LogsPanel section, and Known Issues to reflect this change. |
+| 2026-02-18 | **Network stats removed from UI**: Updated documentation to reflect current AgentHeader.vue implementation. Stats display now shows only CPU, Memory, and Uptime (lines 100-135). Network stats still returned by backend API but not displayed. Added fixed width notes (`w-10`, `w-14`, `w-16`) to prevent layout jumping. Updated all line numbers for Row 2 stats section (98-162). |
 | 2026-01-23 | **Full verification and update**: Verified all line numbers against current codebase. Logs endpoint now at lines 367-383 (was 404-430). Stats endpoint at 386-393. Documented UI/code mismatch for auto-refresh interval (UI says 10s, code uses 15s). Audit logging removed from logs endpoint. Updated AgentHeader.vue stats display lines (172-235). Added composable file locations. |
 | 2026-01-12 | **Polling interval optimization**: Stats polling changed from 5s to 10s, logs auto-refresh changed from 10s to 15s. Stats history reduced from 60 to 30 samples (still 5 min at 10s intervals). Updated composables `useAgentStats.js` and `useAgentLogs.js`. |
 | 2025-12-30 | **Updated for service layer refactor**: Stats logic moved from `agents.py` to `services/agent_service/stats.py`. Logs endpoint now at lines 404-430 (was 558-584). Stats endpoint now at 433-440 delegating to service layer. Updated all business logic line references to stats.py. |

@@ -3,6 +3,13 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-18)**: AgentDetail Tab Restructuring:
+> - **Logs tab REMOVED**: No longer visible in AgentDetail.vue. Logs still available via API (`GET /api/agents/{name}/logs`) and MCP tool.
+> - **Files tab REMOVED**: No longer visible in AgentDetail.vue. Users should use the standalone File Manager page at `/files`.
+> - **Terminal tab repositioned**: Now after Git tab (near end of tab list).
+> - **Public Links tab CONSOLIDATED**: No longer a separate tab. Public Links now rendered within "Sharing" tab via SharingPanel.vue embedding PublicLinksPanel.vue.
+> - **New tab order** (lines 496-525): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing* (includes Public Links), Permissions*, Git*, **Terminal**, Folders*, Info (* = conditional)
+>
 > **Updated (2026-02-18)**: Agents Page Enhancements:
 > - **ReadOnlyToggle on Agents Page**: `Agents.vue:248-255` - ReadOnlyToggle component added between Running and Autonomy toggles. Only shown for owned agents (not system, not shared). State: `agentReadOnlyStates` (line 378), `readOnlyLoading` (line 377). Functions: `fetchAllReadOnlyStates()` (544-563), `getAgentReadOnlyState()` (540-542), `handleReadOnlyToggle()` (565-594).
 > - **Tags Layout Fix**: `Agents.vue:270-288` - Fixed tags breaking tile layout. Tags now in fixed-height container (`h-6 overflow-hidden`, line 271) with individual tag truncation (`max-w-20 truncate`, line 276). Shows up to 3 tags with "+N" overflow indicator.
@@ -15,8 +22,9 @@
 >   - Stats display: Fixed widths (`w-10` for CPU%, `w-14` for MEM bytes, `w-16` for uptime) prevent layout jumping
 >   - Network stats removed from display
 > - **AgentDetail.vue**: Default tab changed from 'info' to 'tasks' (line 275: `activeTab = ref('tasks')`)
->   - Tab order reordered (lines 491-534): Tasks first, Info moved to end
->   - Order: Tasks, Dashboard*, Terminal, Logs, Files, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Folders*, Public Links*, Info
+>   - Tab order reordered (lines 504-529): Tasks first, Info moved to end
+>   - **Logs tab removed**, **Files tab removed**, Terminal repositioned after Git
+>   - Order: Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info
 >   - (*) = conditional tabs
 > - **TasksPanel.vue**: Tasks tab layout reordered for better UX:
 >   - Section order: Stats (lines 49-69) → Task Input (lines 71-101) → Task History (lines 103-315)
@@ -540,16 +548,16 @@
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
-| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer (Updated 2026-01-23) |
+| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **2026-02-18**: Tab repositioned after Git. **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. **2026-02-16**: Credential sanitizer cache refreshed after injection. MCP tools: inject/export/import_credentials, get_credential_encryption_key (Refactored 2026-02-05) |
 | Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
 | **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
-| Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
+| Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Live metrics in AgentHeader - **2026-02-18**: Logs tab REMOVED from UI (API still available). Stats display shows only CPU, Memory, Uptime (network removed from UI) |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
-| Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
+| Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-02-18**: Public Links tab consolidated into Sharing tab (SharingPanel.vue now embeds PublicLinksPanel.vue). **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
 | MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 44 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule, 5 tag (ORG-001) (Updated 2026-02-17) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
@@ -558,7 +566,7 @@
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP - X-Source-Agent header, permission system (user/agent/system scopes), collaboration event broadcasting, activity tracking, **system agent schedule management** via 8 MCP schedule tools (Updated 2026-01-29) |
 | Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
-| File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
+| File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files - **2026-02-18**: Files tab REMOVED from AgentDetail. Use File Manager page at `/files`. **service layer: files.py** |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` + `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
 | **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport, **schedule markers** (TSM-001) (Updated 2026-01-29) |
@@ -579,7 +587,7 @@
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction - auto-fetches intro via `/api/public/intro/{token}`. **PUB-004**: Header metadata - displays agent name, description, AUTO/READ-ONLY badges. **PUB-005**: Session persistence - multi-turn conversations survive page refresh. **PUB-006**: Public mode awareness - agents receive mode header, UI uses bottom-aligned messages (Updated 2026-02-17) |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **2026-02-18**: Consolidated into "Sharing" tab (no separate "Public Links" tab). **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction. **PUB-004**: Header metadata. **PUB-005**: Session persistence. **PUB-006**: Public mode awareness |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |

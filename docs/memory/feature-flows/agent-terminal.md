@@ -1,6 +1,8 @@
 # Feature: Web Terminal for Agents
 
-> **Updated**: 2026-01-23 - Verified line numbers across all layers. Database schema uses `agent_ownership` table (not separate `agent_api_key_settings`). Added WebGL/Canvas renderer documentation. No audit logging for terminal sessions.
+> **Updated**: 2026-02-18 - Terminal tab repositioned after Git tab in AgentDetail.vue (was between Dashboard and Logs). New tab order: Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, **Terminal**, Folders*, Public Links*, Info.
+>
+> **Previous (2026-01-23)**: Verified line numbers across all layers. Database schema uses `agent_ownership` table. Added WebGL/Canvas renderer documentation.
 
 ## Overview
 
@@ -15,6 +17,7 @@ As an **agent owner**, I want to control whether my agent uses the platform API 
 ## Entry Points
 
 - **UI**: `src/frontend/src/views/AgentDetail.vue:93-121` - Terminal tab (uses v-show for persistent WebSocket)
+- **Tab Order (2026-02-18)**: Terminal tab now positioned after Git tab in `visibleTabs` (line 520). Order: Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, **Terminal**, Folders*, Public Links*, Info (* = conditional)
 - **UI**: `src/frontend/src/components/TerminalPanelContent.vue:53-87` - API key authentication toggle (when agent stopped)
 - **API**: `GET /api/agents/{agent_name}/api-key-setting` - Get current API key setting
 - **API**: `PUT /api/agents/{agent_name}/api-key-setting` - Update API key setting (owner only)
@@ -720,7 +723,7 @@ User Click          WebSocket          Backend           Docker
 No cleanup required - sessions terminate automatically on disconnect.
 
 ### Status
-**Testing Status**: Verified 2026-01-23
+**Testing Status**: Verified 2026-02-18
 
 **Verified Features**:
 - Terminal connection and PTY forwarding
@@ -737,10 +740,21 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 ---
 
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-02-18 | **Terminal tab repositioned**: Tab now appears after Git tab in `visibleTabs` (line 520). Updated Entry Points section with new tab order. |
+| 2026-01-23 | Verified all line numbers across layers. Database schema uses `agent_ownership` table. Added WebGL/Canvas renderer documentation. |
+| 2025-12-28 | Added Gemini CLI runtime support, model selection feature. |
+| 2025-12-26 | Added per-agent API key control (Req 11.7). |
+| 2025-12-25 | Initial implementation. |
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-02-18 | **Terminal tab repositioned**: Terminal tab moved from middle of tab list to after Git tab. New tab order in visibleTabs (line 520): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info. Also: Logs tab and Files tab removed from AgentDetail.vue. |
 | 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that Claude Code now uses whatever authentication is available: (1) OAuth session from `/login` (Claude Pro/Max subscription) stored in `~/.claude.json`, or (2) `ANTHROPIC_API_KEY` environment variable. Users can log in once via web terminal with Claude Max subscription, then all subsequent headless executions use their subscription instead of API billing. Updated Test Cases 13-14 to note this authentication model. |
 | 2026-01-23 | **Line number verification**: Updated all line numbers. Corrected database schema (uses `agent_ownership` table, not separate table). Added WebGL/Canvas renderer documentation. Clarified no audit logging for terminal sessions (uses Python logger). Added `--dangerously-skip-permissions` flag documentation. Added Gemini CLI test case. Added tab switching preservation note. |
 | 2025-12-30 | Line number verification. Added Gemini runtime support to terminal modes. Updated WebSocket query params documentation. |

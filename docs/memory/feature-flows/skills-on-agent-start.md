@@ -707,7 +707,7 @@ The skill injection does NOT fail the entire agent start - it reports status but
    - Watch for success notification
 
 4. **Verify Skill Files**
-   - Navigate to Files tab
+   - Navigate to File Manager (`/files`) and select the agent
    - Browse to `.claude/skills/`
    - Verify each assigned skill has a `SKILL.md` file
 

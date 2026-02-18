@@ -56,8 +56,11 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 ## Entry Points
 
 ### Owner Interface
-- **UI**: `src/frontend/src/views/AgentDetail.vue:167` - "Public Links" tab content
+- **UI**: `src/frontend/src/views/AgentDetail.vue` - "Sharing" tab (contains both Team Sharing and Public Links)
+- **Component**: `src/frontend/src/components/SharingPanel.vue:82-83` - Embeds PublicLinksPanel
 - **Component**: `src/frontend/src/components/PublicLinksPanel.vue` - Full management panel
+
+> **Note (2026-02-18)**: The "Public Links" tab was consolidated into the "Sharing" tab. PublicLinksPanel is now rendered within SharingPanel.vue, separated by a divider from the Team Sharing section.
 
 ### Public Interface
 - **UI**: `src/frontend/src/views/PublicChat.vue` - Public chat page
@@ -117,12 +120,12 @@ Public User -> POST /api/public/chat/{token}
 
 | File | Line | Description |
 |------|------|-------------|
-| `src/frontend/src/views/AgentDetail.vue` | 167 | Public Links tab content |
-| `src/frontend/src/views/AgentDetail.vue` | 169 | PublicLinksPanel component usage |
-| `src/frontend/src/views/AgentDetail.vue` | 230 | Import statement |
-| `src/frontend/src/views/AgentDetail.vue` | 443-446 | Tab configuration logic |
+| `src/frontend/src/components/SharingPanel.vue` | 82-83 | Embeds PublicLinksPanel within Sharing tab |
+| `src/frontend/src/components/SharingPanel.vue` | 92 | Import statement for PublicLinksPanel |
 | `src/frontend/src/components/PublicLinksPanel.vue` | 1-503 | Owner management panel |
 | `src/frontend/src/views/PublicChat.vue` | 1-684 | Public chat interface (PUB-003 intro, PUB-004 header metadata, PUB-005 session persistence, PUB-006 bottom-aligned messages) |
+
+> **Note (2026-02-18)**: AgentDetail.vue no longer directly renders PublicLinksPanel. The component is now embedded within SharingPanel.vue.
 
 ### PublicLinksPanel.vue Methods
 
@@ -368,7 +371,7 @@ PUBLIC_CHAT_URL=
 |------|-------------|
 | `src/frontend/src/views/PublicChat.vue` | Public chat page (538 lines) |
 | `src/frontend/src/components/PublicLinksPanel.vue` | Owner panel (503 lines) |
-| `src/frontend/src/views/AgentDetail.vue` | Public Links tab integration |
+| `src/frontend/src/components/SharingPanel.vue` | Embeds PublicLinksPanel (lines 82-83, 92) |
 | `src/frontend/src/router/index.js:18-22` | Route definition |
 
 ### Tests
@@ -434,9 +437,9 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 
 ## Related Flows
 
-- **Upstream**: Agent Lifecycle (agent must exist and be running)
+- **Upstream**: Agent Lifecycle (agent must exist and be running), Agent Sharing (now hosts PublicLinksPanel in same tab)
 - **Downstream**: Agent Chat (uses same `/api/task` endpoint)
-- **Related**: Agent Sharing (manages `can_share` permission)
+- **Related**: Agent Sharing (manages `can_share` permission, embeds PublicLinksPanel via SharingPanel.vue)
 
 ## External Public URL (PUB-002)
 
@@ -1363,6 +1366,7 @@ const scrollToBottom = () => {
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 | **Tab consolidation**: Public Links tab removed from AgentDetail.vue. PublicLinksPanel now embedded within SharingPanel.vue (lines 82-83, 92), accessible via "Sharing" tab. Updated Entry Points, Components table, Frontend Files table, and Related Flows sections. |
 | 2025-12-22 | Initial documentation |
 | 2025-12-30 | Verified line numbers, updated file references, added detailed method tables, expanded testing section |
 | 2026-01-23 | Refreshed line numbers for all backend files: public_links.py endpoints (56, 92, 107, 126, 167), public.py endpoints (43, 73, 130, 166), db_models.py models (301-374). Updated AgentDetail.vue references (167, 169, 230, 443-446). Added delete_agent_public_links() at db/public_links.py:156. Updated main.py references (44-45, 112, 292-293). Corrected file line counts. |

@@ -1,7 +1,7 @@
 # Feature: Agent Sharing
 
 ## Overview
-Collaboration feature enabling agent owners to share agents with team members via email. Supports three access levels: Owner (full control), Shared (limited access), and Admin (full control over all agents).
+Collaboration feature enabling agent owners to share agents with team members via email. Supports three access levels: Owner (full control), Shared (limited access), and Admin (full control over all agents). The Sharing tab now includes both Team Sharing and Public Links in a unified interface.
 
 ## User Story
 As an agent owner, I want to share my agents with team members so that they can use the agents without having full ownership permissions.
@@ -18,34 +18,33 @@ As an agent owner, I want to share my agents with team members so that they can 
 
 ### SharingPanel.vue (`src/frontend/src/components/SharingPanel.vue`)
 
-The sharing UI is implemented as a dedicated component with form and list display.
+The sharing UI is implemented as a dedicated component with two sections: Team Sharing and Public Links.
 
-**Share Form** (lines 9-29):
+**Component Structure** (132 lines total):
+- Lines 3-77: Team Sharing section (header, form, user list)
+- Lines 79-80: Divider between sections
+- Lines 82-83: Embedded `PublicLinksPanel` component
+- Line 92: Import of `PublicLinksPanel`
+
+**Team Sharing Section** (lines 3-77):
 ```vue
-<form @submit.prevent="shareWithUser" class="flex items-center space-x-3">
-  <input
-    v-model="shareEmail"
-    type="email"
-    placeholder="user@example.com"
-    :disabled="shareLoading"
-  />
-  <button type="submit" :disabled="shareLoading || !shareEmail.trim()">
-    {{ shareLoading ? 'Sharing...' : 'Share' }}
-  </button>
-</form>
+<div>
+  <h3 class="text-lg font-medium ...">Team Sharing</h3>
+  <!-- Share form (lines 11-30) -->
+  <!-- Shared users list (lines 40-76) -->
+</div>
 ```
 
-**Shared Users List** (lines 51-77):
+**Public Links Integration** (lines 79-83):
 ```vue
-<ul v-else class="divide-y divide-gray-200">
-  <li v-for="share in shares" :key="share.id">
-    <span>{{ share.shared_with_name || share.shared_with_email }}</span>
-    <button @click="removeShare(share.shared_with_email)">Remove</button>
-  </li>
-</ul>
+<!-- Divider -->
+<div class="border-t border-gray-200 dark:border-gray-700"></div>
+
+<!-- Public Links Section -->
+<PublicLinksPanel :agent-name="agentName" />
 ```
 
-**Component Props** (lines 88-97):
+**Component Props** (lines 94-103):
 ```javascript
 const props = defineProps({
   agentName: { type: String, required: true },
@@ -103,7 +102,7 @@ async getAgentShares(name) {
 }
 ```
 
-### Tab Visibility (`src/frontend/src/views/AgentDetail.vue:428-432`)
+### Tab Visibility (`src/frontend/src/views/AgentDetail.vue:506-509`)
 
 The Sharing tab is only shown to users who can share and hidden for system agents:
 ```javascript
@@ -112,6 +111,8 @@ if (agent.value?.can_share && !isSystem) {
   tabs.push({ id: 'permissions', label: 'Permissions' })
 }
 ```
+
+> **Note (2026-02-18)**: The "Public Links" tab was consolidated into the "Sharing" tab. SharingPanel.vue now renders PublicLinksPanel at the bottom of the panel, separated by a divider.
 
 ---
 
@@ -414,6 +415,7 @@ Working - Agent sharing fully functional with email-based collaboration
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 | **Public Links tab consolidated**: Public Links tab removed from AgentDetail.vue. SharingPanel.vue now includes PublicLinksPanel as embedded component (lines 79-83, 92). Updated tab visibility line numbers (506-509). Single "Sharing" tab now contains both Team Sharing and Public Links sections. |
 | 2026-01-30 | **Git Pull permission update**: Added Git Pull and Git Sync/Init columns to Access Levels table. Shared users can now pull from GitHub (was owner-only). |
 | 2026-01-23 | **Full verification**: Updated to use SharingPanel.vue component (not inline in AgentDetail.vue). Updated line numbers for routers/sharing.py (23-64, 67-89, 92-103). Added useAgentSharing.js composable documentation. Updated db/agents.py line numbers for sharing methods. Added OwnedAgentByName dependency documentation from dependencies.py. Documented tab visibility logic at AgentDetail.vue:428-432. Updated helpers.py reference for batch metadata query. |
 | 2025-12-30 | Flow verification: Updated line numbers for routers/sharing.py. Updated database layer to reference db/agents.py. Added auto-whitelist feature note. |
@@ -423,4 +425,5 @@ Working - Agent sharing fully functional with email-based collaboration
 ## Related Flows
 
 - **Upstream**: Authentication (user identity)
+- **Downstream**: Public Agent Links (embedded in same tab via PublicLinksPanel)
 - **Related**: Agent Lifecycle (delete cascades shares), MCP Orchestration (agent-to-agent access control), Email Authentication (auto-whitelist)

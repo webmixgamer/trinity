@@ -175,10 +175,6 @@
               <FoldersPanel :agent-name="agent.name" :agent-status="agent.status" :can-share="agent.can_share" />
             </div>
 
-            <!-- Public Links Tab Content -->
-            <div v-if="activeTab === 'public-links'" class="p-6">
-              <PublicLinksPanel :agent-name="agent.name" />
-            </div>
           </div>
         </div>
       </div>
@@ -240,7 +236,6 @@ import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
 import DashboardPanel from '../components/DashboardPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
-import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 
 // Panel Components (newly extracted)
 import AgentHeader from '../components/AgentHeader.vue'
@@ -502,9 +497,6 @@ const visibleTabs = computed(() => {
   }
 
   tabs.push(
-    { id: 'terminal', label: 'Terminal' },
-    { id: 'logs', label: 'Logs' },
-    { id: 'files', label: 'Files' },
     { id: 'schedules', label: 'Schedules' },
     { id: 'credentials', label: 'Credentials' },
     { id: 'skills', label: 'Skills' }
@@ -516,15 +508,15 @@ const visibleTabs = computed(() => {
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
-  // Git tab - only if git sync enabled
+  // Git and Terminal tabs together
   if (hasGitSync.value) {
     tabs.push({ id: 'git', label: 'Git' })
   }
+  tabs.push({ id: 'terminal', label: 'Terminal' })
 
-  // Folders and Public Links - hide for system agent
+  // Folders - hide for system agent
   if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'folders', label: 'Folders' })
-    tabs.push({ id: 'public-links', label: 'Public Links' })
   }
 
   // Info at the end (reference/metadata)
@@ -724,7 +716,7 @@ onMounted(async () => {
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['tasks', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'public-links', 'info']
+    const validTabs = ['tasks', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }

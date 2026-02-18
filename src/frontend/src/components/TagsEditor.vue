@@ -42,7 +42,7 @@
             @blur="handleBlur"
             type="text"
             placeholder="tag-name"
-            class="w-24 px-2 py-0.5 text-xs rounded-full border border-violet-300 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 dark:bg-gray-800 dark:border-violet-700"
+            class="w-24 px-2 py-0.5 text-xs rounded-full border border-violet-300 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 dark:bg-gray-800 dark:border-violet-700 dark:text-white"
             maxlength="50"
           />
           <!-- Autocomplete dropdown -->

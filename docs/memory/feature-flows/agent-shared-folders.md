@@ -533,7 +533,7 @@ Shared folders respect the Agent Permissions system (Req 9.10):
 
 1. **Read-Only Mode**: Option to mount as read-only
 2. **Selective Folders**: Choose specific agents to mount (not all)
-3. **File Browser Integration**: Browse shared-in folders in Files tab
+3. **File Browser Integration**: Browse shared-in folders in File Manager (`/files`)
 4. **Sync Indicators**: Show when files changed in shared folders
 5. **Volume Size Limits**: Prevent runaway disk usage
 6. **Audit Logging**: Add audit events for folder config changes
