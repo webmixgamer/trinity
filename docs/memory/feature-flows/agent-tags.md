@@ -138,39 +138,51 @@ Displays tags row in agent detail header.
 
 Manages tags state and API integration for agent detail page.
 
+**Bug Fix (2026-02-18)**: API calls now use `axios` with `authStore.authHeader` instead of the Pinia store's `api` wrapper to ensure proper authentication headers are sent.
+
 | Line | Element | Description |
 |------|---------|-------------|
 | 46-47 | Props to AgentHeader | `:tags="agentTags"`, `:all-tags="allTags"` |
 | 56-58 | Events from AgentHeader | `@update-tags`, `@add-tag`, `@remove-tag` |
-| 278-280 | State refs | `agentTags` and `allTags` reactive refs |
-| 544-553 | `loadTags()` | Fetches agent's tags via `GET /api/agents/{name}/tags` |
-| 555-562 | `loadAllTags()` | Fetches all tags for autocomplete via `GET /api/tags` |
-| 564-574 | `updateTags(newTags)` | Bulk replace via `PUT /api/agents/{name}/tags` |
-| 576-587 | `addTag(tag)` | Add single tag via `POST /api/agents/{name}/tags/{tag}` |
-| 589-598 | `removeTag(tag)` | Remove tag via `DELETE /api/agents/{name}/tags/{tag}` |
-| 622 | resetTags | Clear tags when navigating to different agent |
-| 632 | loadTags | Called after agent navigation |
-| 700-702 | onMounted | Calls `loadTags()` and `loadAllTags()` |
+| 282-283 | State refs | `agentTags` and `allTags` reactive refs |
+| 548-558 | `loadTags()` | Fetches agent's tags via `GET /api/agents/{name}/tags` |
+| 560-569 | `loadAllTags()` | Fetches all tags for autocomplete via `GET /api/tags` |
+| 571-583 | `updateTags(newTags)` | Bulk replace via `PUT /api/agents/{name}/tags` |
+| 585-598 | `addTag(tag)` | Add single tag via `POST /api/agents/{name}/tags/{tag}` |
+| 600-611 | `removeTag(tag)` | Remove tag via `DELETE /api/agents/{name}/tags/{tag}` |
+| 635 | resetTags | Clear tags when navigating to different agent |
+| 645 | loadTags | Called after agent navigation |
+| 714-715 | onMounted | Calls `loadTags()` and `loadAllTags()` |
 
 ### API Calls (Tags)
 
 ```javascript
-// Load agent's tags
-const response = await agentsStore.api.get(`/api/agents/${agent.value.name}/tags`)
-agentTags.value = response.tags || []
+// Load agent's tags (uses axios + authStore.authHeader)
+const response = await axios.get(`/api/agents/${agent.value.name}/tags`, {
+  headers: authStore.authHeader
+})
+agentTags.value = response.data.tags || []
 
 // Load all tags for autocomplete
-const response = await agentsStore.api.get('/api/tags')
-allTags.value = (response.tags || []).map(t => t.tag)
+const response = await axios.get('/api/tags', {
+  headers: authStore.authHeader
+})
+allTags.value = (response.data.tags || []).map(t => t.tag)
 
 // Bulk replace tags
-await agentsStore.api.put(`/api/agents/${name}/tags`, { tags: newTags })
+await axios.put(`/api/agents/${name}/tags`, { tags: newTags }, {
+  headers: authStore.authHeader
+})
 
 // Add single tag
-await agentsStore.api.post(`/api/agents/${name}/tags/${tag}`)
+await axios.post(`/api/agents/${name}/tags/${tag}`, {}, {
+  headers: authStore.authHeader
+})
 
 // Remove single tag
-await agentsStore.api.delete(`/api/agents/${name}/tags/${tag}`)
+await axios.delete(`/api/agents/${name}/tags/${tag}`, {
+  headers: authStore.authHeader
+})
 ```
 
 ### Backend Layer (Tags)
@@ -606,7 +618,7 @@ untag_agent(agent_name: string, tag: string) -> { agent_name: string, tags: stri
 set_agent_tags(agent_name: string, tags: string[]) -> { agent_name: string, tags: string[] }
 ```
 
-**Validation in `tag_agent` (lines 103-111):**
+**Validation in `tag_agent` (lines 103-112):**
 
 ```typescript
 const normalized = tag.toLowerCase().trim();
@@ -1062,6 +1074,32 @@ Example: Agent `research-team-analyst` gets tag `research-team`.
 
 ---
 
+## Known Issues (Fixed)
+
+### Tag API Authentication Bug (Fixed 2026-02-18)
+
+**Issue**: Tag operations in AgentDetail.vue were failing silently because API calls were using the Pinia store's `api` wrapper which didn't include authentication headers.
+
+**Root Cause**: The `agentsStore.api.get()` pattern was inconsistent with how the store's axios instance was configured - it didn't automatically include the JWT bearer token.
+
+**Fix**: Changed all tag-related API calls to use `axios` directly with `authStore.authHeader`:
+```javascript
+// Before (broken)
+const response = await agentsStore.api.get(`/api/agents/${name}/tags`)
+
+// After (fixed)
+const response = await axios.get(`/api/agents/${name}/tags`, {
+  headers: authStore.authHeader
+})
+```
+
+**Files Changed**:
+- `src/frontend/src/views/AgentDetail.vue` - Lines 548-611 (loadTags, loadAllTags, updateTags, addTag, removeTag)
+
+**Impact**: Users can now add, remove, and view tags on the agent detail page without authentication errors.
+
+---
+
 ## Testing
 
 ### Prerequisites
@@ -1289,3 +1327,5 @@ Example: Agent `research-team-analyst` gets tag `research-team`.
 | 2026-02-17 | Added ORG-001 Phase 2 (System Views) - sidebar, editor, store, API |
 | 2026-02-17 | Added ORG-001 Phase 3 (MCP tools, Quick Tag Filter, Bulk Operations) |
 | 2026-02-17 | Added ORG-001 Phase 4 (System Manifest Integration) - auto tags, system views, migration |
+| 2026-02-18 | **Bug Fix**: AgentDetail.vue now uses axios + authStore.authHeader for tag API calls (was using Pinia store wrapper without proper auth) |
+| 2026-02-18 | Updated line numbers for AgentDetail.vue tag methods (548-611, 714-715) |

@@ -3,6 +3,11 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-18)**: Agent Tags Bug Fix:
+> - **agent-tags.md**: Fixed tag API authentication in AgentDetail.vue - now uses `axios` + `authStore.authHeader` instead of Pinia store wrapper
+> - Tag operations (add, remove, load) now work correctly with proper JWT authentication
+> - Updated line numbers: `loadTags()` (548-558), `addTag()` (585-598), `removeTag()` (600-611)
+>
 > **Updated (2026-02-17)**: Agent Tags & System Views (ORG-001 Phase 1-4 COMPLETE):
 > - **Phase 1 (Tags)**: Lightweight agent tagging system for organizational grouping
 >   - Backend: `db/tags.py` (TagOperations), `routers/tags.py` (5 endpoints)
@@ -581,7 +586,7 @@
 | **Skills Library Sync** | High | [skills-library-sync.md](feature-flows/skills-library-sync.md) | GitHub repository sync for skills library - Settings.vue configuration (URL/branch), git clone/pull operations, GitHub PAT for private repos. Service: `skill_service.py:sync_library()`, Settings: `settings_service.py` (Created 2026-01-25) |
 | **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
 | **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle component in AgentHeader, auto-injection on agent start - **service layer: read_only.py** (CFG-007, Created 2026-02-17) |
-| **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page. **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Phase 1-3 Complete, 2026-02-17) |
+| **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page. **Phase 4**: System manifest integration (default_tags, per-agent tags, system_view auto-creation). **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Complete, Bug Fix 2026-02-18) |
 
 ---
 

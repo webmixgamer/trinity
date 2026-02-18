@@ -1,3 +1,25 @@
+### 2026-02-18 10:00:00
+🐛 **Bug Fix: Tag API Authentication in AgentDetail.vue**
+
+Fixed tag operations failing silently due to missing authentication headers.
+
+**Root Cause**: API calls were using Pinia store's `api` wrapper which didn't include JWT bearer token.
+
+**Fix** (`src/frontend/src/views/AgentDetail.vue`):
+- Changed all tag API calls to use `axios` directly with `authStore.authHeader`
+- `loadTags()`: lines 548-558
+- `loadAllTags()`: lines 560-569
+- `updateTags()`: lines 571-583
+- `addTag()`: lines 585-598
+- `removeTag()`: lines 600-611
+
+**Documentation Updates**:
+- `docs/memory/feature-flows/agent-tags.md`: Updated line numbers, added bug fix section
+- `docs/memory/feature-flows.md`: Added bug fix note to index
+- `docs/memory/feature-flows/system-manifest.md`: Verified accuracy (no changes needed)
+
+---
+
 ### 2026-02-17 22:30:00
 ✨ **Feature: System Manifest Integration (ORG-001 Phase 4)**
 
