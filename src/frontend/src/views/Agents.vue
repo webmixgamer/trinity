@@ -182,19 +182,16 @@
                   : 'border-gray-200 dark:border-gray-700 opacity-75'
             ]"
           >
-            <!-- Selection checkbox -->
-            <div class="absolute top-2 left-2">
-              <input
-                type="checkbox"
-                :checked="selectedAgents.includes(agent.name)"
-                @change="toggleSelection(agent.name)"
-                class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer"
-              />
-            </div>
-
-            <!-- Header: Name, Runtime Badge, Status Dot -->
-            <div class="flex items-center justify-between mb-2 ml-6">
+            <!-- Header: Checkbox, Name, Runtime Badge, Status Dot -->
+            <div class="flex items-center justify-between mb-2">
               <div class="flex items-center flex-1 mr-2 min-w-0">
+                <!-- Selection checkbox -->
+                <input
+                  type="checkbox"
+                  :checked="selectedAgents.includes(agent.name)"
+                  @change="toggleSelection(agent.name)"
+                  class="w-4 h-4 mr-2 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                />
                 <router-link
                   :to="`/agents/${agent.name}`"
                   class="text-gray-900 dark:text-white font-bold text-base truncate hover:text-indigo-600 dark:hover:text-indigo-400"
