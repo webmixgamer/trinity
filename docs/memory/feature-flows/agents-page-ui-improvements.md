@@ -700,6 +700,7 @@ if (includeSystem && this.systemAgent) {
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in Agents.vue now use consistent `size="sm"`: RunningStateToggle (line 245), ReadOnlyToggle (line 252), AutonomyToggle (line 259). ReadOnlyToggle no longer has `:show-label="false"` - it now shows labels like the other toggles. This matches the toggle size standardization across the system. |
 | 2026-02-18 | **Read-Only Toggle + Tags Layout Fix**: Added `ReadOnlyToggle` component to toggles row (Agents.vue:248-255) between Running and Autonomy. Fixed tags breaking tile layout by adding fixed height container (`h-6 overflow-hidden`, line 271) and `max-w-20 truncate` on individual tags (line 276). Added `agentReadOnlyStates` state (line 378), `readOnlyLoading` (line 377), `fetchAllReadOnlyStates()` (lines 544-563), `getAgentReadOnlyState()` (lines 540-542), `handleReadOnlyToggle()` (lines 565-594). Import at line 368. Toggle only shown for owned agents (`v-if="!agent.is_system && !agent.is_shared"`). |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (151 lines) imported at Agents.vue:367. Running, ReadOnly, and Autonomy toggles positioned on same row (Agents.vue:240-263) for visual consistency with Dashboard. See [autonomy-toggle-component.md](autonomy-toggle-component.md) for component details. |
 | 2026-01-26 | **Unified Start/Stop Toggle**: Replaced Start/Stop buttons with `RunningStateToggle.vue` component. |

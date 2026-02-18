@@ -589,12 +589,13 @@ Check file_path against patterns
     :model-value="getAgentReadOnlyState(agent.name)"
     :loading="readOnlyLoading === agent.name"
     size="sm"
-    :show-label="false"
     @toggle="handleReadOnlyToggle(agent)"
   />
   <AutonomyToggle ... />
 </div>
 ```
+
+**Note (2026-02-18)**: ReadOnlyToggle now shows labels (`:show-label` removed) for consistency with other toggles. All toggles on this row use `size="sm"`.
 
 ### State Management
 
@@ -646,5 +647,6 @@ Finally: readOnlyLoading = null
 
 | Date | Change |
 |------|--------|
+| 2026-02-18 17:50 | **Toggle Consistency Fix**: Removed `:show-label="false"` from ReadOnlyToggle in Agents.vue - it now shows labels like the other toggles. All toggles (Running, ReadOnly, Autonomy) now use consistent `size="sm"` across both Agents.vue and AgentHeader.vue. |
 | 2026-02-18 | **Agents Page Integration**: Added ReadOnlyToggle to Agents.vue card tiles (lines 248-255). Shows for owned agents (not system, not shared). Added `agentReadOnlyStates` state (line 378), `readOnlyLoading` (line 377), `fetchAllReadOnlyStates()` (lines 544-563), `handleReadOnlyToggle()` (lines 565-594). Toggle positioned between Running and Autonomy toggles in same row. |
 | 2026-02-17 | Initial documentation (CFG-007) |

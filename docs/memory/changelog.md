@@ -1,3 +1,20 @@
+### 2026-02-18 17:50:21
+🔧 **Fix: Toggle Consistency Across System**
+
+Standardized all toggle switches to use consistent size and labels.
+
+**Changes**:
+- ReadOnlyToggle in Agents.vue now shows label ("Read-Only" / "Editable")
+- All toggles in AgentHeader.vue changed from lg/md to sm size
+- RunningStateToggle default size changed from md to sm
+
+**Files Changed**:
+- `src/frontend/src/views/Agents.vue`: Removed `:show-label="false"` from ReadOnlyToggle
+- `src/frontend/src/components/AgentHeader.vue`: All toggles now use `size="sm"`
+- `src/frontend/src/components/RunningStateToggle.vue`: Default size → `'sm'`
+
+---
+
 ### 2026-02-18 16:00:00
 📝 **Docs: Feature Flow Documentation Update for Agents Page Changes**
 

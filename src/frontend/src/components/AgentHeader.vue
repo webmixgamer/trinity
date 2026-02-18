@@ -38,7 +38,7 @@
           <RunningStateToggle
             :model-value="agent.status === 'running'"
             :loading="actionLoading"
-            size="lg"
+            size="sm"
             @toggle="$emit('toggle')"
           />
           <!-- Delete button -->
@@ -65,7 +65,7 @@
           <AutonomyToggle
             :model-value="agent.autonomy_enabled"
             :loading="autonomyLoading"
-            size="md"
+            size="sm"
             @toggle="$emit('toggle-autonomy')"
           />
         </div>
@@ -74,7 +74,7 @@
           <ReadOnlyToggle
             :model-value="agent.read_only_enabled"
             :loading="readOnlyLoading"
-            size="md"
+            size="sm"
             @toggle="$emit('toggle-read-only')"
           />
         </div>

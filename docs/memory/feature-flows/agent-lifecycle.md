@@ -25,11 +25,11 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 - **API**: `POST /api/agents`
 
 ### Start/Stop Agent (Toggle)
-- **UI**: Unified toggle control across all pages:
-  - `src/frontend/src/components/AgentHeader.vue` - Detail page header (size: lg)
-  - `src/frontend/src/views/Agents.vue` - Agents list page (size: md)
-  - `src/frontend/src/components/AgentNode.vue` - Dashboard network view (size: sm)
-- **Component**: `src/frontend/src/components/RunningStateToggle.vue` - Reusable toggle
+- **UI**: Unified toggle control across all pages (all use `size="sm"` as of 2026-02-18):
+  - `src/frontend/src/components/AgentHeader.vue:38-43` - Detail page header
+  - `src/frontend/src/views/Agents.vue:242-247` - Agents list page
+  - `src/frontend/src/components/AgentNode.vue` - Dashboard network view
+- **Component**: `src/frontend/src/components/RunningStateToggle.vue` - Reusable toggle (default size changed from 'md' to 'sm')
 - **API**: `POST /api/agents/{agent_name}/start` or `POST /api/agents/{agent_name}/stop`
 
 ### Delete Agent
@@ -44,10 +44,11 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 
 **Running State Toggle** - `src/frontend/src/components/RunningStateToggle.vue` (NEW 2026-01-26)
 - Unified toggle component replacing separate Start/Stop buttons
-- Props: `modelValue` (boolean), `loading`, `disabled`, `showLabel`, `size` (sm/md/lg)
+- Props: `modelValue` (boolean), `loading`, `disabled`, `showLabel`, `size` (sm/md/lg, default: 'sm' as of 2026-02-18)
 - Events: `update:modelValue`, `toggle`
 - Shows "Running" (green) or "Stopped" (gray) state
 - Loading spinner overlay during API calls
+- **2026-02-18**: Default size changed from 'md' to 'sm' for consistency across all toggle locations
 
 **Agents List View** - `src/frontend/src/views/Agents.vue`
 - Line 34-39: Create Agent button opens modal
@@ -63,7 +64,9 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 
 **Agent Header** - `src/frontend/src/components/AgentHeader.vue`
 - **Layout (UI-001)**: 3-row structure - Row 1 (Identity + Actions), Row 2 (Settings + Stats), Row 3 (Git)
-- Lines 38-43: RunningStateToggle (size: lg) in Row 1
+- Lines 38-43: RunningStateToggle (size: sm) in Row 1 (changed from lg to sm on 2026-02-18)
+- Lines 65-70: AutonomyToggle (size: sm) in Row 2 (changed from md to sm on 2026-02-18)
+- Lines 74-79: ReadOnlyToggle (size: sm) in Row 2 (changed from md to sm on 2026-02-18)
 - Emits `toggle` event instead of separate `start`/`stop`
 
 **Agent Node (Dashboard)** - `src/frontend/src/components/AgentNode.vue`
@@ -862,6 +865,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in AgentHeader.vue now use `size="sm"`: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77). RunningStateToggle.vue default size changed from 'md' to 'sm' (line 97). This provides visual consistency across all toggle locations (AgentHeader, Agents.vue, AgentNode.vue). |
 | 2026-02-18 | **UI-001 Redesign + Tab Restructuring**: Updated AgentHeader structure (3-row layout), RunningStateToggle now at lines 38-43 in Row 1. Default tab changed from 'info' to 'tasks' (line 275). **Logs tab and Files tab removed from visibleTabs. Terminal tab repositioned after Git tab.** New tab order (lines 504-529): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info. |
 | 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that agents can now use Claude Max subscription for all executions (including headless). When "Authenticate in Terminal" is enabled and user logs in via `/login`, the OAuth session in `~/.claude.json` is used for scheduled tasks, MCP calls, and parallel tasks instead of requiring `ANTHROPIC_API_KEY`. |
 | 2026-02-05 | **Bug fix: Orphaned credential injection loop**: Removed dead code in `crud.py:312-332` that iterated over undefined `agent_credentials` variable. This loop was left behind during CRED-002 refactor when the variable definition (lines ~183-192) was removed. Added comment explaining credentials are injected post-creation. |

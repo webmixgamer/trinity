@@ -250,7 +250,6 @@
                 :model-value="getAgentReadOnlyState(agent.name)"
                 :loading="readOnlyLoading === agent.name"
                 size="sm"
-                :show-label="false"
                 @toggle="handleReadOnlyToggle(agent)"
               />
               <AutonomyToggle
