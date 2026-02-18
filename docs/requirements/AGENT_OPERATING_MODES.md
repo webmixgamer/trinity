@@ -245,6 +245,38 @@ When sending a task, optional mode override:
 3. Changes applied directly
 ```
 
+## Public Access Enforcement
+
+When an agent is accessed via public link (`/chat/:token`), **Plan mode is enforced automatically** regardless of the agent's default operating mode.
+
+**Rationale**: External users should never be able to trigger code changes, commits, or destructive operations.
+
+| Access Type | Mode Applied |
+|-------------|--------------|
+| Authenticated user (owner) | Agent's configured mode |
+| Authenticated user (shared) | Agent's configured mode |
+| Public link (external) | **Plan mode (forced)** |
+
+**Implementation**:
+
+In `routers/public.py`, when calling the agent:
+
+```python
+# Public access always uses Plan mode
+payload = {
+    "message": contextual_message,
+    "operating_mode": "plan",  # Forced for public access
+    "system_prompt": link.system_prompt_override,
+    ...
+}
+```
+
+**UI Indicator**: Public chat header should show "Research Mode" or a lock icon indicating restricted capabilities.
+
+**Optional Future Enhancement**: Allow owner to explicitly enable Dev/Prod mode for public links (with strong warnings), for use cases like public coding assistants that need to demonstrate changes.
+
+---
+
 ## Migration from READ_ONLY_MODE
 
 The existing READ_ONLY_MODE spec (CFG-007) focuses on protecting agent's own code from modification. This is a different concern:
@@ -276,6 +308,7 @@ These can coexist:
 - [ ] Mode can be overridden per-task
 - [ ] Mode persists across agent restarts
 - [ ] Clear visual indicator of current mode in UI
+- [ ] Public access enforces Plan mode automatically
 
 ## Future Enhancements
 
