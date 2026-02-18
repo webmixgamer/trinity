@@ -218,7 +218,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { useAgentsStore } from '../stores/agents'
+import { useAuthStore } from '../stores/auth'
 import NavBar from '../components/NavBar.vue'
 import AgentSubNav from '../components/AgentSubNav.vue'
 
@@ -264,6 +266,7 @@ import { useSessionActivity } from '../composables/useSessionActivity'
 const route = useRoute()
 const router = useRouter()
 const agentsStore = useAgentsStore()
+const authStore = useAuthStore()
 
 // Minimal local state
 const agent = ref(null)
@@ -545,8 +548,10 @@ async function loadAgent() {
 async function loadTags() {
   if (!agent.value?.name) return
   try {
-    const response = await agentsStore.api.get(`/api/agents/${agent.value.name}/tags`)
-    agentTags.value = response.tags || []
+    const response = await axios.get(`/api/agents/${agent.value.name}/tags`, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
   } catch (err) {
     console.error('Failed to load tags:', err)
   }
@@ -554,8 +559,10 @@ async function loadTags() {
 
 async function loadAllTags() {
   try {
-    const response = await agentsStore.api.get('/api/tags')
-    allTags.value = (response.tags || []).map(t => t.tag)
+    const response = await axios.get('/api/tags', {
+      headers: authStore.authHeader
+    })
+    allTags.value = (response.data.tags || []).map(t => t.tag)
   } catch (err) {
     console.error('Failed to load all tags:', err)
   }
@@ -564,8 +571,10 @@ async function loadAllTags() {
 async function updateTags(newTags) {
   if (!agent.value?.name) return
   try {
-    const response = await agentsStore.api.put(`/api/agents/${agent.value.name}/tags`, { tags: newTags })
-    agentTags.value = response.tags || []
+    const response = await axios.put(`/api/agents/${agent.value.name}/tags`, { tags: newTags }, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
     showNotification('Tags updated', 'success')
   } catch (err) {
     console.error('Failed to update tags:', err)
@@ -576,8 +585,10 @@ async function updateTags(newTags) {
 async function addTag(tag) {
   if (!agent.value?.name) return
   try {
-    const response = await agentsStore.api.post(`/api/agents/${agent.value.name}/tags/${tag}`)
-    agentTags.value = response.tags || []
+    const response = await axios.post(`/api/agents/${agent.value.name}/tags/${tag}`, {}, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
     // Refresh all tags to show new tag in autocomplete
     await loadAllTags()
   } catch (err) {
@@ -589,8 +600,10 @@ async function addTag(tag) {
 async function removeTag(tag) {
   if (!agent.value?.name) return
   try {
-    const response = await agentsStore.api.delete(`/api/agents/${agent.value.name}/tags/${tag}`)
-    agentTags.value = response.tags || []
+    const response = await axios.delete(`/api/agents/${agent.value.name}/tags/${tag}`, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
   } catch (err) {
     console.error('Failed to remove tag:', err)
     showNotification('Failed to remove tag', 'error')
