@@ -6,6 +6,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-02-19 | **BREAKING**: Changed default permissions to restrictive. New agents start with NO permissions (was: bidirectional with same-owner agents). Updated `grant_default_permissions()` to no-op. |
 | 2026-01-23 | Verified all line numbers against implementation. Updated router endpoints (641-681), database delegation (1070-1091), frontend component references (PermissionsPanel.vue). |
 | 2026-01-03 | Added `get_agent_info` MCP tool enforcement. Documented access control dependencies from `dependencies.py`. |
 | 2025-12-10 | Initial implementation of Phase 9.10 agent-to-agent permissions. |
@@ -25,13 +26,15 @@ As an agent owner, I want to control which other agents my agent can communicate
 
 ## Access Control Model
 
-### Default Behavior (Option B: Same-Owner Agents)
-When an agent is created, it automatically receives **bidirectional permissions** with all other agents owned by the same user.
+### Default Behavior (Restrictive)
+When an agent is created, it starts with **NO permissions** to communicate with other agents. Owners must explicitly grant permissions via the Permissions tab in the UI.
+
+> **Changed 2026-02-19**: Previously (Option B), new agents automatically received bidirectional permissions with all same-owner agents. This was changed to a restrictive default for better security - agents should explicitly opt-in to collaboration.
 
 ### Permission Rules
 1. **Self-call**: Always allowed (agent can call itself)
 2. **Permitted list**: Agent can only communicate with agents in its permission list
-3. **Explicit only**: Even same-owner agents need explicit permission (after initial grant)
+3. **Explicit grant required**: All permissions must be explicitly granted by owner
 4. **Unidirectional**: Permissions are directional (A->B does not imply B->A)
 
 ## Entry Points
@@ -336,7 +339,7 @@ CREATE INDEX IF NOT EXISTS idx_permissions_target ON agent_permissions(target_ag
 | `remove_permission(source, target)` | 112-125 | Remove single permission |
 | `set_permissions(source, targets, by)` | 127-155 | Full replacement (delete + insert) |
 | `delete_agent_permissions(agent)` | 157-180 | Cleanup when agent deleted |
-| `grant_default_permissions(agent, owner)` | 182-223 | Bidirectional with same-owner agents |
+| `grant_default_permissions(agent, owner)` | 182-198 | No-op (restrictive default, returns 0) |
 
 ### Database Manager Delegation
 
@@ -483,10 +486,11 @@ Use `list_agents` to discover your available collaborators.
 
 ### Agent Creation
 
-**File**: `src/backend/services/agent_service/crud.py:512-518`
+**File**: `src/backend/services/agent_service/crud.py:471-477`
 
 ```python
-# Phase 9.10: Grant default permissions (Option B - same-owner agents)
+# Phase 9.10: Default permissions (restrictive - no auto-grant)
+# The method is called for consistency but returns 0 (no permissions granted)
 try:
     permissions_count = db.grant_default_permissions(config.name, current_user.username)
     if permissions_count > 0:
@@ -494,6 +498,8 @@ try:
 except Exception as e:
     logger.warning(f"Failed to grant default permissions for {config.name}: {e}")
 ```
+
+> **Note**: As of 2026-02-19, `grant_default_permissions()` returns 0 (restrictive default). The call is kept for API compatibility. Owners must configure permissions via the UI.
 
 ### Agent Deletion
 
@@ -611,10 +617,10 @@ python -m pytest test_agent_permissions.py -v
    - Expected: All checkboxes toggle, dirty state shown
    - Verify: Save reflects the bulk change
 
-6. **Default Permissions on Create**
+6. **Restrictive Default on Create**
    - Action: Create new agent
-   - Expected: Bidirectional permissions with all same-owner agents
-   - Verify: Check database `agent_permissions` table
+   - Expected: No permissions granted (restrictive default)
+   - Verify: Check database `agent_permissions` table has no entries for new agent
 
 ### Edge Cases
 - Agent with no other agents (empty list shown)

@@ -1,3 +1,23 @@
+### 2026-02-19 09:00:00
+🔒 **Security: Restrictive Default Permissions for New Agents**
+
+Changed default agent permissions from permissive to restrictive. New agents now start with NO permissions to communicate with other agents.
+
+**Previous Behavior**: New agents automatically received bidirectional permissions with all other agents owned by the same user (Option B: same-owner agents).
+
+**New Behavior**: New agents start isolated - owners must explicitly grant permissions via the Permissions tab in the UI.
+
+**Rationale**: Better security posture - agents should explicitly opt-in to collaboration rather than having implicit access.
+
+**Files Changed**:
+- `src/backend/db/permissions.py`: `grant_default_permissions()` now returns 0 (no-op)
+- `docs/memory/feature-flows/agent-permissions.md`: Updated default behavior documentation
+- `docs/memory/requirements.md`: Updated Agent Permissions key features
+
+**Note**: System agents (`trinity-system`) are unaffected - they bypass permission checks via MCP scope.
+
+---
+
 ### 2026-02-18 17:50:21
 🔧 **Fix: Toggle Consistency Across System**
 

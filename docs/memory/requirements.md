@@ -226,9 +226,9 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/agent-to-agent-collaboration.md`
 
 ### 9.2 Agent Permissions
-- **Status**: ✅ Implemented (2025-12-10)
+- **Status**: ✅ Implemented (2025-12-10, Updated 2026-02-19)
 - **Description**: Explicit permission model controlling which agents can call which
-- **Key Features**: Permissions tab in UI, default grant for same-owner agents
+- **Key Features**: Permissions tab in UI, restrictive default (no auto-grant), explicit opt-in
 - **Flow**: `docs/memory/feature-flows/agent-permissions.md`
 
 ### 9.3 Agent Shared Folders

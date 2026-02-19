@@ -181,42 +181,20 @@ class PermissionOperations:
 
     def grant_default_permissions(self, agent_name: str, owner_username: str) -> int:
         """
-        Grant default permissions for a new agent (Option B: same-owner agents).
+        Grant default permissions for a new agent.
 
-        Grants bidirectional permissions with all other agents owned by the same user.
-        Returns number of permissions created.
+        RESTRICTIVE DEFAULT (2026-02-19): New agents start with NO permissions.
+        Owners must explicitly grant permissions via the Permissions tab.
+
+        This is a no-op function that returns 0 permissions granted.
+        The method is kept for API compatibility and potential future use.
+
+        Previously (Option B): Granted bidirectional permissions with all
+        same-owner agents automatically. Changed to restrictive default for
+        better security - agents should explicitly opt-in to collaboration.
+
+        Returns number of permissions created (always 0 with restrictive default).
         """
-        # Get all agents owned by this user
-        owned_agents = self._agent_ops.get_agents_by_owner(owner_username)
-
-        now = datetime.utcnow().isoformat()
-        count = 0
-
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-
-            for other_agent in owned_agents:
-                if other_agent != agent_name:
-                    # Grant permission from new agent to existing agent
-                    try:
-                        cursor.execute("""
-                            INSERT INTO agent_permissions (source_agent, target_agent, created_at, created_by)
-                            VALUES (?, ?, ?, ?)
-                        """, (agent_name, other_agent, now, owner_username))
-                        count += 1
-                    except sqlite3.IntegrityError:
-                        pass
-
-                    # Grant permission from existing agent to new agent
-                    try:
-                        cursor.execute("""
-                            INSERT INTO agent_permissions (source_agent, target_agent, created_at, created_by)
-                            VALUES (?, ?, ?, ?)
-                        """, (other_agent, agent_name, now, owner_username))
-                        count += 1
-                    except sqlite3.IntegrityError:
-                        pass
-
-            conn.commit()
-
-        return count
+        # Restrictive default: no automatic permissions
+        # Owners must explicitly configure permissions in the UI
+        return 0
