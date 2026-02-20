@@ -747,6 +747,39 @@ export class TrinityClient {
   }
 
   // ============================================================================
+  // Notifications (NOTIF-001)
+  // ============================================================================
+
+  /**
+   * Create a notification from an agent
+   */
+  async createNotification(data: {
+    notification_type: string;
+    title: string;
+    message?: string;
+    priority?: string;
+    category?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    id: string;
+    agent_name: string;
+    notification_type: string;
+    title: string;
+    message?: string;
+    priority: string;
+    category?: string;
+    metadata?: Record<string, unknown>;
+    status: string;
+    created_at: string;
+  }> {
+    return this.request(
+      "POST",
+      "/api/notifications",
+      data
+    );
+  }
+
+  // ============================================================================
   // Health
   // ============================================================================
 

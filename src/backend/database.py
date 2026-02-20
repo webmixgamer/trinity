@@ -74,6 +74,11 @@ from db_models import (
     EmailLoginRequest,
     EmailLoginVerify,
     EmailLoginResponse,
+    # Agent Notifications (NOTIF-001)
+    NotificationCreate,
+    Notification,
+    NotificationList,
+    NotificationAcknowledge,
 )
 
 # Re-export connection utilities
@@ -95,6 +100,7 @@ from db.skills import SkillsOperations
 from db.public_chat import PublicChatOperations
 from db.tags import TagOperations
 from db.system_views import SystemViewOperations
+from db.notifications import NotificationOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -299,6 +305,30 @@ def _migrate_agent_schedules_execution_config(cursor, conn):
     conn.commit()
 
 
+def _migrate_agent_notifications_table(cursor, conn):
+    """Create agent_notifications table if it doesn't exist (NOTIF-001)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_notifications (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT,
+            priority TEXT DEFAULT 'normal',
+            category TEXT,
+            metadata TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            acknowledged_at TEXT,
+            acknowledged_by TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_agent ON agent_notifications(agent_name, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_status ON agent_notifications(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_priority ON agent_notifications(priority)")
+    conn.commit()
+
+
 def _migrate_agent_skills_table(cursor, conn):
     """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
@@ -409,6 +439,11 @@ def init_database():
             _migrate_agent_schedules_execution_config(cursor, conn)
         except Exception as e:
             print(f"Migration check (agent_schedules execution_config): {e}")
+
+        try:
+            _migrate_agent_notifications_table(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_notifications): {e}")
 
         # Users table
         cursor.execute("""
@@ -942,6 +977,7 @@ class DatabaseManager:
         self._public_chat_ops = PublicChatOperations()
         self._tag_ops = TagOperations()
         self._system_view_ops = SystemViewOperations()
+        self._notification_ops = NotificationOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1551,6 +1587,34 @@ class DatabaseManager:
 
     def can_user_edit_system_view(self, user_id: str, view_id: str, is_admin: bool = False):
         return self._system_view_ops.can_user_edit_view(user_id, view_id, is_admin)
+
+    # =========================================================================
+    # Agent Notifications (delegated to db/notifications.py) - NOTIF-001
+    # =========================================================================
+
+    def create_notification(self, agent_name: str, data):
+        return self._notification_ops.create_notification(agent_name, data)
+
+    def get_notification(self, notification_id: str):
+        return self._notification_ops.get_notification(notification_id)
+
+    def list_notifications(self, agent_name=None, status=None, priority=None, limit=100):
+        return self._notification_ops.list_notifications(agent_name, status, priority, limit)
+
+    def list_agent_notifications(self, agent_name: str, status=None, limit=50):
+        return self._notification_ops.list_agent_notifications(agent_name, status, limit)
+
+    def acknowledge_notification(self, notification_id: str, acknowledged_by: str):
+        return self._notification_ops.acknowledge_notification(notification_id, acknowledged_by)
+
+    def dismiss_notification(self, notification_id: str, dismissed_by: str):
+        return self._notification_ops.dismiss_notification(notification_id, dismissed_by)
+
+    def delete_agent_notifications(self, agent_name: str):
+        return self._notification_ops.delete_agent_notifications(agent_name)
+
+    def count_pending_notifications(self, agent_name=None):
+        return self._notification_ops.count_pending_notifications(agent_name)
 
 
 # Global database manager instance

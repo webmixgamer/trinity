@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-20)**: Agent Notifications (NOTIF-001):
+> - **New feature flow**: [agent-notifications.md](feature-flows/agent-notifications.md) - Agent-to-platform notification system
+> - **MCP Tool**: `send_notification` for agents to send structured notifications
+> - **7 API endpoints**: Create, list, get, acknowledge, dismiss, agent-specific queries
+> - **WebSocket broadcast**: Real-time `agent_notification` events to UI and Trinity Connect clients
+> - **Data model**: `agent_notifications` table with type, priority, category, metadata
+> - **mcp-orchestration.md**: Tool count updated 44 -> 45 (added send_notification)
+>
 > **Updated (2026-02-20)**: Per-Schedule Execution Configuration:
 > - **New schedule fields**: `timeout_seconds` (5m-2h) and `allowed_tools` (JSON array or null)
 > - **scheduling.md**: Added "Per-Schedule Execution Configuration" section with data flow diagram, files changed, and UI documentation
@@ -582,7 +590,7 @@
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-02-18**: Public Links tab consolidated into Sharing tab (SharingPanel.vue now embeds PublicLinksPanel.vue). **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 44 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule (now with timeout/allowed_tools), 5 tag (ORG-001) (Updated 2026-02-20) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 45 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule (now with timeout/allowed_tools), 5 tag (ORG-001), 1 notification (NOTIF-001) (Updated 2026-02-20) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional). **2026-01-30**: Shared users can now git pull (was owner-only) |
@@ -640,6 +648,7 @@
 | **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle in AgentHeader.vue (`size="sm"`) + Agents.vue (lines 248-255, now shows labels), auto-injection on agent start - **service layer: read_only.py** (CFG-007, Updated 2026-02-18 17:50) |
 | **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page, **tags layout fix** (fixed-height container, truncation). **Phase 4**: System manifest integration (default_tags, per-agent tags, system_view auto-creation). **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Complete, Layout Fix 2026-02-18) |
 | **Authenticated Chat Tab** | High | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) | Simple chat UI in Agent Detail (CHAT-001) - bubble messages, session selector dropdown, shared components with PublicChat. Uses `/task` endpoint for Dashboard tracking. **Components**: ChatPanel.vue, ChatMessages.vue, ChatInput.vue, ChatBubble.vue, ChatLoadingIndicator.vue. **Tab position**: after Tasks (Created 2026-02-19) |
+| **Agent Notifications** | High | [agent-notifications.md](feature-flows/agent-notifications.md) | Agent-to-platform structured notifications (NOTIF-001) - MCP `send_notification` tool, 7 REST endpoints, WebSocket broadcast, SQLite persistence. Types: alert/info/status/completion/question. Priority: low/normal/high/urgent. Features: acknowledge, dismiss, agent-specific queries, pending count. **UI not yet implemented** (Created 2026-02-20) |
 
 ---
 

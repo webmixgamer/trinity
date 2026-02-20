@@ -555,3 +555,47 @@ class SystemView(BaseModel):
 class SystemViewList(BaseModel):
     """Response model for listing system views."""
     views: List[SystemView]
+
+
+# =========================================================================
+# Agent Notification Models (NOTIF-001)
+# =========================================================================
+
+class NotificationCreate(BaseModel):
+    """Request model for creating a notification."""
+    notification_type: str  # alert, info, status, completion, question
+    title: str  # Required, max 200 chars
+    message: Optional[str] = None
+    priority: str = "normal"  # low, normal, high, urgent
+    category: Optional[str] = None  # progress, anomaly, health, error, etc.
+    metadata: Optional[dict] = None  # Any structured data
+
+
+class Notification(BaseModel):
+    """A notification from an agent."""
+    id: str
+    agent_name: str
+    notification_type: str
+    title: str
+    message: Optional[str] = None
+    priority: str = "normal"
+    category: Optional[str] = None
+    metadata: Optional[dict] = None
+    status: str = "pending"  # pending, acknowledged, dismissed
+    created_at: str
+    acknowledged_at: Optional[str] = None
+    acknowledged_by: Optional[str] = None
+
+
+class NotificationList(BaseModel):
+    """Response model for listing notifications."""
+    count: int
+    notifications: List[Notification]
+
+
+class NotificationAcknowledge(BaseModel):
+    """Response model for acknowledging a notification."""
+    id: str
+    status: str
+    acknowledged_at: str
+    acknowledged_by: str

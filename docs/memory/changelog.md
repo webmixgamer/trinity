@@ -1,3 +1,40 @@
+### 2026-02-20 12:41:00
+✨ **Feature: Agent Notifications (NOTIF-001)**
+
+Implemented agent notification system allowing agents to send structured notifications to the Trinity platform. Notifications are persisted, broadcast via WebSocket, and queryable via REST API.
+
+**Components Implemented**:
+- Database table `agent_notifications` with full CRUD operations
+- REST API endpoints: create, list, get, acknowledge, dismiss, agent-specific queries
+- MCP tool `send_notification` for agent use
+- WebSocket broadcasting for real-time notification delivery
+
+**API Endpoints**:
+- `POST /api/notifications` - Create notification
+- `GET /api/notifications` - List with filters (agent, status, priority)
+- `GET /api/notifications/{id}` - Get single notification
+- `POST /api/notifications/{id}/acknowledge` - Acknowledge
+- `POST /api/notifications/{id}/dismiss` - Dismiss
+- `GET /api/agents/{name}/notifications` - Agent-specific list
+- `GET /api/agents/{name}/notifications/count` - Pending count
+
+**MCP Tool**: `send_notification`
+- Parameters: notification_type, title, message, priority, category, metadata
+
+**Files Created**:
+- `src/backend/db/notifications.py`: CRUD operations
+- `src/backend/routers/notifications.py`: API endpoints
+- `src/mcp-server/src/tools/notifications.ts`: MCP tool
+
+**Files Modified**:
+- `src/backend/database.py`: Migration and delegation methods
+- `src/backend/db_models.py`: Pydantic models
+- `src/backend/main.py`: Router mount and WebSocket setup
+- `src/mcp-server/src/client.ts`: createNotification API method
+- `src/mcp-server/src/server.ts`: Tool registration
+
+---
+
 ### 2026-02-20 10:15:00
 ✨ **Feature: Configurable Timeout and Allowed Tools for Schedules**
 

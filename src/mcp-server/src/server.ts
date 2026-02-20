@@ -14,6 +14,7 @@ import { createDocsTools } from "./tools/docs.js";
 import { createSkillsTools } from "./tools/skills.js";
 import { createScheduleTools } from "./tools/schedules.js";
 import { createTagTools } from "./tools/tags.js";
+import { createNotificationTools } from "./tools/notifications.js";
 import type { McpAuthContext } from "./types.js";
 
 export interface ServerConfig {
@@ -223,8 +224,12 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(tagTools.untagAgent);
   server.addTool(tagTools.setAgentTags);
 
-  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length + Object.keys(tagTools).length;
-  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule, ${Object.keys(tagTools).length} tags)`);
+  // Register notification tools (1 tool) - NOTIF-001
+  const notificationTools = createNotificationTools(client, requireApiKey);
+  server.addTool(notificationTools.sendNotification);
+
+  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length + Object.keys(tagTools).length + Object.keys(notificationTools).length;
+  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule, ${Object.keys(tagTools).length} tags, ${Object.keys(notificationTools).length} notifications)`);
 
   return { server, port, client, requireApiKey };
 }

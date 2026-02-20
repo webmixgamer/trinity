@@ -173,6 +173,7 @@ The test suite covers:
 - **Activity Stream** (test_activities.py) - Cross-agent timeline, per-agent activities
 - **Parallel Tasks** (test_parallel_task.py) - Parallel headless execution (Req 12.1)
 - **Log Archive** (test_log_archive.py) - Log archival service (requires docker package in test env)
+- **Agent Notifications** (test_notifications.py) - Notification CRUD, acknowledge, dismiss, agent-specific queries (NOTIF-001) [SMOKE + Agent]
 
 ### Real-Time & WebSocket
 - **Web Terminal** (test_web_terminal.py) - WebSocket terminal sessions
@@ -195,8 +196,8 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~567 tests across 33 test files (excluding ORG-001 tests not yet implemented)
-**Smoke Tests**: ~127 tests (fast, no agent creation)
+**Total Tests**: ~607 tests across 35 test files (excluding ORG-001 tests not yet implemented)
+**Smoke Tests**: ~165 tests (fast, no agent creation, includes NOTIF-001)
 **Agent-Requiring Tests**: ~390 tests
 **Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
 **WebSocket Tests**: ~10 tests (web terminal, execution streaming)
@@ -227,7 +228,7 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
 
-## Known Issues (2026-02-18)
+## Known Issues (2026-02-20)
 
 | Issue | Test | Severity | Status |
 |-------|------|----------|--------|
@@ -236,6 +237,38 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 | Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
 | ORG-001 Tags pytest tests not implemented | `test_tags.py` | Medium | Manual testing complete, pytest needed |
 | ORG-001 System Views pytest tests not implemented | `test_system_views.py` | Medium | Manual testing complete, pytest needed |
+| NOTIF-001 Notifications tests implemented | `test_notifications.py` | N/A | ✅ 40 tests implemented (38 smoke, 2 agent) |
+
+## Recent Test Additions (2026-02-20)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_notifications.py` | Agent Notifications CRUD (NOTIF-001) | 40 tests (38 smoke, 2 agent) |
+
+**Manual Testing Completed (2026-02-20)**:
+
+NOTIF-001 Agent Notifications feature manually validated:
+
+**Notification CRUD** ✅
+- `POST /api/notifications` - Create notification (201 Created)
+- `GET /api/notifications` - List with filters (agent_name, status, priority)
+- `GET /api/notifications/{id}` - Get single notification
+- `POST /api/notifications/{id}/acknowledge` - Acknowledge notification
+- `POST /api/notifications/{id}/dismiss` - Dismiss notification
+
+**Agent-Specific Endpoints** ✅
+- `GET /api/agents/{name}/notifications` - List agent notifications
+- `GET /api/agents/{name}/notifications/count` - Count pending notifications
+
+**MCP Tool** ✅
+- `send_notification` tool registered (45 tools total)
+- Parameters: notification_type, title, message, priority, category, metadata
+
+**WebSocket Broadcasting** ✅
+- Notifications broadcast to main WebSocket (`/ws`)
+- Notifications broadcast to filtered WebSocket (`/ws/events`)
+
+---
 
 ## Recent Test Additions (2026-02-18)
 

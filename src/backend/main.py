@@ -59,6 +59,7 @@ from routers.skills import router as skills_router
 from routers.internal import router as internal_router
 from routers.tags import router as tags_router
 from routers.system_views import router as system_views_router
+from routers.notifications import router as notifications_router, set_websocket_manager as set_notifications_ws_manager, set_filtered_websocket_manager as set_notifications_filtered_ws_manager
 
 # Import activity service
 from services.activity_service import activity_service
@@ -174,6 +175,8 @@ set_agents_filtered_ws_manager(filtered_manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
 set_public_links_ws_manager(manager)
+set_notifications_ws_manager(manager)
+set_notifications_filtered_ws_manager(filtered_manager)
 
 # Inject trinity meta-prompt function into system agent router
 set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
@@ -313,6 +316,7 @@ app.include_router(skills_router) # Skills Management System
 app.include_router(internal_router)  # Internal agent-to-backend endpoints (no auth)
 app.include_router(tags_router)  # Agent Tags (ORG-001)
 app.include_router(system_views_router)  # System Views (ORG-001 Phase 2)
+app.include_router(notifications_router)  # Agent Notifications (NOTIF-001)
 
 
 # WebSocket endpoint
