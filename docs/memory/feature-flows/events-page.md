@@ -315,8 +315,9 @@ case 'agent_notification':
 ## Related Flows
 
 - **Upstream**:
-  - `agent-notifications.md` - Backend notification creation and API
+  - `agent-notifications.md` - Backend notification creation and API (includes NOTIF-003 agent attribution fix)
   - `mcp-orchestration.md` - `send_notification` MCP tool
+  - `mcp-api-keys.md` - Agent-scoped keys populate `User.agent_name` for correct attribution
 
 - **Downstream**:
   - Navigation badge in all pages via NavBar
@@ -342,5 +343,6 @@ case 'agent_notification':
 
 | Date | Changes |
 |------|---------|
+| 2026-02-20 | **NOTIF-003 Bug Fix**: Agent attribution now works correctly - notifications display the actual agent name instead of the API key owner's username. See `agent-notifications.md` for technical details. |
 | 2026-02-20 | Documentation verified and updated: corrected line numbers (router 116-120, websocket 71-91), added NavBar line refs (52-67, polling 266/282), expanded store action/getter line numbers, detailed Events.vue template structure and helper functions, documented client-side type filter |
 | 2026-02-20 | Initial implementation (Phase 1-3: Core page, actions, real-time) |

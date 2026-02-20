@@ -495,6 +495,46 @@ const server = new FastMCP({
 | `agent` | Agent-to-agent communication | System when agent is created |
 | `system` | System agent with full access | System for trinity-system agent |
 
+### Agent-Scoped Key Authentication Context (NOTIF-003)
+
+When an agent-scoped MCP API key is used for authentication, the `agent_name` from the key is propagated to the `User` model. This enables downstream features to know which agent is making the request.
+
+**Authentication Flow** (`src/backend/dependencies.py:137-155`):
+
+```python
+# Try MCP API key authentication
+mcp_key_info = db.validate_mcp_api_key(token)
+if mcp_key_info:
+    user = db.get_user_by_email(user_email) if user_email else db.get_user_by_username(user_id)
+    if user:
+        # For agent-scoped keys, include the agent_name
+        agent_name = mcp_key_info.get("agent_name") if mcp_key_info.get("scope") == "agent" else None
+        return User(
+            id=user["id"],
+            username=user["username"],
+            email=user.get("email"),
+            role=user["role"],
+            agent_name=agent_name  # Populated for agent-scoped keys only
+        )
+```
+
+**User Model** (`src/backend/models.py:56-63`):
+```python
+class User(BaseModel):
+    """Authenticated user."""
+    id: int
+    username: str
+    email: Optional[str] = None
+    role: str = "user"
+    # For agent-scoped MCP API keys, this is the agent name
+    agent_name: Optional[str] = None
+```
+
+**Use Cases**:
+- **Notifications** (NOTIF-001): `current_user.agent_name` ensures notifications are attributed to the correct agent
+- **Activity Tracking**: Agent-initiated activities can be correctly attributed
+- **Audit Logging**: Actions performed by agents via MCP are traceable to the specific agent
+
 ---
 
 ## Testing
@@ -622,3 +662,4 @@ accessible_agents = db.get_accessible_agent_names(user_email, is_admin)
 |------|--------|
 | 2026-01-13 | Initial documentation |
 | 2026-02-05 | **Trinity Connect Authentication**: Added section documenting MCP API key usage for `/ws/events` WebSocket authentication. Keys provide user identity for server-side event filtering. |
+| 2026-02-20 | **NOTIF-003 Agent Attribution**: Added "Agent-Scoped Key Authentication Context" section. Agent-scoped keys now populate `User.agent_name` field during authentication (dependencies.py:147-154). Enables correct attribution for notifications, activity tracking, and audit logging. |

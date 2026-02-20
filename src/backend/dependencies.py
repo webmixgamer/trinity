@@ -144,11 +144,14 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         # Note: user_id from MCP key is the username string, not the database id
         user = db.get_user_by_email(user_email) if user_email else db.get_user_by_username(user_id)
         if user:
+            # For agent-scoped keys, include the agent_name
+            agent_name = mcp_key_info.get("agent_name") if mcp_key_info.get("scope") == "agent" else None
             return User(
                 id=user["id"],
                 username=user["username"],
                 email=user.get("email"),
-                role=user["role"]
+                role=user["role"],
+                agent_name=agent_name
             )
 
     # Both JWT and MCP key failed

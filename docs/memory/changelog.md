@@ -1,3 +1,22 @@
+### 2026-02-20 18:00:00
+🐛 **Fix: Notifications Showing Wrong Agent Name (NOTIF-003)**
+
+Fixed issue where Events page showed notifications as coming from "admin" instead of the actual agent name.
+
+**Root Cause**: When agents send notifications via MCP, the `agent_name` from agent-scoped API keys was not being passed to the `User` object in `get_current_user()`. The notification router then fell back to `current_user.username` (the key owner's username) instead of the agent name.
+
+**Solution**:
+- Added `agent_name` field to `User` model in `models.py`
+- Updated `get_current_user()` in `dependencies.py` to extract `agent_name` from MCP key info for agent-scoped keys
+- Simplified notification router to use `current_user.agent_name` when available
+
+**Files Modified**:
+- `src/backend/models.py`: Added `agent_name: Optional[str] = None` to User model
+- `src/backend/dependencies.py`: Pass agent_name from mcp_key_info to User object
+- `src/backend/routers/notifications.py`: Simplified agent_name extraction logic
+
+---
+
 ### 2026-02-20 17:30:00
 🐛 **Fix: Chat Tab Session Persistence (CHAT-001)**
 

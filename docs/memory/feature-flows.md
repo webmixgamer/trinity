@@ -3,6 +3,12 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-20)**: Agent Notification Attribution Fix (NOTIF-003):
+> - **Bug**: Events page showed notifications as coming from "admin" instead of actual agent name
+> - **Root cause**: `agent_name` from agent-scoped MCP keys was not passed to `User` object in `get_current_user()`
+> - **Fix files**: `models.py:62-63` (User.agent_name field), `dependencies.py:147-154` (extract agent_name from mcp_key_info), `notifications.py:106-109` (use current_user.agent_name)
+> - **Updated flows**: [agent-notifications.md](feature-flows/agent-notifications.md) (auth flow + revision), [mcp-api-keys.md](feature-flows/mcp-api-keys.md) (new section), [events-page.md](feature-flows/events-page.md) (revision note)
+>
 > **Updated (2026-02-20)**: Execution Origin Tracking (AUDIT-001):
 > - **New feature flow**: [AUDIT-001-execution-origin-tracking.md](feature-flows/AUDIT-001-execution-origin-tracking.md) - Track WHO triggered each execution
 > - **Origin fields**: `source_user_id`, `source_user_email`, `source_agent_name`, `source_mcp_key_id`, `source_mcp_key_name`

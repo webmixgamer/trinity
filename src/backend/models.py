@@ -59,6 +59,8 @@ class User(BaseModel):
     username: str
     email: Optional[str] = None
     role: str = "user"
+    # For agent-scoped MCP API keys, this is the agent name
+    agent_name: Optional[str] = None
 
 
 class Token(BaseModel):

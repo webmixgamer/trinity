@@ -176,7 +176,47 @@ async createNotification(data: {
 1. MCP tool receives `context.session.mcpApiKey` from auth context
 2. Creates user-scoped TrinityClient with API key as Bearer token
 3. Calls `POST /api/notifications`
-4. Backend extracts `agent_name` from MCP auth context (agent-scoped keys) or uses username (user-scoped keys)
+4. Backend extracts `agent_name` from MCP auth context via the User model (see NOTIF-003 fix below)
+
+**Agent Attribution Flow (NOTIF-003)**:
+The correct agent name attribution involves three layers:
+
+1. **MCP Key Validation** (`src/backend/db/mcp_keys.py:190-236`):
+   - `validate_mcp_api_key()` returns dict with `agent_name` field for agent-scoped keys
+   - Returns `scope: "agent"` to indicate agent-scoped key
+
+2. **User Model Hydration** (`src/backend/dependencies.py:147-154`):
+   ```python
+   # For agent-scoped keys, include the agent_name
+   agent_name = mcp_key_info.get("agent_name") if mcp_key_info.get("scope") == "agent" else None
+   return User(
+       id=user["id"],
+       username=user["username"],
+       email=user.get("email"),
+       role=user["role"],
+       agent_name=agent_name  # Populated from MCP key info
+   )
+   ```
+
+3. **Notification Router** (`src/backend/routers/notifications.py:106-109`):
+   ```python
+   # Get agent name from user context
+   # For agent-scoped keys, current_user.agent_name is the agent sending the notification
+   # For user-scoped keys, we fall back to username (for manual testing/admin use)
+   agent_name = current_user.agent_name if current_user.agent_name else current_user.username
+   ```
+
+**User Model** (`src/backend/models.py:56-63`):
+```python
+class User(BaseModel):
+    """Authenticated user."""
+    id: int
+    username: str
+    email: Optional[str] = None
+    role: str = "user"
+    # For agent-scoped MCP API keys, this is the agent name
+    agent_name: Optional[str] = None
+```
 
 ---
 
@@ -235,7 +275,7 @@ async def _broadcast_notification(notification: Notification):
 | 234-261 | `/api/agents/{name}/notifications` | GET | Agent-specific list |
 | 264-272 | `/api/agents/{name}/notifications/count` | GET | Pending count |
 
-**Create Notification** (`POST /api/notifications`, lines 69-118):
+**Create Notification** (`POST /api/notifications`, lines 69-116):
 ```python
 @router.post("/notifications", response_model=Notification, status_code=201)
 async def create_notification(
@@ -246,10 +286,10 @@ async def create_notification(
     # Validate priority (low, normal, high, urgent)
     # Validate title length (max 200 chars)
 
-    # Get agent_name from auth context
-    agent_name = current_user.username
-    if hasattr(current_user, 'agent_name') and current_user.agent_name:
-        agent_name = current_user.agent_name
+    # Get agent name from user context (NOTIF-003 fix)
+    # For agent-scoped keys, current_user.agent_name is the agent sending the notification
+    # For user-scoped keys, we fall back to username (for manual testing/admin use)
+    agent_name = current_user.agent_name if current_user.agent_name else current_user.username
 
     notification = db.create_notification(agent_name, data)
     await _broadcast_notification(notification)
@@ -382,7 +422,7 @@ The `FilteredWebSocketManager` (in `main.py`) extracts `agent_name` from the eve
 ## Security Considerations
 
 1. **Authentication Required**: All endpoints require valid JWT or MCP API key
-2. **Agent Name Extraction**: For agent-scoped MCP keys, `agent_name` is extracted from auth context (cannot be spoofed)
+2. **Agent Name Extraction** (NOTIF-003): For agent-scoped MCP keys, `agent_name` is extracted from `mcp_key_info` during authentication and stored in `User.agent_name` field. This ensures notifications are correctly attributed to the sending agent (cannot be spoofed).
 3. **Authorization on Agent Endpoints**: `GET /api/agents/{name}/notifications` uses `AuthorizedAgent` dependency (owner, shared, or admin)
 4. **WebSocket Filtering**: Filtered WebSocket only sends notifications for agents the client has access to
 5. **Input Validation**: Title length, enum values, JSON metadata all validated server-side
@@ -559,4 +599,5 @@ sqlite3 ~/trinity-data/trinity.db "DELETE FROM agent_notifications WHERE title L
 
 | Date | Changes |
 |------|---------|
+| 2026-02-20 | **NOTIF-003 Bug Fix**: Fixed agent attribution - notifications now correctly show agent name instead of API key owner. Root cause: `agent_name` from agent-scoped MCP keys was not being passed to `User` model in `get_current_user()`. Fix: Added `agent_name` field to User model (models.py:62-63), updated `get_current_user()` to extract from mcp_key_info (dependencies.py:147-154), simplified notification router logic (notifications.py:106-109). |
 | 2026-02-20 | Initial implementation (Phase 1: Backend + MCP Tool) |

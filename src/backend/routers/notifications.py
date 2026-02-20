@@ -104,11 +104,9 @@ async def create_notification(
         )
 
     # Get agent name from user context
-    # For agent-scoped keys, current_user.username is the agent name
-    # For user-scoped keys, we use a generic identifier
-    agent_name = current_user.username
-    if hasattr(current_user, 'agent_name') and current_user.agent_name:
-        agent_name = current_user.agent_name
+    # For agent-scoped keys, current_user.agent_name is the agent sending the notification
+    # For user-scoped keys, we fall back to username (for manual testing/admin use)
+    agent_name = current_user.agent_name if current_user.agent_name else current_user.username
 
     notification = db.create_notification(agent_name, data)
 
