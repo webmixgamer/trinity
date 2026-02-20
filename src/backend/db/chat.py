@@ -230,6 +230,38 @@ class ChatOperations:
             conn.commit()
             return cursor.rowcount > 0
 
+    def create_new_chat_session(self, agent_name: str, user_id: int, user_email: str) -> ChatSession:
+        """
+        Create a new chat session, closing any existing active sessions for this user+agent.
+        Use this when user explicitly wants a new conversation (e.g., "New Chat" button).
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Close any existing active sessions for this user+agent
+            cursor.execute("""
+                UPDATE chat_sessions SET status = 'closed'
+                WHERE agent_name = ? AND user_id = ? AND status = 'active'
+            """, (agent_name, user_id))
+
+            # Create a new session
+            session_id = secrets.token_urlsafe(16)
+            now = datetime.utcnow().isoformat()
+
+            cursor.execute("""
+                INSERT INTO chat_sessions (
+                    id, agent_name, user_id, user_email, started_at, last_message_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (session_id, agent_name, user_id, user_email, now, now))
+
+            conn.commit()
+
+            # Return the newly created session
+            cursor.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,))
+            row = cursor.fetchone()
+            return self._row_to_chat_session(row)
+
     def delete_chat_session(self, session_id: str) -> bool:
         """Delete a chat session and all its messages."""
         with get_db_connection() as conn:

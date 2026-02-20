@@ -97,7 +97,13 @@ class SchedulerDatabase:
             context_max=row["context_max"] if "context_max" in row_keys else None,
             cost=row["cost"] if "cost" in row_keys else None,
             tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None,
-            execution_log=row["execution_log"] if "execution_log" in row_keys else None
+            execution_log=row["execution_log"] if "execution_log" in row_keys else None,
+            # Origin tracking fields (AUDIT-001)
+            source_user_id=row["source_user_id"] if "source_user_id" in row_keys else None,
+            source_user_email=row["source_user_email"] if "source_user_email" in row_keys else None,
+            source_agent_name=row["source_agent_name"] if "source_agent_name" in row_keys else None,
+            source_mcp_key_id=row["source_mcp_key_id"] if "source_mcp_key_id" in row_keys else None,
+            source_mcp_key_name=row["source_mcp_key_name"] if "source_mcp_key_name" in row_keys else None
         )
 
     # =========================================================================

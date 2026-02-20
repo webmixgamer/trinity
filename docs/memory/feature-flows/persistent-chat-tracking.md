@@ -7,6 +7,11 @@
 > - Backend `/task` endpoint executions
 >
 > Terminal sessions are NOT persisted to this system (they use direct PTY access).
+>
+> **Update (2026-02-20)**: The new authenticated Chat tab (`ChatPanel.vue`) uses the `/task` endpoint with
+> `save_to_session=true` to persist messages to these same `chat_sessions` and `chat_messages` tables.
+> See [authenticated-chat-tab.md](authenticated-chat-tab.md) and [parallel-headless-execution.md](parallel-headless-execution.md)
+> for the Chat Session Persistence section.
 
 ## Overview
 Database-backed chat session persistence that survives agent restarts, container deletions, and provides long-term observability. Every user message and assistant response is logged to SQLite with full metadata including costs, context usage, tool calls, and execution time. Sessions are automatically created per user+agent combination and track cumulative statistics.
@@ -961,11 +966,13 @@ LIMIT 100;
 
 - **Upstream**:
   - Agent Lifecycle (agent must exist and be running)
-  - Auth0 Authentication (user must be authenticated)
+  - Email Authentication (user must be authenticated)
 - **Downstream**:
   - Activity Monitoring (tool calls stored in messages)
   - Cost Auditing (session costs tracked)
 - **Related**:
+  - [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses `/task` endpoint with `save_to_session=true` to persist to these tables
+  - [parallel-headless-execution.md](parallel-headless-execution.md) - Documents `save_to_session`, `user_message`, `create_new_session` parameters
   - Agent Chat (in-memory session, non-persistent)
   - Scheduling (scheduled executions also tracked separately)
 
@@ -1360,6 +1367,7 @@ To show persistent history in UI:
 
 ## Changelog
 
+- **2026-02-20**: Added cross-references to authenticated-chat-tab.md and parallel-headless-execution.md. The `/task` endpoint now supports `save_to_session=true` parameter to persist to these same tables. New `db.create_new_chat_session()` method added (`db/chat.py:233-263`).
 - **2026-01-13**: Added Session Management section documenting EXEC-019, EXEC-020, EXEC-021 user stories. Documented list/view/close session APIs, database operations, access control, and testing procedures. Frontend UI not yet implemented (backend-only).
 - **2025-12-30**: Updated line numbers to reflect current codebase after execution queue integration. Chat endpoint now at lines 106-356 (was 50-294). Persistent history endpoints now at lines 876-1027 (was 586-736). Database schema lines updated.
 - **2025-12-01**: Initial implementation of persistent chat session tracking

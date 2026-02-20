@@ -111,7 +111,13 @@ class ScheduleOperations:
             context_max=row["context_max"] if "context_max" in row_keys else None,
             cost=row["cost"] if "cost" in row_keys else None,
             tool_calls=row["tool_calls"] if "tool_calls" in row_keys else None,
-            execution_log=row["execution_log"] if "execution_log" in row_keys else None
+            execution_log=row["execution_log"] if "execution_log" in row_keys else None,
+            # Origin tracking fields (AUDIT-001)
+            source_user_id=row["source_user_id"] if "source_user_id" in row_keys else None,
+            source_user_email=row["source_user_email"] if "source_user_email" in row_keys else None,
+            source_agent_name=row["source_agent_name"] if "source_agent_name" in row_keys else None,
+            source_mcp_key_id=row["source_mcp_key_id"] if "source_mcp_key_id" in row_keys else None,
+            source_mcp_key_name=row["source_mcp_key_name"] if "source_mcp_key_name" in row_keys else None,
         )
 
     @staticmethod
@@ -421,8 +427,29 @@ class ScheduleOperations:
     # Schedule Execution Management
     # =========================================================================
 
-    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual") -> Optional[ScheduleExecution]:
-        """Create a new execution record for a manual/API-triggered task (no schedule)."""
+    def create_task_execution(
+        self,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "manual",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ) -> Optional[ScheduleExecution]:
+        """Create a new execution record for a manual/API-triggered task (no schedule).
+
+        Args:
+            agent_name: Target agent name
+            message: Task message
+            triggered_by: Trigger type - "manual", "mcp", "agent"
+            source_user_id: User ID who triggered (for manual/mcp triggers)
+            source_user_email: User email (denormalized for queries)
+            source_agent_name: Calling agent name (for agent-to-agent)
+            source_mcp_key_id: MCP API key ID (for mcp/agent triggers)
+            source_mcp_key_name: MCP API key name (denormalized)
+        """
         execution_id = self._generate_id()
         now = utc_now_iso()
 
@@ -430,8 +457,10 @@ class ScheduleOperations:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO schedule_executions (
-                    id, schedule_id, agent_name, status, started_at, message, triggered_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by,
+                    source_user_id, source_user_email, source_agent_name,
+                    source_mcp_key_id, source_mcp_key_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 execution_id,
                 "__manual__",  # Special marker for manual/API-triggered tasks
@@ -439,7 +468,12 @@ class ScheduleOperations:
                 "running",
                 now,
                 message,
-                triggered_by
+                triggered_by,
+                source_user_id,
+                source_user_email,
+                source_agent_name,
+                source_mcp_key_id,
+                source_mcp_key_name,
             ))
             conn.commit()
 
@@ -450,11 +484,32 @@ class ScheduleOperations:
                 status="running",
                 started_at=datetime.fromisoformat(now),
                 message=message,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
+                source_user_id=source_user_id,
+                source_user_email=source_user_email,
+                source_agent_name=source_agent_name,
+                source_mcp_key_id=source_mcp_key_id,
+                source_mcp_key_name=source_mcp_key_name,
             )
 
-    def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule") -> Optional[ScheduleExecution]:
-        """Create a new execution record for a scheduled task."""
+    def create_schedule_execution(
+        self,
+        schedule_id: str,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "schedule",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ) -> Optional[ScheduleExecution]:
+        """Create a new execution record for a scheduled task.
+
+        Note: For schedule-triggered executions, source fields are typically NULL
+        since the schedule itself is the trigger (schedule owner is tracked via schedule.owner_id).
+        For manual schedule triggers, source fields may be populated.
+        """
         execution_id = self._generate_id()
         now = utc_now_iso()
 
@@ -462,8 +517,10 @@ class ScheduleOperations:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO schedule_executions (
-                    id, schedule_id, agent_name, status, started_at, message, triggered_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by,
+                    source_user_id, source_user_email, source_agent_name,
+                    source_mcp_key_id, source_mcp_key_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 execution_id,
                 schedule_id,
@@ -471,7 +528,12 @@ class ScheduleOperations:
                 "running",
                 now,
                 message,
-                triggered_by
+                triggered_by,
+                source_user_id,
+                source_user_email,
+                source_agent_name,
+                source_mcp_key_id,
+                source_mcp_key_name,
             ))
             conn.commit()
 
@@ -482,7 +544,12 @@ class ScheduleOperations:
                 status="running",
                 started_at=datetime.fromisoformat(now),
                 message=message,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
+                source_user_id=source_user_id,
+                source_user_email=source_user_email,
+                source_agent_name=source_agent_name,
+                source_mcp_key_id=source_mcp_key_id,
+                source_mcp_key_name=source_mcp_key_name,
             )
 
     def update_execution_status(

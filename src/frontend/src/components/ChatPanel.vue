@@ -296,8 +296,14 @@ const sendMessage = async (userMessage) => {
     const contextPrompt = buildContextPrompt(userMessage)
 
     // Send via task endpoint (headless execution for Dashboard tracking)
+    // save_to_session: true persists to chat_sessions table for session dropdown
+    // user_message: original message without context (for clean session display)
+    // create_new_session: true when no current session (new chat or first message)
     const response = await axios.post(`/api/agents/${props.agentName}/task`, {
-      message: contextPrompt
+      message: contextPrompt,
+      save_to_session: true,
+      user_message: userMessage,
+      create_new_session: !currentSessionId.value
     }, {
       headers: authStore.authHeader
     })
@@ -310,8 +316,10 @@ const sendMessage = async (userMessage) => {
       })
     }
 
-    // Refresh sessions list (but don't auto-select, we're in an active conversation)
-    if (response.data.task_execution_id && !currentSessionId.value) {
+    // Update current session ID if backend created/used one
+    if (response.data.chat_session_id) {
+      currentSessionId.value = response.data.chat_session_id
+      // Refresh sessions list to include the new session
       await loadSessions(false)
     }
   } catch (err) {

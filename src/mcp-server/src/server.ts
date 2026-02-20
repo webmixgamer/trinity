@@ -30,6 +30,7 @@ export interface ServerConfig {
 
 export interface McpApiKeyValidationResult {
   valid: boolean;
+  key_id?: string;      // MCP API key ID (AUDIT-001)
   user_id?: string;
   user_email?: string;
   key_name?: string;
@@ -141,6 +142,7 @@ export async function createServer(config: ServerConfig = {}) {
             const authContext: McpAuthContext = {
               userId: result.user_id || "unknown",
               userEmail: result.user_email,
+              keyId: result.key_id,  // MCP API key ID (AUDIT-001)
               keyName: result.key_name || "unknown",
               agentName: result.agent_name,  // Agent name if scope is 'agent' or 'system'
               scope: scope as "user" | "agent" | "system",

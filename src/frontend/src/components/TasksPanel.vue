@@ -7,6 +7,17 @@
         <p class="text-sm text-gray-500 dark:text-gray-400">Headless executions from schedules, agents, or manual triggers</p>
       </div>
       <div class="flex items-center space-x-3">
+        <!-- Trigger Type Filter -->
+        <select
+          v-model="triggerFilter"
+          class="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="all">All triggers</option>
+          <option value="manual">Manual</option>
+          <option value="schedule">Schedule</option>
+          <option value="mcp">MCP</option>
+          <option value="agent">Agent</option>
+        </select>
         <!-- Queue Status Indicator -->
         <div v-if="queueStatus" class="flex items-center space-x-2">
           <span
@@ -496,6 +507,7 @@ const releaseLoading = ref(false)
 const clearLoading = ref(false)
 const expandedTaskId = ref(null)
 const terminatingTaskId = ref(null)
+const triggerFilter = ref('all') // Filter by triggered_by type (AUDIT-001)
 
 // Execution log modal state
 const showLogModal = ref(false)
@@ -543,7 +555,14 @@ const allTasks = computed(() => {
     return task
   }
 
-  return [...pending.map(enhanceWithExecutionId), ...executions.value.map(enhanceWithExecutionId)]
+  let tasks = [...pending.map(enhanceWithExecutionId), ...executions.value.map(enhanceWithExecutionId)]
+
+  // Apply trigger type filter (AUDIT-001)
+  if (triggerFilter.value !== 'all') {
+    tasks = tasks.filter(t => t.triggered_by === triggerFilter.value)
+  }
+
+  return tasks
 })
 
 // Computed stats (from server executions only)

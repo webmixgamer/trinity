@@ -241,6 +241,12 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
         // Pass source agent for collaboration tracking
         const sourceAgent = authContext?.scope === "agent" ? authContext.agentName : undefined;
 
+        // Build MCP key info for execution origin tracking (AUDIT-001)
+        const mcpKeyInfo = authContext ? {
+          keyId: authContext.keyId,
+          keyName: authContext.keyName,
+        } : undefined;
+
         // Use parallel task mode or sequential chat mode based on parameter
         if (parallel) {
           // Parallel task mode - stateless, no queue
@@ -256,13 +262,14 @@ export function createChatTools(client: TrinityClient, requireApiKey: boolean) {
               timeout_seconds,
               async_mode: asyncMode,
             },
-            sourceAgent
+            sourceAgent,
+            mcpKeyInfo
           );
           return JSON.stringify(response, null, 2);
         }
 
         // Sequential chat mode - uses queue, maintains context
-        const response = await apiClient.chat(agent_name, message, sourceAgent);
+        const response = await apiClient.chat(agent_name, message, sourceAgent, mcpKeyInfo);
 
         // Check if response is a queue status (agent busy)
         if ('queue_status' in response) {

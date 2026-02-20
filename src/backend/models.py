@@ -80,13 +80,16 @@ class ModelChangeRequest(BaseModel):
 
 class ParallelTaskRequest(BaseModel):
     """Request model for parallel task execution (stateless, no conversation context)."""
-    message: str  # The task to execute
+    message: str  # The task to execute (may include context prompt with history)
     model: Optional[str] = None  # Model override: sonnet, opus, haiku, or full model name
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
     timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
     max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
     async_mode: Optional[bool] = False  # If true, return immediately with execution_id (fire-and-forget)
+    save_to_session: Optional[bool] = False  # If true, persist messages to chat_sessions (for authenticated Chat tab)
+    user_message: Optional[str] = None  # Original user message (without context), used when save_to_session=True
+    create_new_session: Optional[bool] = False  # If true, close existing active sessions and create a new one
 
 
 # ============================================================================

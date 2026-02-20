@@ -396,10 +396,16 @@ export class TrinityClient {
   /**
    * Send a message to an agent and get a response
    * @param sourceAgent - Optional source agent name for agent-to-agent collaboration tracking
+   * @param mcpKeyInfo - Optional MCP key info for execution origin tracking (AUDIT-001)
    *
    * Returns ChatResponse on success, or a queue status object if agent is busy (429).
    */
-  async chat(name: string, message: string, sourceAgent?: string): Promise<ChatResponse | { error: string; queue_status: "busy" | "queue_full"; retry_after: number; agent: string; details?: Record<string, unknown> }> {
+  async chat(
+    name: string,
+    message: string,
+    sourceAgent?: string,
+    mcpKeyInfo?: { keyId?: string; keyName?: string }
+  ): Promise<ChatResponse | { error: string; queue_status: "busy" | "queue_full"; retry_after: number; agent: string; details?: Record<string, unknown> }> {
     // Prepare headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -410,6 +416,14 @@ export class TrinityClient {
     // Add X-Source-Agent header for collaboration tracking
     if (sourceAgent) {
       headers["X-Source-Agent"] = sourceAgent;
+    }
+
+    // Add MCP key info headers for execution origin tracking (AUDIT-001)
+    if (mcpKeyInfo?.keyId) {
+      headers["X-MCP-Key-ID"] = mcpKeyInfo.keyId;
+    }
+    if (mcpKeyInfo?.keyName) {
+      headers["X-MCP-Key-Name"] = mcpKeyInfo.keyName;
     }
 
     const response = await fetch(`${this.baseUrl}/api/agents/${encodeURIComponent(name)}/chat`, {
@@ -455,6 +469,7 @@ export class TrinityClient {
    * @param message - The task to execute
    * @param options - Optional parameters including async_mode for fire-and-forget
    * @param sourceAgent - Optional source agent name for collaboration tracking
+   * @param mcpKeyInfo - Optional MCP key info for execution origin tracking (AUDIT-001)
    */
   async task(
     name: string,
@@ -466,17 +481,27 @@ export class TrinityClient {
       timeout_seconds?: number;
       async_mode?: boolean;
     },
-    sourceAgent?: string
+    sourceAgent?: string,
+    mcpKeyInfo?: { keyId?: string; keyName?: string }
   ): Promise<ChatResponse | { status: "accepted"; execution_id: string; agent_name: string; message: string; async_mode: true }> {
     // Prepare headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      "X-Via-MCP": "true",  // Always mark as MCP call for task tracking
     };
 
     // Add X-Source-Agent header for collaboration tracking
     if (sourceAgent) {
       headers["X-Source-Agent"] = sourceAgent;
+    }
+
+    // Add MCP key info headers for execution origin tracking (AUDIT-001)
+    if (mcpKeyInfo?.keyId) {
+      headers["X-MCP-Key-ID"] = mcpKeyInfo.keyId;
+    }
+    if (mcpKeyInfo?.keyName) {
+      headers["X-MCP-Key-Name"] = mcpKeyInfo.keyName;
     }
 
     const body = {

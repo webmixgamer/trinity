@@ -640,12 +640,13 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 ## Related Flows
 
-- **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation
+- **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation. **2026-02-20**: Now supports `save_to_session` parameter for Chat tab persistence
 - **Upstream**: [execution-queue.md](execution-queue.md) - Queue system (bypassed by tasks)
 - **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages (2026-02-20: schedules now support per-schedule timeout and allowed_tools)
 - **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Related**: [execution-termination.md](execution-termination.md) - Stop button, process registry, graceful termination
-- **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking
+- **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking. **2026-02-20**: Session persistence via `save_to_session=true` parameter
+- **Related**: [persistent-chat-tracking.md](persistent-chat-tracking.md) - Chat session tables (`chat_sessions`, `chat_messages`) used by Chat tab via `/task` endpoint
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
 
 ---

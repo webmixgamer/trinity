@@ -1,3 +1,61 @@
+### 2026-02-20 17:30:00
+🐛 **Fix: Chat Tab Session Persistence (CHAT-001)**
+
+Fixed issue where Chat tab in Agent Detail page did not persist sessions after page refresh. Sessions now properly save to `chat_sessions` table.
+
+**Root Cause**: ChatPanel.vue used `/task` endpoint which only creates `schedule_executions` records, not `chat_sessions`. The session dropdown loaded from `chat_sessions` table which was never populated.
+
+**Solution**: Added session persistence support to `/task` endpoint:
+- New `ParallelTaskRequest` fields: `save_to_session`, `user_message`, `create_new_session`
+- When `save_to_session=true`, backend persists to `chat_sessions` and `chat_messages` tables
+- When `create_new_session=true`, closes existing active sessions and creates a new one
+- ChatPanel now passes `save_to_session: true`, `user_message`, and `create_new_session: !currentSessionId`
+
+**Files Modified**:
+- `src/backend/models.py`: Added 3 new fields to `ParallelTaskRequest`
+- `src/backend/routers/chat.py`: Added session persistence logic in `/task` endpoint
+- `src/backend/db/chat.py`: Added `create_new_chat_session()` method
+- `src/backend/database.py`: Added delegation method
+- `src/frontend/src/components/ChatPanel.vue`: Pass new parameters
+
+---
+
+### 2026-02-20 16:30:00
+✨ **Feature: Execution Origin Tracking (AUDIT-001)**
+
+Implemented full execution origin tracking to answer "who started this task?" for all executions. Complete audit trail from MCP client through backend to UI.
+
+**Database**:
+- Added migration `_migrate_execution_origin_tracking()` to database.py
+- New columns: `source_user_id`, `source_user_email`, `source_agent_name`, `source_mcp_key_id`, `source_mcp_key_name`
+
+**Backend**:
+- Updated `ScheduleExecution` model in db_models.py with origin fields
+- Updated `db/schedules.py` to accept and persist origin data
+- Updated `routers/chat.py` endpoints (`/chat`, `/task`) to capture origin from headers
+- Added `X-MCP-Key-ID` and `X-MCP-Key-Name` header extraction
+
+**MCP Server**:
+- Updated `/api/mcp/validate` to return `key_id` in response
+- Added `keyId` to `McpAuthContext` type
+- Updated `TrinityClient.chat()` and `TrinityClient.task()` to pass MCP key headers
+- Updated chat tools to include `mcpKeyInfo` in backend calls
+
+**Frontend**:
+- Added "Execution Origin" card to ExecutionDetail.vue showing user/agent/MCP key
+- Added trigger type filter dropdown to TasksPanel.vue
+
+**Files Modified**:
+- `src/backend/database.py`, `src/backend/db_models.py`, `src/backend/db/schedules.py`
+- `src/backend/routers/chat.py`, `src/backend/routers/mcp_keys.py`
+- `src/scheduler/models.py`, `src/scheduler/database.py`
+- `src/mcp-server/src/server.ts`, `src/mcp-server/src/client.ts`
+- `src/mcp-server/src/types.ts`, `src/mcp-server/src/tools/chat.ts`
+- `src/frontend/src/views/ExecutionDetail.vue`
+- `src/frontend/src/components/TasksPanel.vue`
+
+---
+
 ### 2026-02-20 15:45:00
 📋 **Requirements: Execution Origin Tracking (AUDIT-001)**
 

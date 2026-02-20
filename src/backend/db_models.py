@@ -146,13 +146,19 @@ class ScheduleExecution(BaseModel):
     message: str
     response: Optional[str] = None
     error: Optional[str] = None
-    triggered_by: str  # "schedule" or "manual"
+    triggered_by: str  # "schedule", "manual", "mcp", or "agent"
     # Observability fields
     context_used: Optional[int] = None  # Tokens used in context
     context_max: Optional[int] = None   # Max context window
     cost: Optional[float] = None        # Cost in USD
     tool_calls: Optional[str] = None    # JSON array of tool calls
     execution_log: Optional[str] = None # Full Claude Code execution transcript (JSON)
+    # Origin tracking fields (AUDIT-001)
+    source_user_id: Optional[int] = None       # User who triggered (for manual/mcp)
+    source_user_email: Optional[str] = None    # User email (denormalized for queries)
+    source_agent_name: Optional[str] = None    # Calling agent (for agent-to-agent)
+    source_mcp_key_id: Optional[str] = None    # MCP API key ID (for mcp/agent triggers)
+    source_mcp_key_name: Optional[str] = None  # MCP API key name (denormalized)
 
 
 # =========================================================================

@@ -329,6 +329,35 @@ def _migrate_agent_notifications_table(cursor, conn):
     conn.commit()
 
 
+def _migrate_execution_origin_tracking(cursor, conn):
+    """Add execution origin tracking columns to schedule_executions table (AUDIT-001).
+
+    Tracks WHO triggered each execution:
+    - source_user_id: User who triggered (for manual and MCP user triggers)
+    - source_user_email: User email (denormalized for queries)
+    - source_agent_name: Calling agent (for agent-to-agent collaboration)
+    - source_mcp_key_id: MCP API key ID used (for MCP calls)
+    - source_mcp_key_name: MCP API key name (denormalized)
+    """
+    cursor.execute("PRAGMA table_info(schedule_executions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("source_user_id", "INTEGER"),
+        ("source_user_email", "TEXT"),
+        ("source_agent_name", "TEXT"),
+        ("source_mcp_key_id", "TEXT"),
+        ("source_mcp_key_name", "TEXT"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to schedule_executions for origin tracking...")
+            cursor.execute(f"ALTER TABLE schedule_executions ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def _migrate_agent_skills_table(cursor, conn):
     """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
@@ -444,6 +473,11 @@ def init_database():
             _migrate_agent_notifications_table(cursor, conn)
         except Exception as e:
             print(f"Migration check (agent_notifications): {e}")
+
+        try:
+            _migrate_execution_origin_tracking(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (execution_origin_tracking): {e}")
 
         # Users table
         cursor.execute("""
@@ -1193,12 +1227,47 @@ class DatabaseManager:
     # Schedule Execution Management (delegated to db/schedules.py)
     # =========================================================================
 
-    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual"):
+    def create_task_execution(
+        self,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "manual",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ):
         """Create an execution record for a manual/API-triggered task (no schedule)."""
-        return self._schedule_ops.create_task_execution(agent_name, message, triggered_by)
+        return self._schedule_ops.create_task_execution(
+            agent_name, message, triggered_by,
+            source_user_id=source_user_id,
+            source_user_email=source_user_email,
+            source_agent_name=source_agent_name,
+            source_mcp_key_id=source_mcp_key_id,
+            source_mcp_key_name=source_mcp_key_name,
+        )
 
-    def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule"):
-        return self._schedule_ops.create_schedule_execution(schedule_id, agent_name, message, triggered_by)
+    def create_schedule_execution(
+        self,
+        schedule_id: str,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "schedule",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ):
+        return self._schedule_ops.create_schedule_execution(
+            schedule_id, agent_name, message, triggered_by,
+            source_user_id=source_user_id,
+            source_user_email=source_user_email,
+            source_agent_name=source_agent_name,
+            source_mcp_key_id=source_mcp_key_id,
+            source_mcp_key_name=source_mcp_key_name,
+        )
 
     def update_execution_status(self, execution_id: str, status: str, response: str = None, error: str = None,
                                 context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None, execution_log: str = None):
@@ -1280,6 +1349,9 @@ class DatabaseManager:
 
     def close_chat_session(self, session_id: str):
         return self._chat_ops.close_chat_session(session_id)
+
+    def create_new_chat_session(self, agent_name: str, user_id: int, user_email: str):
+        return self._chat_ops.create_new_chat_session(agent_name, user_id, user_email)
 
     def delete_chat_session(self, session_id: str):
         return self._chat_ops.delete_chat_session(session_id)

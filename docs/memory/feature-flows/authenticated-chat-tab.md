@@ -96,8 +96,13 @@ await axios.get(`/api/agents/${agentName}/chat/sessions`, { headers: authStore.a
 // Get session details with messages (line 231)
 await axios.get(`/api/agents/${agentName}/chat/sessions/${sessionId}`, { headers: authStore.authHeader })
 
-// Send message (via task endpoint for Dashboard tracking) (line 298)
-await axios.post(`/api/agents/${agentName}/task`, { message: contextPrompt }, { headers: authStore.authHeader })
+// Send message (via task endpoint for Dashboard tracking + session persistence) (line 302)
+await axios.post(`/api/agents/${agentName}/task`, {
+  message: contextPrompt,          // Full message with conversation context
+  save_to_session: true,           // Persist to chat_sessions table
+  user_message: userMessage,       // Original message (for session display)
+  create_new_session: !sessionId   // Create new session if none active
+}, { headers: authStore.authHeader })
 ```
 
 ## Backend Layer
@@ -143,21 +148,31 @@ User types message
 ChatPanel prepends session history to message
     │
     ▼
-POST /api/agents/{name}/task
+POST /api/agents/{name}/task (with save_to_session=true)
     │
     ├─► schedule_executions table (execution record)
     ├─► agent_activities table (Dashboard tracking)
+    ├─► chat_sessions table (session created/updated)
+    ├─► chat_messages table (user + assistant messages)
     └─► Agent container executes headless
             │
             ▼
-        Response returned
+        Response returned (with chat_session_id)
             │
             ▼
-ChatPanel adds to local messages
+ChatPanel sets currentSessionId, adds to local messages
     │
-    ▼
-Dashboard shows activity in timeline
+    ├─► Session appears in dropdown (survives page refresh)
+    └─► Dashboard shows activity in timeline
 ```
+
+### Session Persistence Parameters
+
+| Parameter | Type | Purpose |
+|-----------|------|---------|
+| `save_to_session` | bool | When true, persist to `chat_sessions` + `chat_messages` tables |
+| `user_message` | string | Original user message (without context prefix) for clean display |
+| `create_new_session` | bool | When true, close existing active sessions and create new one |
 
 ## Shared Components
 
@@ -277,13 +292,15 @@ Tasks | Chat | Dashboard | Schedules | Credentials | Skills | ...
 
 ## Related Flows
 
-- **tasks-tab.md** - Similar headless execution pattern
-- **public-agent-links.md** - Public chat (shares components)
-- **persistent-chat-tracking.md** - Session API documentation
-- **execution-queue.md** - Task execution flow
+- **[parallel-headless-execution.md](parallel-headless-execution.md)** - Core `/task` endpoint with `save_to_session` parameter documentation
+- **[tasks-tab.md](tasks-tab.md)** - Similar headless execution pattern (same `/task` endpoint)
+- **[public-agent-links.md](public-agent-links.md)** - Public chat (shares components)
+- **[persistent-chat-tracking.md](persistent-chat-tracking.md)** - Session API documentation (`chat_sessions`, `chat_messages` tables)
+- **[execution-queue.md](execution-queue.md)** - Task execution flow
 
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-02-20 | Fixed session persistence - `/task` now saves to `chat_sessions` when `save_to_session=true`. Added `create_new_session` for "New Chat" button. |
 | 2026-02-19 | Initial implementation (CHAT-001) |

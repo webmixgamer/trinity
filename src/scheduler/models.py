@@ -65,6 +65,12 @@ class ScheduleExecution:
     cost: Optional[float] = None
     tool_calls: Optional[str] = None
     execution_log: Optional[str] = None
+    # Origin tracking fields (AUDIT-001)
+    source_user_id: Optional[int] = None
+    source_user_email: Optional[str] = None
+    source_agent_name: Optional[str] = None
+    source_mcp_key_id: Optional[str] = None
+    source_mcp_key_name: Optional[str] = None
 
 
 @dataclass
