@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 ### 2026-02-20 17:30:00
 🐛 **Fix: Chat Tab Session Persistence (CHAT-001)**
 
@@ -767,6 +768,31 @@ Added support for external (internet-accessible) URL for public agent links, sep
 - `docs/memory/feature-flows/public-agent-links.md` - Updated with PUB-002 section
 
 **Requirement**: PUB-002 (docs/requirements/EXTERNAL_PUBLIC_URL.md)
+=======
+### 2026-02-16 19:45:00
+🔧 **New Skill: SEO Analytics via Google Search Console**
+
+Added `seo-analytics` skill (`.claude/skills/seo-analytics/`) that teaches agents how to monitor website search performance using the GSC MCP server (`AminForou/mcp-gsc`).
+
+**SKILL.md** (injected into agent by Trinity):
+- Complete reference for all 19 GSC MCP tools with usage guidance
+- 7-step analysis workflow: performance snapshot, query analysis, page performance, period comparison, indexing health, page deep-dives, task/report generation
+- 6 analysis categories: Quick Wins, CTR Opportunities, Content Gaps, Technical Issues, Declining Keywords, New Opportunities
+- Kanban-style backlog format (`seo/backlog.md`) with Inbox/In Progress/Done columns
+- Human-in-the-loop rules: agent only adds to Inbox, never executes without approval
+- Weekly report template saved to `seo/reports/YYYY-MM-DD.md`
+- Slash commands: `/seo-analyze`, `/seo-backlog`, `/seo-report`, `/seo-keywords`, `/seo-page`, `/seo-execute`
+
+**SETUP.md** (human reference, not injected):
+- Google Cloud setup: project, API enablement, service account, Search Console permissions
+- Agent configuration: GSC MCP server installation, credential placement, `.mcp.json` entry
+- Schedule setup: weekly analysis (Monday 9am UTC), optional daily pulse
+- Troubleshooting guide
+
+**Files created**:
+- `.claude/skills/seo-analytics/SKILL.md`
+- `.claude/skills/seo-analytics/SETUP.md`
+>>>>>>> Stashed changes
 
 ---
 

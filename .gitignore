@@ -133,3 +133,9 @@ config/agent-templates/**/memory/
 config/agent-templates/**/outputs/
 config/agent-templates/**/metrics.json
 .playwright-mcp/
+config/agent-templates/blog-publisher/
+config/agent-templates/idea-parser/
+config/agent-templates/task-coordinator/
+config/agent-templates/media-scheduler/
+config/agent-templates/social-scheduler/
+.claude/skills/seo-analytics
