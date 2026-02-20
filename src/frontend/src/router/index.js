@@ -113,6 +113,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/events',
+    name: 'Events',
+    component: () => import('../views/Events.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/executions/:id',
     name: 'ProcessExecutionDetail',
     component: () => import('../views/ProcessExecutionDetail.vue'),

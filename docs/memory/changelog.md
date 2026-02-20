@@ -1,3 +1,65 @@
+### 2026-02-20 15:45:00
+📋 **Requirements: Execution Origin Tracking (AUDIT-001)**
+
+Created comprehensive requirements specification for tracking WHO triggered each execution in Trinity. This feature enables full audit trail for all task executions.
+
+**Problem**: Currently executions track trigger TYPE (manual/schedule/mcp/agent) but not the identity of the actor. Cannot answer "who started this task?" or "which API key was used?"
+
+**Solution**: Extend `schedule_executions` table with origin columns:
+- `source_user_id` - User who triggered (FK to users)
+- `source_user_email` - User email (denormalized)
+- `source_agent_name` - Calling agent for agent-to-agent
+- `source_mcp_key_id` - MCP API key ID used
+- `source_mcp_key_name` - MCP API key name
+
+**Key Features**:
+- Complete actor attribution for all 4 trigger types
+- MCP key info passed via headers from MCP server
+- UI display on Execution Detail page showing origin
+- Filter executions by trigger type
+
+**Implementation Phases**:
+1. Database migration + backend CRUD updates
+2. MCP server header integration
+3. Frontend display and filtering
+
+**Files Created**:
+- `docs/requirements/EXECUTION_ORIGIN_TRACKING.md`: Full specification
+
+**Files Modified**:
+- `docs/memory/requirements.md`: Added Section 20.2 (AUDIT-001)
+
+---
+
+### 2026-02-20 14:30:00
+✨ **Feature: Events Page UI (NOTIF-002)**
+
+Implemented Events page for viewing, filtering, and managing agent notifications. Provides unified stream of all agent events with real-time updates.
+
+**Key Features**:
+- Dedicated `/events` page with filter controls (status, priority, agent, type)
+- Stats cards showing pending/acknowledged/total counts
+- Notification cards with priority/type icons, timestamps, actions
+- Bulk selection and actions (acknowledge/dismiss multiple)
+- Load more pagination
+- Real-time updates via WebSocket
+- Navigation badge in NavBar with pending count (pulsing for urgent/high)
+
+**Files Created**:
+- `src/frontend/src/views/Events.vue`: Main events page (380+ lines)
+- `src/frontend/src/stores/notifications.js`: Pinia store (270+ lines)
+- `docs/memory/feature-flows/events-page.md`: Feature flow documentation
+
+**Files Modified**:
+- `src/frontend/src/router/index.js`: Added `/events` route
+- `src/frontend/src/components/NavBar.vue`: Added inbox icon with badge, polling
+- `src/frontend/src/utils/websocket.js`: Added `agent_notification` event handler
+
+**Spec**: `docs/requirements/EVENTS_PAGE_UI.md`
+**Flow**: `docs/memory/feature-flows/events-page.md`
+
+---
+
 ### 2026-02-20 12:41:00
 ✨ **Feature: Agent Notifications (NOTIF-001)**
 

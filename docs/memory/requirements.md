@@ -505,6 +505,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: localStorage persistence, Tailwind class strategy
 - **Flow**: `docs/memory/feature-flows/dark-mode-theme.md`
 
+### 16.9 Events Page UI
+- **Status**: ✅ Implemented (2026-02-20)
+- **Description**: Dedicated page for viewing and managing agent notifications
+- **Key Features**: Filter controls (status, priority, agent, type), stats cards, notification cards with actions, bulk selection, real-time WebSocket updates, navigation badge
+- **Spec**: `docs/requirements/EVENTS_PAGE_UI.md`
+- **Flow**: `docs/memory/feature-flows/events-page.md`
+
 ---
 
 ## 17. Planned Features
@@ -671,6 +678,30 @@ The Process Engine supports six step types:
   2. Backend integration (lifecycle, auth, permissions)
   3. MCP integration (tool call audit)
   4. Advanced features (hash chain, export, retention)
+
+### 20.2 Execution Origin Tracking (AUDIT-001)
+- **Status**: ⏳ Pending Implementation
+- **Requirement ID**: AUDIT-001
+- **Priority**: HIGH
+- **Description**: Track WHO triggered each execution with full actor attribution. Captures user identity, MCP API key info, and source agent for agent-to-agent calls.
+- **Key Features**:
+  - Extended `schedule_executions` schema with origin columns
+  - User ID and email captured for manual and MCP triggers
+  - MCP API key ID and name tracked for external calls
+  - Source agent name tracked for agent-to-agent collaboration
+  - UI display of origin info on Execution Detail page
+  - Filter executions by trigger type (manual/schedule/mcp/agent)
+- **New Database Columns**:
+  - `source_user_id` (INTEGER) - FK to users table
+  - `source_user_email` (TEXT) - Denormalized for queries
+  - `source_agent_name` (TEXT) - Calling agent for agent-to-agent
+  - `source_mcp_key_id` (TEXT) - MCP API key ID used
+  - `source_mcp_key_name` (TEXT) - MCP API key name
+- **Spec**: `docs/requirements/EXECUTION_ORIGIN_TRACKING.md`
+- **Implementation Phases**:
+  1. Database migration and backend CRUD updates
+  2. MCP server header integration
+  3. Frontend display and filtering
 
 ---
 
