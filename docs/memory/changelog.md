@@ -1,3 +1,31 @@
+### 2026-02-19 11:30:00
+✨ **Feature: Authenticated Chat Tab (CHAT-001)**
+
+Added a dedicated Chat tab to the Agent Detail page providing a simple, clean chat interface for authenticated users.
+
+**Key Features**:
+- Clean bubble UI identical to PublicChat (user = indigo right, assistant = white left with markdown)
+- Session selector dropdown to switch between past conversations
+- New Chat button to start fresh session
+- Dashboard integration - all chat activity tracked in timeline (uses `/task` endpoint)
+- Bottom-aligned messages (iMessage style)
+
+**Shared Components Created** (`src/frontend/src/components/chat/`):
+- `ChatBubble.vue` - Message bubble with markdown rendering
+- `ChatInput.vue` - Auto-resize textarea with send button
+- `ChatMessages.vue` - Message list with auto-scroll
+- `ChatLoadingIndicator.vue` - "Thinking..." bouncing dots
+
+**Files Changed**:
+- `src/frontend/src/components/ChatPanel.vue`: New authenticated chat panel
+- `src/frontend/src/views/AgentDetail.vue`: Added Chat tab after Tasks
+- `src/frontend/src/views/PublicChat.vue`: Refactored to use shared components
+
+**Spec**: `docs/requirements/AUTHENTICATED_CHAT_TAB.md`
+**Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
+
+---
+
 ### 2026-02-19 09:00:00
 🔒 **Security: Restrictive Default Permissions for New Agents**
 

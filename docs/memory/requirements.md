@@ -146,6 +146,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Status**: ✅ Implemented
 - **Description**: Cumulative cost display across conversation
 
+### 5.6 Authenticated Chat Tab
+- **Status**: ✅ Implemented (2026-02-19)
+- **Description**: Dedicated Chat tab in Agent Detail with simple bubble UI for authenticated users
+- **Key Features**: Session selector dropdown, New Chat button, Dashboard activity tracking (uses `/task` endpoint), shared components with PublicChat
+- **Spec**: `docs/requirements/AUTHENTICATED_CHAT_TAB.md`
+- **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
+
 ---
 
 ## 6. Activity Monitoring

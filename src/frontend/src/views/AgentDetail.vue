@@ -91,6 +91,11 @@
               <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" @create-schedule="handleCreateSchedule" />
             </div>
 
+            <!-- Chat Tab Content -->
+            <div v-if="activeTab === 'chat'" class="p-6">
+              <ChatPanel :agent-name="agent.name" :agent-status="agent.status" />
+            </div>
+
             <!-- Dashboard Tab Content -->
             <div v-if="activeTab === 'dashboard'" class="p-6">
               <DashboardPanel :agent-name="agent.name" :agent-status="agent.status" />
@@ -247,6 +252,7 @@ import PermissionsPanel from '../components/PermissionsPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import TerminalPanelContent from '../components/TerminalPanelContent.vue'
 import SkillsPanel from '../components/SkillsPanel.vue'
+import ChatPanel from '../components/ChatPanel.vue'
 
 // Import composables
 import { useNotification } from '../composables'
@@ -488,7 +494,8 @@ const visibleTabs = computed(() => {
 
   // Primary tabs - most frequently used
   const tabs = [
-    { id: 'tasks', label: 'Tasks' }
+    { id: 'tasks', label: 'Tasks' },
+    { id: 'chat', label: 'Chat' }
   ]
 
   // Dashboard tab - only show if agent has a dashboard.yaml file (insert after Tasks)
@@ -716,7 +723,7 @@ onMounted(async () => {
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['tasks', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
+    const validTabs = ['tasks', 'chat', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }

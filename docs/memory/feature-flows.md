@@ -3,6 +3,15 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-19)**: Authenticated Chat Tab (CHAT-001):
+> - **New feature flow**: [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) - Simple chat UI in Agent Detail page
+> - **Chat tab** added after Tasks in AgentDetail.vue (line 498)
+> - **ChatPanel.vue** (363 lines): Session selector dropdown, "New Chat" button, agent not running state
+> - **Shared components** created in `components/chat/`: ChatMessages.vue, ChatInput.vue, ChatBubble.vue, ChatLoadingIndicator.vue
+> - **PublicChat.vue refactored** to use the same shared components (now 611 lines)
+> - Uses `/api/agents/{name}/task` endpoint for Dashboard activity tracking (not `/chat`)
+> - Related flows updated: public-agent-links.md (shared components), tasks-tab.md (same `/task` endpoint pattern)
+>
 > **Updated (2026-02-18 17:50)**: Toggle Size Consistency Fix:
 > - **All toggles now use `size="sm"`** across the system for visual consistency
 > - **AgentHeader.vue**: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77) all changed to `size="sm"`
@@ -594,7 +603,7 @@
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
 | **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **2026-02-18**: Consolidated into "Sharing" tab (no separate "Public Links" tab). **PUB-002**: External URL support via `PUBLIC_CHAT_URL` env var. **PUB-003**: Agent introduction. **PUB-004**: Header metadata. **PUB-005**: Session persistence. **PUB-006**: Public mode awareness |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **2026-02-19**: Refactored to use shared chat components (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator). **2026-02-18**: Consolidated into "Sharing" tab. **PUB-002**: External URL support. **PUB-003**: Agent introduction. **PUB-004**: Header metadata. **PUB-005**: Session persistence. **PUB-006**: Public mode awareness |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
@@ -622,6 +631,7 @@
 | **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
 | **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle in AgentHeader.vue (`size="sm"`) + Agents.vue (lines 248-255, now shows labels), auto-injection on agent start - **service layer: read_only.py** (CFG-007, Updated 2026-02-18 17:50) |
 | **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page, **tags layout fix** (fixed-height container, truncation). **Phase 4**: System manifest integration (default_tags, per-agent tags, system_view auto-creation). **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Complete, Layout Fix 2026-02-18) |
+| **Authenticated Chat Tab** | High | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) | Simple chat UI in Agent Detail (CHAT-001) - bubble messages, session selector dropdown, shared components with PublicChat. Uses `/task` endpoint for Dashboard tracking. **Components**: ChatPanel.vue, ChatMessages.vue, ChatInput.vue, ChatBubble.vue, ChatLoadingIndicator.vue. **Tab position**: after Tasks (Created 2026-02-19) |
 
 ---
 

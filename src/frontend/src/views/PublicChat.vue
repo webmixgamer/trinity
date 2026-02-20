@@ -196,13 +196,15 @@
 
       <!-- Chat interface -->
       <div v-else class="flex-1 flex flex-col">
-        <!-- Messages area - flex container that pushes content to bottom -->
-        <div class="flex-1 overflow-y-auto flex flex-col" ref="messagesContainer">
-          <!-- Spacer that pushes content to bottom -->
-          <div class="flex-1"></div>
-
-          <!-- Messages content wrapper -->
-          <div class="space-y-4 pb-4">
+        <!-- Messages area using shared component -->
+        <ChatMessages
+          ref="messagesRef"
+          :messages="messages"
+          :loading="chatLoading"
+          loading-text="Thinking..."
+          class="flex-1"
+        >
+          <template #empty>
             <!-- Loading intro -->
             <div v-if="introLoading" class="text-center py-12">
               <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -218,108 +220,42 @@
             </div>
 
             <!-- Fallback welcome message (only if intro failed or not fetched yet) -->
-            <div v-else-if="messages.length === 0 && !introLoading" class="text-center py-12">
+            <div v-else class="text-center py-12">
               <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
+                </svg>
               </div>
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Start a Conversation</h3>
               <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
                 Type a message below to begin chatting.
               </p>
             </div>
-
-            <!-- Message list -->
-            <div v-for="(msg, index) in messages" :key="index" class="px-2">
-              <!-- User message (plain text) -->
-              <div
-                v-if="msg.role === 'user'"
-                class="rounded-xl px-4 py-3 max-w-[85%] bg-indigo-600 text-white ml-auto"
-              >
-                <p class="whitespace-pre-wrap">{{ msg.content }}</p>
-              </div>
-              <!-- Assistant message (markdown rendered) -->
-              <div
-                v-else
-                class="rounded-xl px-4 py-3 max-w-[85%] bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm"
-              >
-                <div
-                  class="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-pre:my-2 prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
-                  v-html="renderMarkdown(msg.content)"
-                ></div>
-              </div>
-            </div>
-
-            <!-- Loading indicator -->
-            <div v-if="chatLoading" class="px-2">
-              <div class="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm max-w-[85%]">
-                <div class="flex items-center space-x-2">
-                  <div class="flex space-x-1">
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-gray-400">Thinking...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+          </template>
+        </ChatMessages>
 
         <!-- Error message -->
         <div v-if="chatError" class="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
           <p class="text-sm text-red-600 dark:text-red-400">{{ chatError }}</p>
         </div>
 
-        <!-- Input area -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3">
-          <form @submit.prevent="sendMessage" class="flex items-end space-x-2">
-            <textarea
-              v-model="message"
-              rows="1"
-              placeholder="Type your message..."
-              class="flex-1 resize-none border-0 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-0 focus:outline-none"
-              :disabled="chatLoading"
-              @keydown.enter.exact.prevent="sendMessage"
-              @input="autoResize"
-              ref="messageInput"
-            ></textarea>
-            <button
-              type="submit"
-              :disabled="chatLoading || !message.trim()"
-              class="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </form>
-        </div>
+        <!-- Input area using shared component -->
+        <ChatInput
+          v-model="message"
+          :disabled="chatLoading"
+          placeholder="Type your message..."
+          @submit="sendMessage"
+        />
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
-import { marked } from 'marked'
-
-// Configure marked for safe, simple output
-marked.setOptions({
-  breaks: true,  // Convert \n to <br>
-  gfm: true      // GitHub Flavored Markdown
-})
-
-// Custom renderer to open links in new window
-const renderer = new marked.Renderer()
-renderer.link = (href, title, text) => {
-  const titleAttr = title ? ` title="${title}"` : ''
-  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
-}
-marked.use({ renderer })
+import { ChatMessages, ChatInput } from '../components/chat'
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -347,19 +283,12 @@ const message = ref('')
 const messages = ref([])
 const chatLoading = ref(false)
 const chatError = ref(null)
-const messageInput = ref(null)
-const messagesContainer = ref(null)
+const messagesRef = ref(null)
 
 // Intro
 const introLoading = ref(false)
 const introError = ref(null)
 const introFetched = ref(false)
-
-// Render markdown to HTML
-const renderMarkdown = (text) => {
-  if (!text) return ''
-  return marked(text)
-}
 
 // Load link info
 const loadLinkInfo = async () => {
@@ -585,11 +514,9 @@ const confirmNewConversation = async () => {
 }
 
 // Send chat message
-const sendMessage = async () => {
-  if (!message.value.trim() || chatLoading.value) return
+const sendMessage = async (userMessage) => {
+  if (!userMessage || chatLoading.value) return
 
-  const userMessage = message.value.trim()
-  message.value = ''
   chatError.value = null
 
   // Add user message to chat
@@ -598,9 +525,8 @@ const sendMessage = async () => {
     content: userMessage
   })
 
-  // Auto-scroll
-  await nextTick()
-  scrollToBottom()
+  // Clear input
+  message.value = ''
 
   chatLoading.value = true
 
@@ -644,22 +570,6 @@ const sendMessage = async () => {
     }
   } finally {
     chatLoading.value = false
-    await nextTick()
-    scrollToBottom()
-  }
-}
-
-// Auto-resize textarea
-const autoResize = (event) => {
-  const textarea = event.target
-  textarea.style.height = 'auto'
-  textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
-}
-
-// Scroll to bottom of messages
-const scrollToBottom = () => {
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
 

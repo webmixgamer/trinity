@@ -645,6 +645,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 - **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages
 - **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Related**: [execution-termination.md](execution-termination.md) - Stop button, process registry, graceful termination
+- **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
 
 ---

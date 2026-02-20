@@ -142,14 +142,33 @@ Public User -> POST /api/public/chat/{token}
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `loadLinkInfo()` | 348 | Validate link token, receives agent metadata |
-| `requestCode()` | 386 | Request verification email |
-| `verifyCode()` | 409 | Confirm 6-digit code, calls `fetchIntro()` |
-| `loadHistory()` | 456 | Load chat history from server (PUB-005) |
-| `fetchIntro()` | 495 | Fetch agent introduction (PUB-003) |
-| `confirmNewConversation()` | 530 | Clear session and restart (PUB-005) |
-| `sendMessage()` | 571 | Send chat message |
-| `scrollToBottom()` | 643 | Scroll messages container to bottom |
+| `loadLinkInfo()` | 294 | Validate link token, receives agent metadata |
+| `requestCode()` | 332 | Request verification email |
+| `verifyCode()` | 355 | Confirm 6-digit code, calls `fetchIntro()` |
+| `loadHistory()` | 402 | Load chat history from server (PUB-005) |
+| `fetchIntro()` | 441 | Fetch agent introduction (PUB-003) |
+| `confirmNewConversation()` | 476 | Clear session and restart (PUB-005) |
+| `sendMessage()` | 517 | Send chat message |
+
+### Shared Chat Components (CHAT-001 Refactor)
+
+PublicChat.vue now uses shared components from `src/frontend/src/components/chat/`:
+
+| Component | File | Description |
+|-----------|------|-------------|
+| `ChatMessages` | `ChatMessages.vue` (87 lines) | Message list with bottom-aligned layout, auto-scroll |
+| `ChatInput` | `ChatInput.vue` (83 lines) | Auto-resize textarea with send button |
+| `ChatBubble` | `ChatBubble.vue` (56 lines) | Message bubble with markdown rendering (assistant) |
+| `ChatLoadingIndicator` | `ChatLoadingIndicator.vue` (36 lines) | Bouncing dots "Thinking..." indicator |
+
+**Import** (line 258):
+```javascript
+import { ChatMessages, ChatInput } from '../components/chat'
+```
+
+**Usage** (lines 200-248):
+- `ChatMessages` renders messages with custom empty slot for intro/welcome states
+- `ChatInput` handles message input with v-model and submit event
 
 ### Router Configuration
 
@@ -369,7 +388,8 @@ PUBLIC_CHAT_URL=
 
 | File | Description |
 |------|-------------|
-| `src/frontend/src/views/PublicChat.vue` | Public chat page (538 lines) |
+| `src/frontend/src/views/PublicChat.vue` | Public chat page (611 lines, refactored to use shared components) |
+| `src/frontend/src/components/chat/index.js` | Shared component exports (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator) |
 | `src/frontend/src/components/PublicLinksPanel.vue` | Owner panel (503 lines) |
 | `src/frontend/src/components/SharingPanel.vue` | Embeds PublicLinksPanel (lines 82-83, 92) |
 | `src/frontend/src/router/index.js:18-22` | Route definition |
@@ -439,6 +459,7 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 
 - **Upstream**: Agent Lifecycle (agent must exist and be running), Agent Sharing (now hosts PublicLinksPanel in same tab)
 - **Downstream**: Agent Chat (uses same `/api/task` endpoint)
+- **Related**: [Authenticated Chat Tab](authenticated-chat-tab.md) - shares chat components (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator)
 - **Related**: Agent Sharing (manages `can_share` permission, embeds PublicLinksPanel via SharingPanel.vue)
 
 ## External Public URL (PUB-002)
@@ -1366,6 +1387,7 @@ const scrollToBottom = () => {
 
 | Date | Changes |
 |------|---------|
+| 2026-02-19 | **CHAT-001 Shared Components Refactor**: PublicChat.vue now uses shared components from `components/chat/` (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator). Shared with new ChatPanel.vue authenticated chat. Updated method line numbers, added Shared Chat Components section. File now 611 lines. |
 | 2026-02-18 | **Tab consolidation**: Public Links tab removed from AgentDetail.vue. PublicLinksPanel now embedded within SharingPanel.vue (lines 82-83, 92), accessible via "Sharing" tab. Updated Entry Points, Components table, Frontend Files table, and Related Flows sections. |
 | 2025-12-22 | Initial documentation |
 | 2025-12-30 | Verified line numbers, updated file references, added detailed method tables, expanded testing section |
