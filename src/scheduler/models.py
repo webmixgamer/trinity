@@ -42,6 +42,8 @@ class Schedule:
     updated_at: datetime
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 @dataclass
@@ -63,6 +65,12 @@ class ScheduleExecution:
     cost: Optional[float] = None
     tool_calls: Optional[str] = None
     execution_log: Optional[str] = None
+    # Origin tracking fields (AUDIT-001)
+    source_user_id: Optional[int] = None
+    source_user_email: Optional[str] = None
+    source_agent_name: Optional[str] = None
+    source_mcp_key_id: Optional[str] = None
+    source_mcp_key_name: Optional[str] = None
 
 
 @dataclass

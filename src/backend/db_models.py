@@ -111,6 +111,8 @@ class ScheduleCreate(BaseModel):
     enabled: bool = True
     timezone: str = "UTC"
     description: Optional[str] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 class Schedule(BaseModel):
@@ -128,6 +130,8 @@ class Schedule(BaseModel):
     updated_at: datetime
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 class ScheduleExecution(BaseModel):
@@ -142,13 +146,19 @@ class ScheduleExecution(BaseModel):
     message: str
     response: Optional[str] = None
     error: Optional[str] = None
-    triggered_by: str  # "schedule" or "manual"
+    triggered_by: str  # "schedule", "manual", "mcp", or "agent"
     # Observability fields
     context_used: Optional[int] = None  # Tokens used in context
     context_max: Optional[int] = None   # Max context window
     cost: Optional[float] = None        # Cost in USD
     tool_calls: Optional[str] = None    # JSON array of tool calls
     execution_log: Optional[str] = None # Full Claude Code execution transcript (JSON)
+    # Origin tracking fields (AUDIT-001)
+    source_user_id: Optional[int] = None       # User who triggered (for manual/mcp)
+    source_user_email: Optional[str] = None    # User email (denormalized for queries)
+    source_agent_name: Optional[str] = None    # Calling agent (for agent-to-agent)
+    source_mcp_key_id: Optional[str] = None    # MCP API key ID (for mcp/agent triggers)
+    source_mcp_key_name: Optional[str] = None  # MCP API key name (denormalized)
 
 
 # =========================================================================
@@ -328,7 +338,8 @@ class PublicLink(BaseModel):
 
 class PublicLinkWithUrl(PublicLink):
     """Public link with generated URL."""
-    url: str
+    url: str  # Internal URL (VPN/tailnet)
+    external_url: Optional[str] = None  # External URL (public internet via Funnel/Tunnel)
     usage_stats: Optional[dict] = None
 
 
@@ -338,6 +349,11 @@ class PublicLinkInfo(BaseModel):
     require_email: bool = False
     agent_available: bool = True
     reason: Optional[str] = None  # "expired", "disabled", "not_found"
+    # Agent metadata (only populated when valid)
+    agent_display_name: Optional[str] = None
+    agent_description: Optional[str] = None
+    is_autonomous: bool = False
+    is_read_only: bool = False
 
 
 class VerificationRequest(BaseModel):
@@ -365,12 +381,41 @@ class PublicChatRequest(BaseModel):
     """Request to chat via a public link."""
     message: str
     session_token: Optional[str] = None  # Required if link requires email verification
+    session_id: Optional[str] = None  # For anonymous links (stored in localStorage)
 
 
 class PublicChatResponse(BaseModel):
     """Response from a public chat."""
     response: str
+    session_id: Optional[str] = None  # Returned for anonymous links
+    message_count: Optional[int] = None  # Number of messages in this session
     usage: Optional[dict] = None  # {"input_tokens": N, "output_tokens": N}
+
+
+# =========================================================================
+# Public Chat Session Models (Phase 12.2.5: Public Chat Persistence)
+# =========================================================================
+
+class PublicChatSession(BaseModel):
+    """Persistent public chat session."""
+    id: str
+    link_id: str
+    session_identifier: str  # email (for email links) or anonymous token
+    identifier_type: str  # 'email' or 'anonymous'
+    created_at: datetime
+    last_message_at: datetime
+    message_count: int = 0
+    total_cost: float = 0.0
+
+
+class PublicChatMessage(BaseModel):
+    """A message in a public chat session."""
+    id: str
+    session_id: str
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime
+    cost: Optional[float] = None
 
 
 # =========================================================================
@@ -445,3 +490,118 @@ class SkillsLibraryStatus(BaseModel):
     last_sync: Optional[datetime] = None
     commit_sha: Optional[str] = None
     skill_count: int = 0
+
+
+# =========================================================================
+# Agent Tags Models (ORG-001: Agent Systems & Tags)
+# =========================================================================
+
+class AgentTagList(BaseModel):
+    """Response model for agent tags."""
+    agent_name: str
+    tags: List[str]
+
+
+class AgentTagsUpdate(BaseModel):
+    """Request model for setting agent tags."""
+    tags: List[str]
+
+
+class TagWithCount(BaseModel):
+    """Tag with agent count."""
+    tag: str
+    count: int
+
+
+class AllTagsResponse(BaseModel):
+    """Response model for listing all tags."""
+    tags: List[TagWithCount]
+
+
+# =========================================================================
+# System Views Models (ORG-001 Phase 2: Agent Systems & Tags)
+# =========================================================================
+
+class SystemViewCreate(BaseModel):
+    """Request model for creating a system view."""
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None  # Emoji or icon identifier
+    color: Optional[str] = None  # Hex color (e.g., "#8B5CF6")
+    filter_tags: List[str]  # Tags to filter by (OR logic)
+    is_shared: bool = False  # Visible to all users?
+
+
+class SystemViewUpdate(BaseModel):
+    """Request model for updating a system view."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    filter_tags: Optional[List[str]] = None
+    is_shared: Optional[bool] = None
+
+
+class SystemView(BaseModel):
+    """A saved system view (filter for agents)."""
+    id: str
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    filter_tags: List[str]
+    owner_id: str
+    owner_email: Optional[str] = None
+    is_shared: bool = False
+    agent_count: int = 0  # Number of agents matching the filter
+    created_at: str
+    updated_at: str
+
+
+class SystemViewList(BaseModel):
+    """Response model for listing system views."""
+    views: List[SystemView]
+
+
+# =========================================================================
+# Agent Notification Models (NOTIF-001)
+# =========================================================================
+
+class NotificationCreate(BaseModel):
+    """Request model for creating a notification."""
+    notification_type: str  # alert, info, status, completion, question
+    title: str  # Required, max 200 chars
+    message: Optional[str] = None
+    priority: str = "normal"  # low, normal, high, urgent
+    category: Optional[str] = None  # progress, anomaly, health, error, etc.
+    metadata: Optional[dict] = None  # Any structured data
+
+
+class Notification(BaseModel):
+    """A notification from an agent."""
+    id: str
+    agent_name: str
+    notification_type: str
+    title: str
+    message: Optional[str] = None
+    priority: str = "normal"
+    category: Optional[str] = None
+    metadata: Optional[dict] = None
+    status: str = "pending"  # pending, acknowledged, dismissed
+    created_at: str
+    acknowledged_at: Optional[str] = None
+    acknowledged_by: Optional[str] = None
+
+
+class NotificationList(BaseModel):
+    """Response model for listing notifications."""
+    count: int
+    notifications: List[Notification]
+
+
+class NotificationAcknowledge(BaseModel):
+    """Response model for acknowledging a notification."""
+    id: str
+    status: str
+    acknowledged_at: str
+    acknowledged_by: str

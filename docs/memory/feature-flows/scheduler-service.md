@@ -101,7 +101,7 @@ As a **platform administrator**, I want **scheduled tasks to execute exactly onc
 | `HEALTH_PORT` | `8001` | Health check server port |
 | `HEALTH_HOST` | `0.0.0.0` | Health check server bind address |
 | `DEFAULT_TIMEZONE` | `UTC` | Default timezone for schedules |
-| `AGENT_TIMEOUT` | `900` | Agent request timeout (15 min) |
+| `AGENT_TIMEOUT` | `900` | Default agent request timeout (15 min) - can be overridden per-schedule |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `PUBLISH_EVENTS` | `true` | Enable Redis event publishing |
 
@@ -421,9 +421,10 @@ def _renewal_loop(self):
 agent_client.py:101             agent-{name}:8000               Agent Server
 AgentClient.task()   -->        POST /api/task          -->     Execute Claude Code
 |                               {message, timeout,              |
-|                                execution_id}                  v
-v                                                               Return response
-_parse_task_response()  <-------  200 OK  <-----------------   with metrics
+|                                execution_id,                  v
+|                                allowed_tools?}                Return response
+v                                                               with metrics
+_parse_task_response()  <-------  200 OK  <-----------------
 |                               {response, metadata,
 v                                execution_log}
 AgentTaskResponse
@@ -448,7 +449,8 @@ class AgentClient:
         self,
         message: str,
         timeout: float = None,
-        execution_id: Optional[str] = None
+        execution_id: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None
     ) -> AgentTaskResponse:
         """
         Execute a stateless task on the agent.
@@ -457,12 +459,15 @@ class AgentClient:
         - Does NOT maintain conversation history
         - Each call is independent
         - Returns raw Claude Code execution log
+        - Supports per-schedule timeout and tool restrictions (2026-02-20)
         """
         timeout = timeout or self.timeout
 
         payload = {"message": message, "timeout_seconds": int(timeout)}
         if execution_id:
             payload["execution_id"] = execution_id
+        if allowed_tools:
+            payload["allowed_tools"] = allowed_tools
 
         response = await self._request(
             "POST",
@@ -1134,6 +1139,7 @@ No immediate notification is needed from the backend.
 
 | Date | Change |
 |------|--------|
+| 2026-02-20 | **Per-Schedule Execution Configuration**: AgentClient.task() now accepts `allowed_tools` parameter. Schedules can specify custom timeout (5m-2h) and tool restrictions. See scheduling.md for full documentation. |
 | 2026-02-11 | **Scheduler Consolidation**: Removed embedded scheduler, routed manual triggers through dedicated scheduler, added activity tracking via internal API. Fixes Timeline dashboard missing cron executions. |
 | 2026-02-05 | **Trinity Connect Integration**: Added section documenting filtered broadcast callback for external event listeners. Schedule events forwarded to `/ws/events` endpoint. |
 | 2026-01-29 | Added periodic schedule sync - new schedules work without restart |

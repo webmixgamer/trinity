@@ -64,6 +64,7 @@ export interface TokenResponse {
 export interface McpAuthContext extends Record<string, unknown> {
   userId: string;        // Username of the key owner
   userEmail?: string;    // Email of the key owner
+  keyId?: string;        // MCP API key ID (AUDIT-001: for execution origin tracking)
   keyName: string;       // Name of the MCP API key
   agentName?: string;    // Agent name if scope is 'agent' or 'system' (for agent-to-agent)
   scope: "user" | "agent" | "system"; // Key scope: user=human, agent=regular agent, system=system agent (bypasses all permissions)

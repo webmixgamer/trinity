@@ -17,6 +17,8 @@ from services.system_service import (
     configure_permissions,
     configure_folders,
     create_schedules,
+    configure_tags,
+    create_system_view,
     start_all_agents
 )
 
@@ -168,7 +170,28 @@ async def deploy_system(
         )
         logger.info(f"Created {schedules_count} schedules for system '{manifest.name}'")
 
-        # 10. Start all agents (triggers Trinity injection with updated prompt)
+        # 10. Configure tags (ORG-001 Phase 4)
+        tags_count = configure_tags(
+            system_name=manifest.name,
+            agent_names=agent_names,
+            agents_config=manifest.agents,
+            default_tags=manifest.default_tags
+        )
+        logger.info(f"Configured {tags_count} tags for system '{manifest.name}'")
+
+        # 11. Create System View (ORG-001 Phase 4, optional)
+        system_view_id = None
+        if manifest.system_view:
+            system_view_id = create_system_view(
+                system_name=manifest.name,
+                system_view=manifest.system_view,
+                default_tags=manifest.default_tags,
+                owner_id=str(current_user.id)
+            )
+            if system_view_id:
+                logger.info(f"Created System View '{manifest.system_view.name}' (ID: {system_view_id}) for system '{manifest.name}'")
+
+        # 12. Start all agents (triggers Trinity injection with updated prompt)
         start_results = await start_all_agents(created_agents)
         agents_started = sum(1 for status in start_results.values() if status == "started")
         agents_failed = len(created_agents) - agents_started
@@ -186,6 +209,8 @@ async def deploy_system(
             prompt_updated=prompt_updated,
             permissions_configured=permissions_count,
             schedules_created=schedules_count,
+            tags_configured=tags_count,
+            system_view_created=system_view_id,
             warnings=all_warnings
         )
 

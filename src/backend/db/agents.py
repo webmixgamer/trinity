@@ -461,6 +461,61 @@ class AgentOperations:
             return cursor.rowcount > 0
 
     # =========================================================================
+    # Read-Only Mode
+    # =========================================================================
+
+    def get_read_only_mode(self, agent_name: str) -> dict:
+        """
+        Get read-only mode status and configuration for an agent.
+
+        Returns:
+            dict with 'enabled' (bool) and 'config' (dict or None)
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(read_only_mode, 0) as read_only_mode, read_only_config
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                import json
+                config = None
+                if row["read_only_config"]:
+                    try:
+                        config = json.loads(row["read_only_config"])
+                    except json.JSONDecodeError:
+                        config = None
+                return {
+                    "enabled": bool(row["read_only_mode"]),
+                    "config": config
+                }
+            return {"enabled": False, "config": None}
+
+    def set_read_only_mode(self, agent_name: str, enabled: bool, config: Optional[dict] = None) -> bool:
+        """
+        Set read-only mode status and configuration for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            enabled: True to enable read-only mode
+            config: Optional dict with 'blocked_patterns' and 'allowed_patterns' lists
+
+        Returns:
+            True if update succeeded
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            import json
+            config_json = json.dumps(config) if config else None
+            cursor.execute("""
+                UPDATE agent_ownership SET read_only_mode = ?, read_only_config = ?
+                WHERE agent_name = ?
+            """, (1 if enabled else 0, config_json, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # =========================================================================
     # Batch Metadata Query (N+1 Fix)
     # =========================================================================
 
@@ -528,6 +583,7 @@ class AgentOperations:
                     u.email as owner_email,
                     COALESCE(ao.is_system, 0) as is_system,
                     COALESCE(ao.autonomy_enabled, 0) as autonomy_enabled,
+                    COALESCE(ao.read_only_mode, 0) as read_only_enabled,
                     COALESCE(ao.use_platform_api_key, 1) as use_platform_api_key,
                     ao.memory_limit,
                     ao.cpu_limit,
@@ -552,6 +608,7 @@ class AgentOperations:
                     "owner_email": row["owner_email"],
                     "is_system": bool(row["is_system"]),
                     "autonomy_enabled": bool(row["autonomy_enabled"]),
+                    "read_only_enabled": bool(row["read_only_enabled"]),
                     "use_platform_api_key": bool(row["use_platform_api_key"]),
                     "memory_limit": row["memory_limit"],
                     "cpu_limit": row["cpu_limit"],

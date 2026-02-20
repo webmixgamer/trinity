@@ -15,10 +15,23 @@
           {{ notification.message }}
         </div>
 
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex justify-between items-center mb-4">
           <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Agents</h1>
 
           <div class="flex items-center space-x-4">
+            <!-- Tag Filter -->
+            <div v-if="availableTags.length > 0" class="flex items-center space-x-2">
+              <select
+                v-model="selectedFilterTag"
+                class="block rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2 px-3 bg-white dark:bg-gray-700 dark:text-gray-200 border"
+              >
+                <option value="">All Tags</option>
+                <option v-for="tagInfo in availableTags" :key="tagInfo.tag" :value="tagInfo.tag">
+                  #{{ tagInfo.tag }} ({{ tagInfo.count }})
+                </option>
+              </select>
+            </div>
+
             <!-- Sort dropdown -->
             <select
               v-model="agentsStore.sortBy"
@@ -41,6 +54,118 @@
           </div>
         </div>
 
+        <!-- Bulk Actions Toolbar -->
+        <div
+          v-if="selectedAgents.length > 0"
+          class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg flex items-center justify-between"
+        >
+          <div class="flex items-center space-x-3">
+            <span class="text-sm font-medium text-blue-700 dark:text-blue-300">
+              {{ selectedAgents.length }} agent{{ selectedAgents.length > 1 ? 's' : '' }} selected
+            </span>
+            <button
+              @click="clearSelection"
+              class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+          <div class="flex items-center space-x-2">
+            <!-- Add Tag -->
+            <div class="relative">
+              <button
+                @click="showBulkAddTag = !showBulkAddTag"
+                class="px-3 py-1.5 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900 transition-colors"
+              >
+                + Add Tag
+              </button>
+              <div
+                v-if="showBulkAddTag"
+                class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-50 min-w-64"
+              >
+                <div class="mb-2">
+                  <input
+                    v-model="bulkTagInput"
+                    @keyup.enter="applyBulkTag"
+                    type="text"
+                    placeholder="Enter tag name..."
+                    class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-gray-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div v-if="availableTags.length > 0" class="mb-2 max-h-32 overflow-y-auto">
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Or select existing:</div>
+                  <div class="flex flex-wrap gap-1">
+                    <button
+                      v-for="tagInfo in availableTags"
+                      :key="tagInfo.tag"
+                      @click="bulkTagInput = tagInfo.tag"
+                      :class="[
+                        'px-2 py-0.5 rounded-full text-xs transition-colors',
+                        bulkTagInput === tagInfo.tag
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      ]"
+                    >
+                      #{{ tagInfo.tag }}
+                    </button>
+                  </div>
+                </div>
+                <div class="flex justify-end space-x-2">
+                  <button
+                    @click="showBulkAddTag = false; bulkTagInput = ''"
+                    class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    @click="applyBulkTag"
+                    :disabled="!bulkTagInput.trim()"
+                    class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+            <!-- Remove Tag -->
+            <div class="relative">
+              <button
+                @click="showBulkRemoveTag = !showBulkRemoveTag"
+                class="px-3 py-1.5 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded text-sm font-medium hover:bg-red-200 dark:hover:bg-red-900 transition-colors"
+              >
+                - Remove Tag
+              </button>
+              <div
+                v-if="showBulkRemoveTag"
+                class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-50 min-w-48"
+              >
+                <div v-if="commonTagsInSelection.length > 0">
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">Tags in selected agents:</div>
+                  <div class="flex flex-wrap gap-1 mb-2">
+                    <button
+                      v-for="tag in commonTagsInSelection"
+                      :key="tag"
+                      @click="removeBulkTag(tag)"
+                      class="px-2 py-0.5 rounded-full text-xs bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900 transition-colors"
+                    >
+                      #{{ tag }} ×
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="text-xs text-gray-500 dark:text-gray-400">
+                  No tags found on selected agents
+                </div>
+                <button
+                  @click="showBulkRemoveTag = false"
+                  class="mt-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Agents Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div
@@ -49,7 +174,7 @@
             :class="[
               'bg-white dark:bg-gray-800 rounded-xl border shadow-lg p-5',
               'transition-all duration-200 hover:shadow-xl',
-              'flex flex-col',
+              'flex flex-col relative',
               agent.is_system
                 ? 'ring-2 ring-purple-500/50 border-purple-300 dark:border-purple-700'
                 : agent.status === 'running'
@@ -57,9 +182,16 @@
                   : 'border-gray-200 dark:border-gray-700 opacity-75'
             ]"
           >
-            <!-- Header: Name, Runtime Badge, Status Dot -->
+            <!-- Header: Checkbox, Name, Runtime Badge, Status Dot -->
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center flex-1 mr-2 min-w-0">
+                <!-- Selection checkbox -->
+                <input
+                  type="checkbox"
+                  :checked="selectedAgents.includes(agent.name)"
+                  @change="toggleSelection(agent.name)"
+                  class="w-4 h-4 mr-2 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                />
                 <router-link
                   :to="`/agents/${agent.name}`"
                   class="text-gray-900 dark:text-white font-bold text-base truncate hover:text-indigo-600 dark:hover:text-indigo-400"
@@ -105,13 +237,20 @@
               {{ getActivityState(agent.name) }}
             </div>
 
-            <!-- Running and Autonomy toggles (same row) -->
+            <!-- Running, Read-Only, and Autonomy toggles (same row) -->
             <div class="flex items-center justify-between mb-2">
               <RunningStateToggle
                 :model-value="agent.status === 'running'"
                 :loading="actionInProgress === agent.name"
                 size="sm"
                 @toggle="toggleAgentRunning(agent)"
+              />
+              <ReadOnlyToggle
+                v-if="!agent.is_system && !agent.is_shared"
+                :model-value="getAgentReadOnlyState(agent.name)"
+                :loading="readOnlyLoading === agent.name"
+                size="sm"
+                @toggle="handleReadOnlyToggle(agent)"
               />
               <AutonomyToggle
                 v-if="!agent.is_system"
@@ -123,8 +262,28 @@
             </div>
 
             <!-- Type display -->
-            <div class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
               Type: {{ agent.type }}
+            </div>
+
+            <!-- Tags display (fixed height for consistent layout) -->
+            <div class="h-6 mb-2 overflow-hidden">
+              <div v-if="getAgentTags(agent.name).length > 0" class="flex flex-wrap gap-1">
+                <span
+                  v-for="tag in getAgentTags(agent.name).slice(0, 3)"
+                  :key="tag"
+                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
+                  :title="'#' + tag"
+                >
+                  #{{ tag }}
+                </span>
+                <span
+                  v-if="getAgentTags(agent.name).length > 3"
+                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500"
+                >
+                  +{{ getAgentTags(agent.name).length - 3 }}
+                </span>
+              </div>
             </div>
 
             <!-- Context progress bar -->
@@ -205,6 +364,7 @@ import CreateAgentModal from '../components/CreateAgentModal.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import RunningStateToggle from '../components/RunningStateToggle.vue'
 import AutonomyToggle from '../components/AutonomyToggle.vue'
+import ReadOnlyToggle from '../components/ReadOnlyToggle.vue'
 import { ServerIcon } from '@heroicons/vue/24/outline'
 import axios from 'axios'
 
@@ -213,14 +373,43 @@ const showCreateModal = ref(false)
 const notification = ref(null)
 const actionInProgress = ref(null)
 const autonomyLoading = ref(null)
+const readOnlyLoading = ref(null)
+const agentReadOnlyStates = ref({}) // Map of agent_name -> boolean
 const isAdmin = ref(false)
 
-// Computed to show system agent for admins
+// Tag-related state
+const availableTags = ref([])
+const agentTags = ref({}) // Map of agent_name -> tags[]
+const selectedFilterTag = ref('')
+const selectedAgents = ref([])
+const showBulkAddTag = ref(false)
+const showBulkRemoveTag = ref(false)
+const bulkTagInput = ref('')
+
+// Computed to show system agent for admins, with optional tag filtering
 const displayAgents = computed(() => {
-  if (isAdmin.value) {
-    return agentsStore.sortedAgentsWithSystem
+  let agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
+
+  // Apply tag filter if selected
+  if (selectedFilterTag.value) {
+    agents = agents.filter(agent => {
+      const tags = agentTags.value[agent.name] || []
+      return tags.includes(selectedFilterTag.value)
+    })
   }
-  return agentsStore.sortedAgents
+
+  return agents
+})
+
+// Get common tags across all selected agents (for removal)
+const commonTagsInSelection = computed(() => {
+  if (selectedAgents.value.length === 0) return []
+  const allTags = new Set()
+  selectedAgents.value.forEach(agentName => {
+    const tags = agentTags.value[agentName] || []
+    tags.forEach(tag => allTags.add(tag))
+  })
+  return Array.from(allTags).sort()
 })
 
 const showNotification = (message, type = 'success') => {
@@ -231,7 +420,7 @@ const showNotification = (message, type = 'success') => {
 }
 
 onMounted(async () => {
-  agentsStore.fetchAgents()
+  await agentsStore.fetchAgents()
   agentsStore.startContextPolling()
 
   // Check if user is admin
@@ -247,6 +436,11 @@ onMounted(async () => {
     console.warn('Failed to fetch user role:', e)
     isAdmin.value = false
   }
+
+  // Fetch tags and read-only states
+  await fetchAvailableTags()
+  await fetchAllAgentTags()
+  await fetchAllReadOnlyStates()
 })
 
 onUnmounted(() => {
@@ -341,6 +535,63 @@ const handleAutonomyToggle = async (agent) => {
   }
 }
 
+// Read-only mode functions
+function getAgentReadOnlyState(agentName) {
+  return agentReadOnlyStates.value[agentName] || false
+}
+
+async function fetchAllReadOnlyStates() {
+  const agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
+  const states = {}
+
+  await Promise.all(
+    agents.filter(a => !a.is_system && !a.is_shared).map(async (agent) => {
+      try {
+        const token = localStorage.getItem('token')
+        const response = await axios.get(`/api/agents/${agent.name}/read-only`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        states[agent.name] = response.data.enabled || false
+      } catch (err) {
+        states[agent.name] = false
+      }
+    })
+  )
+
+  agentReadOnlyStates.value = states
+}
+
+async function handleReadOnlyToggle(agent) {
+  if (readOnlyLoading.value === agent.name) return
+  readOnlyLoading.value = agent.name
+
+  const newState = !getAgentReadOnlyState(agent.name)
+
+  try {
+    const token = localStorage.getItem('token')
+    const response = await axios.put(`/api/agents/${agent.name}/read-only`, {
+      enabled: newState
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (response.data) {
+      agentReadOnlyStates.value[agent.name] = newState
+      showNotification(
+        newState
+          ? `Read-only mode enabled for ${agent.name}`
+          : `Read-only mode disabled for ${agent.name}`,
+        'success'
+      )
+    }
+  } catch (error) {
+    console.error('Failed to toggle read-only mode:', error)
+    showNotification('Failed to toggle read-only mode', 'error')
+  } finally {
+    readOnlyLoading.value = null
+  }
+}
+
 const toggleAgentRunning = async (agent) => {
   if (actionInProgress.value === agent.name) return
   actionInProgress.value = agent.name
@@ -357,6 +608,99 @@ const toggleAgentRunning = async (agent) => {
     showNotification(error.message || 'Failed to toggle agent', 'error')
   } finally {
     actionInProgress.value = null
+  }
+}
+
+// Tag-related functions
+async function fetchAvailableTags() {
+  try {
+    const response = await axios.get('/api/tags')
+    availableTags.value = response.data.tags || []
+  } catch (err) {
+    console.error('Failed to fetch tags:', err)
+    availableTags.value = []
+  }
+}
+
+async function fetchAllAgentTags() {
+  // Fetch tags for all agents
+  const agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
+  const tagsMap = {}
+
+  await Promise.all(
+    agents.map(async (agent) => {
+      try {
+        const response = await axios.get(`/api/agents/${agent.name}/tags`)
+        tagsMap[agent.name] = response.data.tags || []
+      } catch (err) {
+        tagsMap[agent.name] = []
+      }
+    })
+  )
+
+  agentTags.value = tagsMap
+}
+
+function getAgentTags(agentName) {
+  return agentTags.value[agentName] || []
+}
+
+function toggleSelection(agentName) {
+  const index = selectedAgents.value.indexOf(agentName)
+  if (index === -1) {
+    selectedAgents.value.push(agentName)
+  } else {
+    selectedAgents.value.splice(index, 1)
+  }
+}
+
+function clearSelection() {
+  selectedAgents.value = []
+  showBulkAddTag.value = false
+  showBulkRemoveTag.value = false
+}
+
+async function applyBulkTag() {
+  const tag = bulkTagInput.value.toLowerCase().trim()
+  if (!tag) return
+
+  // Validate tag format
+  if (!/^[a-z0-9-]+$/.test(tag) || tag.length > 50) {
+    showNotification('Invalid tag format. Use lowercase letters, numbers, and hyphens only.', 'error')
+    return
+  }
+
+  try {
+    await Promise.all(
+      selectedAgents.value.map(agentName =>
+        axios.post(`/api/agents/${agentName}/tags/${tag}`)
+      )
+    )
+    showNotification(`Added tag "${tag}" to ${selectedAgents.value.length} agent(s)`, 'success')
+    bulkTagInput.value = ''
+    showBulkAddTag.value = false
+    await fetchAllAgentTags()
+    await fetchAvailableTags()
+  } catch (err) {
+    console.error('Failed to add tag:', err)
+    showNotification('Failed to add tag to some agents', 'error')
+  }
+}
+
+async function removeBulkTag(tag) {
+  try {
+    await Promise.all(
+      selectedAgents.value.map(agentName =>
+        axios.delete(`/api/agents/${agentName}/tags/${tag}`)
+      )
+    )
+    showNotification(`Removed tag "${tag}" from ${selectedAgents.value.length} agent(s)`, 'success')
+    showBulkRemoveTag.value = false
+    await fetchAllAgentTags()
+    await fetchAvailableTags()
+  } catch (err) {
+    console.error('Failed to remove tag:', err)
+    showNotification('Failed to remove tag from some agents', 'error')
   }
 }
 </script>

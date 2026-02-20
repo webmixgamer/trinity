@@ -65,12 +65,20 @@ from db_models import (
     VerificationResponse,
     PublicChatRequest,
     PublicChatResponse,
+    # Public Chat Persistence (Phase 12.2.5)
+    PublicChatSession,
+    PublicChatMessage,
     # Email Authentication (Phase 12.4)
     EmailWhitelistEntry,
     EmailWhitelistAdd,
     EmailLoginRequest,
     EmailLoginVerify,
     EmailLoginResponse,
+    # Agent Notifications (NOTIF-001)
+    NotificationCreate,
+    Notification,
+    NotificationList,
+    NotificationAcknowledge,
 )
 
 # Re-export connection utilities
@@ -89,6 +97,10 @@ from db.settings import SettingsOperations
 from db.public_links import PublicLinkOperations
 from db.email_auth import EmailAuthOperations
 from db.skills import SkillsOperations
+from db.public_chat import PublicChatOperations
+from db.tags import TagOperations
+from db.system_views import SystemViewOperations
+from db.notifications import NotificationOperations
 
 
 def _migrate_agent_sharing_table(cursor, conn):
@@ -257,6 +269,95 @@ def _migrate_agent_ownership_full_capabilities(cursor, conn):
         conn.commit()
 
 
+def _migrate_agent_ownership_read_only_mode(cursor, conn):
+    """Add read_only_mode and read_only_config columns to agent_ownership table for code protection."""
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("read_only_mode", "INTEGER DEFAULT 0"),  # 0 = disabled, 1 = enabled
+        ("read_only_config", "TEXT")  # JSON config for blocked/allowed patterns
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_ownership for read-only mode...")
+            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_def}")
+
+    conn.commit()
+
+
+def _migrate_agent_schedules_execution_config(cursor, conn):
+    """Add timeout_seconds and allowed_tools columns to agent_schedules table for per-schedule execution config."""
+    cursor.execute("PRAGMA table_info(agent_schedules)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("timeout_seconds", "INTEGER DEFAULT 900"),  # Default 15 minutes
+        ("allowed_tools", "TEXT")  # JSON array of allowed tools, NULL = all tools
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_schedules for execution configuration...")
+            cursor.execute(f"ALTER TABLE agent_schedules ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
+def _migrate_agent_notifications_table(cursor, conn):
+    """Create agent_notifications table if it doesn't exist (NOTIF-001)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_notifications (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT,
+            priority TEXT DEFAULT 'normal',
+            category TEXT,
+            metadata TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            acknowledged_at TEXT,
+            acknowledged_by TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_agent ON agent_notifications(agent_name, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_status ON agent_notifications(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_priority ON agent_notifications(priority)")
+    conn.commit()
+
+
+def _migrate_execution_origin_tracking(cursor, conn):
+    """Add execution origin tracking columns to schedule_executions table (AUDIT-001).
+
+    Tracks WHO triggered each execution:
+    - source_user_id: User who triggered (for manual and MCP user triggers)
+    - source_user_email: User email (denormalized for queries)
+    - source_agent_name: Calling agent (for agent-to-agent collaboration)
+    - source_mcp_key_id: MCP API key ID used (for MCP calls)
+    - source_mcp_key_name: MCP API key name (denormalized)
+    """
+    cursor.execute("PRAGMA table_info(schedule_executions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("source_user_id", "INTEGER"),
+        ("source_user_email", "TEXT"),
+        ("source_agent_name", "TEXT"),
+        ("source_mcp_key_id", "TEXT"),
+        ("source_mcp_key_name", "TEXT"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to schedule_executions for origin tracking...")
+            cursor.execute(f"ALTER TABLE schedule_executions ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def _migrate_agent_skills_table(cursor, conn):
     """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
@@ -358,6 +459,26 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_skills): {e}")
 
+        try:
+            _migrate_agent_ownership_read_only_mode(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_ownership read_only_mode): {e}")
+
+        try:
+            _migrate_agent_schedules_execution_config(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_schedules execution_config): {e}")
+
+        try:
+            _migrate_agent_notifications_table(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_notifications): {e}")
+
+        try:
+            _migrate_execution_origin_tracking(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (execution_origin_tracking): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -387,6 +508,8 @@ def init_database():
                 autonomy_enabled INTEGER DEFAULT 0,
                 memory_limit TEXT,
                 cpu_limit TEXT,
+                read_only_mode INTEGER DEFAULT 0,
+                read_only_config TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -439,6 +562,8 @@ def init_database():
                 updated_at TEXT NOT NULL,
                 last_run_at TEXT,
                 next_run_at TEXT,
+                timeout_seconds INTEGER DEFAULT 900,
+                allowed_tools TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
@@ -628,6 +753,35 @@ def init_database():
             )
         """)
 
+        # Public chat sessions table (Phase 12.2.5: Public Chat Persistence)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_chat_sessions (
+                id TEXT PRIMARY KEY,
+                link_id TEXT NOT NULL,
+                session_identifier TEXT NOT NULL,
+                identifier_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_message_at TEXT NOT NULL,
+                message_count INTEGER DEFAULT 0,
+                total_cost REAL DEFAULT 0.0,
+                FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+                UNIQUE(link_id, session_identifier)
+            )
+        """)
+
+        # Public chat messages table (Phase 12.2.5: Public Chat Persistence)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS public_chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                cost REAL,
+                FOREIGN KEY (session_id) REFERENCES public_chat_sessions(id) ON DELETE CASCADE
+            )
+        """)
+
         # Email whitelist table (Phase 12.4: Email-Based Authentication)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS email_whitelist (
@@ -662,6 +816,34 @@ def init_database():
                 assigned_by TEXT NOT NULL,
                 assigned_at TEXT NOT NULL,
                 UNIQUE(agent_name, skill_name)
+            )
+        """)
+
+        # Agent tags table (ORG-001: Agent Systems & Tags)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_tags (
+                agent_name TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (agent_name, tag),
+                FOREIGN KEY (agent_name) REFERENCES agent_ownership(agent_name) ON DELETE CASCADE
+            )
+        """)
+
+        # System views table (ORG-001 Phase 2: Agent Systems & Tags)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_views (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                color TEXT,
+                filter_tags TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                is_shared INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)
 
@@ -719,6 +901,15 @@ def init_database():
         # Agent skills indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_name)")
+        # Agent tags indexes (ORG-001)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_tags_tag ON agent_tags(tag)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_tags_agent ON agent_tags(agent_name)")
+        # Public chat session indexes (Phase 12.2.5)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_link ON public_chat_sessions(link_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_identifier ON public_chat_sessions(session_identifier)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_public_chat_messages_session ON public_chat_messages(session_id)")
+        # System views indexes (ORG-001 Phase 2)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_views_owner ON system_views(owner_id)")
 
         conn.commit()
 
@@ -817,6 +1008,10 @@ class DatabaseManager:
         self._public_link_ops = PublicLinkOperations(self._user_ops, self._agent_ops)
         self._email_auth_ops = EmailAuthOperations(self._user_ops)
         self._skills_ops = SkillsOperations()
+        self._public_chat_ops = PublicChatOperations()
+        self._tag_ops = TagOperations()
+        self._system_view_ops = SystemViewOperations()
+        self._notification_ops = NotificationOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -947,6 +1142,16 @@ class DatabaseManager:
         return self._agent_ops.set_resource_limits(agent_name, memory, cpu)
 
     # =========================================================================
+    # Agent Read-Only Mode (delegated to db/agents.py)
+    # =========================================================================
+
+    def get_read_only_mode(self, agent_name: str):
+        return self._agent_ops.get_read_only_mode(agent_name)
+
+    def set_read_only_mode(self, agent_name: str, enabled: bool, config: dict = None):
+        return self._agent_ops.set_read_only_mode(agent_name, enabled, config)
+
+    # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
     # =========================================================================
 
@@ -1022,12 +1227,47 @@ class DatabaseManager:
     # Schedule Execution Management (delegated to db/schedules.py)
     # =========================================================================
 
-    def create_task_execution(self, agent_name: str, message: str, triggered_by: str = "manual"):
+    def create_task_execution(
+        self,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "manual",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ):
         """Create an execution record for a manual/API-triggered task (no schedule)."""
-        return self._schedule_ops.create_task_execution(agent_name, message, triggered_by)
+        return self._schedule_ops.create_task_execution(
+            agent_name, message, triggered_by,
+            source_user_id=source_user_id,
+            source_user_email=source_user_email,
+            source_agent_name=source_agent_name,
+            source_mcp_key_id=source_mcp_key_id,
+            source_mcp_key_name=source_mcp_key_name,
+        )
 
-    def create_schedule_execution(self, schedule_id: str, agent_name: str, message: str, triggered_by: str = "schedule"):
-        return self._schedule_ops.create_schedule_execution(schedule_id, agent_name, message, triggered_by)
+    def create_schedule_execution(
+        self,
+        schedule_id: str,
+        agent_name: str,
+        message: str,
+        triggered_by: str = "schedule",
+        source_user_id: int = None,
+        source_user_email: str = None,
+        source_agent_name: str = None,
+        source_mcp_key_id: str = None,
+        source_mcp_key_name: str = None,
+    ):
+        return self._schedule_ops.create_schedule_execution(
+            schedule_id, agent_name, message, triggered_by,
+            source_user_id=source_user_id,
+            source_user_email=source_user_email,
+            source_agent_name=source_agent_name,
+            source_mcp_key_id=source_mcp_key_id,
+            source_mcp_key_name=source_mcp_key_name,
+        )
 
     def update_execution_status(self, execution_id: str, status: str, response: str = None, error: str = None,
                                 context_used: int = None, context_max: int = None, cost: float = None, tool_calls: str = None, execution_log: str = None):
@@ -1109,6 +1349,9 @@ class DatabaseManager:
 
     def close_chat_session(self, session_id: str):
         return self._chat_ops.close_chat_session(session_id)
+
+    def create_new_chat_session(self, agent_name: str, user_id: int, user_email: str):
+        return self._chat_ops.create_new_chat_session(agent_name, user_id, user_email)
 
     def delete_chat_session(self, session_id: str):
         return self._chat_ops.delete_chat_session(session_id)
@@ -1326,6 +1569,124 @@ class DatabaseManager:
 
     def get_agents_with_skill(self, skill_name: str):
         return self._skills_ops.get_agents_with_skill(skill_name)
+
+    # =========================================================================
+    # Public Chat Sessions (delegated to db/public_chat.py) - Phase 12.2.5
+    # =========================================================================
+
+    def get_or_create_public_chat_session(self, link_id: str, session_identifier: str, identifier_type: str):
+        return self._public_chat_ops.get_or_create_session(link_id, session_identifier, identifier_type)
+
+    def get_public_chat_session_by_identifier(self, link_id: str, session_identifier: str):
+        return self._public_chat_ops.get_session_by_identifier(link_id, session_identifier)
+
+    def get_public_chat_session(self, session_id: str):
+        return self._public_chat_ops.get_session(session_id)
+
+    def add_public_chat_message(self, session_id: str, role: str, content: str, cost: float = None):
+        return self._public_chat_ops.add_message(session_id, role, content, cost)
+
+    def get_public_chat_messages(self, session_id: str, limit: int = 20):
+        return self._public_chat_ops.get_session_messages(session_id, limit)
+
+    def get_recent_public_chat_messages(self, session_id: str, limit: int = 20):
+        return self._public_chat_ops.get_recent_messages(session_id, limit)
+
+    def clear_public_chat_session(self, session_id: str):
+        return self._public_chat_ops.clear_session(session_id)
+
+    def build_public_chat_context(self, session_id: str, new_message: str, max_turns: int = 10):
+        return self._public_chat_ops.build_context_prompt(session_id, new_message, max_turns)
+
+    def delete_public_link_sessions(self, link_id: str):
+        return self._public_chat_ops.delete_link_sessions(link_id)
+
+    # =========================================================================
+    # Agent Tags (delegated to db/tags.py) - ORG-001
+    # =========================================================================
+
+    def get_agent_tags(self, agent_name: str):
+        return self._tag_ops.get_agent_tags(agent_name)
+
+    def set_agent_tags(self, agent_name: str, tags: list):
+        return self._tag_ops.set_agent_tags(agent_name, tags)
+
+    def add_agent_tag(self, agent_name: str, tag: str):
+        return self._tag_ops.add_tag(agent_name, tag)
+
+    def remove_agent_tag(self, agent_name: str, tag: str):
+        return self._tag_ops.remove_tag(agent_name, tag)
+
+    def list_all_tags(self):
+        return self._tag_ops.list_all_tags()
+
+    def get_agents_by_tag(self, tag: str):
+        return self._tag_ops.get_agents_by_tag(tag)
+
+    def get_agents_by_tags(self, tags: list):
+        return self._tag_ops.get_agents_by_tags(tags)
+
+    def delete_agent_tags(self, agent_name: str):
+        return self._tag_ops.delete_agent_tags(agent_name)
+
+    def get_tags_for_agents(self, agent_names: list):
+        return self._tag_ops.get_tags_for_agents(agent_names)
+
+    # =========================================================================
+    # System Views (delegated to db/system_views.py) - ORG-001 Phase 2
+    # =========================================================================
+
+    def create_system_view(self, owner_id: str, data):
+        return self._system_view_ops.create_view(owner_id, data)
+
+    def get_system_view(self, view_id: str):
+        return self._system_view_ops.get_view(view_id)
+
+    def list_user_system_views(self, user_id: str):
+        return self._system_view_ops.list_user_views(user_id)
+
+    def list_all_system_views(self):
+        return self._system_view_ops.list_all_views()
+
+    def update_system_view(self, view_id: str, data):
+        return self._system_view_ops.update_view(view_id, data)
+
+    def delete_system_view(self, view_id: str):
+        return self._system_view_ops.delete_view(view_id)
+
+    def can_user_view_system_view(self, user_id: str, view_id: str):
+        return self._system_view_ops.can_user_view(user_id, view_id)
+
+    def can_user_edit_system_view(self, user_id: str, view_id: str, is_admin: bool = False):
+        return self._system_view_ops.can_user_edit_view(user_id, view_id, is_admin)
+
+    # =========================================================================
+    # Agent Notifications (delegated to db/notifications.py) - NOTIF-001
+    # =========================================================================
+
+    def create_notification(self, agent_name: str, data):
+        return self._notification_ops.create_notification(agent_name, data)
+
+    def get_notification(self, notification_id: str):
+        return self._notification_ops.get_notification(notification_id)
+
+    def list_notifications(self, agent_name=None, status=None, priority=None, limit=100):
+        return self._notification_ops.list_notifications(agent_name, status, priority, limit)
+
+    def list_agent_notifications(self, agent_name: str, status=None, limit=50):
+        return self._notification_ops.list_agent_notifications(agent_name, status, limit)
+
+    def acknowledge_notification(self, notification_id: str, acknowledged_by: str):
+        return self._notification_ops.acknowledge_notification(notification_id, acknowledged_by)
+
+    def dismiss_notification(self, notification_id: str, dismissed_by: str):
+        return self._notification_ops.dismiss_notification(notification_id, dismissed_by)
+
+    def delete_agent_notifications(self, agent_name: str):
+        return self._notification_ops.delete_agent_notifications(agent_name)
+
+    def count_pending_notifications(self, agent_name=None):
+        return self._notification_ops.count_pending_notifications(agent_name)
 
 
 # Global database manager instance

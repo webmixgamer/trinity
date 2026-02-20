@@ -80,20 +80,75 @@
               />
             </div>
 
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
+                <select
+                  v-model="formData.timezone"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">America/New_York (EST/EDT)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                  <option value="Europe/London">Europe/London (GMT/BST)</option>
+                  <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                  <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timeout</label>
+                <select
+                  v-model="formData.timeout_seconds"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option :value="300">5 minutes</option>
+                  <option :value="900">15 minutes (default)</option>
+                  <option :value="1800">30 minutes</option>
+                  <option :value="3600">1 hour</option>
+                  <option :value="7200">2 hours</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Allowed Tools Section -->
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
-              <select
-                v-model="formData.timezone"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">America/New_York (EST/EDT)</option>
-                <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
-                <option value="Europe/London">Europe/London (GMT/BST)</option>
-                <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
-              </select>
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Allowed Tools</label>
+                <button
+                  type="button"
+                  @click="toggleAllTools"
+                  class="text-xs px-2 py-1 rounded"
+                  :class="formData.allowed_tools === null ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                >
+                  {{ formData.allowed_tools === null ? 'All Tools (Unrestricted)' : 'Enable All' }}
+                </button>
+              </div>
+              <div v-if="formData.allowed_tools !== null" class="space-y-3">
+                <div v-for="category in toolCategories" :key="category.name">
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{{ category.name }}</p>
+                  <div class="flex flex-wrap gap-2">
+                    <label
+                      v-for="tool in category.tools"
+                      :key="tool.value"
+                      class="inline-flex items-center px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                      :class="isToolSelected(tool.value) ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                    >
+                      <input
+                        type="checkbox"
+                        :value="tool.value"
+                        :checked="isToolSelected(tool.value)"
+                        @change="toggleTool(tool.value)"
+                        class="sr-only"
+                      />
+                      {{ tool.label }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ formData.allowed_tools === null ? 'Agent can use any tool' : `${formData.allowed_tools.length} tool(s) selected` }}
+              </p>
             </div>
 
             <div class="flex items-center">
@@ -173,7 +228,7 @@
             </div>
             <p v-if="schedule.description" class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ schedule.description }}</p>
 
-            <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <div class="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
               <span class="flex items-center">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -185,6 +240,18 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
                 </svg>
                 {{ schedule.timezone }}
+              </span>
+              <span class="flex items-center" :title="`Timeout: ${formatTimeout(schedule.timeout_seconds)}`">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {{ formatTimeout(schedule.timeout_seconds) }}
+              </span>
+              <span v-if="schedule.allowed_tools" class="flex items-center" :title="schedule.allowed_tools.join(', ')">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                {{ schedule.allowed_tools.length }} tools
               </span>
               <span v-if="schedule.next_run_at" class="flex items-center text-indigo-600 dark:text-indigo-400">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -535,8 +602,74 @@ const formData = ref({
   message: '',
   description: '',
   timezone: 'UTC',
-  enabled: true
+  enabled: true,
+  timeout_seconds: 900,
+  allowed_tools: null  // null = all tools allowed
 })
+
+// Tool categories for allowed tools selection
+const toolCategories = [
+  {
+    name: 'Files',
+    tools: [
+      { value: 'Read', label: 'Read' },
+      { value: 'Write', label: 'Write' },
+      { value: 'Edit', label: 'Edit' },
+      { value: 'NotebookEdit', label: 'NotebookEdit' }
+    ]
+  },
+  {
+    name: 'Search',
+    tools: [
+      { value: 'Glob', label: 'Glob' },
+      { value: 'Grep', label: 'Grep' }
+    ]
+  },
+  {
+    name: 'System',
+    tools: [
+      { value: 'Bash', label: 'Bash' }
+    ]
+  },
+  {
+    name: 'Web',
+    tools: [
+      { value: 'WebFetch', label: 'WebFetch' },
+      { value: 'WebSearch', label: 'WebSearch' }
+    ]
+  },
+  {
+    name: 'Advanced',
+    tools: [
+      { value: 'Task', label: 'Task (Agents)' }
+    ]
+  }
+]
+
+// Tool selection helpers
+function isToolSelected(tool) {
+  return formData.value.allowed_tools !== null && formData.value.allowed_tools.includes(tool)
+}
+
+function toggleTool(tool) {
+  if (formData.value.allowed_tools === null) {
+    formData.value.allowed_tools = [tool]
+  } else if (formData.value.allowed_tools.includes(tool)) {
+    formData.value.allowed_tools = formData.value.allowed_tools.filter(t => t !== tool)
+  } else {
+    formData.value.allowed_tools = [...formData.value.allowed_tools, tool]
+  }
+}
+
+function toggleAllTools() {
+  if (formData.value.allowed_tools === null) {
+    // Switch to restricted mode (empty list)
+    formData.value.allowed_tools = []
+  } else {
+    // Switch to unrestricted mode
+    formData.value.allowed_tools = null
+  }
+}
 
 // Load schedules
 async function loadSchedules() {
@@ -594,7 +727,9 @@ function closeForm() {
     message: '',
     description: '',
     timezone: 'UTC',
-    enabled: true
+    enabled: true,
+    timeout_seconds: 900,
+    allowed_tools: null
   }
 }
 
@@ -607,7 +742,9 @@ function editSchedule(schedule) {
     message: schedule.message,
     description: schedule.description || '',
     timezone: schedule.timezone,
-    enabled: schedule.enabled
+    enabled: schedule.enabled,
+    timeout_seconds: schedule.timeout_seconds || 900,
+    allowed_tools: schedule.allowed_tools || null
   }
 }
 
@@ -735,6 +872,13 @@ function formatDuration(ms) {
   return `${(ms / 60000).toFixed(1)}m`
 }
 
+function formatTimeout(seconds) {
+  if (!seconds) return '15m'
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  return `${Math.round(seconds / 3600)}h`
+}
+
 function formatTokens(tokens) {
   if (!tokens) return '-'
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
@@ -797,6 +941,8 @@ watch(() => props.initialMessage, (newMessage) => {
     formData.value.description = ''
     formData.value.timezone = 'UTC'
     formData.value.enabled = true
+    formData.value.timeout_seconds = 900
+    formData.value.allowed_tools = null
     showCreateForm.value = true
   }
 }, { immediate: true })

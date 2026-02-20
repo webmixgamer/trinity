@@ -2,7 +2,13 @@
   <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 overflow-hidden">
     <NavBar />
 
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex overflow-hidden">
+      <!-- System Views Sidebar -->
+      <SystemViewsSidebar
+        @create="openCreateModal"
+        @edit="openEditModal"
+      />
+
       <div class="flex flex-col flex-1 overflow-hidden">
         <!-- Compact Header -->
         <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2">
@@ -62,6 +68,66 @@
 
             <!-- Right: Controls -->
             <div class="flex items-center space-x-2">
+              <!-- Quick Tag Filter -->
+              <div v-if="availableTags.length > 0" class="flex items-center space-x-1">
+                <span class="text-xs text-gray-400 dark:text-gray-500">Tags:</span>
+                <div class="flex items-center space-x-1 max-w-xs overflow-x-auto">
+                  <button
+                    v-for="tagInfo in displayedTags"
+                    :key="tagInfo.tag"
+                    @click="toggleQuickTag(tagInfo.tag)"
+                    :class="[
+                      'px-2 py-0.5 rounded-full text-xs font-medium transition-all whitespace-nowrap',
+                      selectedQuickTags.includes(tagInfo.tag)
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    ]"
+                  >
+                    #{{ tagInfo.tag }}
+                    <span v-if="selectedQuickTags.includes(tagInfo.tag)" class="ml-1">&times;</span>
+                  </button>
+                  <!-- More tags dropdown if there are many -->
+                  <div v-if="availableTags.length > 5" class="relative">
+                    <button
+                      @click="showTagDropdown = !showTagDropdown"
+                      class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+                    >
+                      +{{ availableTags.length - 5 }}
+                    </button>
+                    <div
+                      v-if="showTagDropdown"
+                      class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 max-h-48 overflow-y-auto min-w-32"
+                    >
+                      <button
+                        v-for="tagInfo in availableTags.slice(5)"
+                        :key="tagInfo.tag"
+                        @click="toggleQuickTag(tagInfo.tag); showTagDropdown = false"
+                        :class="[
+                          'w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-between',
+                          selectedQuickTags.includes(tagInfo.tag) ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-300'
+                        ]"
+                      >
+                        <span>#{{ tagInfo.tag }}</span>
+                        <span class="text-gray-400 dark:text-gray-500 text-[10px]">{{ tagInfo.count }}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <!-- Clear filter button -->
+                <button
+                  v-if="selectedQuickTags.length > 0"
+                  @click="clearQuickTags"
+                  class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  title="Clear tag filter"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <span v-if="availableTags.length > 0" class="text-gray-300 dark:text-gray-600">|</span>
+
               <!-- Mode Toggle -->
               <div class="flex rounded-md border border-gray-300 dark:border-gray-600 p-0.5 bg-gray-50 dark:bg-gray-700">
                 <button
@@ -342,6 +408,14 @@
     </div>
       </div>
     </main>
+
+    <!-- System View Editor Modal -->
+    <SystemViewEditor
+      :is-open="isEditorOpen"
+      :editing-view="editingView"
+      @close="closeEditor"
+      @saved="onViewSaved"
+    />
   </div>
 </template>
 
@@ -349,13 +423,17 @@
 import NavBar from '@/components/NavBar.vue'
 import HostTelemetry from '@/components/HostTelemetry.vue'
 import ReplayTimeline from '@/components/ReplayTimeline.vue'
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import SystemViewsSidebar from '@/components/SystemViewsSidebar.vue'
+import SystemViewEditor from '@/components/SystemViewEditor.vue'
+import axios from 'axios'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useNetworkStore } from '@/stores/network'
 import { useObservabilityStore } from '@/stores/observability'
+import { useSystemViewsStore } from '@/stores/systemViews'
 import { storeToRefs } from 'pinia'
 import AgentNode from '@/components/AgentNode.vue'
 import SystemAgentNode from '@/components/SystemAgentNode.vue'
@@ -370,6 +448,32 @@ import '@vue-flow/minimap/dist/style.css'
 
 const networkStore = useNetworkStore()
 const observabilityStore = useObservabilityStore()
+const systemViewsStore = useSystemViewsStore()
+
+// System View Editor Modal State
+const isEditorOpen = ref(false)
+const editingView = ref(null)
+
+function openCreateModal() {
+  editingView.value = null
+  isEditorOpen.value = true
+}
+
+function openEditModal(view) {
+  editingView.value = view
+  isEditorOpen.value = true
+}
+
+function closeEditor() {
+  isEditorOpen.value = false
+  editingView.value = null
+}
+
+async function onViewSaved() {
+  // Refresh views after save
+  await systemViewsStore.fetchViews()
+}
+
 const {
   agents,
   nodes,
@@ -402,6 +506,24 @@ const {
 const selectedTimeRange = ref(24) // Default to 24 hours
 const isHistoryPanelOpen = ref(false) // History panel starts closed
 
+// Quick Tag Filter state
+const availableTags = ref([])
+const selectedQuickTags = ref([])
+const showTagDropdown = ref(false)
+
+// Computed: First 5 tags for inline display
+const displayedTags = computed(() => availableTags.value.slice(0, 5))
+
+// Watch for active view changes and update network filter
+const { activeFilterTags, activeViewId } = storeToRefs(systemViewsStore)
+watch(activeFilterTags, (tags) => {
+  networkStore.setFilterTags(tags)
+  // Sync quick tags with system view selection
+  if (activeViewId.value) {
+    selectedQuickTags.value = [...tags]
+  }
+}, { immediate: true })
+
 const { fitView } = useVueFlow()
 
 // Computed stats
@@ -423,6 +545,9 @@ onMounted(async () => {
   // Fetch enabled schedules for timeline markers
   await networkStore.fetchSchedules()
 
+  // Fetch available tags for quick filter
+  await fetchAvailableTags()
+
   // Connect WebSocket for real-time updates
   networkStore.connectWebSocket()
 
@@ -435,6 +560,9 @@ onMounted(async () => {
   // Initialize observability (checks if OTel is enabled)
   await observabilityStore.fetchStatus()
 
+  // Add click outside listener for tag dropdown
+  document.addEventListener('click', handleClickOutside)
+
   // Fit view after initial load
   setTimeout(() => {
     fitView({ padding: 0.2, duration: 800 })
@@ -445,6 +573,7 @@ onUnmounted(() => {
   networkStore.disconnectWebSocket()
   networkStore.stopContextPolling()
   networkStore.stopAgentRefresh()
+  document.removeEventListener('click', handleClickOutside)
 })
 
 async function refreshAll() {
@@ -544,6 +673,42 @@ function formatTimestamp(timestamp) {
   if (!timestamp) return '--:--'
   const date = new Date(timestamp)
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
+
+// Quick Tag Filter functions
+async function fetchAvailableTags() {
+  try {
+    const response = await axios.get('/api/tags')
+    availableTags.value = response.data.tags || []
+  } catch (err) {
+    console.error('Failed to fetch tags:', err)
+    availableTags.value = []
+  }
+}
+
+function toggleQuickTag(tag) {
+  const index = selectedQuickTags.value.indexOf(tag)
+  if (index === -1) {
+    selectedQuickTags.value.push(tag)
+  } else {
+    selectedQuickTags.value.splice(index, 1)
+  }
+  // Clear system view selection when using quick tags
+  systemViewsStore.clearSelection()
+  // Apply filter to network store
+  networkStore.setFilterTags([...selectedQuickTags.value])
+}
+
+function clearQuickTags() {
+  selectedQuickTags.value = []
+  networkStore.setFilterTags([])
+}
+
+// Close dropdown when clicking outside
+function handleClickOutside(event) {
+  if (showTagDropdown.value && !event.target.closest('.relative')) {
+    showTagDropdown.value = false
+  }
 }
 </script>
 

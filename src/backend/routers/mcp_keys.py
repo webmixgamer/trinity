@@ -172,6 +172,7 @@ async def validate_mcp_api_key_http_endpoint(request: Request):
 
     return {
         "valid": True,
+        "key_id": result.get("key_id"),  # MCP API key ID (AUDIT-001)
         "user_id": result.get("user_id"),
         "user_email": result.get("user_email"),
         "key_name": result.get("key_name"),

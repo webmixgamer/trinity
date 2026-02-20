@@ -161,6 +161,34 @@
         </div>
       </div>
 
+      <!-- Origin Information (AUDIT-001) -->
+      <div v-if="hasOriginInfo" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Execution Origin</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <!-- User -->
+          <div v-if="execution.source_user_email">
+            <span class="text-gray-500 dark:text-gray-400">User:</span>
+            <span class="ml-2 text-gray-900 dark:text-white font-medium">{{ execution.source_user_email }}</span>
+          </div>
+          <!-- Source Agent (for agent-to-agent) -->
+          <div v-if="execution.source_agent_name">
+            <span class="text-gray-500 dark:text-gray-400">Source Agent:</span>
+            <router-link
+              :to="{ name: 'AgentDetail', params: { name: execution.source_agent_name } }"
+              class="ml-2 text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+            >
+              {{ execution.source_agent_name }}
+            </router-link>
+          </div>
+          <!-- MCP Key (for MCP calls) -->
+          <div v-if="execution.source_mcp_key_name">
+            <span class="text-gray-500 dark:text-gray-400">MCP Key:</span>
+            <span class="ml-2 text-gray-900 dark:text-white font-medium">{{ execution.source_mcp_key_name }}</span>
+            <span v-if="execution.source_mcp_key_id" class="ml-1 text-xs text-gray-400 dark:text-gray-500 font-mono">({{ execution.source_mcp_key_id.substring(0, 8) }}...)</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Timestamps -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -393,6 +421,14 @@ const triggerIconColor = computed(() => {
   if (trigger === 'schedule') return 'text-purple-600 dark:text-purple-400'
   if (trigger === 'manual') return 'text-amber-600 dark:text-amber-400'
   return 'text-cyan-600 dark:text-cyan-400'
+})
+
+// Check if execution has origin tracking info (AUDIT-001)
+const hasOriginInfo = computed(() => {
+  if (!execution.value) return false
+  return execution.value.source_user_email ||
+         execution.value.source_agent_name ||
+         execution.value.source_mcp_key_name
 })
 
 const logEntries = computed(() => {

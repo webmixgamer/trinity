@@ -1,3 +1,775 @@
+### 2026-02-20 17:30:00
+🐛 **Fix: Chat Tab Session Persistence (CHAT-001)**
+
+Fixed issue where Chat tab in Agent Detail page did not persist sessions after page refresh. Sessions now properly save to `chat_sessions` table.
+
+**Root Cause**: ChatPanel.vue used `/task` endpoint which only creates `schedule_executions` records, not `chat_sessions`. The session dropdown loaded from `chat_sessions` table which was never populated.
+
+**Solution**: Added session persistence support to `/task` endpoint:
+- New `ParallelTaskRequest` fields: `save_to_session`, `user_message`, `create_new_session`
+- When `save_to_session=true`, backend persists to `chat_sessions` and `chat_messages` tables
+- When `create_new_session=true`, closes existing active sessions and creates a new one
+- ChatPanel now passes `save_to_session: true`, `user_message`, and `create_new_session: !currentSessionId`
+
+**Files Modified**:
+- `src/backend/models.py`: Added 3 new fields to `ParallelTaskRequest`
+- `src/backend/routers/chat.py`: Added session persistence logic in `/task` endpoint
+- `src/backend/db/chat.py`: Added `create_new_chat_session()` method
+- `src/backend/database.py`: Added delegation method
+- `src/frontend/src/components/ChatPanel.vue`: Pass new parameters
+
+---
+
+### 2026-02-20 16:30:00
+✨ **Feature: Execution Origin Tracking (AUDIT-001)**
+
+Implemented full execution origin tracking to answer "who started this task?" for all executions. Complete audit trail from MCP client through backend to UI.
+
+**Database**:
+- Added migration `_migrate_execution_origin_tracking()` to database.py
+- New columns: `source_user_id`, `source_user_email`, `source_agent_name`, `source_mcp_key_id`, `source_mcp_key_name`
+
+**Backend**:
+- Updated `ScheduleExecution` model in db_models.py with origin fields
+- Updated `db/schedules.py` to accept and persist origin data
+- Updated `routers/chat.py` endpoints (`/chat`, `/task`) to capture origin from headers
+- Added `X-MCP-Key-ID` and `X-MCP-Key-Name` header extraction
+
+**MCP Server**:
+- Updated `/api/mcp/validate` to return `key_id` in response
+- Added `keyId` to `McpAuthContext` type
+- Updated `TrinityClient.chat()` and `TrinityClient.task()` to pass MCP key headers
+- Updated chat tools to include `mcpKeyInfo` in backend calls
+
+**Frontend**:
+- Added "Execution Origin" card to ExecutionDetail.vue showing user/agent/MCP key
+- Added trigger type filter dropdown to TasksPanel.vue
+
+**Files Modified**:
+- `src/backend/database.py`, `src/backend/db_models.py`, `src/backend/db/schedules.py`
+- `src/backend/routers/chat.py`, `src/backend/routers/mcp_keys.py`
+- `src/scheduler/models.py`, `src/scheduler/database.py`
+- `src/mcp-server/src/server.ts`, `src/mcp-server/src/client.ts`
+- `src/mcp-server/src/types.ts`, `src/mcp-server/src/tools/chat.ts`
+- `src/frontend/src/views/ExecutionDetail.vue`
+- `src/frontend/src/components/TasksPanel.vue`
+
+---
+
+### 2026-02-20 15:45:00
+📋 **Requirements: Execution Origin Tracking (AUDIT-001)**
+
+Created comprehensive requirements specification for tracking WHO triggered each execution in Trinity. This feature enables full audit trail for all task executions.
+
+**Problem**: Currently executions track trigger TYPE (manual/schedule/mcp/agent) but not the identity of the actor. Cannot answer "who started this task?" or "which API key was used?"
+
+**Solution**: Extend `schedule_executions` table with origin columns:
+- `source_user_id` - User who triggered (FK to users)
+- `source_user_email` - User email (denormalized)
+- `source_agent_name` - Calling agent for agent-to-agent
+- `source_mcp_key_id` - MCP API key ID used
+- `source_mcp_key_name` - MCP API key name
+
+**Key Features**:
+- Complete actor attribution for all 4 trigger types
+- MCP key info passed via headers from MCP server
+- UI display on Execution Detail page showing origin
+- Filter executions by trigger type
+
+**Implementation Phases**:
+1. Database migration + backend CRUD updates
+2. MCP server header integration
+3. Frontend display and filtering
+
+**Files Created**:
+- `docs/requirements/EXECUTION_ORIGIN_TRACKING.md`: Full specification
+
+**Files Modified**:
+- `docs/memory/requirements.md`: Added Section 20.2 (AUDIT-001)
+
+---
+
+### 2026-02-20 14:30:00
+✨ **Feature: Events Page UI (NOTIF-002)**
+
+Implemented Events page for viewing, filtering, and managing agent notifications. Provides unified stream of all agent events with real-time updates.
+
+**Key Features**:
+- Dedicated `/events` page with filter controls (status, priority, agent, type)
+- Stats cards showing pending/acknowledged/total counts
+- Notification cards with priority/type icons, timestamps, actions
+- Bulk selection and actions (acknowledge/dismiss multiple)
+- Load more pagination
+- Real-time updates via WebSocket
+- Navigation badge in NavBar with pending count (pulsing for urgent/high)
+
+**Files Created**:
+- `src/frontend/src/views/Events.vue`: Main events page (380+ lines)
+- `src/frontend/src/stores/notifications.js`: Pinia store (270+ lines)
+- `docs/memory/feature-flows/events-page.md`: Feature flow documentation
+
+**Files Modified**:
+- `src/frontend/src/router/index.js`: Added `/events` route
+- `src/frontend/src/components/NavBar.vue`: Added inbox icon with badge, polling
+- `src/frontend/src/utils/websocket.js`: Added `agent_notification` event handler
+
+**Spec**: `docs/requirements/EVENTS_PAGE_UI.md`
+**Flow**: `docs/memory/feature-flows/events-page.md`
+
+---
+
+### 2026-02-20 12:41:00
+✨ **Feature: Agent Notifications (NOTIF-001)**
+
+Implemented agent notification system allowing agents to send structured notifications to the Trinity platform. Notifications are persisted, broadcast via WebSocket, and queryable via REST API.
+
+**Components Implemented**:
+- Database table `agent_notifications` with full CRUD operations
+- REST API endpoints: create, list, get, acknowledge, dismiss, agent-specific queries
+- MCP tool `send_notification` for agent use
+- WebSocket broadcasting for real-time notification delivery
+
+**API Endpoints**:
+- `POST /api/notifications` - Create notification
+- `GET /api/notifications` - List with filters (agent, status, priority)
+- `GET /api/notifications/{id}` - Get single notification
+- `POST /api/notifications/{id}/acknowledge` - Acknowledge
+- `POST /api/notifications/{id}/dismiss` - Dismiss
+- `GET /api/agents/{name}/notifications` - Agent-specific list
+- `GET /api/agents/{name}/notifications/count` - Pending count
+
+**MCP Tool**: `send_notification`
+- Parameters: notification_type, title, message, priority, category, metadata
+
+**Files Created**:
+- `src/backend/db/notifications.py`: CRUD operations
+- `src/backend/routers/notifications.py`: API endpoints
+- `src/mcp-server/src/tools/notifications.ts`: MCP tool
+
+**Files Modified**:
+- `src/backend/database.py`: Migration and delegation methods
+- `src/backend/db_models.py`: Pydantic models
+- `src/backend/main.py`: Router mount and WebSocket setup
+- `src/mcp-server/src/client.ts`: createNotification API method
+- `src/mcp-server/src/server.ts`: Tool registration
+
+---
+
+### 2026-02-20 10:15:00
+✨ **Feature: Configurable Timeout and Allowed Tools for Schedules**
+
+Added per-schedule configuration for execution timeout and tool restrictions. Previously hardcoded (timeout=900s, all tools allowed), now customizable per schedule.
+
+**New Fields**:
+- `timeout_seconds`: Execution timeout (5m, 15m, 30m, 1h, 2h options)
+- `allowed_tools`: Optional list of permitted tools (null = all tools)
+
+**Use Cases**:
+- Long-running analysis tasks → 2 hour timeout
+- Quick status checks → 5 minute timeout
+- Read-only operations → restrict to Read, Glob, Grep
+- Security-sensitive tasks → disable Bash
+
+**Files Changed**:
+
+*Database*:
+- `src/backend/database.py`: Added migration for `timeout_seconds` and `allowed_tools` columns
+- `src/backend/db_models.py`: Updated `ScheduleCreate` and `Schedule` models
+- `src/backend/db/schedules.py`: Updated CRUD operations with JSON serialization for allowed_tools
+
+*Scheduler Service*:
+- `src/scheduler/models.py`: Added new fields to Schedule dataclass
+- `src/scheduler/database.py`: Updated row-to-model mapping
+- `src/scheduler/agent_client.py`: Accept and forward `allowed_tools` parameter
+- `src/scheduler/service.py`: Pass schedule config to agent client
+
+*Frontend*:
+- `src/frontend/src/components/SchedulesPanel.vue`:
+  - Added timeout dropdown (5m/15m/30m/1h/2h)
+  - Added allowed tools multi-select with category groups (Files, Search, System, Web, Advanced)
+  - "All Tools" toggle for unrestricted mode
+  - Display timeout and tool count on schedule cards
+
+**API Changes**:
+- `POST/PUT /api/agents/{name}/schedules`: Accept `timeout_seconds` (int) and `allowed_tools` (array or null)
+
+---
+
+### 2026-02-19 11:30:00
+✨ **Feature: Authenticated Chat Tab (CHAT-001)**
+
+Added a dedicated Chat tab to the Agent Detail page providing a simple, clean chat interface for authenticated users.
+
+**Key Features**:
+- Clean bubble UI identical to PublicChat (user = indigo right, assistant = white left with markdown)
+- Session selector dropdown to switch between past conversations
+- New Chat button to start fresh session
+- Dashboard integration - all chat activity tracked in timeline (uses `/task` endpoint)
+- Bottom-aligned messages (iMessage style)
+
+**Shared Components Created** (`src/frontend/src/components/chat/`):
+- `ChatBubble.vue` - Message bubble with markdown rendering
+- `ChatInput.vue` - Auto-resize textarea with send button
+- `ChatMessages.vue` - Message list with auto-scroll
+- `ChatLoadingIndicator.vue` - "Thinking..." bouncing dots
+
+**Files Changed**:
+- `src/frontend/src/components/ChatPanel.vue`: New authenticated chat panel
+- `src/frontend/src/views/AgentDetail.vue`: Added Chat tab after Tasks
+- `src/frontend/src/views/PublicChat.vue`: Refactored to use shared components
+
+**Spec**: `docs/requirements/AUTHENTICATED_CHAT_TAB.md`
+**Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
+
+---
+
+### 2026-02-19 09:00:00
+🔒 **Security: Restrictive Default Permissions for New Agents**
+
+Changed default agent permissions from permissive to restrictive. New agents now start with NO permissions to communicate with other agents.
+
+**Previous Behavior**: New agents automatically received bidirectional permissions with all other agents owned by the same user (Option B: same-owner agents).
+
+**New Behavior**: New agents start isolated - owners must explicitly grant permissions via the Permissions tab in the UI.
+
+**Rationale**: Better security posture - agents should explicitly opt-in to collaboration rather than having implicit access.
+
+**Files Changed**:
+- `src/backend/db/permissions.py`: `grant_default_permissions()` now returns 0 (no-op)
+- `docs/memory/feature-flows/agent-permissions.md`: Updated default behavior documentation
+- `docs/memory/requirements.md`: Updated Agent Permissions key features
+
+**Note**: System agents (`trinity-system`) are unaffected - they bypass permission checks via MCP scope.
+
+---
+
+### 2026-02-18 17:50:21
+🔧 **Fix: Toggle Consistency Across System**
+
+Standardized all toggle switches to use consistent size and labels.
+
+**Changes**:
+- ReadOnlyToggle in Agents.vue now shows label ("Read-Only" / "Editable")
+- All toggles in AgentHeader.vue changed from lg/md to sm size
+- RunningStateToggle default size changed from md to sm
+
+**Files Changed**:
+- `src/frontend/src/views/Agents.vue`: Removed `:show-label="false"` from ReadOnlyToggle
+- `src/frontend/src/components/AgentHeader.vue`: All toggles now use `size="sm"`
+- `src/frontend/src/components/RunningStateToggle.vue`: Default size → `'sm'`
+
+---
+
+### 2026-02-18 16:00:00
+📝 **Docs: Feature Flow Documentation Update for Agents Page Changes**
+
+Updated feature flow documentation with accurate line numbers and implementation details for recent Agents page changes.
+
+**Files Updated**:
+- `docs/memory/feature-flows/agent-tags.md`: Updated bulk operations line numbers (391-706), added Tags Display Layout Fix section documenting fixed-height container and truncation
+- `docs/memory/feature-flows/read-only-mode.md`: Added comprehensive "Agents Page Integration" section with template structure, state management table, functions table, and data flow diagram
+- `docs/memory/feature-flows/agents-page-ui-improvements.md`: Updated revision history with accurate line numbers for all recent changes
+- `docs/memory/feature-flows.md`: Updated index with Agents Page Enhancements summary, updated table entries for all three related flows
+
+**Documentation Accuracy**:
+- Verified all line numbers against current `Agents.vue` (729 lines)
+- Documented toggle row structure: Running -> ReadOnly -> Autonomy (lines 240-263)
+- Documented tags container styling: `h-6 overflow-hidden` (line 271), `max-w-20 truncate` (line 276)
+- Added function line references: `fetchAllReadOnlyStates()` (544-563), `handleReadOnlyToggle()` (565-594)
+
+---
+
+### 2026-02-18 15:00:00
+🐛 **Fix: Agents Page Tags Layout + Read-Only Toggle**
+
+Fixed tags breaking tile layout on Agents page and added Read-Only toggle to agent cards.
+
+**Tags Layout Fix** (`Agents.vue:270-288`):
+- Wrapped tags in fixed-height container (`h-6 overflow-hidden`)
+- Added `max-w-20 truncate` to individual tag pills to prevent overflow
+- Tags now have consistent height regardless of content
+
+**Read-Only Toggle** (`Agents.vue:248-255`):
+- Added `ReadOnlyToggle` component between Running and Autonomy toggles
+- Only shown for owned agents (not system, not shared)
+- Added `agentReadOnlyStates` map and `fetchAllReadOnlyStates()` on mount
+- `handleReadOnlyToggle()` calls `PUT /api/agents/{name}/read-only`
+
+**Files Changed**:
+- `src/frontend/src/views/Agents.vue`: Import, state, template, functions
+- `docs/memory/feature-flows/agents-page-ui-improvements.md`: Revision history
+- `docs/memory/feature-flows/read-only-mode.md`: Entry points, revision history
+
+---
+
+### 2026-02-18 12:00:00
+📝 **Docs: Feature Flow Updates for UI-001 Redesign**
+
+Updated feature flow documentation to reflect Agent Detail Page Redesign changes.
+
+**Files Updated**:
+- `docs/memory/feature-flows.md`: Added UI-001 redesign summary to index with line numbers
+- `docs/memory/feature-flows/tasks-tab.md`: Updated section order (Stats -> Input -> History), new line numbers
+- `docs/memory/feature-flows/agent-resource-allocation.md`: Updated AgentHeader structure (3-row layout), gear button location
+- `docs/memory/feature-flows/agent-lifecycle.md`: Updated AgentHeader line numbers, default tab change note
+
+**Key Changes Documented**:
+- AgentHeader 3-row structure: Row 1 (Identity + Actions), Row 2 (Settings + Stats), Row 3 (Git)
+- TasksPanel reordered: Stats first, then Task Input, then History
+- Default tab: 'tasks' instead of 'info'
+- Fixed-width stats to prevent layout jumping
+
+---
+
+### 2026-02-18 11:00:00
+✨ **Feature: Agent Detail Page Redesign (UI-001)**
+
+Improved visual hierarchy and workflow optimization for the Agent Detail page.
+
+**AgentHeader.vue Restructure** (3 rows):
+- **Row 1 (lines 4-57)**: Agent name `text-2xl`, status badges below name, Running toggle + delete on right
+- **Row 2 (lines 59-163)**: Settings (Autonomy, Read-Only, Tags) on left + Stats (CPU/MEM sparklines, uptime) on right. Fixed widths (`w-10`, `w-14`, `w-16`) prevent layout jumping when stats update. Network stats removed.
+- **Row 3 (lines 165-250)**: Git controls - only when `hasGitSync`, shows "Git enabled" indicator when stopped
+
+**AgentDetail.vue Tab Changes**:
+- Default tab changed from `info` to `tasks` (line 275)
+- New tab order optimized for workflow: Tasks → Terminal → Logs → Files → Schedules → Credentials → Skills → Sharing → Permissions → Git → Folders → Public Links → Info
+- Info tab moved to end (reference/metadata)
+
+**Benefits**:
+- Cleaner visual hierarchy with grouped controls
+- Git controls hidden when not relevant (reduces clutter)
+- Tasks as default landing (where users interact most)
+- Most-used tabs easier to reach
+
+**Spec**: `docs/requirements/AGENT_DETAIL_PAGE_REDESIGN.md`
+
+---
+
+### 2026-02-18 10:00:00
+🐛 **Bug Fix: Tag API Authentication in AgentDetail.vue**
+
+Fixed tag operations failing silently due to missing authentication headers.
+
+**Root Cause**: API calls were using Pinia store's `api` wrapper which didn't include JWT bearer token.
+
+**Fix** (`src/frontend/src/views/AgentDetail.vue`):
+- Changed all tag API calls to use `axios` directly with `authStore.authHeader`
+- `loadTags()`: lines 548-558
+- `loadAllTags()`: lines 560-569
+- `updateTags()`: lines 571-583
+- `addTag()`: lines 585-598
+- `removeTag()`: lines 600-611
+
+**Documentation Updates**:
+- `docs/memory/feature-flows/agent-tags.md`: Updated line numbers, added bug fix section
+- `docs/memory/feature-flows.md`: Added bug fix note to index
+- `docs/memory/feature-flows/system-manifest.md`: Verified accuracy (no changes needed)
+
+---
+
+### 2026-02-17 22:30:00
+✨ **Feature: System Manifest Integration (ORG-001 Phase 4)**
+
+Integrated agent tags with system manifest deployment. Tags are now automatically applied when deploying multi-agent systems via YAML.
+
+**Backend Models** (`src/backend/models.py`):
+- `SystemAgentConfig`: Added `tags` field for per-agent tags
+- `SystemViewConfig`: New model for auto-creating System Views on deploy
+- `SystemManifest`: Added `default_tags` and `system_view` fields
+- `SystemDeployResponse`: Added `tags_configured` and `system_view_created` fields
+
+**Backend Service** (`src/backend/services/system_service.py`):
+- `parse_manifest()`: Parses tags and system_view from YAML
+- `validate_manifest()`: Validates tag format (alphanumeric + hyphens)
+- `configure_tags()`: Applies system prefix + default_tags + per-agent tags
+- `create_system_view()`: Creates System View with filter tags from manifest
+- `export_manifest()`: Includes tags in exported YAML
+
+**Backend Router** (`src/backend/routers/systems.py`):
+- `deploy_system()`: Integrated tag and system view creation after agent creation
+- Response now includes tag count and system view ID
+
+**Migration Script** (`scripts/management/migrate_prefixes_to_tags.py`):
+- Extracts existing agent prefixes as tags
+- Supports `--dry-run` mode for preview
+- Example: `research-team-analyst` → tag `research-team`
+
+**YAML Schema Extension**:
+```yaml
+default_tags: [research, production]  # Applied to all agents
+system_view:                          # Auto-create System View
+  name: Research Team
+  icon: "🔬"
+  shared: true
+agents:
+  orchestrator:
+    template: github:Org/repo
+    tags: [lead]                      # Per-agent tags
+```
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 4 complete)
+
+---
+
+### 2026-02-17 22:00:00
+✨ **Feature: Tags Polish & Integration (ORG-001 Phase 3)**
+
+Completed Phase 3 with MCP tools, quick tag filter, and bulk tag operations.
+
+**MCP Server** (`src/mcp-server/src/`):
+- `tools/tags.ts`: 5 new tag management tools
+  - `list_tags` - List all tags with agent counts
+  - `get_agent_tags` - Get tags for an agent
+  - `tag_agent` - Add tag to an agent
+  - `untag_agent` - Remove tag from an agent
+  - `set_agent_tags` - Replace all tags for an agent
+- `client.ts`: Added 5 tag-related client methods
+- `server.ts`: Registered tag tools (total 45+ tools now)
+
+**Frontend** (`src/frontend/src/`):
+- `views/Dashboard.vue`: Quick tag filter in header
+  - Inline tag pills for fast filtering
+  - Dropdown for additional tags
+  - Syncs with System Views selection
+- `views/Agents.vue`: Bulk tag operations
+  - Selection checkboxes on agent cards
+  - Tag chips display on cards
+  - Tag filter dropdown
+  - Bulk actions toolbar (add/remove tags to selected)
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 3 complete)
+
+---
+
+### 2026-02-17 21:15:00
+✨ **Feature: System Views (ORG-001 Phase 2)**
+
+Implemented System Views - saved filters that group agents by tags. Views appear in a collapsible sidebar on the Dashboard.
+
+**Backend** (`src/backend/`):
+- `db/system_views.py`: SystemViewOperations class with CRUD methods, access control
+- `routers/system_views.py`: System Views API endpoints
+  - `GET /api/system-views` - List user's views + shared views
+  - `POST /api/system-views` - Create new view
+  - `GET /api/system-views/{id}` - Get view details
+  - `PUT /api/system-views/{id}` - Update view
+  - `DELETE /api/system-views/{id}` - Delete view
+- `database.py`: Added `system_views` table with indexes, delegated methods
+- `db_models.py`: Added `SystemView`, `SystemViewCreate`, `SystemViewUpdate`, `SystemViewList` models
+- `main.py`: Registered system_views_router
+
+**Frontend** (`src/frontend/src/`):
+- `stores/systemViews.js`: Pinia store for system views state management
+- `components/SystemViewsSidebar.vue`: Collapsible sidebar showing views list
+- `components/SystemViewEditor.vue`: Modal for create/edit with tag selection
+- `views/Dashboard.vue`: Integrated sidebar, added filtering watcher
+- `stores/network.js`: Added `setFilterTags()` for view-based filtering
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 2 complete)
+
+---
+
+### 2026-02-17 20:30:00
+✨ **Feature: Agent Tags (ORG-001 Phase 1)**
+
+Implemented agent tagging system for lightweight organizational grouping. Agents can have multiple tags, enabling multi-system membership.
+
+**Backend** (`src/backend/`):
+- `db/tags.py`: TagOperations class with CRUD methods
+- `routers/tags.py`: Tag API endpoints
+  - `GET /api/tags` - List all tags with counts
+  - `GET /api/agents/{name}/tags` - Get agent tags
+  - `PUT /api/agents/{name}/tags` - Replace all tags
+  - `POST /api/agents/{name}/tags/{tag}` - Add single tag
+  - `DELETE /api/agents/{name}/tags/{tag}` - Remove single tag
+- `routers/agents.py`: Added `?tags=` query parameter for filtering agents by tag
+- `database.py`: Added `agent_tags` table with indexes
+- `db_models.py`: Added `AgentTagList`, `AgentTagsUpdate`, `TagWithCount`, `AllTagsResponse` models
+
+**Frontend** (`src/frontend/src/`):
+- `components/TagsEditor.vue`: Reusable tag editor with autocomplete (94 lines)
+- `components/AgentHeader.vue`: Tags row with inline editing
+- `views/AgentDetail.vue`: Tag loading, updating, and API integration
+
+**Spec**: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md` (Phase 1 complete)
+
+---
+
+### 2026-02-17 19:55:00
+🎨 **UI: Add Trinity Logo and Branding to Public Chat**
+
+Added Trinity logo and text to the public chat header for brand consistency.
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Added Trinity branding row with logo and "Trinity" text at top of header
+- Logo uses `dark:invert` for proper display in dark mode
+- Moved "New" conversation button to top right (next to branding)
+- Agent info (status, name, badges, description) now in second row
+
+---
+
+### 2026-02-17 19:50:00
+🎨 **UI: Bottom-aligned Chat Messages in Public Chat**
+
+Changed public chat message layout to stack from the bottom up, with new messages appearing near the input field (like iMessage/Slack).
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Messages container now uses `flex flex-col` with a spacer div that pushes content to bottom
+- Added `messagesContainer` ref for proper scroll handling
+- Updated `scrollToBottom()` to use the ref instead of querySelector
+
+---
+
+### 2026-02-17 19:45:00
+✨ **Feature: Public Client Mode Awareness (PUB-006)**
+
+Agents now know when they're serving public users. Every public chat request includes a "Trinity: Public Link Access Mode" header so agents can adjust their behavior accordingly.
+
+**Changes** (`src/backend/db/public_chat.py`):
+- Added `PUBLIC_LINK_MODE_HEADER` constant
+- Modified `build_context_prompt()` to prepend header to all prompts
+
+**Prompt Format** (with history):
+```
+### Trinity: Public Link Access Mode
+
+Previous conversation:
+User: Hello
+Assistant: Hi there!
+
+Current message:
+User: What can you help me with?
+```
+
+**Prompt Format** (first message):
+```
+### Trinity: Public Link Access Mode
+
+Current message:
+User: Hello
+```
+
+---
+
+### 2026-02-17 19:30:00
+✨ **Enhancement: Markdown Rendering in Public Chat**
+
+Added markdown rendering for assistant messages in public chat, providing formatted output for code blocks, lists, headers, and emphasis.
+
+**Changes** (`src/frontend/src/views/PublicChat.vue`):
+- Import `marked` library (already in project dependencies)
+- Configure marked with `breaks: true` and `gfm: true` (GitHub Flavored Markdown)
+- Add `renderMarkdown()` function
+- User messages: Plain text (unchanged)
+- Assistant messages: Rendered with `v-html` and Tailwind prose classes
+
+**Styling**:
+- Uses `@tailwindcss/typography` prose classes
+- Custom prose modifiers for compact spacing
+- Code styling: indigo text with gray background
+- Dark mode support via `dark:prose-invert`
+
+---
+
+### 2026-02-17 19:00:00
+✨ **Feature: Public Chat Session Persistence (PUB-005)**
+
+Added multi-turn conversation persistence to public chat, enabling users to maintain context across page refreshes and return visits.
+
+**How It Works**:
+1. User sends message via public chat
+2. Backend creates/retrieves session based on identifier (email for email-required links, anonymous token for open links)
+3. Messages stored in `public_chat_sessions` and `public_chat_messages` tables
+4. Context prompt built from last 10 exchanges and injected into agent call
+5. Page refresh restores conversation via `GET /api/public/history/{token}`
+6. "New Conversation" button clears session and starts fresh
+
+**Backend** (`src/backend/`):
+- New `db/public_chat.py` with `PublicChatOperations` class
+- `database.py`: Added `public_chat_sessions` and `public_chat_messages` tables with indexes
+- `db_models.py`: Added `PublicChatSession`, `PublicChatMessage` models; updated `PublicChatRequest/Response`
+- `routers/public.py`:
+  - `POST /api/public/chat/{token}` - Now persists messages and builds context prompt
+  - `GET /api/public/history/{token}` - Returns chat history for session
+  - `DELETE /api/public/session/{token}` - Clears session (New Conversation)
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- `chatSessionId` ref for anonymous links (localStorage persistence)
+- `loadHistory()` fetches previous messages on mount
+- "New Conversation" button in header (visible when messages exist)
+- Session ID passed in chat requests and persisted from responses
+
+**Session Identifier Strategy**:
+- Email-required links: verified email (lowercase) from session validation
+- Anonymous links: localStorage `public_chat_session_id_{token}`
+
+**Context Injection Format**:
+```
+Previous conversation:
+User: [message 1]
+Assistant: [response 1]
+...
+
+Current message:
+User: [new message]
+```
+
+---
+
+### 2026-02-17 16:45:00
+✨ **Feature: Public Chat Header Metadata (PUB-004)**
+
+Enhanced the public chat page header to display meaningful agent metadata.
+
+**Header Now Shows**:
+- Agent display name (from template.yaml, bold text)
+- Agent description (from template.yaml, below name)
+- Status badges: AUTO (amber) if autonomous, READ-ONLY (rose with lock icon) if read-only
+- Green dot indicates running status
+
+**Backend** (`src/backend/routers/public.py`):
+- `GET /api/public/link/{token}` now fetches template info from agent container
+- Returns `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`
+- Falls back to agent name if template info unavailable
+
+**Model** (`src/backend/db_models.py`):
+- `PublicLinkInfo` extended with 4 new optional fields
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- Header redesigned with two rows: name+badges, description
+- Badges use consistent styling (amber for AUTO, rose for READ-ONLY)
+
+---
+
+### 2026-02-17 15:30:00
+✨ **Feature: Public Chat Agent Introduction (PUB-003)**
+
+Added automatic agent introduction for public chat links. When users access a public link, the agent introduces itself before they start chatting.
+
+**How It Works**:
+1. User opens public chat link and verifies email (if required)
+2. Frontend calls `GET /api/public/intro/{token}` endpoint
+3. Backend sends introduction prompt to agent via `/api/task`
+4. Agent response displayed as first message in chat
+
+**Backend** (`src/backend/routers/public.py`):
+- New `GET /api/public/intro/{token}` endpoint
+- `INTRO_PROMPT` constant asks for 2-paragraph introduction
+- Session token validation for email-required links
+- 60-second timeout for intro generation
+
+**Frontend** (`src/frontend/src/views/PublicChat.vue`):
+- `fetchIntro()` function calls intro endpoint
+- Called after email verification or on mount (if no email needed)
+- "Getting ready..." loading state while fetching
+- Graceful error handling (doesn't block user if intro fails)
+
+**User Experience**:
+- Public users see personalized welcome from the agent
+- Agent describes who it is and how it can help
+- Natural conversation start instead of generic "Start a Conversation"
+
+---
+
+### 2026-02-17 13:45:00
+🧪 **Tests: Read-Only Mode API Tests (CFG-007)**
+
+Added comprehensive test suite for Read-Only Mode feature.
+
+**Test File**: `tests/test_read_only_mode.py` (27 tests)
+
+**Test Categories**:
+- Authentication requirements (2 tests)
+- CRUD operations - GET/PUT endpoints (7 tests)
+- Config patterns - default and custom (5 tests)
+- System agent protection (2 tests)
+- Permission checks (2 tests)
+- Hook injection response (3 tests)
+- Agent state handling (1 test)
+- Response format consistency (3 tests)
+- Input validation (2 tests)
+
+**Test Runner Updated**: `.claude/agents/test-runner.md`
+- Added to "Agent Lifecycle & Management" category
+- Updated test count: ~567 tests across 33 files
+- Updated smoke test count: ~127 tests
+
+---
+
+### 2026-02-17 10:00:00
+🔒 **Feature: Read-Only Mode for Agents (CFG-007)**
+
+Added per-agent read-only mode that prevents agents from modifying source code, configuration files, and other protected paths while allowing output to designated directories.
+
+**How It Works**:
+- Uses Claude Code's PreToolUse hooks to intercept Write/Edit/NotebookEdit operations
+- Pattern-based protection: blocked patterns (e.g., `*.py`) take precedence, allowed patterns (e.g., `output/*`) provide exceptions
+- Hooks are injected at agent startup or when toggling the setting on a running agent
+
+**Frontend**:
+- ReadOnlyToggle component in AgentHeader (rose/red color when enabled, lock icon)
+- Toggle shows loading state during API call
+- Only visible for non-system agents to owners
+
+**Backend**:
+- GET/PUT `/api/agents/{name}/read-only` endpoints
+- Database columns: `read_only_mode` (boolean), `read_only_config` (JSON)
+- Hook injection writes config file, guard script, and merges into `settings.local.json`
+
+**Guard Script** (`config/hooks/read-only-guard.py`):
+- Reads config from `~/.trinity/read-only-config.json`
+- Uses fnmatch for glob pattern matching
+- Exit 0 = allow, Exit 2 = block with stderr feedback
+
+**Default Patterns**:
+- Blocked: `*.py`, `*.js`, `*.ts`, `*.vue`, `*.yaml`, `CLAUDE.md`, `.claude/*`, `.env`, etc.
+- Allowed: `content/*`, `output/*`, `reports/*`, `exports/*`, `*.log`, `*.txt`
+
+**Files Changed**:
+- `src/backend/database.py` - Migration for new columns
+- `src/backend/db/agents.py` - `get_read_only_mode`, `set_read_only_mode`, batch metadata query
+- `src/backend/services/agent_service/read_only.py` - Service layer (new)
+- `src/backend/services/agent_service/lifecycle.py` - Hook injection on agent start
+- `src/backend/routers/agents.py` - GET/PUT endpoints, `read_only_enabled` in agent response
+- `config/hooks/read-only-guard.py` - Guard script (new)
+- `src/frontend/src/components/ReadOnlyToggle.vue` - Toggle component (new)
+- `src/frontend/src/components/AgentHeader.vue` - Added ReadOnlyToggle
+- `src/frontend/src/views/AgentDetail.vue` - Toggle handler
+
+**Requirement**: CFG-007 (docs/requirements/READ_ONLY_MODE.md)
+
+---
+
+### 2026-02-16 16:00:00
+🔗 **Feature: External Public URL Support (PUB-002)**
+
+Added support for external (internet-accessible) URL for public agent links, separate from the internal VPN URL. This enables sharing public chat links with external users who are not on the Tailscale VPN.
+
+**Configuration**:
+- New `PUBLIC_CHAT_URL` environment variable (e.g., `https://public.abilityai.dev`)
+- When set, enables "Copy External Link" button in PublicLinksPanel
+
+**Implementation**:
+- Backend: `PUBLIC_CHAT_URL` config, `external_url` field in `PublicLinkWithUrl` model
+- Frontend: Globe icon button to copy external URL, distinct notification messages
+- API: `external_url` field included in public link responses when configured
+
+**Files Changed**:
+- `src/backend/config.py` - `PUBLIC_CHAT_URL` constant (already present)
+- `src/backend/db_models.py` - `external_url` field (already present)
+- `src/backend/routers/public_links.py` - `_build_external_url()` helper (already present)
+- `src/frontend/src/components/PublicLinksPanel.vue` - External link button, notification
+- `.env.example` - Added `PUBLIC_CHAT_URL` documentation
+
+**Documentation**:
+- `docs/requirements/EXTERNAL_PUBLIC_URL.md` - Requirements spec (marked implemented)
+- `docs/memory/feature-flows/public-agent-links.md` - Updated with PUB-002 section
+
+**Requirement**: PUB-002 (docs/requirements/EXTERNAL_PUBLIC_URL.md)
+
+---
+
 ### 2026-02-16 14:30:00
 🔒 **Security Fix: Agent Credential Leakage Prevention**
 

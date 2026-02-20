@@ -3,13 +3,15 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
-> **Updated**: 2026-02-05 (SSE streaming nginx configuration)
+> **Updated**: 2026-02-17 (PUB-003 use case added)
 > **Verified**: 2026-02-05
 
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | **Added PUB-003 use case**: Public Chat Agent Introduction uses `/api/task` to fetch agent intro. Cross-reference to public-agent-links.md added. |
+| 2026-02-20 | **Chat Session Persistence (CHAT-001)**: `/task` endpoint now supports `save_to_session`, `user_message`, `create_new_session` parameters for authenticated Chat tab. When `save_to_session=true`, messages persist to `chat_sessions` and `chat_messages` tables. Response includes `chat_session_id`. New `db.create_new_chat_session()` method closes existing sessions before creating new one. |
 | 2026-02-16 | **Security Fix (Credential Leakage Prevention)**: Agent-side and backend-side credential sanitization now prevents secrets from appearing in execution logs. Agent sanitizes subprocess output via `sanitize_subprocess_line()` and response text via `sanitize_text()` (claude_code.py:491-529, 693-747). Backend provides defense-in-depth via `sanitize_execution_log()` and `sanitize_response()` (chat.py:468-470, 699-712). |
 | 2026-02-15 | **Claude Max subscription support**: Headless task execution now supports Claude Max subscription authentication. If user ran `/login` in web terminal, the OAuth session stored in `~/.claude.json` is used instead of requiring `ANTHROPIC_API_KEY`. The mandatory API key check was removed from `execute_headless_task()` in `docker/base-image/agent_server/services/claude_code.py`. |
 | 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` (in `tests/test_execution_queue.py`) now uses `async_mode: True` to avoid 30s timeout. The test verifies that parallel tasks bypass the execution queue. |
@@ -188,7 +190,8 @@ POST /api/task
     "tool_count": 3
   },
   "session_id": "uuid",          // Unique per task
-  "timestamp": "2025-12-22T..."
+  "timestamp": "2025-12-22T...",
+  "chat_session_id": "string"    // Only present when save_to_session=true
 }
 ```
 
@@ -196,13 +199,24 @@ POST /api/task
 
 ### Backend: POST /api/agents/{name}/task
 
-Same request/response as agent server, with additional:
+Same request/response as agent server, with additional parameters:
+
+**Backend-Only Request Parameters** (`src/backend/models.py:81-92`):
+| Parameter | Type | Default | Purpose |
+|-----------|------|---------|---------|
+| `async_mode` | bool | false | If true, return immediately with execution_id (fire-and-forget) |
+| `save_to_session` | bool | false | If true, persist messages to `chat_sessions` table (for authenticated Chat tab) |
+| `user_message` | string | null | Original user message without context prefix (for clean session display) |
+| `create_new_session` | bool | false | If true, close existing active sessions and create a new one |
+
+**Backend Features**:
 - Authentication via JWT token
 - Access control validation
 - Activity tracking
 - Audit logging
 - **Execution log persistence** - Full transcript saved to `schedule_executions.execution_log`
 - **Process registry** - Passes `execution_id` to agent for termination tracking
+- **Chat session persistence** - When `save_to_session=true`, persists to `chat_sessions` and `chat_messages` tables
 
 ### Backend: GET /api/agents/{name}/executions/{execution_id}/log
 
@@ -776,6 +790,17 @@ Orchestrator gathers info from multiple sources:
 Combine results after all complete.
 ```
 
+### 4. Public Chat Agent Introduction (PUB-003)
+```
+Public user opens /chat/{token}
+  +-> Backend calls agent's /api/task endpoint
+  +-> Prompt: "Introduce yourself in 2 paragraphs"
+  +-> Agent responds with personalized introduction
+  +-> Response displayed as first chat message
+
+See: public-agent-links.md (PUB-003 section)
+```
+
 ## Authentication (Updated 2026-02-15)
 
 Claude Code uses whatever authentication is available in the agent container:
@@ -799,10 +824,76 @@ The mandatory `ANTHROPIC_API_KEY` check was removed from `execute_headless_task(
 5. **Timeout**: Hard limit (`timeout_seconds`) prevents wall-clock runaway
 6. **Turn Limit**: `max_turns` prevents infinite agentic loops
 
+## Chat Session Persistence (CHAT-001)
+
+**Added**: 2026-02-20
+
+The `/task` endpoint now supports optional chat session persistence for the authenticated Chat tab (`ChatPanel.vue`). This enables multi-turn conversations via headless execution while maintaining session history.
+
+### How It Works
+
+When `save_to_session=true` is passed (`src/backend/routers/chat.py:766-820`):
+
+1. **Session Management**:
+   - If `create_new_session=true`: Close existing active sessions and create a new one (`db.create_new_chat_session()`)
+   - Otherwise: Get or create session for this user+agent (`db.get_or_create_chat_session()`)
+
+2. **Message Persistence**:
+   - User message added to `chat_messages` table (uses `user_message` if provided, otherwise `message`)
+   - Assistant response added with cost/context metadata
+
+3. **Response Augmentation**:
+   - Response includes `chat_session_id` for frontend session tracking
+
+### Database Operations
+
+**File**: `src/backend/db/chat.py:223-263`
+
+**New Method: `create_new_chat_session()`** (lines 233-263):
+```python
+def create_new_chat_session(self, agent_name: str, user_id: int, user_email: str) -> ChatSession:
+    """
+    Create a new chat session, closing any existing active sessions for this user+agent.
+    Use this when user explicitly wants a new conversation (e.g., "New Chat" button).
+    """
+    # 1. Close existing active sessions
+    # 2. Create new session with token_urlsafe(16) ID
+    # 3. Return new ChatSession
+```
+
+### Frontend Usage
+
+**File**: `src/frontend/src/components/ChatPanel.vue:299-324`
+
+```javascript
+// Send via task endpoint with session persistence
+const response = await axios.post(`/api/agents/${props.agentName}/task`, {
+  message: contextPrompt,      // Full message with conversation context
+  save_to_session: true,       // Persist to chat_sessions table
+  user_message: userMessage,   // Original message (for clean session display)
+  create_new_session: !currentSessionId.value  // New session if none active
+}, { headers: authStore.authHeader })
+
+// Update session ID from response
+if (response.data.chat_session_id) {
+  currentSessionId.value = response.data.chat_session_id
+}
+```
+
+### Use Case: Chat Tab
+
+The authenticated Chat tab (`ChatPanel.vue`) uses this to:
+1. Track conversations in session dropdown (survives page refresh)
+2. Allow switching between past sessions
+3. Support "New Chat" button to start fresh conversation
+4. Maintain Dashboard activity visibility (unlike Terminal which uses PTY)
+
+See [authenticated-chat-tab.md](authenticated-chat-tab.md) for full Chat tab documentation.
+
 ## Future Enhancements
 
 1. **Concurrency Limits**: Agent-level (default 5), platform-level (default 50)
 2. **Activity Type**: New `parallel_task` activity type (currently reuses CHAT_START)
-3. **Session Persistence**: Optional session persistence with TTL for resume
+3. ~~**Session Persistence**: Optional session persistence with TTL for resume~~ **IMPLEMENTED** (CHAT-001)
 4. **Batch API**: `POST /api/agents/{name}/batch` for multiple tasks
 5. **Priority Queue**: Priority parameter for urgent tasks

@@ -3,6 +3,158 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-20)**: Execution Origin Tracking (AUDIT-001):
+> - **New feature flow**: [AUDIT-001-execution-origin-tracking.md](feature-flows/AUDIT-001-execution-origin-tracking.md) - Track WHO triggered each execution
+> - **Origin fields**: `source_user_id`, `source_user_email`, `source_agent_name`, `source_mcp_key_id`, `source_mcp_key_name`
+> - **Trigger types**: manual (user info), scheduled (null - system), mcp (user + key info), agent (source agent + key info)
+> - **MCP integration**: `McpAuthContext.keyId` stored on auth, passed via `X-MCP-Key-ID`/`X-MCP-Key-Name` headers
+> - **UI**: ExecutionDetail.vue "Execution Origin" card (lines 164-190), TasksPanel.vue trigger filter (lines 9-20)
+> - **Database migration**: `_migrate_execution_origin_tracking()` in database.py:333-356
+>
+> **Updated (2026-02-20)**: Agent Notifications (NOTIF-001):
+> - **New feature flow**: [agent-notifications.md](feature-flows/agent-notifications.md) - Agent-to-platform notification system
+> - **MCP Tool**: `send_notification` for agents to send structured notifications
+> - **7 API endpoints**: Create, list, get, acknowledge, dismiss, agent-specific queries
+> - **WebSocket broadcast**: Real-time `agent_notification` events to UI and Trinity Connect clients
+> - **Data model**: `agent_notifications` table with type, priority, category, metadata
+> - **mcp-orchestration.md**: Tool count updated 44 -> 45 (added send_notification)
+>
+> **Updated (2026-02-20)**: Per-Schedule Execution Configuration:
+> - **New schedule fields**: `timeout_seconds` (5m-2h) and `allowed_tools` (JSON array or null)
+> - **scheduling.md**: Added "Per-Schedule Execution Configuration" section with data flow diagram, files changed, and UI documentation
+> - **scheduler-service.md**: Updated AgentClient.task() to accept `allowed_tools` parameter, config table notes per-schedule override
+> - **mcp-orchestration.md**: Added dedicated Schedule Tools section with parameter table, noted `create_agent_schedule` and `update_agent_schedule` support new fields
+> - **tasks-tab.md**: Updated "Make Repeatable" test step and Related Flows to reference new schedule configuration options
+> - **feature-flows.md index**: Updated scheduling and scheduler-service entries to reflect new functionality
+>
+> **Updated (2026-02-20)**: Chat Tab Session Persistence Fix (CHAT-001):
+> - **parallel-headless-execution.md**: Added "Chat Session Persistence" section documenting `save_to_session`, `user_message`, `create_new_session` parameters
+> - **Backend model** (`models.py:81-92`): `ParallelTaskRequest` extended with 3 session persistence fields
+> - **Backend endpoint** (`chat.py:766-820`): `/task` now creates/updates chat sessions when `save_to_session=true`
+> - **Database** (`db/chat.py:233-263`): New `create_new_chat_session()` method closes existing active sessions before creating new one
+> - **Frontend** (`ChatPanel.vue:299-324`): Passes `save_to_session: true` and sets `currentSessionId` from response
+> - **persistent-chat-tracking.md**: Added cross-references to authenticated-chat-tab.md and parallel-headless-execution.md
+> - **tasks-tab.md**: Updated Related Flows section with session persistence cross-reference
+>
+> **Previous (2026-02-19)**: Authenticated Chat Tab (CHAT-001):
+> - **New feature flow**: [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) - Simple chat UI in Agent Detail page
+> - **Chat tab** added after Tasks in AgentDetail.vue (line 498)
+> - **ChatPanel.vue** (363 lines): Session selector dropdown, "New Chat" button, agent not running state
+> - **Shared components** created in `components/chat/`: ChatMessages.vue, ChatInput.vue, ChatBubble.vue, ChatLoadingIndicator.vue
+> - **PublicChat.vue refactored** to use the same shared components (now 611 lines)
+> - Uses `/api/agents/{name}/task` endpoint for Dashboard activity tracking (not `/chat`)
+> - Related flows updated: public-agent-links.md (shared components), tasks-tab.md (same `/task` endpoint pattern)
+>
+> **Updated (2026-02-18 17:50)**: Toggle Size Consistency Fix:
+> - **All toggles now use `size="sm"`** across the system for visual consistency
+> - **AgentHeader.vue**: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77) all changed to `size="sm"`
+> - **RunningStateToggle.vue**: Default size changed from 'md' to 'sm' (line 97)
+> - **Agents.vue**: ReadOnlyToggle (line 252) no longer has `:show-label="false"` - now shows labels like other toggles
+> - Affected flows: agent-lifecycle.md, agents-page-ui-improvements.md, read-only-mode.md, autonomy-toggle-component.md
+>
+> **Updated (2026-02-18)**: AgentDetail Tab Restructuring:
+> - **Logs tab REMOVED**: No longer visible in AgentDetail.vue. Logs still available via API (`GET /api/agents/{name}/logs`) and MCP tool.
+> - **Files tab REMOVED**: No longer visible in AgentDetail.vue. Users should use the standalone File Manager page at `/files`.
+> - **Terminal tab repositioned**: Now after Git tab (near end of tab list).
+> - **Public Links tab CONSOLIDATED**: No longer a separate tab. Public Links now rendered within "Sharing" tab via SharingPanel.vue embedding PublicLinksPanel.vue.
+> - **New tab order** (lines 496-525): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing* (includes Public Links), Permissions*, Git*, **Terminal**, Folders*, Info (* = conditional)
+>
+> **Updated (2026-02-18)**: Agents Page Enhancements:
+> - **ReadOnlyToggle on Agents Page**: `Agents.vue:248-255` - ReadOnlyToggle component added between Running and Autonomy toggles. Only shown for owned agents (not system, not shared). State: `agentReadOnlyStates` (line 378), `readOnlyLoading` (line 377). Functions: `fetchAllReadOnlyStates()` (544-563), `getAgentReadOnlyState()` (540-542), `handleReadOnlyToggle()` (565-594).
+> - **Tags Layout Fix**: `Agents.vue:270-288` - Fixed tags breaking tile layout. Tags now in fixed-height container (`h-6 overflow-hidden`, line 271) with individual tag truncation (`max-w-20 truncate`, line 276). Shows up to 3 tags with "+N" overflow indicator.
+>
+> **Updated (2026-02-18)**: Agent Detail Page Redesign (UI-001):
+> - **AgentHeader.vue**: Restructured into 3 rows for cleaner layout:
+>   - Row 1 (lines 4-57): Identity (name, badges) + Primary Action (toggle, delete)
+>   - Row 2 (lines 59-163): Settings (toggles, tags) on left + Stats (CPU/MEM sparklines, uptime) on right
+>   - Row 3 (lines 165-250): Git controls (conditional, only when hasGitSync)
+>   - Stats display: Fixed widths (`w-10` for CPU%, `w-14` for MEM bytes, `w-16` for uptime) prevent layout jumping
+>   - Network stats removed from display
+> - **AgentDetail.vue**: Default tab changed from 'info' to 'tasks' (line 275: `activeTab = ref('tasks')`)
+>   - Tab order reordered (lines 504-529): Tasks first, Info moved to end
+>   - **Logs tab removed**, **Files tab removed**, Terminal repositioned after Git
+>   - Order: Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info
+>   - (*) = conditional tabs
+> - **TasksPanel.vue**: Tasks tab layout reordered for better UX:
+>   - Section order: Stats (lines 49-69) → Task Input (lines 71-101) → Task History (lines 103-315)
+>   - Stats section more compact: smaller padding (`px-3 py-2`), smaller text (`text-base`, `text-[10px]`)
+>   - Run button now matches textarea height (uses `items-stretch` on container)
+>
+> **Updated (2026-02-18)**: Agent Tags Bug Fix:
+> - **agent-tags.md**: Fixed tag API authentication in AgentDetail.vue - now uses `axios` + `authStore.authHeader` instead of Pinia store wrapper
+> - Tag operations (add, remove, load) now work correctly with proper JWT authentication
+> - Updated line numbers: `loadTags()` (548-558), `addTag()` (585-598), `removeTag()` (600-611)
+>
+> **Updated (2026-02-17)**: Agent Tags & System Views (ORG-001 Phase 1-4 COMPLETE):
+> - **Phase 1 (Tags)**: Lightweight agent tagging system for organizational grouping
+>   - Backend: `db/tags.py` (TagOperations), `routers/tags.py` (5 endpoints)
+>   - Frontend: `TagsEditor.vue` component with inline editing and autocomplete
+>   - Integration: Tags row in `AgentHeader.vue`, API calls in `AgentDetail.vue`
+>   - Database: `agent_tags` table with composite primary key
+>   - API: `GET /api/tags`, `GET/PUT/POST/DELETE /api/agents/{name}/tags`, `GET /api/agents?tags=` filtering
+> - **Phase 2 (System Views)**: Saved filters that group agents by tags
+>   - Backend: `db/system_views.py` (SystemViewOperations), `routers/system_views.py` (5 endpoints)
+>   - Frontend: `SystemViewsSidebar.vue` collapsible sidebar, `SystemViewEditor.vue` modal
+>   - Store: `systemViews.js` Pinia store with localStorage persistence
+>   - Dashboard: Sidebar integration, filter reactivity via `network.js:setFilterTags()`
+>   - Database: `system_views` table with owner_id FK, agent_count computed on fetch
+>   - API: `GET/POST /api/system-views`, `GET/PUT/DELETE /api/system-views/{id}`
+> - **Phase 3 (Polish)**: MCP tools, quick tag filter, bulk operations
+>   - MCP: 5 tools in `tools/tags.ts` (list_tags, get_agent_tags, tag_agent, untag_agent, set_agent_tags)
+>   - Dashboard: Quick tag filter pills in header with multi-select support
+>   - Agents Page: Bulk tag operations (select multiple agents, add/remove tags), tag filter dropdown
+> - **Phase 4 (System Manifest Integration)**: Auto-apply tags and System Views on system deployment
+>   - Models: `SystemAgentConfig.tags`, `SystemManifest.default_tags`, `SystemManifest.system_view`, `SystemViewConfig`
+>   - Service: `configure_tags()` (lines 429-480), `create_system_view()` (lines 483-534) in `system_service.py`
+>   - Router: `deploy_system()` steps 10-11 for tag/view creation, response includes `tags_configured`, `system_view_created`
+>   - Migration: `scripts/management/migrate_prefixes_to_tags.py` for existing agent prefixes
+> - Spec: `docs/requirements/AGENT_SYSTEMS_AND_TAGS.md`
+>
+> **Updated (2026-02-17)**: Public Client Mode Awareness (PUB-006) + Bottom-Aligned Chat:
+> - **public-agent-links.md**: Agents now know when serving public users via `PUBLIC_LINK_MODE_HEADER` constant
+> - Header `"### Trinity: Public Link Access Mode"` prepended to all public chat prompts (`db/public_chat.py:17-18,265-266`)
+> - Enables agents to adjust behavior for public vs internal users (formal language, limited internal details)
+> - **UI: Bottom-aligned messages**: Chat messages now stack from bottom up like iMessage/Slack
+> - Flexbox layout with spacer div pushes content to bottom (`PublicChat.vue:191-193`)
+> - New `messagesContainer` ref for scroll handling (`PublicChat.vue:334`)
+> - File line count: PublicChat.vue now 684 lines
+>
+> **Updated (2026-02-17)**: Public Chat Session Persistence (PUB-005):
+> - **public-agent-links.md**: Multi-turn conversation persistence with database-backed sessions
+> - New tables: `public_chat_sessions` (database.py:662-674), `public_chat_messages` (database.py:678-686)
+> - New endpoints: `GET /api/public/history/{token}` (public.py:465), `DELETE /api/public/session/{token}` (public.py:541)
+> - Updated: `POST /api/public/chat/{token}` (public.py:214) now persists messages and builds context prompt
+> - New backend: `db/public_chat.py` - PublicChatOperations class (307 lines) with session/message management
+> - Frontend: `loadHistory()` (PublicChat.vue:456), `confirmNewConversation()` (PublicChat.vue:530), "New" button (lines 17-27)
+> - Session strategy: Email links use verified email as identifier, anonymous links use localStorage session_id
+> - Context injection: Last 10 exchanges formatted as "### Trinity: Public Link Access Mode\n\nPrevious conversation:\nUser:...\nAssistant:...\n\nCurrent message:\nUser:..."
+>
+> **Updated (2026-02-17)**: Public Chat Header Metadata (PUB-004):
+> - **public-agent-links.md**: `GET /api/public/link/{token}` now returns agent metadata
+> - New fields: `agent_display_name`, `agent_description`, `is_autonomous`, `is_read_only`
+> - Backend fetches display name/description from agent's `/api/template/info` endpoint
+> - Backend fetches autonomy/read-only status from `agents_db`
+> - PublicChat.vue header (lines 4-46) displays agent name, description, and status badges
+> - Status badges: AUTO (amber) if autonomous, READ-ONLY (rose with lock icon) if read-only
+> - Model: `PublicLinkInfo` (db_models.py:336-346) extended with 4 new fields
+>
+> **Updated (2026-02-17)**: Public Chat Agent Introduction (PUB-003):
+> - **public-agent-links.md**: New `GET /api/public/intro/{token}` endpoint sends intro prompt to agent via `/api/task`
+> - Frontend `fetchIntro()` (PublicChat.vue:406-438) displays agent introduction as first chat message
+> - Backend `INTRO_PROMPT` (public.py:300-306) requests 2-paragraph intro
+> - Triggered after email verification or on mount if no verification needed
+> - UI shows "Getting ready..." spinner during fetch, falls back to generic welcome on error
+>
+> **Updated (2026-02-17)**: Read-Only Mode (CFG-007):
+> - **read-only-mode.md**: New feature flow for code protection via Claude Code PreToolUse hooks
+> - Prevents agents from modifying source files (*.py, *.js, CLAUDE.md, etc.) while allowing output directories (content/, output/, reports/)
+> - Frontend: `ReadOnlyToggle.vue` component in AgentHeader.vue with rose/red color scheme
+> - Backend: `services/agent_service/read_only.py` for hook injection logic
+> - Guard script: `config/hooks/read-only-guard.py` - intercepts Write/Edit/NotebookEdit operations
+> - Database: `read_only_mode` and `read_only_config` columns in `agent_ownership` table
+> - Hooks auto-injected on agent start via `lifecycle.py:243-256`, immediate injection if agent running
+> - Files: `~/.trinity/read-only-config.json`, `~/.trinity/hooks/read-only-guard.py`, merged into `~/.claude/settings.local.json`
+
 > **Updated (2026-02-16)**: Credential Leakage Security Fix - Multi-Layer Sanitization:
 > - **Agent-Side Sanitization**: New `credential_sanitizer.py` utility in `docker/base-image/agent_server/utils/` sanitizes subprocess output and response text before storing
 > - **Backend-Side Sanitization**: New `credential_sanitizer.py` utility in `src/backend/utils/` provides defense-in-depth sanitization before database persistence
@@ -444,26 +596,26 @@
 
 | Flow | Priority | Document | Description |
 |------|----------|----------|-------------|
-| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
-| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer (Updated 2026-01-23) |
+| Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-02-18 17:50**: All toggles use `size="sm"`, RunningStateToggle default changed. **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
+| **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **2026-02-18**: Tab repositioned after Git. **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. **2026-02-16**: Credential sanitizer cache refreshed after injection. MCP tools: inject/export/import_credentials, get_credential_encryption_key (Refactored 2026-02-05) |
-| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
-| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
+| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - **2026-02-20**: Per-schedule `timeout_seconds` (5m-2h) and `allowed_tools` configuration. Uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks |
+| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - **2026-02-20**: Supports per-schedule timeout and allowed_tools. Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
-| Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Container logs viewing and live metrics |
+| Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Live metrics in AgentHeader - **2026-02-18**: Logs tab REMOVED from UI (API still available). Stats display shows only CPU, Memory, Uptime (network removed from UI) |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
-| Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 39 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule management (Updated 2026-02-05) |
+| Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-02-18**: Public Links tab consolidated into Sharing tab (SharingPanel.vue now embeds PublicLinksPanel.vue). **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 45 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule (now with timeout/allowed_tools), 5 tag (ORG-001), 1 notification (NOTIF-001) (Updated 2026-02-20) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional). **2026-01-30**: Shared users can now git pull (was owner-only) |
 | **GitHub Repository Initialization** | High | [github-repo-initialization.md](feature-flows/github-repo-initialization.md) | Initialize GitHub sync for existing agents - GitHubService class, git_service.initialize_git_in_container(), OwnedAgentByName dependency, smart directory detection (Updated 2026-01-23) |
 | Agent Info Display | Medium | [agent-info-display.md](feature-flows/agent-info-display.md) | Template metadata display in Info tab (Req 9.3) - also accessible via MCP `get_agent_info` tool (Updated 2026-01-03) |
 | Agent-to-Agent Collaboration | High | [agent-to-agent-collaboration.md](feature-flows/agent-to-agent-collaboration.md) | Inter-agent communication via Trinity MCP - X-Source-Agent header, permission system (user/agent/system scopes), collaboration event broadcasting, activity tracking, **system agent schedule management** via 8 MCP schedule tools (Updated 2026-01-29) |
-| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI) (Updated 2026-01-13) |
-| File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files in AgentDetail Files tab - **service layer: files.py** (Updated 2025-12-27) |
+| Persistent Chat Tracking | High | [persistent-chat-tracking.md](feature-flows/persistent-chat-tracking.md) | Database-backed chat persistence with full observability - **Session Management**: list/view/close sessions (EXEC-019, EXEC-020, EXEC-021 - backend API only, no frontend UI). **2026-02-20**: Chat tab now persists to these tables via `/task` endpoint with `save_to_session=true`. New `create_new_chat_session()` method (Updated 2026-02-20) |
+| File Browser | Medium | [file-browser.md](feature-flows/file-browser.md) | Browse and download workspace files - **2026-02-18**: Files tab REMOVED from AgentDetail. Use File Manager page at `/files`. **service layer: files.py** |
 | **File Manager** | High | [file-manager.md](feature-flows/file-manager.md) | Standalone `/files` page with two-panel layout, agent selector, rich media preview (image/video/audio/PDF/text), delete with protected path warnings - **Phase 11.5, Req 12.2** (Created 2025-12-27) |
 | Agent Network (Dashboard) | High | [agent-network.md](feature-flows/agent-network.md) | Real-time visual graph showing agents and messages - **now integrated into Dashboard.vue at `/`** - uses `list_all_agents_fast()` + `get_all_agent_metadata()` batch query (Updated 2026-01-12) |
 | **Dashboard Timeline View** | High | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) | Graph/Timeline mode toggle - execution boxes (Green=Manual, Pink=MCP, Purple=Scheduled, Cyan=Agent-Triggered), collaboration arrows with box validation, live streaming, NOW at 90% viewport, **schedule markers** (TSM-001) (Updated 2026-01-29) |
@@ -472,19 +624,19 @@
 | Activity Stream Collaboration Tracking | High | [activity-stream-collaboration-tracking.md](feature-flows/activity-stream-collaboration-tracking.md) | Complete vertical slice: MCP → Database → Dashboard visualization (Implemented 2025-12-02, Req 9.7) |
 | **Execution Queue** | Critical | [execution-queue.md](feature-flows/execution-queue.md) | Parallel execution prevention via Redis queue - **2026-02-16 Credential Sanitization**: Backend sanitizes execution logs before DB persistence. **2026-01-14 Race Condition Fixes**: Atomic Redis operations. Service layer: queue.py |
 | **Execution Termination** | High | [execution-termination.md](feature-flows/execution-termination.md) | Stop running executions via process registry - SIGINT/SIGKILL, queue release, activity tracking (Created 2026-01-12) |
-| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top), `displayAgents` computed, admin check on mount (Updated 2026-01-13) |
+| **Agents Page UI Improvements** | Medium | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Grid layout, autonomy toggle, execution stats, context bar - Dashboard parity with AgentNode.vue design, batch query optimization. **2026-02-18 17:50**: All toggles now use `size="sm"`, ReadOnlyToggle shows labels. **2026-02-18**: ReadOnlyToggle added (lines 248-255), tags layout fix with fixed-height container (line 271) and truncation (line 276). **2026-01-13**: System agent display for admins (purple ring, SYSTEM badge, pinned at top) |
 | **Testing Agents Suite** | High | [testing-agents.md](feature-flows/testing-agents.md) | Automated pytest suite (1460+ tests) + 8 local test agents for manual verification. **2026-01-27**: Fixed AsyncTrinityApiClient header merging in async methods (Updated 2026-01-27) |
 | **Agent Custom Metrics** | High | [agent-custom-metrics.md](feature-flows/agent-custom-metrics.md) | Agent-defined custom metrics via `template.yaml` + Dashboard Widget system via `dashboard.yaml` - **service layer: metrics.py, dashboard.py** (Updated 2026-01-23) |
 | **Agent-to-Agent Permissions** | High | [agent-permissions.md](feature-flows/agent-permissions.md) | Agent communication permissions - **service layer: permissions.py** + **composable: useAgentPermissions.js** + **PermissionsPanel.vue** - enforced by `list_agents`, `get_agent_info`, `chat_with_agent` (Updated 2026-01-23) |
 | **Agent Shared Folders** | High | [agent-shared-folders.md](feature-flows/agent-shared-folders.md) | File collaboration via shared volumes - **service layer: folders.py** (Updated 2025-12-27) |
 | **System-Wide Trinity Prompt** | High | [system-wide-trinity-prompt.md](feature-flows/system-wide-trinity-prompt.md) | Admin-configurable custom instructions injected into all agents' CLAUDE.md at startup (Updated 2025-12-19) |
 | **Dark Mode / Theme Switching** | Low | [dark-mode-theme.md](feature-flows/dark-mode-theme.md) | Client-side theme system with Light/Dark/System modes, localStorage persistence, Tailwind class strategy (Implemented 2025-12-14) |
-| **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - complete with permissions, folders, schedules, auto-start (Completed 2025-12-18, Req 10.7) |
+| **System Manifest Deployment** | High | [system-manifest.md](feature-flows/system-manifest.md) | Recipe-based multi-agent deployment via YAML manifest - permissions, folders, schedules, auto-start. **ORG-001 Phase 4**: `default_tags`, per-agent `tags`, `system_view` auto-creation. `configure_tags()`, `create_system_view()` in system_service.py. Response: `tags_configured`, `system_view_created` (Updated 2026-02-17) |
 | **OpenTelemetry Integration** | Medium | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export from Claude Code agents to Prometheus via OTEL Collector - cost, tokens, productivity metrics with Dashboard UI (Phase 2.5 UI completed 2025-12-20) |
 | **Internal System Agent** | High | [internal-system-agent.md](feature-flows/internal-system-agent.md) | Platform operations manager (trinity-system) with fleet ops API, health monitoring, schedule control, and emergency stop. **2026-01-27**: Emergency stop `system_prefix` query parameter for targeted stops. **2026-01-14**: Parallel `ThreadPoolExecutor(max_workers=10)` for faster fleet halt. **2026-01-13**: UI consolidated + Report Storage. (Req 11.1, 11.2) |
 | **Local Agent Deployment** | High | [local-agent-deploy.md](feature-flows/local-agent-deploy.md) | Deploy local agents via MCP - **service layer: deploy.py** - archive validation, safe tar extraction, CLAUDE.md injection (Updated 2026-01-23) |
-| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-16 credential sanitization** at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-16, Req 12.1) |
-| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, and rate limiting (Implemented 2025-12-22, Req 12.2) |
+| **Parallel Headless Execution** | High | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) | Stateless parallel task execution via `POST /task` endpoint - bypasses queue, enables orchestrator-worker patterns, **2026-02-20 chat session persistence** for Chat tab (`save_to_session`, `user_message`, `create_new_session` params), credential sanitization at agent+backend layers, max_turns runaway prevention, async mode (Updated 2026-02-20, Req 12.1) |
+| **Public Agent Links** | Medium | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links for unauthenticated agent access with optional email verification, usage tracking, rate limiting. **2026-02-19**: Refactored to use shared chat components (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator). **2026-02-18**: Consolidated into "Sharing" tab. **PUB-002**: External URL support. **PUB-003**: Agent introduction. **PUB-004**: Header metadata. **PUB-005**: Session persistence. **PUB-006**: Public mode awareness |
 | **First-Time Setup** | High | [first-time-setup.md](feature-flows/first-time-setup.md) | Admin password wizard on fresh install, bcrypt hashing, API key configuration in Settings, login block until setup complete (Implemented 2025-12-23, Req 11.4 / Phase 12.3) |
 | **Web Terminal** | High | [web-terminal.md](feature-flows/web-terminal.md) | Browser-based xterm.js terminal for System Agent with Claude Code TUI, PTY forwarding via Docker exec, admin-only access (Implemented 2025-12-25, Req 11.5) |
 | **Email-Based Authentication** | High | [email-authentication.md](feature-flows/email-authentication.md) | Passwordless email login with 6-digit verification codes, 2-step UI with countdown timer, admin-managed whitelist, auto-whitelist on agent sharing, rate limiting and email enumeration prevention (Fully Implemented 2025-12-26, Phase 12.4) |
@@ -495,7 +647,7 @@
 | **Container Capabilities** | Medium | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode for apt-get package installation - **2026-01-14**: Added RESTRICTED/FULL_CAPABILITIES constants for consistent security across all container creation paths. System-wide setting + per-agent API, automatic recreation on start (CFG-004) |
 | **Vector Logging** | Medium | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation via Vector - captures all container stdout/stderr, routes to platform.json/agents.json, replaces audit-logger (Implemented 2025-12-31) |
 | **Autonomy Mode** | High | [autonomy-mode.md](feature-flows/autonomy-mode.md) | Agent autonomous operation toggle - enables/disables all schedules with single click - **service layer: autonomy.py**, uses AutonomyToggle component in 4 locations, owner-only access (Updated 2026-02-12) |
-| **AutonomyToggle Component** | Medium | [autonomy-toggle-component.md](feature-flows/autonomy-toggle-component.md) | Reusable Vue toggle component (151 lines) for autonomy mode - used in AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue - sm/md/lg sizes, v-model support, loading states (Created 2026-02-12) |
+| **AutonomyToggle Component** | Medium | [autonomy-toggle-component.md](feature-flows/autonomy-toggle-component.md) | Reusable Vue toggle component (151 lines) for autonomy mode - used in AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue - sm/md/lg sizes (all now use 'sm'), v-model support, loading states (Updated 2026-02-18) |
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in AgentHeader.vue opens ResourceModal.vue, values stored in DB, auto-restart if running, container recreation on start if mismatch (Updated 2026-01-23) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, **FRONTEND_URL domain extraction + Tailscale-aware host detection** (priority: SSH_HOST > FRONTEND_URL > Tailscale > host.docker.internal > gateway > localhost), Redis metadata with auto-expiry - **service layer: ssh_service.py** (Updated 2026-02-13: Fixed localhost bug in production) |
 | **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - **Dashboard tab now conditionally hidden when agent lacks dashboard.yaml** (Updated 2026-02-12) |
@@ -510,6 +662,12 @@
 | **Skills Management UI** | High | [skills-management.md](feature-flows/skills-management.md) | Frontend UI documentation - Skills.vue admin page (CRUD modals, grid layout, type badges), SkillsPanel.vue agent tab (checkbox assignment, Save/Sync buttons). User flows for create/edit/delete skills and assign/sync to agents (Created 2026-01-25) |
 | **Skills Library Sync** | High | [skills-library-sync.md](feature-flows/skills-library-sync.md) | GitHub repository sync for skills library - Settings.vue configuration (URL/branch), git clone/pull operations, GitHub PAT for private repos. Service: `skill_service.py:sync_library()`, Settings: `settings_service.py` (Created 2026-01-25) |
 | **Trinity Connect** | High | [trinity-connect.md](feature-flows/trinity-connect.md) | Local-remote agent sync via `/ws/events` WebSocket endpoint. MCP API key auth, server-side event filtering, blocking `trinity-listen.sh` script. Enables real-time coordination between local Claude Code and Trinity agents (Created 2026-02-05) |
+| **Read-Only Mode** | Medium | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via Claude Code PreToolUse hooks - blocks Write/Edit/NotebookEdit to protected paths (*.py, *.js, CLAUDE.md, etc.), allows output directories (content/, output/, reports/). ReadOnlyToggle in AgentHeader.vue (`size="sm"`) + Agents.vue (lines 248-255, now shows labels), auto-injection on agent start - **service layer: read_only.py** (CFG-007, Updated 2026-02-18 17:50) |
+| **Agent Tags & System Views** | Medium | [agent-tags.md](feature-flows/agent-tags.md) | **Phase 1 (Tags)**: TagsEditor.vue with autocomplete, inline editing in AgentHeader, `/api/agents?tags=` filtering (OR logic). **Phase 2 (System Views)**: Saved tag filters in Dashboard sidebar, SystemViewsSidebar.vue + SystemViewEditor.vue, localStorage persistence, shared views. **Phase 3 (Polish)**: 5 MCP tools in `tools/tags.ts`, quick tag filter pills in Dashboard header, bulk tag operations on Agents page, **tags layout fix** (fixed-height container, truncation). **Phase 4**: System manifest integration (default_tags, per-agent tags, system_view auto-creation). **db/tags.py**, **routers/tags.py**, **db/system_views.py**, **routers/system_views.py** - 10 total API endpoints + 5 MCP tools (ORG-001 Complete, Layout Fix 2026-02-18) |
+| **Authenticated Chat Tab** | High | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) | Simple chat UI in Agent Detail (CHAT-001) - bubble messages, session selector dropdown, shared components with PublicChat. Uses `/task` endpoint with `save_to_session=true` for Dashboard tracking + session persistence. **Components**: ChatPanel.vue, ChatMessages.vue, ChatInput.vue, ChatBubble.vue, ChatLoadingIndicator.vue. **Tab position**: after Tasks. **2026-02-20**: Session persistence fix - messages now persist to `chat_sessions` table (Created 2026-02-19, Updated 2026-02-20) |
+| **Agent Notifications** | High | [agent-notifications.md](feature-flows/agent-notifications.md) | Agent-to-platform structured notifications (NOTIF-001) - MCP `send_notification` tool, 7 REST endpoints, WebSocket broadcast, SQLite persistence. Types: alert/info/status/completion/question. Priority: low/normal/high/urgent. Features: acknowledge, dismiss, agent-specific queries, pending count. UI: see Events Page below (Created 2026-02-20) |
+| **Events Page UI** | High | [events-page.md](feature-flows/events-page.md) | Dedicated Events page for viewing/managing agent notifications (NOTIF-002) - filter by status/priority/agent/type, stats cards, bulk actions (acknowledge/dismiss), real-time WebSocket updates, NavBar badge with polling. **Components**: Events.vue, notifications.js store, NavBar badge. **Routes**: `/events` (Created 2026-02-20) |
+| **Execution Origin Tracking** | High | [AUDIT-001-execution-origin-tracking.md](feature-flows/AUDIT-001-execution-origin-tracking.md) | Track WHO triggered each execution (AUDIT-001) - captures source_user_id, source_user_email, source_agent_name, source_mcp_key_id, source_mcp_key_name. Covers manual, scheduled, MCP user, and agent-to-agent triggers. UI display on ExecutionDetail.vue, trigger type filter on TasksPanel.vue. **Backend**: `db/schedules.py`, `routers/chat.py`. **MCP**: `client.ts`, `tools/chat.ts`, `types.ts` (Created 2026-02-20) |
 
 ---
 
@@ -572,6 +730,15 @@ The Process Engine is a major platform feature that enables defining, executing,
 | Document | Priority | Status | Description |
 |----------|----------|--------|-------------|
 | [DEDICATED_SCHEDULER_SERVICE.md](../requirements/DEDICATED_SCHEDULER_SERVICE.md) | **HIGH** | **IMPLEMENTED** | Standalone scheduler service - fixes duplicate execution bug with multiple workers, Redis distributed locks, single-instance design. See [scheduler-service.md](feature-flows/scheduler-service.md) (Implemented 2026-01-13) |
+| [EXTERNAL_PUBLIC_URL.md](../requirements/EXTERNAL_PUBLIC_URL.md) | **MEDIUM** | **IMPLEMENTED** | External URL support for public agent links - enables sharing with users outside VPN. Adds `PUBLIC_CHAT_URL` env var, `external_url` field in API, "Copy External Link" button in UI (Implemented 2026-02-16) |
+
+## Requirements Specs (Pending)
+
+| Document | Priority | Status | Description |
+|----------|----------|--------|-------------|
+| [EXECUTION_ORIGIN_TRACKING.md](../requirements/EXECUTION_ORIGIN_TRACKING.md) | **HIGH** | **IMPLEMENTED** | Track WHO triggered each execution - user identity, MCP API key info, source agent for agent-to-agent calls. See [AUDIT-001-execution-origin-tracking.md](feature-flows/AUDIT-001-execution-origin-tracking.md) (Implemented 2026-02-20) |
+| [AGENT_SYSTEMS_AND_TAGS.md](../requirements/AGENT_SYSTEMS_AND_TAGS.md) | **MEDIUM** | **IMPLEMENTED** | Lightweight agent organization via tags and saved system views. **Phase 1 (Tags)**: `db/tags.py`, `routers/tags.py`, `TagsEditor.vue`, AgentHeader/AgentDetail integration, `/api/agents?tags=` filtering. **Phase 2 (System Views)**: `db/system_views.py`, `routers/system_views.py`, `SystemViewsSidebar.vue`, `SystemViewEditor.vue`, `systemViews.js` store, Dashboard integration with filter reactivity. (Completed 2026-02-17) |
+| [PUBLIC_EXTERNAL_ACCESS_SETUP.md](../requirements/PUBLIC_EXTERNAL_ACCESS_SETUP.md) | **MEDIUM** | **NOT STARTED** | Infrastructure setup guide for exposing public endpoints outside VPN - Tailscale Funnel, GCP Load Balancer, or Cloudflare Tunnel options (Created 2026-02-16) |
 
 ---
 

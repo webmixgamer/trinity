@@ -1,11 +1,13 @@
 import { ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
+import { useNotificationsStore } from '../stores/notifications'
 
 const ws = ref(null)
 const isConnected = ref(false)
 
 export function useWebSocket() {
   const agentsStore = useAgentsStore()
+  const notificationsStore = useNotificationsStore()
 
   const connect = () => {
     if (ws.value) return
@@ -65,6 +67,27 @@ export function useWebSocket() {
         break
       case 'agent_stopped':
         agentsStore.updateAgentStatus(data.data.name, 'stopped')
+        break
+      case 'agent_notification':
+        // Real-time notification from an agent
+        // The WebSocket event contains: notification_id, agent_name, notification_type, title, priority, category, timestamp
+        // We update the pending count and can add to list if we have full details
+        notificationsStore.fetchPendingCount()
+        // If we have enough data, we can add a partial notification
+        if (data.notification_id && data.agent_name && data.title) {
+          notificationsStore.addNotification({
+            id: data.notification_id,
+            agent_name: data.agent_name,
+            notification_type: data.notification_type || 'info',
+            title: data.title,
+            priority: data.priority || 'normal',
+            category: data.category || null,
+            status: 'pending',
+            created_at: data.timestamp || new Date().toISOString(),
+            message: null,
+            metadata: null,
+          })
+        }
         break
       default:
         console.log('Unknown WebSocket event:', data.event)

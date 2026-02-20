@@ -2,7 +2,7 @@
 Agent Permissions Tests (test_agent_permissions.py)
 
 Tests for agent-to-agent permission system (Requirement 9.10).
-Covers permission CRUD, default permissions, and cascade delete.
+Covers permission CRUD, restrictive default permissions (no auto-grant), and cascade delete.
 
 NOTE: MCP enforcement tests require agent-scoped keys and are in a separate test.
 """
@@ -314,15 +314,15 @@ class TestRemovePermission:
 
 
 class TestDefaultPermissions:
-    """REQ-PERM-005: Default permission behavior on agent creation."""
+    """REQ-PERM-005: Default permission behavior on agent creation (RESTRICTIVE)."""
 
-    def test_new_agent_has_default_permissions(
+    def test_new_agent_has_no_default_permissions(
         self,
         api_client: TrinityApiClient,
         created_agent,
         request
     ):
-        """New agent gets bidirectional permissions with same-owner agents."""
+        """New agent starts with NO permissions (restrictive default as of 2026-02-19)."""
         # Create a new agent (created_agent already exists)
         new_agent_name = f"test-perm-default-{uuid.uuid4().hex[:6]}"
         create_response = api_client.post(
@@ -343,37 +343,33 @@ class TestDefaultPermissions:
             assert_status(response1, 200)
             data1 = response1.json()
 
-            # Check if new agent is in available agents
+            # Check if new agent is in available agents list
             available_names = [a["name"] for a in data1.get("available_agents", [])]
 
-            # New agent should be in the available list
+            # New agent should be in the available list (visible to same owner)
             if new_agent_name in available_names:
-                # Find the entry and check if permitted (default behavior)
+                # Find the entry and check it's NOT permitted (restrictive default)
                 for agent in data1["available_agents"]:
                     if agent["name"] == new_agent_name:
-                        # Default permissions should make it permitted (Option B)
-                        assert agent["permitted"] is True, \
-                            f"Expected new agent to have default permission granted"
+                        # Restrictive default: new agents are NOT permitted
+                        assert agent["permitted"] is False, \
+                            f"Expected new agent to have NO default permissions (restrictive)"
                         break
 
-            # Check reverse direction - new agent should have permission to created_agent
+            # Check reverse direction - new agent should have NO permission to created_agent
             response2 = api_client.get(
                 f"/api/agents/{new_agent_name}/permissions"
             )
             assert_status(response2, 200)
             data2 = response2.json()
 
-            # created_agent should be permitted
+            # Restrictive default: permitted_agents should be empty
             permitted_names = [a["name"] for a in data2.get("permitted_agents", [])]
-            # This tests Option B behavior - same-owner agents have bidirectional permissions
-            # The test passes if either direction has default permissions
-            has_some_default_perms = (
-                new_agent_name in [a["name"] for a in data1.get("permitted_agents", [])] or
-                created_agent["name"] in permitted_names
-            )
+            assert created_agent["name"] not in permitted_names, \
+                "Expected NO default permissions (restrictive mode)"
 
-            # At minimum, the new agent should see the other agent in available list
-            assert len(data2.get("available_agents", [])) >= 0  # Just verify structure works
+            # Verify available_agents structure works (same-owner agents visible but not permitted)
+            assert len(data2.get("available_agents", [])) >= 0
 
         finally:
             if not request.config.getoption("--skip-cleanup"):

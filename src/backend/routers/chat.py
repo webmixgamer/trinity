@@ -110,7 +110,9 @@ async def chat_with_agent(
     request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
     x_source_agent: Optional[str] = Header(None),
-    x_via_mcp: Optional[str] = Header(None)
+    x_via_mcp: Optional[str] = Header(None),
+    x_mcp_key_id: Optional[str] = Header(None),
+    x_mcp_key_name: Optional[str] = Header(None)
 ):
     """
     Proxy chat messages to agent's internal web server and persist to database.
@@ -176,7 +178,12 @@ async def chat_with_agent(
         task_execution = db.create_task_execution(
             agent_name=name,
             message=request.message,
-            triggered_by=triggered_by
+            triggered_by=triggered_by,
+            source_user_id=current_user.id,
+            source_user_email=current_user.email or current_user.username,
+            source_agent_name=x_source_agent,
+            source_mcp_key_id=x_mcp_key_id,
+            source_mcp_key_name=x_mcp_key_name
         )
         task_execution_id = task_execution.id if task_execution else None
         if x_source_agent:
@@ -540,7 +547,10 @@ async def execute_parallel_task(
     name: str,
     request: ParallelTaskRequest,
     current_user: User = Depends(get_current_user),
-    x_source_agent: Optional[str] = Header(None)
+    x_source_agent: Optional[str] = Header(None),
+    x_via_mcp: Optional[str] = Header(None),
+    x_mcp_key_id: Optional[str] = Header(None),
+    x_mcp_key_name: Optional[str] = Header(None)
 ):
     """
     Execute a stateless task in parallel mode (no conversation context).
@@ -577,7 +587,12 @@ async def execute_parallel_task(
     execution = db.create_task_execution(
         agent_name=name,
         message=request.message,
-        triggered_by=triggered_by
+        triggered_by=triggered_by,
+        source_user_id=current_user.id,
+        source_user_email=current_user.email or current_user.username,
+        source_agent_name=x_source_agent,
+        source_mcp_key_id=x_mcp_key_id,
+        source_mcp_key_name=x_mcp_key_name
     )
     execution_id = execution.id if execution else None
 
@@ -746,6 +761,61 @@ async def execute_parallel_task(
                     "execution_id": execution_id
                 }
             )
+
+        # Persist to chat session if requested (for authenticated Chat tab)
+        if request.save_to_session:
+            try:
+                # Create new session or get existing one
+                if request.create_new_session:
+                    # User clicked "New Chat" - close old sessions and create a new one
+                    session = db.create_new_chat_session(
+                        agent_name=name,
+                        user_id=current_user.id,
+                        user_email=current_user.email or current_user.username
+                    )
+                else:
+                    # Continue existing session or create if none exists
+                    session = db.get_or_create_chat_session(
+                        agent_name=name,
+                        user_id=current_user.id,
+                        user_email=current_user.email or current_user.username
+                    )
+
+                # Use user_message if provided, otherwise fall back to message
+                # (user_message contains the original message without context prefix)
+                original_user_message = request.user_message or request.message
+
+                # Add user message to session
+                db.add_chat_message(
+                    session_id=session.id,
+                    agent_name=name,
+                    user_id=current_user.id,
+                    user_email=current_user.email or current_user.username,
+                    role="user",
+                    content=original_user_message
+                )
+
+                # Add assistant response to session
+                sanitized_resp = sanitize_response(response_data.get("response", ""))
+                db.add_chat_message(
+                    session_id=session.id,
+                    agent_name=name,
+                    user_id=current_user.id,
+                    user_email=current_user.email or current_user.username,
+                    role="assistant",
+                    content=sanitized_resp,
+                    cost=metadata.get("cost_usd"),
+                    context_used=metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0),
+                    context_max=metadata.get("context_window") or 200000,
+                    execution_time_ms=execution_time_ms
+                )
+
+                # Add session ID to response
+                response_data["chat_session_id"] = session.id
+                logger.debug(f"[Task] Saved to chat session {session.id} for agent '{name}'")
+            except Exception as e:
+                # Don't fail the request if session persistence fails
+                logger.warning(f"[Task] Failed to save to chat session for agent '{name}': {e}")
 
         # Add database execution ID to response for frontend tracking
         response_data["task_execution_id"] = execution_id

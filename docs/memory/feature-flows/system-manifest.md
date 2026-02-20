@@ -1,7 +1,7 @@
 # Feature: System Manifest Deployment
 
 ## Overview
-Deploy multi-agent systems from YAML manifests via a single API call. This is a "recipe" deployment model where agents are created from a manifest but become independent after creation (not declaratively bound to the manifest). Feature includes agent creation, conflict resolution, permissions, shared folders, schedules, auto-start, MCP tools, and backend management endpoints.
+Deploy multi-agent systems from YAML manifests via a single API call. This is a "recipe" deployment model where agents are created from a manifest but become independent after creation (not declaratively bound to the manifest). Feature includes agent creation, conflict resolution, permissions, shared folders, schedules, auto-start, MCP tools, backend management endpoints, **automatic tagging** (ORG-001 Phase 4), and **System View auto-creation**.
 
 ## User Story
 As a platform user, I want to deploy multiple coordinated agents from a YAML configuration so that I can quickly stand up multi-agent systems without manually creating each agent, configuring permissions, setting up shared folders, and creating schedules.
@@ -26,6 +26,18 @@ prompt: |
   This updates the global trinity_prompt setting.
   All agents receive this via CLAUDE.md injection.
 
+# ORG-001 Phase 4: Default tags applied to ALL agents in system
+default_tags:
+  - production
+  - content-team
+
+# ORG-001 Phase 4: Auto-create System View on deploy
+system_view:
+  name: Content Production
+  icon: "📝"
+  color: "#8B5CF6"
+  shared: true  # Visible to all users
+
 agents:
   orchestrator:
     template: github:YourOrg/orchestrator-agent
@@ -35,6 +47,9 @@ agents:
     folders:
       expose: true    # Share files with other agents
       consume: true   # Mount shared folders from others
+    tags:             # ORG-001 Phase 4: Per-agent tags (in addition to default_tags)
+      - lead
+      - orchestrator
     schedules:
       - name: daily-planning
         cron: "0 9 * * *"
@@ -50,16 +65,39 @@ agents:
     folders:
       expose: true
       consume: true
+    tags:
+      - worker
 
   editor:
     template: local:business-assistant
     folders:
       expose: false
       consume: true
+    tags:
+      - worker
+      - review
 
 permissions:
   preset: orchestrator-workers  # Options: full-mesh, orchestrator-workers, none, explicit
 ```
+
+### Tag Application Order (ORG-001 Phase 4)
+
+When deploying a system, tags are applied to each agent in this order:
+
+1. **System name** (auto-applied): The system name becomes a tag (e.g., `content-production`)
+2. **Default tags** (from manifest root): Applied to ALL agents (e.g., `production`, `content-team`)
+3. **Per-agent tags** (from agent config): Applied to specific agents (e.g., `lead`, `worker`)
+
+All tags are normalized (lowercase, deduplicated) before being stored.
+
+### System View Auto-Creation (ORG-001 Phase 4)
+
+If `system_view` is specified in the manifest:
+- A System View is created with the specified name, icon, and color
+- Filter tags include: system name + default_tags
+- The view appears in the Dashboard sidebar for quick agent filtering
+- If `shared: true`, all users can see the view
 
 ### Permission Presets
 
@@ -126,7 +164,7 @@ permissions:
 
 ### Models (`src/backend/models.py`)
 
-**SystemAgentConfig** (Lines 248-253)
+**SystemAgentConfig** (Lines 221-227)
 ```python
 class SystemAgentConfig(BaseModel):
     """Configuration for a single agent in a system manifest."""
@@ -134,9 +172,10 @@ class SystemAgentConfig(BaseModel):
     resources: Optional[dict] = None  # {"cpu": "2", "memory": "4g"}
     folders: Optional[dict] = None  # {"expose": bool, "consume": bool}
     schedules: Optional[List[dict]] = None  # [{name, cron, message, ...}]
+    tags: Optional[List[str]] = None  # ORG-001 Phase 4: Per-agent tags
 ```
 
-**SystemPermissions** (Lines 256-259)
+**SystemPermissions** (Lines 230-233)
 ```python
 class SystemPermissions(BaseModel):
     """Permission configuration for system agents."""
@@ -144,7 +183,17 @@ class SystemPermissions(BaseModel):
     explicit: Optional[Dict[str, List[str]]] = None  # {"orchestrator": ["worker1", "worker2"]}
 ```
 
-**SystemManifest** (Lines 262-268)
+**SystemViewConfig** (Lines 236-241) - ORG-001 Phase 4
+```python
+class SystemViewConfig(BaseModel):
+    """Configuration for auto-creating a System View on deploy."""
+    name: str
+    icon: Optional[str] = None  # Emoji (e.g., "📝")
+    color: Optional[str] = None  # Hex color (e.g., "#8B5CF6")
+    shared: bool = True  # Visible to all users?
+```
+
+**SystemManifest** (Lines 244-253)
 ```python
 class SystemManifest(BaseModel):
     """Parsed system manifest from YAML."""
@@ -153,9 +202,12 @@ class SystemManifest(BaseModel):
     prompt: Optional[str] = None
     agents: Dict[str, SystemAgentConfig]
     permissions: Optional[SystemPermissions] = None
+    # ORG-001 Phase 4: Tags and System View support
+    default_tags: Optional[List[str]] = None  # Applied to all agents in manifest
+    system_view: Optional[SystemViewConfig] = None  # Auto-create System View on deploy
 ```
 
-**SystemDeployRequest** (Lines 271-274)
+**SystemDeployRequest** (Lines 256-259)
 ```python
 class SystemDeployRequest(BaseModel):
     """Request to deploy a system from YAML manifest."""
@@ -163,7 +215,7 @@ class SystemDeployRequest(BaseModel):
     dry_run: bool = False
 ```
 
-**SystemDeployResponse** (Lines 277-286)
+**SystemDeployResponse** (Lines 262-273)
 ```python
 class SystemDeployResponse(BaseModel):
     """Response from system deployment."""
@@ -174,12 +226,14 @@ class SystemDeployResponse(BaseModel):
     prompt_updated: bool
     permissions_configured: int = 0
     schedules_created: int = 0
+    tags_configured: int = 0  # ORG-001 Phase 4: Total tags applied
+    system_view_created: Optional[str] = None  # ORG-001 Phase 4: View ID if created
     warnings: List[str] = []
 ```
 
 ### Service Layer (`src/backend/services/system_service.py`)
 
-#### parse_manifest() (Lines 19-73)
+#### parse_manifest() (Lines 18-90)
 ```python
 def parse_manifest(yaml_str: str) -> SystemManifest:
     """
@@ -189,6 +243,7 @@ def parse_manifest(yaml_str: str) -> SystemManifest:
     - YAML syntax (using yaml.safe_load)
     - Required fields: name, agents (at least 1)
     - Each agent has required field: template
+    - ORG-001 Phase 4: Parses default_tags, system_view, per-agent tags
 
     Raises:
         ValueError: If YAML is invalid or missing required fields
@@ -203,7 +258,7 @@ ValueError: "Missing required field: agents (must have at least 1)"
 ValueError: "Agent 'worker' missing required field: template"
 ```
 
-#### validate_manifest() (Lines 76-151)
+#### validate_manifest() (Lines 93-194)
 ```python
 def validate_manifest(manifest: SystemManifest) -> List[str]:
     """
@@ -217,6 +272,8 @@ def validate_manifest(manifest: SystemManifest) -> List[str]:
     - Permission preset values: full-mesh, orchestrator-workers, none
     - Permission references: all agents must exist
     - Schedules: name, cron, message required
+    - ORG-001 Phase 4: Tag format validation (lowercase alphanumeric + hyphens)
+    - ORG-001 Phase 4: System view name required if system_view specified
 
     Returns:
         List of warning messages (empty if all valid)
@@ -342,7 +399,53 @@ def create_schedules(
     """
 ```
 
-#### start_all_agents() (Lines 386-411)
+#### configure_tags() (Lines 429-480) - ORG-001 Phase 4
+```python
+def configure_tags(
+    system_name: str,
+    agent_names: Dict[str, str],  # {short_name: final_name}
+    agents_config: Dict[str, SystemAgentConfig],
+    default_tags: Optional[List[str]] = None
+) -> int:
+    """
+    Configure tags for all agents.
+
+    Tag sources (applied in order):
+    1. system_name (auto-applied as tag to all agents)
+    2. default_tags (from manifest root, applied to all agents)
+    3. per-agent tags (from agent config, applied to specific agents)
+
+    All tags are normalized (lowercase, deduplicated).
+
+    Returns:
+        Total number of tags configured
+    """
+```
+
+#### create_system_view() (Lines 483-534) - ORG-001 Phase 4
+```python
+def create_system_view(
+    system_name: str,
+    system_view: SystemViewConfig,
+    default_tags: Optional[List[str]],
+    owner_id: str
+) -> Optional[str]:
+    """
+    Create a System View for the deployed system.
+
+    The view filters by:
+    - system_name tag (always included)
+    - default_tags (if specified)
+
+    Creates a SystemView in the database with the specified
+    name, icon, color, and filter tags.
+
+    Returns:
+        View ID if created, None if failed
+    """
+```
+
+#### start_all_agents() (Lines 537-562)
 ```python
 async def start_all_agents(agent_names: List[str]) -> Dict[str, str]:
     """
@@ -407,9 +510,11 @@ async def deploy_system(
 ```
 1. parse_manifest(body.manifest) -> SystemManifest
    └─ Raises ValueError on YAML syntax error or missing required fields
+   └─ ORG-001 Phase 4: Parses default_tags, system_view, per-agent tags
 
 2. validate_manifest(manifest) -> warnings
    └─ Raises ValueError on validation failure (invalid names, templates, permissions)
+   └─ ORG-001 Phase 4: Validates tag format and system_view.name
 
 3. resolve_agent_names(manifest.name, manifest.agents) -> (agent_names, name_warnings)
    └─ Returns {short_name: final_name} mapping and conflict warnings
@@ -436,15 +541,26 @@ async def deploy_system(
 9. Create schedules:
    └─ create_schedules(agent_names, manifest.agents, current_user.username) -> schedules_count
 
-10. Start all agents:
+10. Configure tags (ORG-001 Phase 4):
+    └─ configure_tags(manifest.name, agent_names, manifest.agents, manifest.default_tags) -> tags_count
+    └─ Applies: system_name tag + default_tags + per-agent tags
+    └─ All tags normalized (lowercase, deduplicated)
+
+11. Create System View (ORG-001 Phase 4, if manifest.system_view):
+    └─ create_system_view(manifest.name, manifest.system_view, manifest.default_tags, current_user.id) -> system_view_id
+    └─ Filter tags: system_name + default_tags
+    └─ View appears in Dashboard sidebar
+
+12. Start all agents:
     └─ start_all_agents(created_agents) -> start_results
     └─ Count agents_started and agents_failed
 
-11. Audit log success:
+13. Audit log success:
     └─ log_audit_event(event_type="system_deployment", action="deploy", ...)
 
-12. Return response:
-    └─ {status: "deployed", system_name, agents_created, prompt_updated, permissions_configured, schedules_created, warnings}
+14. Return response:
+    └─ {status: "deployed", system_name, agents_created, prompt_updated, permissions_configured,
+        schedules_created, tags_configured, system_view_created, warnings}
 ```
 
 **Error Handling**:
@@ -822,6 +938,23 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
   "prompt_updated": true,
   "permissions_configured": 0,
   "schedules_created": 1,
+  "tags_configured": 2,
+  "system_view_created": null,
+  "warnings": []
+}
+```
+
+**Response with System View** (200 OK):
+```json
+{
+  "status": "deployed",
+  "system_name": "content-production",
+  "agents_created": ["content-production-orchestrator", "content-production-writer"],
+  "prompt_updated": true,
+  "permissions_configured": 2,
+  "schedules_created": 2,
+  "tags_configured": 8,
+  "system_view_created": "sv_abc123xyz",
   "warnings": []
 }
 ```
@@ -1706,6 +1839,7 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 - **[Agent Shared Folders](agent-shared-folders.md)** - Shared folder setup (Phase 2)
 - **[Scheduling](scheduling.md)** - Cron-based automation (Phase 2)
 - **[Agent Start](agent-start.md)** - Auto-start with Trinity injection
+- **[Agent Tags & System Views](agent-tags.md)** - Automatic tagging and System View creation (ORG-001 Phase 4)
 
 ### Related Features
 - **[MCP Orchestration](mcp-orchestration.md)** - MCP tools for system management
@@ -1747,8 +1881,15 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 - **Import Errors**: Fixed missing `list_agents_for_user` references
 - **Template Endpoints**: Fixed 500 errors in template retrieval
 
+### ORG-001 Phase 4: Tags and System Views (2026-02-17)
+- **Automatic Tagging**: System name auto-applied as tag to all agents
+- **Default Tags**: `default_tags` in manifest applied to all agents
+- **Per-Agent Tags**: `tags` field in agent config for specific agents
+- **System View Creation**: `system_view` in manifest auto-creates Dashboard sidebar view
+- **Migration Script**: `scripts/management/migrate_prefixes_to_tags.py` for existing agents
+
 ### Future Phases
-- **Phase 4 (Planned)**: Frontend UI
+- **Phase 5 (Planned)**: Frontend UI
   - Manifest editor with syntax highlighting
   - System list and detail views
   - Deployment history and rollback
@@ -1758,11 +1899,14 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/backend/models.py` | 248-286 | Pydantic models for manifests and requests |
-| `src/backend/services/system_service.py` | 1-552 | YAML parsing, validation, deployment logic |
-| `src/backend/routers/systems.py` | 1-427 | FastAPI endpoints for system management |
+| `src/backend/models.py` | 221-273 | Pydantic models for manifests and requests (ORG-001 Phase 4: SystemViewConfig, tags fields) |
+| `src/backend/services/system_service.py` | 1-560 | YAML parsing, validation, deployment logic, configure_tags(), create_system_view() |
+| `src/backend/routers/systems.py` | 1-230 | FastAPI endpoints for system management |
 | `src/backend/database.py` | 524-528 | Settings table definition |
+| `src/backend/db/tags.py` | 1-222 | TagOperations for agent tagging (ORG-001 Phase 1) |
+| `src/backend/db/system_views.py` | 1-259 | SystemViewOperations (ORG-001 Phase 2) |
 | `src/mcp-server/src/tools/systems.ts` | 1-205 | MCP tools for system operations |
+| `scripts/management/migrate_prefixes_to_tags.py` | 1-100 | Migration script for existing agent prefixes |
 | `tests/test_systems.py` | 1-870 | Comprehensive test suite (9 test classes) |
 
 ---
@@ -1771,6 +1915,7 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | **ORG-001 Phase 4**: Added tags and System View integration - `default_tags`, `system_view`, per-agent `tags` in manifest. Updated models.py (221-273), system_service.py (configure_tags, create_system_view), routers/systems.py (steps 10-11 in deploy flow). Added response fields `tags_configured`, `system_view_created`. |
 | 2026-02-11 | Fixed Docker volume mount path - now mounts to `/home/developer` (not workspace subdirectory) |
 | 2026-01-23 | Line number verification: Updated models.py (248-286), systems.py (1-427), MCP tools. Removed outdated audit logging references (not in current implementation). Updated test section with correct class line numbers. |
 | 2025-12-30 | Line numbers verified |
@@ -1781,6 +1926,6 @@ pytest tests/test_systems.py --cov=src/backend/routers/systems --cov=src/backend
 
 ---
 
-**Last Updated**: 2026-01-23 (Line numbers verified)
-**Status**: Complete (Phases 1, 2, 3 - API only, no frontend UI)
+**Last Updated**: 2026-02-17 (ORG-001 Phase 4 integration)
+**Status**: Complete (Phases 1, 2, 3, ORG-001 Phase 4 - API only, no frontend UI)
 **Feature Flag**: None (always enabled)

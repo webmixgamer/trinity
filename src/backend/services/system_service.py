@@ -8,9 +8,9 @@ import re
 import logging
 from typing import Dict, List, Tuple, Optional
 
-from models import SystemManifest, SystemAgentConfig, SystemPermissions
+from models import SystemManifest, SystemAgentConfig, SystemPermissions, SystemViewConfig
 from database import db
-from db_models import ScheduleCreate
+from db_models import ScheduleCreate, SystemViewCreate
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ def parse_manifest(yaml_str: str) -> SystemManifest:
             template=agent_config["template"],
             resources=agent_config.get("resources"),
             folders=agent_config.get("folders"),
-            schedules=agent_config.get("schedules")
+            schedules=agent_config.get("schedules"),
+            tags=agent_config.get("tags")  # ORG-001 Phase 4
         )
 
     # Parse permissions
@@ -63,12 +64,29 @@ def parse_manifest(yaml_str: str) -> SystemManifest:
             explicit=perm_data.get("explicit")
         )
 
+    # ORG-001 Phase 4: Parse default_tags
+    default_tags = data.get("default_tags")
+
+    # ORG-001 Phase 4: Parse system_view
+    system_view = None
+    if "system_view" in data:
+        sv_data = data["system_view"]
+        if isinstance(sv_data, dict) and "name" in sv_data:
+            system_view = SystemViewConfig(
+                name=sv_data["name"],
+                icon=sv_data.get("icon"),
+                color=sv_data.get("color"),
+                shared=sv_data.get("shared", True)
+            )
+
     return SystemManifest(
         name=data["name"],
         description=data.get("description"),
         prompt=data.get("prompt"),
         agents=agents,
-        permissions=permissions
+        permissions=permissions,
+        default_tags=default_tags,
+        system_view=system_view
     )
 
 
@@ -146,6 +164,32 @@ def validate_manifest(manifest: SystemManifest) -> List[str]:
                     raise ValueError(f"Agent '{agent_name}' schedule {i}: missing 'cron'")
                 if "message" not in schedule:
                     raise ValueError(f"Agent '{agent_name}' schedule {i}: missing 'message'")
+
+    # ORG-001 Phase 4: Validate tags
+    tag_pattern = re.compile(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$')
+
+    # Validate default_tags
+    if manifest.default_tags:
+        for tag in manifest.default_tags:
+            if not tag_pattern.match(tag.lower().strip()):
+                raise ValueError(
+                    f"Invalid tag '{tag}': must be lowercase alphanumeric and hyphens"
+                )
+
+    # Validate per-agent tags
+    for agent_name, config in manifest.agents.items():
+        if config.tags:
+            for tag in config.tags:
+                if not tag_pattern.match(tag.lower().strip()):
+                    raise ValueError(
+                        f"Agent '{agent_name}' has invalid tag '{tag}': "
+                        "must be lowercase alphanumeric and hyphens"
+                    )
+
+    # Validate system_view name
+    if manifest.system_view:
+        if not manifest.system_view.name or not manifest.system_view.name.strip():
+            raise ValueError("system_view.name is required")
 
     return warnings
 
@@ -378,6 +422,118 @@ def create_schedules(
     return schedules_count
 
 
+# ============================================================================
+# ORG-001 Phase 4: Tags and System View Functions
+# ============================================================================
+
+def configure_tags(
+    system_name: str,
+    agent_names: Dict[str, str],  # {short_name: final_name}
+    agents_config: Dict[str, SystemAgentConfig],
+    default_tags: Optional[List[str]] = None
+) -> int:
+    """
+    Configure tags for all agents.
+
+    - system_prefix is automatically added as a tag to all agents
+    - default_tags (from manifest) are added to all agents
+    - per-agent tags (from agent config) are added to specific agents
+
+    Args:
+        system_name: The system name prefix (auto-applied as tag)
+        agent_names: Mapping of short names to final agent names
+        agents_config: Agent configurations from manifest
+        default_tags: Default tags to apply to all agents
+
+    Returns:
+        Total number of tags configured
+    """
+    tags_count = 0
+
+    for short_name, config in agents_config.items():
+        final_name = agent_names.get(short_name)
+        if not final_name:
+            continue
+
+        # Build combined tag list
+        combined_tags = []
+
+        # 1. Auto-apply system_prefix as tag (always first)
+        combined_tags.append(system_name)
+
+        # 2. Add default_tags (from manifest root)
+        if default_tags:
+            combined_tags.extend(default_tags)
+
+        # 3. Add per-agent tags
+        if config.tags:
+            combined_tags.extend(config.tags)
+
+        # Normalize and dedupe tags
+        normalized_tags = list(set(t.lower().strip() for t in combined_tags if t.strip()))
+
+        if normalized_tags:
+            db.set_agent_tags(final_name, normalized_tags)
+            tags_count += len(normalized_tags)
+            logger.info(f"Configured {len(normalized_tags)} tags for {final_name}: {normalized_tags}")
+
+    return tags_count
+
+
+def create_system_view(
+    system_name: str,
+    system_view: SystemViewConfig,
+    default_tags: Optional[List[str]],
+    owner_id: str
+) -> Optional[str]:
+    """
+    Create a System View for the deployed system.
+
+    The view filters by:
+    - system_prefix tag (always included)
+    - default_tags (if specified)
+
+    Args:
+        system_name: The system name prefix
+        system_view: System view configuration from manifest
+        default_tags: Default tags to include in filter
+        owner_id: User ID for view ownership
+
+    Returns:
+        View ID if created, None if failed
+    """
+    try:
+        # Build filter tags
+        filter_tags = [system_name]  # Always include system prefix
+        if default_tags:
+            filter_tags.extend(default_tags)
+
+        # Normalize and dedupe
+        filter_tags = list(set(t.lower().strip() for t in filter_tags if t.strip()))
+
+        # Create the view
+        view_data = SystemViewCreate(
+            name=system_view.name,
+            description=f"Auto-created for {system_name} system deployment",
+            icon=system_view.icon,
+            color=system_view.color,
+            filter_tags=filter_tags,
+            is_shared=system_view.shared
+        )
+
+        view = db.create_system_view(owner_id, view_data)
+        if view:
+            logger.info(f"Created System View '{system_view.name}' with filter tags: {filter_tags}")
+            return view.id
+        else:
+            logger.warning(f"Failed to create System View '{system_view.name}'")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error creating System View: {e}")
+        return None
+
+
 async def start_all_agents(agent_names: List[str]) -> Dict[str, str]:
     """
     Start all created agents.
@@ -460,6 +616,17 @@ def export_manifest(system_name: str, agents: List[Dict]) -> str:
                 ]
         except Exception as e:
             logger.warning(f"Failed to get schedules for {full_name}: {e}")
+
+        # ORG-001 Phase 4: Get tags from database
+        try:
+            agent_tags = db.get_agent_tags(full_name)
+            # Filter out the system prefix tag (auto-applied on import)
+            # so export shows only explicitly configured tags
+            non_prefix_tags = [t for t in agent_tags if t != system_name]
+            if non_prefix_tags:
+                config["tags"] = non_prefix_tags
+        except Exception as e:
+            logger.warning(f"Failed to get tags for {full_name}: {e}")
 
         agent_configs[short_name] = config
 

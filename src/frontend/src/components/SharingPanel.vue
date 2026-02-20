@@ -1,9 +1,10 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Share Agent</h3>
+  <div class="p-6 space-y-8">
+    <!-- Team Sharing Section -->
+    <div>
+      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Team Sharing</h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Share this agent with other team members by entering their email address.
+        Share this agent with team members by entering their email address.
       </p>
 
       <!-- Share Form -->
@@ -35,55 +36,60 @@
       ]">
         {{ shareMessage.text }}
       </div>
-    </div>
 
-    <!-- Shared Users List -->
-    <div>
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Shared With</h3>
+      <!-- Shared Users List -->
+      <div class="mt-4">
+        <div v-if="!shares || shares.length === 0" class="text-center py-6 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
+          <svg class="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <p class="mt-2 text-sm">Not shared with anyone</p>
+        </div>
 
-      <div v-if="!shares || shares.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
-        <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-        <p class="mt-2">Not shared with anyone</p>
+        <ul v-else class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <li v-for="share in shares" :key="share.id" class="px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="flex-shrink-0 h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  {{ (share.shared_with_name || share.shared_with_email || '?')[0].toUpperCase() }}
+                </span>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {{ share.shared_with_name || share.shared_with_email }}
+                </p>
+                <p v-if="share.shared_with_name" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ share.shared_with_email }}
+                </p>
+              </div>
+            </div>
+            <button
+              @click="removeShare(share.shared_with_email)"
+              :disabled="unshareLoading === share.shared_with_email"
+              class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium disabled:opacity-50"
+            >
+              <span v-if="unshareLoading === share.shared_with_email">Removing...</span>
+              <span v-else>Remove</span>
+            </button>
+          </li>
+        </ul>
       </div>
-
-      <ul v-else class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <li v-for="share in shares" :key="share.id" class="px-4 py-3 flex items-center justify-between">
-          <div class="flex items-center space-x-3">
-            <div class="flex-shrink-0 h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
-              <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
-                {{ (share.shared_with_name || share.shared_with_email || '?')[0].toUpperCase() }}
-              </span>
-            </div>
-            <div>
-              <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {{ share.shared_with_name || share.shared_with_email }}
-              </p>
-              <p v-if="share.shared_with_name" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ share.shared_with_email }}
-              </p>
-            </div>
-          </div>
-          <button
-            @click="removeShare(share.shared_with_email)"
-            :disabled="unshareLoading === share.shared_with_email"
-            class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium disabled:opacity-50"
-          >
-            <span v-if="unshareLoading === share.shared_with_email">Removing...</span>
-            <span v-else>Remove</span>
-          </button>
-        </li>
-      </ul>
     </div>
+
+    <!-- Divider -->
+    <div class="border-t border-gray-200 dark:border-gray-700"></div>
+
+    <!-- Public Links Section -->
+    <PublicLinksPanel :agent-name="agentName" />
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import { useAgentSharing } from '../composables/useAgentSharing'
 import { useNotification } from '../composables'
+import PublicLinksPanel from './PublicLinksPanel.vue'
 
 const props = defineProps({
   agentName: {

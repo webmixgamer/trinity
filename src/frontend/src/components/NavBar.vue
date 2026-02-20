@@ -48,6 +48,24 @@
           </div>
         </div>
         <div class="flex items-center space-x-4">
+          <!-- Agent Events/Notifications -->
+          <router-link
+            to="/events"
+            class="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+            title="Agent Events"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <span
+              v-if="notificationsStore.pendingCount > 0"
+              class="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white transform rounded-full"
+              :class="notificationsStore.hasUrgentPending ? 'bg-red-500 animate-pulse' : 'bg-blue-500'"
+            >
+              {{ notificationsStore.pendingCount > 99 ? '99+' : notificationsStore.pendingCount }}
+            </span>
+          </router-link>
+
           <!-- Cost Alerts Notification -->
           <router-link
             to="/alerts"
@@ -184,6 +202,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import { useAlertsStore } from '../stores/alerts'
+import { useNotificationsStore } from '../stores/notifications'
 import { useWebSocket } from '../utils/websocket'
 import axios from 'axios'
 
@@ -191,6 +210,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const alertsStore = useAlertsStore()
+const notificationsStore = useNotificationsStore()
 const { isConnected } = useWebSocket()
 
 // Check if user is admin (fetch from backend)
@@ -241,8 +261,9 @@ onMounted(async () => {
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
 
-  // Start polling for alerts
+  // Start polling for alerts and notifications
   alertsStore.startPolling(60000)
+  notificationsStore.startPolling(60000)
 
   // Fetch user role from backend
   try {
@@ -258,6 +279,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   alertsStore.stopPolling()
+  notificationsStore.stopPolling()
 })
 
 const toggleUserMenu = () => {

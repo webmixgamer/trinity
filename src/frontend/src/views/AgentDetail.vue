@@ -29,6 +29,7 @@
             :agent="agent"
             :action-loading="actionLoading"
             :autonomy-loading="autonomyLoading"
+            :read-only-loading="readOnlyLoading"
             :agent-stats="agentStats"
             :stats-loading="statsLoading"
             :cpu-history="cpuHistory"
@@ -42,13 +43,19 @@
             :git-has-changes="gitHasChanges"
             :git-changes-count="gitChangesCount"
             :git-behind="gitBehind"
+            :tags="agentTags"
+            :all-tags="allTags"
             @toggle="toggleRunning"
             @delete="deleteAgent"
             @toggle-autonomy="toggleAutonomy"
+            @toggle-read-only="toggleReadOnly"
             @open-resource-modal="showResourceModal = true"
             @git-pull="pullFromGithub"
             @git-push="syncToGithub"
             @git-refresh="refreshGitStatus"
+            @update-tags="updateTags"
+            @add-tag="addTag"
+            @remove-tag="removeTag"
           />
 
           <!-- Tabs -->
@@ -82,6 +89,11 @@
             <!-- Tasks Tab Content -->
             <div v-if="activeTab === 'tasks'" class="p-6">
               <TasksPanel :agent-name="agent.name" :agent-status="agent.status" :highlight-execution-id="route.query.execution" :initial-message="taskPrefillMessage" @create-schedule="handleCreateSchedule" />
+            </div>
+
+            <!-- Chat Tab Content -->
+            <div v-if="activeTab === 'chat'" class="p-6">
+              <ChatPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
             <!-- Dashboard Tab Content -->
@@ -168,10 +180,6 @@
               <FoldersPanel :agent-name="agent.name" :agent-status="agent.status" :can-share="agent.can_share" />
             </div>
 
-            <!-- Public Links Tab Content -->
-            <div v-if="activeTab === 'public-links'" class="p-6">
-              <PublicLinksPanel :agent-name="agent.name" />
-            </div>
           </div>
         </div>
       </div>
@@ -211,7 +219,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { useAgentsStore } from '../stores/agents'
+import { useAuthStore } from '../stores/auth'
 import NavBar from '../components/NavBar.vue'
 import AgentSubNav from '../components/AgentSubNav.vue'
 
@@ -231,7 +241,6 @@ import GitPanel from '../components/GitPanel.vue'
 import InfoPanel from '../components/InfoPanel.vue'
 import DashboardPanel from '../components/DashboardPanel.vue'
 import FoldersPanel from '../components/FoldersPanel.vue'
-import PublicLinksPanel from '../components/PublicLinksPanel.vue'
 
 // Panel Components (newly extracted)
 import AgentHeader from '../components/AgentHeader.vue'
@@ -243,6 +252,7 @@ import PermissionsPanel from '../components/PermissionsPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import TerminalPanelContent from '../components/TerminalPanelContent.vue'
 import SkillsPanel from '../components/SkillsPanel.vue'
+import ChatPanel from '../components/ChatPanel.vue'
 
 // Import composables
 import { useNotification } from '../composables'
@@ -257,16 +267,21 @@ import { useSessionActivity } from '../composables/useSessionActivity'
 const route = useRoute()
 const router = useRouter()
 const agentsStore = useAgentsStore()
+const authStore = useAuthStore()
 
 // Minimal local state
 const agent = ref(null)
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref('info')
+const activeTab = ref('tasks')
 const showResourceModal = ref(false)
 const taskPrefillMessage = ref('')
 const schedulePrefillMessage = ref('')
 const hasDashboard = ref(false)
+
+// Tags state (ORG-001)
+const agentTags = ref([])
+const allTags = ref([])
 
 // Initialize composables
 const { notification, showNotification } = useNotification()
@@ -325,6 +340,9 @@ const {
 // Autonomy mode state
 const autonomyLoading = ref(false)
 
+// Read-only mode state
+const readOnlyLoading = ref(false)
+
 async function toggleAutonomy() {
   if (!agent.value || autonomyLoading.value) return
 
@@ -362,6 +380,46 @@ async function toggleAutonomy() {
     showNotification(error.message || 'Failed to update autonomy mode', 'error')
   } finally {
     autonomyLoading.value = false
+  }
+}
+
+async function toggleReadOnly() {
+  if (!agent.value || readOnlyLoading.value) return
+
+  readOnlyLoading.value = true
+  const newState = !agent.value.read_only_enabled
+
+  try {
+    const response = await fetch(`/api/agents/${agent.value.name}/read-only`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ enabled: newState })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to update read-only mode')
+    }
+
+    const result = await response.json()
+
+    // Update local state
+    agent.value.read_only_enabled = newState
+
+    showNotification(
+      newState
+        ? `Read-only mode enabled. Agent cannot modify source files.${result.hooks_injected ? '' : ' Hooks will be applied on next agent start.'}`
+        : 'Read-only mode disabled. Agent can modify all files.',
+      'success'
+    )
+  } catch (error) {
+    console.error('Failed to toggle read-only mode:', error)
+    showNotification(error.message || 'Failed to update read-only mode', 'error')
+  } finally {
+    readOnlyLoading.value = false
   }
 }
 
@@ -430,46 +488,46 @@ const {
 } = useSessionActivity(agent, agentsStore)
 
 // Computed tabs based on agent permissions and system agent status
+// Tab order optimized for workflow: primary actions first, configuration/reference last
 const visibleTabs = computed(() => {
   const isSystem = agent.value?.is_system
 
+  // Primary tabs - most frequently used
   const tabs = [
-    { id: 'info', label: 'Info' },
-    { id: 'tasks', label: 'Tasks' }
+    { id: 'tasks', label: 'Tasks' },
+    { id: 'chat', label: 'Chat' }
   ]
 
-  // Dashboard tab - only show if agent has a dashboard.yaml file
+  // Dashboard tab - only show if agent has a dashboard.yaml file (insert after Tasks)
   if (hasDashboard.value) {
     tabs.push({ id: 'dashboard', label: 'Dashboard' })
   }
 
   tabs.push(
-    { id: 'terminal', label: 'Terminal' },
-    { id: 'logs', label: 'Logs' },
+    { id: 'schedules', label: 'Schedules' },
     { id: 'credentials', label: 'Credentials' },
     { id: 'skills', label: 'Skills' }
   )
 
-  // Sharing/Permissions - hide for system agent (system agent has full access)
+  // Access control tabs - hide for system agent (system agent has full access)
   if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'sharing', label: 'Sharing' })
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
-  // Schedules - show for all agents including system
-  tabs.push({ id: 'schedules', label: 'Schedules' })
-
+  // Git and Terminal tabs together
   if (hasGitSync.value) {
     tabs.push({ id: 'git', label: 'Git' })
   }
+  tabs.push({ id: 'terminal', label: 'Terminal' })
 
-  tabs.push({ id: 'files', label: 'Files' })
-
-  // Folders and Public Links - hide for system agent
+  // Folders - hide for system agent
   if (agent.value?.can_share && !isSystem) {
     tabs.push({ id: 'folders', label: 'Folders' })
-    tabs.push({ id: 'public-links', label: 'Public Links' })
   }
+
+  // Info at the end (reference/metadata)
+  tabs.push({ id: 'info', label: 'Info' })
 
   return tabs
 })
@@ -484,6 +542,72 @@ async function loadAgent() {
     error.value = 'Failed to load agent details'
   } finally {
     loading.value = false
+  }
+}
+
+// Tags management (ORG-001)
+async function loadTags() {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.get(`/api/agents/${agent.value.name}/tags`, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
+  } catch (err) {
+    console.error('Failed to load tags:', err)
+  }
+}
+
+async function loadAllTags() {
+  try {
+    const response = await axios.get('/api/tags', {
+      headers: authStore.authHeader
+    })
+    allTags.value = (response.data.tags || []).map(t => t.tag)
+  } catch (err) {
+    console.error('Failed to load all tags:', err)
+  }
+}
+
+async function updateTags(newTags) {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.put(`/api/agents/${agent.value.name}/tags`, { tags: newTags }, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
+    showNotification('Tags updated', 'success')
+  } catch (err) {
+    console.error('Failed to update tags:', err)
+    showNotification('Failed to update tags', 'error')
+  }
+}
+
+async function addTag(tag) {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.post(`/api/agents/${agent.value.name}/tags/${tag}`, {}, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
+    // Refresh all tags to show new tag in autocomplete
+    await loadAllTags()
+  } catch (err) {
+    console.error('Failed to add tag:', err)
+    showNotification(err.response?.data?.detail || 'Failed to add tag', 'error')
+  }
+}
+
+async function removeTag(tag) {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.delete(`/api/agents/${agent.value.name}/tags/${tag}`, {
+      headers: authStore.authHeader
+    })
+    agentTags.value = response.data.tags || []
+  } catch (err) {
+    console.error('Failed to remove tag:', err)
+    showNotification('Failed to remove tag', 'error')
   }
 }
 
@@ -508,6 +632,8 @@ watch(() => route.params.name, async (newName, oldName) => {
     stopAllPolling()
     // Reset dashboard state for new agent
     hasDashboard.value = false
+    // Reset tags for new agent
+    agentTags.value = []
     // Disconnect terminal from old agent
     if (terminalRef.value?.disconnect) {
       terminalRef.value.disconnect()
@@ -517,6 +643,7 @@ watch(() => route.params.name, async (newName, oldName) => {
     await loadSessionInfo()
     await loadApiKeySetting()
     await loadResourceLimits()
+    await loadTags()
     // Check if new agent has dashboard (only when running)
     if (agent.value?.status === 'running') {
       await checkDashboardExists()
@@ -584,6 +711,9 @@ onMounted(async () => {
   await loadSessionInfo()
   await loadApiKeySetting()
   await loadResourceLimits()
+  // Load tags (ORG-001)
+  await loadTags()
+  await loadAllTags()
   // Check for dashboard if agent is running
   if (agent.value?.status === 'running') {
     await checkDashboardExists()
@@ -593,7 +723,7 @@ onMounted(async () => {
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['info', 'tasks', 'dashboard', 'terminal', 'logs', 'credentials', 'sharing', 'permissions', 'schedules', 'git', 'files', 'folders', 'public-links']
+    const validTabs = ['tasks', 'chat', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }

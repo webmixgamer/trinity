@@ -40,6 +40,10 @@ else:
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost")  # Port 80 default (Docker)
 
+# External URL for public chat links (Tailscale Funnel, Cloudflare Tunnel, etc.)
+# When set, enables "Copy External Link" button in PublicLinksPanel
+PUBLIC_CHAT_URL = os.getenv("PUBLIC_CHAT_URL", "")
+
 # Email Service Configuration (for public link verification)
 EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "resend")  # "console", "smtp", "sendgrid", "resend"
 SMTP_HOST = os.getenv("SMTP_HOST", "")
@@ -78,6 +82,10 @@ OAUTH_CONFIGS = {
 # Add your production domains to EXTRA_CORS_ORIGINS environment variable (comma-separated)
 _extra_origins = os.getenv("EXTRA_CORS_ORIGINS", "").split(",")
 _extra_origins = [o.strip() for o in _extra_origins if o.strip()]
+
+# Automatically add PUBLIC_CHAT_URL to CORS if set
+if PUBLIC_CHAT_URL:
+    _extra_origins.append(PUBLIC_CHAT_URL)
 
 CORS_ORIGINS = [
     "http://localhost:3000",

@@ -37,7 +37,7 @@ The component is used in 4 locations:
 | `disabled` | Boolean | `false` | Disable toggle interaction |
 | `loading` | Boolean | `false` | Show loading spinner |
 | `showLabel` | Boolean | `true` | Show AUTO/Manual label |
-| `size` | String | `'sm'` | Size variant: 'sm', 'md', 'lg' |
+| `size` | String | `'sm'` | Size variant: 'sm', 'md', 'lg' (default changed from 'md' to 'sm' in 2026-02-18) |
 
 ### Events
 
@@ -195,14 +195,14 @@ function toggle() {
   <AutonomyToggle
     :model-value="agent.autonomy_enabled"
     :loading="autonomyLoading"
-    size="md"
+    size="sm"
     @toggle="$emit('toggle-autonomy')"
   />
 </template>
 ```
 
 **Notes**:
-- Medium size (`md`) for header context
+- Small size (`sm`) for consistent sizing across all toggle locations (changed from `md` in 2026-02-18)
 - Separated with vertical divider
 - Only shown for owners (not shared users or system agent)
 
@@ -376,4 +376,5 @@ See [autonomy-mode.md](autonomy-mode.md) for full backend flow documentation.
 
 | Date | Change |
 |------|--------|
+| 2026-02-18 17:50 | **Toggle Size Consistency**: All AutonomyToggle instances now use `size="sm"`. AgentHeader.vue changed from `size="md"` to `size="sm"` (line 68). Default size prop remains `'sm'`. This provides visual consistency with RunningStateToggle and ReadOnlyToggle across all locations. |
 | 2026-02-12 | Initial documentation - AutonomyToggle component extracted to standardize toggle UI across 4 locations |

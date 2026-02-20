@@ -1,16 +1,66 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-    <!-- Minimal header -->
+    <!-- Header with Trinity branding and agent metadata -->
     <header class="bg-white dark:bg-gray-800 shadow-sm py-3 px-4">
       <div class="max-w-3xl mx-auto">
-        <div class="flex items-center justify-between">
-          <div v-if="linkInfo && linkInfo.valid" class="flex items-center space-x-2">
-            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Chat</span>
+        <!-- Trinity branding row -->
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center">
+            <img src="../assets/trinity-logo.svg" alt="Trinity" class="h-6 w-6 mr-2 dark:invert" />
+            <span class="text-lg font-bold text-gray-900 dark:text-white">Trinity</span>
           </div>
-          <div v-else class="text-sm text-gray-500 dark:text-gray-400">
-            Loading...
+          <!-- New Conversation button (moved to top right) -->
+          <button
+            v-if="messages.length > 0 && isVerified && linkInfo?.valid"
+            @click="confirmNewConversation"
+            class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            :disabled="chatLoading"
+          >
+            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            New
+          </button>
+        </div>
+
+        <!-- Agent info row -->
+        <div v-if="linkInfo && linkInfo.valid" class="space-y-1">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span class="font-semibold text-gray-900 dark:text-white">
+                {{ linkInfo.agent_display_name || 'Agent' }}
+              </span>
+            </div>
+            <!-- Status badges -->
+            <div class="flex items-center space-x-2">
+              <span
+                v-if="linkInfo.is_autonomous"
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+              >
+                AUTO
+              </span>
+              <span
+                v-if="linkInfo.is_read_only"
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400"
+              >
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                READ-ONLY
+              </span>
+            </div>
           </div>
+          <!-- Description row -->
+          <p
+            v-if="linkInfo.agent_description"
+            class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2"
+          >
+            {{ linkInfo.agent_description }}
+          </p>
+        </div>
+        <div v-else class="text-sm text-gray-500 dark:text-gray-400">
+          Loading...
         </div>
       </div>
     </header>
@@ -146,88 +196,66 @@
 
       <!-- Chat interface -->
       <div v-else class="flex-1 flex flex-col">
-        <!-- Messages area -->
-        <div class="flex-1 overflow-y-auto space-y-4 pb-4">
-          <!-- Welcome message -->
-          <div v-if="messages.length === 0" class="text-center py-12">
-            <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Start a Conversation</h3>
-            <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
-              Type a message below to begin chatting.
-            </p>
-          </div>
-
-          <!-- Message list -->
-          <div v-for="(msg, index) in messages" :key="index" class="px-2">
-            <div
-              :class="[
-                'rounded-xl px-4 py-3 max-w-[85%]',
-                msg.role === 'user'
-                  ? 'bg-indigo-600 text-white ml-auto'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-              ]"
-            >
-              <p class="whitespace-pre-wrap">{{ msg.content }}</p>
-            </div>
-          </div>
-
-          <!-- Loading indicator -->
-          <div v-if="chatLoading" class="px-2">
-            <div class="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm max-w-[85%]">
-              <div class="flex items-center space-x-2">
-                <div class="flex space-x-1">
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
-                </div>
-                <span class="text-sm text-gray-500 dark:text-gray-400">Thinking...</span>
+        <!-- Messages area using shared component -->
+        <ChatMessages
+          ref="messagesRef"
+          :messages="messages"
+          :loading="chatLoading"
+          loading-text="Thinking..."
+          class="flex-1"
+        >
+          <template #empty>
+            <!-- Loading intro -->
+            <div v-if="introLoading" class="text-center py-12">
+              <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-indigo-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
               </div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Getting ready...</h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+                The agent is preparing to assist you.
+              </p>
             </div>
-          </div>
-        </div>
+
+            <!-- Fallback welcome message (only if intro failed or not fetched yet) -->
+            <div v-else class="text-center py-12">
+              <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Start a Conversation</h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+                Type a message below to begin chatting.
+              </p>
+            </div>
+          </template>
+        </ChatMessages>
 
         <!-- Error message -->
         <div v-if="chatError" class="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
           <p class="text-sm text-red-600 dark:text-red-400">{{ chatError }}</p>
         </div>
 
-        <!-- Input area -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3">
-          <form @submit.prevent="sendMessage" class="flex items-end space-x-2">
-            <textarea
-              v-model="message"
-              rows="1"
-              placeholder="Type your message..."
-              class="flex-1 resize-none border-0 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-0 focus:outline-none"
-              :disabled="chatLoading"
-              @keydown.enter.exact.prevent="sendMessage"
-              @input="autoResize"
-              ref="messageInput"
-            ></textarea>
-            <button
-              type="submit"
-              :disabled="chatLoading || !message.trim()"
-              class="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </form>
-        </div>
+        <!-- Input area using shared component -->
+        <ChatInput
+          v-model="message"
+          :disabled="chatLoading"
+          placeholder="Type your message..."
+          @submit="sendMessage"
+        />
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { ChatMessages, ChatInput } from '../components/chat'
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -246,12 +274,21 @@ const verifyError = ref(null)
 const sessionToken = ref(localStorage.getItem(`public_session_${token.value}`) || '')
 const isVerified = computed(() => !linkInfo.value?.require_email || !!sessionToken.value)
 
+// Chat session persistence (for anonymous links)
+const chatSessionId = ref(localStorage.getItem(`public_chat_session_id_${token.value}`) || '')
+const historyLoading = ref(false)
+
 // Chat
 const message = ref('')
 const messages = ref([])
 const chatLoading = ref(false)
 const chatError = ref(null)
-const messageInput = ref(null)
+const messagesRef = ref(null)
+
+// Intro
+const introLoading = ref(false)
+const introError = ref(null)
+const introFetched = ref(false)
 
 // Load link info
 const loadLinkInfo = async () => {
@@ -329,6 +366,16 @@ const verifyCode = async () => {
     if (response.data.verified) {
       sessionToken.value = response.data.session_token
       localStorage.setItem(`public_session_${token.value}`, response.data.session_token)
+
+      // Try to load history first (returning user)
+      const hasHistory = await loadHistory()
+
+      // Only fetch intro if no history exists
+      if (!hasHistory) {
+        await fetchIntro()
+      } else {
+        introFetched.value = true
+      }
     } else {
       verifyError.value = getVerifyErrorMessage(response.data.error)
     }
@@ -351,12 +398,125 @@ const getVerifyErrorMessage = (error) => {
   }
 }
 
-// Send chat message
-const sendMessage = async () => {
-  if (!message.value.trim() || chatLoading.value) return
+// Load chat history from server
+const loadHistory = async () => {
+  historyLoading.value = true
 
-  const userMessage = message.value.trim()
-  message.value = ''
+  try {
+    // Build URL with appropriate session credentials
+    let url = `/api/public/history/${token.value}`
+    const params = []
+
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      params.push(`session_token=${encodeURIComponent(sessionToken.value)}`)
+    } else if (chatSessionId.value) {
+      params.push(`session_id=${encodeURIComponent(chatSessionId.value)}`)
+    }
+
+    if (params.length > 0) {
+      url += '?' + params.join('&')
+    }
+
+    const response = await axios.get(url)
+
+    if (response.data.messages && response.data.messages.length > 0) {
+      // Load history into messages array
+      messages.value = response.data.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+      return true // History was loaded
+    }
+
+    return false // No history
+  } catch (err) {
+    console.error('Failed to load history:', err)
+    return false
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+// Fetch agent introduction
+const fetchIntro = async () => {
+  if (introFetched.value || introLoading.value) return
+
+  introLoading.value = true
+  introError.value = null
+
+  try {
+    // Build URL with session token if needed
+    let url = `/api/public/intro/${token.value}`
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      url += `?session_token=${encodeURIComponent(sessionToken.value)}`
+    }
+
+    const response = await axios.get(url)
+
+    if (response.data.intro) {
+      // Add intro as first assistant message
+      messages.value.push({
+        role: 'assistant',
+        content: response.data.intro
+      })
+    }
+
+    introFetched.value = true
+  } catch (err) {
+    console.error('Failed to fetch intro:', err)
+    // Don't block the user - just skip the intro on error
+    introError.value = 'Could not load introduction.'
+    introFetched.value = true
+  } finally {
+    introLoading.value = false
+  }
+}
+
+// Confirm and start new conversation
+const confirmNewConversation = async () => {
+  if (!confirm('Start a new conversation? This will clear your chat history.')) {
+    return
+  }
+
+  try {
+    // Build URL with appropriate session credentials
+    let url = `/api/public/session/${token.value}`
+    const params = []
+
+    if (linkInfo.value?.require_email && sessionToken.value) {
+      params.push(`session_token=${encodeURIComponent(sessionToken.value)}`)
+    } else if (chatSessionId.value) {
+      params.push(`session_id=${encodeURIComponent(chatSessionId.value)}`)
+    }
+
+    if (params.length > 0) {
+      url += '?' + params.join('&')
+    }
+
+    const response = await axios.delete(url)
+
+    // Clear local messages
+    messages.value = []
+    introFetched.value = false
+
+    // Update session_id for anonymous links
+    if (response.data.new_session_id) {
+      chatSessionId.value = response.data.new_session_id
+      localStorage.setItem(`public_chat_session_id_${token.value}`, response.data.new_session_id)
+    }
+
+    // Fetch fresh intro
+    await fetchIntro()
+  } catch (err) {
+    console.error('Failed to clear session:', err)
+    chatError.value = 'Failed to start new conversation. Please refresh the page.'
+  }
+}
+
+// Send chat message
+const sendMessage = async (userMessage) => {
+  if (!userMessage || chatLoading.value) return
+
   chatError.value = null
 
   // Add user message to chat
@@ -365,9 +525,8 @@ const sendMessage = async () => {
     content: userMessage
   })
 
-  // Auto-scroll
-  await nextTick()
-  scrollToBottom()
+  // Clear input
+  message.value = ''
 
   chatLoading.value = true
 
@@ -379,9 +538,18 @@ const sendMessage = async () => {
     // Include session token if email verification was required
     if (linkInfo.value?.require_email && sessionToken.value) {
       payload.session_token = sessionToken.value
+    } else if (chatSessionId.value) {
+      // Include session_id for anonymous links
+      payload.session_id = chatSessionId.value
     }
 
     const response = await axios.post(`/api/public/chat/${token.value}`, payload)
+
+    // Store session_id from response for anonymous links
+    if (response.data.session_id && !linkInfo.value?.require_email) {
+      chatSessionId.value = response.data.session_id
+      localStorage.setItem(`public_chat_session_id_${token.value}`, response.data.session_id)
+    }
 
     // Add assistant response to chat
     messages.value.push({
@@ -402,29 +570,30 @@ const sendMessage = async () => {
     }
   } finally {
     chatLoading.value = false
-    await nextTick()
-    scrollToBottom()
-  }
-}
-
-// Auto-resize textarea
-const autoResize = (event) => {
-  const textarea = event.target
-  textarea.style.height = 'auto'
-  textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
-}
-
-// Scroll to bottom of messages
-const scrollToBottom = () => {
-  const container = document.querySelector('main .overflow-y-auto')
-  if (container) {
-    container.scrollTop = container.scrollHeight
   }
 }
 
 // Initialize
-onMounted(() => {
-  loadLinkInfo()
+onMounted(async () => {
+  await loadLinkInfo()
+
+  // If link is valid and chat is accessible (no email needed or already verified)
+  if (linkInfo.value?.valid && linkInfo.value?.agent_available) {
+    const needsEmail = linkInfo.value.require_email
+    const hasSession = !!sessionToken.value
+
+    if (!needsEmail || hasSession) {
+      // Try to load history first
+      const hasHistory = await loadHistory()
+
+      // Only fetch intro if no history exists
+      if (!hasHistory) {
+        await fetchIntro()
+      } else {
+        introFetched.value = true // Mark intro as done since we have history
+      }
+    }
+  }
 })
 </script>
 

@@ -470,9 +470,14 @@ class SchedulerService:
         })
 
         try:
-            # Send task to agent
+            # Send task to agent with schedule-specific timeout and allowed_tools
             client = get_agent_client(schedule.agent_name)
-            task_response = await client.task(schedule.message, execution_id=execution.id)
+            task_response = await client.task(
+                schedule.message,
+                timeout=schedule.timeout_seconds,
+                execution_id=execution.id,
+                allowed_tools=schedule.allowed_tools
+            )
 
             # Update execution status with parsed response
             self.db.update_execution_status(

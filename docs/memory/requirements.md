@@ -146,6 +146,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Status**: ✅ Implemented
 - **Description**: Cumulative cost display across conversation
 
+### 5.6 Authenticated Chat Tab
+- **Status**: ✅ Implemented (2026-02-19)
+- **Description**: Dedicated Chat tab in Agent Detail with simple bubble UI for authenticated users
+- **Key Features**: Session selector dropdown, New Chat button, Dashboard activity tracking (uses `/task` endpoint), shared components with PublicChat
+- **Spec**: `docs/requirements/AUTHENTICATED_CHAT_TAB.md`
+- **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
+
 ---
 
 ## 6. Activity Monitoring
@@ -226,9 +233,9 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/agent-to-agent-collaboration.md`
 
 ### 9.2 Agent Permissions
-- **Status**: ✅ Implemented (2025-12-10)
+- **Status**: ✅ Implemented (2025-12-10, Updated 2026-02-19)
 - **Description**: Explicit permission model controlling which agents can call which
-- **Key Features**: Permissions tab in UI, default grant for same-owner agents
+- **Key Features**: Permissions tab in UI, restrictive default (no auto-grant), explicit opt-in
 - **Flow**: `docs/memory/feature-flows/agent-permissions.md`
 
 ### 9.3 Agent Shared Folders
@@ -425,6 +432,12 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: Optional email verification, rate limiting, usage tracking
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md`
 
+### 15.1a Public Chat Session Persistence (PUB-005)
+- **Status**: ✅ Implemented (2026-02-17)
+- **Description**: Multi-turn conversation persistence for public chat links
+- **Key Features**: Session management (email-based or anonymous), message history, New Conversation button, page refresh recovery, context injection for continuity
+- **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
+
 ### 15.2 First-Time Setup
 - **Status**: ✅ Implemented (2025-12-23)
 - **Description**: Admin password wizard on fresh install
@@ -444,6 +457,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Status**: ✅ Implemented (2026-01-02)
 - **Description**: Per-agent memory and CPU configuration
 - **Flow**: `docs/memory/feature-flows/agent-resource-allocation.md`
+
+### 16.1a Read-Only Mode
+- **Status**: ✅ Implemented (2026-02-17)
+- **Description**: Per-agent code protection preventing modification of source files
+- **Key Features**: Toggle in AgentHeader, PreToolUse hooks intercept Write/Edit/NotebookEdit, blocked patterns (*.py, *.js, etc.), allowed patterns (output/*, content/*)
+- **Flow**: `docs/memory/feature-flows/read-only-mode.md`
+- **Spec**: `docs/requirements/READ_ONLY_MODE.md`
 
 ### 16.2 SSH Access
 - **Status**: ✅ Implemented (2026-01-02)
@@ -484,6 +504,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Client-side theme system with Light/Dark/System modes
 - **Key Features**: localStorage persistence, Tailwind class strategy
 - **Flow**: `docs/memory/feature-flows/dark-mode-theme.md`
+
+### 16.9 Events Page UI
+- **Status**: ✅ Implemented (2026-02-20)
+- **Description**: Dedicated page for viewing and managing agent notifications
+- **Key Features**: Filter controls (status, priority, agent, type), stats cards, notification cards with actions, bulk selection, real-time WebSocket updates, navigation badge
+- **Spec**: `docs/requirements/EVENTS_PAGE_UI.md`
+- **Flow**: `docs/memory/feature-flows/events-page.md`
 
 ---
 
@@ -651,6 +678,30 @@ The Process Engine supports six step types:
   2. Backend integration (lifecycle, auth, permissions)
   3. MCP integration (tool call audit)
   4. Advanced features (hash chain, export, retention)
+
+### 20.2 Execution Origin Tracking (AUDIT-001)
+- **Status**: ⏳ Pending Implementation
+- **Requirement ID**: AUDIT-001
+- **Priority**: HIGH
+- **Description**: Track WHO triggered each execution with full actor attribution. Captures user identity, MCP API key info, and source agent for agent-to-agent calls.
+- **Key Features**:
+  - Extended `schedule_executions` schema with origin columns
+  - User ID and email captured for manual and MCP triggers
+  - MCP API key ID and name tracked for external calls
+  - Source agent name tracked for agent-to-agent collaboration
+  - UI display of origin info on Execution Detail page
+  - Filter executions by trigger type (manual/schedule/mcp/agent)
+- **New Database Columns**:
+  - `source_user_id` (INTEGER) - FK to users table
+  - `source_user_email` (TEXT) - Denormalized for queries
+  - `source_agent_name` (TEXT) - Calling agent for agent-to-agent
+  - `source_mcp_key_id` (TEXT) - MCP API key ID used
+  - `source_mcp_key_name` (TEXT) - MCP API key name
+- **Spec**: `docs/requirements/EXECUTION_ORIGIN_TRACKING.md`
+- **Implementation Phases**:
+  1. Database migration and backend CRUD updates
+  2. MCP server header integration
+  3. Frontend display and filtering
 
 ---
 

@@ -38,20 +38,20 @@ As an agent operator, I want to view and trigger headless task executions from a
 
 **TasksPanel.vue** - Main tasks component with the following sections:
 - **Header (lines 4-47)**: Title, queue status indicator, refresh button
-- **New Task Input (lines 49-78)**: Textarea for task message, Run button
+- **Summary Stats (lines 49-69)**: Total tasks, success rate, total cost, avg duration - Compact layout with smaller padding (`px-3 py-2`) and text (`text-base`, `text-[10px]`)
+- **New Task Input (lines 71-101)**: Textarea for task message, Run button - Uses `items-stretch` so Run button height matches textarea
   - **Keyboard shortcuts**: Enter to submit, Shift+Enter for newline, Cmd/Ctrl+Enter also works
-- **Summary Stats (lines 81-100)**: Total tasks, success rate, total cost, avg duration
-- **Task History (lines 102-298)**: Scrollable list of all tasks with expand/collapse
-  - **Action Buttons per Task** (lines 206-294):
-    - Open Execution Detail (lines 207-217): External link to execution detail page
-    - View Log (lines 218-228): Modal for execution transcript
-    - Copy Input (lines 229-238): Copy task message to clipboard
-    - **Stop Execution** (lines 239-255): Terminate running task (new 2026-01-12)
-    - Re-run (lines 256-267): Repeat the same task
-    - **Make Repeatable** (lines 268-278): Create schedule from task message (calendar icon)
-    - Expand/Collapse (lines 279-294): Show/hide task details
-- **Execution Log Modal (lines 301-417)**: Modal for viewing execution transcript
-- **Queue Management (lines 419-437)**: Force release and clear queue buttons
+- **Task History (lines 103-315)**: Scrollable list of all tasks with expand/collapse
+  - **Action Buttons per Task** (lines 210-311):
+    - Open Execution Detail (lines 211-233): External link / Live button for running tasks
+    - View Log (lines 234-244): Modal for execution transcript
+    - Copy Input (lines 245-254): Copy task message to clipboard
+    - **Stop Execution** (lines 255-271): Terminate running task (new 2026-01-12)
+    - Re-run (lines 272-283): Repeat the same task
+    - **Make Repeatable** (lines 284-294): Create schedule from task message (calendar icon)
+    - Expand/Collapse (lines 295-310): Show/hide task details
+- **Execution Log Modal (lines 317-433)**: Modal for viewing execution transcript
+- **Queue Management (lines 435-453)**: Force release and clear queue buttons
 
 ### Events Emitted
 
@@ -640,11 +640,13 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 ## Related Flows
 
-- **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation
+- **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation. **2026-02-20**: Now supports `save_to_session` parameter for Chat tab persistence
 - **Upstream**: [execution-queue.md](execution-queue.md) - Queue system (bypassed by tasks)
-- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages
+- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages (2026-02-20: schedules now support per-schedule timeout and allowed_tools)
 - **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Related**: [execution-termination.md](execution-termination.md) - Stop button, process registry, graceful termination
+- **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking. **2026-02-20**: Session persistence via `save_to_session=true` parameter
+- **Related**: [persistent-chat-tracking.md](persistent-chat-tracking.md) - Chat session tables (`chat_sessions`, `chat_messages`) used by Chat tab via `/task` endpoint
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
 
 ---
@@ -653,7 +655,9 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
-| 2026-01-12 | **Execution Termination**: Added Stop button (lines 239-255) for running tasks, `terminateTask()` function, `loadRunningExecutions()`, execution_id matching via `enhanceWithExecutionId()`. See [execution-termination.md](execution-termination.md). |
+| 2026-02-20 | **Make Repeatable enhancement**: Updated test step and Related Flows to note that schedules created via "Make Repeatable" now support per-schedule timeout and allowed_tools configuration. |
+| 2026-02-18 | **UI Redesign (UI-001)**: Reordered sections - Stats (49-69) now first, then Task Input (71-101), then Task History (103-315). Stats section more compact with smaller padding. Run button height now matches textarea. Updated line numbers throughout. |
+| 2026-01-12 | **Execution Termination**: Added Stop button (lines 255-271) for running tasks, `terminateTask()` function, `loadRunningExecutions()`, execution_id matching via `enhanceWithExecutionId()`. See [execution-termination.md](execution-termination.md). |
 | 2026-01-12 | Added "Make Repeatable" feature - calendar icon button to create schedule from task, emits `create-schedule` event to parent |
 | 2025-01-02 | Added note about log format standardization - all execution types now use `/api/task` for raw Claude Code format |
 | 2025-12-31 | Initial documentation - execution log viewer added |
@@ -698,7 +702,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
    - **Expected**:
      - UI switches to Schedules tab automatically
      - Create schedule form opens with message field pre-filled with task message
-     - User can add schedule name, cron expression, and click Create
+     - User can add schedule name, cron expression, timeout, allowed tools, and click Create
 
 6. **Queue Status (with /chat endpoint)**
    - Open terminal tab and start a long-running task

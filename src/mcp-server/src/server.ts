@@ -13,6 +13,8 @@ import { createSystemTools } from "./tools/systems.js";
 import { createDocsTools } from "./tools/docs.js";
 import { createSkillsTools } from "./tools/skills.js";
 import { createScheduleTools } from "./tools/schedules.js";
+import { createTagTools } from "./tools/tags.js";
+import { createNotificationTools } from "./tools/notifications.js";
 import type { McpAuthContext } from "./types.js";
 
 export interface ServerConfig {
@@ -28,6 +30,7 @@ export interface ServerConfig {
 
 export interface McpApiKeyValidationResult {
   valid: boolean;
+  key_id?: string;      // MCP API key ID (AUDIT-001)
   user_id?: string;
   user_email?: string;
   key_name?: string;
@@ -139,6 +142,7 @@ export async function createServer(config: ServerConfig = {}) {
             const authContext: McpAuthContext = {
               userId: result.user_id || "unknown",
               userEmail: result.user_email,
+              keyId: result.key_id,  // MCP API key ID (AUDIT-001)
               keyName: result.key_name || "unknown",
               agentName: result.agent_name,  // Agent name if scope is 'agent' or 'system'
               scope: scope as "user" | "agent" | "system",
@@ -214,8 +218,20 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(scheduleTools.triggerAgentSchedule);
   server.addTool(scheduleTools.getScheduleExecutions);
 
-  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length;
-  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule)`);
+  // Register tag management tools (5 tools) - ORG-001
+  const tagTools = createTagTools(client, requireApiKey);
+  server.addTool(tagTools.listTags);
+  server.addTool(tagTools.getAgentTags);
+  server.addTool(tagTools.tagAgent);
+  server.addTool(tagTools.untagAgent);
+  server.addTool(tagTools.setAgentTags);
+
+  // Register notification tools (1 tool) - NOTIF-001
+  const notificationTools = createNotificationTools(client, requireApiKey);
+  server.addTool(notificationTools.sendNotification);
+
+  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length + Object.keys(tagTools).length + Object.keys(notificationTools).length;
+  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule, ${Object.keys(tagTools).length} tags, ${Object.keys(notificationTools).length} notifications)`);
 
   return { server, port, client, requireApiKey };
 }

@@ -1,10 +1,13 @@
 # Feature: File Browser (Tree Structure)
 
-> **Updated**: 2026-01-23 - Verified line numbers and architecture. Frontend refactored to use `FilesPanel.vue` component with `useFileBrowser` composable. Protected path handling added to agent server.
+> **Updated**: 2026-02-18 - **Files tab removed from AgentDetail.vue**. Users should use the standalone File Manager page at `/files` instead. The FilesPanel.vue component and backend API remain available.
+>
+> **Previous (2026-01-23)**: Verified line numbers and architecture. Frontend refactored to use `FilesPanel.vue` component with `useFileBrowser` composable. Protected path handling added to agent server.
 
 ## Revision History
 | Date | Changes |
 |------|---------|
+| 2026-02-18 | **Files tab removed from AgentDetail.vue**: The Files tab is no longer visible in the Agent Detail page. Users should use the standalone File Manager page at `/files` instead. The FilesPanel component and backend API remain functional for programmatic access. |
 | 2026-01-23 | Verified all line numbers. Updated frontend architecture (FilesPanel + composable). Documented protected paths (delete/edit). |
 | 2025-12-30 | Updated line numbers. Service file grew from 137 to 413 lines. |
 | 2025-12-27 | Service layer refactoring. File operations moved to `services/agent_service/files.py`. |
@@ -14,11 +17,14 @@
 ## Overview
 Users can browse and download files from agent workspaces through the Trinity web UI without requiring SSH access. The feature displays files in a **hierarchical tree structure** similar to macOS Finder, with expandable/collapsible folders. Users can navigate folder hierarchies, search files, and download individual files.
 
+> **Note (2026-02-18)**: The Files tab has been removed from AgentDetail.vue. File browsing is now available via the standalone **File Manager** page at `/files`. See [file-manager.md](file-manager.md) for the current UI documentation.
+
 ## User Story
 As a Trinity user, I want to browse files in my agent's workspace using a familiar folder tree interface so that I can easily navigate directory structures and access agent-generated artifacts without needing SSH or Docker command-line access.
 
 ## Entry Points
-- **UI**: `src/frontend/src/views/AgentDetail.vue:157-160` - "Files" tab content (FilesPanel component)
+- **UI (Current)**: `/files` route - File Manager page with two-panel layout (see [file-manager.md](file-manager.md))
+- **UI (Removed)**: `src/frontend/src/views/AgentDetail.vue` - Files tab removed (2026-02-18)
 - **API**: `GET /api/agents/{agent_name}/files`
 - **API**: `GET /api/agents/{agent_name}/files/download`
 - **API**: `GET /api/agents/{agent_name}/files/preview`
@@ -35,18 +41,23 @@ The file browser uses a **component + composable** architecture:
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| View | `src/frontend/src/views/AgentDetail.vue:157-160` | Tab content (renders FilesPanel) |
+| View | `src/frontend/src/views/AgentDetail.vue` | Files tab REMOVED (2026-02-18) |
+| Page | `src/frontend/src/views/FileManager.vue` | Standalone file manager at `/files` |
 | Component | `src/frontend/src/components/FilesPanel.vue` (130 lines) | File browser UI |
 | Component | `src/frontend/src/components/FileTreeNode.vue` (141 lines) | Recursive tree node |
 | Composable | `src/frontend/src/composables/useFileBrowser.js` (111 lines) | State and logic |
 | Store | `src/frontend/src/stores/agents.js:452-478` | API calls |
 
+> **Note**: The FilesPanel component is no longer rendered in AgentDetail.vue but remains available for use in the standalone File Manager page.
+
 ### FilesPanel Component
 
 **File**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/FilesPanel.vue`
 
+> **Note (2026-02-18)**: This component is no longer rendered in AgentDetail.vue. It is used in the standalone File Manager page at `/files`.
+
 ```vue
-<!-- Line 157-160 in AgentDetail.vue -->
+<!-- Previously in AgentDetail.vue - NOW REMOVED -->
 <div v-if="activeTab === 'files'">
   <FilesPanel :agent-name="agent.name" :agent-status="agent.status" />
 </div>
@@ -658,7 +669,7 @@ This feature does not emit real-time events.
 ### Test Steps
 
 #### 1. File List Display
-**Action**: Navigate to agent detail page -> Click "Files" tab
+**Action**: Navigate to `/files` page -> Select agent from dropdown
 **Expected**:
 - Loading spinner appears briefly
 - File list loads showing workspace contents

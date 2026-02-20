@@ -81,6 +81,8 @@ class ScheduleUpdateRequest(BaseModel):
     enabled: Optional[bool] = None
     timezone: Optional[str] = None
     description: Optional[str] = None
+    timeout_seconds: Optional[int] = None
+    allowed_tools: Optional[List[str]] = None
 
 
 class ScheduleResponse(BaseModel):
@@ -97,6 +99,8 @@ class ScheduleResponse(BaseModel):
     updated_at: datetime
     last_run_at: Optional[datetime]
     next_run_at: Optional[datetime]
+    timeout_seconds: int = 900
+    allowed_tools: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

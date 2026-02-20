@@ -509,7 +509,8 @@ class AgentClient:
         self,
         path: str,
         content: str,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        platform: bool = False
     ) -> dict:
         """
         Write content to a file in the agent's workspace.
@@ -519,6 +520,7 @@ class AgentClient:
             path: File path within /home/developer
             content: File content to write
             timeout: Request timeout
+            platform: If True, allows writes to .trinity directory (platform-initiated)
 
         Returns:
             dict with success status and file info
@@ -528,8 +530,13 @@ class AgentClient:
             import urllib.parse
             encoded_path = urllib.parse.quote(path, safe='')
 
+            # Add platform flag if needed
+            query = f"path={encoded_path}"
+            if platform:
+                query += "&platform=true"
+
             response = await self.put(
-                f"/api/files?path={encoded_path}",
+                f"/api/files?{query}",
                 json={"content": content},
                 timeout=timeout
             )

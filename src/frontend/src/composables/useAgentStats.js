@@ -5,7 +5,7 @@ const MAX_POINTS = 30
 
 /**
  * Composable for agent container stats polling with history tracking
- * Manages CPU, memory, network, uptime metrics with auto-polling
+ * Manages CPU, memory, uptime metrics with auto-polling
  * Maintains rolling history for sparkline charts
  */
 export function useAgentStats(agentRef, agentsStore) {
