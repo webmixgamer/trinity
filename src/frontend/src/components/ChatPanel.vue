@@ -193,7 +193,7 @@ const formatSessionDate = (dateStr) => {
 }
 
 // Load sessions
-const loadSessions = async () => {
+const loadSessions = async (autoSelect = true) => {
   sessionsLoading.value = true
   try {
     const response = await axios.get(`/api/agents/${props.agentName}/chat/sessions`, {
@@ -202,7 +202,8 @@ const loadSessions = async () => {
     sessions.value = response.data.sessions || []
 
     // If we have sessions and no current session, select the most recent active one
-    if (sessions.value.length > 0 && !currentSessionId.value) {
+    // BUT only if autoSelect is true AND we don't already have messages (unsaved new conversation)
+    if (autoSelect && sessions.value.length > 0 && !currentSessionId.value && messages.value.length === 0) {
       const activeSession = sessions.value.find(s => s.status === 'active')
       if (activeSession) {
         await selectSession(activeSession, false)
@@ -309,10 +310,9 @@ const sendMessage = async (userMessage) => {
       })
     }
 
-    // Update current session if we got one in response
+    // Refresh sessions list (but don't auto-select, we're in an active conversation)
     if (response.data.task_execution_id && !currentSessionId.value) {
-      // Refresh sessions to get the new one
-      await loadSessions()
+      await loadSessions(false)
     }
   } catch (err) {
     console.error('Chat error:', err)
