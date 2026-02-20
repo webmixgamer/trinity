@@ -1,3 +1,43 @@
+### 2026-02-20 10:15:00
+✨ **Feature: Configurable Timeout and Allowed Tools for Schedules**
+
+Added per-schedule configuration for execution timeout and tool restrictions. Previously hardcoded (timeout=900s, all tools allowed), now customizable per schedule.
+
+**New Fields**:
+- `timeout_seconds`: Execution timeout (5m, 15m, 30m, 1h, 2h options)
+- `allowed_tools`: Optional list of permitted tools (null = all tools)
+
+**Use Cases**:
+- Long-running analysis tasks → 2 hour timeout
+- Quick status checks → 5 minute timeout
+- Read-only operations → restrict to Read, Glob, Grep
+- Security-sensitive tasks → disable Bash
+
+**Files Changed**:
+
+*Database*:
+- `src/backend/database.py`: Added migration for `timeout_seconds` and `allowed_tools` columns
+- `src/backend/db_models.py`: Updated `ScheduleCreate` and `Schedule` models
+- `src/backend/db/schedules.py`: Updated CRUD operations with JSON serialization for allowed_tools
+
+*Scheduler Service*:
+- `src/scheduler/models.py`: Added new fields to Schedule dataclass
+- `src/scheduler/database.py`: Updated row-to-model mapping
+- `src/scheduler/agent_client.py`: Accept and forward `allowed_tools` parameter
+- `src/scheduler/service.py`: Pass schedule config to agent client
+
+*Frontend*:
+- `src/frontend/src/components/SchedulesPanel.vue`:
+  - Added timeout dropdown (5m/15m/30m/1h/2h)
+  - Added allowed tools multi-select with category groups (Files, Search, System, Web, Advanced)
+  - "All Tools" toggle for unrestricted mode
+  - Display timeout and tool count on schedule cards
+
+**API Changes**:
+- `POST/PUT /api/agents/{name}/schedules`: Accept `timeout_seconds` (int) and `allowed_tools` (array or null)
+
+---
+
 ### 2026-02-19 11:30:00
 ✨ **Feature: Authenticated Chat Tab (CHAT-001)**
 

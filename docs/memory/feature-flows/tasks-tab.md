@@ -642,7 +642,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 - **Upstream**: [parallel-headless-execution.md](parallel-headless-execution.md) - Core `/task` endpoint implementation
 - **Upstream**: [execution-queue.md](execution-queue.md) - Queue system (bypassed by tasks)
-- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages
+- **Related**: [scheduling.md](scheduling.md) - Scheduled executions share the same database table (now use `/api/task` for log format); **Make Repeatable** feature creates schedules from task messages (2026-02-20: schedules now support per-schedule timeout and allowed_tools)
 - **Related**: [execution-log-viewer.md](execution-log-viewer.md) - Log viewer that renders execution transcripts
 - **Related**: [execution-termination.md](execution-termination.md) - Stop button, process registry, graceful termination
 - **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking
@@ -654,6 +654,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
+| 2026-02-20 | **Make Repeatable enhancement**: Updated test step and Related Flows to note that schedules created via "Make Repeatable" now support per-schedule timeout and allowed_tools configuration. |
 | 2026-02-18 | **UI Redesign (UI-001)**: Reordered sections - Stats (49-69) now first, then Task Input (71-101), then Task History (103-315). Stats section more compact with smaller padding. Run button height now matches textarea. Updated line numbers throughout. |
 | 2026-01-12 | **Execution Termination**: Added Stop button (lines 255-271) for running tasks, `terminateTask()` function, `loadRunningExecutions()`, execution_id matching via `enhanceWithExecutionId()`. See [execution-termination.md](execution-termination.md). |
 | 2026-01-12 | Added "Make Repeatable" feature - calendar icon button to create schedule from task, emits `create-schedule` event to parent |
@@ -700,7 +701,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
    - **Expected**:
      - UI switches to Schedules tab automatically
      - Create schedule form opens with message field pre-filled with task message
-     - User can add schedule name, cron expression, and click Create
+     - User can add schedule name, cron expression, timeout, allowed tools, and click Create
 
 6. **Queue Status (with /chat endpoint)**
    - Open terminal tab and start a long-running task

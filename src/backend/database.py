@@ -281,6 +281,24 @@ def _migrate_agent_ownership_read_only_mode(cursor, conn):
     conn.commit()
 
 
+def _migrate_agent_schedules_execution_config(cursor, conn):
+    """Add timeout_seconds and allowed_tools columns to agent_schedules table for per-schedule execution config."""
+    cursor.execute("PRAGMA table_info(agent_schedules)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("timeout_seconds", "INTEGER DEFAULT 900"),  # Default 15 minutes
+        ("allowed_tools", "TEXT")  # JSON array of allowed tools, NULL = all tools
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_schedules for execution configuration...")
+            cursor.execute(f"ALTER TABLE agent_schedules ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
 def _migrate_agent_skills_table(cursor, conn):
     """Migrate agent_skills table if it has wrong schema (skill_id instead of skill_name)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_skills'")
@@ -387,6 +405,11 @@ def init_database():
         except Exception as e:
             print(f"Migration check (agent_ownership read_only_mode): {e}")
 
+        try:
+            _migrate_agent_schedules_execution_config(cursor, conn)
+        except Exception as e:
+            print(f"Migration check (agent_schedules execution_config): {e}")
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -470,6 +493,8 @@ def init_database():
                 updated_at TEXT NOT NULL,
                 last_run_at TEXT,
                 next_run_at TEXT,
+                timeout_seconds INTEGER DEFAULT 900,
+                allowed_tools TEXT,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )
         """)

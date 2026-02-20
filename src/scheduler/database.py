@@ -49,6 +49,16 @@ class SchedulerDatabase:
     @staticmethod
     def _row_to_schedule(row: sqlite3.Row) -> Schedule:
         """Convert a database row to a Schedule model."""
+        row_keys = row.keys() if hasattr(row, 'keys') else []
+
+        # Parse allowed_tools from JSON if present
+        allowed_tools = None
+        if "allowed_tools" in row_keys and row["allowed_tools"]:
+            try:
+                allowed_tools = json.loads(row["allowed_tools"])
+            except (json.JSONDecodeError, TypeError):
+                allowed_tools = None
+
         return Schedule(
             id=row["id"],
             agent_name=row["agent_name"],
@@ -62,7 +72,9 @@ class SchedulerDatabase:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             last_run_at=datetime.fromisoformat(row["last_run_at"]) if row["last_run_at"] else None,
-            next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None
+            next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None,
+            timeout_seconds=row["timeout_seconds"] if "timeout_seconds" in row_keys and row["timeout_seconds"] else 900,
+            allowed_tools=allowed_tools
         )
 
     @staticmethod

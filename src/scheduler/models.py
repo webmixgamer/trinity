@@ -42,6 +42,8 @@ class Schedule:
     updated_at: datetime
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 @dataclass

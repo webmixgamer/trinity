@@ -111,6 +111,8 @@ class ScheduleCreate(BaseModel):
     enabled: bool = True
     timezone: str = "UTC"
     description: Optional[str] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 class Schedule(BaseModel):
@@ -128,6 +130,8 @@ class Schedule(BaseModel):
     updated_at: datetime
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
 
 
 class ScheduleExecution(BaseModel):

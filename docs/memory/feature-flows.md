@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-20)**: Per-Schedule Execution Configuration:
+> - **New schedule fields**: `timeout_seconds` (5m-2h) and `allowed_tools` (JSON array or null)
+> - **scheduling.md**: Added "Per-Schedule Execution Configuration" section with data flow diagram, files changed, and UI documentation
+> - **scheduler-service.md**: Updated AgentClient.task() to accept `allowed_tools` parameter, config table notes per-schedule override
+> - **mcp-orchestration.md**: Added dedicated Schedule Tools section with parameter table, noted `create_agent_schedule` and `update_agent_schedule` support new fields
+> - **tasks-tab.md**: Updated "Make Repeatable" test step and Related Flows to reference new schedule configuration options
+> - **feature-flows.md index**: Updated scheduling and scheduler-service entries to reflect new functionality
+>
 > **Updated (2026-02-19)**: Authenticated Chat Tab (CHAT-001):
 > - **New feature flow**: [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) - Simple chat UI in Agent Detail page
 > - **Chat tab** added after Tasks in AgentDetail.vue (line 498)
@@ -566,15 +574,15 @@
 | Agent Lifecycle | High | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers - **2026-02-18 17:50**: All toggles use `size="sm"`, RunningStateToggle default changed. **2026-01-14 Security Fixes**: Auth on lifecycle endpoints (AuthorizedAgentByName), Container security constants (RESTRICTED/FULL_CAPABILITIES). Service layer: lifecycle.py, crud.py, docker_service: `list_all_agents_fast()`, db: `get_all_agent_metadata()` batch query |
 | **Agent Terminal** | High | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal - **2026-02-18**: Tab repositioned after Git. **service layer: terminal.py, api_key.py** - Claude/Gemini/Bash modes, per-agent API key control, WebGL/Canvas renderer |
 | Credential Injection | High | [credential-injection.md](feature-flows/credential-injection.md) | **CRED-002 Simplified System** - Direct file injection, encrypted git storage (.credentials.enc), auto-import on startup. **2026-02-16**: Credential sanitizer cache refreshed after injection. MCP tools: inject/export/import_credentials, get_credential_encryption_key (Refactored 2026-02-05) |
-| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks (Updated 2026-01-12) |
-| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - fixes duplicate execution bug in multi-worker deployments, Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
+| Agent Scheduling | High | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation, APScheduler, execution tracking - **2026-02-20**: Per-schedule `timeout_seconds` (5m-2h) and `allowed_tools` configuration. Uses AgentClient.task() for raw log format, **Make Repeatable** flow for creating schedules from tasks |
+| **Scheduler Service** | Critical | [scheduler-service.md](feature-flows/scheduler-service.md) | Standalone scheduler service - **2026-02-20**: Supports per-schedule timeout and allowed_tools. Redis distributed locks, single-instance design, health endpoints. Source: `src/scheduler/`, Docker: `docker/scheduler/`, Tests: `tests/scheduler_tests/` (Created 2026-01-13) |
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Live metrics in AgentHeader - **2026-02-18**: Logs tab REMOVED from UI (API still available). Stats display shows only CPU, Memory, Uptime (network removed from UI) |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-02-18**: Public Links tab consolidated into Sharing tab (SharingPanel.vue now embeds PublicLinksPanel.vue). **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
-| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 44 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule, 5 tag (ORG-001) (Updated 2026-02-17) |
+| MCP Orchestration | Medium | [mcp-orchestration.md](feature-flows/mcp-orchestration.md) | 44 MCP tools: 16 agent (incl. 4 CRED-002 credential tools), 3 chat, 4 system, 1 docs, 7 skills, 8 schedule (now with timeout/allowed_tools), 5 tag (ORG-001) (Updated 2026-02-20) |
 | **MCP API Keys** | Medium | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | Create, list, revoke, delete MCP API keys for Claude Code integration - key generation with `trinity_mcp_` prefix, SHA-256 hash storage, usage tracking, scope separation (user/agent/system), auto-created default keys (Created 2026-01-13) |
 | **API Keys Page** | Medium | [api-keys-page.md](feature-flows/api-keys-page.md) | Complete UI flow for `/api-keys` page - NavBar entry, page load lifecycle, create/copy/revoke/delete flows, admin vs user views, MCP config generation (Created 2026-01-21) |
 | GitHub Sync | Medium | [github-sync.md](feature-flows/github-sync.md) | GitHub sync for agents - Source mode (pull-only, default) or Working Branch mode (legacy bidirectional). **2026-01-30**: Shared users can now git pull (was owner-only) |

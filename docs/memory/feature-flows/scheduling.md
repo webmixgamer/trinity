@@ -21,6 +21,8 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 - WebSocket real-time updates
 - Queue-aware execution (429 on queue full)
 - **Make Repeatable** - Create schedule from existing task execution (2026-01-12)
+- **Configurable Timeout** - Per-schedule timeout (5m, 15m, 30m, 1h, 2h) (2026-02-20)
+- **Tool Restrictions** - Per-schedule allowed tools list (null = all tools) (2026-02-20)
 
 **Refactored (2025-12-31):**
 - Access control via `AuthorizedAgent` dependency (not inline checks)
@@ -402,7 +404,7 @@ async def create_schedule(
 ## Database Schema
 
 ### agent_schedules
-**Location**: `src/backend/database.py:257-271`
+**Location**: `src/backend/database.py:457-477`
 
 ```sql
 CREATE TABLE agent_schedules (
@@ -419,9 +421,17 @@ CREATE TABLE agent_schedules (
     updated_at TEXT NOT NULL,
     last_run_at TEXT,                    -- Last execution time
     next_run_at TEXT,                    -- Calculated next run
+    timeout_seconds INTEGER DEFAULT 900, -- Execution timeout (default 15 min, max 2h)
+    allowed_tools TEXT,                  -- JSON array of tool names, NULL = all tools allowed
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 ```
+
+**New Fields (2026-02-20):**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `timeout_seconds` | INTEGER | 900 | Per-schedule execution timeout (5m-2h) |
+| `allowed_tools` | TEXT | NULL | JSON array of allowed Claude Code tools, NULL = all tools |
 
 ### schedule_executions
 **Location**: `src/backend/database.py:273-295`
@@ -944,6 +954,7 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-02-20** - **Configurable Timeout and Allowed Tools**: Per-schedule execution configuration - custom timeout (5m-2h) and tool restrictions. See "Per-Schedule Execution Configuration" section below.
 **Updated 2026-02-15** - **Claude Max Subscription Support**: Scheduled executions now work with Claude Max subscription authentication. If agent has OAuth session from `/login` stored in `~/.claude.json`, scheduled tasks use the subscription instead of requiring `ANTHROPIC_API_KEY`. See "Authentication" section in Schedule Execution Flow.
 **Updated 2026-02-11** - **SCHEDULER CONSOLIDATION**: Embedded scheduler removed. All references updated to dedicated scheduler (`src/scheduler/`). Manual triggers routed through scheduler. Activity tracking via internal API.
 **Updated 2026-01-29** - FIXED: Scheduler sync bug - new schedules now work without restart (next_run_at calculated in DB layer + periodic sync)
@@ -1102,6 +1113,248 @@ External Claude Code instances can listen for schedule completion events to coor
 
 - **Trinity Connect**: [trinity-connect.md](trinity-connect.md) - Full feature flow for `/ws/events` endpoint
 - **Scheduler Service**: [scheduler-service.md](scheduler-service.md) - Standalone scheduler implementation
+
+---
+
+## Per-Schedule Execution Configuration (Added 2026-02-20)
+
+Each schedule can now specify custom timeout and tool restrictions for its execution.
+
+### Configuration Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `timeout_seconds` | INTEGER | 900 | Execution timeout in seconds (5m-2h range) |
+| `allowed_tools` | TEXT (JSON) | NULL | JSON array of tool names, NULL = all tools allowed |
+
+### Timeout Options
+
+The frontend provides preset timeout options via a dropdown (`SchedulesPanel.vue:100-111`):
+
+| Option | Value (seconds) | Use Case |
+|--------|-----------------|----------|
+| 5 minutes | 300 | Quick status checks, simple queries |
+| 15 minutes | 900 | Standard tasks (default) |
+| 30 minutes | 1800 | Complex analysis, multi-step operations |
+| 1 hour | 3600 | Large codebase operations, research tasks |
+| 2 hours | 7200 | Long-running analysis, heavy processing |
+
+### Allowed Tools
+
+When `allowed_tools` is set, only the specified tools can be used during execution. The frontend provides a categorized multi-select UI (`SchedulesPanel.vue:114-152`).
+
+**Tool Categories** (`SchedulesPanel.vue:611-647`):
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| Files | Read, Write, Edit, NotebookEdit | File system operations |
+| Search | Glob, Grep | File and content search |
+| System | Bash | Command execution |
+| Web | WebFetch, WebSearch | Internet access |
+| Advanced | Task (Agents) | Sub-agent delegation |
+
+**Common Configurations:**
+- Read-only operations: `["Read", "Glob", "Grep"]`
+- No shell access: `["Read", "Write", "Edit", "Glob", "Grep", "WebFetch"]`
+- Research only: `["Read", "Glob", "Grep", "WebFetch", "WebSearch"]`
+- Unrestricted (default): `null` (all tools allowed)
+
+### Data Flow
+
+```
+Frontend                          Backend                           Scheduler                         Agent
+--------                          -------                           ---------                         -----
+SchedulesPanel.vue               routers/schedules.py              service.py                        agent-server.py
+
+POST /api/agents/{name}/         create_schedule()
+schedules                        |
+{                                v
+  name: "...",                   db/schedules.py:141-214
+  timeout_seconds: 1800,         create_schedule()
+  allowed_tools: ["Read",...]    - Validate cron
+}                                - JSON.dumps(allowed_tools)
+                                 - INSERT with timeout_seconds,
+                                   allowed_tools columns
+                                 |
+                                 v
+                                 201 Created
+
+                                                                   (within 60s sync)
+                                                                   _sync_schedules()
+                                                                   Detects new schedule
+                                                                   APScheduler.add_job()
+
+                                                                   (cron fires)
+                                                                   _execute_schedule_with_lock()
+                                                                   |
+                                                                   v
+                                                                   client.task(
+                                                                     message,
+                                                                     timeout=schedule.timeout_seconds,
+                                                                     allowed_tools=schedule.allowed_tools
+                                                                   )
+                                                                   |
+                                                                   v
+                                                                   agent_client.py:101-149
+                                                                   POST /api/task                ──> Receives:
+                                                                   {                                 - message
+                                                                     message,                        - timeout_seconds
+                                                                     timeout_seconds,                - allowed_tools
+                                                                     allowed_tools,
+                                                                     execution_id                    Claude Code CLI:
+                                                                   }                                 --max-turns
+                                                                                                     --allowedTools
+```
+
+### Backend Models
+
+**ScheduleCreate** (`src/backend/db_models.py:106-116`):
+```python
+class ScheduleCreate(BaseModel):
+    name: str
+    cron_expression: str
+    message: str
+    enabled: bool = True
+    timezone: str = "UTC"
+    description: Optional[str] = None
+    timeout_seconds: int = 900  # Default 15 minutes
+    allowed_tools: Optional[List[str]] = None  # None = all tools allowed
+```
+
+**Schedule** (`src/backend/db_models.py:118-135`):
+```python
+class Schedule(BaseModel):
+    # ... existing fields ...
+    timeout_seconds: int = 900
+    allowed_tools: Optional[List[str]] = None
+```
+
+**ScheduleUpdateRequest** (`src/backend/routers/schedules.py:76-86`):
+```python
+class ScheduleUpdateRequest(BaseModel):
+    # ... existing fields ...
+    timeout_seconds: Optional[int] = None
+    allowed_tools: Optional[List[str]] = None
+```
+
+### Scheduler Models
+
+**Schedule dataclass** (`src/scheduler/models.py:29-46`):
+```python
+@dataclass
+class Schedule:
+    # ... existing fields ...
+    timeout_seconds: int = 900
+    allowed_tools: Optional[List[str]] = None
+```
+
+### Database Operations
+
+**JSON Serialization** (`src/backend/db/schedules.py:165-168`, `289-291`):
+```python
+# On create/update:
+allowed_tools_json = None
+if schedule_data.allowed_tools is not None:
+    allowed_tools_json = json.dumps(schedule_data.allowed_tools)
+
+# On read (_row_to_schedule):
+allowed_tools = None
+if "allowed_tools" in row_keys and row["allowed_tools"]:
+    allowed_tools = json.loads(row["allowed_tools"])
+```
+
+### Agent Client
+
+**task() method** (`src/scheduler/agent_client.py:101-149`):
+```python
+async def task(
+    self,
+    message: str,
+    timeout: float = None,
+    execution_id: Optional[str] = None,
+    allowed_tools: Optional[list] = None
+) -> AgentTaskResponse:
+    timeout = timeout or self.timeout
+
+    payload = {"message": message, "timeout_seconds": int(timeout)}
+    if execution_id:
+        payload["execution_id"] = execution_id
+    if allowed_tools is not None:
+        payload["allowed_tools"] = allowed_tools
+
+    response = await self._request(
+        "POST", "/api/task",
+        json=payload,
+        timeout=timeout + 10  # Add buffer to agent timeout
+    )
+```
+
+### Scheduler Service
+
+**Execution with config** (`src/scheduler/service.py:473-480`):
+```python
+# Send task to agent with schedule-specific timeout and allowed_tools
+client = get_agent_client(schedule.agent_name)
+task_response = await client.task(
+    schedule.message,
+    timeout=schedule.timeout_seconds,
+    execution_id=execution.id,
+    allowed_tools=schedule.allowed_tools
+)
+```
+
+### Frontend UI
+
+**Timeout Dropdown** (`SchedulesPanel.vue:99-112`):
+```html
+<div>
+  <label>Timeout</label>
+  <select v-model="formData.timeout_seconds">
+    <option :value="300">5 minutes</option>
+    <option :value="900">15 minutes (default)</option>
+    <option :value="1800">30 minutes</option>
+    <option :value="3600">1 hour</option>
+    <option :value="7200">2 hours</option>
+  </select>
+</div>
+```
+
+**Allowed Tools Multi-Select** (`SchedulesPanel.vue:114-152`):
+- Toggle button: "All Tools (Unrestricted)" vs "Enable All"
+- Categorized tool checkboxes (Files, Search, System, Web, Advanced)
+- Visual indication: selected tools highlighted in indigo
+
+**Schedule Card Display** (`SchedulesPanel.vue:244-255`):
+```html
+<!-- Shows timeout in schedule card -->
+<span>{{ formatTimeout(schedule.timeout_seconds) }}</span>
+
+<!-- Shows tool count if restricted -->
+<span v-if="schedule.allowed_tools">
+  {{ schedule.allowed_tools.length }} tools
+</span>
+```
+
+### Files Changed
+
+| File | Line Numbers | Changes |
+|------|--------------|---------|
+| `src/backend/database.py` | Migration | Added `timeout_seconds`, `allowed_tools` columns |
+| `src/backend/db_models.py` | 106-135 | `ScheduleCreate`, `Schedule` model updates |
+| `src/backend/routers/schedules.py` | 76-86, 88-103 | `ScheduleUpdateRequest`, `ScheduleResponse` |
+| `src/backend/db/schedules.py` | 66-91, 165-168, 283, 289-291 | JSON serialization, row mapping |
+| `src/scheduler/models.py` | 45-46 | `Schedule` dataclass fields |
+| `src/scheduler/database.py` | Row mapping | Parse `timeout_seconds`, `allowed_tools` |
+| `src/scheduler/agent_client.py` | 101-149 | Accept/forward `allowed_tools` param |
+| `src/scheduler/service.py` | 473-480 | Pass config to `client.task()` |
+| `src/frontend/src/components/SchedulesPanel.vue` | 99-152, 244-255, 599-672, 875-880 | UI components, helpers |
+
+### Security Considerations
+
+1. **Tool Restrictions**: Allows limiting agent capabilities per-schedule (e.g., read-only schedules)
+2. **Timeout Limits**: Prevents runaway executions (max 2 hours)
+3. **JSON Validation**: Backend validates `allowed_tools` is a list before serialization
+4. **Null Semantics**: `null` means unrestricted (all tools), `[]` means no tools allowed
 
 ---
 

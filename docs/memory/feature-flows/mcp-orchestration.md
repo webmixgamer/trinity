@@ -409,6 +409,25 @@ console.log(`Registered ${totalTools} tools`);
 
 See [Agent Tags & System Views](agent-tags.md) for full tag system documentation.
 
+### Schedule Tools (`src/mcp-server/src/tools/schedules.ts`) - 8 tools
+
+| Tool | Parameters | Backend Endpoint |
+|------|------------|------------------|
+| `list_agent_schedules` | `{agent_name}` | `GET /api/agents/{name}/schedules` |
+| `create_agent_schedule` | `{agent_name, name, cron_expression, message, timezone?, enabled?, description?, timeout_seconds?, allowed_tools?}` | `POST /api/agents/{name}/schedules` |
+| `get_agent_schedule` | `{agent_name, schedule_id}` | `GET /api/agents/{name}/schedules/{id}` |
+| `update_agent_schedule` | `{agent_name, schedule_id, ...fields}` | `PUT /api/agents/{name}/schedules/{id}` |
+| `delete_agent_schedule` | `{agent_name, schedule_id}` | `DELETE /api/agents/{name}/schedules/{id}` |
+| `toggle_agent_schedule` | `{agent_name, schedule_id, enabled}` | `POST /api/agents/{name}/schedules/{id}/enable` or `/disable` |
+| `trigger_agent_schedule` | `{agent_name, schedule_id}` | `POST /api/agents/{name}/schedules/{id}/trigger` |
+| `get_schedule_executions` | `{agent_name, schedule_id?, limit?}` | `GET /api/agents/{name}/schedules/{id}/executions` |
+
+> **Per-Schedule Configuration (2026-02-20)**: `create_agent_schedule` and `update_agent_schedule` now support:
+> - `timeout_seconds` - Execution timeout (default 900s, options: 300, 900, 1800, 3600, 7200)
+> - `allowed_tools` - Optional list of permitted tools (null = all tools allowed)
+
+See [Agent Scheduling](scheduling.md) for full scheduling system documentation.
+
 ### Parallel Mode (Added 2025-12-22)
 
 The `chat_with_agent` tool now supports a `parallel` parameter for stateless, concurrent execution:
@@ -996,6 +1015,7 @@ curl http://localhost:8000/api/agents/user2-agent | jq .owner  # Should be user2
 
 | Date | Changes |
 |------|---------|
+| 2026-02-20 | **Schedule tools: Per-schedule execution config**: `create_agent_schedule` and `update_agent_schedule` now support `timeout_seconds` and `allowed_tools` parameters for per-schedule execution configuration. Added dedicated Schedule Tools section with parameter table. |
 | 2026-02-17 | **Tag tools (ORG-001 Phase 3)**: Tool count updated from 39 to 44. Added 5 tag management tools: `list_tags`, `get_agent_tags`, `tag_agent`, `untag_agent`, `set_agent_tags`. See [agent-tags.md](agent-tags.md) for full documentation. |
 | 2026-02-13 | **SSH host detection fix (cross-ref)**: The `get_agent_ssh_access` tool now returns correct host in production deployments. See [ssh-access.md](ssh-access.md) for details on the `FRONTEND_URL` domain extraction fix. |
 | 2026-02-05 | **CRED-002 Credential System**: Tool count updated from 36 to 39 (16 agent, 3 chat, 4 system, 1 docs, 7 skills, 8 schedule). Replaced `reload_credentials` with 4 new credential tools: `inject_credentials`, `export_credentials`, `import_credentials`, `get_credential_encryption_key`. Updated all line numbers for agents.ts. |
