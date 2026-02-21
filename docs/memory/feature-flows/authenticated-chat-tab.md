@@ -299,9 +299,36 @@ Tasks | Chat | Dashboard | Schedules | Credentials | Skills | ...
 - **[execution-queue.md](execution-queue.md)** - Task execution flow
 - **[continue-execution-as-chat.md](continue-execution-as-chat.md)** - Resume executions as chat via `resume_session_id` (EXEC-023)
 
+## Resume Mode (EXEC-023 Integration)
+
+ChatPanel supports resuming executions as chat via the "Continue as Chat" feature. When navigating with `resumeSessionId` query parameter:
+
+1. **Watch handler** (lines 411-420) enters resume mode:
+   - Clears messages
+   - Sets `resumeSessionIdLocal`
+   - Displays resume banner
+
+2. **Session auto-select prevention** (line 251):
+   ```javascript
+   // Fix: Don't auto-select session when in resume mode
+   if (autoSelect && sessions.value.length > 0 && !currentSessionId.value &&
+       messages.value.length === 0 && !isResumeMode.value) {
+   ```
+
+   **Bug Fixed (2026-02-21)**: When "Continue as Chat" was clicked, the watch handler correctly cleared messages and entered resume mode. However, `onMounted` then called `loadSessions()` which would auto-select the most recent active session because `messages.length === 0` was true after the watch cleared them. This would override the resume mode state.
+
+   **Fix**: Added `!isResumeMode.value` condition to prevent auto-selection when continuing from execution.
+
+3. **First message** includes `resume_session_id` in payload (lines 356-363)
+
+4. **Resume mode cleared** after first message is sent
+
+See [continue-execution-as-chat.md](continue-execution-as-chat.md) for complete flow.
+
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed session auto-select overriding resume mode. Added `!isResumeMode.value` condition at line 251 in `loadSessions()`. Without this fix, `onMounted` → `loadSessions()` would select an existing session even when ChatPanel was entered via "Continue as Chat" button, breaking the resume flow. |
 | 2026-02-20 | Fixed session persistence - `/task` now saves to `chat_sessions` when `save_to_session=true`. Added `create_new_session` for "New Chat" button. |
 | 2026-02-19 | Initial implementation (CHAT-001) |

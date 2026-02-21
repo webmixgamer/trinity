@@ -244,8 +244,11 @@ const loadSessions = async (autoSelect = true) => {
     sessions.value = response.data.sessions || []
 
     // If we have sessions and no current session, select the most recent active one
-    // BUT only if autoSelect is true AND we don't already have messages (unsaved new conversation)
-    if (autoSelect && sessions.value.length > 0 && !currentSessionId.value && messages.value.length === 0) {
+    // BUT only if:
+    // - autoSelect is true
+    // - we don't already have messages (unsaved new conversation)
+    // - we're NOT in resume mode (EXEC-023 fix: don't auto-select when continuing from execution)
+    if (autoSelect && sessions.value.length > 0 && !currentSessionId.value && messages.value.length === 0 && !isResumeMode.value) {
       const activeSession = sessions.value.find(s => s.status === 'active')
       if (activeSession) {
         await selectSession(activeSession, false)

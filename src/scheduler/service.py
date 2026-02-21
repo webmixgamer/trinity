@@ -488,7 +488,8 @@ class SchedulerService:
                 context_max=task_response.metrics.context_max,
                 cost=task_response.metrics.cost_usd,
                 tool_calls=task_response.metrics.tool_calls_json,
-                execution_log=task_response.metrics.execution_log_json
+                execution_log=task_response.metrics.execution_log_json,
+                claude_session_id=task_response.metrics.session_id  # EXEC-023: For --resume support
             )
 
             # Update schedule last run time

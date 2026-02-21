@@ -240,9 +240,14 @@ class SchedulerDatabase:
         context_max: int = None,
         cost: float = None,
         tool_calls: str = None,
-        execution_log: str = None
+        execution_log: str = None,
+        claude_session_id: str = None  # Claude Code session ID for --resume (EXEC-023)
     ) -> bool:
-        """Update execution status when completed."""
+        """Update execution status when completed.
+
+        Args:
+            claude_session_id: Claude Code session ID for --resume support (EXEC-023)
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -259,7 +264,8 @@ class SchedulerDatabase:
             cursor.execute("""
                 UPDATE schedule_executions
                 SET status = ?, completed_at = ?, duration_ms = ?, response = ?, error = ?,
-                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?, execution_log = ?
+                    context_used = ?, context_max = ?, cost = ?, tool_calls = ?, execution_log = ?,
+                    claude_session_id = ?
                 WHERE id = ?
             """, (
                 status,
@@ -272,6 +278,7 @@ class SchedulerDatabase:
                 cost,
                 tool_calls,
                 execution_log,
+                claude_session_id,
                 execution_id
             ))
             conn.commit()

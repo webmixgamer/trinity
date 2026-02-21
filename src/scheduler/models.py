@@ -82,6 +82,7 @@ class AgentTaskMetrics:
     cost_usd: Optional[float] = None
     tool_calls_json: Optional[str] = None
     execution_log_json: Optional[str] = None
+    session_id: Optional[str] = None  # Claude Code session ID for --resume (EXEC-023)
 
 
 @dataclass

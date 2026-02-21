@@ -182,6 +182,7 @@ class AgentClient:
         - Context usage
         - Cost
         - Execution log
+        - Session ID (for --resume support, EXEC-023)
         """
         # Extract response text
         response_text = result.get("response", str(result))
@@ -200,6 +201,9 @@ class AgentClient:
         # Cost
         cost = metadata.get("cost_usd")
 
+        # Claude Code session ID for --resume support (EXEC-023)
+        session_id = result.get("session_id") or metadata.get("session_id")
+
         # Execution log - raw Claude Code transcript
         tool_calls_json = None
         execution_log_json = None
@@ -213,7 +217,8 @@ class AgentClient:
             context_percent=context_percent,
             cost_usd=cost,
             tool_calls_json=tool_calls_json,
-            execution_log_json=execution_log_json
+            execution_log_json=execution_log_json,
+            session_id=session_id
         )
 
         return AgentTaskResponse(

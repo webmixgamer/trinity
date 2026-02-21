@@ -484,7 +484,7 @@ class AgentClient:
         return self._parse_task_response(result)
 ```
 
-**Response Parsing** (`agent_client.py:172-219`):
+**Response Parsing** (`agent_client.py:176-228`):
 ```python
 def _parse_task_response(self, result: Dict[str, Any]) -> AgentTaskResponse:
     """
@@ -495,6 +495,7 @@ def _parse_task_response(self, result: Dict[str, Any]) -> AgentTaskResponse:
     - Context usage
     - Cost
     - Execution log
+    - Session ID (for --resume support, EXEC-023)
     """
     # Extract response text
     response_text = result.get("response", str(result))
@@ -513,6 +514,9 @@ def _parse_task_response(self, result: Dict[str, Any]) -> AgentTaskResponse:
     # Cost
     cost = metadata.get("cost_usd")
 
+    # Claude Code session ID for --resume support (EXEC-023)
+    session_id = result.get("session_id") or metadata.get("session_id")
+
     # Execution log - raw Claude Code transcript
     tool_calls_json = None
     execution_log_json = None
@@ -526,7 +530,8 @@ def _parse_task_response(self, result: Dict[str, Any]) -> AgentTaskResponse:
         context_percent=context_percent,
         cost_usd=cost,
         tool_calls_json=tool_calls_json,
-        execution_log_json=execution_log_json
+        execution_log_json=execution_log_json,
+        session_id=session_id  # EXEC-023
     )
 
     return AgentTaskResponse(
@@ -603,9 +608,11 @@ async def _publish_event(self, event: dict):
 | Method | Line | SQL | Purpose |
 |--------|------|-----|---------|
 | `create_execution()` | 167-203 | `INSERT INTO schedule_executions` | Create execution record |
-| `update_execution_status()` | 205-250 | `UPDATE schedule_executions SET status, response, ...` | Complete execution |
+| `update_execution_status()` | 233-284 | `UPDATE schedule_executions SET status, response, ..., claude_session_id` | Complete execution (EXEC-023: added `claude_session_id` param) |
 | `get_execution(id)` | 252-258 | `SELECT * FROM schedule_executions WHERE id = ?` | Get execution |
 | `get_recent_executions()` | 260-269 | `SELECT * FROM schedule_executions ORDER BY started_at DESC` | List recent |
+
+**Session ID Storage (EXEC-023)**: `update_execution_status()` now accepts optional `claude_session_id` parameter (line 244) which stores the Claude Code session ID for `--resume` support. This enables the "Continue Execution as Chat" feature for scheduled executions.
 
 ---
 
@@ -1139,6 +1146,7 @@ No immediate notification is needed from the backend.
 
 | Date | Change |
 |------|--------|
+| 2026-02-21 | **Session ID Capture (EXEC-023)**: Added `claude_session_id` capture for "Continue as Chat" support. `AgentTaskMetrics` now includes `session_id` field. `_parse_task_response()` extracts from agent response. `update_execution_status()` stores in database. Scheduled executions now support "Continue as Chat" like manual executions. |
 | 2026-02-20 | **Per-Schedule Execution Configuration**: AgentClient.task() now accepts `allowed_tools` parameter. Schedules can specify custom timeout (5m-2h) and tool restrictions. See scheduling.md for full documentation. |
 | 2026-02-11 | **Scheduler Consolidation**: Removed embedded scheduler, routed manual triggers through dedicated scheduler, added activity tracking via internal API. Fixes Timeline dashboard missing cron executions. |
 | 2026-02-05 | **Trinity Connect Integration**: Added section documenting filtered broadcast callback for external event listeners. Schedule events forwarded to `/ws/events` endpoint. |

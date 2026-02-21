@@ -527,5 +527,7 @@ Claude Code may clean up old session files. If resume fails:
 
 | Date | Change |
 |------|--------|
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `ChatPanel.vue` auto-selecting old session in resume mode. The `loadSessions()` function auto-selected the most recent active session even when in resume mode because `messages.length === 0` was true after the watch handler cleared messages. Fix: Added `!isResumeMode.value` condition at line 251. |
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed scheduled executions missing `claude_session_id`. The dedicated scheduler service had its own code path that didn't capture session_id from agent responses. Updated 4 files in `src/scheduler/`: models.py (added `session_id` field), agent_client.py (extract session_id), database.py (accept claude_session_id param), service.py (pass session_id to DB). |
 | 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `DatabaseManager.update_execution_status()` wrapper in `src/backend/database.py:1295-1299` which was missing the `claude_session_id` parameter. The underlying `db/schedules.py:update_execution_status()` accepted the parameter, but the wrapper method did not forward it. This caused all manual task executions (via `/task` endpoint) to fail updating their database status with the session ID, breaking the "Continue as Chat" feature for those executions. |
 | 2026-02-20 | Initial implementation (EXEC-023) |

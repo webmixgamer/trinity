@@ -1,3 +1,34 @@
+### 2026-02-21 13:25:00
+🐛 **Fix: Scheduled Executions Missing `claude_session_id` (EXEC-023)**
+
+Fixed issue where scheduled executions didn't capture `claude_session_id`, preventing "Continue as Chat" from working for scheduled tasks.
+
+**Root Cause**: The dedicated scheduler service (`src/scheduler/`) had its own `AgentClient` and `update_execution_status()` that didn't capture or store `session_id` from agent responses. Only manual executions via the backend's `/task` endpoint captured the session ID.
+
+**Fix**: Updated scheduler to capture and store `claude_session_id`:
+- `src/scheduler/models.py`: Added `session_id` field to `AgentTaskMetrics`
+- `src/scheduler/agent_client.py`: Extract `session_id` from agent response in `_parse_task_response()`
+- `src/scheduler/database.py`: Added `claude_session_id` parameter to `update_execution_status()`
+- `src/scheduler/service.py`: Pass `claude_session_id` to database update
+
+**Files Modified**: 4 files in `src/scheduler/`
+
+---
+
+### 2026-02-21 13:25:00
+🐛 **Fix: Chat Tab Auto-Selecting Old Session in Resume Mode (EXEC-023)**
+
+Fixed issue where clicking "Continue as Chat" opened the Chat tab but loaded the previous active session instead of starting fresh for resume.
+
+**Root Cause**: `ChatPanel.vue` watched for `resumeSessionId` and cleared messages, but then `onMounted` called `loadSessions()` which auto-selected the most recent active session because `messages.length === 0` (just cleared).
+
+**Fix**: Added `!isResumeMode.value` condition to prevent auto-selection when in resume mode.
+
+**File Modified**:
+- `src/frontend/src/components/ChatPanel.vue`: Line 251 now checks `!isResumeMode.value`
+
+---
+
 ### 2026-02-21 12:30:00
 🐛 **Fix: "Continue as Chat" Not Opening Chat Tab (EXEC-023)**
 

@@ -3,6 +3,24 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-21)**: Bug Fix - ChatPanel resume mode auto-select (EXEC-023):
+> - **Bug**: Clicking "Continue as Chat" would clear messages then auto-select an existing session
+> - **Root cause**: `loadSessions()` in ChatPanel.vue auto-selected most recent active session when `messages.length === 0`
+> - **Impact**: Resume mode was overridden by session auto-select, breaking the "Continue Execution as Chat" flow
+> - **Fix**: Added `!isResumeMode.value` condition at line 251 to prevent auto-selection during resume
+> - **Updated flows**: [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md), [continue-execution-as-chat.md](feature-flows/continue-execution-as-chat.md)
+>
+> **Updated (2026-02-21)**: Bug Fix - Scheduled executions missing session_id (EXEC-023):
+> - **Bug**: Scheduled executions via dedicated scheduler did not capture Claude Code session_id
+> - **Root cause**: `src/scheduler/agent_client.py:_parse_task_response()` did not extract `session_id` from agent response
+> - **Impact**: Scheduled executions had null `claude_session_id`, preventing "Continue as Chat" for schedule-triggered tasks
+> - **Fix**: Updated 4 files in `src/scheduler/`:
+>   - `models.py:85` - Added `session_id` field to `AgentTaskMetrics`
+>   - `agent_client.py:176-224` - Extract `session_id` from response
+>   - `database.py:233-284` - Accept `claude_session_id` parameter in `update_execution_status()`
+>   - `service.py:483-493` - Pass `session_id` to database update
+> - **Updated flows**: [scheduler-service.md](feature-flows/scheduler-service.md), [scheduling.md](feature-flows/scheduling.md), [continue-execution-as-chat.md](feature-flows/continue-execution-as-chat.md)
+>
 > **Updated (2026-02-21)**: Bug Fix - DatabaseManager.update_execution_status() wrapper (EXEC-023):
 > - **Bug**: `DatabaseManager.update_execution_status()` in `src/backend/database.py:1295-1299` was missing the `claude_session_id` parameter
 > - **Impact**: Manual task executions via `/task` endpoint failed to store session IDs, breaking "Continue Execution as Chat" feature

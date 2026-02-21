@@ -958,6 +958,14 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-02-21** - **Bug Fix (EXEC-023)**: Fixed scheduled executions missing `claude_session_id`. The dedicated scheduler service (`src/scheduler/`) had its own code path for task execution that was not capturing `session_id` from agent responses. Four files were updated:
+- `src/scheduler/models.py:85` - Added `session_id` field to `AgentTaskMetrics` dataclass
+- `src/scheduler/agent_client.py:176-224` - `_parse_task_response()` now extracts `session_id` from agent response
+- `src/scheduler/database.py:233-284` - `update_execution_status()` accepts and stores `claude_session_id` parameter
+- `src/scheduler/service.py:483-493` - Passes `task_response.metrics.session_id` to database update as `claude_session_id`
+
+This enables "Continue Execution as Chat" for scheduled executions (previously only worked for manual task executions via backend `/task` endpoint).
+
 **Updated 2026-02-21** - **Bug Fix (EXEC-023)**: Fixed `DatabaseManager.update_execution_status()` wrapper in `src/backend/database.py:1295-1299` - was missing `claude_session_id` parameter. This affected all code paths that update execution status (scheduled tasks, manual tasks, chat executions). The underlying `db/schedules.py:update_execution_status()` (lines 559-610) already supported the parameter for the "Continue Execution as Chat" feature.
 **Updated 2026-02-21** - **PERF-001 Performance Optimization**: List endpoint now returns `ExecutionSummary` (excludes large text fields). Task details fetched on-demand. See [tasks-tab.md](tasks-tab.md) for full implementation details.
 **Updated 2026-02-20** - **Configurable Timeout and Allowed Tools**: Per-schedule execution configuration - custom timeout (5m-2h) and tool restrictions. See "Per-Schedule Execution Configuration" section below.
