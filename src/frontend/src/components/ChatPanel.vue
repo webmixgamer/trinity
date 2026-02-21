@@ -199,7 +199,9 @@ const dropdownRef = ref(null)
 // Resume mode state (EXEC-023)
 const resumeSessionIdLocal = ref(null)
 const resumeExecutionIdLocal = ref(null)
-const isResumeMode = computed(() => !!resumeSessionIdLocal.value)
+const resumeBannerDismissed = ref(false)  // Separate flag for banner visibility
+// Show banner only if in resume mode AND banner not dismissed
+const isResumeMode = computed(() => !!resumeSessionIdLocal.value && !resumeBannerDismissed.value)
 
 // Computed
 const currentSessionLabel = computed(() => {
@@ -269,6 +271,12 @@ const selectSession = async (session, closeDropdown = true) => {
 
   if (currentSessionId.value === session.id) return
 
+  // Clear resume mode when selecting a different session
+  // (user is explicitly choosing a different conversation context)
+  resumeSessionIdLocal.value = null
+  resumeExecutionIdLocal.value = null
+  resumeBannerDismissed.value = false
+
   currentSessionId.value = session.id
   loading.value = true
   error.value = null
@@ -300,12 +308,14 @@ const startNewChat = () => {
   // Clear resume mode when starting new chat
   resumeSessionIdLocal.value = null
   resumeExecutionIdLocal.value = null
+  resumeBannerDismissed.value = false
 }
 
 // Dismiss resume mode banner (EXEC-023)
+// Note: This only hides the banner, but keeps resumeSessionIdLocal so
+// subsequent messages continue using --resume for context continuity
 const dismissResumeMode = () => {
-  resumeSessionIdLocal.value = null
-  resumeExecutionIdLocal.value = null
+  resumeBannerDismissed.value = true
 }
 
 // Build context from conversation history
@@ -357,12 +367,13 @@ const sendMessage = async (userMessage) => {
       create_new_session: !currentSessionId.value
     }
 
-    // EXEC-023: Include resume_session_id for first message in resume mode
+    // EXEC-023: Include resume_session_id for ALL messages in resume mode
+    // The /task endpoint is stateless - it doesn't use --continue.
+    // We must keep passing resume_session_id so Claude Code uses --resume for every message.
     if (resumeSessionIdLocal.value) {
       payload.resume_session_id = resumeSessionIdLocal.value
-      // Clear resume mode after first message - subsequent messages use normal --continue
-      resumeSessionIdLocal.value = null
-      resumeExecutionIdLocal.value = null
+      // Note: We intentionally do NOT clear resumeSessionIdLocal here.
+      // All messages in a resumed session need --resume to maintain context.
     }
 
     // Send via task endpoint (headless execution for Dashboard tracking)
@@ -420,6 +431,7 @@ watch(() => props.resumeSessionId, (newSessionId) => {
     error.value = null
     resumeSessionIdLocal.value = newSessionId
     resumeExecutionIdLocal.value = props.resumeExecutionId
+    resumeBannerDismissed.value = false  // Show banner when entering resume mode
   }
 }, { immediate: true })
 

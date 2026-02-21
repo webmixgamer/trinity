@@ -63,7 +63,7 @@ As an authenticated user, I want a simple chat interface with my agents that:
 ### State Management
 
 ```javascript
-// ChatPanel.vue state (lines 148-160)
+// ChatPanel.vue state (lines 186-197)
 const message = ref('')              // Current input
 const messages = ref([])             // Current conversation
 const loading = ref(false)           // Send in progress
@@ -74,6 +74,13 @@ const sessions = ref([])             // List of user's sessions
 const sessionsLoading = ref(false)   // Loading sessions
 const currentSessionId = ref(null)   // Active session
 const showSessionDropdown = ref(false)
+
+// Resume mode state (EXEC-023) - lines 199-204
+const resumeSessionIdLocal = ref(null)     // Claude session ID for --resume
+const resumeExecutionIdLocal = ref(null)   // Execution ID for banner display
+const resumeBannerDismissed = ref(false)   // Banner-only dismissal flag
+const isResumeMode = computed(() =>        // Show banner when in resume mode AND not dismissed
+  !!resumeSessionIdLocal.value && !resumeBannerDismissed.value)
 ```
 
 ### ChatPanel.vue Methods
@@ -303,25 +310,46 @@ Tasks | Chat | Dashboard | Schedules | Credentials | Skills | ...
 
 ChatPanel supports resuming executions as chat via the "Continue as Chat" feature. When navigating with `resumeSessionId` query parameter:
 
-1. **Watch handler** (lines 411-420) enters resume mode:
+1. **Watch handler** (lines 425-436) enters resume mode:
    - Clears messages
    - Sets `resumeSessionIdLocal`
+   - Sets `resumeBannerDismissed = false`
    - Displays resume banner
 
-2. **Session auto-select prevention** (line 251):
+2. **Session auto-select prevention** (line 253):
    ```javascript
    // Fix: Don't auto-select session when in resume mode
    if (autoSelect && sessions.value.length > 0 && !currentSessionId.value &&
        messages.value.length === 0 && !isResumeMode.value) {
    ```
 
-   **Bug Fixed (2026-02-21)**: When "Continue as Chat" was clicked, the watch handler correctly cleared messages and entered resume mode. However, `onMounted` then called `loadSessions()` which would auto-select the most recent active session because `messages.length === 0` was true after the watch cleared them. This would override the resume mode state.
+3. **ALL messages** include `resume_session_id` in payload (lines 370-377):
+   ```javascript
+   // EXEC-023: Include resume_session_id for ALL messages in resume mode
+   // The /task endpoint is stateless - it doesn't use --continue.
+   // We must keep passing resume_session_id so Claude Code uses --resume for every message.
+   if (resumeSessionIdLocal.value) {
+     payload.resume_session_id = resumeSessionIdLocal.value
+     // Note: We intentionally do NOT clear resumeSessionIdLocal here.
+   }
+   ```
 
-   **Fix**: Added `!isResumeMode.value` condition to prevent auto-selection when continuing from execution.
+4. **Resume mode state** (lines 199-204):
+   ```javascript
+   const resumeSessionIdLocal = ref(null)
+   const resumeExecutionIdLocal = ref(null)
+   const resumeBannerDismissed = ref(false)  // Separate flag for banner visibility
+   const isResumeMode = computed(() => !!resumeSessionIdLocal.value && !resumeBannerDismissed.value)
+   ```
 
-3. **First message** includes `resume_session_id` in payload (lines 356-363)
+   **Key Design**: `resumeSessionIdLocal` persists for the entire session. Only the banner can be dismissed (via `resumeBannerDismissed`). This ensures every message uses `--resume` for context continuity.
 
-4. **Resume mode cleared** after first message is sent
+5. **Resume mode ends** when:
+   - User clicks "New Chat" (clears `resumeSessionIdLocal`)
+   - User selects a different session from dropdown (clears `resumeSessionIdLocal`)
+   - User navigates away from Chat tab
+
+**Bug Fixed (2026-02-21)**: Previously, `resumeSessionIdLocal` was cleared after the first message. Since `/task` is stateless and doesn't use `--continue`, subsequent messages lost context. Fix: Keep `resumeSessionIdLocal` for all messages.
 
 See [continue-execution-as-chat.md](continue-execution-as-chat.md) for complete flow.
 
@@ -329,6 +357,7 @@ See [continue-execution-as-chat.md](continue-execution-as-chat.md) for complete 
 
 | Date | Change |
 |------|--------|
-| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed session auto-select overriding resume mode. Added `!isResumeMode.value` condition at line 251 in `loadSessions()`. Without this fix, `onMounted` → `loadSessions()` would select an existing session even when ChatPanel was entered via "Continue as Chat" button, breaking the resume flow. |
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed resume mode context lost after first message. Since `/task` is stateless (no `--continue`), clearing `resumeSessionIdLocal` after first message caused subsequent messages to lose context. Fix: (1) Added `resumeBannerDismissed` flag for banner-only dismissal, (2) Keep `resumeSessionIdLocal` for ALL messages, (3) `dismissResumeMode()` only hides banner (session ID persists), (4) Clear resume mode only on "New Chat" or session switch. See lines 199-204, 314-319, 370-377. |
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed session auto-select overriding resume mode. Added `!isResumeMode.value` condition at line 253 in `loadSessions()`. Without this fix, `onMounted` -> `loadSessions()` would select an existing session even when ChatPanel was entered via "Continue as Chat" button, breaking the resume flow. |
 | 2026-02-20 | Fixed session persistence - `/task` now saves to `chat_sessions` when `save_to_session=true`. Added `create_new_session` for "New Chat" button. |
 | 2026-02-19 | Initial implementation (CHAT-001) |

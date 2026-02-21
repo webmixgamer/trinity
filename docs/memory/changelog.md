@@ -1,3 +1,25 @@
+### 2026-02-21 14:30:00
+🐛 **Fix: Resume Mode Context Lost After First Message (EXEC-023)**
+
+Fixed critical issue where "Continue Execution as Chat" lost context after the first message. Agent would report "nothing new in context" on subsequent messages.
+
+**Root Cause**: The `resume_session_id` (Claude Code session ID for `--resume` flag) was cleared after the first message, but the `/task` endpoint is stateless and doesn't use `--continue`. Subsequent messages started fresh without any context.
+
+**Fix**: Keep `resumeSessionIdLocal` populated for ALL messages in a resumed session:
+- Removed the line that cleared `resumeSessionIdLocal` after first message
+- All messages now continue passing `resume_session_id` to maintain context via `--resume`
+- Added `resumeBannerDismissed` flag so dismissing the banner doesn't lose session continuity
+- Selecting a different session or clicking "New Chat" properly clears resume mode
+
+**Files Modified**:
+- `src/frontend/src/components/ChatPanel.vue`:
+  - Line 202-204: Added `resumeBannerDismissed` flag, updated `isResumeMode` computed
+  - Line 364-371: Removed clearing of `resumeSessionIdLocal` after first message
+  - Line 308-313: `dismissResumeMode()` now only sets banner flag
+  - Line 273-277: `selectSession()` clears resume mode when switching sessions
+
+---
+
 ### 2026-02-21 13:25:00
 🐛 **Fix: Scheduled Executions Missing `claude_session_id` (EXEC-023)**
 

@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-21)**: Bug Fix - Resume mode context lost after first message (EXEC-023):
+> - **Bug**: "Continue as Chat" lost context after first message. Agent reported "nothing new in context" on subsequent messages.
+> - **Root cause**: `resume_session_id` was cleared after first message (line 364), but `/task` endpoint is stateless. Subsequent messages had no `--resume` flag.
+> - **Impact**: Only first message used `--resume`. All subsequent messages started fresh without execution context.
+> - **Fix**: Keep `resumeSessionIdLocal` for ALL messages in resumed session. Added `resumeBannerDismissed` flag so dismissing banner doesn't lose context.
+> - **Files changed**: `src/frontend/src/components/ChatPanel.vue` (lines 202-204, 273-277, 308-313, 364-371)
+> - **Updated flows**: [continue-execution-as-chat.md](feature-flows/continue-execution-as-chat.md), [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md)
+>
 > **Updated (2026-02-21)**: Bug Fix - ChatPanel resume mode auto-select (EXEC-023):
 > - **Bug**: Clicking "Continue as Chat" would clear messages then auto-select an existing session
 > - **Root cause**: `loadSessions()` in ChatPanel.vue auto-selected most recent active session when `messages.length === 0`

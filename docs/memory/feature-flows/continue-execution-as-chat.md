@@ -137,13 +137,19 @@ resumeExecutionId: {
 }
 ```
 
-**State** (lines 199-202):
+**State** (lines 199-204):
 ```javascript
 // Resume mode state (EXEC-023)
 const resumeSessionIdLocal = ref(null)
 const resumeExecutionIdLocal = ref(null)
-const isResumeMode = computed(() => !!resumeSessionIdLocal.value)
+const resumeBannerDismissed = ref(false)  // Separate flag for banner visibility
+// Show banner only if in resume mode AND banner not dismissed
+const isResumeMode = computed(() => !!resumeSessionIdLocal.value && !resumeBannerDismissed.value)
 ```
+
+**Key Insight**: The `resumeSessionIdLocal` is kept for the entire session to pass `resume_session_id` with every message. The `resumeBannerDismissed` flag only controls banner visibility. This separation allows:
+- Banner dismissal without losing resume context
+- All messages to use `--resume` flag for full context continuity
 
 **Resume Banner UI** (lines 88-114):
 ```vue
@@ -170,7 +176,7 @@ const isResumeMode = computed(() => !!resumeSessionIdLocal.value)
 </div>
 ```
 
-**Watch for Resume Props** (lines 411-420):
+**Watch for Resume Props** (lines 425-436):
 ```javascript
 // Watch for resume mode props (EXEC-023)
 watch(() => props.resumeSessionId, (newSessionId) => {
@@ -181,28 +187,54 @@ watch(() => props.resumeSessionId, (newSessionId) => {
     error.value = null
     resumeSessionIdLocal.value = newSessionId
     resumeExecutionIdLocal.value = props.resumeExecutionId
+    resumeBannerDismissed.value = false  // Show banner when entering resume mode
   }
 }, { immediate: true })
 ```
 
-**Send Message with Resume** (lines 356-363):
+**Start New Chat** (lines 302-312):
 ```javascript
-// EXEC-023: Include resume_session_id for first message in resume mode
-if (resumeSessionIdLocal.value) {
-  payload.resume_session_id = resumeSessionIdLocal.value
-  // Clear resume mode after first message - subsequent messages use normal --continue
+const startNewChat = () => {
+  currentSessionId.value = null
+  messages.value = []
+  error.value = null
+  showSessionDropdown.value = false
+  // Clear resume mode when starting new chat
   resumeSessionIdLocal.value = null
   resumeExecutionIdLocal.value = null
+  resumeBannerDismissed.value = false
 }
 ```
 
-**Dismiss Handler** (lines 302-306):
+**Send Message with Resume** (lines 370-377):
+```javascript
+// EXEC-023: Include resume_session_id for ALL messages in resume mode
+// The /task endpoint is stateless - it doesn't use --continue.
+// We must keep passing resume_session_id so Claude Code uses --resume for every message.
+if (resumeSessionIdLocal.value) {
+  payload.resume_session_id = resumeSessionIdLocal.value
+  // Note: We intentionally do NOT clear resumeSessionIdLocal here.
+  // All messages in a resumed session need --resume to maintain context.
+}
+```
+
+**Dismiss Handler** (lines 314-319):
 ```javascript
 // Dismiss resume mode banner (EXEC-023)
+// Note: This only hides the banner, but keeps resumeSessionIdLocal so
+// subsequent messages continue using --resume for context continuity
 const dismissResumeMode = () => {
-  resumeSessionIdLocal.value = null
-  resumeExecutionIdLocal.value = null
+  resumeBannerDismissed.value = true
 }
+```
+
+**Select Session Handler** (lines 274-278):
+```javascript
+// Clear resume mode when selecting a different session
+// (user is explicitly choosing a different conversation context)
+resumeSessionIdLocal.value = null
+resumeExecutionIdLocal.value = null
+resumeBannerDismissed.value = false
 ```
 
 ## Backend Layer
@@ -454,7 +486,8 @@ async def execute_headless(
 4. ChatPanel watches props, enters resume mode:
    - Clears messages
    - Shows resume banner
-   - Stores resumeSessionIdLocal
+   - Stores resumeSessionIdLocal (persists for entire session)
+   - Sets resumeBannerDismissed = false
    │
    ▼
 5. User types first message and sends
@@ -462,6 +495,7 @@ async def execute_headless(
    ▼
 6. ChatPanel.sendMessage() includes resume_session_id in payload:
    POST /api/agents/{name}/task { message, resume_session_id, ... }
+   (Note: resume_session_id is NOT cleared after sending)
    │
    ▼
 7. Backend passes to agent:
@@ -477,10 +511,29 @@ async def execute_headless(
    - Agent can reference tool calls, errors, decisions from original session
    │
    ▼
-10. Response returned, ChatPanel clears resume mode
-    - Subsequent messages are normal (no --resume)
-    - Session continues with full history
+10. Response returned to ChatPanel
+    - Message displayed, user can continue chatting
+    │
+    ▼
+11. User sends subsequent messages
+    - SAME resume_session_id passed with EVERY message
+    - Each message uses --resume flag for full context
+    - Banner can be dismissed but session ID persists
+    │
+    ▼
+12. Resume mode ends only when:
+    - User clicks "New Chat" (clears resumeSessionIdLocal)
+    - User selects different session from dropdown (clears resumeSessionIdLocal)
+    - User navigates away from Chat tab
 ```
+
+### Why Pass resume_session_id for Every Message?
+
+The `/task` endpoint is **stateless** - it does NOT use `--continue` flag. Each call to `/task` is a fresh Claude Code invocation. Without `--resume`, Claude Code would start with no context.
+
+**Previous Bug (Fixed 2026-02-21)**: Resume mode was cleared after the first message, causing subsequent messages to lose context. Users had to click "Continue as Chat" again for each message.
+
+**Fix**: Keep `resumeSessionIdLocal` for the entire resumed session. All messages pass `resume_session_id` so every Claude Code invocation uses `--resume {session_id}` and has full context from the original execution.
 
 ## Session Storage
 
@@ -527,7 +580,8 @@ Claude Code may clean up old session files. If resume fails:
 
 | Date | Change |
 |------|--------|
-| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `ChatPanel.vue` auto-selecting old session in resume mode. The `loadSessions()` function auto-selected the most recent active session even when in resume mode because `messages.length === 0` was true after the watch handler cleared messages. Fix: Added `!isResumeMode.value` condition at line 251. |
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed resume mode context lost after first message. The `/task` endpoint is stateless (doesn't use `--continue`), but `resumeSessionIdLocal` was cleared after the first message, causing subsequent messages to start fresh without context. **Fix**: (1) Added `resumeBannerDismissed` flag to separate banner visibility from session ID state, (2) Removed clearing of `resumeSessionIdLocal` after first message - now ALL messages pass `resume_session_id`, (3) `dismissResumeMode()` only sets banner flag (doesn't clear session ID), (4) `selectSession()` clears resume mode when switching sessions, (5) Reset `resumeBannerDismissed` in `startNewChat()` and resume mode watcher. See `ChatPanel.vue` lines 202-204, 314-319, 370-377, 274-278, 302-312, 425-436. |
+| 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `ChatPanel.vue` auto-selecting old session in resume mode. The `loadSessions()` function auto-selected the most recent active session even when in resume mode because `messages.length === 0` was true after the watch handler cleared messages. Fix: Added `!isResumeMode.value` condition at line 253. |
 | 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed scheduled executions missing `claude_session_id`. The dedicated scheduler service had its own code path that didn't capture session_id from agent responses. Updated 4 files in `src/scheduler/`: models.py (added `session_id` field), agent_client.py (extract session_id), database.py (accept claude_session_id param), service.py (pass session_id to DB). |
 | 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `DatabaseManager.update_execution_status()` wrapper in `src/backend/database.py:1295-1299` which was missing the `claude_session_id` parameter. The underlying `db/schedules.py:update_execution_status()` accepted the parameter, but the wrapper method did not forward it. This caused all manual task executions (via `/task` endpoint) to fail updating their database status with the session ID, breaking the "Continue as Chat" feature for those executions. |
 | 2026-02-20 | Initial implementation (EXEC-023) |
