@@ -1,3 +1,20 @@
+### 2026-02-22 10:30:00
+🐛 **Fix: Schedule Stats Always Shown + Added to Agents Page**
+
+Fixed inconsistent tile heights when agents have no schedules, and added schedule stats to Agents page for consistency with Dashboard.
+
+**Bug**: On Dashboard tiles, agents without schedules had the schedule row hidden entirely (`v-if="hasSchedules"`), causing tiles to be different heights.
+
+**Fix**:
+1. **Dashboard (AgentNode.vue)**: Changed to always show schedule row for non-system agents. Shows "0/0 schedules" when no schedules exist. Row is grayed out when no schedules or autonomy disabled.
+2. **Agents Page (Agents.vue)**: Added matching schedule stats row for consistency. Shows same X/Y format with clock icon and "(paused)" indicator.
+
+**Files Modified**:
+- `src/frontend/src/components/AgentNode.vue`: Changed `v-if="hasSchedules && !isSystemAgent"` to `v-if="!isSystemAgent"`, updated styling conditions
+- `src/frontend/src/views/Agents.vue`: Added schedule stats row (lines 323-341), added helper functions `getSchedulesTotal()`, `getSchedulesEnabled()`, `hasSchedules()`
+
+---
+
 ### 2026-02-22 10:00:00
 ✨ **UI: Dashboard Tile Schedule Display + Sidebar Default Collapsed**
 

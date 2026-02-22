@@ -135,22 +135,22 @@
         No tasks (24h)
       </div>
 
-      <!-- Schedule Stats (compact row) -->
+      <!-- Schedule Stats (compact row - always show for consistent height) -->
       <div
-        v-if="hasSchedules && !isSystemAgent"
+        v-if="!isSystemAgent"
         :class="[
           'flex items-center text-xs gap-x-1.5 mb-2',
-          autonomyEnabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+          hasSchedules && autonomyEnabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
         ]"
       >
         <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span :class="autonomyEnabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
+        <span :class="hasSchedules && autonomyEnabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
           {{ schedulesEnabled }}/{{ schedulesTotal }}
         </span>
         <span>schedules</span>
-        <span v-if="!autonomyEnabled" class="italic">(paused)</span>
+        <span v-if="hasSchedules && !autonomyEnabled" class="italic">(paused)</span>
       </div>
 
       <!-- Resource indicators (subtle footer) -->

@@ -320,6 +320,24 @@
               No tasks (24h)
             </div>
 
+            <!-- Schedule Stats Row (always show for consistent height) -->
+            <div
+              v-if="!agent.is_system"
+              :class="[
+                'flex items-center text-xs gap-x-1.5 mb-3',
+                hasSchedules(agent.name) && agent.autonomy_enabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+              ]"
+            >
+              <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span :class="hasSchedules(agent.name) && agent.autonomy_enabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
+                {{ getSchedulesEnabled(agent.name) }}/{{ getSchedulesTotal(agent.name) }}
+              </span>
+              <span>schedules</span>
+              <span v-if="hasSchedules(agent.name) && !agent.autonomy_enabled" class="italic">(paused)</span>
+            </div>
+
             <!-- Action buttons -->
             <div class="flex items-center justify-end mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
               <!-- View Details button -->
@@ -520,6 +538,21 @@ const getLastExecutionDisplay = (agentName) => {
   if (diffMins < 60) return `${diffMins}m ago`
   if (diffHours < 24) return `${diffHours}h ago`
   return `${Math.floor(diffHours / 24)}d ago`
+}
+
+// Schedule stats helpers
+const getSchedulesTotal = (agentName) => {
+  const stats = getExecutionStats(agentName)
+  return stats?.schedulesTotal || 0
+}
+
+const getSchedulesEnabled = (agentName) => {
+  const stats = getExecutionStats(agentName)
+  return stats?.schedulesEnabled || 0
+}
+
+const hasSchedules = (agentName) => {
+  return getSchedulesTotal(agentName) > 0
 }
 
 // Autonomy toggle handler
