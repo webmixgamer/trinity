@@ -3,6 +3,21 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-22)**: Database Module Refactoring:
+> - **New feature flow**: [database-module.md](../feature-flows/database-module.md) - Database architecture with extracted migrations and schema
+> - **Problem solved**: `database.py` was 1326 lines with 528-line `init_database()` - exceeded AI context threshold
+> - **New files**:
+>   - `src/backend/db/migrations.py` (415 lines) - 17 migration functions extracted
+>   - `src/backend/db/schema.py` (538 lines) - All CREATE TABLE/INDEX statements
+> - **Modified files**:
+>   - `src/backend/database.py` - Reduced from 1326 to 966 lines
+>   - `init_database()` - Reduced from 528 to 24 lines
+> - **Key benefits**:
+>   - Each file under 600 lines (AI-maintainable)
+>   - Clear separation: migrations vs schema vs operations
+>   - Full backward compatibility (all imports unchanged)
+> - **How to extend**: See [database-module.md](../feature-flows/database-module.md) for "How To: Add a New Migration" and "How To: Add a New Table"
+
 > **Updated (2026-02-22)**: Subscription Management (SUB-001):
 > - **New feature flow**: [subscription-management.md](feature-flows/subscription-management.md) - Centralized Claude Max/Pro subscription credential management
 > - **Key features**: Register OAuth credentials once, assign to multiple agents, auto-inject on start, hot-inject to running agents
