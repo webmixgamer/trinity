@@ -180,19 +180,45 @@ async def get_agents_execution_stats(
 ):
     """Get execution statistics for all accessible agents.
 
-    Returns task counts, success rates, costs, and last execution times
-    for all agents the user can access within the specified time window.
+    Returns task counts, success rates, costs, last execution times,
+    and schedule counts for all agents the user can access.
     """
     # Get all stats from database
     all_stats = db.get_all_agents_execution_stats(hours=hours)
 
+    # Get schedule counts for all agents
+    schedule_counts = db.get_all_agents_schedule_counts()
+
     # Filter to only agents the user can access
     accessible_agents = {a['name'] for a in get_accessible_agents(current_user)}
 
-    filtered_stats = [
-        stat for stat in all_stats
-        if stat["name"] in accessible_agents
-    ]
+    filtered_stats = []
+    for stat in all_stats:
+        if stat["name"] in accessible_agents:
+            # Add schedule counts to each stat
+            agent_schedules = schedule_counts.get(stat["name"], {"total": 0, "enabled": 0})
+            stat["schedules_total"] = agent_schedules["total"]
+            stat["schedules_enabled"] = agent_schedules["enabled"]
+            filtered_stats.append(stat)
+
+    # Also include agents with schedules but no executions in the time window
+    stats_agents = {s["name"] for s in filtered_stats}
+    for agent_name in accessible_agents:
+        if agent_name not in stats_agents:
+            agent_schedules = schedule_counts.get(agent_name, {"total": 0, "enabled": 0})
+            if agent_schedules["total"] > 0:
+                filtered_stats.append({
+                    "name": agent_name,
+                    "task_count_24h": 0,
+                    "success_count": 0,
+                    "failed_count": 0,
+                    "running_count": 0,
+                    "success_rate": 0,
+                    "total_cost": 0,
+                    "last_execution_at": None,
+                    "schedules_total": agent_schedules["total"],
+                    "schedules_enabled": agent_schedules["enabled"]
+                })
 
     return {"agents": filtered_stats}
 

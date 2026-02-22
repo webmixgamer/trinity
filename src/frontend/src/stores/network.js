@@ -759,7 +759,9 @@ export const useNetworkStore = defineStore('network', () => {
           runningCount: stat.running_count,
           successRate: stat.success_rate,
           totalCost: stat.total_cost,
-          lastExecutionAt: stat.last_execution_at
+          lastExecutionAt: stat.last_execution_at,
+          schedulesTotal: stat.schedules_total || 0,
+          schedulesEnabled: stat.schedules_enabled || 0
         }
       })
       executionStats.value = newStats

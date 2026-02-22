@@ -1,6 +1,8 @@
 # Feature: Autonomy Mode
 
-> **Last Updated**: 2026-02-12 - UI Standardization: New `AutonomyToggle.vue` reusable component used in 4 locations. Running and Autonomy toggles now on same row in Dashboard and Agents page.
+> **Last Updated**: 2026-02-22 - Dashboard visual indication: AgentNode now shows "(paused)" text next to schedule count when autonomy is disabled, providing immediate visual feedback that schedules are not executing.
+>
+> **Previous (2026-02-12)** - UI Standardization: New `AutonomyToggle.vue` reusable component used in 4 locations. Running and Autonomy toggles now on same row in Dashboard and Agents page.
 
 ## Overview
 Autonomy Mode enables or disables all scheduled tasks for an agent with a single toggle. When autonomy is enabled, all schedules run automatically. When disabled, all schedules are paused.
@@ -78,6 +80,28 @@ The Dashboard agent tiles include an inline toggle switch for quick autonomy con
 - Label shows "AUTO" (amber) or "Manual" (gray)
 - Disabled state with opacity when API call in progress
 - Tooltips explain the current state and action
+
+**Schedule Paused Indicator** (Added 2026-02-22):
+When autonomy is disabled and the agent has schedules, a visual "(paused)" indicator appears next to the schedule count:
+```vue
+<!-- Schedule Stats (compact row) - AgentNode.vue:138-155 -->
+<div
+  v-if="hasSchedules && !isSystemAgent"
+  :class="[
+    'flex items-center text-xs gap-x-1.5 mb-2',
+    autonomyEnabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+  ]"
+>
+  <svg class="w-3 h-3 flex-shrink-0"><!-- clock icon --></svg>
+  <span :class="autonomyEnabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
+    {{ schedulesEnabled }}/{{ schedulesTotal }}
+  </span>
+  <span>schedules</span>
+  <span v-if="!autonomyEnabled" class="italic">(paused)</span>
+</div>
+```
+
+This provides immediate visual feedback that schedules exist but are not executing because autonomy is disabled.
 
 #### Toggle Handler (lines 352-365)
 ```javascript
@@ -684,6 +708,7 @@ Response:
 
 | Date | Change |
 |------|--------|
+| 2026-02-22 | **Dashboard Visual Indication**: AgentNode.vue (lines 138-155) now shows "(paused)" text in italics next to schedule count when autonomy is disabled. Schedule stats row grayed out (text-gray-300) when autonomy off vs normal gray (text-gray-500) when on. Schedule count fetched via `/api/agents/execution-stats` which now includes `schedules_total` and `schedules_enabled` fields. |
 | 2026-02-12 | **UI Standardization**: Extracted `AutonomyToggle.vue` reusable component (151 lines) used in 4 locations: AgentNode.vue, ReplayTimeline.vue, AgentHeader.vue, Agents.vue. Running and Autonomy toggles now on same row in Dashboard Graph (AgentNode.vue:57-86) and Agents page (Agents.vue:108-123). Created dedicated [autonomy-toggle-component.md](autonomy-toggle-component.md) for component documentation. |
 | 2026-02-11 | **Scheduler Consolidation**: Updated to reflect removal of embedded scheduler. Schedule toggling now uses database only; dedicated scheduler syncs changes within 60s. Scheduler enforcement section updated to reference `src/scheduler/service.py`. |
 | 2026-01-23 | **Line Number Update**: Verified and updated all line numbers against current codebase. AgentNode.vue toggle at lines 66-100 (handler 352-365). AgentHeader.vue toggle at lines 134-157. network.js toggleAutonomy at lines 1172-1209. AgentDetail.vue handler at lines 322-360. Router endpoints at lines 168, 772, 781. autonomy.py logic unchanged. db/agents.py operations at lines 330-362. |

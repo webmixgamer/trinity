@@ -1,3 +1,24 @@
+### 2026-02-22 10:00:00
+✨ **UI: Dashboard Tile Schedule Display + Sidebar Default Collapsed**
+
+Improved Dashboard tiles to show schedule information and made the System Views sidebar collapsed by default.
+
+**Changes**:
+1. **Schedule counts on Dashboard tiles**: Each agent tile now shows "X/Y schedules" where X is enabled and Y is total. Grayed out with "(paused)" indicator when agent is in manual mode (autonomy disabled).
+2. **System Views sidebar collapsed by default**: New users will see the sidebar collapsed. State persists to localStorage when toggled.
+
+**Backend Changes**:
+- `src/backend/db/schedules.py`: Added `get_all_agents_schedule_counts()` method
+- `src/backend/database.py`: Added wrapper method for schedule counts
+- `src/backend/routers/agents.py`: Extended `/api/agents/execution-stats` to include `schedules_total` and `schedules_enabled` per agent
+
+**Frontend Changes**:
+- `src/frontend/src/components/AgentNode.vue`: Added schedule stats row with clock icon, shows X/Y format, grayed when manual mode
+- `src/frontend/src/components/SystemViewsSidebar.vue`: Default to collapsed, fixed localStorage persistence on toggle
+- `src/frontend/src/stores/network.js`: Extended `fetchExecutionStats()` to include schedule counts in stats
+
+---
+
 ### 2026-02-21 14:30:00
 🐛 **Fix: Resume Mode Context Lost After First Message (EXEC-023)**
 

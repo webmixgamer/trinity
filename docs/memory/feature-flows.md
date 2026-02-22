@@ -3,6 +3,14 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-22)**: Dashboard Schedule Stats Display:
+> - **AgentNode.vue**: Added schedule stats row (lines 138-155) showing "X/Y schedules" with "(paused)" indicator when autonomy disabled
+> - **Backend**: `/api/agents/execution-stats` extended with `schedules_total` and `schedules_enabled` fields (agents.py:176-223)
+> - **Database**: New `get_all_agents_schedule_counts()` method in `db/schedules.py:719-743`
+> - **Frontend**: `fetchExecutionStats()` in network.js:747-784 includes schedule counts
+> - **SystemViewsSidebar.vue**: Now defaults to collapsed (line 124), toggle button calls `toggleCollapse()` for localStorage persistence
+> - **Updated flows**: [agent-network.md](feature-flows/agent-network.md), [scheduling.md](feature-flows/scheduling.md), [autonomy-mode.md](feature-flows/autonomy-mode.md), [agent-tags.md](feature-flows/agent-tags.md)
+>
 > **Updated (2026-02-21)**: Bug Fix - Resume mode context lost after first message (EXEC-023):
 > - **Bug**: "Continue as Chat" lost context after first message. Agent reported "nothing new in context" on subsequent messages.
 > - **Root cause**: `resume_session_id` was cleared after first message (line 364), but `/task` endpoint is stateless. Subsequent messages had no `--resume` flag.

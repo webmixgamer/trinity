@@ -716,6 +716,32 @@ class ScheduleOperations:
 
             return results
 
+    def get_all_agents_schedule_counts(self) -> Dict[str, Dict[str, int]]:
+        """Get schedule counts (total and enabled) for all agents.
+
+        Returns:
+            Dict mapping agent_name to {"total": X, "enabled": Y}
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    agent_name,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled
+                FROM agent_schedules
+                GROUP BY agent_name
+            """)
+
+            results = {}
+            for row in cursor.fetchall():
+                results[row["agent_name"]] = {
+                    "total": row["total"],
+                    "enabled": row["enabled"]
+                }
+
+            return results
+
     # =========================================================================
     # Git Configuration Management (Phase 7: GitHub Bidirectional Sync)
     # =========================================================================

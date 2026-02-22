@@ -11,7 +11,7 @@
         Systems
       </span>
       <button
-        @click="isCollapsed = !isCollapsed"
+        @click="toggleCollapse"
         class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
         :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >
@@ -119,13 +119,9 @@ const emit = defineEmits(['create', 'edit'])
 const systemViewsStore = useSystemViewsStore()
 const { views, activeViewId, isLoading, sortedViews } = storeToRefs(systemViewsStore)
 
-const isCollapsed = ref(false)
-
-// Load collapsed state from localStorage
+// Default to collapsed, but respect localStorage if set
 const savedCollapsed = localStorage.getItem('trinity-sidebar-collapsed')
-if (savedCollapsed !== null) {
-  isCollapsed.value = savedCollapsed === 'true'
-}
+const isCollapsed = ref(savedCollapsed !== null ? savedCollapsed === 'true' : true)
 
 // Watch for collapse changes and persist
 function toggleCollapse() {

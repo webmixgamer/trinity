@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-02-12 - UI Standardization: AutonomyToggle now uses reusable `AutonomyToggle.vue` component. Running and Autonomy toggles on same row in AgentNode.vue (lines 57-86).
+> **Last Updated**: 2026-02-22 - Dashboard schedule stats display: AgentNode now shows "X/Y schedules" with "(paused)" indicator when autonomy disabled. Backend `/api/agents/execution-stats` extended with `schedules_total` and `schedules_enabled` fields.
+>
+> **Previous (2026-02-12)** - UI Standardization: AutonomyToggle now uses reusable `AutonomyToggle.vue` component. Running and Autonomy toggles on same row in AgentNode.vue (lines 57-86).
 >
 > **Previous (2026-01-26)** - UX: Added `RunningStateToggle` to AgentNode.vue for Dashboard start/stop control. Added `toggleAgentRunning()` to network.js store.
 >
@@ -107,12 +109,20 @@ Custom node component for each agent (updated 2025-12-30).
 **Progress Bars**:
 - Lines 71-84: Context usage progress bar with percentage and color coding
 
-**Execution Stats Display** (Lines 86-103):
-- Lines 87-100: Compact stats row for agents with task history:
+**Execution Stats Display** (Lines 119-136):
+- Lines 120-133: Compact stats row for agents with task history:
   ```
   12 tasks · 92% · $0.45 · 2m ago
   ```
-- Lines 101-103: "No tasks (24h)" placeholder for agents without recent executions
+- Lines 134-136: "No tasks (24h)" placeholder for agents without recent executions
+
+**Schedule Stats Display** (Lines 138-155):
+- Lines 139-154: Schedule stats row (only shown for agents with schedules, not system agent):
+  ```
+  [clock icon] 2/3 schedules
+  ```
+- When autonomy is disabled, shows grayed "(paused)" text after schedule count
+- Color changes based on autonomy state: normal gray when enabled, light gray when disabled
 
 **Stats Row Format**:
 | Element | Source | Styling |
@@ -121,6 +131,14 @@ Custom node component for each agent (updated 2025-12-30).
 | Success rate | `executionStats.successRate` | Color-coded: green (>=80%), yellow (50-80%), red (<50%) |
 | Total cost | `executionStats.totalCost` | Bold gray, `$X.XX` format |
 | Last run | `executionStats.lastExecutionAt` | Relative time ("2m ago") |
+
+**Schedule Stats Row Format**:
+| Element | Source | Styling |
+|---------|--------|---------|
+| Clock icon | Static SVG | Gray, 12x12px |
+| Enabled count | `executionStats.schedulesEnabled` | Bold when autonomy on, gray when off |
+| Total count | `executionStats.schedulesTotal` | Normal gray |
+| Paused indicator | Shown when `!autonomyEnabled` | Italic gray "(paused)" |
 
 **Interaction**:
 - Lines 105-120: "View Details" button (for regular agents) or "System Dashboard" link (for system agents) with `nodrag` class and **mt-auto** for bottom alignment
@@ -136,6 +154,9 @@ Custom node component for each agent (updated 2025-12-30).
 - `hasExecutionStats` (226-228): True if taskCount > 0
 - `successRateColorClass` (230-236): Color class based on success rate threshold
 - `lastExecutionDisplay` (238-250): Relative time string for last execution
+- `schedulesTotal` (343-345): Total schedule count from `executionStats.schedulesTotal`
+- `schedulesEnabled` (347-349): Enabled schedule count from `executionStats.schedulesEnabled`
+- `hasSchedules` (351-353): True if `schedulesTotal > 0`
 
 ### State Management
 
@@ -325,7 +346,7 @@ Removes node and all connected edges.
 - Fetches context stats from `/api/agents/context-stats`
 - Updates node data with context percentage and activity state
 
-##### fetchExecutionStats() (Lines 622-658)
+##### fetchExecutionStats() (Lines 747-784)
 ```javascript
 async function fetchExecutionStats() {
   const response = await axios.get('/api/agents/execution-stats')
@@ -341,7 +362,9 @@ async function fetchExecutionStats() {
       runningCount: stat.running_count,
       successRate: stat.success_rate,
       totalCost: stat.total_cost,
-      lastExecutionAt: stat.last_execution_at
+      lastExecutionAt: stat.last_execution_at,
+      schedulesTotal: stat.schedules_total || 0,     // NEW: Total schedules
+      schedulesEnabled: stat.schedules_enabled || 0  // NEW: Enabled schedules
     }
   })
   executionStats.value = newStats
@@ -572,24 +595,54 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 
 **Note**: Business logic moved to `src/backend/services/agent_service/stats.py` for cleaner separation.
 
-#### GET /api/agents/execution-stats (Lines 140-161)
+#### GET /api/agents/execution-stats (Lines 176-223)
 ```python
 @router.get("/execution-stats")
 async def get_agents_execution_stats(
     hours: int = 24,
     current_user: User = Depends(get_current_user)
 ):
-    """Get execution statistics for all accessible agents."""
+    """Get execution statistics for all accessible agents.
+
+    Returns task counts, success rates, costs, last execution times,
+    and schedule counts for all agents the user can access.
+    """
     # Get all stats from database
     all_stats = db.get_all_agents_execution_stats(hours=hours)
+
+    # Get schedule counts for all agents
+    schedule_counts = db.get_all_agents_schedule_counts()
 
     # Filter to only agents the user can access
     accessible_agents = {a['name'] for a in get_accessible_agents(current_user)}
 
-    filtered_stats = [
-        stat for stat in all_stats
-        if stat["name"] in accessible_agents
-    ]
+    filtered_stats = []
+    for stat in all_stats:
+        if stat["name"] in accessible_agents:
+            # Add schedule counts to each stat
+            agent_schedules = schedule_counts.get(stat["name"], {"total": 0, "enabled": 0})
+            stat["schedules_total"] = agent_schedules["total"]
+            stat["schedules_enabled"] = agent_schedules["enabled"]
+            filtered_stats.append(stat)
+
+    # Also include agents with schedules but no executions in the time window
+    stats_agents = {s["name"] for s in filtered_stats}
+    for agent_name in accessible_agents:
+        if agent_name not in stats_agents:
+            agent_schedules = schedule_counts.get(agent_name, {"total": 0, "enabled": 0})
+            if agent_schedules["total"] > 0:
+                filtered_stats.append({
+                    "name": agent_name,
+                    "task_count_24h": 0,
+                    "success_count": 0,
+                    "failed_count": 0,
+                    "running_count": 0,
+                    "success_rate": 0,
+                    "total_cost": 0,
+                    "last_execution_at": None,
+                    "schedules_total": agent_schedules["total"],
+                    "schedules_enabled": agent_schedules["enabled"]
+                })
 
     return {"agents": filtered_stats}
 ```
@@ -609,13 +662,15 @@ async def get_agents_execution_stats(
       "running_count": 0,
       "success_rate": 91.7,
       "total_cost": 0.45,
-      "last_execution_at": "2025-12-31T22:45:30.123456"
+      "last_execution_at": "2025-12-31T22:45:30.123456",
+      "schedules_total": 3,
+      "schedules_enabled": 2
     }
   ]
 }
 ```
 
-**Database Layer**: `src/backend/db/schedules.py:445-489`
+**Database Layer**: `src/backend/db/schedules.py:673-717`
 ```python
 def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
     """Get execution statistics for all agents."""
@@ -635,11 +690,33 @@ def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
     """, (f"-{hours}",))
 ```
 
-**Delegate Method**: `src/backend/database.py:872-874`
+**Schedule Counts Method**: `src/backend/db/schedules.py:719-743`
+```python
+def get_all_agents_schedule_counts(self) -> Dict[str, Dict[str, int]]:
+    """Get schedule counts (total and enabled) for all agents.
+
+    Returns:
+        Dict mapping agent_name to {"total": X, "enabled": Y}
+    """
+    cursor.execute("""
+        SELECT
+            agent_name,
+            COUNT(*) as total,
+            SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled
+        FROM agent_schedules
+        GROUP BY agent_name
+    """)
+```
+
+**Delegate Methods**: `src/backend/database.py`
 ```python
 def get_all_agents_execution_stats(self, hours: int = 24):
     """Get execution statistics for all agents."""
     return self._schedule_ops.get_all_agents_execution_stats(hours)
+
+def get_all_agents_schedule_counts(self):
+    """Get schedule counts (total and enabled) for all agents."""
+    return self._schedule_ops.get_all_agents_schedule_counts()
 ```
 
 Returns JSON:
@@ -1473,6 +1550,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-02-22 | **Dashboard Schedule Stats Display**: Added schedule stats row to AgentNode.vue (lines 138-155) showing "X/Y schedules" with clock icon. Shows grayed "(paused)" text when autonomy is disabled. Backend `GET /api/agents/execution-stats` (agents.py:176-223) now includes `schedules_total` and `schedules_enabled` fields via new `db.get_all_agents_schedule_counts()` method (db/schedules.py:719-743). Frontend `fetchExecutionStats()` (network.js:747-784) extended to include schedule counts. |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (imported at AgentNode.vue:189). Running and Autonomy toggles positioned on same row (AgentNode.vue:57-86) for visual consistency with Agents page. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |
 | 2026-01-26 | **UX: Running State Toggle on Dashboard**: Added `RunningStateToggle.vue` component to AgentNode.vue (lines 57-65) for start/stop control from Dashboard. Added `toggleAgentRunning()` (lines 1211-1250), `isTogglingRunning()` (lines 1252-1254), and `runningToggleLoading` ref to network.js store. Users can now start/stop agents directly from the Dashboard without navigating to detail page. |
 | 2026-01-15 | **Timezone-aware timestamps**: All timestamps now use UTC with 'Z' suffix. Backend uses `utc_now_iso()` from `utils/helpers.py`. Frontend uses `parseUTC()` and `getTimestampMs()` from `@/utils/timestamps.js`. Added timezone notes to WebSocket events and timestamp parsing sections. See [Timezone Handling Guide](/docs/TIMEZONE_HANDLING.md). |

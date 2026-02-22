@@ -135,6 +135,24 @@
         No tasks (24h)
       </div>
 
+      <!-- Schedule Stats (compact row) -->
+      <div
+        v-if="hasSchedules && !isSystemAgent"
+        :class="[
+          'flex items-center text-xs gap-x-1.5 mb-2',
+          autonomyEnabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+        ]"
+      >
+        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span :class="autonomyEnabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
+          {{ schedulesEnabled }}/{{ schedulesTotal }}
+        </span>
+        <span>schedules</span>
+        <span v-if="!autonomyEnabled" class="italic">(paused)</span>
+      </div>
+
       <!-- Resource indicators (subtle footer) -->
       <div v-if="hasResourceInfo" class="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500 mb-3 pt-2 border-t border-gray-100 dark:border-gray-700/50">
         <!-- Memory -->
@@ -319,6 +337,19 @@ const lastExecutionDisplay = computed(() => {
   if (diffMins < 60) return `${diffMins}m ago`
   if (diffHours < 24) return `${diffHours}h ago`
   return `${Math.floor(diffHours / 24)}d ago`
+})
+
+// Schedule stats
+const schedulesTotal = computed(() => {
+  return executionStats.value?.schedulesTotal || 0
+})
+
+const schedulesEnabled = computed(() => {
+  return executionStats.value?.schedulesEnabled || 0
+})
+
+const hasSchedules = computed(() => {
+  return schedulesTotal.value > 0
 })
 
 // Resource indicators - always show for consistent card layout

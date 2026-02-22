@@ -958,6 +958,8 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-02-22** - **Dashboard Schedule Stats**: Added `get_all_agents_schedule_counts()` method to `db/schedules.py:719-743`. Returns schedule counts (total and enabled) per agent. Used by `GET /api/agents/execution-stats` endpoint to populate `schedules_total` and `schedules_enabled` fields. Dashboard AgentNode now displays "X/Y schedules" with "(paused)" indicator when autonomy disabled.
+
 **Updated 2026-02-21** - **Bug Fix (EXEC-023)**: Fixed scheduled executions missing `claude_session_id`. The dedicated scheduler service (`src/scheduler/`) had its own code path for task execution that was not capturing `session_id` from agent responses. Four files were updated:
 - `src/scheduler/models.py:85` - Added `session_id` field to `AgentTaskMetrics` dataclass
 - `src/scheduler/agent_client.py:176-224` - `_parse_task_response()` now extracts `session_id` from agent response

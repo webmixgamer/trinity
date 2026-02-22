@@ -311,7 +311,7 @@ Collapsible sidebar displaying system views on Dashboard.
 | 78-88 | Edit Button | Hover-visible edit icon, emits `edit` event |
 | 94-108 | Create Button | "New View" button at sidebar footer |
 | 112-144 | `<script setup>` | Store integration, collapse persistence |
-| 122-128 | Collapse State | Persisted to localStorage (`trinity-sidebar-collapsed`) |
+| 122-130 | Collapse State | Defaults to collapsed, persisted to localStorage (`trinity-sidebar-collapsed`). Uses `toggleCollapse()` function for proper persistence. |
 | 136-138 | `selectView()` | Delegates to store's `selectView()` |
 | 140-143 | `onMounted` | Initialize from localStorage, fetch views |
 
@@ -1354,6 +1354,7 @@ const response = await axios.get(`/api/agents/${name}/tags`, {
 
 | Date | Change |
 |------|--------|
+| 2026-02-22 | **Sidebar Default Collapsed**: SystemViewsSidebar.vue now defaults to collapsed when no localStorage value exists (line 124). Fixed toggle button to properly call `toggleCollapse()` for localStorage persistence (line 14). |
 | 2026-02-17 | Initial implementation of ORG-001 Phase 1 (Tags) |
 | 2026-02-17 | Added ORG-001 Phase 2 (System Views) - sidebar, editor, store, API |
 | 2026-02-17 | Added ORG-001 Phase 3 (MCP tools, Quick Tag Filter, Bulk Operations) |
