@@ -258,7 +258,7 @@ async def set_admin_password(data: SetAdminPasswordRequest, request: Request):
 ```
 
 #### Password Hashing
-**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py:15-37`
+**File**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py:15-34`
 
 ```python
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -271,20 +271,19 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, stored_password: str) -> bool:
-    """Verify password against stored hash.
+    """Verify password against stored bcrypt hash.
 
-    For backward compatibility, also checks plaintext passwords.
+    Security: Plaintext fallback removed (M-003, 2026-02-23).
+    All passwords must be bcrypt hashed.
     """
-    # First try bcrypt verification
     try:
-        if pwd_context.verify(plain_password, stored_password):
-            return True
+        return pwd_context.verify(plain_password, stored_password)
     except Exception:
-        pass
-
-    # Fall back to plaintext comparison for legacy passwords
-    return plain_password == stored_password
+        # Invalid hash format - reject
+        return False
 ```
+
+**Security Note (M-003)**: The plaintext password fallback was removed on 2026-02-23. All passwords must be stored as bcrypt hashes. Invalid hash formats are rejected, returning `False` for authentication.
 
 ### Database Layer
 
@@ -662,7 +661,8 @@ env_vars = {
 
 1. **Password Security**:
    - Bcrypt hashing with auto-configured work factor
-   - Backward compatibility with plaintext (legacy migration)
+   - **No plaintext fallback (M-003)**: Plaintext password comparison removed as of 2026-02-23. All passwords must be bcrypt hashed.
+   - Invalid hash formats are rejected (returns authentication failure)
    - Minimum 8 character requirement
    - Setup endpoint only works ONCE
 
@@ -786,3 +786,4 @@ UPDATE users SET password_hash = 'changeme' WHERE username = 'admin';
 | 2025-12-23 | Initial documentation | First-time setup and API key configuration flows |
 | 2026-01-14 | Bug fix: Admin user upsert | Fixed `update_user_password()` to create admin user if it doesn't exist. Previously, on fresh deployment with empty ADMIN_PASSWORD env var, the UPDATE query affected 0 rows but setup_completed was still set to true, leaving users unable to login. The method now uses an upsert pattern: UPDATE first, then INSERT if no rows affected. See `src/backend/db/users.py:129-162`. |
 | 2026-01-23 | Line number verification | Updated all line numbers to match current codebase. Verified: setup.py endpoints (22-34, 37-81), auth.py login blocks (20-22, 49-78, 153-158, 210-215), dependencies.py password hashing (15-37), db/users.py upsert (129-162), db/settings.py (49-83), router/index.js guards (165-220, 242-245), SetupPassword.vue (166-176, 205-207, 209-236). Added documentation for email auth login blocking and password strength validation. |
+| 2026-02-23 | Security Fix M-003 | Removed plaintext password fallback from `verify_password()` in dependencies.py:24-34. All passwords must now be bcrypt hashed. Invalid hash formats are rejected. Updated Password Hashing section and Security Considerations. |

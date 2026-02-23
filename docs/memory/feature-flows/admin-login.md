@@ -1,5 +1,12 @@
 # Feature: Admin Login
 
+## Revision History
+
+| Date | Changes |
+|------|---------|
+| 2026-02-23 | **Security Fixes M-003 and M-005**: (1) Removed plaintext password fallback - all passwords must be bcrypt hashed (dependencies.py:24-34). (2) Added Redis-based rate limiting to `/token` endpoint - 5 attempts per 10 minutes per IP, returns HTTP 429 when exceeded (auth.py:24-95, 127-161). Updated error handling table. |
+| 2026-01-23 | Initial documentation |
+
 ## Overview
 
 Password-based authentication for the admin user. This is the primary administrative access method where the admin (fixed username "admin") logs in with a password set during first-time setup.
@@ -225,11 +232,96 @@ router.beforeEach(async (to, from, next) => {
 
 **routers/auth.py** (`/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/auth.py`)
 
-`POST /api/token` endpoint (lines 49-78):
+#### Rate Limiting Configuration (M-005)
+
+**Lines 24-95**: Redis-based rate limiting to prevent brute force attacks.
+
 ```python
-@router.post("/api/token", response_model=Token)
-async def login_api(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
-    """Login with username/password and get JWT token."""
+# Rate limiting configuration (lines 24-26)
+LOGIN_RATE_LIMIT = 5  # Max attempts
+LOGIN_RATE_WINDOW = 600  # 10 minutes in seconds
+
+# Redis client for rate limiting (lines 28-41)
+_redis_client = None
+
+def get_redis_client():
+    """Get or create Redis client for rate limiting."""
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+            _redis_client.ping()
+        except Exception as e:
+            logger.warning(f"Redis unavailable for rate limiting: {e}")
+            return None
+    return _redis_client
+
+
+# Check rate limit function (lines 44-71)
+def check_login_rate_limit(client_ip: str) -> bool:
+    """
+    Check if login attempts from IP are within rate limit.
+    Returns True if allowed, raises HTTPException if rate limited.
+    """
+    r = get_redis_client()
+    if r is None:
+        # Redis unavailable - allow login but log warning
+        return True
+
+    key = f"login_attempts:{client_ip}"
+    attempts = r.get(key)
+    if attempts and int(attempts) >= LOGIN_RATE_LIMIT:
+        ttl = r.ttl(key)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts. Try again in {ttl} seconds."
+        )
+    return True
+
+
+# Record login attempt function (lines 74-95)
+def record_login_attempt(client_ip: str, success: bool):
+    """
+    Record a login attempt. Failed attempts increment counter.
+    Successful logins clear the counter.
+    """
+    r = get_redis_client()
+    if r is None:
+        return
+
+    key = f"login_attempts:{client_ip}"
+    if success:
+        r.delete(key)  # Clear attempts on successful login
+    else:
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, LOGIN_RATE_WINDOW)
+        pipe.execute()
+```
+
+**Rate Limiting Behavior**:
+- **Redis key**: `login_attempts:{client_ip}`
+- **Threshold**: 5 failed attempts within 10 minutes triggers lockout
+- **Reset**: Successful login clears the attempt counter
+- **Graceful degradation**: If Redis is unavailable, rate limiting is bypassed with warning logged
+
+#### POST /api/token endpoint (lines 127-172)
+
+```python
+@router.post("/token", response_model=Token)
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login with username/password and get JWT token.
+
+    Used for admin login (username 'admin' with password).
+    Regular users should use email authentication.
+
+    Rate limited: 5 attempts per 10 minutes per IP (M-005).
+    """
+    # Get client IP for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Check rate limit before processing (M-005)
+    check_login_rate_limit(client_ip)
 
     # Block login if setup is not completed
     if not is_setup_completed():
@@ -241,11 +333,19 @@ async def login_api(request: Request, form_data: OAuth2PasswordRequestForm = Dep
     # Authenticate user
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
+        # Record failed attempt
+        record_login_attempt(client_ip, success=False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Record successful login (clears attempt counter)
+    record_login_attempt(client_ip, success=True)
+
+    # Update last login timestamp
+    db.update_last_login(user["username"])
 
     # Create JWT token with 'admin' mode
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -274,20 +374,25 @@ async def get_auth_mode():
 
 **dependencies.py** (`/Users/eugene/Dropbox/trinity/trinity/src/backend/dependencies.py`)
 
-Password verification (lines 24-37):
+Password verification (lines 24-34) - **Updated M-003 (2026-02-23)**:
 ```python
 def verify_password(plain_password: str, stored_password: str) -> bool:
-    """Verify password against stored hash."""
-    # Try bcrypt verification first
-    try:
-        if pwd_context.verify(plain_password, stored_password):
-            return True
-    except Exception:
-        pass
+    """Verify password against stored bcrypt hash.
 
-    # Fall back to plaintext for legacy passwords
-    return plain_password == stored_password
+    Security: Plaintext fallback removed (M-003, 2026-02-23).
+    All passwords must be bcrypt hashed.
+    """
+    try:
+        return pwd_context.verify(plain_password, stored_password)
+    except Exception:
+        # Invalid hash format - reject
+        return False
 ```
+
+**Security Note (M-003)**: The plaintext password fallback has been removed. All passwords must be stored as bcrypt hashes. If a stored password has an invalid hash format, authentication is rejected. This ensures:
+- No legacy plaintext passwords can be used
+- Invalid hash formats are treated as authentication failure
+- Timing attacks are mitigated by consistent bcrypt verification
 
 User authentication (lines 40-47):
 ```python
@@ -472,17 +577,21 @@ JWT token payload for admin login:
 | Error Case | HTTP Status | Error Detail | UI Message |
 |------------|-------------|--------------|------------|
 | Setup not completed | 403 | `setup_required` | Redirected to /setup |
+| Rate limited (M-005) | 429 | `Too many login attempts. Try again in {ttl} seconds.` | "Too many login attempts" |
 | Invalid credentials | 401 | `Incorrect username or password` | "Invalid username or password" |
+| Invalid hash format (M-003) | 401 | `Incorrect username or password` | "Invalid username or password" |
 | Missing password | N/A | N/A | Button disabled |
 | Network error | N/A | Connection error | "Failed to login" |
 
 ## Security Considerations
 
-1. **Password Hashing**: Admin password stored as bcrypt hash
-2. **JWT Secret**: `SECRET_KEY` should be set via environment variable
-3. **Token Expiry**: 7-day token lifetime (configurable)
-4. **HTTPS**: Required in production for secure credential transmission
-5. **Cookie Security**: Token cookie has `SameSite=Strict` attribute
+1. **Password Hashing (M-003)**: Admin password stored as bcrypt hash. Plaintext fallback removed - all passwords must be bcrypt hashed. Invalid hash formats are rejected.
+2. **Rate Limiting (M-005)**: 5 login attempts per 10 minutes per IP address. Redis-based tracking with graceful degradation if Redis unavailable.
+3. **JWT Secret**: `SECRET_KEY` should be set via environment variable
+4. **Token Expiry**: 7-day token lifetime (configurable)
+5. **HTTPS**: Required in production for secure credential transmission
+6. **Cookie Security**: Token cookie has `SameSite=Strict` attribute
+7. **Brute Force Protection**: Rate limiting prevents credential stuffing attacks. Successful login clears the attempt counter.
 
 ## Related Flows
 
@@ -534,6 +643,9 @@ JWT token payload for admin login:
 - Login before setup completed: Should redirect to `/setup`
 - Empty password: Submit button should be disabled
 - Token expiry: After 7 days, should redirect to `/login`
+- Rate limited (M-005): After 5 failed attempts, returns 429 with TTL countdown
+- Redis unavailable (M-005): Rate limiting bypassed with warning logged
+- Invalid hash format (M-003): Returns 401 same as wrong password (no information leakage)
 
 ### Status
 

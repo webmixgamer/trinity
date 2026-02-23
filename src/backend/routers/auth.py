@@ -1,10 +1,12 @@
 """
 Authentication routes for the Trinity backend.
 """
+import logging
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
+import redis
 
 from models import Token
 from config import (
@@ -12,9 +14,85 @@ from config import (
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     EMAIL_AUTH_ENABLED,
+    REDIS_URL,
 )
 from database import db
 from dependencies import authenticate_user, create_access_token
+
+logger = logging.getLogger(__name__)
+
+# Rate limiting configuration for admin login (M-005)
+LOGIN_RATE_LIMIT = 5  # Max attempts
+LOGIN_RATE_WINDOW = 600  # 10 minutes in seconds
+
+# Redis client for rate limiting
+_redis_client = None
+
+def get_redis_client():
+    """Get or create Redis client for rate limiting."""
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+            _redis_client.ping()
+        except Exception as e:
+            logger.warning(f"Redis unavailable for rate limiting: {e}")
+            return None
+    return _redis_client
+
+
+def check_login_rate_limit(client_ip: str) -> bool:
+    """
+    Check if login attempts from IP are within rate limit.
+    Returns True if allowed, raises HTTPException if rate limited.
+
+    Security fix M-005: Prevents brute force attacks on admin login.
+    """
+    r = get_redis_client()
+    if r is None:
+        # Redis unavailable - allow login but log warning
+        logger.warning("Rate limiting unavailable - Redis not connected")
+        return True
+
+    key = f"login_attempts:{client_ip}"
+    try:
+        attempts = r.get(key)
+        if attempts and int(attempts) >= LOGIN_RATE_LIMIT:
+            ttl = r.ttl(key)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many login attempts. Try again in {ttl} seconds."
+            )
+        return True
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Rate limit check failed: {e}")
+        return True
+
+
+def record_login_attempt(client_ip: str, success: bool):
+    """
+    Record a login attempt. Failed attempts increment counter.
+    Successful logins clear the counter.
+    """
+    r = get_redis_client()
+    if r is None:
+        return
+
+    key = f"login_attempts:{client_ip}"
+    try:
+        if success:
+            # Clear attempts on successful login
+            r.delete(key)
+        else:
+            # Increment failed attempts
+            pipe = r.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, LOGIN_RATE_WINDOW)
+            pipe.execute()
+    except Exception as e:
+        logger.warning(f"Failed to record login attempt: {e}")
 
 
 def is_setup_completed() -> bool:
@@ -52,7 +130,15 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 
     Used for admin login (username 'admin' with password).
     Regular users should use email authentication.
+
+    Rate limited: 5 attempts per 10 minutes per IP (M-005).
     """
+    # Get client IP for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Check rate limit before processing (M-005)
+    check_login_rate_limit(client_ip)
+
     # Block login if setup is not completed
     if not is_setup_completed():
         raise HTTPException(
@@ -62,11 +148,16 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
+        # Record failed attempt
+        record_login_attempt(client_ip, success=False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Record successful login (clears attempt counter)
+    record_login_attempt(client_ip, success=True)
 
     # Update last login timestamp
     db.update_last_login(user["username"])

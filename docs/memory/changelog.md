@@ -1,3 +1,25 @@
+### 2026-02-23 10:30:00
+🔒 **Security: Remove Plaintext Password Fallback & Add Admin Login Rate Limiting**
+
+Implemented two security fixes from security analysis report:
+
+**M-003: Remove Legacy Plaintext Password Support**
+- **File**: `src/backend/dependencies.py:24-34`
+- **Change**: Removed plaintext password comparison fallback from `verify_password()`
+- **Impact**: All passwords must now be bcrypt hashed. Invalid hash formats are rejected.
+- **Rationale**: Plaintext fallback was a security risk if database was compromised
+
+**M-005: Admin Login Rate Limiting**
+- **File**: `src/backend/routers/auth.py:24-95, 127-161`
+- **Change**: Added Redis-based rate limiting to `/token` endpoint
+- **Configuration**: 5 attempts per 10 minutes per IP address
+- **Behavior**: Returns HTTP 429 when rate limited, clears counter on successful login
+- **Fallback**: If Redis unavailable, logs warning but allows login (graceful degradation)
+
+**Security Report**: `docs/security-reports/security-analysis-2026-02-22.md`
+
+---
+
 ### 2026-02-22 14:55:00
 🧪 **Tests: Subscription Management (SUB-001)**
 

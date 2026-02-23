@@ -22,19 +22,16 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, stored_password: str) -> bool:
-    """Verify password against stored hash.
+    """Verify password against stored bcrypt hash.
 
-    For backward compatibility, also checks plaintext passwords.
+    Security: Plaintext fallback removed (M-003, 2026-02-23).
+    All passwords must be bcrypt hashed.
     """
-    # First try bcrypt verification
     try:
-        if pwd_context.verify(plain_password, stored_password):
-            return True
+        return pwd_context.verify(plain_password, stored_password)
     except Exception:
-        pass
-
-    # Fall back to plaintext comparison for legacy passwords
-    return plain_password == stored_password
+        # Invalid hash format - reject
+        return False
 
 
 def authenticate_user(username: str, password: str):
