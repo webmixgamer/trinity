@@ -3,6 +3,22 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-23)**: Agent Monitoring Service (MON-001):
+> - **New feature flow**: [agent-monitoring.md](feature-flows/agent-monitoring.md) - Multi-layer health monitoring for agent fleet
+> - **Key features**: Docker/Network/Business health checks, real-time WebSocket updates, alert cooldowns, fleet dashboard
+> - **New files**:
+>   - `src/backend/services/monitoring_service.py` - Health check service (3 layers, background task)
+>   - `src/backend/services/monitoring_alerts.py` - Alert evaluation with cooldown tracking
+>   - `src/backend/routers/monitoring.py` - REST API (11 endpoints)
+>   - `src/backend/db/monitoring.py` - Database operations (health checks, cooldowns)
+>   - `src/frontend/src/views/Monitoring.vue` - Fleet monitoring UI
+>   - `src/frontend/src/stores/monitoring.js` - Pinia store with WebSocket handler
+>   - `src/mcp-server/src/tools/monitoring.ts` - 3 MCP tools (get_fleet_health, get_agent_health, trigger_health_check)
+> - **Database tables**: `agent_health_checks`, `monitoring_alert_cooldowns` (schema.py:422-455)
+> - **Pydantic models**: `AgentHealthStatus`, `DockerHealthCheck`, `NetworkHealthCheck`, `BusinessHealthCheck`, `FleetHealthStatus`, `MonitoringConfig` (db_models.py:653-808)
+> - **WebSocket events**: `agent_health_changed`, `monitoring_alert`
+> - **Status levels**: healthy, degraded, unhealthy, critical, unknown
+
 > **Updated (2026-02-23)**: Security Fixes M-003 and M-005:
 > - **M-003 - Remove Plaintext Password Fallback**: `verify_password()` in `src/backend/dependencies.py:24-34` no longer falls back to plaintext comparison. All passwords must be bcrypt hashed. Invalid hash formats are rejected.
 > - **M-005 - Admin Login Rate Limiting**: `POST /token` in `src/backend/routers/auth.py:24-95, 127-161` now has Redis-based rate limiting. 5 attempts per 10 minutes per IP. Returns HTTP 429 when exceeded. Successful login clears counter. Graceful degradation if Redis unavailable.

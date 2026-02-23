@@ -415,6 +415,44 @@ TABLES = {
             FOREIGN KEY (owner_id) REFERENCES users(id)
         )
     """,
+
+    # -------------------------------------------------------------------------
+    # Monitoring Tables (MON-001)
+    # -------------------------------------------------------------------------
+    "agent_health_checks": """
+        CREATE TABLE IF NOT EXISTS agent_health_checks (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            check_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            container_status TEXT,
+            cpu_percent REAL,
+            memory_percent REAL,
+            memory_mb REAL,
+            restart_count INTEGER,
+            oom_killed INTEGER,
+            reachable INTEGER,
+            latency_ms REAL,
+            runtime_available INTEGER,
+            claude_available INTEGER,
+            context_percent REAL,
+            active_executions INTEGER,
+            error_rate REAL,
+            error_message TEXT,
+            checked_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+
+    "monitoring_alert_cooldowns": """
+        CREATE TABLE IF NOT EXISTS monitoring_alert_cooldowns (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            condition TEXT NOT NULL,
+            last_alert_at TEXT NOT NULL,
+            UNIQUE(agent_name, condition)
+        )
+    """,
 }
 
 # =============================================================================
@@ -509,6 +547,13 @@ INDEXES = [
 
     # System views indexes
     "CREATE INDEX IF NOT EXISTS idx_system_views_owner ON system_views(owner_id)",
+
+    # Monitoring indexes (MON-001)
+    "CREATE INDEX IF NOT EXISTS idx_health_agent_time ON agent_health_checks(agent_name, checked_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_health_status ON agent_health_checks(status)",
+    "CREATE INDEX IF NOT EXISTS idx_health_type ON agent_health_checks(check_type)",
+    "CREATE INDEX IF NOT EXISTS idx_health_checked_at ON agent_health_checks(checked_at)",
+    "CREATE INDEX IF NOT EXISTS idx_alert_cooldowns_agent ON monitoring_alert_cooldowns(agent_name)",
 ]
 
 

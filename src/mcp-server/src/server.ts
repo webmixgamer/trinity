@@ -16,6 +16,7 @@ import { createScheduleTools } from "./tools/schedules.js";
 import { createTagTools } from "./tools/tags.js";
 import { createNotificationTools } from "./tools/notifications.js";
 import { createSubscriptionTools } from "./tools/subscriptions.js";
+import { createMonitoringTools } from "./tools/monitoring.js";
 import type { McpAuthContext } from "./types.js";
 
 export interface ServerConfig {
@@ -240,8 +241,14 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(subscriptionTools.getAgentAuth);
   server.addTool(subscriptionTools.deleteSubscription);
 
-  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length + Object.keys(tagTools).length + Object.keys(notificationTools).length + Object.keys(subscriptionTools).length;
-  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule, ${Object.keys(tagTools).length} tags, ${Object.keys(notificationTools).length} notifications, ${Object.keys(subscriptionTools).length} subscriptions)`);
+  // Register monitoring tools (3 tools) - MON-001
+  const monitoringTools = createMonitoringTools(client, requireApiKey);
+  server.addTool(monitoringTools.getFleetHealth);
+  server.addTool(monitoringTools.getAgentHealth);
+  server.addTool(monitoringTools.triggerHealthCheck);
+
+  const totalTools = Object.keys(agentTools).length + Object.keys(chatTools).length + Object.keys(systemTools).length + Object.keys(docsTools).length + Object.keys(skillsTools).length + Object.keys(scheduleTools).length + Object.keys(tagTools).length + Object.keys(notificationTools).length + Object.keys(subscriptionTools).length + Object.keys(monitoringTools).length;
+  console.log(`Registered ${totalTools} tools (${Object.keys(agentTools).length} agent, ${Object.keys(chatTools).length} chat, ${Object.keys(systemTools).length} system, ${Object.keys(docsTools).length} docs, ${Object.keys(skillsTools).length} skills, ${Object.keys(scheduleTools).length} schedule, ${Object.keys(tagTools).length} tags, ${Object.keys(notificationTools).length} notifications, ${Object.keys(subscriptionTools).length} subscriptions, ${Object.keys(monitoringTools).length} monitoring)`);
 
   return { server, port, client, requireApiKey };
 }

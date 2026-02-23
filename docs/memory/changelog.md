@@ -1,3 +1,43 @@
+### 2026-02-23 17:15:00
+✨ **Feature: Agent Monitoring Service (MON-001)**
+
+Implemented comprehensive agent health monitoring system with multi-layer health checks, alerting, and MCP tools.
+
+**Phase 1 - Core Infrastructure**:
+- Database schema: `agent_health_checks`, `monitoring_alert_cooldowns` tables (`src/backend/db/schema.py`)
+- Pydantic models: `AgentHealthStatus`, `MonitoringConfig`, `FleetHealthStatus`, etc. (`src/backend/db_models.py`)
+- Database operations: `MonitoringOperations` class (`src/backend/db/monitoring.py`)
+- Health check service: Docker, Network, Business layer checks (`src/backend/services/monitoring_service.py`)
+
+**Phase 2 - Notification Integration**:
+- Alert service with cooldown tracking (`src/backend/services/monitoring_alerts.py`)
+- WebSocket event broadcasting for real-time updates
+- Integration with NOTIF-001 notification system
+
+**Phase 3 - REST API & Frontend**:
+- 11 API endpoints: `/api/monitoring/status`, `/api/monitoring/agents/{name}`, etc. (`src/backend/routers/monitoring.py`)
+- Monitoring page with fleet summary and agent health grid (`src/frontend/src/views/Monitoring.vue`)
+- Pinia store for state management (`src/frontend/src/stores/monitoring.js`)
+- Navigation link "Health" added to NavBar
+
+**Phase 4 - MCP Tools**:
+- `get_fleet_health`: Fleet-wide health summary
+- `get_agent_health`: Detailed agent health info
+- `trigger_health_check`: Admin-only immediate check
+
+**Health Status Levels**: HEALTHY → DEGRADED → UNHEALTHY → CRITICAL
+
+**Files Created**:
+- `src/backend/db/monitoring.py` (database operations)
+- `src/backend/services/monitoring_service.py` (health check logic)
+- `src/backend/services/monitoring_alerts.py` (alert service)
+- `src/backend/routers/monitoring.py` (REST API)
+- `src/frontend/src/views/Monitoring.vue` (UI page)
+- `src/frontend/src/stores/monitoring.js` (Pinia store)
+- `src/mcp-server/src/tools/monitoring.ts` (MCP tools)
+
+---
+
 ### 2026-02-23 16:30:00
 🐛 **Fix: Dashboard tab blocking navigation between agents**
 

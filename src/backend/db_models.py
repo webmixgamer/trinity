@@ -6,6 +6,7 @@ For API request/response models, see models.py.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel
 
@@ -646,3 +647,161 @@ class AgentAuthStatus(BaseModel):
     subscription_name: Optional[str] = None
     subscription_id: Optional[str] = None
     has_api_key: bool = False
+
+
+# =========================================================================
+# Agent Monitoring Models (MON-001: Agent Health Monitoring)
+# =========================================================================
+
+class AgentHealthStatus(str, Enum):
+    """Health status levels for agents."""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+    CRITICAL = "critical"
+    UNKNOWN = "unknown"
+
+
+class HealthCheckType(str, Enum):
+    """Types of health checks."""
+    DOCKER = "docker"
+    NETWORK = "network"
+    BUSINESS = "business"
+    AGGREGATE = "aggregate"
+
+
+class DockerHealthCheck(BaseModel):
+    """Docker layer health check result."""
+    agent_name: str
+    container_status: Optional[str] = None  # running, stopped, paused, restarting
+    exit_code: Optional[int] = None
+    restart_count: int = 0
+    oom_killed: bool = False
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
+    memory_mb: Optional[float] = None
+    checked_at: str
+
+
+class NetworkHealthCheck(BaseModel):
+    """Network layer health check result."""
+    agent_name: str
+    reachable: bool
+    status_code: Optional[int] = None
+    latency_ms: Optional[float] = None
+    error: Optional[str] = None
+    checked_at: str
+
+
+class BusinessHealthCheck(BaseModel):
+    """Business logic health check result."""
+    agent_name: str
+    status: str = "healthy"  # healthy, degraded, unhealthy
+    runtime_available: Optional[bool] = None
+    claude_available: Optional[bool] = None
+    context_percent: Optional[float] = None
+    active_execution_count: int = 0
+    stuck_execution_count: int = 0
+    recent_error_rate: float = 0.0  # 0.0 - 1.0
+    checked_at: str
+
+
+class AgentHealthDetail(BaseModel):
+    """Detailed health information for a single agent."""
+    agent_name: str
+    aggregate_status: str
+    last_check_at: Optional[str] = None
+    docker: Optional[DockerHealthCheck] = None
+    network: Optional[NetworkHealthCheck] = None
+    business: Optional[BusinessHealthCheck] = None
+    issues: List[str] = []
+    recent_alerts: List[dict] = []
+    uptime_percent_24h: Optional[float] = None
+    avg_latency_24h_ms: Optional[float] = None
+
+
+class AgentHealthSummary(BaseModel):
+    """Summary health info for fleet overview."""
+    name: str
+    status: str
+    docker_status: Optional[str] = None
+    network_reachable: Optional[bool] = None
+    runtime_available: Optional[bool] = None
+    last_check_at: Optional[str] = None
+    issues: List[str] = []
+
+
+class FleetHealthSummary(BaseModel):
+    """Fleet-wide health summary."""
+    total_agents: int = 0
+    healthy: int = 0
+    degraded: int = 0
+    unhealthy: int = 0
+    critical: int = 0
+    unknown: int = 0
+
+
+class FleetHealthStatus(BaseModel):
+    """Complete fleet health status response."""
+    enabled: bool = True
+    last_check_at: Optional[str] = None
+    summary: FleetHealthSummary
+    agents: List[AgentHealthSummary] = []
+
+
+class MonitoringConfig(BaseModel):
+    """Monitoring service configuration."""
+    enabled: bool = True
+
+    # Check intervals (seconds)
+    docker_check_interval: int = 30
+    network_check_interval: int = 30
+    business_check_interval: int = 60
+
+    # Timeouts
+    http_timeout: float = 10.0
+    tcp_timeout: float = 5.0
+
+    # Thresholds
+    cpu_warning_percent: float = 80.0
+    cpu_critical_percent: float = 95.0
+    memory_warning_percent: float = 85.0
+    memory_critical_percent: float = 95.0
+    latency_warning_ms: float = 2000.0
+    latency_critical_ms: float = 5000.0
+    context_warning_percent: float = 85.0
+    context_critical_percent: float = 95.0
+    error_rate_warning: float = 0.3
+    error_rate_critical: float = 0.5
+
+    # Alert cooldowns (seconds)
+    critical_cooldown: int = 300      # 5 min
+    unhealthy_cooldown: int = 600     # 10 min
+    degraded_cooldown: int = 1800     # 30 min
+
+    # Stuck execution threshold (seconds)
+    stuck_execution_threshold: int = 1800  # 30 min
+
+
+class HealthCheckRecord(BaseModel):
+    """Database record for a health check."""
+    id: str
+    agent_name: str
+    check_type: str  # docker, network, business, aggregate
+    status: str  # healthy, degraded, unhealthy, critical
+    container_status: Optional[str] = None
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
+    memory_mb: Optional[float] = None
+    restart_count: Optional[int] = None
+    oom_killed: Optional[bool] = None
+    reachable: Optional[bool] = None
+    latency_ms: Optional[float] = None
+    runtime_available: Optional[bool] = None
+    claude_available: Optional[bool] = None
+    context_percent: Optional[float] = None
+    active_executions: Optional[int] = None
+    error_rate: Optional[float] = None
+    error_message: Optional[str] = None
+    checked_at: str
+    created_at: Optional[str] = None

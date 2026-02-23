@@ -81,6 +81,18 @@ from db_models import (
     SubscriptionCredential,
     SubscriptionWithAgents,
     AgentAuthStatus,
+    # Monitoring Models (MON-001)
+    AgentHealthStatus,
+    HealthCheckType,
+    DockerHealthCheck,
+    NetworkHealthCheck,
+    BusinessHealthCheck,
+    AgentHealthDetail,
+    AgentHealthSummary,
+    FleetHealthSummary,
+    FleetHealthStatus,
+    MonitoringConfig,
+    HealthCheckRecord,
 )
 
 # Re-export connection utilities
@@ -108,6 +120,7 @@ from db.tags import TagOperations
 from db.system_views import SystemViewOperations
 from db.notifications import NotificationOperations
 from db.subscriptions import SubscriptionOperations
+from db.monitoring import MonitoringOperations
 
 
 def init_database():
@@ -230,6 +243,7 @@ class DatabaseManager:
         self._system_view_ops = SystemViewOperations()
         self._notification_ops = NotificationOperations()
         self._subscription_ops = SubscriptionOperations()
+        self._monitoring_ops = MonitoringOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -900,8 +914,8 @@ class DatabaseManager:
     def get_notification(self, notification_id: str):
         return self._notification_ops.get_notification(notification_id)
 
-    def list_notifications(self, agent_name=None, status=None, priority=None, limit=100):
-        return self._notification_ops.list_notifications(agent_name, status, priority, limit)
+    def list_notifications(self, agent_name=None, status=None, priority=None, category=None, limit=100):
+        return self._notification_ops.list_notifications(agent_name, status, priority, category, limit)
 
     def list_agent_notifications(self, agent_name: str, status=None, limit=50):
         return self._notification_ops.list_agent_notifications(agent_name, status, limit)
@@ -960,6 +974,55 @@ class DatabaseManager:
 
     def get_agent_subscription_id(self, agent_name: str):
         return self._subscription_ops.get_agent_subscription_id(agent_name)
+
+    # =========================================================================
+    # Agent Monitoring (delegated to db/monitoring.py) - MON-001
+    # =========================================================================
+
+    def create_health_check(self, agent_name: str, check_type: str, status: str,
+                            docker_metrics: dict = None, network_metrics: dict = None,
+                            business_metrics: dict = None, error_message: str = None):
+        return self._monitoring_ops.create_health_check(
+            agent_name, check_type, status, docker_metrics,
+            network_metrics, business_metrics, error_message
+        )
+
+    def get_latest_health_check(self, agent_name: str, check_type: str = "aggregate"):
+        return self._monitoring_ops.get_latest_health_check(agent_name, check_type)
+
+    def get_agent_health_history(self, agent_name: str, check_type: str = "aggregate",
+                                  hours: int = 24, limit: int = 100):
+        return self._monitoring_ops.get_agent_health_history(agent_name, check_type, hours, limit)
+
+    def get_all_latest_health_checks(self, agent_names: list = None, check_type: str = "aggregate"):
+        return self._monitoring_ops.get_all_latest_health_checks(agent_names, check_type)
+
+    def get_health_summary(self, agent_names: list = None):
+        return self._monitoring_ops.get_health_summary(agent_names)
+
+    def calculate_uptime_percent(self, agent_name: str, hours: int = 24):
+        return self._monitoring_ops.calculate_uptime_percent(agent_name, hours)
+
+    def calculate_avg_latency(self, agent_name: str, hours: int = 24):
+        return self._monitoring_ops.calculate_avg_latency(agent_name, hours)
+
+    def cleanup_old_health_records(self, days: int = 7):
+        return self._monitoring_ops.cleanup_old_records(days)
+
+    def get_alert_cooldown(self, agent_name: str, condition: str):
+        return self._monitoring_ops.get_cooldown(agent_name, condition)
+
+    def set_alert_cooldown(self, agent_name: str, condition: str):
+        return self._monitoring_ops.set_cooldown(agent_name, condition)
+
+    def clear_alert_cooldown(self, agent_name: str, condition: str):
+        return self._monitoring_ops.clear_cooldown(agent_name, condition)
+
+    def is_in_alert_cooldown(self, agent_name: str, condition: str, cooldown_seconds: int):
+        return self._monitoring_ops.is_in_cooldown(agent_name, condition, cooldown_seconds)
+
+    def cleanup_alert_cooldowns(self, agent_name: str = None):
+        return self._monitoring_ops.cleanup_cooldowns(agent_name)
 
 
 # Global database manager instance
