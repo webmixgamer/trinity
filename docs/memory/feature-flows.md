@@ -23,7 +23,13 @@
 >   - Full backward compatibility (all imports unchanged)
 > - **How to extend**: See [database-module.md](../feature-flows/database-module.md) for "How To: Add a New Migration" and "How To: Add a New Table"
 
-> **Updated (2026-02-22)**: Subscription Management (SUB-001):
+> **Updated (2026-02-23)**: Subscription Management UI (SUB-001):
+> - **Settings UI**: New "Claude Subscriptions" section in Settings page for managing subscription credentials
+> - **File upload**: Upload `.credentials.json` files directly from browser
+> - **CRUD operations**: List, register, delete subscriptions; view assigned agents
+> - **File**: `src/frontend/src/views/Settings.vue` (lines 223-435, 872-883, 1268-1387)
+>
+> **Previous (2026-02-22)**: Subscription Management (SUB-001):
 > - **New feature flow**: [subscription-management.md](feature-flows/subscription-management.md) - Centralized Claude Max/Pro subscription credential management
 > - **Key features**: Register OAuth credentials once, assign to multiple agents, auto-inject on start, hot-inject to running agents
 > - **New files**:

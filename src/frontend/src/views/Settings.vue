@@ -220,6 +220,223 @@
             </div>
           </div>
 
+          <!-- Claude Subscriptions Section (SUB-001) -->
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Claude Subscriptions</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Manage Claude Max/Pro subscription credentials. Register once, assign to multiple agents.
+              </p>
+            </div>
+
+            <div class="px-6 py-4">
+              <div class="space-y-4">
+                <!-- Add Subscription Form -->
+                <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Add Subscription</h3>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Name Input -->
+                    <div>
+                      <label for="subscription-name" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        id="subscription-name"
+                        v-model="newSubscription.name"
+                        placeholder="e.g., eugene-max"
+                        class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                        :disabled="addingSubscription"
+                      />
+                    </div>
+
+                    <!-- Type Input -->
+                    <div>
+                      <label for="subscription-type" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Type
+                      </label>
+                      <select
+                        id="subscription-type"
+                        v-model="newSubscription.type"
+                        class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                        :disabled="addingSubscription"
+                      >
+                        <option value="max">Claude Max</option>
+                        <option value="pro">Claude Pro</option>
+                        <option value="">Unknown</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Credentials Upload -->
+                  <div class="mt-4">
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Credentials (from ~/.claude/.credentials.json)
+                    </label>
+                    <div class="flex gap-2">
+                      <!-- File Upload -->
+                      <label class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+                             :class="{ 'border-green-500 bg-green-50 dark:bg-green-900/20': newSubscription.credentials }">
+                        <input
+                          type="file"
+                          accept=".json,application/json"
+                          class="hidden"
+                          @change="handleCredentialFileUpload"
+                          :disabled="addingSubscription"
+                          ref="credentialFileInput"
+                        />
+                        <div class="text-center">
+                          <svg v-if="!newSubscription.credentials" class="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <svg v-else class="mx-auto h-8 w-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span class="mt-1 block text-sm text-gray-600 dark:text-gray-400">
+                            {{ newSubscription.credentials ? 'Credentials loaded' : 'Drop .credentials.json or click to browse' }}
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Get credentials by running <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">claude login</code> locally, then upload
+                      <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">~/.claude/.credentials.json</code>
+                    </p>
+                  </div>
+
+                  <!-- Add Button -->
+                  <div class="mt-4 flex justify-end">
+                    <button
+                      @click="clearNewSubscription"
+                      v-if="newSubscription.name || newSubscription.credentials"
+                      class="mr-3 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      @click="addSubscription"
+                      :disabled="!newSubscription.name || !newSubscription.credentials || addingSubscription"
+                      class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg v-if="addingSubscription" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Register Subscription
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Subscriptions Table -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Agents
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Created
+                        </th>
+                        <th scope="col" class="relative px-6 py-3">
+                          <span class="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                      <tr v-if="loadingSubscriptions">
+                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                        </td>
+                      </tr>
+                      <tr v-else-if="subscriptions.length === 0">
+                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          No subscriptions registered. Add one above using your Claude credentials.
+                        </td>
+                      </tr>
+                      <template v-else v-for="sub in subscriptions" :key="sub.id">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" @click="toggleSubscriptionDetails(sub.id)">
+                          <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                              <svg class="h-4 w-4 text-gray-400 mr-2 transform transition-transform" :class="{ 'rotate-90': expandedSubscriptions.has(sub.id) }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ sub.name }}</span>
+                            </div>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap">
+                            <span v-if="sub.subscription_type" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                  :class="sub.subscription_type === 'max' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'">
+                              {{ sub.subscription_type === 'max' ? 'Max' : sub.subscription_type === 'pro' ? 'Pro' : sub.subscription_type }}
+                            </span>
+                            <span v-else class="text-sm text-gray-500 dark:text-gray-400">—</span>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                              {{ sub.agent_count || 0 }} agent{{ (sub.agent_count || 0) === 1 ? '' : 's' }}
+                            </span>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{ formatDate(sub.created_at) }}
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button
+                              @click.stop="deleteSubscription(sub)"
+                              :disabled="deletingSubscription === sub.id"
+                              class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+                            >
+                              {{ deletingSubscription === sub.id ? 'Deleting...' : 'Delete' }}
+                            </button>
+                          </td>
+                        </tr>
+                        <!-- Expanded Details Row -->
+                        <tr v-if="expandedSubscriptions.has(sub.id)" class="bg-gray-50 dark:bg-gray-700/50">
+                          <td colspan="5" class="px-6 py-4">
+                            <div class="text-sm">
+                              <div class="mb-2 text-gray-600 dark:text-gray-400">
+                                <strong>Owner:</strong> {{ sub.owner_email || 'Unknown' }}
+                              </div>
+                              <div v-if="sub.rate_limit_tier" class="mb-2 text-gray-600 dark:text-gray-400">
+                                <strong>Rate Limit Tier:</strong> {{ sub.rate_limit_tier }}
+                              </div>
+                              <div>
+                                <strong class="text-gray-600 dark:text-gray-400">Assigned Agents:</strong>
+                                <div v-if="sub.agents && sub.agents.length > 0" class="mt-2 flex flex-wrap gap-2">
+                                  <span v-for="agent in sub.agents" :key="agent"
+                                        class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                                    <svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                                      <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+                                    </svg>
+                                    {{ agent }}
+                                  </span>
+                                </div>
+                                <p v-else class="mt-1 text-gray-500 dark:text-gray-400 italic">
+                                  No agents assigned. Use MCP tool <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-600 rounded text-xs">assign_subscription</code> to assign.
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  💡 Tip: Assign subscriptions to agents via MCP: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">assign_subscription("agent-name", "subscription-name")</code>
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Trinity Prompt Section -->
           <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -652,6 +869,19 @@ const skillsLibraryStatus = ref({
 const syncingSkillsLibrary = ref(false)
 const savingSkillsLibrary = ref(false)
 
+// Subscriptions state (SUB-001)
+const subscriptions = ref([])
+const loadingSubscriptions = ref(false)
+const addingSubscription = ref(false)
+const deletingSubscription = ref(null)
+const expandedSubscriptions = ref(new Set())
+const credentialFileInput = ref(null)
+const newSubscription = ref({
+  name: '',
+  type: 'max',
+  credentials: null
+})
+
 const hasChanges = computed(() => {
   return trinityPrompt.value !== originalPrompt.value
 })
@@ -1035,6 +1265,127 @@ async function syncSkillsLibrary() {
   }
 }
 
+// Subscription methods (SUB-001)
+async function loadSubscriptions() {
+  loadingSubscriptions.value = true
+  try {
+    const response = await axios.get('/api/subscriptions', {
+      headers: authStore.authHeader
+    })
+    subscriptions.value = response.data || []
+  } catch (e) {
+    console.error('Failed to load subscriptions:', e)
+    // Non-admin users will get 403 - that's ok, just hide the section
+    if (e.response?.status !== 403) {
+      error.value = e.response?.data?.detail || 'Failed to load subscriptions'
+    }
+  } finally {
+    loadingSubscriptions.value = false
+  }
+}
+
+function handleCredentialFileUpload(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      // Validate JSON
+      const credentials = JSON.parse(e.target.result)
+      newSubscription.value.credentials = e.target.result
+    } catch (parseError) {
+      error.value = 'Invalid JSON file. Please upload a valid .credentials.json file.'
+      newSubscription.value.credentials = null
+    }
+  }
+  reader.onerror = () => {
+    error.value = 'Failed to read file'
+  }
+  reader.readAsText(file)
+}
+
+function clearNewSubscription() {
+  newSubscription.value = {
+    name: '',
+    type: 'max',
+    credentials: null
+  }
+  if (credentialFileInput.value) {
+    credentialFileInput.value.value = ''
+  }
+}
+
+async function addSubscription() {
+  if (!newSubscription.value.name || !newSubscription.value.credentials) return
+
+  addingSubscription.value = true
+  error.value = null
+
+  try {
+    await axios.post('/api/subscriptions', {
+      name: newSubscription.value.name,
+      credentials_json: newSubscription.value.credentials,
+      subscription_type: newSubscription.value.type || null
+    }, {
+      headers: authStore.authHeader
+    })
+
+    // Clear form and reload list
+    clearNewSubscription()
+    await loadSubscriptions()
+
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to register subscription'
+  } finally {
+    addingSubscription.value = false
+  }
+}
+
+async function deleteSubscription(subscription) {
+  if (!confirm(`Delete subscription "${subscription.name}"?\n\nThis will clear the subscription from all ${subscription.agent_count || 0} assigned agent(s).`)) {
+    return
+  }
+
+  deletingSubscription.value = subscription.id
+  error.value = null
+
+  try {
+    await axios.delete(`/api/subscriptions/${subscription.id}`, {
+      headers: authStore.authHeader
+    })
+
+    // Remove from expanded set if it was expanded
+    expandedSubscriptions.value.delete(subscription.id)
+
+    // Reload list
+    await loadSubscriptions()
+
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to delete subscription'
+  } finally {
+    deletingSubscription.value = null
+  }
+}
+
+function toggleSubscriptionDetails(subscriptionId) {
+  if (expandedSubscriptions.value.has(subscriptionId)) {
+    expandedSubscriptions.value.delete(subscriptionId)
+  } else {
+    expandedSubscriptions.value.add(subscriptionId)
+  }
+  // Force reactivity update
+  expandedSubscriptions.value = new Set(expandedSubscriptions.value)
+}
+
 onMounted(() => {
   // Check if user is admin
   const userData = authStore.user
@@ -1043,5 +1394,6 @@ onMounted(() => {
   loadEmailWhitelist()
   loadOpsSettings()
   loadSkillsLibrarySettings()
+  loadSubscriptions()
 })
 </script>

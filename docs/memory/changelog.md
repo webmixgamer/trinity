@@ -1,3 +1,79 @@
+### 2026-02-23 15:45:00
+📝 **Docs: Updated Subscription Management feature flow (SUB-001)**
+
+Updated `docs/memory/feature-flows/subscription-management.md` with comprehensive Frontend UI documentation.
+
+**Added Sections**:
+- Frontend UI overview with file/line references
+- UI Components: Add Form, Subscriptions Table, Expanded Details
+- State variables documentation (7 reactive refs)
+- Methods documentation (6 functions with code snippets)
+- Data flow diagram (User -> Frontend -> Backend)
+- UI Testing section (8 test cases)
+
+**Line References**:
+- Template: `src/frontend/src/views/Settings.vue:223-435`
+- State: `src/frontend/src/views/Settings.vue:872-883`
+- Methods: `src/frontend/src/views/Settings.vue:1268-1387`
+
+---
+
+### 2026-02-23 14:30:00
+✨ **UI: Subscription Management in Settings (SUB-001)**
+
+Added UI to manage Claude Max/Pro subscription credentials in Settings page.
+
+**Features**:
+- List all registered subscriptions with type, agent count, and creation date
+- Expandable rows showing assigned agents and subscription details
+- File upload for `.credentials.json` (from `~/.claude/.credentials.json`)
+- Register new subscriptions with name, type selection, and credential file
+- Delete subscriptions with confirmation (cascade clears agent assignments)
+
+**Files Modified**:
+- `src/frontend/src/views/Settings.vue`: Added Claude Subscriptions section (lines 223-435), state variables (lines 872-883), and methods (lines 1268-1387)
+
+**User Flow**:
+1. Run `claude login` locally to authenticate
+2. Go to Settings → Claude Subscriptions
+3. Enter name (e.g., "eugene-max"), select type
+4. Upload `~/.claude/.credentials.json`
+5. Click "Register Subscription"
+6. Assign to agents via MCP: `assign_subscription("agent-name", "subscription-name")`
+
+**Related**: SUB-001 backend implemented 2026-02-22
+
+---
+
+### 2026-02-23 12:15:00
+📋 **Planning: Subscription Usage Tracking (SUB-002)**
+
+Researched and validated approach for programmatic subscription usage tracking.
+
+**Problem**: SUB-001 manages credentials but doesn't track usage/capacity. No visibility into quota consumption for fleet management.
+
+**POC Validation** (`scripts/poc/test-subscription-usage.py`):
+- Discovered Anthropic's OAuth usage endpoint: `GET https://api.anthropic.com/api/oauth/usage`
+- Required header: `anthropic-beta: oauth-2025-04-20`
+- Successfully retrieved usage data from local Claude Code credentials
+- Response includes: 5-hour utilization, 7-day utilization, model-specific limits, extra usage status
+
+**Requirements Spec**: `docs/requirements/SUBSCRIPTION_USAGE_TRACKING.md`
+
+**Key Components**:
+- Database: `subscription_usage` table for snapshots
+- Service: OAuth usage fetching with token extraction
+- Background Job: Hourly polling of all subscriptions
+- REST API: `/api/subscriptions/{id}/usage`, `/api/subscriptions/usage-report`
+- MCP Tools: `get_subscription_usage`, `get_fleet_usage`
+
+**Sources**:
+- https://codelynx.dev/posts/claude-code-usage-limits-statusline
+- https://github.com/TylerGallenbeck/claude-code-limit-tracker
+- https://github.com/anthropics/claude-code/issues/21943
+
+---
+
 ### 2026-02-23 10:30:00
 🔒 **Security: Remove Plaintext Password Fallback & Add Admin Login Rate Limiting**
 
