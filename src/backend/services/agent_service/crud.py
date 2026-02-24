@@ -21,6 +21,9 @@ from services.docker_service import (
     get_next_available_port,
     get_agent_status_from_container,
 )
+from services.docker_utils import (
+    volume_get, volume_create, containers_run
+)
 from services.template_service import (
     get_github_template,
     generate_credential_files,
@@ -320,9 +323,9 @@ async def create_agent_internal(
             # This ensures files created by the agent survive container restarts
             agent_volume_name = f"agent-{config.name}-workspace"
             try:
-                docker_client.volumes.get(agent_volume_name)
+                await volume_get(agent_volume_name)
             except docker.errors.NotFound:
-                docker_client.volumes.create(
+                await volume_create(
                     name=agent_volume_name,
                     labels={
                         'trinity.platform': 'agent-workspace',
@@ -369,9 +372,9 @@ async def create_agent_internal(
                     shared_volume_name = db.get_shared_volume_name(config.name)
                     volume_created = False
                     try:
-                        docker_client.volumes.get(shared_volume_name)
+                        await volume_get(shared_volume_name)
                     except docker.errors.NotFound:
-                        docker_client.volumes.create(
+                        await volume_create(
                             name=shared_volume_name,
                             labels={
                                 'trinity.platform': 'agent-shared',
@@ -383,7 +386,7 @@ async def create_agent_internal(
                     # Fix ownership of new volumes (Docker creates them as root)
                     if volume_created:
                         try:
-                            docker_client.containers.run(
+                            await containers_run(
                                 'alpine',
                                 command='chown 1000:1000 /shared',
                                 volumes={shared_volume_name: {'bind': '/shared', 'mode': 'rw'}},
@@ -402,7 +405,7 @@ async def create_agent_internal(
                         mount_path = db.get_shared_mount_path(source_agent)
                         # Only mount if the source volume exists
                         try:
-                            docker_client.volumes.get(source_volume)
+                            await volume_get(source_volume)
                             volumes[source_volume] = {'bind': mount_path, 'mode': 'rw'}
                         except docker.errors.NotFound:
                             # Source agent hasn't started yet or doesn't have shared volume
@@ -416,7 +419,7 @@ async def create_agent_internal(
             # - Always drop ALL caps, then add back only what's needed
             # - Always apply AppArmor profile
             # - Always apply noexec,nosuid to /tmp
-            container = docker_client.containers.run(
+            container = await containers_run(
                 config.base_image,
                 detach=True,
                 name=f"agent-{config.name}",

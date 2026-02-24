@@ -14,6 +14,10 @@ from services.docker_service import (
     docker_client,
     get_agent_container,
 )
+from services.docker_utils import (
+    container_stop, container_remove, container_start, container_reload,
+    volume_get, volume_create, containers_run
+)
 from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
 from services.agent_client import get_agent_client
 from services.skill_service import skill_service
@@ -212,9 +216,10 @@ async def start_agent_internal(agent_name: str) -> dict:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     # Check if container needs recreation for shared folders, API key, resource limits, or capabilities
-    container.reload()
+    await container_reload(container)
+    shared_folder_match = await check_shared_folder_mounts_match(container, agent_name)
     needs_recreation = (
-        not check_shared_folder_mounts_match(container, agent_name) or
+        not shared_folder_match or
         not check_api_key_env_matches(container, agent_name) or
         not check_resource_limits_match(container, agent_name) or
         not check_full_capabilities_match(container, agent_name)
@@ -226,7 +231,7 @@ async def start_agent_internal(agent_name: str) -> dict:
         await recreate_container_with_updated_config(agent_name, container, "system")
         container = get_agent_container(agent_name)
 
-    container.start()
+    await container_start(container)
 
     # Inject Trinity meta-prompt
     trinity_result = await inject_trinity_meta_prompt(agent_name)
@@ -322,10 +327,10 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
 
     # Stop and remove old container
     try:
-        old_container.stop()
+        await container_stop(old_container)
     except Exception:
         pass
-    old_container.remove()
+    await container_remove(old_container)
 
     # Build new volume configuration
     agent_volume_name = f"agent-{agent_name}-workspace"
@@ -354,9 +359,9 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
             shared_volume_name = db.get_shared_volume_name(agent_name)
             volume_created = False
             try:
-                docker_client.volumes.get(shared_volume_name)
+                await volume_get(shared_volume_name)
             except docker.errors.NotFound:
-                docker_client.volumes.create(
+                await volume_create(
                     name=shared_volume_name,
                     labels={
                         'trinity.platform': 'agent-shared',
@@ -368,7 +373,7 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
             # Fix ownership of new volumes (Docker creates them as root)
             if volume_created:
                 try:
-                    docker_client.containers.run(
+                    await containers_run(
                         'alpine',
                         command='chown 1000:1000 /shared',
                         volumes={shared_volume_name: {'bind': '/shared', 'mode': 'rw'}},
@@ -385,7 +390,7 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
                 source_volume = db.get_shared_volume_name(source_agent)
                 mount_path = db.get_shared_mount_path(source_agent)
                 try:
-                    docker_client.volumes.get(source_volume)
+                    await volume_get(source_volume)
                     volumes[source_volume] = {'bind': mount_path, 'mode': 'rw'}
                 except docker.errors.NotFound:
                     pass
@@ -395,7 +400,7 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
     # - Always drop ALL caps, then add back only what's needed
     # - Always apply AppArmor profile
     # - Always apply noexec,nosuid to /tmp
-    new_container = docker_client.containers.run(
+    new_container = await containers_run(
         image,
         detach=True,
         name=f"agent-{agent_name}",

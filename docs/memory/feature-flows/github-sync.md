@@ -596,6 +596,7 @@ Working - Architecture cleanup (2025-12-31)
 | **Upstream** | [Template Processing](template-processing.md) | GitHub templates trigger git sync setup |
 | **Upstream** | [Agent Lifecycle](agent-lifecycle.md) | Agent creation enables git sync |
 | **Downstream** | Content generation | Large files go to `content/` folder |
+| **Related** | [Async Docker Operations](async-docker-operations.md) | Git commands use async docker exec (DOCKER-001) |
 
 ---
 
@@ -603,6 +604,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-02-24 | **Async Docker Operations** (DOCKER-001): `execute_command_in_container()` in docker_service.py now async. All git_service.py calls await this function. `check_git_initialized()` now async. routers/git.py updated to await. |
 | 2026-01-30 | **Git pull permission fix**: `POST /{agent_name}/git/pull` changed from `OwnedAgentByName` to `AuthorizedAgentByName` - shared users can now pull from GitHub. Updated Access Control Dependencies, Endpoint Signatures, and Security Considerations sections. |
 | 2026-01-23 | **Line number verification**: Updated all line number references to match current implementation. Added GitSyncResult model, delete_agent_git_config function, agent-server endpoint table. Expanded useGitSync composable documentation with reactive state and computed properties. Added database indexes. |
 | 2026-01-12 | **Polling interval optimization**: Git status polling changed from 30s to 60s for reduced API load. Added polling behavior documentation to useGitSync composable section. |

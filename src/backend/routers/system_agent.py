@@ -21,6 +21,10 @@ from models import User
 from database import db
 from dependencies import get_current_user, decode_token
 from services.docker_service import get_agent_container, docker_client
+from services.docker_utils import (
+    container_reload, container_stop, container_start,
+    container_exec_run, api_exec_create, api_exec_start
+)
 from db.agents import SYSTEM_AGENT_NAME
 
 router = APIRouter(prefix="/api/system-agent", tags=["system-agent"])
@@ -65,7 +69,7 @@ async def get_system_agent_status(
             "name": SYSTEM_AGENT_NAME
         }
 
-    container.reload()
+    await container_reload(container)
     status = container.status
 
     result = {
@@ -127,20 +131,21 @@ async def reinitialize_system_agent(
 
     try:
         # Step 1: Stop the container
-        container.reload()
+        await container_reload(container)
         if container.status == "running":
-            container.stop(timeout=30)
+            await container_stop(container, timeout=30)
             steps_completed.append("stopped")
             logger.info(f"System agent {SYSTEM_AGENT_NAME} stopped for re-initialization")
 
         # Step 2: Clear user-generated content (not the volume, just files)
         try:
-            container.start()
-            container.reload()
+            await container_start(container)
+            await container_reload(container)
 
             # Execute cleanup command inside container
             # Clear Trinity-specific directories but preserve template files
-            cleanup_result = container.exec_run(
+            cleanup_result = await container_exec_run(
+                container,
                 "bash -c 'rm -rf /home/developer/.claude /home/developer/.trinity /home/developer/content /home/developer/plans'",
                 user="developer"
             )
@@ -157,7 +162,8 @@ async def reinitialize_system_agent(
 
         # Step 4: Re-copy template files (.claude and CLAUDE.md)
         try:
-            copy_result = container.exec_run(
+            copy_result = await container_exec_run(
+                container,
                 "bash -c 'cp -r /template/.claude /home/developer/ 2>/dev/null; cp /template/CLAUDE.md /home/developer/ 2>/dev/null; true'",
                 user="developer"
             )
@@ -218,14 +224,14 @@ async def restart_system_agent(
         )
 
     try:
-        container.reload()
+        await container_reload(container)
         was_running = container.status == "running"
 
         if was_running:
-            container.stop(timeout=30)
+            await container_stop(container, timeout=30)
 
-        container.start()
-        container.reload()
+        await container_start(container)
+        await container_reload(container)
 
         # Re-inject Trinity meta-prompt
         trinity_result = None
@@ -385,7 +391,7 @@ async def system_agent_terminal(
             await websocket.close(code=4004, reason="Container not found")
             return
 
-        container.reload()
+        await container_reload(container)
         if container.status != "running":
             await websocket.send_text(json.dumps({
                 "type": "error",
@@ -409,8 +415,8 @@ async def system_agent_terminal(
         else:
             cmd = ["/bin/bash"]
 
-        # Use docker API to create exec instance
-        exec_instance = docker_client.api.exec_create(
+        # Use docker API to create exec instance (async to avoid blocking)
+        exec_instance = await api_exec_create(
             container.id,
             cmd,
             stdin=True,
@@ -423,8 +429,8 @@ async def system_agent_terminal(
         )
         exec_id = exec_instance["Id"]
 
-        # Start exec and get socket
-        exec_output = docker_client.api.exec_start(exec_id, socket=True, tty=True)
+        # Start exec and get socket (async to avoid blocking)
+        exec_output = await api_exec_start(exec_id, socket=True, tty=True)
 
         # Get the raw socket
         # docker-py returns a SocketIO wrapper, we need the underlying socket

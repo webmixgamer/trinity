@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from services.docker_service import docker_client, get_agent_container
+from services.docker_utils import container_exec_run
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class SshService:
             "comment": comment
         }
 
-    def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
+    async def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
         """
         Inject SSH public key into agent's authorized_keys file.
 
@@ -99,7 +100,8 @@ class SshService:
 
         try:
             # Ensure .ssh directory exists with correct permissions
-            container.exec_run(
+            await container_exec_run(
+                container,
                 'sh -c "mkdir -p /home/developer/.ssh && chmod 700 /home/developer/.ssh"',
                 user="developer"
             )
@@ -107,7 +109,8 @@ class SshService:
             # Append public key to authorized_keys (escape the key for shell)
             # Use printf to handle potential special characters
             escaped_key = public_key.replace("'", "'\"'\"'")
-            result = container.exec_run(
+            result = await container_exec_run(
+                container,
                 f"sh -c 'printf \"%s\\n\" '\"'{escaped_key}'\"' >> /home/developer/.ssh/authorized_keys'",
                 user="developer"
             )
@@ -117,7 +120,8 @@ class SshService:
                 return False
 
             # Set correct permissions on authorized_keys
-            container.exec_run(
+            await container_exec_run(
+                container,
                 'chmod 600 /home/developer/.ssh/authorized_keys',
                 user="developer"
             )
@@ -143,7 +147,7 @@ class SshService:
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-    def set_container_password(self, agent_name: str, password: str) -> bool:
+    async def set_container_password(self, agent_name: str, password: str) -> bool:
         """
         Set SSH password for developer user in agent container.
 
@@ -169,7 +173,8 @@ class SshService:
             # Use usermod -p with single-quoted password (handles $ in hash correctly)
             # SHA-512 hashes look like: $6$salt$hash - the $ signs are literal
             # Single quotes in shell preserve all special characters
-            result = container.exec_run(
+            result = await container_exec_run(
+                container,
                 f"usermod -p '{encrypted}' developer",
                 user="root"
             )
@@ -178,7 +183,8 @@ class SshService:
                 logger.error(f"Failed to set password via usermod: {result.output}")
                 # Fallback to chpasswd with plaintext password
                 logger.info("Trying chpasswd fallback...")
-                result = container.exec_run(
+                result = await container_exec_run(
+                    container,
                     f"sh -c 'echo \"developer:{password}\" | chpasswd'",
                     user="root"
                 )
@@ -187,14 +193,15 @@ class SshService:
                     return False
 
             # Ensure password authentication is enabled in sshd_config
-            container.exec_run(
+            await container_exec_run(
+                container,
                 "sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config",
                 user="root"
             )
 
             # Restart SSH daemon to pick up changes (HUP isn't enough for auth changes)
-            container.exec_run("pkill sshd", user="root")
-            container.exec_run("sh -c '/usr/sbin/sshd'", user="root")
+            await container_exec_run(container, "pkill sshd", user="root")
+            await container_exec_run(container, "sh -c '/usr/sbin/sshd'", user="root")
 
             logger.info(f"Set ephemeral password for agent {agent_name}")
             return True
@@ -203,7 +210,7 @@ class SshService:
             logger.error(f"Error setting password for {agent_name}: {e}")
             return False
 
-    def clear_container_password(self, agent_name: str) -> bool:
+    async def clear_container_password(self, agent_name: str) -> bool:
         """
         Clear/lock the developer user password in agent container.
 
@@ -221,7 +228,7 @@ class SshService:
 
         try:
             # Lock the account password (user can still use key auth)
-            result = container.exec_run("passwd -l developer", user="root")
+            result = await container_exec_run(container, "passwd -l developer", user="root")
 
             if result.exit_code != 0:
                 logger.warning(f"Failed to lock password: {result.output}")
@@ -233,7 +240,7 @@ class SshService:
             logger.error(f"Error clearing password for {agent_name}: {e}")
             return False
 
-    def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
+    async def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
         """
         Remove SSH key by comment from agent's authorized_keys.
 
@@ -254,7 +261,8 @@ class SshService:
             # Use sed to remove lines containing the comment
             # Escape special characters in comment for sed
             escaped_comment = comment.replace("/", "\\/").replace(".", "\\.")
-            result = container.exec_run(
+            result = await container_exec_run(
+                container,
                 f"sed -i '/{escaped_comment}/d' /home/developer/.ssh/authorized_keys",
                 user="developer"
             )
@@ -357,7 +365,7 @@ class SshService:
 
         return result
 
-    def cleanup_expired_credentials(self) -> int:
+    async def cleanup_expired_credentials(self) -> int:
         """
         Clean up expired SSH credentials from containers.
 
@@ -392,9 +400,9 @@ class SshService:
 
                         if agent_name and credential_id:
                             if auth_type == "password":
-                                self.clear_container_password(agent_name)
+                                await self.clear_container_password(agent_name)
                             else:
-                                self.remove_ssh_key(agent_name, credential_id)
+                                await self.remove_ssh_key(agent_name, credential_id)
                             cleaned += 1
                 except Exception as e:
                     logger.warning(f"Error during credential cleanup for {redis_key}: {e}")
@@ -405,11 +413,11 @@ class SshService:
         return cleaned
 
     # Backwards compatibility alias
-    def cleanup_expired_keys(self) -> int:
+    async def cleanup_expired_keys(self) -> int:
         """Backwards compatible wrapper for cleanup_expired_credentials."""
-        return self.cleanup_expired_credentials()
+        return await self.cleanup_expired_credentials()
 
-    def revoke_key(self, agent_name: str, comment: str) -> bool:
+    async def revoke_key(self, agent_name: str, comment: str) -> bool:
         """
         Immediately revoke an SSH key.
 
@@ -421,7 +429,7 @@ class SshService:
             True if successful
         """
         # Remove from container
-        self.remove_ssh_key(agent_name, comment)
+        await self.remove_ssh_key(agent_name, comment)
 
         # Remove from Redis
         redis_key = f"{SSH_ACCESS_PREFIX}{agent_name}:{comment}"
@@ -430,7 +438,7 @@ class SshService:
         logger.info(f"Revoked SSH key: {comment} for agent {agent_name}")
         return True
 
-    def cleanup_agent_credentials(self, agent_name: str) -> int:
+    async def cleanup_agent_credentials(self, agent_name: str) -> int:
         """
         Clean up all SSH credentials for an agent (called on agent stop/delete).
 
@@ -455,7 +463,7 @@ class SshService:
                     if auth_type == "password":
                         has_password_creds = True
                     elif credential_id:
-                        self.remove_ssh_key(agent_name, credential_id)
+                        await self.remove_ssh_key(agent_name, credential_id)
             except Exception as e:
                 logger.warning(f"Error cleaning up credential {key}: {e}")
 
@@ -463,7 +471,7 @@ class SshService:
 
         # Clear password once if any password credentials existed
         if has_password_creds:
-            self.clear_container_password(agent_name)
+            await self.clear_container_password(agent_name)
 
         if redis_keys:
             logger.info(f"Cleaned up {len(redis_keys)} SSH credentials for agent {agent_name}")
@@ -471,9 +479,9 @@ class SshService:
         return len(redis_keys)
 
     # Backwards compatibility alias
-    def cleanup_agent_keys(self, agent_name: str) -> int:
+    async def cleanup_agent_keys(self, agent_name: str) -> int:
         """Backwards compatible wrapper for cleanup_agent_credentials."""
-        return self.cleanup_agent_credentials(agent_name)
+        return await self.cleanup_agent_credentials(agent_name)
 
 
 def get_ssh_host() -> str:

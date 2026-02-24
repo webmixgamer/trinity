@@ -12,6 +12,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
 from .helpers import agent_http_request
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ async def list_agent_files_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to browse files")
 
@@ -95,7 +96,7 @@ async def download_agent_file_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to download files")
 
@@ -147,7 +148,7 @@ async def delete_agent_file_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to delete files")
 
@@ -201,7 +202,7 @@ async def preview_agent_file_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to preview files")
 
@@ -270,7 +271,7 @@ async def update_agent_file_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent must be running to update files")
 

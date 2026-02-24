@@ -3,6 +3,28 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-24)**: Async Docker Operations (DOCKER-001) - Expanded:
+> - **Feature flow**: [async-docker-operations.md](feature-flows/async-docker-operations.md) - ThreadPoolExecutor wrappers for blocking Docker SDK calls
+> - **Problem solved**: Blocking Docker operations froze FastAPI event loop for 10-25+ seconds causing HTTP 499 timeouts and WebSocket drops
+> - **Core file**:
+>   - `src/backend/services/docker_utils.py` (287 lines) - 13 async wrapper functions
+> - **Key functions**: `container_stop`, `container_start`, `container_reload`, `container_remove`, `container_stats`, `container_get`, `volume_get`, `volume_create`, `volume_remove`, `containers_run`, `container_exec_run`, `api_exec_create`, `api_exec_start`
+> - **Modified files** (12 total):
+>   - `services/agent_service/lifecycle.py` - All Docker calls now async
+>   - `services/agent_service/helpers.py` - `check_shared_folder_mounts_match()` now async
+>   - `services/agent_service/terminal.py` - Uses async exec wrappers for PTY
+>   - `services/ssh_service.py` - All 7 credential methods now async
+>   - `services/docker_service.py` - `execute_command_in_container()` now async
+>   - `services/git_service.py` - 7 calls await execute_command_in_container
+>   - `services/system_agent_service.py` - System agent operations wrapped
+>   - `routers/agents.py` - Delete/stop/reload + SSH access async
+>   - `routers/ops.py` - Fleet restart/stop operations wrapped
+>   - `routers/system_agent.py` - Terminal and reinitialize endpoints async
+>   - `routers/git.py` - Awaits check_git_initialized()
+> - **Performance**: Event loop blocking reduced from 10-25s to 0s during Docker operations
+> - **Updated flows**: [agent-lifecycle.md](feature-flows/agent-lifecycle.md), [ssh-access.md](feature-flows/ssh-access.md) (if exists)
+> - **Reference implementation**: Pattern from `routers/telemetry.py` with 4-worker ThreadPoolExecutor
+
 > **Updated (2026-02-23)**: Dynamic Dashboards (DASH-001):
 > - **New feature flow**: [dynamic-dashboards.md](feature-flows/dynamic-dashboards.md) - Historical widget value tracking with sparkline visualization
 > - **Key features**: Change detection on dashboard.yaml mtime, history enrichment, platform metrics injection

@@ -25,6 +25,7 @@ from models import (
 )
 from services.template_service import is_trinity_compatible
 from services.docker_service import get_agent_container
+from services.docker_utils import container_stop
 from utils.helpers import sanitize_agent_name
 from .helpers import get_agents_by_prefix, get_next_version_name, get_latest_version
 
@@ -300,7 +301,7 @@ async def deploy_local_agent_logic(
             try:
                 container = get_agent_container(previous_version.name)
                 if container:
-                    container.stop()
+                    await container_stop(container)
                     previous_stopped = True
                     logger.info(f"Stopped previous version: {previous_version.name}")
             except Exception as e:

@@ -285,7 +285,7 @@ async def initialize_github_sync(
     existing_config = git_service.get_agent_git_config(agent_name)
     if existing_config:
         # Verify git is actually initialized in the container
-        git_dir = git_service.check_git_initialized(agent_name)
+        git_dir = await git_service.check_git_initialized(agent_name)
         if git_dir:
             # Git is properly initialized, prevent re-initialization
             raise HTTPException(

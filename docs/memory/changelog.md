@@ -1,3 +1,27 @@
+### 2026-02-24 16:00:00
+🐛 **Fix: Async Docker operations prevent event loop blocking (DOCKER-001)**
+
+Fixed critical issue where blocking Docker SDK calls in async functions would freeze the FastAPI event loop, causing HTTP 499 timeouts, WebSocket drops, and 10-30+ second UI unresponsiveness.
+
+**Created**: `services/docker_utils.py`
+- ThreadPoolExecutor-based async wrappers for all blocking Docker operations
+- Container ops: `container_stop()`, `container_start()`, `container_reload()`, `container_stats()`, `container_get()`
+- Volume ops: `volume_get()`, `volume_create()`, `volume_remove()`
+- Container creation: `containers_run()`
+- Exec ops: `container_exec_run()`, `api_exec_create()`, `api_exec_start()`
+
+**Updated files (20+ total)**:
+- Phase 2: `routers/agents.py` - delete, stop, info, SSH access endpoints
+- Phase 3: `services/agent_service/` - lifecycle, crud, files, stats, folders, dashboard, api_key, terminal, metrics, helpers
+- Phase 4: `services/system_agent_service.py`, `routers/ops.py`, `routers/system_agent.py`, `services/agent_service/deploy.py`, `routers/systems.py`
+- SSH service: `services/ssh_service.py` - all exec_run calls (inject_ssh_key, set_container_password, clear_container_password, remove_ssh_key, cleanup methods)
+- Git service: `services/git_service.py`, `services/docker_service.py` - execute_command_in_container, check_git_initialized
+- Routers: `routers/git.py` - await async git functions
+
+**Impact**: Resolved GitHub Issue #42 (P1 bug)
+
+---
+
 ### 2026-02-24 14:35:00
 📦 **Refactor: Archive production deployment capability (SCOPE-001)**
 

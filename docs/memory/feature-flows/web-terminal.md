@@ -314,8 +314,10 @@ elif mode == "gemini":
 else:
     cmd = ["/bin/bash"]
 
-# Create exec instance with TTY
-exec_instance = docker_client.api.exec_create(
+# Create exec instance with TTY (async to avoid blocking event loop - DOCKER-001)
+from services.docker_utils import api_exec_create, api_exec_start
+
+exec_instance = await api_exec_create(
     container.id,
     cmd,
     stdin=True,
@@ -328,11 +330,13 @@ exec_instance = docker_client.api.exec_create(
 )
 exec_id = exec_instance["Id"]
 
-# Start exec and get raw socket
-exec_output = docker_client.api.exec_start(exec_id, socket=True, tty=True)
+# Start exec and get raw socket (async to avoid blocking - DOCKER-001)
+exec_output = await api_exec_start(exec_id, socket=True, tty=True)
 docker_socket = exec_output._sock
 docker_socket.setblocking(False)
 ```
+
+> **Note**: As of DOCKER-001, exec creation and start use async wrappers from `services/docker_utils.py` to prevent event loop blocking during the Docker API calls.
 
 ### Bidirectional Forwarding (lines 227-286)
 
@@ -535,6 +539,7 @@ User Click          WebSocket          Backend           Docker
 - **Upstream**: [auth0-authentication.md](auth0-authentication.md) - JWT token creation
 - **Related**: [agent-chat.md](agent-chat.md) - Alternative chat interface via HTTP API
 - **Related**: [internal-system-agent.md](internal-system-agent.md) - System agent management
+- **Related**: [async-docker-operations.md](async-docker-operations.md) - Async wrappers for Docker exec calls (DOCKER-001)
 
 ---
 
@@ -616,6 +621,7 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Change |
 |------|--------|
+| 2026-02-24 | **Async Docker Operations**: Uses `api_exec_create` and `api_exec_start` from docker_utils.py to prevent event loop blocking (DOCKER-001). |
 | 2026-01-23 | Updated documentation with current line numbers, added model parameter support, documented Gemini CLI mode |
 | 2025-12-28 | Second fix: Replaced broken `add_reader` callback approach with proper asyncio socket coroutines (`sock_recv`/`sock_sendall`) |
 | 2025-12-28 | First fix: Refactored bidirectional forwarding from thread pool polling to native asyncio I/O (add_reader) - had issues |
@@ -629,5 +635,6 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Reviewer | Changes |
 |------|----------|---------|
+| 2026-02-24 | Claude | Updated Docker Exec Creation section to use async wrappers (`api_exec_create`, `api_exec_start`) from docker_utils.py per DOCKER-001. Added Related Flows link to async-docker-operations.md. |
 | 2026-01-23 | Claude | Updated line numbers for AgentDetail.vue (93-121), AgentTerminal.vue (165-505), terminal.py (20-320), agents.py (1173-1187), system_agent.py (262-528). Added model parameter documentation, Gemini CLI runtime support, WebGL/Canvas rendering, TerminalPanelContent wrapper component. Verified access control flow uses db.can_user_access_agent(). |
 | 2025-12-25 | Initial | Initial feature flow documentation |
