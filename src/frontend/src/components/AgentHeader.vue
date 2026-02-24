@@ -163,7 +163,7 @@
     </div>
 
     <!-- ROW 3: Git Controls (only when hasGitSync) -->
-    <div v-if="hasGitSync" class="px-4 py-2.5 border-t border-gray-100 dark:border-gray-700 flex items-center">
+    <div v-if="hasGitSync" class="px-4 py-2.5 border-t border-gray-100 dark:border-gray-700 flex items-center flex-nowrap min-w-0">
       <!-- When running: Full git controls -->
       <template v-if="agent.status === 'running'">
         <!-- GitHub icon link -->
@@ -172,7 +172,7 @@
           :href="gitStatus.remote_url"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          class="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           title="Open GitHub repository"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -180,13 +180,13 @@
           </svg>
         </a>
         <!-- Branch name -->
-        <span v-if="gitStatus?.branch" class="ml-2 text-xs font-mono text-gray-500 dark:text-gray-400">
+        <span v-if="gitStatus?.branch" class="ml-2 text-xs font-mono text-gray-500 dark:text-gray-400 truncate max-w-[120px]">
           {{ gitStatus.branch }}
         </span>
         <!-- Commit hash -->
         <span
           v-if="gitStatus?.last_commit?.short_sha"
-          class="ml-2 text-xs font-mono text-gray-400 dark:text-gray-500"
+          class="ml-2 text-xs font-mono text-gray-400 dark:text-gray-500 flex-shrink-0"
           :title="`Commit: ${gitStatus.last_commit.message}\nAuthor: ${gitStatus.last_commit.author}\nDate: ${gitStatus.last_commit.date}`"
         >{{ gitStatus.last_commit.short_sha }}</span>
         <div class="flex-1"></div>
@@ -194,7 +194,7 @@
         <button
           @click="$emit('git-pull')"
           :disabled="gitPulling || gitSyncing"
-          class="inline-flex items-center text-sm font-medium py-1 px-2.5 rounded transition-colors"
+          class="flex-shrink-0 inline-flex items-center text-sm font-medium py-1 px-2.5 rounded transition-colors"
           :class="gitBehind > 0
             ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white'
             : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:bg-gray-50 dark:disabled:bg-gray-800 text-gray-600 dark:text-gray-300'"
@@ -213,7 +213,7 @@
         <button
           @click="$emit('git-push')"
           :disabled="gitSyncing || gitPulling"
-          class="ml-2 inline-flex items-center text-sm font-medium py-1 px-2.5 rounded transition-colors"
+          class="flex-shrink-0 ml-2 inline-flex items-center text-sm font-medium py-1 px-2.5 rounded transition-colors"
           :class="gitHasChanges
             ? 'bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white'
             : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:bg-gray-50 dark:disabled:bg-gray-800 text-gray-600 dark:text-gray-300'"
@@ -232,7 +232,7 @@
         <button
           @click="$emit('git-refresh')"
           :disabled="gitLoading"
-          class="ml-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          class="flex-shrink-0 ml-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           title="Refresh git status"
         >
           <svg :class="['w-4 h-4', gitLoading ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
