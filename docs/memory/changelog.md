@@ -1,3 +1,52 @@
+### 2026-02-24 11:00:00
+🐛 **Fix: Dashboard fails with 'dict' object has no attribute 'status' (DASH-001)**
+
+Fixed critical bug where agent dashboards failed to load after DASH-001 deployment.
+
+**Root Cause**: `_build_platform_metrics_section()` in `dashboard.py:71` accessed `health.status` using attribute notation, but `get_latest_health_check()` returns a **dict**, not an object.
+
+**Error**: `'dict' object has no attribute 'status'`
+
+**Fix**: Changed attribute access to dict access:
+```python
+# Before:
+health_status = health.status.value if hasattr(health.status, 'value') else str(health.status)
+
+# After:
+health_status = health.get("status", "unknown")
+```
+
+**File**: `src/backend/services/agent_service/dashboard.py:71`
+
+---
+
+### 2026-02-24 10:15:00
+📝 **Docs: Chat Router Refactoring Requirements (REFACTOR-001)**
+
+Created comprehensive requirements document for refactoring `routers/chat.py` (1533 lines → 8 modules).
+
+**Document Location**: `docs/requirements/CHAT_ROUTER_REFACTOR.md`
+
+**Key Contents**:
+- All 17 API endpoints mapped to new modules
+- Function decomposition plan for 325-line and 364-line functions
+- Integration points to preserve (queue, activity tracking, WebSocket, etc.)
+- 8-phase migration strategy with zero breaking changes
+- Testing requirements and regression checklist
+- Risk assessment and success criteria
+
+**Proposed Module Structure**:
+- `chat/queue_chat.py`: Queue-based chat (1 endpoint)
+- `chat/task_execution.py`: Stateless task execution (2 endpoints)
+- `chat/sessions.py`: Session management (5 endpoints)
+- `chat/activity.py`: Activity monitoring (2 endpoints)
+- `chat/models.py`: Model configuration (2 endpoints)
+- `chat/termination.py`: Execution control (2 endpoints)
+- `chat/streaming.py`: Live streaming (2 endpoints)
+- `chat/utils.py`: Shared utilities
+
+---
+
 ### 2026-02-23 19:30:00
 ✨ **Feature: Dynamic Dashboards with Historical Data (DASH-001)**
 

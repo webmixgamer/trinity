@@ -68,7 +68,8 @@ def _build_platform_metrics_section(agent_name: str, hours: int = 24) -> dict:
 
     # Health status
     if health:
-        health_status = health.status.value if hasattr(health.status, 'value') else str(health.status)
+        # health is a dict from get_latest_health_check(), access via key not attribute
+        health_status = health.get("status", "unknown")
         health_color = "green" if health_status == "healthy" else ("yellow" if health_status == "degraded" else "red")
         widgets.append({
             "type": "status",
