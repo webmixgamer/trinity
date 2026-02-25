@@ -19,10 +19,19 @@ Enables Slack as a delivery channel for public agent links. Users can chat with 
 ### Deployment Model
 
 ```
-Environment Variables (src/backend/config.py:57-62):
-- SLACK_SIGNING_SECRET    # From Slack App settings (line 59)
-- SLACK_CLIENT_ID         # For OAuth flow (line 60)
-- SLACK_CLIENT_SECRET     # For OAuth flow (line 61)
+Configuration Hierarchy (database settings take precedence over env vars):
+
+1. Database Settings (via Settings UI - src/backend/services/settings_service.py:89-108):
+   - slack_client_id        # Stored in settings table
+   - slack_client_secret    # Stored in settings table
+   - slack_signing_secret   # Stored in settings table
+
+2. Environment Variables (fallback - src/backend/config.py:57-62):
+   - SLACK_SIGNING_SECRET    # From Slack App settings (line 59)
+   - SLACK_CLIENT_ID         # For OAuth flow (line 60)
+   - SLACK_CLIENT_SECRET     # For OAuth flow (line 61)
+
+Always from Environment Variables:
 - SLACK_AUTO_VERIFY_EMAIL # Auto-verify via Slack profile email (line 62)
 - PUBLIC_CHAT_URL         # Public-facing URL for Slack callbacks (line 45)
 - FRONTEND_URL            # Admin UI URL for OAuth redirects (line 41)
@@ -116,7 +125,7 @@ Slack sessions use the existing `public_chat_sessions` table with:
 | `/api/public/slack/events` | POST | `routers/slack.py:53` | `handle_slack_event()` |
 | `/api/public/slack/oauth/callback` | GET | `routers/slack.py:349` | `slack_oauth_callback()` |
 
-### Authenticated Endpoints
+### Authenticated Endpoints (Agent/Link Management)
 
 | Endpoint | Method | File:Line | Handler |
 |----------|--------|-----------|---------|
@@ -124,6 +133,14 @@ Slack sessions use the existing `public_chat_sessions` table with:
 | `/api/agents/{name}/public-links/{id}/slack` | PUT | `routers/slack.py:516` | `update_slack_connection()` |
 | `/api/agents/{name}/public-links/{id}/slack` | DELETE | `routers/slack.py:489` | `disconnect_slack()` |
 | `/api/agents/{name}/public-links/{id}/slack/connect` | POST | `routers/slack.py:453` | `initiate_slack_oauth()` |
+
+### Admin Endpoints (Settings Configuration)
+
+| Endpoint | Method | File:Line | Handler |
+|----------|--------|-----------|---------|
+| `/api/settings/slack` | GET | `routers/settings.py:429` | `get_slack_settings_status()` |
+| `/api/settings/slack` | PUT | `routers/settings.py:486` | `update_slack_settings()` |
+| `/api/settings/slack` | DELETE | `routers/settings.py:522` | `delete_slack_settings()` |
 
 ## Implementation Files
 
@@ -135,8 +152,10 @@ Slack sessions use the existing `public_chat_sessions` table with:
 | `src/backend/db/schema.py` | 476-521 | 3 table definitions |
 | `src/backend/db/migrations.py` | 57, 490-527 | Migration #20 `_migrate_slack_integration_tables()` |
 | `src/backend/db/slack.py` | 1-371 | `SlackOperations` class (371 lines) |
-| `src/backend/services/slack_service.py` | 1-314 | `SlackService` class (314 lines) |
+| `src/backend/services/slack_service.py` | 1-317 | `SlackService` class (uses settings_service getters) |
+| `src/backend/services/settings_service.py` | 89-161 | Slack credential getters with DB/env fallback |
 | `src/backend/routers/slack.py` | 1-543 | Public + auth routers (543 lines) |
+| `src/backend/routers/settings.py` | 425-554 | Slack settings CRUD endpoints (admin UI) |
 | `src/backend/db_models.py` | 810-890 | 8 Pydantic models |
 | `src/backend/database.py` | 125, 250, 1060-1113 | Import, init, delegation methods |
 | `src/backend/main.py` | 65, 327-328 | Import and router mounting |
@@ -146,6 +165,7 @@ Slack sessions use the existing `public_chat_sessions` table with:
 | File | Line Range | Description |
 |------|------------|-------------|
 | `src/frontend/src/components/PublicLinksPanel.vue` | 125-181, 377, 407-408, 533-601, 660-675 | Slack UI section |
+| `src/frontend/src/views/Settings.vue` | 223-380, 1014-1027, 1226-1266 | Slack settings admin UI |
 
 ## Backend Layer
 
@@ -448,6 +468,236 @@ Context is built using `db.build_public_chat_context()` (line 302), same as web 
 3. Disconnect -> verify DMs no longer work
 4. Re-connect -> verify previous sessions are cleared
 
+## Settings Configuration Flow
+
+### Overview
+
+Admin-configurable Slack credentials via the Settings UI, eliminating the need for environment variables.
+
+### Configuration Hierarchy
+
+```
+1. Database setting (if exists) -> USED
+2. Environment variable (fallback) -> USED if no database setting
+3. Not configured -> Slack integration disabled
+```
+
+### Entry Points
+
+- **UI**: `src/frontend/src/views/Settings.vue:223-380` - Slack Integration section
+- **API**: `GET/PUT/DELETE /api/settings/slack`
+
+### Frontend Layer
+
+#### Settings.vue Component
+
+**State** (lines 1014-1027):
+```javascript
+const slackClientId = ref('')
+const slackClientSecret = ref('')
+const slackSigningSecret = ref('')
+const showSlackClientSecret = ref(false)
+const showSlackSigningSecret = ref(false)
+const savingSlackSettings = ref(false)
+const slackSaveSuccess = ref(false)
+const slackSettings = ref({
+  configured: false,
+  client_id: { configured: false, masked: null, source: null },
+  client_secret: { configured: false, masked: null, source: null },
+  signing_secret: { configured: false, masked: null, source: null }
+})
+```
+
+**Methods**:
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `loadSlackSettings()` | 1227-1233 | Fetch status from `GET /api/settings/slack` |
+| `saveSlackSettings()` | 1236-1266 | Save via `PUT /api/settings/slack` |
+
+**Template** (lines 223-380):
+- Line 223-230: Section header with description
+- Line 234-251: Client ID input with masked placeholder and source indicator
+- Line 254-284: Client Secret input (password type with toggle)
+- Line 287-317: Signing Secret input (password type with toggle)
+- Line 320-335: Save button with loading state
+- Line 338-361: Status card (green=ready, yellow=incomplete)
+- Line 364-377: Expandable setup instructions
+
+**API Calls**:
+```javascript
+// Load status
+await axios.get('/api/settings/slack')
+
+// Save settings (partial update - only non-empty fields)
+await axios.put('/api/settings/slack', {
+  client_id: slackClientId.value,
+  client_secret: slackClientSecret.value,
+  signing_secret: slackSigningSecret.value
+})
+```
+
+### Backend Layer
+
+#### Settings Router (`src/backend/routers/settings.py`)
+
+| Endpoint | Method | Line | Handler |
+|----------|--------|------|---------|
+| `/api/settings/slack` | GET | 429-476 | `get_slack_settings_status()` |
+| `/api/settings/slack` | PUT | 486-519 | `update_slack_settings()` |
+| `/api/settings/slack` | DELETE | 522-554 | `delete_slack_settings()` |
+
+**GET /api/settings/slack** (lines 429-476):
+```python
+# Admin-only - returns masked key info
+return {
+    "configured": bool(client_id and client_secret and signing_secret),
+    "client_id": {
+        "configured": bool(client_id),
+        "masked": "1234...5678" if client_id else None,
+        "source": "settings" | "env" | None
+    },
+    "client_secret": {...},
+    "signing_secret": {...}
+}
+```
+
+**PUT /api/settings/slack** (lines 486-519):
+```python
+class SlackSettingsUpdate(BaseModel):
+    client_id: str = None
+    client_secret: str = None
+    signing_secret: str = None
+
+# Partial update - only provided values are saved
+if body.client_id is not None:
+    db.set_setting('slack_client_id', body.client_id.strip())
+```
+
+**DELETE /api/settings/slack** (lines 522-554):
+```python
+# Removes all 3 settings from database
+# Returns fallback_configured: true if env vars exist
+```
+
+#### Settings Service (`src/backend/services/settings_service.py`)
+
+**Methods** (lines 89-108):
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `get_slack_client_id()` | 89-94 | DB first, then `SLACK_CLIENT_ID` env var |
+| `get_slack_client_secret()` | 96-101 | DB first, then `SLACK_CLIENT_SECRET` env var |
+| `get_slack_signing_secret()` | 103-108 | DB first, then `SLACK_SIGNING_SECRET` env var |
+
+**Convenience functions** (lines 149-161):
+```python
+# Module-level functions for backward compatibility
+def get_slack_client_id() -> str:
+    return settings_service.get_slack_client_id()
+
+def get_slack_client_secret() -> str:
+    return settings_service.get_slack_client_secret()
+
+def get_slack_signing_secret() -> str:
+    return settings_service.get_slack_signing_secret()
+```
+
+#### Slack Service Integration (`src/backend/services/slack_service.py`)
+
+**Updated imports** (lines 25-29):
+```python
+from services.settings_service import (
+    get_slack_signing_secret,
+    get_slack_client_id,
+    get_slack_client_secret,
+)
+```
+
+**Usage in methods**:
+- `verify_slack_signature()` line 65: `signing_secret = get_slack_signing_secret()`
+- `get_oauth_url()` line 103: `"client_id": get_slack_client_id()`
+- `exchange_oauth_code()` lines 127-128: Uses both `get_slack_client_id()` and `get_slack_client_secret()`
+
+### Database Operations
+
+Settings are stored in the existing `settings` table:
+
+| Key | Description |
+|-----|-------------|
+| `slack_client_id` | Slack App Client ID |
+| `slack_client_secret` | Slack App Client Secret |
+| `slack_signing_secret` | Slack App Signing Secret |
+
+**Database methods used**:
+- `db.get_setting_value(key, default)` - Read setting
+- `db.set_setting(key, value)` - Create/update setting
+- `db.delete_setting(key)` - Remove setting
+
+### UI States
+
+| State | Description | Visual |
+|-------|-------------|--------|
+| Not configured | No settings in DB, no env vars | Yellow warning card |
+| Partially configured | Some credentials missing | Yellow warning card |
+| Fully configured (settings) | All 3 in database | Green success card, "from settings" labels |
+| Fully configured (env) | All 3 from env vars | Green success card, "from environment" labels |
+| Mixed sources | Some from DB, some from env | Green success card, mixed labels |
+
+### Error Handling
+
+| Error Case | HTTP Status | Handler |
+|------------|-------------|---------|
+| Not admin | 403 | `require_admin()` check |
+| Database error | 500 | Exception catch in each handler |
+| Invalid request body | 422 | Pydantic validation |
+
+### Security Considerations
+
+1. **Admin-only access**: All endpoints require admin authentication via `require_admin(current_user)`
+2. **Masked values**: API never returns actual secret values, only masked versions (e.g., `1234...5678`)
+3. **Source tracking**: UI shows whether value came from settings or environment for transparency
+4. **No plaintext logging**: Secret values are never logged
+
+### Data Flow Diagram
+
+```
+Admin opens Settings page
+       |
+       v
+loadSlackSettings()
+       |
+       v
+GET /api/settings/slack
+       |
+       v
+get_slack_settings_status()
+       |
+       +-> get_slack_client_id()     -> DB setting or SLACK_CLIENT_ID env
+       +-> get_slack_client_secret() -> DB setting or SLACK_CLIENT_SECRET env
+       +-> get_slack_signing_secret() -> DB setting or SLACK_SIGNING_SECRET env
+       |
+       v
+Return masked status with sources
+       |
+       v
+UI displays current state
+       |
+[Admin enters new values]
+       |
+       v
+saveSlackSettings()
+       |
+       v
+PUT /api/settings/slack
+       |
+       v
+db.set_setting() for each provided field
+       |
+       v
+Reload status (refresh UI)
+```
+
 ## Related
 
 - **[Public Agent Links](public-agent-links.md)** (15.1) - Base infrastructure, session persistence (PUB-005)
@@ -460,3 +710,4 @@ Context is built using `db.build_public_chat_context()` (line 302), same as web 
 |------|--------|---------|
 | 2026-02-25 | Claude | Initial implementation |
 | 2026-02-25 | Claude | Enhanced with exact line numbers and code references |
+| 2026-02-25 | Claude | Added Settings Configuration flow (admin UI for Slack credentials) |

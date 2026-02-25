@@ -3,7 +3,20 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-02-25)**: Slack Integration for Public Links (SLACK-001) - **Complete**:
+> **Updated (2026-02-25)**: Slack Integration Settings Configuration (SLACK-001 Enhancement):
+> - **Feature flow**: [slack-integration.md](feature-flows/slack-integration.md) - Added "Settings Configuration Flow" section
+> - **New capability**: Admin-configurable Slack credentials via Settings UI (no env vars required)
+> - **Configuration hierarchy**: Database settings take precedence over environment variables
+> - **New admin API**: `GET/PUT/DELETE /api/settings/slack` for credential management
+> - **New files**:
+>   - `src/backend/services/settings_service.py:89-161` - Slack getters with DB/env fallback
+>   - `src/backend/routers/settings.py:425-554` - Slack settings CRUD endpoints
+>   - `src/frontend/src/views/Settings.vue:223-380` - Slack Integration section UI
+> - **Modified files**:
+>   - `src/backend/services/slack_service.py` - Now imports from settings_service instead of config
+> - **UI features**: Masked credential display, source indicators (settings vs env), setup instructions
+>
+> **Previous (2026-02-25)**: Slack Integration for Public Links (SLACK-001) - **Complete**:
 > - **Feature flow**: [slack-integration.md](feature-flows/slack-integration.md) - Slack as a delivery channel for public agent links
 > - **Key features**: Slack OAuth 2.0, DM event handling, user verification (email or Slack profile), session persistence
 > - **Architecture**: One Slack workspace = One public link = One agent (simple 1:1 mapping)

@@ -18,12 +18,14 @@ from urllib.parse import urlencode
 import httpx
 
 from config import (
-    SLACK_SIGNING_SECRET,
-    SLACK_CLIENT_ID,
-    SLACK_CLIENT_SECRET,
     PUBLIC_CHAT_URL,
     FRONTEND_URL,
     SECRET_KEY
+)
+from services.settings_service import (
+    get_slack_signing_secret,
+    get_slack_client_id,
+    get_slack_client_secret,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,8 +62,9 @@ class SlackService:
 
         Returns (is_valid, error_reason).
         """
-        if not SLACK_SIGNING_SECRET:
-            return False, "SLACK_SIGNING_SECRET not configured"
+        signing_secret = get_slack_signing_secret()
+        if not signing_secret:
+            return False, "Slack Signing Secret not configured"
 
         # Reject requests older than 5 minutes (prevent replay attacks)
         try:
@@ -74,7 +77,7 @@ class SlackService:
         # Compute expected signature
         sig_basestring = f"v0:{timestamp}:{body.decode('utf-8')}"
         expected_signature = 'v0=' + hmac.new(
-            SLACK_SIGNING_SECRET.encode('utf-8'),
+            signing_secret.encode('utf-8'),
             sig_basestring.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -97,7 +100,7 @@ class SlackService:
         redirect_uri = f"{PUBLIC_CHAT_URL}/api/public/slack/oauth/callback"
 
         params = {
-            "client_id": SLACK_CLIENT_ID,
+            "client_id": get_slack_client_id(),
             "scope": "im:history,chat:write,users:read.email",
             "redirect_uri": redirect_uri,
             "state": state
@@ -121,8 +124,8 @@ class SlackService:
             response = await self.client.post(
                 f"{self.SLACK_API_BASE}/oauth.v2.access",
                 data={
-                    "client_id": SLACK_CLIENT_ID,
-                    "client_secret": SLACK_CLIENT_SECRET,
+                    "client_id": get_slack_client_id(),
+                    "client_secret": get_slack_client_secret(),
                     "code": code,
                     "redirect_uri": redirect_uri
                 }

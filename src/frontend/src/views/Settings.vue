@@ -220,6 +220,165 @@
             </div>
           </div>
 
+          <!-- Slack Integration Section (SLACK-001) -->
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Slack Integration</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Configure Slack app credentials for public agent links via Slack DMs.
+              </p>
+            </div>
+
+            <div class="px-6 py-4">
+              <div class="space-y-4">
+                <!-- Slack Client ID -->
+                <div>
+                  <label for="slack-client-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Client ID
+                  </label>
+                  <div class="mt-1">
+                    <input
+                      type="text"
+                      id="slack-client-id"
+                      v-model="slackClientId"
+                      :placeholder="slackSettings.client_id?.configured ? slackSettings.client_id.masked : 'Enter Slack Client ID'"
+                      :disabled="savingSlackSettings"
+                      class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    />
+                  </div>
+                  <div v-if="slackSettings.client_id?.configured" class="mt-1 text-xs text-green-600 dark:text-green-400">
+                    ✓ Configured ({{ slackSettings.client_id.source === 'settings' ? 'from settings' : 'from environment' }})
+                  </div>
+                </div>
+
+                <!-- Slack Client Secret -->
+                <div>
+                  <label for="slack-client-secret" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Client Secret
+                  </label>
+                  <div class="mt-1 relative">
+                    <input
+                      :type="showSlackClientSecret ? 'text' : 'password'"
+                      id="slack-client-secret"
+                      v-model="slackClientSecret"
+                      :placeholder="slackSettings.client_secret?.configured ? slackSettings.client_secret.masked : 'Enter Slack Client Secret'"
+                      :disabled="savingSlackSettings"
+                      class="block w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      @click="showSlackClientSecret = !showSlackClientSecret"
+                      class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      <svg v-if="showSlackClientSecret" class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                      <svg v-else class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div v-if="slackSettings.client_secret?.configured" class="mt-1 text-xs text-green-600 dark:text-green-400">
+                    ✓ Configured ({{ slackSettings.client_secret.source === 'settings' ? 'from settings' : 'from environment' }})
+                  </div>
+                </div>
+
+                <!-- Slack Signing Secret -->
+                <div>
+                  <label for="slack-signing-secret" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Signing Secret
+                  </label>
+                  <div class="mt-1 relative">
+                    <input
+                      :type="showSlackSigningSecret ? 'text' : 'password'"
+                      id="slack-signing-secret"
+                      v-model="slackSigningSecret"
+                      :placeholder="slackSettings.signing_secret?.configured ? slackSettings.signing_secret.masked : 'Enter Slack Signing Secret'"
+                      :disabled="savingSlackSettings"
+                      class="block w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      @click="showSlackSigningSecret = !showSlackSigningSecret"
+                      class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      <svg v-if="showSlackSigningSecret" class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                      <svg v-else class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div v-if="slackSettings.signing_secret?.configured" class="mt-1 text-xs text-green-600 dark:text-green-400">
+                    ✓ Configured ({{ slackSettings.signing_secret.source === 'settings' ? 'from settings' : 'from environment' }})
+                  </div>
+                </div>
+
+                <!-- Save Button -->
+                <div class="flex items-center gap-3">
+                  <button
+                    @click="saveSlackSettings"
+                    :disabled="(!slackClientId && !slackClientSecret && !slackSigningSecret) || savingSlackSettings"
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg v-if="savingSlackSettings" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Save Slack Settings
+                  </button>
+                  <span v-if="slackSaveSuccess" class="text-sm text-green-600 dark:text-green-400">
+                    ✓ Settings saved
+                  </span>
+                </div>
+
+                <!-- Status -->
+                <div class="mt-4 p-4 rounded-lg" :class="slackSettings.configured ? 'bg-green-50 dark:bg-green-900/20' : 'bg-yellow-50 dark:bg-yellow-900/20'">
+                  <div class="flex items-start">
+                    <svg v-if="slackSettings.configured" class="h-5 w-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <svg v-else class="h-5 w-5 text-yellow-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium" :class="slackSettings.configured ? 'text-green-800 dark:text-green-200' : 'text-yellow-800 dark:text-yellow-200'">
+                        {{ slackSettings.configured ? 'Slack Integration Ready' : 'Configuration Required' }}
+                      </h3>
+                      <p class="mt-1 text-sm" :class="slackSettings.configured ? 'text-green-700 dark:text-green-300' : 'text-yellow-700 dark:text-yellow-300'">
+                        <template v-if="slackSettings.configured">
+                          All credentials configured. You can now connect public links to Slack workspaces.
+                        </template>
+                        <template v-else>
+                          Enter all three credentials above to enable Slack integration.
+                          Get credentials from your <a href="https://api.slack.com/apps" target="_blank" class="underline">Slack App settings</a>.
+                        </template>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Setup Instructions -->
+                <details class="mt-4">
+                  <summary class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">
+                    Setup Instructions
+                  </summary>
+                  <div class="mt-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300 space-y-2">
+                    <p><strong>1.</strong> Create a Slack App at <a href="https://api.slack.com/apps" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:underline">api.slack.com/apps</a></p>
+                    <p><strong>2.</strong> Copy the <strong>Client ID</strong>, <strong>Client Secret</strong>, and <strong>Signing Secret</strong> from Basic Information</p>
+                    <p><strong>3.</strong> Add Bot Token Scopes: <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">im:history</code>, <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">chat:write</code>, <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">users:read.email</code></p>
+                    <p><strong>4.</strong> Enable Event Subscriptions and subscribe to <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">message.im</code></p>
+                    <p><strong>5.</strong> Set Request URL to: <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs break-all">https://YOUR_DOMAIN/api/public/slack/events</code></p>
+                    <p><strong>6.</strong> Add OAuth Redirect URL: <code class="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs break-all">https://YOUR_DOMAIN/api/public/slack/oauth/callback</code></p>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
           <!-- Claude Subscriptions Section (SUB-001) -->
           <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -852,6 +1011,21 @@ const githubPatStatus = ref({
   source: null
 })
 
+// Slack Integration state (SLACK-001)
+const slackClientId = ref('')
+const slackClientSecret = ref('')
+const slackSigningSecret = ref('')
+const showSlackClientSecret = ref(false)
+const showSlackSigningSecret = ref(false)
+const savingSlackSettings = ref(false)
+const slackSaveSuccess = ref(false)
+const slackSettings = ref({
+  configured: false,
+  client_id: { configured: false, masked: null, source: null },
+  client_secret: { configured: false, masked: null, source: null },
+  signing_secret: { configured: false, masked: null, source: null }
+})
+
 // SSH Access state
 const sshAccessEnabled = ref(false)
 const savingSshAccess = ref(false)
@@ -897,6 +1071,9 @@ async function loadSettings() {
 
     // Load API keys status
     await loadApiKeyStatus()
+
+    // Load Slack settings (SLACK-001)
+    await loadSlackSettings()
   } catch (e) {
     if (e.response?.status === 403) {
       error.value = 'Access denied. Admin privileges required.'
@@ -1043,6 +1220,49 @@ async function saveGithubPat() {
     error.value = e.response?.data?.detail || 'Failed to save GitHub PAT'
   } finally {
     savingGithubPat.value = false
+  }
+}
+
+// Slack Integration methods (SLACK-001)
+async function loadSlackSettings() {
+  try {
+    const response = await axios.get('/api/settings/slack')
+    slackSettings.value = response.data
+  } catch (e) {
+    console.error('Failed to load Slack settings:', e)
+  }
+}
+
+async function saveSlackSettings() {
+  if (!slackClientId.value && !slackClientSecret.value && !slackSigningSecret.value) return
+
+  savingSlackSettings.value = true
+  slackSaveSuccess.value = false
+  error.value = null
+
+  try {
+    const payload = {}
+    if (slackClientId.value) payload.client_id = slackClientId.value
+    if (slackClientSecret.value) payload.client_secret = slackClientSecret.value
+    if (slackSigningSecret.value) payload.signing_secret = slackSigningSecret.value
+
+    await axios.put('/api/settings/slack', payload)
+
+    // Reload settings to get updated status
+    await loadSlackSettings()
+
+    // Clear inputs and show success
+    slackClientId.value = ''
+    slackClientSecret.value = ''
+    slackSigningSecret.value = ''
+    slackSaveSuccess.value = true
+    setTimeout(() => {
+      slackSaveSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to save Slack settings'
+  } finally {
+    savingSlackSettings.value = false
   }
 }
 

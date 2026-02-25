@@ -1,3 +1,27 @@
+### 2026-02-25 15:10:00
+🔧 **Enhancement: Slack Settings in Admin UI (SLACK-001)**
+
+Added admin-configurable Slack integration settings via Settings page, removing the need for environment variables.
+
+**Updated Files:**
+- `src/backend/services/settings_service.py` - Added `get_slack_client_id()`, `get_slack_client_secret()`, `get_slack_signing_secret()` with database-first, env-var-fallback pattern
+- `src/backend/services/slack_service.py` - Now uses settings_service getters instead of config constants
+- `src/backend/routers/settings.py` - Added `/api/settings/slack` GET/PUT/DELETE endpoints
+- `src/frontend/src/views/Settings.vue` - Added Slack Integration section with setup instructions
+
+**API Endpoints:**
+- `GET /api/settings/slack` - Get Slack settings status (admin only)
+- `PUT /api/settings/slack` - Update Slack credentials (admin only)
+- `DELETE /api/settings/slack` - Remove Slack settings (admin only)
+
+**Configuration Hierarchy:**
+1. Database settings (via Settings UI) - checked first
+2. Environment variables (SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET) - fallback
+
+**Impact**: Improves SLACK-001 UX by allowing configuration via UI instead of requiring container restart for env var changes.
+
+---
+
 ### 2026-02-25 10:00:00
 ✨ **Feature: Slack Integration for Public Links (SLACK-001)**
 
