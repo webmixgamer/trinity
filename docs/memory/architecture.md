@@ -111,6 +111,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `git.py` - Git sync endpoints (status, sync, log, pull)
 - `processes.py` - Process definition CRUD, execution control (NEW: 2026-01-16)
 - `process_templates.py` - Process template listing and retrieval (NEW: 2026-01-16)
+- `slack.py` - Slack integration (OAuth, events, DM handling) (NEW: 2026-02-25, SLACK-001)
 
 **Services (`services/`):**
 - `docker_service.py` - Docker container management
@@ -122,6 +123,7 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `agent_client.py` - HTTP client for agent container communication (chat, session, injection)
 - `credential_encryption.py` - AES-256-GCM encryption for .credentials.enc files (NEW: 2026-02-05)
 - `process_engine/` - Process Engine service (NEW: 2026-01-16, see below)
+- `slack_service.py` - Slack API client (OAuth, messaging, verification) (NEW: 2026-02-25, SLACK-001)
 
 **Logging (`logging_config.py`):**
 - Structured JSON logging for production

@@ -122,6 +122,7 @@ from db.notifications import NotificationOperations
 from db.subscriptions import SubscriptionOperations
 from db.monitoring import MonitoringOperations
 from db.dashboard_history import DashboardHistoryOperations
+from db.slack import SlackOperations
 
 
 def init_database():
@@ -246,6 +247,7 @@ class DatabaseManager:
         self._subscription_ops = SubscriptionOperations()
         self._monitoring_ops = MonitoringOperations()
         self._dashboard_history_ops = DashboardHistoryOperations()
+        self._slack_ops = SlackOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1053,6 +1055,62 @@ class DatabaseManager:
 
     def get_agent_execution_stats(self, agent_name: str, hours: int = 24):
         return self._schedule_ops.get_agent_execution_stats(agent_name, hours)
+
+    # =========================================================================
+    # Slack Integration (delegated to db/slack.py) - SLACK-001
+    # =========================================================================
+
+    def create_slack_connection(self, link_id: str, slack_team_id: str, slack_team_name: str,
+                                 slack_bot_token: str, connected_by: str):
+        return self._slack_ops.create_slack_connection(
+            link_id, slack_team_id, slack_team_name, slack_bot_token, connected_by
+        )
+
+    def get_slack_connection(self, connection_id: str):
+        return self._slack_ops.get_slack_connection(connection_id)
+
+    def get_slack_connection_by_link(self, link_id: str):
+        return self._slack_ops.get_slack_connection_by_link(link_id)
+
+    def get_slack_connection_by_team(self, slack_team_id: str):
+        return self._slack_ops.get_slack_connection_by_team(slack_team_id)
+
+    def update_slack_connection(self, connection_id: str, enabled: bool = None, slack_team_name: str = None):
+        return self._slack_ops.update_slack_connection(connection_id, enabled, slack_team_name)
+
+    def delete_slack_connection(self, connection_id: str):
+        return self._slack_ops.delete_slack_connection(connection_id)
+
+    def delete_slack_connection_by_link(self, link_id: str):
+        return self._slack_ops.delete_slack_connection_by_link(link_id)
+
+    def get_slack_user_verification(self, link_id: str, slack_user_id: str, slack_team_id: str):
+        return self._slack_ops.get_user_verification(link_id, slack_user_id, slack_team_id)
+
+    def create_slack_user_verification(self, link_id: str, slack_user_id: str, slack_team_id: str,
+                                        verified_email: str, verification_method: str):
+        return self._slack_ops.create_user_verification(
+            link_id, slack_user_id, slack_team_id, verified_email, verification_method
+        )
+
+    def get_slack_pending_verification(self, slack_user_id: str, slack_team_id: str):
+        return self._slack_ops.get_pending_verification(slack_user_id, slack_team_id)
+
+    def create_slack_pending_verification(self, link_id: str, slack_user_id: str, slack_team_id: str,
+                                           email: str = None, code: str = None, state: str = "awaiting_email"):
+        return self._slack_ops.create_pending_verification(
+            link_id, slack_user_id, slack_team_id, email, code, state
+        )
+
+    def update_slack_pending_verification(self, slack_user_id: str, slack_team_id: str,
+                                           email: str = None, code: str = None, state: str = None):
+        return self._slack_ops.update_pending_verification(slack_user_id, slack_team_id, email, code, state)
+
+    def delete_slack_pending_verification(self, slack_user_id: str, slack_team_id: str):
+        return self._slack_ops.delete_pending_verification(slack_user_id, slack_team_id)
+
+    def cleanup_expired_slack_pending_verifications(self):
+        return self._slack_ops.cleanup_expired_pending_verifications()
 
 
 # Global database manager instance

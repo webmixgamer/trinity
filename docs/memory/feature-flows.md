@@ -3,6 +3,26 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-25)**: Slack Integration for Public Links (SLACK-001) - **Complete**:
+> - **Feature flow**: [slack-integration.md](feature-flows/slack-integration.md) - Slack as a delivery channel for public agent links
+> - **Key features**: Slack OAuth 2.0, DM event handling, user verification (email or Slack profile), session persistence
+> - **Architecture**: One Slack workspace = One public link = One agent (simple 1:1 mapping)
+> - **New files**:
+>   - `src/backend/db/slack.py` - SlackOperations class (connection, verification CRUD)
+>   - `src/backend/services/slack_service.py` - Slack API client (OAuth, messaging)
+>   - `src/backend/routers/slack.py` - Public events + auth management endpoints
+> - **Modified files**:
+>   - `src/backend/config.py:57-62` - SLACK_* environment variables
+>   - `src/backend/db/schema.py` - 3 tables: `slack_link_connections`, `slack_user_verifications`, `slack_pending_verifications`
+>   - `src/backend/db/migrations.py` - Migration #20 for Slack tables
+>   - `src/backend/db_models.py:810-890` - 8 Pydantic models
+>   - `src/backend/database.py` - SlackOperations delegation
+>   - `src/backend/main.py` - Router mounting
+>   - `src/frontend/src/components/PublicLinksPanel.vue` - Slack connection UI
+> - **Public API**: `POST /api/public/slack/events`, `GET /api/public/slack/oauth/callback`
+> - **Auth API**: `GET/PUT/DELETE /api/agents/{name}/public-links/{id}/slack`, `POST .../slack/connect`
+> - **Security**: HMAC-SHA256 signature verification, 5-minute timestamp tolerance
+
 > **Updated (2026-02-24)**: Async Docker Operations (DOCKER-001) - Expanded:
 > - **Feature flow**: [async-docker-operations.md](feature-flows/async-docker-operations.md) - ThreadPoolExecutor wrappers for blocking Docker SDK calls
 > - **Problem solved**: Blocking Docker operations froze FastAPI event loop for 10-25+ seconds causing HTTP 499 timeouts and WebSocket drops

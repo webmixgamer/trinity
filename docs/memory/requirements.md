@@ -471,6 +471,30 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: Session management (email-based or anonymous), message history, New Conversation button, page refresh recovery, context injection for continuity
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
 
+### 15.1b Slack Integration for Public Links (SLACK-001)
+- **Status**: 🚧 In Progress
+- **Requirement ID**: SLACK-001
+- **Priority**: P1
+- **Description**: Enable Slack as a delivery channel for public agent links. Users chat with agents via DMs to a Slack bot.
+- **Key Features**:
+  - DMs only (no channel @mentions in Phase 1)
+  - One Slack workspace = one public link (simple 1:1 mapping)
+  - Email verification for Slack users (auto-verify via Slack profile or email code)
+  - Session persistence (reuse `public_chat_sessions` with `slack` identifier type)
+  - OAuth flow for workspace connection
+  - Signature verification for Slack events
+- **Database Tables**:
+  - `slack_link_connections` - Connects workspace to public link
+  - `slack_user_verifications` - Tracks verified Slack users
+  - `slack_pending_verifications` - In-progress email verifications
+- **API Endpoints**:
+  - `POST /api/public/slack/events` - Slack event receiver
+  - `GET /api/public/slack/oauth/callback` - OAuth completion
+  - `GET/DELETE /api/agents/{name}/public-links/{id}/slack` - Connection status
+  - `POST /api/agents/{name}/public-links/{id}/slack/connect` - Initiate OAuth
+- **Spec**: `docs/requirements/SLACK_INTEGRATION.md`
+- **Flow**: `docs/memory/feature-flows/slack-integration.md`
+
 ### 15.2 First-Time Setup
 - **Status**: ✅ Implemented (2025-12-23)
 - **Description**: Admin password wizard on fresh install

@@ -805,3 +805,85 @@ class HealthCheckRecord(BaseModel):
     error_message: Optional[str] = None
     checked_at: str
     created_at: Optional[str] = None
+
+
+# =========================================================================
+# Slack Integration Models (SLACK-001)
+# =========================================================================
+
+class SlackConnectionCreate(BaseModel):
+    """Request to create a Slack connection (internal, after OAuth)."""
+    link_id: str
+    slack_team_id: str
+    slack_team_name: Optional[str] = None
+    slack_bot_token: str
+    connected_by: str
+
+
+class SlackConnection(BaseModel):
+    """A Slack workspace connection to a public link."""
+    id: str
+    link_id: str
+    slack_team_id: str
+    slack_team_name: Optional[str] = None
+    connected_by: str
+    connected_at: datetime
+    enabled: bool = True
+
+
+class SlackConnectionStatus(BaseModel):
+    """Public status of a Slack connection (no token exposed)."""
+    connected: bool
+    team_id: Optional[str] = None
+    team_name: Optional[str] = None
+    connected_at: Optional[str] = None
+    connected_by: Optional[str] = None
+    enabled: bool = True
+
+
+class SlackOAuthInitResponse(BaseModel):
+    """Response when initiating Slack OAuth flow."""
+    oauth_url: str
+
+
+class SlackUserVerification(BaseModel):
+    """A verified Slack user."""
+    id: str
+    link_id: str
+    slack_user_id: str
+    slack_team_id: str
+    verified_email: str
+    verification_method: str  # 'slack_profile' or 'email_code'
+    verified_at: datetime
+
+
+class SlackPendingVerification(BaseModel):
+    """An in-progress Slack user verification."""
+    id: str
+    link_id: str
+    slack_user_id: str
+    slack_team_id: str
+    email: Optional[str] = None
+    code: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
+    state: str = "awaiting_email"  # 'awaiting_email' or 'awaiting_code'
+
+
+class SlackEvent(BaseModel):
+    """Incoming Slack event wrapper."""
+    type: str  # 'url_verification' or 'event_callback'
+    challenge: Optional[str] = None  # For URL verification
+    team_id: Optional[str] = None
+    api_app_id: Optional[str] = None
+    event: Optional[dict] = None
+    event_id: Optional[str] = None
+    event_time: Optional[int] = None
+
+
+class SlackOAuthState(BaseModel):
+    """Encrypted OAuth state passed through Slack."""
+    link_id: str
+    agent_name: str
+    user_id: str
+    timestamp: int

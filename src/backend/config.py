@@ -54,6 +54,13 @@ SMTP_FROM = os.getenv("SMTP_FROM", "noreply@trinity.example.com")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
+# Slack Integration Configuration (SLACK-001)
+# Required only if Slack integration is enabled on any public link
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID", "")
+SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET", "")
+SLACK_AUTO_VERIFY_EMAIL = os.getenv("SLACK_AUTO_VERIFY_EMAIL", "true").lower() == "true"
+
 # GitHub PAT for template cloning (auto-uploaded to Redis on startup)
 GITHUB_PAT = os.getenv("GITHUB_PAT", "")
 GITHUB_PAT_CREDENTIAL_ID = "github-pat-templates"  # Fixed ID for consistent reference

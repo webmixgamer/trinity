@@ -24,6 +24,7 @@ Migration Order (as of 2026-02-24):
 17. agent_ownership_subscription_id - SUB-001 subscription FK
 18. agent_dashboard_values - DASH-001 dashboard history table
 19. setup_completed_backfill - Auto-complete setup for existing installs
+20. slack_integration_tables - SLACK-001 Slack integration tables
 """
 
 
@@ -53,6 +54,7 @@ def run_all_migrations(cursor, conn):
         ("agent_ownership_subscription_id", _migrate_agent_ownership_subscription_id),
         ("agent_dashboard_values", _migrate_agent_dashboard_values_table),
         ("setup_completed_backfill", _migrate_setup_completed_backfill),
+        ("slack_integration_tables", _migrate_slack_integration_tables),
     ]
 
     for name, migration_fn in migrations:
@@ -483,3 +485,68 @@ def _migrate_setup_completed_backfill(cursor, conn):
         """, (datetime.utcnow().isoformat(),))
         conn.commit()
         print("Setup marked as completed.")
+
+
+def _migrate_slack_integration_tables(cursor, conn):
+    """Create Slack integration tables (SLACK-001).
+
+    Creates three tables for Slack public link integration:
+    - slack_link_connections: Links Slack workspaces to public links
+    - slack_user_verifications: Tracks verified Slack users
+    - slack_pending_verifications: In-progress email verifications
+    """
+    # Create slack_link_connections table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_link_connections (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL UNIQUE,
+            slack_team_id TEXT NOT NULL UNIQUE,
+            slack_team_name TEXT,
+            slack_bot_token TEXT NOT NULL,
+            connected_by TEXT NOT NULL,
+            connected_at TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            FOREIGN KEY (connected_by) REFERENCES users(id)
+        )
+    """)
+
+    # Create slack_user_verifications table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_user_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            verified_email TEXT NOT NULL,
+            verification_method TEXT NOT NULL,
+            verified_at TEXT NOT NULL,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            UNIQUE(link_id, slack_user_id, slack_team_id)
+        )
+    """)
+
+    # Create slack_pending_verifications table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_pending_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            email TEXT,
+            code TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            state TEXT DEFAULT 'awaiting_email',
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_connections_team ON slack_link_connections(slack_team_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_connections_link ON slack_link_connections(link_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)")
+
+    conn.commit()

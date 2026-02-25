@@ -1,3 +1,42 @@
+### 2026-02-25 10:00:00
+✨ **Feature: Slack Integration for Public Links (SLACK-001)**
+
+Enables Slack as a delivery channel for public agent links. Users can chat with Trinity agents via DMs to a Slack bot, using the same security model as web-based public links.
+
+**Key Features:**
+- One Slack workspace = One public link = One agent (simple 1:1 mapping)
+- OAuth 2.0 flow for Slack app installation
+- HMAC-SHA256 signature verification for all Slack requests
+- User verification via Slack profile email or email code
+- Session persistence using existing `public_chat_sessions` table
+
+**Created Files:**
+- `src/backend/db/slack.py` - SlackOperations class for database CRUD
+- `src/backend/services/slack_service.py` - Slack API client (OAuth, messaging)
+- `src/backend/routers/slack.py` - Public events + authenticated management endpoints
+- `docs/memory/feature-flows/slack-integration.md` - Feature flow documentation
+
+**Updated Files:**
+- `src/backend/config.py` - Added SLACK_* environment variables (lines 56-59)
+- `src/backend/db/schema.py` - Added 3 tables: `slack_link_connections`, `slack_user_verifications`, `slack_pending_verifications`
+- `src/backend/db/migrations.py` - Added migration #20 for Slack tables
+- `src/backend/db_models.py` - Added 8 Pydantic models for Slack API (lines 810-890)
+- `src/backend/database.py` - Added SlackOperations delegation methods
+- `src/backend/main.py` - Mounted Slack routers
+- `src/frontend/src/components/PublicLinksPanel.vue` - Added Slack connection UI
+
+**API Endpoints:**
+- `POST /api/public/slack/events` - Receive Slack events (no auth)
+- `GET /api/public/slack/oauth/callback` - OAuth completion redirect (no auth)
+- `GET /api/agents/{name}/public-links/{id}/slack` - Connection status
+- `POST /api/agents/{name}/public-links/{id}/slack/connect` - Initiate OAuth
+- `PUT /api/agents/{name}/public-links/{id}/slack` - Update (enable/disable)
+- `DELETE /api/agents/{name}/public-links/{id}/slack` - Disconnect
+
+**Impact**: New feature extending Public Agent Links (15.1) with Slack channel support.
+
+---
+
 ### 2026-02-24 17:15:00
 🐛 **Fix: Vite 6.x allowedHosts for custom domains (Issue #43)**
 

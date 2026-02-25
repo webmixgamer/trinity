@@ -472,6 +472,53 @@ TABLES = {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """,
+
+    # -------------------------------------------------------------------------
+    # Slack Integration Tables (SLACK-001)
+    # -------------------------------------------------------------------------
+    "slack_link_connections": """
+        CREATE TABLE IF NOT EXISTS slack_link_connections (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL UNIQUE,
+            slack_team_id TEXT NOT NULL UNIQUE,
+            slack_team_name TEXT,
+            slack_bot_token TEXT NOT NULL,
+            connected_by TEXT NOT NULL,
+            connected_at TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            FOREIGN KEY (connected_by) REFERENCES users(id)
+        )
+    """,
+
+    "slack_user_verifications": """
+        CREATE TABLE IF NOT EXISTS slack_user_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            verified_email TEXT NOT NULL,
+            verification_method TEXT NOT NULL,
+            verified_at TEXT NOT NULL,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            UNIQUE(link_id, slack_user_id, slack_team_id)
+        )
+    """,
+
+    "slack_pending_verifications": """
+        CREATE TABLE IF NOT EXISTS slack_pending_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            email TEXT,
+            code TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            state TEXT DEFAULT 'awaiting_email',
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+        )
+    """,
 }
 
 # =============================================================================
@@ -577,6 +624,13 @@ INDEXES = [
     # Dashboard history indexes (DASH-001)
     "CREATE INDEX IF NOT EXISTS idx_dashboard_values_agent_time ON agent_dashboard_values(agent_name, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_dashboard_values_widget ON agent_dashboard_values(agent_name, widget_key, captured_at DESC)",
+
+    # Slack integration indexes (SLACK-001)
+    "CREATE INDEX IF NOT EXISTS idx_slack_connections_team ON slack_link_connections(slack_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_connections_link ON slack_link_connections(link_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)",
 ]
 
 

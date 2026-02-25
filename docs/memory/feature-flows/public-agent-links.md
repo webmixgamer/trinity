@@ -461,6 +461,7 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 - **Downstream**: Agent Chat (uses same `/api/task` endpoint)
 - **Related**: [Authenticated Chat Tab](authenticated-chat-tab.md) - shares chat components (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator)
 - **Related**: Agent Sharing (manages `can_share` permission, embeds PublicLinksPanel via SharingPanel.vue)
+- **Related**: [Slack Integration](slack-integration.md) (SLACK-001) - Slack as delivery channel for public links
 
 ## External Public URL (PUB-002)
 
@@ -1383,6 +1384,44 @@ const scrollToBottom = () => {
 
 ---
 
+---
+
+## Slack Integration (SLACK-001)
+
+**Status**: Implemented (2026-02-25)
+**Spec**: `docs/requirements/SLACK_INTEGRATION.md`
+**Feature Flow**: [slack-integration.md](slack-integration.md)
+
+Slack can be connected to a public link as an additional delivery channel. Users DM the Slack bot to chat with the agent, using the same session persistence infrastructure.
+
+### Key Points
+
+- **1:1 mapping**: One Slack workspace connects to one public link
+- **Session reuse**: `public_chat_sessions` with `identifier_type='slack'`, `session_identifier='{team_id}:{user_id}'`
+- **Email verification**: Follows same require_email setting as web link
+- **UI location**: Slack section in PublicLinksPanel.vue (lines 125-181)
+
+### New Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `slack_link_connections` | Maps Slack workspace to public link |
+| `slack_user_verifications` | Tracks verified Slack users |
+| `slack_pending_verifications` | In-progress verification state |
+
+### New API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/public/slack/events` | Receive Slack DM events |
+| `GET /api/public/slack/oauth/callback` | OAuth completion |
+| `GET/PUT/DELETE /api/agents/{name}/public-links/{id}/slack` | Connection management |
+| `POST .../slack/connect` | Initiate OAuth |
+
+See [slack-integration.md](slack-integration.md) for complete implementation details.
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -1400,3 +1439,4 @@ const scrollToBottom = () => {
 | 2026-02-17 | **Implemented PUB-005 Public Chat Session Persistence**: Multi-turn conversation persistence with `public_chat_sessions` and `public_chat_messages` tables. New `db/public_chat.py` with operations class. Updated `POST /api/public/chat/{token}` to persist messages and build context prompt. New `GET /api/public/history/{token}` and `DELETE /api/public/session/{token}` endpoints. Frontend session management with localStorage for anonymous links, history loading on mount, "New Conversation" button. |
 | 2026-02-17 | **PUB-005 documentation refresh**: Added exact line numbers for all backend endpoints (chat:214, history:465, session:541), db operations (public_chat.py methods with lines), database schema locations (660-687, 781-783), delegation methods (1404-1432), and frontend methods (loadHistory:429, sendMessage:544, confirmNewConversation:503). Added response model documentation, error handling table, cost tracking details, and expanded test scenarios. Updated file line counts (public.py:603, PublicChat.vue:658, db_models.py:483). |
 | 2026-02-17 | **Implemented PUB-006 Public Client Mode Awareness**: Agents now receive `PUBLIC_LINK_MODE_HEADER` constant ("### Trinity: Public Link Access Mode") prepended to all public chat prompts via `build_context_prompt()` in `db/public_chat.py:17-18,265-266`. **UI: Bottom-aligned messages**: Chat messages now stack from bottom up (like iMessage/Slack) using flexbox with spacer div (lines 191-193), new `messagesContainer` ref for scroll handling (line 334). File line count: PublicChat.vue now 684 lines. |
+| 2026-02-25 | **SLACK-001 Slack Integration**: Added Slack as delivery channel for public links. New section documenting Slack integration, updated Related Flows to include slack-integration.md. See [slack-integration.md](slack-integration.md) for full implementation details. |
