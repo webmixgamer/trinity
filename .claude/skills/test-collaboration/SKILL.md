@@ -1,6 +1,24 @@
+---
+name: test-collaboration
+description: Run a complete test cycle of inter-agent collaboration for a given user. Creates test agents, runs collaboration patterns, and verifies dashboard data.
+allowed-tools: [Bash, Read]
+user-invocable: true
+argument-hint: "[agent_count] [user_email] [--no-cleanup]"
+automation: manual
+---
+
 # Test Inter-Agent Collaboration
 
 Run a complete test cycle of inter-agent collaboration for a given user.
+
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| Trinity Platform | `http://localhost:8000/api` | ✅ | ✅ | Agent CRUD |
+| Database | `~/trinity-data/trinity.db` | ✅ | | Activity verification |
+| Docker | Docker socket | ✅ | ✅ | Container management |
+| Local Config | `CLAUDE.local.md` | ✅ | | User email default |
 
 ## What This Does
 
@@ -28,7 +46,7 @@ Run a complete test cycle of inter-agent collaboration for a given user.
 /test-collaboration 20 --no-cleanup    # 20 agents, keep them running
 ```
 
-## Instructions
+## Process
 
 ### Step 0: Parse Parameters
 
@@ -106,14 +124,6 @@ Execute collaboration patterns scaled to agent count. Use `mcp__trinity__chat_wi
 - Within each pattern, execute interactions with 2-second delays
 - Log each interaction: `[Pattern X] Agent {source} → Agent {target}: {status}`
 
-### Step 3.1: Interaction Summary
-
-After all patterns complete, calculate:
-- Total interactions attempted
-- Successful interactions
-- Failed interactions (with reasons)
-- Approximate duration
-
 ### Step 4: Verify Dashboard Data
 
 Check that collaboration data is persisted:
@@ -185,71 +195,13 @@ docker ps -a --filter "name=collab-{batch_id}" --format "{{.Names}}" | wc -l
 
 ### Step 7: Report Results
 
-Provide a summary report:
-
-```markdown
-## Collaboration Test Results
-
-**Batch ID**: {batch_id}
-**Agent Count**: {agent_count}
-**User**: {user_email}
-**Timestamp**: {ISO timestamp}
-**Duration**: {total_duration}
-
-### Test Agents Created
-| # | Agent Name | Status | Creation Time |
-|---|------------|--------|---------------|
-| 1 | collab-{batch_id}-01 | ✅ Running | 00:00 |
-| 2 | collab-{batch_id}-02 | ✅ Running | 00:00 |
-| ... | ... | ... | ... |
-| N | collab-{batch_id}-{N} | ✅ Running | 00:XX |
-
-**Agent Creation Summary**: {agent_count} created, {running_count} running, {failed_count} failed
-
-### Collaboration Patterns Executed
-
-| Pattern | Description | Interactions | Success | Failed |
-|---------|-------------|--------------|---------|--------|
-| A | Ring Chain | {agent_count} | {success} | {failed} |
-| B | Hub-Spoke | {(agent_count-1)*2} | {success} | {failed} |
-| C | Random Mesh | {min(agent_count,10)} | {success} | {failed} |
-| D | Team Clusters | {3*teams} | {success} | {failed} |
-
-**Total Collaborations**: {total} attempted, {success} successful, {failed} failed
-
-### Database Verification
-- ✅ {db_count} records in agent_activities table
-- ✅ All records have activity_type='agent_collaboration'
-- ✅ Details JSON contains source_agent and target_agent
-- ✅ Batch filter working: `agent_name LIKE 'collab-{batch_id}-%'`
-
-### Performance Metrics
-- Agent creation: {creation_time} ({per_agent}s per agent)
-- Collaboration execution: {collab_time}
-- Average response time: {avg_response}s
-
-### Replay Dashboard
-- User should see {agent_count} nodes on canvas
-- Timeline shows {expected_events} collaboration events
-- Recommended replay speed: {recommended_speed}x
-
-### Cleanup
-- {cleanup_status}: {deleted_count}/{agent_count} agents deleted
-- Orphaned containers: {orphaned_count}
-
-**Status**: {overall_status}
-**Issues**: {issues_list or "None"}
-```
-
-## When to Use
-
-- Before demonstrating collaboration dashboard to stakeholders
-- After making changes to inter-agent communication
-- To verify Trinity MCP is correctly configured
-- To test replay feature with fresh data
-- For user onboarding / training
-- **Stress testing** with large agent counts (10-50)
-- **Performance benchmarking** of collaboration infrastructure
+Provide a summary report with:
+- Batch ID and parameters
+- Agent creation results
+- Collaboration pattern results
+- Database verification
+- Performance metrics
+- Cleanup status
 
 ## Prerequisites
 
@@ -290,25 +242,6 @@ Provide a summary report:
 - Consider running on production server for 20+ agents
 - Reduce collaboration frequency (increase delays)
 
-## Example Usage
-
-```bash
-# Test with 3 agents (default)
-/test-collaboration
-
-# Test with 10 agents
-/test-collaboration 10
-
-# Test with 20 agents, specific user
-/test-collaboration 20 admin@example.com
-
-# Stress test with 20 agents, keep them running
-/test-collaboration 20 --no-cleanup
-
-# Maximum scale test (50 agents)
-/test-collaboration 50 user@example.com --no-cleanup
-```
-
 ## Expected Duration
 
 | Agents | Creation | Collaboration | Cleanup | Total |
@@ -318,24 +251,17 @@ Provide a summary report:
 | 20     | ~3 min   | ~10 min       | ~1 min  | ~15 min |
 | 50     | ~8 min   | ~30 min       | ~2 min  | ~40 min |
 
-**Note**: Collaboration time depends heavily on Claude response times. Estimates assume ~5s average response.
+## Completion Checklist
 
-## Notes
-
-- Test agents use batch IDs (`collab-batch_{timestamp}-{index}`) to avoid conflicts
-- Multiple batches can run simultaneously (different timestamps)
-- All data is cleaned up automatically unless `--no-cleanup` specified
-- Safe to run multiple times
-- Does NOT affect production agents or non-collab agents
-- Collaboration events persist in database after cleanup (by design)
-- With `--no-cleanup`, manually delete later: `docker rm -f $(docker ps -a --filter "name=collab-batch" -q)`
-
-## Scale Testing Tips
-
-For 20+ agents:
-1. **Start small**: Test with 5 first to verify everything works
-2. **Monitor resources**: Keep `docker stats` running in another terminal
-3. **Use `--no-cleanup`**: Allows inspecting state after test
-4. **Check logs**: `docker-compose logs -f backend` for errors
-5. **Dashboard performance**: Vue Flow handles 50+ nodes well, but may lag with rapid updates
-6. **Replay speed**: Use 20x-50x speed for large collaboration histories
+- [ ] Parameters parsed
+- [ ] Batch ID generated
+- [ ] Test agents created
+- [ ] All agents running
+- [ ] Pattern A (Ring Chain) executed
+- [ ] Pattern B (Hub-Spoke) executed
+- [ ] Pattern C (Random Mesh) executed (if applicable)
+- [ ] Pattern D (Team Clusters) executed (if applicable)
+- [ ] Database verified
+- [ ] Replay instructions provided
+- [ ] Cleanup completed (unless --no-cleanup)
+- [ ] Results report generated

@@ -292,7 +292,7 @@ async def initialize_git_in_container(
     # NOTE: All agents use /home/developer as their home directory.
     # The /home/developer/workspace check is LEGACY support for agents created before 2026-02.
     # New agents should never have a workspace subdirectory.
-    check_workspace = execute_command_in_container(
+    check_workspace = await execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace ] && find /home/developer/workspace -mindepth 1 -maxdepth 1 | head -1 | wc -l"',
         timeout=5
@@ -324,7 +324,7 @@ async def initialize_git_in_container(
 .npm/
 .ssh/
 """
-        execute_command_in_container(
+        await execute_command_in_container(
             container_name=container_name,
             command=f'bash -c "cat > {git_dir}/.gitignore << \'GITIGNORE_EOF\'\n{gitignore_content}\nGITIGNORE_EOF\n"',
             timeout=5
@@ -345,7 +345,7 @@ async def initialize_git_in_container(
     ]
 
     for cmd in commands:
-        result = execute_command_in_container(
+        result = await execute_command_in_container(
             container_name=container_name,
             command=f'bash -c "cd {git_dir} && {cmd}"',
             timeout=60
@@ -371,7 +371,7 @@ async def initialize_git_in_container(
         ]
 
         for cmd in branch_commands:
-            result = execute_command_in_container(
+            result = await execute_command_in_container(
                 container_name=container_name,
                 command=f'bash -c "cd {git_dir} && {cmd}"',
                 timeout=60
@@ -381,7 +381,7 @@ async def initialize_git_in_container(
                 logger.warning(f"Failed to create working branch: {result.get('output', '')}")
 
     # Step 5: Verify
-    verify_result = execute_command_in_container(
+    verify_result = await execute_command_in_container(
         container_name=container_name,
         command=f'bash -c "cd {git_dir} && git rev-parse --git-dir"',
         timeout=5
@@ -403,7 +403,7 @@ async def initialize_git_in_container(
     )
 
 
-def check_git_initialized(agent_name: str) -> Optional[str]:
+async def check_git_initialized(agent_name: str) -> Optional[str]:
     """
     Check if git is initialized in an agent container.
 
@@ -417,7 +417,7 @@ def check_git_initialized(agent_name: str) -> Optional[str]:
 
     # NOTE: The workspace check is LEGACY support for agents created before 2026-02.
     # New agents use /home/developer directly.
-    result = execute_command_in_container(
+    result = await execute_command_in_container(
         container_name=container_name,
         command='bash -c "[ -d /home/developer/workspace/.git ] && echo workspace || ([ -d /home/developer/.git ] && echo home || echo notexists)"',
         timeout=5

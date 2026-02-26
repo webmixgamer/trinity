@@ -3,6 +3,109 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
+> **Updated (2026-02-25)**: Tag Clouds Visualization (ORG-001 Enhancement):
+> - **New feature flow**: [tag-clouds.md](feature-flows/tag-clouds.md) - Visual grouping of agents by tags on Dashboard
+> - **Key features**: Semi-transparent colored clouds behind agent groups, 10-color deterministic palette, toggle button with localStorage persistence
+> - **New files**:
+>   - `src/frontend/src/components/TagClouds.vue` - SVG cloud rendering component
+> - **Modified files**:
+>   - `src/frontend/src/stores/network.js:308-464` - Tag-aware layout with bin-packing algorithm
+>   - `src/frontend/src/views/Dashboard.vue:117-132,306-329,561-565` - Toggle button, TagClouds integration
+> - **Layout features**: Groups agents by primary tag, tight spacing within groups, bin-packing arrangement
+> - **UI features**: Clouds transform with pan/zoom, blur filter for soft edges, optional tag labels
+> - **Related flow**: [agent-tags.md](feature-flows/agent-tags.md) - Tags system (ORG-001)
+>
+> **Previous (2026-02-25)**: Slack Integration Settings Configuration (SLACK-001 Enhancement):
+> - **Feature flow**: [slack-integration.md](feature-flows/slack-integration.md) - Added "Settings Configuration Flow" section
+> - **New capability**: Admin-configurable Slack credentials via Settings UI (no env vars required)
+> - **Configuration hierarchy**: Database settings take precedence over environment variables
+> - **New admin API**: `GET/PUT/DELETE /api/settings/slack` for credential management
+> - **New files**:
+>   - `src/backend/services/settings_service.py:89-161` - Slack getters with DB/env fallback
+>   - `src/backend/routers/settings.py:425-554` - Slack settings CRUD endpoints
+>   - `src/frontend/src/views/Settings.vue:223-380` - Slack Integration section UI
+> - **Modified files**:
+>   - `src/backend/services/slack_service.py` - Now imports from settings_service instead of config
+> - **UI features**: Masked credential display, source indicators (settings vs env), setup instructions
+>
+> **Previous (2026-02-25)**: Slack Integration for Public Links (SLACK-001) - **Complete**:
+> - **Feature flow**: [slack-integration.md](feature-flows/slack-integration.md) - Slack as a delivery channel for public agent links
+> - **Key features**: Slack OAuth 2.0, DM event handling, user verification (email or Slack profile), session persistence
+> - **Architecture**: One Slack workspace = One public link = One agent (simple 1:1 mapping)
+> - **New files**:
+>   - `src/backend/db/slack.py` - SlackOperations class (connection, verification CRUD)
+>   - `src/backend/services/slack_service.py` - Slack API client (OAuth, messaging)
+>   - `src/backend/routers/slack.py` - Public events + auth management endpoints
+> - **Modified files**:
+>   - `src/backend/config.py:57-62` - SLACK_* environment variables
+>   - `src/backend/db/schema.py` - 3 tables: `slack_link_connections`, `slack_user_verifications`, `slack_pending_verifications`
+>   - `src/backend/db/migrations.py` - Migration #20 for Slack tables
+>   - `src/backend/db_models.py:810-890` - 8 Pydantic models
+>   - `src/backend/database.py` - SlackOperations delegation
+>   - `src/backend/main.py` - Router mounting
+>   - `src/frontend/src/components/PublicLinksPanel.vue` - Slack connection UI
+> - **Public API**: `POST /api/public/slack/events`, `GET /api/public/slack/oauth/callback`
+> - **Auth API**: `GET/PUT/DELETE /api/agents/{name}/public-links/{id}/slack`, `POST .../slack/connect`
+> - **Security**: HMAC-SHA256 signature verification, 5-minute timestamp tolerance
+
+> **Updated (2026-02-24)**: Async Docker Operations (DOCKER-001) - Expanded:
+> - **Feature flow**: [async-docker-operations.md](feature-flows/async-docker-operations.md) - ThreadPoolExecutor wrappers for blocking Docker SDK calls
+> - **Problem solved**: Blocking Docker operations froze FastAPI event loop for 10-25+ seconds causing HTTP 499 timeouts and WebSocket drops
+> - **Core file**:
+>   - `src/backend/services/docker_utils.py` (287 lines) - 13 async wrapper functions
+> - **Key functions**: `container_stop`, `container_start`, `container_reload`, `container_remove`, `container_stats`, `container_get`, `volume_get`, `volume_create`, `volume_remove`, `containers_run`, `container_exec_run`, `api_exec_create`, `api_exec_start`
+> - **Modified files** (12 total):
+>   - `services/agent_service/lifecycle.py` - All Docker calls now async
+>   - `services/agent_service/helpers.py` - `check_shared_folder_mounts_match()` now async
+>   - `services/agent_service/terminal.py` - Uses async exec wrappers for PTY
+>   - `services/ssh_service.py` - All 7 credential methods now async
+>   - `services/docker_service.py` - `execute_command_in_container()` now async
+>   - `services/git_service.py` - 7 calls await execute_command_in_container
+>   - `services/system_agent_service.py` - System agent operations wrapped
+>   - `routers/agents.py` - Delete/stop/reload + SSH access async
+>   - `routers/ops.py` - Fleet restart/stop operations wrapped
+>   - `routers/system_agent.py` - Terminal and reinitialize endpoints async
+>   - `routers/git.py` - Awaits check_git_initialized()
+> - **Performance**: Event loop blocking reduced from 10-25s to 0s during Docker operations
+> - **Updated flows**: [agent-lifecycle.md](feature-flows/agent-lifecycle.md), [ssh-access.md](feature-flows/ssh-access.md) (if exists)
+> - **Reference implementation**: Pattern from `routers/telemetry.py` with 4-worker ThreadPoolExecutor
+
+> **Updated (2026-02-23)**: Dynamic Dashboards (DASH-001):
+> - **New feature flow**: [dynamic-dashboards.md](feature-flows/dynamic-dashboards.md) - Historical widget value tracking with sparkline visualization
+> - **Key features**: Change detection on dashboard.yaml mtime, history enrichment, platform metrics injection
+> - **New files**:
+>   - `src/backend/db/dashboard_history.py` - Dashboard history database operations
+> - **Modified files**:
+>   - `src/backend/db/schema.py:457-468` - `agent_dashboard_values` table
+>   - `src/backend/db/migrations.py:416-440` - Migration function
+>   - `src/backend/db/schedules.py:673-718` - `get_agent_execution_stats()` method
+>   - `src/backend/database.py:1030-1058` - Dashboard history delegation methods
+>   - `src/backend/services/agent_service/dashboard.py` - History enrichment + platform metrics
+>   - `src/backend/routers/agent_dashboard.py` - Query parameters (include_history, history_hours, include_platform_metrics)
+>   - `src/frontend/src/components/DashboardPanel.vue` - SparklineChart integration, platform section styling
+> - **Database tables**: `agent_dashboard_values` (stores widget snapshots)
+> - **API query params**: `include_history=true`, `history_hours=24`, `include_platform_metrics=true`
+> - **Widget enrichment**: Adds `history.values`, `history.trend`, `history.trend_percent`, `history.min/max/avg`
+> - **Platform metrics section**: Auto-appended section with Tasks (24h), Success Rate, Cost, Health
+> - **Opt-out**: Agents set `platform_metrics: false` in dashboard.yaml
+
+> **Updated (2026-02-23)**: Agent Monitoring Service (MON-001):
+> - **New feature flow**: [agent-monitoring.md](feature-flows/agent-monitoring.md) - Multi-layer health monitoring for agent fleet
+> - **Key features**: Docker/Network/Business health checks, real-time WebSocket updates, alert cooldowns, fleet dashboard
+> - **Admin-only access**: NavBar "Health" link visible only to admins (`v-if="isAdmin"`), route has `requiresAdmin: true` meta
+> - **New files**:
+>   - `src/backend/services/monitoring_service.py` - Health check service (3 layers, background task)
+>   - `src/backend/services/monitoring_alerts.py` - Alert evaluation with cooldown tracking
+>   - `src/backend/routers/monitoring.py` - REST API (11 endpoints)
+>   - `src/backend/db/monitoring.py` - Database operations (health checks, cooldowns)
+>   - `src/frontend/src/views/Monitoring.vue` - Fleet monitoring UI
+>   - `src/frontend/src/stores/monitoring.js` - Pinia store with WebSocket handler
+>   - `src/mcp-server/src/tools/monitoring.ts` - 3 MCP tools (get_fleet_health, get_agent_health, trigger_health_check)
+> - **Database tables**: `agent_health_checks`, `monitoring_alert_cooldowns` (schema.py:422-455)
+> - **Pydantic models**: `AgentHealthStatus`, `DockerHealthCheck`, `NetworkHealthCheck`, `BusinessHealthCheck`, `FleetHealthStatus`, `MonitoringConfig` (db_models.py:653-808)
+> - **WebSocket events**: `agent_health_changed`, `monitoring_alert`
+> - **Status levels**: healthy, degraded, unhealthy, critical, unknown
+
 > **Updated (2026-02-23)**: Security Fixes M-003 and M-005:
 > - **M-003 - Remove Plaintext Password Fallback**: `verify_password()` in `src/backend/dependencies.py:24-34` no longer falls back to plaintext comparison. All passwords must be bcrypt hashed. Invalid hash formats are rejected.
 > - **M-005 - Admin Login Rate Limiting**: `POST /token` in `src/backend/routers/auth.py:24-95, 127-161` now has Redis-based rate limiting. 5 attempts per 10 minutes per IP. Returns HTTP 429 when exceeded. Successful login clears counter. Graceful degradation if Redis unavailable.
@@ -23,7 +126,13 @@
 >   - Full backward compatibility (all imports unchanged)
 > - **How to extend**: See [database-module.md](../feature-flows/database-module.md) for "How To: Add a New Migration" and "How To: Add a New Table"
 
-> **Updated (2026-02-22)**: Subscription Management (SUB-001):
+> **Updated (2026-02-23)**: Subscription Management UI (SUB-001):
+> - **Settings UI**: New "Claude Subscriptions" section in Settings page for managing subscription credentials
+> - **File upload**: Upload `.credentials.json` files directly from browser
+> - **CRUD operations**: List, register, delete subscriptions; view assigned agents
+> - **File**: `src/frontend/src/views/Settings.vue` (lines 223-435, 872-883, 1268-1387)
+>
+> **Previous (2026-02-22)**: Subscription Management (SUB-001):
 > - **New feature flow**: [subscription-management.md](feature-flows/subscription-management.md) - Centralized Claude Max/Pro subscription credential management
 > - **Key features**: Register OAuth credentials once, assign to multiple agents, auto-inject on start, hot-inject to running agents
 > - **New files**:
@@ -709,6 +818,7 @@
 | Activity Monitoring | Medium | [activity-monitoring.md](feature-flows/activity-monitoring.md) | Real-time tool execution tracking |
 | Agent Logs & Telemetry | Medium | [agent-logs-telemetry.md](feature-flows/agent-logs-telemetry.md) | Live metrics in AgentHeader - **2026-02-18**: Logs tab REMOVED from UI (API still available). Stats display shows only CPU, Memory, Uptime (network removed from UI) |
 | **Host Telemetry** | Medium | [host-telemetry.md](feature-flows/host-telemetry.md) | Host CPU/memory/disk in Dashboard header via psutil, aggregate container stats via Docker API, sparkline charts with uPlot, 5s polling - no auth required (OBS-011, OBS-012) (Created 2026-01-13) |
+| **Agent Monitoring (Health)** | High | [agent-monitoring.md](feature-flows/agent-monitoring.md) | Fleet-wide agent health monitoring with Docker/Network/Business checks - **admin-only access** (NavBar + route), Monitoring.vue page, alert cooldowns, 3 MCP tools, WebSocket real-time updates. Service: `monitoring_service.py`, `monitoring_alerts.py`. DB: `agent_health_checks`, `monitoring_alert_cooldowns` (MON-001, Created 2026-02-23) |
 | Template Processing | Medium | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | **Templates Page** | Medium | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing agent templates - GitHub and local template display, metadata cards (MCP servers, credentials, resources), "Use Template" flow to CreateAgentModal (Created 2026-01-21) |
 | Agent Sharing | Medium | [agent-sharing.md](feature-flows/agent-sharing.md) | Email-based sharing, access levels - **2026-02-18**: Public Links tab consolidated into Sharing tab (SharingPanel.vue now embeds PublicLinksPanel.vue). **2026-01-30**: Added Git operations to Access Levels table (shared users can pull, not sync/init) |
@@ -756,6 +866,7 @@
 | **Agent Resource Allocation** | Medium | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits - gear button in AgentHeader.vue opens ResourceModal.vue, values stored in DB, auto-restart if running, container recreation on start if mismatch (Updated 2026-01-23) |
 | **SSH Access** | Medium | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials via MCP tool - ED25519 keys or passwords, configurable TTL, **FRONTEND_URL domain extraction + Tailscale-aware host detection** (priority: SSH_HOST > FRONTEND_URL > Tailscale > host.docker.internal > gateway > localhost), Redis metadata with auto-expiry - **service layer: ssh_service.py** (Updated 2026-02-13: Fixed localhost bug in production) |
 | **Agent Dashboard** | Medium | [agent-dashboard.md](feature-flows/agent-dashboard.md) | Agent-defined dashboard via `dashboard.yaml` - 11 widget types (metric, status, progress, text, markdown, table, list, link, image, divider, spacer), auto-refresh, YAML validation - **Dashboard tab now conditionally hidden when agent lacks dashboard.yaml** (Updated 2026-02-12) |
+| **Dynamic Dashboards** | High | [dynamic-dashboards.md](feature-flows/dynamic-dashboards.md) | Historical widget value tracking with sparkline visualization (DASH-001) - Captures widget values on mtime change, enriches with `history.values/trend/stats`, auto-appends Platform Metrics section (Tasks/Success Rate/Cost/Health). **Query params**: `include_history`, `history_hours`, `include_platform_metrics`. **Opt-out**: `platform_metrics: false`. **DB**: `agent_dashboard_values` table. **Files**: `db/dashboard_history.py`, `services/agent_service/dashboard.py`, `DashboardPanel.vue`, `SparklineChart.vue` (Created 2026-02-23) |
 | **Platform Settings** | Medium | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page - GitHub PAT configuration and testing, ops settings (thresholds, limits), SSH access toggle, email whitelist. DB: `system_settings` table. Service: `settings_service.py` (Created 2026-01-13) |
 | **Model Selection** | Medium | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model for agents - Claude (sonnet/opus/haiku) or Gemini variants, persists across session reset, validated per runtime (Created 2026-01-13, CFG-005, CFG-006) |
 | **Alerts Page** | Medium | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts for process executions - NavBar badge with 60s polling, filter by status, dismiss alerts, severity levels (warning/critical), threshold types (per_execution/daily/weekly). Service: CostAlertService, DB: trinity_alerts.db (Created 2026-01-21) |

@@ -313,23 +313,100 @@ export const useNetworkStore = defineStore('network', () => {
     const systemAgent = agentList.find(a => a.is_system)
     const regularAgents = agentList.filter(a => !a.is_system)
 
-    // Calculate grid layout for regular agents
-    const gridSize = Math.ceil(Math.sqrt(regularAgents.length)) || 1
-    const spacing = 350
-    const offsetX = 150
-    const offsetY = systemAgent ? 280 : 150 // Push down if system agent exists
+    // Group agents by their primary tag (first tag) for layout
+    const tagGroups = new Map()
+    const untaggedAgents = []
+
+    regularAgents.forEach(agent => {
+      const tags = agent.tags || []
+      if (tags.length > 0) {
+        const primaryTag = tags[0] // Use first tag for grouping
+        if (!tagGroups.has(primaryTag)) {
+          tagGroups.set(primaryTag, [])
+        }
+        tagGroups.get(primaryTag).push(agent)
+      } else {
+        untaggedAgents.push(agent)
+      }
+    })
+
+    // Layout configuration - tighter spacing within groups
+    const nodeWidth = 320
+    const nodeHeight = 200
+    const withinGroupPadding = 30   // Tight padding within a group
+    const betweenGroupPadding = 150 // Space between different groups
+    const offsetX = 100
+    const offsetY = systemAgent ? 280 : 100
 
     const result = []
 
-    // Add system agent at top-center (wider position)
+    // Sort tags by group size (largest first) for better layout
+    const sortedTags = Array.from(tagGroups.keys()).sort((a, b) =>
+      tagGroups.get(b).length - tagGroups.get(a).length
+    )
+
+    // Calculate group dimensions and arrange in a smart grid
+    const groupLayouts = []
+    sortedTags.forEach(tag => {
+      const agents = tagGroups.get(tag)
+      // Arrange group in compact grid (prefer square-ish)
+      const cols = Math.ceil(Math.sqrt(agents.length))
+      const rows = Math.ceil(agents.length / cols)
+      groupLayouts.push({
+        tag,
+        agents,
+        cols,
+        rows,
+        width: cols * (nodeWidth + withinGroupPadding) - withinGroupPadding,
+        height: rows * (nodeHeight + withinGroupPadding) - withinGroupPadding
+      })
+    })
+
+    // Add untagged as a "group" if any
+    if (untaggedAgents.length > 0) {
+      const cols = Math.min(Math.ceil(Math.sqrt(untaggedAgents.length)), 5)
+      const rows = Math.ceil(untaggedAgents.length / cols)
+      groupLayouts.push({
+        tag: null,
+        agents: untaggedAgents,
+        cols,
+        rows,
+        width: cols * (nodeWidth + withinGroupPadding) - withinGroupPadding,
+        height: rows * (nodeHeight + withinGroupPadding) - withinGroupPadding
+      })
+    }
+
+    // Bin-pack groups into rows to minimize total width
+    // Simple greedy: place groups left-to-right, wrap when exceeds max width
+    const maxRowWidth = 1800
+    const groupPositions = []
+    let currentX = offsetX
+    let currentY = offsetY
+    let rowHeight = 0
+
+    groupLayouts.forEach(group => {
+      // Check if we need to wrap to next row
+      if (currentX > offsetX && currentX + group.width > maxRowWidth) {
+        currentX = offsetX
+        currentY += rowHeight + betweenGroupPadding
+        rowHeight = 0
+      }
+
+      groupPositions.push({ ...group, x: currentX, y: currentY })
+      currentX += group.width + betweenGroupPadding
+      rowHeight = Math.max(rowHeight, group.height)
+    })
+
+    // Add system agent centered above all groups
     if (systemAgent) {
+      const totalWidth = Math.max(...groupPositions.map(g => g.x + g.width)) - offsetX
       const systemDefaultPosition = {
-        x: offsetX + (gridSize * spacing) / 2 - 200, // Center it (accounting for wider width)
-        y: 50 // Fixed at top
+        x: offsetX + totalWidth / 2 - 200,
+        y: 30
       }
       result.push({
         id: systemAgent.name,
-        type: 'system-agent', // Special type for wider rendering
+        type: 'system-agent',
         data: {
           label: systemAgent.name,
           status: systemAgent.status,
@@ -338,44 +415,48 @@ export const useNetworkStore = defineStore('network', () => {
           runtime: systemAgent.runtime || 'claude-code',
           githubRepo: systemAgent.github_repo || null,
           is_system: true,
-          autonomy_enabled: false, // System agent doesn't use autonomy mode
+          autonomy_enabled: false,
           activityState: systemAgent.status === 'running' ? 'idle' : 'offline',
           memoryLimit: systemAgent.memory_limit || null,
-          cpuLimit: systemAgent.cpu_limit || null
+          cpuLimit: systemAgent.cpu_limit || null,
+          tags: systemAgent.tags || []
         },
         position: savedPositions[systemAgent.name] || systemDefaultPosition,
         draggable: true
       })
     }
 
-    // Add regular agents in grid below
-    regularAgents.forEach((agent, index) => {
-      const row = Math.floor(index / gridSize)
-      const col = index % gridSize
+    // Place agents within each group
+    groupPositions.forEach(group => {
+      group.agents.forEach((agent, index) => {
+        const col = index % group.cols
+        const row = Math.floor(index / group.cols)
 
-      const defaultPosition = {
-        x: offsetX + col * spacing,
-        y: offsetY + row * spacing
-      }
+        const defaultPosition = {
+          x: group.x + col * (nodeWidth + withinGroupPadding),
+          y: group.y + row * (nodeHeight + withinGroupPadding)
+        }
 
-      result.push({
-        id: agent.name,
-        type: 'agent',
-        data: {
-          label: agent.name,
-          status: agent.status,
-          type: agent.type || 'business-assistant',
-          owner: agent.owner,
-          runtime: agent.runtime || 'claude-code',
-          githubRepo: agent.github_repo || null,
-          is_system: false,
-          autonomy_enabled: agent.autonomy_enabled || false,
-          activityState: agent.status === 'running' ? 'idle' : 'offline',
-          memoryLimit: agent.memory_limit || null,
-          cpuLimit: agent.cpu_limit || null
-        },
-        position: savedPositions[agent.name] || defaultPosition,
-        draggable: true
+        result.push({
+          id: agent.name,
+          type: 'agent',
+          data: {
+            label: agent.name,
+            status: agent.status,
+            type: agent.type || 'business-assistant',
+            owner: agent.owner,
+            runtime: agent.runtime || 'claude-code',
+            githubRepo: agent.github_repo || null,
+            is_system: false,
+            autonomy_enabled: agent.autonomy_enabled || false,
+            activityState: agent.status === 'running' ? 'idle' : 'offline',
+            memoryLimit: agent.memory_limit || null,
+            cpuLimit: agent.cpu_limit || null,
+            tags: agent.tags || []
+          },
+          position: savedPositions[agent.name] || defaultPosition,
+          draggable: true
+        })
       })
     })
 

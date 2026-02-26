@@ -20,6 +20,7 @@ from services.docker_service import (
     get_agent_container,
     get_next_available_port,
 )
+from services.docker_utils import container_reload, container_start, containers_run
 from services.settings_service import get_anthropic_api_key
 from services.agent_service.lifecycle import FULL_CAPABILITIES
 
@@ -39,12 +40,12 @@ class SystemAgentService:
         container = get_agent_container(SYSTEM_AGENT_NAME)
         return container is not None
 
-    def is_running(self) -> bool:
+    async def is_running(self) -> bool:
         """Check if the system agent is running."""
         container = get_agent_container(SYSTEM_AGENT_NAME)
         if not container:
             return False
-        container.reload()
+        await container_reload(container)
         return container.status == "running"
 
     def is_registered(self) -> bool:
@@ -73,7 +74,7 @@ class SystemAgentService:
         # Check if already deployed and running
         if self.is_deployed():
             container = get_agent_container(SYSTEM_AGENT_NAME)
-            container.reload()
+            await container_reload(container)
 
             # Ensure database record has is_system=True (fixes regression if record exists without flag)
             db.register_agent_owner(SYSTEM_AGENT_NAME, SYSTEM_AGENT_OWNER, is_system=True)
@@ -88,7 +89,7 @@ class SystemAgentService:
 
             # If stopped, start it
             try:
-                container.start()
+                await container_start(container)
                 result["action"] = "started"
                 result["status"] = "running"
                 result["message"] = "System agent started"
@@ -236,7 +237,7 @@ class SystemAgentService:
         # Create the container with security settings
         # System agent uses FULL_CAPABILITIES for package installation, etc.
         # Security: Always apply baseline protections even for privileged containers
-        container = docker_client.containers.run(
+        container = await containers_run(
             'trinity-agent-base:latest',
             name=f"agent-{SYSTEM_AGENT_NAME}",
             detach=True,

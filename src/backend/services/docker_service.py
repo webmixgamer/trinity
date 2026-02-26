@@ -205,7 +205,7 @@ def get_next_available_port() -> int:
     raise RuntimeError("No available ports in range 2222-2500")
 
 
-def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
+async def execute_command_in_container(container_name: str, command: str, timeout: int = 60) -> dict:
     """Execute a command in a Docker container.
 
     Args:
@@ -216,15 +216,17 @@ def execute_command_in_container(container_name: str, command: str, timeout: int
     Returns:
         Dictionary with 'exit_code' and 'output' keys
     """
+    from services.docker_utils import container_exec_run, container_get
+
     if not docker_client:
         return {"exit_code": 1, "output": "Docker client not available"}
 
     try:
-        container = docker_client.containers.get(container_name)
-        result = container.exec_run(
+        container = await container_get(container_name)
+        result = await container_exec_run(
+            container,
             command,
-            user="developer",
-            demux=False
+            user="developer"
         )
 
         # result.exit_code is the exit code

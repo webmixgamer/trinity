@@ -1,9 +1,11 @@
 """
 Agent Service Dashboard - Dashboard configuration operations.
 
-Handles fetching dashboard configuration from agents.
+Handles fetching dashboard configuration from agents, enriching with history,
+and injecting platform metrics (DASH-001).
 """
 import logging
+from typing import Optional
 
 import httpx
 from fastapi import HTTPException
@@ -11,19 +13,161 @@ from fastapi import HTTPException
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
 
 logger = logging.getLogger(__name__)
 
 
+def _build_platform_metrics_section(agent_name: str, hours: int = 24) -> dict:
+    """Build the platform metrics section with execution and health stats.
+
+    Args:
+        agent_name: Name of the agent
+        hours: Time window for stats
+
+    Returns:
+        Section dict ready to append to dashboard config
+    """
+    # Get execution stats
+    exec_stats = db.get_agent_execution_stats(agent_name, hours)
+
+    # Get health stats
+    health = db.get_latest_health_check(agent_name, "aggregate")
+
+    widgets = []
+
+    # Tasks metric
+    widgets.append({
+        "type": "metric",
+        "id": "__platform_tasks",
+        "label": f"Tasks ({hours}h)",
+        "value": exec_stats["task_count"],
+        "platform_source": "executions.count"
+    })
+
+    # Success rate metric
+    if exec_stats["task_count"] > 0:
+        success_rate = exec_stats["success_rate"]
+        widgets.append({
+            "type": "metric",
+            "id": "__platform_success_rate",
+            "label": "Success Rate",
+            "value": f"{success_rate}%",
+            "color": "green" if success_rate >= 90 else ("yellow" if success_rate >= 70 else "red"),
+            "platform_source": "executions.success_rate"
+        })
+
+    # Cost metric (only if there was cost)
+    if exec_stats["total_cost"] > 0:
+        widgets.append({
+            "type": "metric",
+            "id": "__platform_cost",
+            "label": f"Cost ({hours}h)",
+            "value": f"${exec_stats['total_cost']:.2f}",
+            "platform_source": "executions.cost"
+        })
+
+    # Health status
+    if health:
+        # health is a dict from get_latest_health_check(), access via key not attribute
+        health_status = health.get("status", "unknown")
+        health_color = "green" if health_status == "healthy" else ("yellow" if health_status == "degraded" else "red")
+        widgets.append({
+            "type": "status",
+            "id": "__platform_health",
+            "label": "Health",
+            "value": health_status.title(),
+            "color": health_color,
+            "platform_source": "health.status"
+        })
+
+    # Running tasks
+    if exec_stats["running_count"] > 0:
+        widgets.append({
+            "type": "metric",
+            "id": "__platform_running",
+            "label": "Running",
+            "value": exec_stats["running_count"],
+            "color": "blue",
+            "platform_source": "executions.running"
+        })
+
+    return {
+        "title": "Platform Metrics",
+        "description": "Automatically tracked by Trinity",
+        "layout": "grid",
+        "columns": 4,
+        "platform_managed": True,
+        "widgets": widgets
+    }
+
+
+def _enrich_widgets_with_history(
+    config: dict,
+    agent_name: str,
+    hours: int = 24
+) -> dict:
+    """Enrich trackable widgets with historical data and trends.
+
+    Modifies the config in-place, adding 'history' field to metric/progress/status widgets.
+
+    Args:
+        config: Dashboard configuration dict
+        agent_name: Name of the agent
+        hours: Time window for history
+
+    Returns:
+        The modified config dict
+    """
+    if not config or "sections" not in config:
+        return config
+
+    # Get all widget history at once
+    all_history = db.get_all_widget_history(agent_name, hours)
+
+    for section_idx, section in enumerate(config.get("sections", [])):
+        for widget_idx, widget in enumerate(section.get("widgets", [])):
+            widget_type = widget.get("type")
+
+            # Only enrich trackable widgets
+            if widget_type not in ("metric", "progress", "status"):
+                continue
+
+            # Get widget key
+            widget_key = widget.get("id") or f"s{section_idx}_w{widget_idx}"
+
+            # Get history for this widget
+            history_values = all_history.get(widget_key, [])
+
+            if len(history_values) > 1:
+                # Calculate stats
+                stats = db.calculate_widget_stats(history_values)
+
+                # Add history to widget
+                widget["history"] = {
+                    "values": history_values,
+                    "trend": stats["trend"],
+                    "trend_percent": stats["trend_percent"],
+                    "min": stats["min"],
+                    "max": stats["max"],
+                    "avg": stats["avg"]
+                }
+
+    return config
+
+
 async def get_agent_dashboard_logic(
     agent_name: str,
-    current_user: User
+    current_user: User,
+    include_history: bool = True,
+    history_hours: int = 24,
+    include_platform_metrics: bool = True
 ) -> dict:
     """
-    Get agent dashboard configuration.
+    Get agent dashboard configuration with optional history enrichment.
 
-    Returns dashboard configuration from agent's dashboard.yaml file.
-    The agent controls both layout and data via a single YAML file.
+    Returns dashboard configuration from agent's dashboard.yaml file,
+    enriched with historical data for sparklines and platform metrics.
 
     Widget types supported:
     - metric: Single numeric value with optional trend
@@ -37,6 +181,13 @@ async def get_agent_dashboard_logic(
     - image: Image display
     - divider: Horizontal separator
     - spacer: Vertical space
+
+    Args:
+        agent_name: Name of the agent
+        current_user: Authenticated user
+        include_history: Whether to include historical sparkline data
+        history_hours: Hours of history to include (default: 24)
+        include_platform_metrics: Whether to append platform metrics section
 
     Returns:
     - agent_name: Name of the agent
@@ -53,7 +204,7 @@ async def get_agent_dashboard_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
 
     # If agent is not running, return basic info
     if container.status != "running":
@@ -75,6 +226,36 @@ async def get_agent_dashboard_logic(
                 data = response.json()
                 data["agent_name"] = agent_name
                 data["status"] = "running"
+
+                # Capture snapshot if dashboard changed
+                if data.get("has_dashboard") and data.get("config") and data.get("last_modified"):
+                    last_mtime = db.get_last_captured_mtime(agent_name)
+                    current_mtime = data["last_modified"]
+
+                    if last_mtime != current_mtime:
+                        # Dashboard changed - capture snapshot
+                        db.capture_dashboard_snapshot(
+                            agent_name,
+                            data["config"],
+                            current_mtime
+                        )
+                        logger.debug(f"Captured dashboard snapshot for {agent_name} (mtime: {current_mtime})")
+
+                # Enrich with history if requested
+                if include_history and data.get("has_dashboard") and data.get("config"):
+                    _enrich_widgets_with_history(data["config"], agent_name, history_hours)
+
+                # Add platform metrics section if requested
+                if include_platform_metrics and data.get("has_dashboard") and data.get("config"):
+                    # Check if agent opted out
+                    config = data["config"]
+                    if config.get("platform_metrics") is not False:
+                        platform_section = _build_platform_metrics_section(agent_name, history_hours)
+                        if platform_section["widgets"]:  # Only add if there are metrics
+                            if "sections" not in config:
+                                config["sections"] = []
+                            config["sections"].append(platform_section)
+
                 return data
             else:
                 return {

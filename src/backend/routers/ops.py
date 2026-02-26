@@ -21,6 +21,7 @@ from models import User
 from database import db
 from dependencies import get_current_user
 from services.docker_service import get_agent_container, docker_client, list_all_agents_fast
+from services.docker_utils import container_stop, container_start
 from services.agent_client import get_agent_client
 from db.agents import SYSTEM_AGENT_NAME
 
@@ -293,8 +294,8 @@ async def restart_fleet(
         try:
             container = get_agent_container(agent_name)
             if container:
-                container.stop(timeout=30)
-                container.start()
+                await container_stop(container, timeout=30)
+                await container_start(container)
                 results.append({
                     "agent": agent_name,
                     "result": "success",
@@ -388,7 +389,7 @@ async def stop_fleet(
         try:
             container = get_agent_container(agent_name)
             if container:
-                container.stop(timeout=30)
+                await container_stop(container, timeout=30)
                 results.append({
                     "agent": agent_name,
                     "result": "success"

@@ -1,8 +1,28 @@
+---
+name: create-demo-agent-fleet
+description: Create and configure a demo agent fleet to showcase Trinity's capabilities. Supports Acme Consulting (3 agents), Research Network (2 agents), or GitHub templates.
+allowed-tools: [Bash, Read]
+user-invocable: true
+argument-hint: "[acme|research|github]"
+automation: gated
+---
+
 # Create Demo Agent Fleet
 
 Create and configure a demo agent fleet to showcase Trinity's capabilities.
 
-**Quick Start (Acme Consulting):**
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| Trinity Platform | `http://localhost:8000/api` | ✅ | ✅ | Agent CRUD |
+| Manifests | `config/manifests/` | ✅ | | System manifests |
+| Templates | `config/agent-templates/` | ✅ | | Agent templates |
+| Process Templates | `config/process-templates/` | ✅ | | Business processes |
+| GitHub | GitHub API | ✅ | | Template repos |
+
+## Quick Start (Acme Consulting)
+
 1. Deploy agents via manifest
 2. Create business processes from templates
 3. Configure schedules for automation
@@ -38,8 +58,6 @@ A business-focused 3-agent consulting team demonstrating:
 1. **Trinity platform running** - `./scripts/deploy/start.sh`
 2. **Logged in as admin** - Get JWT token for API calls
 3. No external credentials required
-
----
 
 ### Step 1: Deploy Agents
 
@@ -114,11 +132,9 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/agents | \
   jq '.[] | select(.name | startswith("acme")) | {name, status}'
 ```
 
----
-
 ### Step 2: Create Business Processes
 
-Create processes from the bundled templates. Navigate to http://localhost/processes and use "Create from Template", or use the API:
+Create processes from the bundled templates. Navigate to http://localhost/processes and use "Create from Template", or use the API.
 
 **Via UI:**
 1. Go to http://localhost/processes
@@ -143,18 +159,6 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   http://localhost:8000/api/process-templates/client-onboarding/use
 ```
-
-**Publish processes (required to execute):**
-```bash
-# Get process IDs
-PROCESSES=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/processes)
-
-# Publish each one (replace PROCESS_ID with actual IDs)
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/processes/PROCESS_ID/publish
-```
-
----
 
 ### Step 3: Configure Schedules
 
@@ -205,18 +209,6 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   }'
 ```
 
-**Verify schedules:**
-```bash
-for agent in acme-scout acme-sage acme-scribe; do
-  echo "=== $agent ==="
-  curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:8000/api/agents/$agent/schedules" | \
-    jq '.[] | {name, cron_expression, enabled}'
-done
-```
-
----
-
 ### Step 4: Enable Autonomy Mode (Optional)
 
 Enable autonomy to activate all schedules for an agent:
@@ -235,52 +227,9 @@ for agent in acme-scout acme-sage acme-scribe; do
 done
 ```
 
-**Note:** With autonomy disabled, schedules won't run automatically but can be triggered manually.
-
----
-
 ### Step 5: Build Demo History
 
-Run initial tasks to populate the Dashboard Timeline with activity:
-
-**1. Scout - Market Research:**
-```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  http://localhost:8000/api/agents/acme-scout/task \
-  -d '{"message": "/research enterprise AI automation tools - comprehensive market analysis"}'
-```
-
-**2. Sage - Strategic Analysis (triggers collaboration with Scout):**
-```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  http://localhost:8000/api/agents/acme-sage/task \
-  -d '{"message": "Ask acme-scout to research AI agent security best practices, then create a strategic note on the findings"}'
-```
-
-**3. Scribe - Team Index:**
-```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  http://localhost:8000/api/agents/acme-scribe/task \
-  -d '{"message": "Check the shared-in folders and create a team index document listing all available research and strategy documents"}'
-```
-
-**4. Execute a Process:**
-```bash
-# Get the weekly-brief process ID
-PROCESS_ID=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/processes | \
-  jq -r '.processes[] | select(.name=="weekly-brief") | .id')
-
-# Execute it
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  "http://localhost:8000/api/executions/processes/$PROCESS_ID/execute" \
-  -d '{"input": {"topics": "AI agents, automation, orchestration"}}'
-```
-
----
+Run initial tasks to populate the Dashboard Timeline with activity.
 
 ### Step 6: Verify Everything Works
 
@@ -290,43 +239,6 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/agents | \
   jq '.[] | select(.name | startswith("acme")) | {name, status, autonomy_enabled}'
 ```
 
-**Check execution history:**
-```bash
-for agent in acme-scout acme-sage acme-scribe; do
-  echo "=== $agent ==="
-  curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:8000/api/agents/$agent/executions?limit=5" | \
-    jq '.[] | {status, triggered_by, message: .message[:50]}'
-done
-```
-
-**Check shared folder outputs:**
-```bash
-# Scout research
-docker exec agent-acme-scout find /home/developer/shared-out -name "*.md" -type f
-
-# Sage strategy
-docker exec agent-acme-sage find /home/developer/shared-out -name "*.md" -type f
-
-# Scribe deliverables
-docker exec agent-acme-scribe find /home/developer/shared-out -name "*.md" -type f
-```
-
-**Check activity timeline:**
-```bash
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/activities/timeline?limit=20" | \
-  jq '.activities[] | {type: .activity_type, agent: .agent_name, state: .activity_state}'
-```
-
-**Check process executions:**
-```bash
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/executions | \
-  jq '.executions[] | {process: .process_name, status, started_at}'
-```
-
----
-
 ### Cleanup (Option A)
 
 ```bash
@@ -335,11 +247,6 @@ for agent in acme-scout acme-sage acme-scribe; do
   curl -X DELETE -H "Authorization: Bearer $TOKEN" \
     "http://localhost:8000/api/agents/$agent"
 done
-
-# Or via MCP
-mcp__trinity__delete_agent(name="acme-scout")
-mcp__trinity__delete_agent(name="acme-sage")
-mcp__trinity__delete_agent(name="acme-scribe")
 ```
 
 ---
@@ -382,18 +289,6 @@ permissions:
   preset: full-mesh
 """)
 ```
-
-### Test the Collaboration
-
-1. **Run research cycle:**
-   ```
-   mcp__trinity__chat_with_agent(agent_name="research-network-researcher", message="/research")
-   ```
-
-2. **Generate briefing:**
-   ```
-   mcp__trinity__chat_with_agent(agent_name="research-network-analyst", message="/briefing")
-   ```
 
 ### Cleanup (Option B)
 
@@ -486,3 +381,15 @@ After setup, verify these work:
 - **Process templates**: Located in `config/process-templates/`
 - **Timezone**: Schedules default to America/Los_Angeles - adjust as needed
 - Run `/agent-status` to check fleet health after creation
+
+## Completion Checklist
+
+- [ ] Option selected (Acme/Research/GitHub)
+- [ ] Prerequisites verified
+- [ ] Agents deployed
+- [ ] Agents running
+- [ ] Processes created (Acme only)
+- [ ] Schedules configured (Acme only)
+- [ ] Autonomy enabled (optional)
+- [ ] Demo history built
+- [ ] All verification checks passed

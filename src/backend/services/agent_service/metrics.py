@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def get_agent_metrics_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
 
     # If agent is not running, return basic info
     if container.status != "running":

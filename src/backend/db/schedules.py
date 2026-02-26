@@ -670,6 +670,63 @@ class ScheduleOperations:
             row = cursor.fetchone()
             return self._row_to_schedule_execution(row) if row else None
 
+    def get_agent_execution_stats(self, agent_name: str, hours: int = 24) -> Dict:
+        """Get execution statistics for a single agent.
+
+        Used for platform metrics injection in dashboard (DASH-001).
+
+        Args:
+            agent_name: Name of the agent
+            hours: Time window in hours (default: 24)
+
+        Returns:
+            Dict with execution stats: task_count, success_count, failed_count,
+            running_count, success_rate, total_cost, avg_duration_ms, last_execution_at
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as task_count,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count,
+                    SUM(COALESCE(cost, 0)) as total_cost,
+                    AVG(duration_ms) as avg_duration_ms,
+                    MAX(started_at) as last_execution_at
+                FROM schedule_executions
+                WHERE agent_name = ?
+                AND started_at > datetime('now', ? || ' hours')
+            """, (agent_name, f"-{hours}"))
+
+            row = cursor.fetchone()
+            if not row or row["task_count"] == 0:
+                return {
+                    "task_count": 0,
+                    "success_count": 0,
+                    "failed_count": 0,
+                    "running_count": 0,
+                    "success_rate": 0,
+                    "total_cost": 0,
+                    "avg_duration_ms": None,
+                    "last_execution_at": None
+                }
+
+            task_count = row["task_count"]
+            success_count = row["success_count"] or 0
+            success_rate = round((success_count / task_count * 100), 1) if task_count > 0 else 0
+
+            return {
+                "task_count": task_count,
+                "success_count": success_count,
+                "failed_count": row["failed_count"] or 0,
+                "running_count": row["running_count"] or 0,
+                "success_rate": success_rate,
+                "total_cost": round(row["total_cost"] or 0, 4),
+                "avg_duration_ms": int(row["avg_duration_ms"]) if row["avg_duration_ms"] else None,
+                "last_execution_at": row["last_execution_at"]
+            }
+
     def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
         """Get execution statistics for all agents.
 

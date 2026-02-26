@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload, container_stats
 from .helpers import get_accessible_agents
 
 logger = logging.getLogger(__name__)
@@ -131,12 +132,12 @@ async def get_agent_stats_logic(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(status_code=400, detail="Agent is not running")
 
     try:
-        stats = container.stats(stream=False)
+        stats = await container_stats(container, stream=False)
 
         cpu_percent = 0.0
         cpu_stats = stats.get("cpu_stats", {})

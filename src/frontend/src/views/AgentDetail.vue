@@ -657,6 +657,14 @@ watch(() => route.params.name, async (newName, oldName) => {
     if (agent.value?.status === 'running') {
       await checkDashboardExists()
     }
+    // Reset activeTab if current tab is not valid for new agent
+    // Must use nextTick to ensure visibleTabs has recomputed
+    nextTick(() => {
+      const validTabIds = visibleTabs.value.map(t => t.id)
+      if (!validTabIds.includes(activeTab.value)) {
+        activeTab.value = 'tasks'
+      }
+    })
     startAllPolling()
     // Connect terminal to new agent if on terminal tab and agent is running
     if (activeTab.value === 'terminal' && agent.value?.status === 'running') {

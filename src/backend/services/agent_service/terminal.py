@@ -13,6 +13,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from database import db
 from services.docker_service import docker_client, get_agent_container
+from services.docker_utils import container_reload, api_exec_create, api_exec_start
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ class TerminalSessionManager:
                 await websocket.close(code=4004, reason="Container not found")
                 return
 
-            container.reload()
+            await container_reload(container)
             if container.status != "running":
                 await websocket.send_text(json.dumps({
                     "type": "error",
@@ -198,8 +199,8 @@ class TerminalSessionManager:
 
             logger.info(f"Starting terminal with command: {cmd}")
 
-            # Use docker API to create exec instance
-            exec_instance = docker_client.api.exec_create(
+            # Use docker API to create exec instance (async to avoid blocking)
+            exec_instance = await api_exec_create(
                 container.id,
                 cmd,
                 stdin=True,
@@ -212,8 +213,8 @@ class TerminalSessionManager:
             )
             exec_id = exec_instance["Id"]
 
-            # Start exec and get socket
-            exec_output = docker_client.api.exec_start(exec_id, socket=True, tty=True)
+            # Start exec and get socket (async to avoid blocking)
+            exec_output = await api_exec_start(exec_id, socket=True, tty=True)
 
             # Get the raw socket
             docker_socket = exec_output._sock

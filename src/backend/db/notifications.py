@@ -105,6 +105,7 @@ class NotificationOperations:
         agent_name: Optional[str] = None,
         status: Optional[str] = None,
         priority: Optional[List[str]] = None,
+        category: Optional[str] = None,
         limit: int = 100
     ) -> List[Notification]:
         """
@@ -114,6 +115,7 @@ class NotificationOperations:
             agent_name: Filter by agent name
             status: Filter by status (pending, acknowledged, dismissed)
             priority: Filter by priority levels
+            category: Filter by category (e.g., 'health' for monitoring alerts)
             limit: Maximum number of results
 
         Returns:
@@ -140,6 +142,10 @@ class NotificationOperations:
             placeholders = ",".join("?" * len(priority))
             query += f" AND priority IN ({placeholders})"
             params.extend(priority)
+
+        if category:
+            query += " AND category = ?"
+            params.append(category)
 
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)

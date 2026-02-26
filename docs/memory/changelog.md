@@ -1,3 +1,397 @@
+### 2026-02-25 15:10:00
+🔧 **Enhancement: Slack Settings in Admin UI (SLACK-001)**
+
+Added admin-configurable Slack integration settings via Settings page, removing the need for environment variables.
+
+**Updated Files:**
+- `src/backend/services/settings_service.py` - Added `get_slack_client_id()`, `get_slack_client_secret()`, `get_slack_signing_secret()` with database-first, env-var-fallback pattern
+- `src/backend/services/slack_service.py` - Now uses settings_service getters instead of config constants
+- `src/backend/routers/settings.py` - Added `/api/settings/slack` GET/PUT/DELETE endpoints
+- `src/frontend/src/views/Settings.vue` - Added Slack Integration section with setup instructions
+
+**API Endpoints:**
+- `GET /api/settings/slack` - Get Slack settings status (admin only)
+- `PUT /api/settings/slack` - Update Slack credentials (admin only)
+- `DELETE /api/settings/slack` - Remove Slack settings (admin only)
+
+**Configuration Hierarchy:**
+1. Database settings (via Settings UI) - checked first
+2. Environment variables (SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET) - fallback
+
+**Impact**: Improves SLACK-001 UX by allowing configuration via UI instead of requiring container restart for env var changes.
+
+---
+
+### 2026-02-25 10:00:00
+✨ **Feature: Slack Integration for Public Links (SLACK-001)**
+
+Enables Slack as a delivery channel for public agent links. Users can chat with Trinity agents via DMs to a Slack bot, using the same security model as web-based public links.
+
+**Key Features:**
+- One Slack workspace = One public link = One agent (simple 1:1 mapping)
+- OAuth 2.0 flow for Slack app installation
+- HMAC-SHA256 signature verification for all Slack requests
+- User verification via Slack profile email or email code
+- Session persistence using existing `public_chat_sessions` table
+
+**Created Files:**
+- `src/backend/db/slack.py` - SlackOperations class for database CRUD
+- `src/backend/services/slack_service.py` - Slack API client (OAuth, messaging)
+- `src/backend/routers/slack.py` - Public events + authenticated management endpoints
+- `docs/memory/feature-flows/slack-integration.md` - Feature flow documentation
+
+**Updated Files:**
+- `src/backend/config.py` - Added SLACK_* environment variables (lines 56-59)
+- `src/backend/db/schema.py` - Added 3 tables: `slack_link_connections`, `slack_user_verifications`, `slack_pending_verifications`
+- `src/backend/db/migrations.py` - Added migration #20 for Slack tables
+- `src/backend/db_models.py` - Added 8 Pydantic models for Slack API (lines 810-890)
+- `src/backend/database.py` - Added SlackOperations delegation methods
+- `src/backend/main.py` - Mounted Slack routers
+- `src/frontend/src/components/PublicLinksPanel.vue` - Added Slack connection UI
+
+**API Endpoints:**
+- `POST /api/public/slack/events` - Receive Slack events (no auth)
+- `GET /api/public/slack/oauth/callback` - OAuth completion redirect (no auth)
+- `GET /api/agents/{name}/public-links/{id}/slack` - Connection status
+- `POST /api/agents/{name}/public-links/{id}/slack/connect` - Initiate OAuth
+- `PUT /api/agents/{name}/public-links/{id}/slack` - Update (enable/disable)
+- `DELETE /api/agents/{name}/public-links/{id}/slack` - Disconnect
+
+**Impact**: New feature extending Public Agent Links (15.1) with Slack channel support.
+
+---
+
+### 2026-02-24 17:15:00
+🐛 **Fix: Vite 6.x allowedHosts for custom domains (Issue #43)**
+
+Added `allowedHosts: true` to Vite server config to allow access via custom domains. Vite 6.x introduced stricter host checking that blocked requests from any host other than localhost.
+
+**Updated**: `src/frontend/vite.config.js`
+- Added `allowedHosts: true` to server configuration
+- Trinity runs behind a reverse proxy that handles host validation
+
+**Impact**: Resolved GitHub Issue #43 (P1 bug)
+
+---
+
+### 2026-02-24 16:00:00
+🐛 **Fix: Async Docker operations prevent event loop blocking (DOCKER-001)**
+
+Fixed critical issue where blocking Docker SDK calls in async functions would freeze the FastAPI event loop, causing HTTP 499 timeouts, WebSocket drops, and 10-30+ second UI unresponsiveness.
+
+**Created**: `services/docker_utils.py`
+- ThreadPoolExecutor-based async wrappers for all blocking Docker operations
+- Container ops: `container_stop()`, `container_start()`, `container_reload()`, `container_stats()`, `container_get()`
+- Volume ops: `volume_get()`, `volume_create()`, `volume_remove()`
+- Container creation: `containers_run()`
+- Exec ops: `container_exec_run()`, `api_exec_create()`, `api_exec_start()`
+
+**Updated files (20+ total)**:
+- Phase 2: `routers/agents.py` - delete, stop, info, SSH access endpoints
+- Phase 3: `services/agent_service/` - lifecycle, crud, files, stats, folders, dashboard, api_key, terminal, metrics, helpers
+- Phase 4: `services/system_agent_service.py`, `routers/ops.py`, `routers/system_agent.py`, `services/agent_service/deploy.py`, `routers/systems.py`
+- SSH service: `services/ssh_service.py` - all exec_run calls (inject_ssh_key, set_container_password, clear_container_password, remove_ssh_key, cleanup methods)
+- Git service: `services/git_service.py`, `services/docker_service.py` - execute_command_in_container, check_git_initialized
+- Routers: `routers/git.py` - await async git functions
+
+**Impact**: Resolved GitHub Issue #42 (P1 bug)
+
+---
+
+### 2026-02-24 14:35:00
+📦 **Refactor: Archive production deployment capability (SCOPE-001)**
+
+Separated production deployment responsibility to a dedicated deployment agent. This development agent now only handles localhost testing.
+
+**Archived to `docs/archive/deployment/`**:
+- `CLAUDE.local.md.production` - Production deployment configuration
+- `deploy.config.backup` - GCP deployment config
+- `deploy.config.example` - Deployment config template
+- `DEPLOYMENT.md.full` - Full deployment guide with production sections
+- `docker-compose.prod.yml` - Production compose file
+
+**Archived to `scripts/deploy/archive/`**:
+- `gcp-deploy.sh` - GCP deployment script
+- `gcp-firewall.sh` - GCP firewall configuration script
+
+**Archived to `.claude/skills/archive/`**:
+- `deploy-status/` - Production deployment health check skill
+
+**Updated files**:
+- `CLAUDE.md` - Removed "Production Deployment (GCP)" section, updated notes
+- `CLAUDE.local.md` - Replaced with localhost-only configuration
+- `CLAUDE.local.md.example` - Simplified to localhost-only template
+- `docs/DEPLOYMENT.md` - Reduced to local development guide only
+
+**Scope limitation**: This agent is now restricted to local development. Production deployment is handled by a separate deployment agent.
+
+---
+
+### 2026-02-24 11:30:00
+📝 **Docs: Update README and requirements for recent features (MON-001, DASH-001)**
+
+Updated documentation to reflect recent feature additions.
+
+**README.md changes**:
+- MCP tool count: 51 → 55 tools (added MON-001 monitoring tools)
+- Added "Monitoring (3 tools)" to Additional Tool Categories
+- Added "Fleet Health Monitoring" to Operations section
+- Updated Agent Dashboard description with sparklines/historical tracking
+
+**requirements.md changes**:
+- Added 12.8 Agent Monitoring Service (MON-001) - full feature spec
+- Updated 13.4 Agent Dashboard with DASH-001 enhancements
+- Updated MCP tool count: 21 → 55 tools
+
+**mcp-orchestration.md changes**:
+- Tool count: 51 → 55 (added MON-001 reference)
+
+---
+
+### 2026-02-24 11:00:00
+🐛 **Fix: Dashboard fails with 'dict' object has no attribute 'status' (DASH-001)**
+
+Fixed critical bug where agent dashboards failed to load after DASH-001 deployment.
+
+**Root Cause**: `_build_platform_metrics_section()` in `dashboard.py:71` accessed `health.status` using attribute notation, but `get_latest_health_check()` returns a **dict**, not an object.
+
+**Error**: `'dict' object has no attribute 'status'`
+
+**Fix**: Changed attribute access to dict access:
+```python
+# Before:
+health_status = health.status.value if hasattr(health.status, 'value') else str(health.status)
+
+# After:
+health_status = health.get("status", "unknown")
+```
+
+**File**: `src/backend/services/agent_service/dashboard.py:71`
+
+---
+
+### 2026-02-24 10:15:00
+📝 **Docs: Chat Router Refactoring Requirements (REFACTOR-001)**
+
+Created comprehensive requirements document for refactoring `routers/chat.py` (1533 lines → 8 modules).
+
+**Document Location**: `docs/requirements/CHAT_ROUTER_REFACTOR.md`
+
+**Key Contents**:
+- All 17 API endpoints mapped to new modules
+- Function decomposition plan for 325-line and 364-line functions
+- Integration points to preserve (queue, activity tracking, WebSocket, etc.)
+- 8-phase migration strategy with zero breaking changes
+- Testing requirements and regression checklist
+- Risk assessment and success criteria
+
+**Proposed Module Structure**:
+- `chat/queue_chat.py`: Queue-based chat (1 endpoint)
+- `chat/task_execution.py`: Stateless task execution (2 endpoints)
+- `chat/sessions.py`: Session management (5 endpoints)
+- `chat/activity.py`: Activity monitoring (2 endpoints)
+- `chat/models.py`: Model configuration (2 endpoints)
+- `chat/termination.py`: Execution control (2 endpoints)
+- `chat/streaming.py`: Live streaming (2 endpoints)
+- `chat/utils.py`: Shared utilities
+
+---
+
+### 2026-02-23 19:30:00
+✨ **Feature: Dynamic Dashboards with Historical Data (DASH-001)**
+
+Implemented dashboard history tracking, sparkline visualization, and platform metrics injection.
+
+**Phase 1 - Database & Capture**:
+- Schema: `agent_dashboard_values` table for storing widget snapshots (`src/backend/db/schema.py`)
+- Migration: Auto-create table on startup (`src/backend/db/migrations.py`)
+- Operations: `DashboardHistoryOperations` class with capture/query/stats methods (`src/backend/db/dashboard_history.py`)
+- DatabaseManager: Exposed all dashboard history operations
+
+**Phase 2 - History Enrichment**:
+- Change detection: Only capture snapshots when dashboard.yaml mtime changes
+- Widget enrichment: Inject `history` field with values array, trend, min/max/avg
+- Statistics: Trend calculation (up/down/stable based on first-half vs second-half avg)
+- Query params: `include_history`, `history_hours` (1-168), `include_platform_metrics`
+
+**Phase 3 - Platform Metrics Section**:
+- Auto-injected section with Trinity-tracked metrics
+- Widgets: Tasks (24h), Success Rate, Cost, Health, Running count
+- Single-agent execution stats: New `get_agent_execution_stats()` method
+- Opt-out: Agents can set `platform_metrics: false` in dashboard.yaml
+
+**Phase 4 - Frontend Sparklines**:
+- SparklineChart integration in metric/progress widgets
+- Trend indicators with percentage change
+- Platform metrics section styling (indigo border, "Auto" badge)
+- Color-coded sparklines (green=up, red=down, blue=stable)
+
+**Files Changed**:
+- `src/backend/db/schema.py`: Added table + indexes
+- `src/backend/db/migrations.py`: Added migration function
+- `src/backend/db/dashboard_history.py`: **New** operations class
+- `src/backend/db/schedules.py`: Added `get_agent_execution_stats()`
+- `src/backend/database.py`: Exposed dashboard history + execution stats
+- `src/backend/services/agent_service/dashboard.py`: History enrichment + platform metrics
+- `src/backend/routers/agent_dashboard.py`: Added query parameters
+- `src/frontend/src/components/DashboardPanel.vue`: Sparklines + platform section styling
+
+---
+
+### 2026-02-23 17:50:00
+📝 **Docs: Update feature flows for Health page admin-only access (MON-001)**
+
+Updated feature flow documentation to reflect admin-only access for Health/Monitoring page.
+
+**Changes**:
+- `docs/memory/feature-flows.md`: Added admin-only access note to MON-001 update header, added Agent Monitoring entry to Documented Flows table
+- `docs/memory/feature-flows/agent-monitoring.md`: Added revision history entry for admin-only change
+
+**Documentation consistency**: Verified no other feature flows reference `/monitoring` route or NavBar Health link that need updating. Admin-only pattern is now documented consistently with Settings page pattern.
+
+---
+
+### 2026-02-23 17:45:00
+🔒 **Fix: Health page admin-only visibility (MON-001)**
+
+Restricted Health/Monitoring page to admin users only, matching the intended user story ("As a Trinity platform admin...").
+
+**Changes**:
+- `NavBar.vue:25-32`: Added `v-if="isAdmin"` to Health link (matches Settings pattern)
+- `router/index.js:36-40`: Added `requiresAdmin: true` to `/monitoring` route meta
+- `agent-monitoring.md`: Updated documentation to reflect admin-only visibility
+
+---
+
+### 2026-02-23 17:15:00
+✨ **Feature: Agent Monitoring Service (MON-001)**
+
+Implemented comprehensive agent health monitoring system with multi-layer health checks, alerting, and MCP tools.
+
+**Phase 1 - Core Infrastructure**:
+- Database schema: `agent_health_checks`, `monitoring_alert_cooldowns` tables (`src/backend/db/schema.py`)
+- Pydantic models: `AgentHealthStatus`, `MonitoringConfig`, `FleetHealthStatus`, etc. (`src/backend/db_models.py`)
+- Database operations: `MonitoringOperations` class (`src/backend/db/monitoring.py`)
+- Health check service: Docker, Network, Business layer checks (`src/backend/services/monitoring_service.py`)
+
+**Phase 2 - Notification Integration**:
+- Alert service with cooldown tracking (`src/backend/services/monitoring_alerts.py`)
+- WebSocket event broadcasting for real-time updates
+- Integration with NOTIF-001 notification system
+
+**Phase 3 - REST API & Frontend**:
+- 11 API endpoints: `/api/monitoring/status`, `/api/monitoring/agents/{name}`, etc. (`src/backend/routers/monitoring.py`)
+- Monitoring page with fleet summary and agent health grid (`src/frontend/src/views/Monitoring.vue`)
+- Pinia store for state management (`src/frontend/src/stores/monitoring.js`)
+- Navigation link "Health" added to NavBar
+
+**Phase 4 - MCP Tools**:
+- `get_fleet_health`: Fleet-wide health summary
+- `get_agent_health`: Detailed agent health info
+- `trigger_health_check`: Admin-only immediate check
+
+**Health Status Levels**: HEALTHY → DEGRADED → UNHEALTHY → CRITICAL
+
+**Files Created**:
+- `src/backend/db/monitoring.py` (database operations)
+- `src/backend/services/monitoring_service.py` (health check logic)
+- `src/backend/services/monitoring_alerts.py` (alert service)
+- `src/backend/routers/monitoring.py` (REST API)
+- `src/frontend/src/views/Monitoring.vue` (UI page)
+- `src/frontend/src/stores/monitoring.js` (Pinia store)
+- `src/mcp-server/src/tools/monitoring.ts` (MCP tools)
+
+---
+
+### 2026-02-23 16:30:00
+🐛 **Fix: Dashboard tab blocking navigation between agents**
+
+Fixed bug where switching from an agent with a dashboard to an agent without one would show "Dashboard Error" and block tab navigation.
+
+**Root Cause**: When navigating to a different agent, `hasDashboard` was reset but `activeTab` remained on 'dashboard'. The tab bar no longer showed the Dashboard button (correct), but the content area still displayed the DashboardPanel with an error (wrong).
+
+**Fix**: Added validation in route watcher to reset `activeTab` to 'tasks' if the current tab is not in the new agent's `visibleTabs` list.
+
+**File**: `src/frontend/src/views/AgentDetail.vue:660-667`
+
+---
+
+### 2026-02-23 15:45:00
+📝 **Docs: Updated Subscription Management feature flow (SUB-001)**
+
+Updated `docs/memory/feature-flows/subscription-management.md` with comprehensive Frontend UI documentation.
+
+**Added Sections**:
+- Frontend UI overview with file/line references
+- UI Components: Add Form, Subscriptions Table, Expanded Details
+- State variables documentation (7 reactive refs)
+- Methods documentation (6 functions with code snippets)
+- Data flow diagram (User -> Frontend -> Backend)
+- UI Testing section (8 test cases)
+
+**Line References**:
+- Template: `src/frontend/src/views/Settings.vue:223-435`
+- State: `src/frontend/src/views/Settings.vue:872-883`
+- Methods: `src/frontend/src/views/Settings.vue:1268-1387`
+
+---
+
+### 2026-02-23 14:30:00
+✨ **UI: Subscription Management in Settings (SUB-001)**
+
+Added UI to manage Claude Max/Pro subscription credentials in Settings page.
+
+**Features**:
+- List all registered subscriptions with type, agent count, and creation date
+- Expandable rows showing assigned agents and subscription details
+- File upload for `.credentials.json` (from `~/.claude/.credentials.json`)
+- Register new subscriptions with name, type selection, and credential file
+- Delete subscriptions with confirmation (cascade clears agent assignments)
+
+**Files Modified**:
+- `src/frontend/src/views/Settings.vue`: Added Claude Subscriptions section (lines 223-435), state variables (lines 872-883), and methods (lines 1268-1387)
+
+**User Flow**:
+1. Run `claude login` locally to authenticate
+2. Go to Settings → Claude Subscriptions
+3. Enter name (e.g., "eugene-max"), select type
+4. Upload `~/.claude/.credentials.json`
+5. Click "Register Subscription"
+6. Assign to agents via MCP: `assign_subscription("agent-name", "subscription-name")`
+
+**Related**: SUB-001 backend implemented 2026-02-22
+
+---
+
+### 2026-02-23 12:15:00
+📋 **Planning: Subscription Usage Tracking (SUB-002)**
+
+Researched and validated approach for programmatic subscription usage tracking.
+
+**Problem**: SUB-001 manages credentials but doesn't track usage/capacity. No visibility into quota consumption for fleet management.
+
+**POC Validation** (`scripts/poc/test-subscription-usage.py`):
+- Discovered Anthropic's OAuth usage endpoint: `GET https://api.anthropic.com/api/oauth/usage`
+- Required header: `anthropic-beta: oauth-2025-04-20`
+- Successfully retrieved usage data from local Claude Code credentials
+- Response includes: 5-hour utilization, 7-day utilization, model-specific limits, extra usage status
+
+**Requirements Spec**: `docs/requirements/SUBSCRIPTION_USAGE_TRACKING.md`
+
+**Key Components**:
+- Database: `subscription_usage` table for snapshots
+- Service: OAuth usage fetching with token extraction
+- Background Job: Hourly polling of all subscriptions
+- REST API: `/api/subscriptions/{id}/usage`, `/api/subscriptions/usage-report`
+- MCP Tools: `get_subscription_usage`, `get_fleet_usage`
+
+**Sources**:
+- https://codelynx.dev/posts/claude-code-usage-limits-statusline
+- https://github.com/TylerGallenbeck/claude-code-limit-tracker
+- https://github.com/anthropics/claude-code/issues/21943
+
+---
+
 ### 2026-02-23 10:30:00
 🔒 **Security: Remove Plaintext Password Fallback & Add Admin Login Rate Limiting**
 

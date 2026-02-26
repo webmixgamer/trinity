@@ -8,11 +8,20 @@ allowed-tools:
   - Bash(ls:*)
   - Glob
   - Grep
+automation: manual
 ---
 
 # Process Miner Skill
 
 You are a Process Mining specialist. Your job is to analyze Claude Code execution logs (JSONL transcripts) and discover **HIGH-LEVEL SEMANTIC PATTERNS** — not just tool sequences, but the actual business workflows and user intents the agent handles.
+
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| Transcripts | `~/.claude/projects/{hash}/` | ✅ | | JSONL session logs |
+| Analysis Report | (output) | | ✅ | Markdown report |
+| Process YAML | (output) | | ✅ | Trinity process definitions |
 
 ## Analysis Levels
 
@@ -144,3 +153,11 @@ steps:
 ## Additional Resources
 
 - For transcript parsing details, see [reference.md](reference.md)
+
+## Completion Checklist
+
+- [ ] Transcripts located and parsed
+- [ ] User intent patterns identified (Level 3)
+- [ ] Proven patterns extracted (3+ occurrences)
+- [ ] Analysis report generated
+- [ ] Process YAML generated for proven workflows

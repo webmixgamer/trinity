@@ -160,12 +160,12 @@ Trinity implements four foundational capabilities that transform simple AI assis
 
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
-- **MCP Integration** — 51 tools for external agent orchestration via Model Context Protocol
+- **MCP Integration** — 55 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
 - **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
-- **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types
+- **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types, historical tracking, and sparkline visualization
 - **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
 - **Read-Only Mode** — Protect source code from modification while allowing output to designated directories
 - **Runaway Prevention** — `max_turns` parameter limits agent execution depth
@@ -173,6 +173,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 ### Operations
 - **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
+- **Fleet Health Monitoring** — Multi-layer health checks (Docker, network, business) with alerting and WebSocket updates
 - **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
 - **Subscription Management** — Centralized Claude Max/Pro subscription sharing across multiple agents
 - **Agent Tags & System Views** — Organize agents with tags and saved filter views for fleet management
@@ -298,7 +299,7 @@ trinity/
 │   │   └── services/
 │   │       └── process_engine/  # Process Engine (DDD architecture)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   ├── mcp-server/       # Trinity MCP server (51 tools)
+│   ├── mcp-server/       # Trinity MCP server (55 tools)
 │   └── scheduler/        # Dedicated scheduler service (Redis locks)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
@@ -447,6 +448,7 @@ Trinity includes an MCP server for external orchestration of agents:
 - **Tags** (5 tools) — List, get, set, add, remove agent tags for fleet organization
 - **Subscriptions** (6 tools) — Register and assign Claude Max/Pro subscriptions to agents
 - **Skills** (7 tools) — List, create, update, delete, assign skills to agents
+- **Monitoring** (3 tools) — Get fleet health, agent health details, trigger health checks
 - **Notifications** (1 tool) — Send structured notifications from agents to platform
 
 ## Multi-Agent Systems

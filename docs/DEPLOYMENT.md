@@ -1,15 +1,16 @@
-# Trinity Deployment Guide
+# Trinity Local Development Guide
 
-This guide covers deploying Trinity to a production environment.
+This guide covers setting up Trinity for local development.
+
+> **Note**: Production deployment is handled by a separate deployment agent.
+> See `docs/archive/deployment/` for archived production deployment documentation.
 
 ## Prerequisites
 
 - Docker and Docker Compose v2+
-- A server with at least 4 vCPU and 8 GB RAM (recommended: 8 vCPU, 32 GB RAM for multiple agents)
-- Domain name (optional, for HTTPS)
-- SSL certificate (Let's Encrypt recommended)
+- 8 GB RAM minimum (recommended: 16 GB for multiple agents)
 
-## Quick Start (Local Development)
+## Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -84,10 +85,10 @@ Trinity supports two login methods:
 #### Email Login (Primary)
 Users enter email → receive 6-digit code → login. Configure email provider:
 ```bash
-EMAIL_PROVIDER=resend  # console (dev), smtp, sendgrid, resend
-RESEND_API_KEY=re_xxxxx  # If using Resend
-SMTP_FROM=noreply@your-domain.com
+EMAIL_PROVIDER=console  # console (dev), smtp, sendgrid, resend
 ```
+
+For local development, use `console` - codes are printed to backend logs.
 
 Manage allowed emails in Settings → Email Whitelist.
 
@@ -95,95 +96,6 @@ Manage allowed emails in Settings → Email Whitelist.
 Password-based login for admin user:
 ```bash
 ADMIN_PASSWORD=your-secure-password
-```
-
-## Production Deployment
-
-### 1. Server Setup
-
-Requirements:
-- Linux server (Debian/Ubuntu recommended)
-- Docker 24+ with Compose v2
-- 100 GB+ disk space (agents can grow large)
-
-### 2. Firewall Configuration
-
-Open these ports:
-| Port | Service |
-|------|---------|
-| 80 | Frontend (HTTP) |
-| 443 | HTTPS (optional, via nginx) |
-| 8000 | Backend API |
-| 8080 | MCP Server |
-| 2222-2262 | Agent SSH (optional) |
-
-### 3. Deploy with Docker Compose
-
-```bash
-# Copy files to server
-scp -r . your-server:~/trinity/
-
-# SSH to server
-ssh your-server
-
-# Build and start
-cd ~/trinity
-cp .env.example .env
-# Edit .env with production values
-./scripts/deploy/build-base-image.sh
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### 4. SSL with nginx (Recommended)
-
-Example nginx configuration:
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    # Frontend (proxied from port 80)
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-    }
-
-    # Backend API
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_read_timeout 300s;
-    }
-
-    # WebSocket
-    location /ws {
-        proxy_pass http://127.0.0.1:8000/ws;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-    }
-}
-```
-
-### 5. CORS Configuration
-
-Add your production domain:
-```bash
-EXTRA_CORS_ORIGINS=https://your-domain.com,http://your-domain.com
 ```
 
 ## Architecture
@@ -253,90 +165,7 @@ docker logs agent-myagent
 **Email login not working**
 - Check backend logs: `docker compose logs backend`
 - Verify EMAIL_PROVIDER is set correctly
-- For production, use `resend` or `smtp` (not `console`)
-
-## Cloud Deployment Options
-
-Trinity can be deployed to any cloud provider.
-
----
-
-### Google Cloud Platform (GCP)
-
-We provide automated deployment scripts for GCP. These scripts use a configuration file that you create locally (not committed to git).
-
-#### Step 1: Create Your Configuration
-
-```bash
-# Copy the template
-cp deploy.config.example deploy.config
-
-# Edit with your settings
-nano deploy.config  # or your preferred editor
-```
-
-Required settings in `deploy.config`:
-```bash
-GCP_PROJECT="your-gcp-project-id"
-GCP_ZONE="us-central1-a"
-GCP_INSTANCE="your-vm-name"
-DOMAIN="your-domain.com"
-```
-
-#### Step 2: Set Up Firewall Rules
-
-```bash
-./scripts/deploy/gcp-firewall.sh
-```
-
-This creates firewall rules for:
-- Trinity services (frontend, backend, MCP server)
-- Agent SSH ports
-
-#### Step 3: Deploy to GCP
-
-```bash
-# Full deployment (sync files, create env, restart services)
-./scripts/deploy/gcp-deploy.sh
-
-# Or individual steps:
-./scripts/deploy/gcp-deploy.sh sync      # Sync files only
-./scripts/deploy/gcp-deploy.sh restart   # Restart services only
-./scripts/deploy/gcp-deploy.sh status    # Check status
-```
-
-#### Step 4: Set Up SSL (Recommended)
-
-On your GCP VM, install nginx and certbot:
-
-```bash
-sudo apt install nginx certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
-#### Backup & Restore (GCP)
-
-```bash
-# Backup database from GCP to local
-./scripts/deploy/backup-database.sh
-
-# Restore database to GCP
-./scripts/deploy/restore-database.sh ./backups/trinity_backup_20251201.db
-```
-
----
-
-### AWS
-- EC2 instance with Docker
-- RDS for PostgreSQL (with adapter)
-- ElastiCache for Redis
-
-### Azure
-- Azure VM with Docker
-- Azure Database for PostgreSQL
-- Azure Cache for Redis
-
----
+- For local dev, use `console` (codes printed to logs)
 
 ## OpenTelemetry Metrics (Optional)
 
@@ -367,36 +196,7 @@ Trinity agents can export metrics to an OpenTelemetry collector for external obs
 
 3. **Create new agents** - They will automatically export metrics
 
-### Adding an OTEL Collector (Phase 2)
-
-Add to your `docker-compose.yml`:
-
-```yaml
-  otel-collector:
-    image: otel/opentelemetry-collector:0.91.0
-    container_name: trinity-otel-collector
-    restart: unless-stopped
-    ports:
-      - "4317:4317"   # gRPC receiver
-      - "4318:4318"   # HTTP receiver
-      - "8889:8889"   # Prometheus exporter
-    volumes:
-      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    networks:
-      - trinity-network
-```
-
 See `docs/drafts/OTEL_INTEGRATION.md` for full collector configuration and Grafana dashboard setup.
-
-### Verifying OTel is Working
-
-```bash
-# Check agent has OTel env vars
-docker exec agent-myagent env | grep OTEL
-
-# If collector is running, check metrics
-curl http://localhost:8889/metrics | grep claude_code
-```
 
 ## Security Recommendations
 
@@ -404,5 +204,4 @@ curl http://localhost:8889/metrics | grep claude_code
 2. **Use strong SECRET_KEY** - Generate with `openssl rand -hex 32`
 3. **Use email whitelist** - Restrict access to approved email addresses only
 4. **Regular backups** - Automate database backups
-5. **Limit agent SSH access** - Use firewall rules
-6. **Keep Docker updated** - Regular security patches
+5. **Keep Docker updated** - Regular security patches

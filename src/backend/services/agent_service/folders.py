@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ async def get_agent_folders_logic(
     consume_enabled = config.consume_enabled if config else False
 
     # Get actual mounted volumes from container
-    container.reload()
+    await container_reload(container)
     mounts = container.attrs.get("Mounts", [])
 
     # Check if agent is exposing (has /home/developer/shared-out mount)

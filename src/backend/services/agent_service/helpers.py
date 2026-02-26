@@ -17,6 +17,7 @@ from services.docker_service import (
     list_all_agents_fast,
     get_agent_container,
 )
+from services.docker_utils import volume_get
 from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
 from utils.helpers import sanitize_agent_name
 
@@ -266,7 +267,7 @@ def get_latest_version(base_name: str) -> Optional[AgentStatus]:
     return max(existing, key=get_version)
 
 
-def check_shared_folder_mounts_match(container, agent_name: str) -> bool:
+async def check_shared_folder_mounts_match(container, agent_name: str) -> bool:
     """
     Check if container's shared folder mounts match the current config.
     Returns True if mounts are correct, False if recreation needed.
@@ -298,9 +299,9 @@ def check_shared_folder_mounts_match(container, agent_name: str) -> bool:
         for source_agent in available:
             mount_path = db.get_shared_mount_path(source_agent)
             source_volume = db.get_shared_volume_name(source_agent)
-            # Check if volume exists
+            # Check if volume exists (async to avoid blocking)
             try:
-                docker_client.volumes.get(source_volume)
+                await volume_get(source_volume)
                 if mount_path not in mount_dests:
                     return False  # Should be mounted but isn't
             except Exception:

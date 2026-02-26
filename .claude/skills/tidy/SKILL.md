@@ -3,11 +3,24 @@ name: tidy
 description: Audit and clean up repository structure. Identifies outdated docs, misplaced files, orphan configs, and test artifacts. Reports findings first and requires approval before making changes (except safe artifacts).
 disable-model-invocation: true
 argument-hint: "[scope] [--report-only]"
+automation: gated
 ---
 
 # Repository Tidy Skill
 
 Audit and clean up the repository structure without breaking code.
+
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| Requirements | `docs/memory/requirements.md` | ✅ | | Feature status |
+| Feature Flows | `docs/memory/feature-flows.md` | ✅ | | Active flows |
+| Root Files | Project root | ✅ | | Misplaced files |
+| Docs Folder | `docs/` | ✅ | | Outdated docs |
+| Config Folder | `config/` | ✅ | | Orphan configs |
+| Tests Folder | `tests/` | ✅ | | Test artifacts |
+| Archive | `archive/` | | ✅ | Archived files |
 
 ## Usage
 
@@ -157,3 +170,12 @@ These directories are always excluded from audit:
 
 - [reference.md](reference.md) - Detailed audit checklists and patterns
 - [scripts/audit.py](scripts/audit.py) - Helper script for file analysis
+
+## Completion Checklist
+
+- [ ] Safe artifacts cleaned (pycache, .pyc, .DS_Store)
+- [ ] Audit report generated
+- [ ] User approved changes (or --report-only)
+- [ ] Archive directory structure preserved
+- [ ] Index files updated if needed
+- [ ] No code files touched

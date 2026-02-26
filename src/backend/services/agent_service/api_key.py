@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from models import User
 from database import db
 from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
 from .helpers import check_api_key_env_matches
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ async def get_agent_api_key_setting_logic(
     use_platform_key = db.get_use_platform_api_key(agent_name)
 
     # Check if current container matches the setting
-    container.reload()
+    await container_reload(container)
     env_matches = check_api_key_env_matches(container, agent_name)
 
     return {

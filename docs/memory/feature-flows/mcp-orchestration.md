@@ -1,7 +1,7 @@
 # Feature: MCP Orchestration
 
 ## Overview
-External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 51 tools for agent lifecycle, chat, system management, credential management (CRED-002), subscription management (SUB-001), SSH access, skills, schedule management, tag management, and notifications through a FastMCP server with Streamable HTTP transport.
+External integration layer allowing Claude Code instances to manage Trinity agents via the Model Context Protocol (MCP). Exposes 55 tools for agent lifecycle, chat, system management, credential management (CRED-002), subscription management (SUB-001), SSH access, skills, schedule management, tag management, monitoring (MON-001), and notifications through a FastMCP server with Streamable HTTP transport.
 
 **Important**: Agent chat via MCP (`chat_with_agent` tool) goes through the [Execution Queue System](execution-queue.md) with graceful 429 handling for busy agents.
 

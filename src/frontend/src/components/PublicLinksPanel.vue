@@ -119,6 +119,66 @@
                 Expires {{ formatDate(link.expires_at) }}
               </span>
             </div>
+
+            <!-- Slack Integration Section -->
+            <div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <!-- Slack Icon -->
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                  </svg>
+                  <span class="text-xs font-medium text-gray-600 dark:text-gray-400">Slack</span>
+                </div>
+
+                <!-- Not Connected State -->
+                <div v-if="!slackConnections[link.id]?.connected">
+                  <button
+                    @click="connectSlack(link)"
+                    :disabled="slackLoading[link.id]"
+                    class="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-50"
+                  >
+                    <span v-if="slackLoading[link.id]">Connecting...</span>
+                    <span v-else>Connect Slack</span>
+                  </button>
+                </div>
+
+                <!-- Connected State -->
+                <div v-else class="flex items-center space-x-2">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                    <span class="w-1.5 h-1.5 mr-1.5 bg-green-500 rounded-full"></span>
+                    {{ slackConnections[link.id].team_name || 'Connected' }}
+                  </span>
+                  <button
+                    @click="toggleSlackEnabled(link)"
+                    :disabled="slackLoading[link.id]"
+                    class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
+                    :title="slackConnections[link.id].enabled ? 'Disable Slack' : 'Enable Slack'"
+                  >
+                    <svg v-if="slackConnections[link.id].enabled" class="w-3.5 h-3.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                  <button
+                    @click="disconnectSlack(link)"
+                    :disabled="slackLoading[link.id]"
+                    class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
+                    title="Disconnect Slack"
+                  >
+                    <svg class="w-3.5 h-3.5 text-red-400 hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <!-- Connected By Info -->
+              <div v-if="slackConnections[link.id]?.connected" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                Connected by {{ slackConnections[link.id].connected_by }} on {{ formatDate(slackConnections[link.id].connected_at) }}
+              </div>
+            </div>
           </div>
 
           <!-- Actions -->
@@ -308,12 +368,14 @@
       </div>
     </div>
 
-    <!-- Copy notification -->
+    <!-- Copy/Status notification -->
     <div
       v-if="copyNotification"
       class="fixed bottom-4 right-4 px-4 py-2 bg-green-600 text-white rounded-lg shadow-lg text-sm z-50"
     >
-      {{ copyNotification === 'external' ? 'External link copied!' : 'Internal link copied!' }}
+      <span v-if="copyNotification === 'external'">External link copied!</span>
+      <span v-else-if="copyNotification === 'slack-connected'">Slack workspace connected successfully!</span>
+      <span v-else>Internal link copied!</span>
     </div>
   </div>
 </template>
@@ -341,6 +403,10 @@ const deletingLink = ref(null)
 const actionLoading = ref(null)
 const copyNotification = ref(false)
 
+// Slack state
+const slackConnections = ref({})  // { linkId: { connected, team_name, enabled, ... } }
+const slackLoading = ref({})      // { linkId: true/false }
+
 // Form
 const formData = ref({
   name: '',
@@ -359,6 +425,8 @@ const loadLinks = async () => {
       headers: authStore.authHeader
     })
     links.value = response.data
+    // Load Slack connections for all links
+    await loadAllSlackConnections()
   } catch (err) {
     console.error('Failed to load public links:', err)
   } finally {
@@ -458,6 +526,82 @@ const deleteLink = async () => {
   }
 }
 
+// Load Slack connection status for a link
+const loadSlackConnection = async (linkId) => {
+  try {
+    const response = await axios.get(
+      `/api/agents/${props.agentName}/public-links/${linkId}/slack`,
+      { headers: authStore.authHeader }
+    )
+    slackConnections.value[linkId] = response.data
+  } catch (err) {
+    console.error('Failed to load Slack connection:', err)
+    slackConnections.value[linkId] = { connected: false }
+  }
+}
+
+// Load all Slack connections
+const loadAllSlackConnections = async () => {
+  for (const link of links.value) {
+    await loadSlackConnection(link.id)
+  }
+}
+
+// Connect Slack to a link
+const connectSlack = async (link) => {
+  slackLoading.value[link.id] = true
+  try {
+    const response = await axios.post(
+      `/api/agents/${props.agentName}/public-links/${link.id}/slack/connect`,
+      {},
+      { headers: authStore.authHeader }
+    )
+    // Redirect to Slack OAuth
+    window.location.href = response.data.oauth_url
+  } catch (err) {
+    console.error('Failed to initiate Slack connection:', err)
+    alert(err.response?.data?.detail || 'Failed to connect Slack')
+  } finally {
+    slackLoading.value[link.id] = false
+  }
+}
+
+// Toggle Slack enabled/disabled
+const toggleSlackEnabled = async (link) => {
+  slackLoading.value[link.id] = true
+  try {
+    const currentEnabled = slackConnections.value[link.id]?.enabled ?? true
+    await axios.put(
+      `/api/agents/${props.agentName}/public-links/${link.id}/slack`,
+      { enabled: !currentEnabled },
+      { headers: authStore.authHeader }
+    )
+    await loadSlackConnection(link.id)
+  } catch (err) {
+    console.error('Failed to toggle Slack:', err)
+  } finally {
+    slackLoading.value[link.id] = false
+  }
+}
+
+// Disconnect Slack
+const disconnectSlack = async (link) => {
+  if (!confirm('Are you sure you want to disconnect Slack from this link?')) return
+
+  slackLoading.value[link.id] = true
+  try {
+    await axios.delete(
+      `/api/agents/${props.agentName}/public-links/${link.id}/slack`,
+      { headers: authStore.authHeader }
+    )
+    slackConnections.value[link.id] = { connected: false }
+  } catch (err) {
+    console.error('Failed to disconnect Slack:', err)
+  } finally {
+    slackLoading.value[link.id] = false
+  }
+}
+
 // Copy link to clipboard
 const copyLink = async (link, external = false) => {
   try {
@@ -510,5 +654,27 @@ watch(() => props.agentName, () => {
 
 onMounted(() => {
   loadLinks()
+
+  // Check for Slack OAuth callback result
+  const urlParams = new URLSearchParams(window.location.search)
+  const slackStatus = urlParams.get('slack')
+  if (slackStatus === 'connected') {
+    copyNotification.value = 'slack-connected'
+    setTimeout(() => {
+      copyNotification.value = false
+    }, 3000)
+    // Clean up URL
+    urlParams.delete('slack')
+    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '')
+    window.history.replaceState({}, '', newUrl)
+  } else if (slackStatus === 'error') {
+    const reason = urlParams.get('reason') || 'unknown'
+    alert(`Failed to connect Slack: ${reason}`)
+    // Clean up URL
+    urlParams.delete('slack')
+    urlParams.delete('reason')
+    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '')
+    window.history.replaceState({}, '', newUrl)
+  }
 })
 </script>

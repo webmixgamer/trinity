@@ -181,7 +181,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 ### 7.1 Trinity MCP Server
 - **Status**: ✅ Implemented
 - **Description**: Agent orchestration via Model Context Protocol
-- **Key Features**: FastMCP with Streamable HTTP, 21 tools, API key authentication
+- **Key Features**: FastMCP with Streamable HTTP, 55 tools, API key authentication
 - **Flow**: `docs/memory/feature-flows/mcp-orchestration.md`
 
 ### 7.2 Per-User API Keys
@@ -350,6 +350,21 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Status**: ❌ Removed (2025-12-24)
 - **Reason**: Templates should define their own memory. Platform should not inject agent capabilities.
 
+### 12.8 Agent Monitoring Service (MON-001)
+- **Status**: ✅ Implemented (2026-02-23)
+- **Requirement ID**: MON-001
+- **Description**: Multi-layer health monitoring for agent fleet with real-time alerts
+- **Key Features**:
+  - Docker layer: Container status, CPU/memory, restart count, OOM detection
+  - Network layer: Agent HTTP reachability with latency tracking
+  - Business layer: Runtime availability, context usage, error rates
+  - Real-time WebSocket updates for health state changes
+  - Alert cooldowns to prevent notification spam
+  - Fleet dashboard with health summary (admin-only)
+  - 3 MCP tools: `get_fleet_health`, `get_agent_health`, `trigger_health_check`
+- **Status Levels**: healthy → degraded → unhealthy → critical → unknown
+- **Flow**: `docs/memory/feature-flows/agent-monitoring.md`
+
 ---
 
 ## 13. Content & File Management
@@ -370,9 +385,15 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: `content/` directory gitignored by default for large generated assets
 
 ### 13.4 Agent Dashboard
-- **Status**: ✅ Implemented (2026-01-12)
+- **Status**: ✅ Implemented (2026-01-12, Updated 2026-02-23)
 - **Description**: Agent-defined dashboard via `dashboard.yaml` with widget system
-- **Key Features**: 11 widget types (metric, status, progress, table, etc.), auto-refresh
+- **Key Features**: 11 widget types (metric, status, progress, table, etc.), auto-refresh, historical tracking with sparklines (DASH-001), platform metrics injection
+- **DASH-001 Enhancements** (2026-02-23):
+  - Historical value tracking in `agent_dashboard_values` table
+  - Sparkline charts showing metric trends
+  - Trend indicators (up/down/stable with percentage)
+  - Auto-injected platform metrics section (Tasks 24h, Success Rate, Cost, Health)
+  - Query params: `include_history`, `history_hours`, `include_platform_metrics`
 - **Flow**: `docs/memory/feature-flows/agent-dashboard.md`
 
 ### 13.5 Tasks Tab
@@ -449,6 +470,30 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Description**: Multi-turn conversation persistence for public chat links
 - **Key Features**: Session management (email-based or anonymous), message history, New Conversation button, page refresh recovery, context injection for continuity
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
+
+### 15.1b Slack Integration for Public Links (SLACK-001)
+- **Status**: 🚧 In Progress
+- **Requirement ID**: SLACK-001
+- **Priority**: P1
+- **Description**: Enable Slack as a delivery channel for public agent links. Users chat with agents via DMs to a Slack bot.
+- **Key Features**:
+  - DMs only (no channel @mentions in Phase 1)
+  - One Slack workspace = one public link (simple 1:1 mapping)
+  - Email verification for Slack users (auto-verify via Slack profile or email code)
+  - Session persistence (reuse `public_chat_sessions` with `slack` identifier type)
+  - OAuth flow for workspace connection
+  - Signature verification for Slack events
+- **Database Tables**:
+  - `slack_link_connections` - Connects workspace to public link
+  - `slack_user_verifications` - Tracks verified Slack users
+  - `slack_pending_verifications` - In-progress email verifications
+- **API Endpoints**:
+  - `POST /api/public/slack/events` - Slack event receiver
+  - `GET /api/public/slack/oauth/callback` - OAuth completion
+  - `GET/DELETE /api/agents/{name}/public-links/{id}/slack` - Connection status
+  - `POST /api/agents/{name}/public-links/{id}/slack/connect` - Initiate OAuth
+- **Spec**: `docs/requirements/SLACK_INTEGRATION.md`
+- **Flow**: `docs/memory/feature-flows/slack-integration.md`
 
 ### 15.2 First-Time Setup
 - **Status**: ✅ Implemented (2025-12-23)

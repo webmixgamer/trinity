@@ -9,6 +9,7 @@ As an agent operator, I want to generate temporary SSH credentials for my agent 
 ## Revision History
 | Date | Change |
 |------|--------|
+| 2026-02-24 | **Async Docker Operations**: All SshService methods now async (DOCKER-001). Uses `container_exec_run` wrapper to prevent event loop blocking. |
 | 2026-02-13 | **Fixed localhost bug**: Added FRONTEND_URL domain extraction as priority #2 in host detection. Production deployments now correctly return domain instead of localhost. |
 | 2026-01-23 | Updated line numbers: ssh_service.py, agents.py, agents.ts, client.ts, types.ts |
 | 2026-01-02 | Fixed password setting (sed → usermod), improved host detection |
@@ -217,30 +218,34 @@ def generate_ssh_keypair(self, agent_name: str) -> Dict[str, str]:
     }
 ```
 
-#### Key Injection (Lines 84-130) - SshService.inject_ssh_key()
+#### Key Injection (Lines 85-134) - SshService.inject_ssh_key()
 
 ```python
-def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
+async def inject_ssh_key(self, agent_name: str, public_key: str) -> bool:
     """Inject SSH public key into agent's authorized_keys file."""
     container = get_agent_container(agent_name)
 
-    # Ensure .ssh directory exists with correct permissions
-    container.exec_run(
+    # Ensure .ssh directory exists with correct permissions (async to avoid blocking)
+    await container_exec_run(
+        container,
         'sh -c "mkdir -p /home/developer/.ssh && chmod 700 /home/developer/.ssh"',
         user="developer"
     )
 
     # Append public key to authorized_keys
     escaped_key = public_key.replace("'", "'\"'\"'")
-    container.exec_run(
+    await container_exec_run(
+        container,
         f"sh -c 'printf \"%s\\n\" '\"'{escaped_key}'\"' >> /home/developer/.ssh/authorized_keys'",
         user="developer"
     )
 
     # Set correct permissions
-    container.exec_run('chmod 600 /home/developer/.ssh/authorized_keys', user="developer")
+    await container_exec_run(container, 'chmod 600 /home/developer/.ssh/authorized_keys', user="developer")
     return True
 ```
+
+> **Note**: As of DOCKER-001, all SshService methods use `container_exec_run` from `services/docker_utils.py` to avoid blocking the FastAPI event loop.
 
 #### Password Generation (Lines 132-144) - SshService.generate_password()
 
@@ -252,10 +257,10 @@ def generate_password(self, length: int = 24) -> str:
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 ```
 
-#### Password Setting (Lines 146-204) - SshService.set_container_password()
+#### Password Setting (Lines 150-211) - SshService.set_container_password()
 
 ```python
-def set_container_password(self, agent_name: str, password: str) -> bool:
+async def set_container_password(self, agent_name: str, password: str) -> bool:
     """Set SSH password for developer user in agent container."""
     import crypt
 
@@ -266,28 +271,30 @@ def set_container_password(self, agent_name: str, password: str) -> bool:
     encrypted = crypt.crypt(password, salt)
 
     # Use usermod -p with single-quoted password (handles $ in hash correctly)
-    # SHA-512 hashes look like: $6$salt$hash - the $ signs are literal
-    result = container.exec_run(
+    result = await container_exec_run(
+        container,
         f"usermod -p '{encrypted}' developer",
         user="root"
     )
 
     if result.exit_code != 0:
         # Fallback to chpasswd with plaintext password
-        result = container.exec_run(
+        result = await container_exec_run(
+            container,
             f"sh -c 'echo \"developer:{password}\" | chpasswd'",
             user="root"
         )
 
     # Enable password authentication in sshd_config
-    container.exec_run(
+    await container_exec_run(
+        container,
         "sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config",
         user="root"
     )
 
     # Restart SSH daemon to apply changes
-    container.exec_run("pkill sshd", user="root")
-    container.exec_run("sh -c '/usr/sbin/sshd'", user="root")
+    await container_exec_run(container, "pkill sshd", user="root")
+    await container_exec_run(container, "sh -c '/usr/sbin/sshd'", user="root")
 
     return True
 ```
@@ -400,10 +407,10 @@ def get_ssh_host() -> str:
 
 Redis handles metadata expiry automatically via `setex()`. When TTL expires, the key is deleted.
 
-### Proactive Container Cleanup (Lines 360-405) - SshService.cleanup_expired_credentials()
+### Proactive Container Cleanup (Lines 368-413) - SshService.cleanup_expired_credentials()
 
 ```python
-def cleanup_expired_credentials(self) -> int:
+async def cleanup_expired_credentials(self) -> int:
     """
     Clean up expired SSH credentials from containers.
     Called periodically by background task.
@@ -429,9 +436,9 @@ def cleanup_expired_credentials(self) -> int:
 
                     if agent_name and credential_id:
                         if auth_type == "password":
-                            self.clear_container_password(agent_name)
+                            await self.clear_container_password(agent_name)
                         else:
-                            self.remove_ssh_key(agent_name, credential_id)
+                            await self.remove_ssh_key(agent_name, credential_id)
                         cleaned += 1
             except Exception as e:
                 logger.warning(f"Error during credential cleanup for {redis_key}: {e}")
@@ -441,10 +448,10 @@ def cleanup_expired_credentials(self) -> int:
     return cleaned
 ```
 
-### Key Removal (Lines 236-271) - SshService.remove_ssh_key()
+### Key Removal (Lines 243-279) - SshService.remove_ssh_key()
 
 ```python
-def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
+async def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
     """Remove SSH key by comment from agent's authorized_keys."""
     container = get_agent_container(agent_name)
     if not container:
@@ -452,31 +459,32 @@ def remove_ssh_key(self, agent_name: str, comment: str) -> bool:
 
     # Use sed to remove lines containing the comment
     escaped_comment = comment.replace("/", "\\/").replace(".", "\\.")
-    container.exec_run(
+    await container_exec_run(
+        container,
         f"sed -i '/{escaped_comment}/d' /home/developer/.ssh/authorized_keys",
         user="developer"
     )
     return True
 ```
 
-### Password Clearing (Lines 206-234) - SshService.clear_container_password()
+### Password Clearing (Lines 213-241) - SshService.clear_container_password()
 
 ```python
-def clear_container_password(self, agent_name: str) -> bool:
+async def clear_container_password(self, agent_name: str) -> bool:
     """Clear/lock the developer user password in agent container."""
     container = get_agent_container(agent_name)
     if not container:
         return True  # Container may have been deleted
 
     # Lock the account password (user can still use key auth)
-    container.exec_run("passwd -l developer", user="root")
+    await container_exec_run(container, "passwd -l developer", user="root")
     return True
 ```
 
-### Agent Stop/Delete Cleanup (Lines 433-476) - SshService.cleanup_agent_credentials()
+### Agent Stop/Delete Cleanup (Lines 441-484) - SshService.cleanup_agent_credentials()
 
 ```python
-def cleanup_agent_credentials(self, agent_name: str) -> int:
+async def cleanup_agent_credentials(self, agent_name: str) -> int:
     """Clean up all SSH credentials for an agent (called on agent stop/delete)."""
     pattern = f"{SSH_ACCESS_PREFIX}{agent_name}:*"
     redis_keys = self.redis_client.keys(pattern)
@@ -493,7 +501,7 @@ def cleanup_agent_credentials(self, agent_name: str) -> int:
                 if auth_type == "password":
                     has_password_creds = True
                 elif credential_id:
-                    self.remove_ssh_key(agent_name, credential_id)
+                    await self.remove_ssh_key(agent_name, credential_id)
         except Exception as e:
             logger.warning(f"Error cleaning up credential {key}: {e}")
 
@@ -501,7 +509,7 @@ def cleanup_agent_credentials(self, agent_name: str) -> int:
 
     # Clear password once if any password credentials existed
     if has_password_creds:
-        self.clear_container_password(agent_name)
+        await self.clear_container_password(agent_name)
 
     if redis_keys:
         logger.info(f"Cleaned up {len(redis_keys)} SSH credentials for agent {agent_name}")
@@ -736,6 +744,7 @@ security_opt=['apparmor:docker-default'],  # no-new-privileges removed for SSH s
 - **Upstream**: [agent-lifecycle.md](agent-lifecycle.md) - Container creation with SSH capabilities
 - **Related**: [agent-terminal.md](agent-terminal.md) - Alternative browser-based terminal access
 - **Related**: [mcp-orchestration.md](mcp-orchestration.md) - MCP tool registration
+- **Related**: [async-docker-operations.md](async-docker-operations.md) - Async wrappers for all Docker exec calls (DOCKER-001)
 
 ---
 

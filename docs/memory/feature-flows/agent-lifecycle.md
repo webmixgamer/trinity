@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-01-26 - **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component across all pages (AgentHeader.vue, Agents.vue, AgentNode.vue). Added `toggleAgentRunning()` to agents.js and network.js stores.
+> **Updated**: 2026-02-24 - **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now wrapped with `services/docker_utils.py` async wrappers. Prevents event loop freezing during container start/stop/delete. See [async-docker-operations.md](async-docker-operations.md) for full details.
+>
+> **Previous (2026-01-26)**: **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component across all pages (AgentHeader.vue, Agents.vue, AgentNode.vue). Added `toggleAgentRunning()` to agents.js and network.js stores.
 >
 > **Previous (2026-01-14)** - **Security Fixes**:
 > - **Auth on Lifecycle Endpoints (HIGH)**: `start_agent_endpoint`, `stop_agent_endpoint`, `get_agent_logs_endpoint` now use `AuthorizedAgentByName` dependency instead of plain `get_current_user` - prevents unauthorized users from starting/stopping agents they don't own
@@ -875,6 +877,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-02-24 | **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now use async wrappers from `services/docker_utils.py`. Affected: `start_agent_internal()`, `recreate_container_with_updated_config()`, `delete_agent_endpoint()`, `stop_agent_endpoint()`. Event loop no longer blocks during Docker operations. See [async-docker-operations.md](async-docker-operations.md). |
 | 2026-02-22 | **Subscription Injection on Startup (SUB-001)**: Added `inject_subscription_on_start()` to startup injection order between credentials and skills. Updated Authentication Model section to document 3 auth methods in priority order: Subscription OAuth (automatic), Manual OAuth (via /login), API key. Added cross-reference to [subscription-management.md](subscription-management.md). |
 | 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in AgentHeader.vue now use `size="sm"`: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77). RunningStateToggle.vue default size changed from 'md' to 'sm' (line 97). This provides visual consistency across all toggle locations (AgentHeader, Agents.vue, AgentNode.vue). |
 | 2026-02-18 | **UI-001 Redesign + Tab Restructuring**: Updated AgentHeader structure (3-row layout), RunningStateToggle now at lines 38-43 in Row 1. Default tab changed from 'info' to 'tasks' (line 275). **Logs tab and Files tab removed from visibleTabs. Terminal tab repositioned after Git tab.** New tab order (lines 504-529): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info. |

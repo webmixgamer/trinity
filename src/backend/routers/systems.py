@@ -21,6 +21,7 @@ from services.system_service import (
     create_system_view,
     start_all_agents
 )
+from services.docker_utils import container_stop
 
 # Import for agent creation (reuse existing logic)
 from routers.agents import create_agent_internal
@@ -385,7 +386,7 @@ async def restart_system(
                 if agent.get('status') == 'running':
                     container = get_agent_container(agent_name)
                     if container:
-                        container.stop()
+                        await container_stop(container)
                         logger.info(f"Stopped agent '{agent_name}' for system restart")
 
                 # Start agent (with Trinity injection)

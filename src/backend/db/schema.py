@@ -20,6 +20,7 @@ Tables are organized by feature area:
 - Tags: agent_tags
 - System Views: system_views
 - Subscriptions: subscription_credentials
+- Dashboard History: agent_dashboard_values
 """
 
 # =============================================================================
@@ -415,6 +416,109 @@ TABLES = {
             FOREIGN KEY (owner_id) REFERENCES users(id)
         )
     """,
+
+    # -------------------------------------------------------------------------
+    # Monitoring Tables (MON-001)
+    # -------------------------------------------------------------------------
+    "agent_health_checks": """
+        CREATE TABLE IF NOT EXISTS agent_health_checks (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            check_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            container_status TEXT,
+            cpu_percent REAL,
+            memory_percent REAL,
+            memory_mb REAL,
+            restart_count INTEGER,
+            oom_killed INTEGER,
+            reachable INTEGER,
+            latency_ms REAL,
+            runtime_available INTEGER,
+            claude_available INTEGER,
+            context_percent REAL,
+            active_executions INTEGER,
+            error_rate REAL,
+            error_message TEXT,
+            checked_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+
+    "monitoring_alert_cooldowns": """
+        CREATE TABLE IF NOT EXISTS monitoring_alert_cooldowns (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            condition TEXT NOT NULL,
+            last_alert_at TEXT NOT NULL,
+            UNIQUE(agent_name, condition)
+        )
+    """,
+
+    # -------------------------------------------------------------------------
+    # Dashboard History Tables (DASH-001)
+    # -------------------------------------------------------------------------
+    "agent_dashboard_values": """
+        CREATE TABLE IF NOT EXISTS agent_dashboard_values (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            widget_key TEXT NOT NULL,
+            widget_label TEXT,
+            widget_type TEXT NOT NULL,
+            value_numeric REAL,
+            value_text TEXT,
+            dashboard_mtime TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+
+    # -------------------------------------------------------------------------
+    # Slack Integration Tables (SLACK-001)
+    # -------------------------------------------------------------------------
+    "slack_link_connections": """
+        CREATE TABLE IF NOT EXISTS slack_link_connections (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL UNIQUE,
+            slack_team_id TEXT NOT NULL UNIQUE,
+            slack_team_name TEXT,
+            slack_bot_token TEXT NOT NULL,
+            connected_by TEXT NOT NULL,
+            connected_at TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            FOREIGN KEY (connected_by) REFERENCES users(id)
+        )
+    """,
+
+    "slack_user_verifications": """
+        CREATE TABLE IF NOT EXISTS slack_user_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            verified_email TEXT NOT NULL,
+            verification_method TEXT NOT NULL,
+            verified_at TEXT NOT NULL,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            UNIQUE(link_id, slack_user_id, slack_team_id)
+        )
+    """,
+
+    "slack_pending_verifications": """
+        CREATE TABLE IF NOT EXISTS slack_pending_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            email TEXT,
+            code TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            state TEXT DEFAULT 'awaiting_email',
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+        )
+    """,
 }
 
 # =============================================================================
@@ -509,6 +613,24 @@ INDEXES = [
 
     # System views indexes
     "CREATE INDEX IF NOT EXISTS idx_system_views_owner ON system_views(owner_id)",
+
+    # Monitoring indexes (MON-001)
+    "CREATE INDEX IF NOT EXISTS idx_health_agent_time ON agent_health_checks(agent_name, checked_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_health_status ON agent_health_checks(status)",
+    "CREATE INDEX IF NOT EXISTS idx_health_type ON agent_health_checks(check_type)",
+    "CREATE INDEX IF NOT EXISTS idx_health_checked_at ON agent_health_checks(checked_at)",
+    "CREATE INDEX IF NOT EXISTS idx_alert_cooldowns_agent ON monitoring_alert_cooldowns(agent_name)",
+
+    # Dashboard history indexes (DASH-001)
+    "CREATE INDEX IF NOT EXISTS idx_dashboard_values_agent_time ON agent_dashboard_values(agent_name, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_dashboard_values_widget ON agent_dashboard_values(agent_name, widget_key, captured_at DESC)",
+
+    # Slack integration indexes (SLACK-001)
+    "CREATE INDEX IF NOT EXISTS idx_slack_connections_team ON slack_link_connections(slack_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_connections_link ON slack_link_connections(link_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)",
+    "CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)",
 ]
 
 

@@ -22,7 +22,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ### Open Source Best Practices
 ✅ **Use placeholders**: `your-domain.com`, `your-api-key`, `user@example.com`
-✅ **Example files**: Commit `.example` templates (e.g., `deploy.config.example`)
+✅ **Example files**: Commit `.example` templates (e.g., `.env.example`)
 ✅ **Environment variables**: Reference `${VAR_NAME}` instead of hardcoded values
 ✅ **Local examples**: Use `localhost` or `127.0.0.1` in documentation
 ✅ **Review diffs**: Always check `git diff` before committing to catch accidental secrets
@@ -71,9 +71,9 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - No creating documentation files unless explicitly requested
 
 ### 3. Follow the Roadmap
-- Check `.claude/memory/roadmap.md` for current priorities
-- Work topmost incomplete items in the queue
-- Mark items complete with timestamp: `[x] 2025-11-28 HH:MM:SS`
+- Check GitHub Issues for current priorities (`/roadmap` or `gh issue list`)
+- Work P0 issues first, then P1, by issue number (oldest first)
+- Close issues when complete
 
 ### 4. Mandatory Documentation Updates
 After **EVERY** change, update:
@@ -109,7 +109,7 @@ Follow methodology guides in `.claude/skills/`:
 |------|---------|
 | `.claude/memory/requirements.md` | **SINGLE SOURCE OF TRUTH** - All features |
 | `.claude/memory/architecture.md` | Current system design (~1000 lines max) |
-| `.claude/memory/roadmap.md` | Prioritized task queue |
+| GitHub Issues | Prioritized task queue (labels: priority-p0/p1/p2/p3) |
 | `.claude/memory/changelog.md` | Timestamped history (~500 lines) |
 | `.claude/memory/feature-flows.md` | Index of vertical slice docs |
 | `.claude/memory/project_index.json` | Machine-readable project state |
@@ -140,31 +140,6 @@ docker-compose logs -f backend
 - **Backend API**: http://localhost:8000/docs
 - **MCP Server**: http://localhost:8080/mcp
 - **Vector (logs)**: http://localhost:8686/health
-
-### Production Deployment (GCP)
-
-Deployment uses a config-based approach. Settings are stored in `deploy.config` (gitignored).
-
-```bash
-# Set up deployment (one-time)
-cp deploy.config.example deploy.config
-# Edit deploy.config with your GCP project, zone, instance, domain
-
-# Deploy to GCP
-./scripts/deploy/gcp-deploy.sh
-
-# Other commands
-./scripts/deploy/gcp-firewall.sh      # Set up firewall rules
-./scripts/deploy/backup-database.sh   # Backup database
-./scripts/deploy/restore-database.sh  # Restore database
-```
-
-**Key deployment files:**
-| File | Purpose |
-|------|---------|
-| `deploy.config.example` | Template (committed) |
-| `deploy.config` | Your settings (gitignored, never commit) |
-| `scripts/deploy/gcp-deploy.sh` | Main deployment script |
 
 ---
 
@@ -207,25 +182,23 @@ project_trinity/
 
 ## Important Notes for Claude Code
 
-1. **Don't break existing environments**: The `environments/` directory contains working production setups. Don't modify these.
+1. **Credential security**: Never log credentials. Credential values are masked in all logs.
 
-2. **Credential security**: Never log credentials. Credential values are masked in all logs.
+2. **Docker socket access**: Backend has read-only Docker socket access. Be cautious with Docker API calls.
 
-3. **Docker socket access**: Backend has read-only Docker socket access. Be cautious with Docker API calls.
+3. **Port conflicts**: Agents use incrementing SSH ports (2222+). Check for conflicts.
 
-4. **Port conflicts**: Agents use incrementing SSH ports (2222+). Check for conflicts.
+4. **Data persistence**: SQLite at `~/trinity-data/trinity.db` (bind mount). Redis for secrets (Docker volume). Run `scripts/deploy/backup-database.sh` before major changes.
 
-5. **Data persistence**: SQLite at `~/trinity-data/trinity.db` (bind mount). Redis for secrets (Docker volume). Run `scripts/deploy/backup-database.sh` before major changes.
+5. **Logging via Vector**: All container logs are captured by Vector and written to JSON files. Query logs with `jq` or grep.
 
-6. **Logging via Vector**: All container logs are captured by Vector and written to JSON files. Query logs with `jq` or grep.
+6. **Frontend dev mode**: Vite with hot reload. Changes to `.vue` files reflect immediately.
 
-7. **Frontend dev mode**: Vite with hot reload. Changes to `.vue` files reflect immediately.
+7. **Base image rebuilds**: After modifying `docker/base-image/Dockerfile`, run `./scripts/deploy/build-base-image.sh`.
 
-8. **Base image rebuilds**: After modifying `docker/base-image/Dockerfile`, run `./scripts/deploy/build-base-image.sh`.
+8. **Re-login after restart**: When the backend restarts, users need to re-login (JWT tokens are invalidated).
 
-9. **Re-login after restart**: When the app is redeployed or restarted, users need to re-login to see the changes (JWT tokens are invalidated).
-
-10. **MCP reconnection**: After backend redeployment, MCP clients (Claude Code, etc.) need to be manually reconnected by the user (run `/mcp` or restart the client).
+9. **MCP reconnection**: After backend restart, MCP clients (Claude Code, etc.) need to be manually reconnected (run `/mcp` or restart the client).
 
 ---
 
@@ -302,9 +275,8 @@ The `abilities` repo contains **all Trinity skills** bundled in the `trinity-onb
 - **Development Workflow**: `docs/DEVELOPMENT_WORKFLOW.md` ← Start here for dev process
 - **Full Architecture**: `.claude/memory/architecture.md`
 - **All Requirements**: `.claude/memory/requirements.md`
-- **Current Roadmap**: `.claude/memory/roadmap.md`
+- **Current Roadmap**: https://github.com/abilityai/trinity/issues
 - **Recent Changes**: `.claude/memory/changelog.md`
 - **Template Spec**: `docs/AGENT_TEMPLATE_SPEC.md`
-- **Deployment Guide**: `docs/DEPLOYMENT.md`
 - **Agent Network Demo**: `docs/AGENT_NETWORK_DEMO.md`
 - **Claude Code Plugins**: https://github.com/abilityai/abilities

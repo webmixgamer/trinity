@@ -82,6 +82,31 @@ class SettingsService:
             return key
         return os.getenv('GOOGLE_API_KEY', '')
 
+    # =========================================================================
+    # Slack Integration Settings (SLACK-001)
+    # =========================================================================
+
+    def get_slack_client_id(self) -> str:
+        """Get Slack Client ID from settings, fallback to env var."""
+        key = self.get_setting('slack_client_id')
+        if key:
+            return key
+        return os.getenv('SLACK_CLIENT_ID', '')
+
+    def get_slack_client_secret(self) -> str:
+        """Get Slack Client Secret from settings, fallback to env var."""
+        key = self.get_setting('slack_client_secret')
+        if key:
+            return key
+        return os.getenv('SLACK_CLIENT_SECRET', '')
+
+    def get_slack_signing_secret(self) -> str:
+        """Get Slack Signing Secret from settings, fallback to env var."""
+        key = self.get_setting('slack_signing_secret')
+        if key:
+            return key
+        return os.getenv('SLACK_SIGNING_SECRET', '')
+
     def get_ops_setting(self, key: str, as_type: type = str):
         """
         Get an ops setting with type conversion.
@@ -118,6 +143,22 @@ def get_github_pat() -> str:
 def get_google_api_key() -> str:
     """Get Google API key from settings, fallback to env var."""
     return settings_service.get_google_api_key()
+
+
+# Slack Integration Settings (SLACK-001)
+def get_slack_client_id() -> str:
+    """Get Slack Client ID from settings, fallback to env var."""
+    return settings_service.get_slack_client_id()
+
+
+def get_slack_client_secret() -> str:
+    """Get Slack Client Secret from settings, fallback to env var."""
+    return settings_service.get_slack_client_secret()
+
+
+def get_slack_signing_secret() -> str:
+    """Get Slack Signing Secret from settings, fallback to env var."""
+    return settings_service.get_slack_signing_secret()
 
 
 def get_ops_setting(key: str, as_type: type = str):

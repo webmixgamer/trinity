@@ -14,6 +14,8 @@ export default defineConfig({
   },
   server: {
     port: 80,
+    // Allow all hosts - Trinity runs behind a reverse proxy that handles host validation
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: `http://${backendHost}:8000`,

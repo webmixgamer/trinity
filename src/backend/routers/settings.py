@@ -423,6 +423,138 @@ async def test_github_pat(
 
 
 # ============================================================================
+# Slack Integration Settings (SLACK-001)
+# ============================================================================
+
+@router.get("/slack")
+async def get_slack_settings_status(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get status of Slack integration settings.
+
+    Admin-only. Returns masked key info for security.
+    """
+    require_admin(current_user)
+
+    try:
+        from services.settings_service import (
+            get_slack_client_id,
+            get_slack_client_secret,
+            get_slack_signing_secret,
+        )
+
+        client_id = get_slack_client_id()
+        client_secret = get_slack_client_secret()
+        signing_secret = get_slack_signing_secret()
+
+        # Check sources
+        client_id_from_settings = bool(db.get_setting_value('slack_client_id', None))
+        client_secret_from_settings = bool(db.get_setting_value('slack_client_secret', None))
+        signing_secret_from_settings = bool(db.get_setting_value('slack_signing_secret', None))
+
+        return {
+            "configured": bool(client_id and client_secret and signing_secret),
+            "client_id": {
+                "configured": bool(client_id),
+                "masked": mask_api_key(client_id) if client_id else None,
+                "source": "settings" if client_id_from_settings else ("env" if client_id else None)
+            },
+            "client_secret": {
+                "configured": bool(client_secret),
+                "masked": mask_api_key(client_secret) if client_secret else None,
+                "source": "settings" if client_secret_from_settings else ("env" if client_secret else None)
+            },
+            "signing_secret": {
+                "configured": bool(signing_secret),
+                "masked": mask_api_key(signing_secret) if signing_secret else None,
+                "source": "settings" if signing_secret_from_settings else ("env" if signing_secret else None)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get Slack settings: {str(e)}")
+
+
+class SlackSettingsUpdate(BaseModel):
+    """Request body for updating Slack settings."""
+    client_id: str = None
+    client_secret: str = None
+    signing_secret: str = None
+
+
+@router.put("/slack")
+async def update_slack_settings(
+    body: SlackSettingsUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update Slack integration settings.
+
+    Admin-only. All fields are optional - only provided values are updated.
+    """
+    require_admin(current_user)
+
+    try:
+        updated = []
+
+        if body.client_id is not None:
+            db.set_setting('slack_client_id', body.client_id.strip())
+            updated.append('client_id')
+
+        if body.client_secret is not None:
+            db.set_setting('slack_client_secret', body.client_secret.strip())
+            updated.append('client_secret')
+
+        if body.signing_secret is not None:
+            db.set_setting('slack_signing_secret', body.signing_secret.strip())
+            updated.append('signing_secret')
+
+        return {
+            "success": True,
+            "updated": updated
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update Slack settings: {str(e)}")
+
+
+@router.delete("/slack")
+async def delete_slack_settings(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete all Slack settings from database.
+
+    Admin-only. Will fall back to env vars if configured.
+    """
+    require_admin(current_user)
+
+    try:
+        deleted = []
+        for key in ['slack_client_id', 'slack_client_secret', 'slack_signing_secret']:
+            if db.delete_setting(key):
+                deleted.append(key)
+
+        # Check env var fallbacks
+        import os
+        fallback_configured = bool(
+            os.getenv('SLACK_CLIENT_ID') and
+            os.getenv('SLACK_CLIENT_SECRET') and
+            os.getenv('SLACK_SIGNING_SECRET')
+        )
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "fallback_configured": fallback_configured
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete Slack settings: {str(e)}")
+
+
+# ============================================================================
 # Email Whitelist Management (Phase 12.4)
 # ============================================================================
 

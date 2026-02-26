@@ -68,63 +68,68 @@
 
             <!-- Right: Controls -->
             <div class="flex items-center space-x-2">
-              <!-- Quick Tag Filter -->
-              <div v-if="availableTags.length > 0" class="flex items-center space-x-1">
-                <span class="text-xs text-gray-400 dark:text-gray-500">Tags:</span>
-                <div class="flex items-center space-x-1 max-w-xs overflow-x-auto">
+              <!-- Quick Tag Filter Dropdown -->
+              <div v-if="availableTags.length > 0" class="relative">
+                <button
+                  @click="showTagDropdown = !showTagDropdown"
+                  :class="[
+                    'flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium transition-all',
+                    selectedQuickTags.length > 0
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ]"
+                >
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                  </svg>
+                  <span>{{ selectedQuickTags.length > 0 ? selectedQuickTags.length + ' tag' + (selectedQuickTags.length > 1 ? 's' : '') : 'Tags' }}</span>
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div
+                  v-if="showTagDropdown"
+                  class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 max-h-48 overflow-y-auto min-w-36"
+                >
                   <button
-                    v-for="tagInfo in displayedTags"
+                    v-if="selectedQuickTags.length > 0"
+                    @click="clearQuickTags(); showTagDropdown = false"
+                    class="w-full px-3 py-1.5 text-left text-xs text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700"
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    v-for="tagInfo in availableTags"
                     :key="tagInfo.tag"
                     @click="toggleQuickTag(tagInfo.tag)"
                     :class="[
-                      'px-2 py-0.5 rounded-full text-xs font-medium transition-all whitespace-nowrap',
-                      selectedQuickTags.includes(tagInfo.tag)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      'w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-between',
+                      selectedQuickTags.includes(tagInfo.tag) ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-300'
                     ]"
                   >
-                    #{{ tagInfo.tag }}
-                    <span v-if="selectedQuickTags.includes(tagInfo.tag)" class="ml-1">&times;</span>
+                    <span>#{{ tagInfo.tag }}</span>
+                    <span class="text-gray-400 dark:text-gray-500 text-[10px]">{{ tagInfo.count }}</span>
                   </button>
-                  <!-- More tags dropdown if there are many -->
-                  <div v-if="availableTags.length > 5" class="relative">
-                    <button
-                      @click="showTagDropdown = !showTagDropdown"
-                      class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-                    >
-                      +{{ availableTags.length - 5 }}
-                    </button>
-                    <div
-                      v-if="showTagDropdown"
-                      class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 max-h-48 overflow-y-auto min-w-32"
-                    >
-                      <button
-                        v-for="tagInfo in availableTags.slice(5)"
-                        :key="tagInfo.tag"
-                        @click="toggleQuickTag(tagInfo.tag); showTagDropdown = false"
-                        :class="[
-                          'w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-between',
-                          selectedQuickTags.includes(tagInfo.tag) ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-300'
-                        ]"
-                      >
-                        <span>#{{ tagInfo.tag }}</span>
-                        <span class="text-gray-400 dark:text-gray-500 text-[10px]">{{ tagInfo.count }}</span>
-                      </button>
-                    </div>
-                  </div>
                 </div>
-                <!-- Clear filter button -->
-                <button
-                  v-if="selectedQuickTags.length > 0"
-                  @click="clearQuickTags"
-                  class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                  title="Clear tag filter"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
               </div>
+
+              <!-- Tag Clouds Toggle -->
+              <button
+                v-if="availableTags.length > 0"
+                @click="toggleTagClouds"
+                :class="[
+                  'flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium transition-all',
+                  showTagClouds
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                ]"
+                title="Toggle tag grouping clouds"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+                </svg>
+                <span>Clouds</span>
+              </button>
 
               <span v-if="availableTags.length > 0" class="text-gray-300 dark:text-gray-600">|</span>
 
@@ -298,6 +303,31 @@
           </defs>
         </svg>
 
+        <!-- Tag Clouds Layer (rendered in viewport coordinates) -->
+        <div
+          v-if="showTagClouds && nodes.length > 0"
+          class="vue-flow__tag-clouds"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            transformOrigin: '0 0',
+            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+            pointerEvents: 'none',
+            zIndex: 0
+          }"
+        >
+          <TagClouds
+            :nodes="nodes"
+            :padding="50"
+            :cloud-opacity="0.12"
+            :blur-amount="25"
+            :cloud-border-radius="40"
+            :show-labels="true"
+            :node-height="260"
+          />
+        </div>
+
         <!-- Background -->
         <Background
           pattern-color="#cbd5e1"
@@ -438,6 +468,7 @@ import { storeToRefs } from 'pinia'
 import AgentNode from '@/components/AgentNode.vue'
 import SystemAgentNode from '@/components/SystemAgentNode.vue'
 import ObservabilityPanel from '@/components/ObservabilityPanel.vue'
+import TagClouds from '@/components/TagClouds.vue'
 import { useNotification } from '@/composables/useNotification'
 
 // Import Vue Flow styles
@@ -524,7 +555,14 @@ watch(activeFilterTags, (tags) => {
   }
 }, { immediate: true })
 
-const { fitView } = useVueFlow()
+const { fitView, viewport } = useVueFlow()
+
+// Tag clouds visibility toggle (persisted)
+const showTagClouds = ref(localStorage.getItem('trinity-show-tag-clouds') !== 'false')
+function toggleTagClouds() {
+  showTagClouds.value = !showTagClouds.value
+  localStorage.setItem('trinity-show-tag-clouds', showTagClouds.value)
+}
 
 // Computed stats
 const runningCount = computed(() => {

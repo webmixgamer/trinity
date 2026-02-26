@@ -1,6 +1,26 @@
+---
+name: validate-pr
+description: Validate a pull request against the Trinity development methodology and generate a merge decision report.
+allowed-tools: [Bash, Read, Grep]
+user-invocable: true
+argument-hint: "<pr-number-or-url>"
+automation: gated
+---
+
 # Validate Pull Request
 
 Validate a pull request against the Trinity development methodology and generate a merge decision report.
+
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| PR Details | GitHub API | ✅ | | PR metadata and diff |
+| Changelog | `docs/memory/changelog.md` | ✅ | | Entry check |
+| Requirements | `docs/memory/requirements.md` | ✅ | | Req updates |
+| Architecture | `docs/memory/architecture.md` | ✅ | | API changes |
+| Feature Flows | `docs/memory/feature-flows/` | ✅ | | Flow updates |
+| GitHub Issues | `abilityai/trinity` | ✅ | | Issue references |
 
 ## Usage
 
@@ -8,7 +28,7 @@ Validate a pull request against the Trinity development methodology and generate
 /validate-pr <pr-number-or-url>
 ```
 
-## Instructions
+## Process
 
 ### Step 1: Fetch PR Information
 
@@ -46,17 +66,17 @@ Check if `docs/memory/changelog.md` is in the changed files list.
 
 **If missing**: Flag as ❌ FAIL - "Changelog not updated"
 
-#### 2.2 Roadmap Update (CONDITIONAL)
-Check if `docs/memory/roadmap.md` is in the changed files list.
+#### 2.2 GitHub Issues Update (CONDITIONAL)
+Check if PR references a GitHub Issue (e.g., "Closes #17", "Fixes #23").
 
 **Required if**:
-- PR completes a roadmap item → item should be marked ✅ with timestamp
-- PR discovers new work → new item added to appropriate phase
+- PR completes a roadmap item → issue should be closed by PR
+- PR discovers new work → new issue created with appropriate labels
 
 **Validation**:
-- [ ] Completed items marked with `✅` and date
-- [ ] New items have proper status (⏳) and description
-- [ ] Items in correct phase/priority section
+- [ ] PR references related issue(s) in description
+- [ ] Issue has correct priority label (priority-p0/p1/p2/p3)
+- [ ] Issue has correct type label (type-feature/bug/refactor)
 
 #### 2.3 Requirements Update (CONDITIONAL)
 Check if `docs/memory/requirements.md` is in the changed files list.
@@ -294,4 +314,18 @@ Please address these items and request re-review.
 - `docs/DEVELOPMENT_WORKFLOW.md` - Development cycle
 - `docs/memory/feature-flows.md` - Feature flow index
 - `.claude/agents/feature-flow-analyzer.md` - Flow format specification
-- `.claude/commands/security-check.md` - Security validation details
+- `/security-check` - Security validation details
+
+## Completion Checklist
+
+- [ ] PR information fetched
+- [ ] Changelog validated
+- [ ] GitHub Issues checked
+- [ ] Requirements checked
+- [ ] Architecture checked
+- [ ] Feature flows validated
+- [ ] Security checks passed
+- [ ] Code quality assessed
+- [ ] Requirements traced
+- [ ] Report generated
+- [ ] Recommendation provided

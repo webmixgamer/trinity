@@ -20,6 +20,10 @@ from services.docker_service import (
     get_agent_container,
     get_agent_by_name,
 )
+from services.docker_utils import (
+    container_stop, container_remove, container_reload,
+    volume_get, volume_remove
+)
 from services import git_service
 
 # Import service layer functions
@@ -302,16 +306,16 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     try:
-        container.stop()
-        container.remove()
+        await container_stop(container)
+        await container_remove(container)
     except Exception as e:
         logger.warning(f"Error stopping/removing container: {e}")
 
     # Delete per-agent persistent volume
     try:
         agent_volume_name = f"agent-{agent_name}-workspace"
-        volume = docker_client.volumes.get(agent_volume_name)
-        volume.remove()
+        volume = await volume_get(agent_volume_name)
+        await volume_remove(volume)
     except docker.errors.NotFound:
         pass
     except Exception as e:
@@ -347,8 +351,8 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
         db.delete_shared_folder_config(agent_name)
         shared_volume_name = db.get_shared_volume_name(agent_name)
         try:
-            shared_volume = docker_client.volumes.get(shared_volume_name)
-            shared_volume.remove()
+            shared_volume = await volume_get(shared_volume_name)
+            await volume_remove(shared_volume)
         except docker.errors.NotFound:
             pass
     except Exception as e:
@@ -416,7 +420,7 @@ async def stop_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reques
         raise HTTPException(status_code=404, detail="Agent not found")
 
     try:
-        container.stop()
+        await container_stop(container)
 
         event = {
             "event": "agent_stopped",
@@ -515,7 +519,7 @@ async def get_agent_info_endpoint(
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    container.reload()
+    await container_reload(container)
 
     if container.status != "running":
         labels = container.labels
@@ -1159,7 +1163,7 @@ async def create_ssh_access(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     # Verify agent is running
-    container.reload()
+    await container_reload(container)
     if container.status != "running":
         raise HTTPException(
             status_code=400,
@@ -1195,8 +1199,8 @@ async def create_ssh_access(
         # Generate ephemeral password
         password = ssh_service.generate_password()
 
-        # Set password in container
-        if not ssh_service.set_container_password(agent_name, password):
+        # Set password in container (async to avoid blocking)
+        if not await ssh_service.set_container_password(agent_name, password):
             raise HTTPException(
                 status_code=500,
                 detail="Failed to set SSH password in agent container"
@@ -1239,8 +1243,8 @@ async def create_ssh_access(
         # Key-based authentication (original behavior)
         keypair = ssh_service.generate_ssh_keypair(agent_name)
 
-        # Inject public key into container
-        if not ssh_service.inject_ssh_key(agent_name, keypair["public_key"]):
+        # Inject public key into container (async to avoid blocking)
+        if not await ssh_service.inject_ssh_key(agent_name, keypair["public_key"]):
             raise HTTPException(
                 status_code=500,
                 detail="Failed to inject SSH key into agent container"

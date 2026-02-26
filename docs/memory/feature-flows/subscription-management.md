@@ -53,6 +53,9 @@ User's Machine                  Trinity Backend                    Agent Contain
 
 | UI Location | API Endpoint | Purpose |
 |-------------|--------------|---------|
+| **Settings Page: Claude Subscriptions** | `GET /api/subscriptions` | List subscriptions (Settings UI) |
+| **Settings Page: Add Subscription** | `POST /api/subscriptions` | Register via file upload |
+| **Settings Page: Delete Button** | `DELETE /api/subscriptions/{id}` | Delete with cascade confirmation |
 | MCP Tool: `register_subscription` | `POST /api/subscriptions` | Register new subscription |
 | MCP Tool: `list_subscriptions` | `GET /api/subscriptions` | List all subscriptions with agents |
 | MCP Tool: `assign_subscription` | `PUT /api/subscriptions/agents/{agent_name}` | Assign subscription to agent |
@@ -60,6 +63,238 @@ User's Machine                  Trinity Backend                    Agent Contain
 | MCP Tool: `get_agent_auth` | `GET /api/subscriptions/agents/{agent_name}/auth` | Get agent auth status |
 | MCP Tool: `delete_subscription` | `DELETE /api/subscriptions/{subscription_id}` | Delete subscription |
 | Fleet Dashboard | `GET /api/ops/auth-report` | Fleet-wide auth status report |
+
+---
+
+## Frontend UI (Settings Page)
+
+### Overview
+
+The Settings page (`/settings`) includes a "Claude Subscriptions" section for managing subscription credentials through a web UI. This provides an alternative to MCP tools for subscription management.
+
+### Location
+
+- **File**: `src/frontend/src/views/Settings.vue`
+- **Template**: Lines 223-435 (Claude Subscriptions section)
+- **State**: Lines 872-883
+- **Methods**: Lines 1268-1387
+
+### UI Components
+
+#### 1. Add Subscription Form (`Settings.vue:234-329`)
+
+Form fields:
+- **Name** (`v-model="newSubscription.name"`) - Unique identifier (e.g., "eugene-max")
+- **Type** (`v-model="newSubscription.type"`) - Dropdown: Max / Pro / Unknown
+- **Credentials File Upload** - Drag-and-drop or click-to-browse for `.credentials.json`
+
+```html
+<input
+  type="file"
+  accept=".json,application/json"
+  @change="handleCredentialFileUpload"
+  ref="credentialFileInput"
+/>
+```
+
+Buttons:
+- **Clear** - Reset form (visible when form has data)
+- **Register Subscription** - Submit (disabled until name + credentials provided)
+
+#### 2. Subscriptions Table (`Settings.vue:331-431`)
+
+Columns:
+| Column | Data |
+|--------|------|
+| Name | Subscription name with expand chevron |
+| Type | Badge: purple (Max) or blue (Pro) |
+| Agents | Count badge: "N agent(s)" |
+| Created | Formatted date |
+| Actions | Delete button |
+
+Features:
+- **Loading spinner** when `loadingSubscriptions` is true
+- **Empty state** when no subscriptions registered
+- **Expandable rows** showing owner, rate limit tier, assigned agents
+- **Delete confirmation** with cascade warning (agent count)
+
+#### 3. Expanded Details Row (`Settings.vue:399-427`)
+
+Shows when row is clicked (`expandedSubscriptions.has(sub.id)`):
+- Owner email
+- Rate limit tier (if set)
+- Assigned agents list (badges with agent icons)
+- Hint about `assign_subscription` MCP tool if no agents assigned
+
+### State Variables (`Settings.vue:872-883`)
+
+```javascript
+const subscriptions = ref([])              // List of SubscriptionWithAgents
+const loadingSubscriptions = ref(false)    // Loading state
+const addingSubscription = ref(false)      // Adding in progress
+const deletingSubscription = ref(null)     // ID of subscription being deleted
+const expandedSubscriptions = ref(new Set()) // Set of expanded row IDs
+const credentialFileInput = ref(null)      // File input ref for clearing
+const newSubscription = ref({
+  name: '',
+  type: 'max',
+  credentials: null                        // Raw JSON string
+})
+```
+
+### Methods
+
+#### `loadSubscriptions()` (`Settings.vue:1269-1285`)
+
+Fetches all subscriptions on page load.
+
+```javascript
+async function loadSubscriptions() {
+  loadingSubscriptions.value = true
+  try {
+    const response = await axios.get('/api/subscriptions', {
+      headers: authStore.authHeader
+    })
+    subscriptions.value = response.data || []
+  } catch (e) {
+    // 403 for non-admin is expected - silently hide section
+    if (e.response?.status !== 403) {
+      error.value = e.response?.data?.detail || 'Failed to load subscriptions'
+    }
+  } finally {
+    loadingSubscriptions.value = false
+  }
+}
+```
+
+#### `handleCredentialFileUpload(event)` (`Settings.vue:1287-1306`)
+
+Handles file selection and validates JSON.
+
+```javascript
+function handleCredentialFileUpload(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      JSON.parse(e.target.result)  // Validate JSON
+      newSubscription.value.credentials = e.target.result
+    } catch (parseError) {
+      error.value = 'Invalid JSON file. Please upload a valid .credentials.json file.'
+      newSubscription.value.credentials = null
+    }
+  }
+  reader.readAsText(file)
+}
+```
+
+#### `clearNewSubscription()` (`Settings.vue:1308-1317`)
+
+Resets the add form.
+
+```javascript
+function clearNewSubscription() {
+  newSubscription.value = { name: '', type: 'max', credentials: null }
+  if (credentialFileInput.value) {
+    credentialFileInput.value.value = ''  // Clear file input
+  }
+}
+```
+
+#### `addSubscription()` (`Settings.vue:1319-1347`)
+
+Registers a new subscription via API.
+
+```javascript
+async function addSubscription() {
+  if (!newSubscription.value.name || !newSubscription.value.credentials) return
+
+  addingSubscription.value = true
+  try {
+    await axios.post('/api/subscriptions', {
+      name: newSubscription.value.name,
+      credentials_json: newSubscription.value.credentials,
+      subscription_type: newSubscription.value.type || null
+    }, { headers: authStore.authHeader })
+
+    clearNewSubscription()
+    await loadSubscriptions()
+    // Show success toast
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to register subscription'
+  } finally {
+    addingSubscription.value = false
+  }
+}
+```
+
+#### `deleteSubscription(subscription)` (`Settings.vue:1349-1377`)
+
+Deletes subscription with cascade confirmation.
+
+```javascript
+async function deleteSubscription(subscription) {
+  if (!confirm(`Delete subscription "${subscription.name}"?\n\nThis will clear the subscription from all ${subscription.agent_count || 0} assigned agent(s).`)) {
+    return
+  }
+
+  deletingSubscription.value = subscription.id
+  try {
+    await axios.delete(`/api/subscriptions/${subscription.id}`, {
+      headers: authStore.authHeader
+    })
+    expandedSubscriptions.value.delete(subscription.id)
+    await loadSubscriptions()
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to delete subscription'
+  } finally {
+    deletingSubscription.value = null
+  }
+}
+```
+
+#### `toggleSubscriptionDetails(subscriptionId)` (`Settings.vue:1379-1387`)
+
+Toggles row expansion.
+
+```javascript
+function toggleSubscriptionDetails(subscriptionId) {
+  if (expandedSubscriptions.value.has(subscriptionId)) {
+    expandedSubscriptions.value.delete(subscriptionId)
+  } else {
+    expandedSubscriptions.value.add(subscriptionId)
+  }
+  expandedSubscriptions.value = new Set(expandedSubscriptions.value)  // Force reactivity
+}
+```
+
+### Data Flow
+
+```
+User Action                Frontend                      Backend
+    |                         |                             |
+    | Upload .credentials.json|                             |
+    |------------------------>|                             |
+    |                         | FileReader.readAsText()     |
+    |                         | JSON.parse() validate       |
+    |                         |                             |
+    | Click "Register"        |                             |
+    |------------------------>|                             |
+    |                         | POST /api/subscriptions     |
+    |                         |----------------------------->|
+    |                         |                             | Validate JSON
+    |                         |                             | Encrypt (AES-256-GCM)
+    |                         |                             | Insert to DB
+    |                         |<-----------------------------|
+    |                         | loadSubscriptions()         |
+    |                         | GET /api/subscriptions      |
+    |                         |----------------------------->|
+    |                         |<-----------------------------|
+    | See new subscription    |                             |
+    |<------------------------|                             |
+```
 
 ---
 
@@ -693,23 +928,82 @@ Tools registered in `src/mcp-server/src/server.ts`.
 - At least one agent created
 - Claude Max/Pro subscription with valid `~/.claude/.credentials.json`
 
-### Test: Register Subscription
+---
+
+### UI Testing (Settings Page)
+
+#### Test: View Subscriptions List
+1. Navigate to Settings page (`/settings`)
+2. Scroll to "Claude Subscriptions" section
+3. Verify: Table shows loading spinner briefly, then list (or empty state)
+4. Verify: Non-admin users see empty section (403 handled gracefully)
+
+#### Test: Register via File Upload
+1. Navigate to Settings page
+2. In "Add Subscription" form:
+   - Enter name: "test-subscription"
+   - Select type: "Max"
+   - Click file upload area or drag `.credentials.json` file
+3. Verify: Upload area shows green checkmark and "Credentials loaded"
+4. Click "Register Subscription"
+5. Verify: Loading spinner on button
+6. Verify: New subscription appears in table with correct name, type, "0 agents"
+7. Verify: Form is cleared after success
+
+#### Test: Invalid JSON File
+1. Create a file with invalid JSON content
+2. Attempt to upload it
+3. Verify: Error message "Invalid JSON file. Please upload a valid .credentials.json file."
+4. Verify: Upload area does NOT show green checkmark
+
+#### Test: Expand Subscription Row
+1. Click on a subscription row in the table
+2. Verify: Chevron rotates 90 degrees
+3. Verify: Details row expands showing owner, rate limit tier (if set), assigned agents
+4. Click row again
+5. Verify: Row collapses
+
+#### Test: Delete Subscription
+1. Click "Delete" button on a subscription row
+2. Verify: Confirmation dialog shows subscription name and agent count
+3. Click OK
+4. Verify: Button shows "Deleting..."
+5. Verify: Subscription removed from list after delete completes
+6. Verify: Success indicator shown
+
+#### Test: Delete Cancellation
+1. Click "Delete" button on a subscription
+2. Click Cancel on confirmation dialog
+3. Verify: Subscription remains in list, no changes
+
+#### Test: Clear Form
+1. Enter a name in the form
+2. Upload a credentials file
+3. Click "Clear" button
+4. Verify: Name field is empty
+5. Verify: Upload area shows upload icon (not checkmark)
+
+---
+
+### MCP Testing
+
+#### Test: Register Subscription
 1. Copy credentials: `cat ~/.claude/.credentials.json | pbcopy`
 2. Via MCP: `register_subscription(name: "test-max", credentials_json: <paste>, subscription_type: "max")`
 3. Verify: `list_subscriptions()` shows new subscription
 
-### Test: Assign to Agent
+#### Test: Assign to Agent
 1. Start an agent
 2. Via MCP: `assign_subscription(agent_name: "my-agent", subscription_name: "test-max")`
 3. Verify: Response includes `injection_status: "success"`
 4. Verify: Agent can execute without `ANTHROPIC_API_KEY`
 
-### Test: Agent Start Injection
+#### Test: Agent Start Injection
 1. Assign subscription to stopped agent
 2. Start agent via UI or API
 3. Verify: Start response includes `subscription_injection: "success"`
 
-### Test: Auth Report
+#### Test: Auth Report
 1. Via API: `GET /api/ops/auth-report`
 2. Verify: Agent shows under `by_auth_mode.subscription`
 
@@ -719,6 +1013,7 @@ Tools registered in `src/mcp-server/src/server.ts`.
 
 | Date | Changes |
 |------|---------|
+| 2026-02-23 | Added Frontend UI section for Settings page integration (lines 223-435, 872-883, 1268-1387) |
 | 2026-02-22 | Initial documentation for SUB-001 implementation |
 
 ---

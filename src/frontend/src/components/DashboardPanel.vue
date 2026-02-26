@@ -77,12 +77,22 @@
       </div>
 
       <!-- Sections -->
-      <div v-for="(section, sectionIndex) in dashboardData.config.sections" :key="sectionIndex" class="space-y-4">
+      <div
+        v-for="(section, sectionIndex) in dashboardData.config.sections"
+        :key="sectionIndex"
+        class="space-y-4"
+        :class="section.platform_managed ? 'mt-6 pt-6 border-t border-indigo-200 dark:border-indigo-800' : ''"
+      >
         <!-- Section Header -->
-        <div v-if="section.title" class="border-b border-gray-200 dark:border-gray-700 pb-2">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-            {{ section.title }}
-          </h3>
+        <div v-if="section.title" class="border-b border-gray-200 dark:border-gray-700 pb-2" :class="section.platform_managed ? 'border-indigo-200 dark:border-indigo-800' : ''">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold uppercase tracking-wider" :class="section.platform_managed ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-900 dark:text-white'">
+              {{ section.title }}
+            </h3>
+            <span v-if="section.platform_managed" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+              Auto
+            </span>
+          </div>
           <p v-if="section.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ section.description }}
           </p>
@@ -107,18 +117,30 @@
                   {{ formatValue(widget.value) }}
                   <span v-if="widget.unit" class="text-lg text-gray-400 dark:text-gray-500">{{ widget.unit }}</span>
                 </div>
-                <div v-if="widget.trend" class="flex items-center text-sm" :class="getTrendColor(widget.trend)">
-                  <svg v-if="widget.trend === 'up'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <div v-if="widget.trend || widget.history?.trend" class="flex items-center text-sm" :class="getTrendColor(widget.trend || widget.history?.trend)">
+                  <svg v-if="(widget.trend || widget.history?.trend) === 'up'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
                   </svg>
-                  <svg v-else-if="widget.trend === 'down'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <svg v-else-if="(widget.trend || widget.history?.trend) === 'down'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                   </svg>
-                  <span v-if="widget.trend_value" class="ml-1">{{ widget.trend_value }}</span>
+                  <span v-if="widget.trend_value || widget.history?.trend_percent" class="ml-1">
+                    {{ widget.trend_value || (widget.history?.trend_percent ? `${widget.history.trend_percent > 0 ? '+' : ''}${widget.history.trend_percent}%` : '') }}
+                  </span>
                 </div>
               </div>
               <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ widget.label }}</div>
               <div v-if="widget.description" class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ widget.description }}</div>
+              <!-- Sparkline -->
+              <SparklineChart
+                v-if="widget.history?.values?.length > 1"
+                :data="widget.history.values.map(v => v.v)"
+                :color="getSparklineColor(widget)"
+                :y-max="widget.history.max || 100"
+                :width="120"
+                :height="24"
+                class="mt-2"
+              />
             </div>
 
             <!-- Status Widget -->
@@ -147,6 +169,15 @@
                 <span class="text-2xl font-bold text-gray-900 dark:text-white">
                   {{ widget.value }}%
                 </span>
+                <div v-if="widget.history?.trend" class="flex items-center text-sm" :class="getTrendColor(widget.history.trend)">
+                  <svg v-if="widget.history.trend === 'up'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  <svg v-else-if="widget.history.trend === 'down'" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  <span v-if="widget.history.trend_percent" class="ml-1">{{ widget.history.trend_percent > 0 ? '+' : '' }}{{ widget.history.trend_percent }}%</span>
+                </div>
               </div>
               <div class="mt-2 w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
@@ -156,6 +187,16 @@
                 ></div>
               </div>
               <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ widget.label }}</div>
+              <!-- Sparkline -->
+              <SparklineChart
+                v-if="widget.history?.values?.length > 1"
+                :data="widget.history.values.map(v => v.v)"
+                :color="getSparklineColor(widget)"
+                :y-max="100"
+                :width="120"
+                :height="24"
+                class="mt-2"
+              />
             </div>
 
             <!-- Text Widget -->
@@ -299,6 +340,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { marked } from 'marked'
 import { useAgentsStore } from '../stores/agents'
+import SparklineChart from './SparklineChart.vue'
 
 const props = defineProps({
   agentName: {
@@ -364,6 +406,14 @@ const getTrendColor = (trend) => {
   if (trend === 'up') return 'text-green-600'
   if (trend === 'down') return 'text-red-600'
   return 'text-gray-500'
+}
+
+// Get sparkline color based on trend
+const getSparklineColor = (widget) => {
+  const trend = widget.history?.trend
+  if (trend === 'up') return '#10b981'  // green-500
+  if (trend === 'down') return '#ef4444'  // red-500
+  return '#3b82f6'  // blue-500 (stable)
 }
 
 // Get status badge colors

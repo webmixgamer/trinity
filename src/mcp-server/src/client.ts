@@ -820,6 +820,98 @@ export class TrinityClient {
   }
 
   // ============================================================================
+  // Agent Monitoring (MON-001)
+  // ============================================================================
+
+  /**
+   * Get fleet-wide health status
+   */
+  async getFleetHealth(): Promise<{
+    enabled: boolean;
+    last_check_at: string | null;
+    summary: {
+      total_agents: number;
+      healthy: number;
+      degraded: number;
+      unhealthy: number;
+      critical: number;
+      unknown: number;
+    };
+    agents: Array<{
+      name: string;
+      status: string;
+      docker_status?: string;
+      network_reachable?: boolean;
+      runtime_available?: boolean;
+      last_check_at?: string;
+      issues: string[];
+    }>;
+  }> {
+    return this.request("GET", "/api/monitoring/status");
+  }
+
+  /**
+   * Get detailed health information for a specific agent
+   */
+  async getAgentHealth(agentName: string): Promise<{
+    agent_name: string;
+    aggregate_status: string;
+    last_check_at: string | null;
+    docker?: {
+      agent_name: string;
+      container_status: string;
+      cpu_percent?: number;
+      memory_percent?: number;
+      memory_mb?: number;
+      restart_count: number;
+      oom_killed: boolean;
+      checked_at: string;
+    };
+    network?: {
+      agent_name: string;
+      reachable: boolean;
+      latency_ms?: number;
+      error?: string;
+      checked_at: string;
+    };
+    business?: {
+      agent_name: string;
+      status: string;
+      runtime_available?: boolean;
+      claude_available?: boolean;
+      context_percent?: number;
+      active_execution_count: number;
+      stuck_execution_count: number;
+      recent_error_rate: number;
+      checked_at: string;
+    };
+    issues: string[];
+    recent_alerts: unknown[];
+    uptime_percent_24h?: number;
+    avg_latency_24h_ms?: number;
+  }> {
+    return this.request(
+      "GET",
+      `/api/monitoring/agents/${encodeURIComponent(agentName)}`
+    );
+  }
+
+  /**
+   * Trigger an immediate health check for an agent (admin only)
+   */
+  async triggerAgentHealthCheck(agentName: string): Promise<{
+    agent_name: string;
+    aggregate_status: string;
+    last_check_at: string | null;
+    issues: string[];
+  }> {
+    return this.request(
+      "POST",
+      `/api/monitoring/agents/${encodeURIComponent(agentName)}/check`
+    );
+  }
+
+  // ============================================================================
   // Subscription Management (SUB-001)
   // ============================================================================
 

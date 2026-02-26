@@ -1,6 +1,23 @@
+---
+name: trinity-connect
+description: Listen for real-time events from Trinity agents using WebSocket connection.
+allowed-tools: [Bash, Read]
+user-invocable: true
+argument-hint: "[agent-name] [state-filter]"
+automation: manual
+---
+
 # Trinity Connect - Real-time Event Listener
 
 Listen for real-time events from Trinity agents using WebSocket connection.
+
+## State Dependencies
+
+| Source | Location | Read | Write | Description |
+|--------|----------|------|-------|-------------|
+| API Key | Environment `TRINITY_API_KEY` | ✅ | | MCP authentication |
+| WebSocket | Trinity backend `/ws/events` | ✅ | | Event stream |
+| Agent Events | Trinity platform | ✅ | | Real-time events |
 
 ## Prerequisites
 
@@ -79,3 +96,11 @@ done
 
 - Feature docs: `docs/memory/feature-flows/trinity-connect.md`
 - MCP API Keys: Settings → API Keys in Trinity UI
+
+## Completion Checklist
+
+- [ ] API key configured
+- [ ] WebSocket tools installed
+- [ ] Connection established
+- [ ] Events received and parsed
+- [ ] Filters applied correctly

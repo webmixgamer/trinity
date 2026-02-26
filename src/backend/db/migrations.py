@@ -4,7 +4,7 @@ Database migrations for Trinity platform.
 Each migration function handles a specific schema change.
 Migrations are idempotent - safe to run multiple times.
 
-Migration Order (as of 2026-02-22):
+Migration Order (as of 2026-02-24):
 1. agent_sharing - Email-based sharing (from user_id)
 2. schedule_executions_observability - Context/cost/tools columns
 3. mcp_api_keys_agent_scope - Agent collaboration support
@@ -22,6 +22,9 @@ Migration Order (as of 2026-02-22):
 15. execution_session_tracking - EXEC-023 session resume
 16. subscription_credentials - SUB-001 subscription table
 17. agent_ownership_subscription_id - SUB-001 subscription FK
+18. agent_dashboard_values - DASH-001 dashboard history table
+19. setup_completed_backfill - Auto-complete setup for existing installs
+20. slack_integration_tables - SLACK-001 Slack integration tables
 """
 
 
@@ -49,6 +52,9 @@ def run_all_migrations(cursor, conn):
         ("execution_session_tracking", _migrate_execution_session_tracking),
         ("subscription_credentials", _migrate_subscription_credentials_table),
         ("agent_ownership_subscription_id", _migrate_agent_ownership_subscription_id),
+        ("agent_dashboard_values", _migrate_agent_dashboard_values_table),
+        ("setup_completed_backfill", _migrate_setup_completed_backfill),
+        ("slack_integration_tables", _migrate_slack_integration_tables),
     ]
 
     for name, migration_fn in migrations:
@@ -413,3 +419,134 @@ def _migrate_agent_skills_table(cursor, conn):
 
         conn.commit()
         print(f"Migrated {len(existing_data)} agent_skills records")
+
+
+def _migrate_agent_dashboard_values_table(cursor, conn):
+    """Create agent_dashboard_values table for dashboard history (DASH-001).
+
+    Stores historical widget values from agent dashboards to support:
+    - Sparkline visualizations showing value trends over time
+    - Historical data analysis without agent being online
+    - Platform metrics injection with trend calculation
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_dashboard_values (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            widget_key TEXT NOT NULL,
+            widget_label TEXT,
+            widget_type TEXT NOT NULL,
+            value_numeric REAL,
+            value_text TEXT,
+            dashboard_mtime TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_dashboard_values_agent_time ON agent_dashboard_values(agent_name, captured_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_dashboard_values_widget ON agent_dashboard_values(agent_name, widget_key, captured_at DESC)")
+    conn.commit()
+
+
+def _migrate_setup_completed_backfill(cursor, conn):
+    """Backfill setup_completed=true for existing installations.
+
+    Prior to this migration, existing production deployments could have:
+    - An admin user with a password hash
+    - But no 'setup_completed' entry in system_settings
+
+    This caused the setup wizard to appear on existing installations.
+    This migration auto-completes setup for installations that already have
+    an admin user with a password set.
+    """
+    from datetime import datetime
+
+    # Check if setup_completed already exists
+    cursor.execute("SELECT value FROM system_settings WHERE key = 'setup_completed'")
+    existing = cursor.fetchone()
+
+    if existing:
+        # Already set, nothing to do
+        return
+
+    # Check if admin user exists with a password hash
+    cursor.execute("""
+        SELECT password_hash FROM users
+        WHERE username = 'admin' AND password_hash IS NOT NULL AND password_hash != ''
+    """)
+    admin_with_password = cursor.fetchone()
+
+    if admin_with_password:
+        # Admin exists with password - mark setup as completed
+        print("Backfilling setup_completed=true for existing installation with admin user...")
+        cursor.execute("""
+            INSERT OR REPLACE INTO system_settings (key, value, updated_at)
+            VALUES ('setup_completed', 'true', ?)
+        """, (datetime.utcnow().isoformat(),))
+        conn.commit()
+        print("Setup marked as completed.")
+
+
+def _migrate_slack_integration_tables(cursor, conn):
+    """Create Slack integration tables (SLACK-001).
+
+    Creates three tables for Slack public link integration:
+    - slack_link_connections: Links Slack workspaces to public links
+    - slack_user_verifications: Tracks verified Slack users
+    - slack_pending_verifications: In-progress email verifications
+    """
+    # Create slack_link_connections table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_link_connections (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL UNIQUE,
+            slack_team_id TEXT NOT NULL UNIQUE,
+            slack_team_name TEXT,
+            slack_bot_token TEXT NOT NULL,
+            connected_by TEXT NOT NULL,
+            connected_at TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            FOREIGN KEY (connected_by) REFERENCES users(id)
+        )
+    """)
+
+    # Create slack_user_verifications table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_user_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            verified_email TEXT NOT NULL,
+            verification_method TEXT NOT NULL,
+            verified_at TEXT NOT NULL,
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE,
+            UNIQUE(link_id, slack_user_id, slack_team_id)
+        )
+    """)
+
+    # Create slack_pending_verifications table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slack_pending_verifications (
+            id TEXT PRIMARY KEY,
+            link_id TEXT NOT NULL,
+            slack_user_id TEXT NOT NULL,
+            slack_team_id TEXT NOT NULL,
+            email TEXT,
+            code TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            state TEXT DEFAULT 'awaiting_email',
+            FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_connections_team ON slack_link_connections(slack_team_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_connections_link ON slack_link_connections(link_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)")
+
+    conn.commit()
