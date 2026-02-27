@@ -507,6 +507,51 @@ async def force_release_agent(
 # Info and Files Endpoints
 # ============================================================================
 
+@router.get("/{agent_name}/playbooks")
+async def get_agent_playbooks_endpoint(
+    agent_name: AuthorizedAgentByName,
+    request: Request
+):
+    """
+    Get available skills (playbooks) from an agent's .claude/skills/ directory.
+
+    Returns skill metadata parsed from SKILL.md YAML frontmatter.
+    """
+    import httpx
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    await container_reload(container)
+
+    if container.status != "running":
+        raise HTTPException(
+            status_code=503,
+            detail="Agent is not running. Start the agent to view playbooks."
+        )
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/skills"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent returned error: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent is starting up, please try again")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Could not connect to agent")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch playbooks: {str(e)}")
+
+
 @router.get("/{agent_name}/info")
 async def get_agent_info_endpoint(
     agent_name: AuthorizedAgentByName,

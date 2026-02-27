@@ -3,7 +3,21 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-02-27)**: Dashboard Timeline Refresh Fix (REFRESH-001):
+> **Updated (2026-02-27)**: Playbooks Tab (PLAYBOOK-001):
+> - **New feature flow**: [playbooks-tab.md](feature-flows/playbooks-tab.md) - Invoke agent skills directly from UI
+> - **Key features**: Grid display of agent's `.claude/skills/` directory, one-click run, run-with-instructions
+> - **New files**:
+>   - `docker/base-image/agent_server/routers/skills.py` - Agent-side skills listing endpoint
+>   - `src/frontend/src/components/PlaybooksPanel.vue` - Playbooks tab component
+> - **Modified files**:
+>   - `docker/base-image/agent_server/routers/__init__.py` - Export skills_router
+>   - `docker/base-image/agent_server/main.py` - Mount skills_router
+>   - `src/backend/routers/agents.py` - Add `/api/agents/{name}/playbooks` proxy endpoint
+>   - `src/frontend/src/views/AgentDetail.vue` - Add Playbooks tab, remove Skills tab from visibleTabs
+> - **Tab changes**: Skills tab hidden (platform-level skill library), replaced with Playbooks tab (agent-local skills)
+> - **Related flows**: [tasks-tab.md](feature-flows/tasks-tab.md) (skill execution), [scheduling.md](feature-flows/scheduling.md) (schedule from skills)
+>
+> **Previous (2026-02-27)**: Dashboard Timeline Refresh Fix (REFRESH-001):
 > - **Bug**: Dashboard Timeline stopped refreshing when left idle for 60-120 seconds
 > - **Root cause**: WebSocket connection silently died (no heartbeat), activity completion events not handled, no fallback polling
 > - **Fix**: Three-layer refresh solution - WebSocket heartbeat, activity event handler, fallback polling

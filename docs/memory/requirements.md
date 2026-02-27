@@ -883,6 +883,33 @@ The Process Engine supports six step types:
 
 ---
 
+## 22. Playbooks Tab (Agent Local Skills)
+
+> **Design**: Browse and invoke agent's local skills directly from UI.
+> Spec: `docs/requirements/PLAYBOOKS_TAB.md`
+> Flow: `docs/memory/feature-flows/playbooks-tab.md`
+
+### 22.1 Playbooks Tab
+- **Status**: ✅ Implemented (2026-02-27)
+- **Requirement ID**: PLAYBOOK-001
+- **Description**: UI tab to view and invoke agent's local `.claude/skills/` directory
+- **Key Features**:
+  - Grid display of skills parsed from SKILL.md YAML frontmatter
+  - One-click run (sends `/{skill-name}` to `/task` endpoint)
+  - Run with instructions (prefills Tasks tab input)
+  - Search/filter by name or description
+  - Automation badge (autonomous/gated/manual)
+- **Agent Endpoint**: `GET /api/skills` - Lists skills from `.claude/skills/`
+- **Backend Proxy**: `GET /api/agents/{name}/playbooks`
+- **Frontend**: `PlaybooksPanel.vue` component
+
+### 22.2 Skills Tab (Platform Library) - Hidden
+- **Status**: ✅ Implemented (hidden)
+- **Description**: Platform-level skill library assignment (existing feature)
+- **Change**: Tab hidden from visibleTabs but component preserved for potential admin-only access
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)

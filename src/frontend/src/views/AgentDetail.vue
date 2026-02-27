@@ -165,6 +165,15 @@
               <SchedulesPanel :agent-name="agent.name" :initial-message="schedulePrefillMessage" />
             </div>
 
+            <!-- Playbooks Tab Content -->
+            <div v-if="activeTab === 'playbooks'" class="p-6">
+              <PlaybooksPanel
+                :agent-name="agent.name"
+                :agent-status="agent.status"
+                @run-with-instructions="handlePlaybookRunWithInstructions"
+              />
+            </div>
+
             <!-- Git Tab Content -->
             <div v-if="activeTab === 'git'" class="p-6">
               <GitPanel :agent-name="agent.name" :agent-status="agent.status" />
@@ -257,6 +266,7 @@ import PermissionsPanel from '../components/PermissionsPanel.vue'
 import FilesPanel from '../components/FilesPanel.vue'
 import TerminalPanelContent from '../components/TerminalPanelContent.vue'
 import SkillsPanel from '../components/SkillsPanel.vue'
+import PlaybooksPanel from '../components/PlaybooksPanel.vue'
 import ChatPanel from '../components/ChatPanel.vue'
 
 // Import composables
@@ -514,8 +524,8 @@ const visibleTabs = computed(() => {
 
   tabs.push(
     { id: 'schedules', label: 'Schedules' },
-    { id: 'credentials', label: 'Credentials' },
-    { id: 'skills', label: 'Skills' }
+    { id: 'playbooks', label: 'Playbooks' },
+    { id: 'credentials', label: 'Credentials' }
   )
 
   // Access control tabs - hide for system agent (system agent has full access)
@@ -811,6 +821,29 @@ const handleCreateSchedule = (message) => {
   nextTick(() => {
     setTimeout(() => {
       schedulePrefillMessage.value = ''
+    }, 100)
+  })
+}
+
+// Handle run-with-instructions from Playbooks tab
+const handlePlaybookRunWithInstructions = (prefillText) => {
+  // Check if this is a navigation request (one-click run completed)
+  if (prefillText.startsWith('__NAVIGATE_TASKS__:')) {
+    const executionId = prefillText.replace('__NAVIGATE_TASKS__:', '')
+    // Navigate to Tasks tab with execution highlighted via query param
+    activeTab.value = 'tasks'
+    // The TasksPanel will pick up the execution via the highlight-execution-id prop
+    router.replace({ query: { ...route.query, execution: executionId } })
+    return
+  }
+
+  // Normal case: prefill the task input and switch to Tasks tab
+  taskPrefillMessage.value = prefillText
+  activeTab.value = 'tasks'
+  // Clear the prefill after a short delay so it can be used again
+  nextTick(() => {
+    setTimeout(() => {
+      taskPrefillMessage.value = ''
     }, 100)
   })
 }

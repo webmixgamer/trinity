@@ -22,6 +22,7 @@ from .routers import (
     trinity_router,
     info_router,
     dashboard_router,
+    skills_router,
 )
 from .state import agent_state
 from .services.trinity_mcp import inject_trinity_mcp_if_configured
@@ -55,6 +56,7 @@ app.include_router(git_router)  # Git sync endpoints
 app.include_router(files_router)  # File browser endpoints
 app.include_router(trinity_router)  # Trinity injection API
 app.include_router(dashboard_router)  # Dashboard endpoint
+app.include_router(skills_router)  # Skills/playbooks listing endpoint
 
 
 def run_server():
