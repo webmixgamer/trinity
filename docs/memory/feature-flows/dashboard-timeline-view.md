@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-01-29 (Added Timeline Schedule Markers - TSM-001)
+> **Last Updated**: 2026-02-27 (Dashboard Timeline Refresh Fix - REFRESH-001)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`, `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
 
@@ -41,9 +41,11 @@ The Dashboard offers two views for monitoring the agent fleet:
 
 3. **Live Event Streaming**
    - WebSocket remains connected (unlike old Replay mode)
+   - **WebSocket Heartbeat (REFRESH-001)**: Ping/pong every 30s prevents silent disconnection
    - New collaboration events appear at right edge
    - "Now" marker updates every second
    - Auto-scroll keeps latest events visible
+   - **Fallback Polling (REFRESH-001)**: Activities polled every 60s as backup
 
 4. **Timeline Grid** (right area)
    - 15-minute interval time ticks
@@ -652,7 +654,144 @@ if collaboration_activity_id:
 
 **Impact**: Collaboration activities now properly show "failed" status with `duration_ms` calculated.
 
+## Timeline Refresh Mechanisms (REFRESH-001)
+
+**Added 2026-02-27**: Three-layer approach to keep the Timeline view fresh when left idle.
+
+### Problem Statement
+
+The Dashboard timeline stopped refreshing when left idle because:
+1. WebSocket connection silently died after 60-120s of inactivity (no heartbeat)
+2. Activity completion events (`agent_activity` with `activity_state: completed`) were not handled by the frontend
+3. No fallback mechanism when WebSocket was unavailable
+
+### Solution Architecture
+
+```
++-------------------+     +---------------------+     +-------------------+
+| WebSocket         |     | Activity Status     |     | Fallback Polling  |
+| Heartbeat (30s)   |     | Handler             |     | (60s)             |
++-------------------+     +---------------------+     +-------------------+
+        |                         |                         |
+        v                         v                         v
+  Keeps connection          Updates timeline           Refreshes data
+  alive via ping/pong       on activity events         even if WS fails
+```
+
+### 1. WebSocket Heartbeat (Ping/Pong)
+
+**Backend** (`src/backend/main.py:362-376`):
+```python
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle ping/pong to keep connection alive
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+```
+
+**Frontend** (`src/frontend/src/stores/network.js`):
+- `websocketHeartbeatInterval` ref (line ~53)
+- `startWebSocketHeartbeat()` - sends "ping" every 30 seconds
+- `stopWebSocketHeartbeat()` - clears interval on disconnect
+
+**Connection Flow**:
+1. WebSocket opens -> `startWebSocketHeartbeat()` called
+2. Every 30s, frontend sends `"ping"`
+3. Backend responds with `"pong"`
+4. If pong not received, browser detects dead connection and triggers reconnect
+
+### 2. Activity Status Change Handler
+
+**Frontend** (`src/frontend/src/stores/network.js`):
+- `handleActivityStatusChange()` - handles `agent_activity` WebSocket events
+- Triggered when backend broadcasts activity completion
+
+**WebSocket Event Format**:
+```json
+{
+  "type": "agent_activity",
+  "agent_name": "my-agent",
+  "activity_type": "chat_start",
+  "activity_state": "completed",
+  "details": {...}
+}
+```
+
+**Handler Logic**:
+1. Receive `agent_activity` event with `activity_state: completed`
+2. Refresh historical collaborations to update timeline
+3. Timeline re-renders with updated execution data
+
+### 3. Fallback Activity Polling
+
+**Frontend** (`src/frontend/src/stores/network.js`):
+- `activityRefreshInterval` ref (line ~54)
+- `startActivityRefresh()` - polls activities every 60 seconds
+- `stopActivityRefresh()` - clears interval when leaving timeline mode
+
+**Lifecycle Integration** (`src/frontend/src/views/Dashboard.vue`):
+- `onMounted()` - starts activity refresh if in timeline mode
+- `onUnmounted()` - stops activity refresh
+- `setViewMode()` - starts/stops based on view mode change
+
+**Polling Logic**:
+1. Every 60 seconds while in timeline mode
+2. Calls `fetchHistoricalCollaborations()` from network store
+3. Timeline re-renders with fresh data from database
+4. Acts as safety net if WebSocket events are missed
+
+### Implementation Details
+
+**Files Changed**:
+| File | Changes |
+|------|---------|
+| `src/backend/main.py:362-376` | Added ping/pong handler to `/ws` endpoint |
+| `src/frontend/src/stores/network.js:53-54` | Added `activityRefreshInterval` and `websocketHeartbeatInterval` refs |
+| `src/frontend/src/stores/network.js` | Added `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` functions |
+| `src/frontend/src/stores/network.js` | Added `handleActivityStatusChange()` for `agent_activity` events |
+| `src/frontend/src/stores/network.js` | Added `startActivityRefresh()`, `stopActivityRefresh()` functions |
+| `src/frontend/src/stores/network.js` | Updated `connectWebSocket()` to start heartbeat on open |
+| `src/frontend/src/stores/network.js` | Updated WebSocket message handler for `agent_activity` and `pong` events |
+| `src/frontend/src/stores/network.js` | Updated `setViewMode()` to start/stop activity refresh based on mode |
+| `src/frontend/src/stores/network.js` | Updated `disconnectWebSocket()` to stop heartbeat |
+| `src/frontend/src/views/Dashboard.vue` | Updated `onMounted()` to start activity refresh if in timeline mode |
+| `src/frontend/src/views/Dashboard.vue` | Updated `onUnmounted()` to stop activity refresh |
+
+### Testing
+
+**Test Case: WebSocket Heartbeat**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open Dashboard in timeline mode | WebSocket connected, heartbeat starts |
+| 2 | Wait 2+ minutes | Connection stays alive (no reconnect) |
+| 3 | Check browser Network tab | Ping/pong messages every 30s |
+
+**Test Case: Activity Status Handler**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open Dashboard in timeline mode | Timeline displays current activities |
+| 2 | Trigger execution on agent | Execution bar appears |
+| 3 | Wait for completion | Bar updates to completed state without refresh |
+
+**Test Case: Fallback Polling**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open Dashboard in timeline mode | Timeline displays |
+| 2 | Disconnect network briefly | WebSocket disconnects |
+| 3 | Wait 60 seconds | Timeline refreshes via polling |
+| 4 | Reconnect network | WebSocket reconnects, heartbeat resumes |
+
 ## Revision History
+
+| Date | Change |
+|------|--------|
+| 2026-02-27 | **Fix (REFRESH-001)**: Dashboard Timeline Refresh - Added WebSocket ping/pong heartbeat (30s), activity status change handler for `agent_activity` events, and fallback activity polling (60s). Prevents timeline from going stale when idle. Backend: `main.py:362-376`. Frontend: `network.js` (4 new functions), `Dashboard.vue` (lifecycle hooks). |
 
 | Date | Change |
 |------|--------|

@@ -50,6 +50,8 @@ export const useNetworkStore = defineStore('network', () => {
   const executionStats = ref({}) // Map of agent name -> execution stats
   const contextPollingInterval = ref(null) // Interval ID for context polling
   const agentRefreshInterval = ref(null) // Interval ID for agent list refresh
+  const activityRefreshInterval = ref(null) // Interval ID for activity refresh (fallback)
+  const websocketHeartbeatInterval = ref(null) // Interval ID for WebSocket keepalive ping
   const runningToggleLoading = ref({}) // Map of agent name -> boolean (loading state for start/stop)
   const schedules = ref([]) // Enabled schedules for timeline markers
 
@@ -481,6 +483,9 @@ export const useNetworkStore = defineStore('network', () => {
       websocket.value.onopen = () => {
         console.log('[Collaboration] WebSocket connected')
         isConnected.value = true
+
+        // Start heartbeat to keep connection alive (prevents idle timeout)
+        startWebSocketHeartbeat()
       }
 
       websocket.value.onmessage = (event) => {
@@ -493,6 +498,11 @@ export const useNetworkStore = defineStore('network', () => {
             handleAgentStatusChange(data)
           } else if (data.type === 'agent_deleted') {
             handleAgentDeleted(data)
+          } else if (data.type === 'agent_activity') {
+            handleActivityStatusChange(data)
+          } else if (data.type === 'pong') {
+            // Heartbeat response received - connection is alive
+            console.log('[Collaboration] Heartbeat pong received')
           }
         } catch (error) {
           console.error('[Collaboration] Failed to parse WebSocket message:', error)
@@ -507,6 +517,9 @@ export const useNetworkStore = defineStore('network', () => {
       websocket.value.onclose = () => {
         console.log('[Collaboration] WebSocket disconnected')
         isConnected.value = false
+
+        // Stop heartbeat
+        stopWebSocketHeartbeat()
 
         // Only reconnect if this was NOT an intentional disconnect
         if (!intentionalDisconnect.value) {
@@ -580,6 +593,84 @@ export const useNetworkStore = defineStore('network', () => {
 
     // Remove from agents list
     agents.value = agents.value.filter(a => a.name !== event.agent_name)
+  }
+
+  // Handle activity status changes (completion, failure) from WebSocket
+  function handleActivityStatusChange(event) {
+    // Update activity in historicalCollaborations
+    const activity = historicalCollaborations.value.find(
+      a => a.activity_id === event.activity_id
+    )
+
+    if (activity) {
+      // Update status - this is the key fix for timeline bars not completing
+      activity.status = event.activity_state
+      activity.duration_ms = event.details?.duration_ms || activity.duration_ms
+      activity.error = event.error
+
+      console.log(`[Collaboration] Activity ${event.activity_id} updated to ${event.activity_state}`)
+
+      // Trigger Vue reactivity
+      historicalCollaborations.value = [...historicalCollaborations.value]
+    } else if (event.activity_state === 'started') {
+      // New activity started - add to list
+      const newActivity = {
+        source_agent: event.agent_name,
+        target_agent: event.details?.target_agent || null,
+        timestamp: event.timestamp,
+        activity_id: event.activity_id,
+        execution_id: event.details?.execution_id || event.details?.related_execution_id || null,
+        status: event.activity_state,
+        duration_ms: null,
+        activity_type: event.activity_type,
+        triggered_by: event.details?.triggered_by || 'system',
+        schedule_name: event.details?.schedule_name || null,
+        error: null
+      }
+
+      historicalCollaborations.value.unshift(newActivity)
+      totalCollaborationCount.value++
+
+      console.log(`[Collaboration] New activity ${event.activity_id} added (${event.activity_type})`)
+    }
+  }
+
+  // WebSocket heartbeat to prevent idle timeout (sends ping every 30 seconds)
+  function startWebSocketHeartbeat() {
+    stopWebSocketHeartbeat() // Clear any existing heartbeat
+
+    websocketHeartbeatInterval.value = setInterval(() => {
+      if (websocket.value?.readyState === WebSocket.OPEN) {
+        // Send a ping message - server should respond with pong (or echo)
+        // If the server doesn't respond, the connection will eventually timeout
+        // and trigger onclose, which will reconnect
+        try {
+          websocket.value.send(JSON.stringify({ type: 'ping' }))
+          console.log('[Collaboration] Heartbeat ping sent')
+        } catch (error) {
+          console.error('[Collaboration] Failed to send heartbeat:', error)
+          // Force reconnection if send fails
+          isConnected.value = false
+          websocket.value?.close()
+        }
+      } else if (!intentionalDisconnect.value) {
+        // WebSocket not open and we didn't intentionally disconnect - try reconnecting
+        console.log('[Collaboration] WebSocket not open, attempting reconnect...')
+        isConnected.value = false
+        stopWebSocketHeartbeat()
+        connectWebSocket()
+      }
+    }, 30000) // Every 30 seconds
+
+    console.log('[Collaboration] WebSocket heartbeat started (every 30s)')
+  }
+
+  function stopWebSocketHeartbeat() {
+    if (websocketHeartbeatInterval.value) {
+      clearInterval(websocketHeartbeatInterval.value)
+      websocketHeartbeatInterval.value = null
+      console.log('[Collaboration] WebSocket heartbeat stopped')
+    }
   }
 
   // Track active edge timeouts for extending visibility
@@ -772,6 +863,9 @@ export const useNetworkStore = defineStore('network', () => {
     // Set flag BEFORE closing to prevent reconnection
     intentionalDisconnect.value = true
 
+    // Stop heartbeat
+    stopWebSocketHeartbeat()
+
     if (websocket.value) {
       websocket.value.close()
       websocket.value = null
@@ -939,6 +1033,33 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
+  // Start polling activity data as fallback (in case WebSocket misses events)
+  function startActivityRefresh() {
+    if (activityRefreshInterval.value) {
+      clearInterval(activityRefreshInterval.value)
+    }
+
+    // Poll every 60 seconds as fallback (WebSocket should handle most updates)
+    activityRefreshInterval.value = setInterval(() => {
+      // Only refresh if we're in timeline mode (to avoid unnecessary API calls)
+      if (isTimelineMode.value) {
+        console.log('[Collaboration] Activity refresh polling triggered')
+        fetchHistoricalCollaborations()
+      }
+    }, 60000) // Every 60 seconds
+
+    console.log('[Collaboration] Started activity refresh polling (every 60s)')
+  }
+
+  // Stop polling activity data
+  function stopActivityRefresh() {
+    if (activityRefreshInterval.value) {
+      clearInterval(activityRefreshInterval.value)
+      activityRefreshInterval.value = null
+      console.log('[Collaboration] Stopped activity refresh polling')
+    }
+  }
+
   // View Mode Functions (graph vs timeline)
   function setViewMode(mode) {
     const isTimeline = mode === 'timeline'
@@ -950,10 +1071,14 @@ export const useNetworkStore = defineStore('network', () => {
     if (isTimeline) {
       // Entering timeline mode - stop any active replay playback
       stopReplay()
+      // Start activity refresh polling as fallback
+      startActivityRefresh()
       console.log('[Collaboration] Switched to Timeline view (live mode)')
     } else {
       // Entering graph mode
       stopReplay()
+      // Stop activity refresh polling (not needed in graph mode)
+      stopActivityRefresh()
       console.log('[Collaboration] Switched to Graph view')
     }
   }
@@ -1434,6 +1559,14 @@ export const useNetworkStore = defineStore('network', () => {
     stopContextPolling,
     startAgentRefresh,
     stopAgentRefresh,
+    // Activity refresh (fallback polling)
+    startActivityRefresh,
+    stopActivityRefresh,
+    // WebSocket heartbeat
+    startWebSocketHeartbeat,
+    stopWebSocketHeartbeat,
+    // Activity status handler
+    handleActivityStatusChange,
     // View mode / Replay actions
     setViewMode,
     setReplayMode,

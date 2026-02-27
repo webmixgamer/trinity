@@ -363,6 +363,16 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     try:
         while True:
             data = await websocket.receive_text()
+
+            # Handle ping/pong for keepalive (prevents idle timeout)
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass  # Not JSON, continue with other handling
+
             # Could authenticate via first message if not done via query param
             if not authenticated and data.startswith("Bearer "):
                 try:

@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-02-22 - Dashboard schedule stats display: AgentNode now shows "X/Y schedules" with "(paused)" indicator when autonomy disabled. Backend `/api/agents/execution-stats` extended with `schedules_total` and `schedules_enabled` fields.
+> **Last Updated**: 2026-02-27 - Dashboard Timeline Refresh Fix (REFRESH-001): Added WebSocket heartbeat (ping/pong every 30s), activity status change handler, and fallback activity polling (60s). See "WebSocket Heartbeat" and "Timeline Refresh" sections.
+>
+> **Previous (2026-02-22)** - Dashboard schedule stats display: AgentNode now shows "X/Y schedules" with "(paused)" indicator when autonomy disabled. Backend `/api/agents/execution-stats` extended with `schedules_total` and `schedules_enabled` fields.
 >
 > **Previous (2026-02-12)** - UI Standardization: AutonomyToggle now uses reusable `AutonomyToggle.vue` component. Running and Autonomy toggles on same row in AgentNode.vue (lines 57-86).
 >
@@ -277,12 +279,45 @@ Groups communications by source-target pair and creates inactive edges:
 ##### connectWebSocket() (Lines 289-336)
 WebSocket connection with auto-reconnect:
 - Line 290: Constructs WebSocket URL from window.location
-- Lines 295-298: `onopen` - Sets `isConnected = true`
+- Lines 295-298: `onopen` - Sets `isConnected = true`, **starts heartbeat (REFRESH-001)**
 - Lines 300-314: `onmessage` - Routes events to handlers:
   - `agent_collaboration` -> `handleCollaborationEvent()`
   - `agent_status` -> `handleAgentStatusChange()`
   - `agent_deleted` -> `handleAgentDeleted()`
-- Lines 321-332: `onclose` - Reconnects after 5 seconds
+  - `agent_activity` -> `handleActivityStatusChange()` **(REFRESH-001)**
+  - `pong` -> heartbeat response **(REFRESH-001)**
+- Lines 321-332: `onclose` - Reconnects after 5 seconds, **stops heartbeat (REFRESH-001)**
+
+##### WebSocket Heartbeat (REFRESH-001 - Added 2026-02-27)
+
+Prevents WebSocket from silently disconnecting after 60-120s of inactivity.
+
+**State**:
+- `websocketHeartbeatInterval` (line ~53) - Interval ID for cleanup
+
+**Functions**:
+- `startWebSocketHeartbeat()` - Sends "ping" every 30 seconds
+- `stopWebSocketHeartbeat()` - Clears interval on disconnect
+
+**Backend Handler** (`src/backend/main.py:362-376`):
+```python
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+```
+
+**Flow**:
+1. WebSocket opens -> `startWebSocketHeartbeat()` called
+2. Every 30s: Frontend sends `"ping"`, backend responds `"pong"`
+3. If pong not received, browser detects dead connection and triggers `onclose`
+4. `onclose` handler stops heartbeat and schedules reconnect after 5s
 
 ##### handleCollaborationEvent() (Lines 338-363)
 ```javascript
@@ -387,6 +422,46 @@ async function fetchExecutionStats() {
 ##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
 - Polls every 15 seconds for agent list changes
 - Detects new/deleted agents and updates graph
+
+##### Timeline Activity Refresh (REFRESH-001 - Added 2026-02-27)
+
+Fallback polling mechanism for Timeline view when WebSocket events are missed.
+
+**State**:
+- `activityRefreshInterval` (line ~54) - Interval ID for cleanup
+
+**Functions**:
+- `startActivityRefresh()` - Polls activities every 60 seconds as fallback
+- `stopActivityRefresh()` - Clears interval when leaving timeline mode
+- `handleActivityStatusChange()` - Handles `agent_activity` WebSocket events
+
+**Integration with setViewMode()**:
+```javascript
+function setViewMode(mode) {
+  viewMode.value = mode
+  localStorage.setItem('trinity-dashboard-view', mode)
+
+  if (mode === 'timeline') {
+    startActivityRefresh()  // Start polling when entering timeline
+  } else {
+    stopActivityRefresh()   // Stop polling when leaving timeline
+  }
+}
+```
+
+**Dashboard Lifecycle** (`Dashboard.vue`):
+- `onMounted()` - starts activity refresh if already in timeline mode
+- `onUnmounted()` - stops activity refresh
+
+**Activity Event Handler**:
+```javascript
+function handleActivityStatusChange(event) {
+  // Refresh timeline when activity completes
+  if (event.activity_state === 'completed') {
+    fetchHistoricalCollaborations()
+  }
+}
+```
 
 ##### toggleAutonomy() (Lines 1173-1209)
 ```javascript
@@ -1550,6 +1625,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-02-27 | **Dashboard Timeline Refresh Fix (REFRESH-001)**: Added WebSocket heartbeat (ping/pong every 30s) to prevent silent disconnection after 60-120s idle. Backend: `main.py:362-376` ping handler. Frontend: `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` in network.js. Added `handleActivityStatusChange()` for `agent_activity` events. Added fallback activity polling (60s) via `startActivityRefresh()`, `stopActivityRefresh()`. Dashboard.vue lifecycle updated to start/stop activity refresh. |
 | 2026-02-22 | **Dashboard Schedule Stats Display**: Added schedule stats row to AgentNode.vue (lines 138-155) showing "X/Y schedules" with clock icon. Shows grayed "(paused)" text when autonomy is disabled. Backend `GET /api/agents/execution-stats` (agents.py:176-223) now includes `schedules_total` and `schedules_enabled` fields via new `db.get_all_agents_schedule_counts()` method (db/schedules.py:719-743). Frontend `fetchExecutionStats()` (network.js:747-784) extended to include schedule counts. |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (imported at AgentNode.vue:189). Running and Autonomy toggles positioned on same row (AgentNode.vue:57-86) for visual consistency with Agents page. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |
 | 2026-01-26 | **UX: Running State Toggle on Dashboard**: Added `RunningStateToggle.vue` component to AgentNode.vue (lines 57-65) for start/stop control from Dashboard. Added `toggleAgentRunning()` (lines 1211-1250), `isTogglingRunning()` (lines 1252-1254), and `runningToggleLoading` ref to network.js store. Users can now start/stop agents directly from the Dashboard without navigating to detail page. |

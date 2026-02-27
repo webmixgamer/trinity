@@ -3,7 +3,25 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-02-27)**: Chat Message Ordering Fix (CHAT-002):
+> **Updated (2026-02-27)**: Dashboard Timeline Refresh Fix (REFRESH-001):
+> - **Bug**: Dashboard Timeline stopped refreshing when left idle for 60-120 seconds
+> - **Root cause**: WebSocket connection silently died (no heartbeat), activity completion events not handled, no fallback polling
+> - **Fix**: Three-layer refresh solution - WebSocket heartbeat, activity event handler, fallback polling
+> - **Backend**: `src/backend/main.py:362-376` - Added ping/pong handler to `/ws` endpoint
+> - **Frontend**:
+>   - `src/frontend/src/stores/network.js:53-54` - Added `activityRefreshInterval` and `websocketHeartbeatInterval` refs
+>   - `src/frontend/src/stores/network.js` - Added `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` functions (30s ping)
+>   - `src/frontend/src/stores/network.js` - Added `handleActivityStatusChange()` for `agent_activity` WebSocket events
+>   - `src/frontend/src/stores/network.js` - Added `startActivityRefresh()`, `stopActivityRefresh()` functions (60s polling)
+>   - `src/frontend/src/stores/network.js` - Updated `connectWebSocket()` to start heartbeat on open
+>   - `src/frontend/src/stores/network.js` - Updated WebSocket message handler for `agent_activity` and `pong` events
+>   - `src/frontend/src/stores/network.js` - Updated `setViewMode()` to start/stop activity refresh based on mode
+>   - `src/frontend/src/stores/network.js` - Updated `disconnectWebSocket()` to stop heartbeat
+>   - `src/frontend/src/views/Dashboard.vue` - Updated `onMounted()` to start activity refresh if in timeline mode
+>   - `src/frontend/src/views/Dashboard.vue` - Updated `onUnmounted()` to stop activity refresh
+> - **Affected flows**: [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md), [agent-network.md](feature-flows/agent-network.md), [activity-stream.md](feature-flows/activity-stream.md)
+>
+> **Previous (2026-02-27)**: Chat Message Ordering Fix (CHAT-002):
 > - **Bug**: Messages appeared in incorrect visual positions due to flex spacer race conditions
 > - **Root cause**: `ChatMessages.vue` used `<div class="flex-1">` spacer to push content to bottom, which competed with nested flex containers
 > - **Fix**: Replaced spacer technique with `min-h-full flex flex-col justify-end` pattern

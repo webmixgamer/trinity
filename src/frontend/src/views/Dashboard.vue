@@ -595,6 +595,11 @@ onMounted(async () => {
   // Start polling for agent list updates
   networkStore.startAgentRefresh()
 
+  // Start activity refresh polling if in timeline mode (fallback for WebSocket gaps)
+  if (networkStore.isTimelineMode) {
+    networkStore.startActivityRefresh()
+  }
+
   // Initialize observability (checks if OTel is enabled)
   await observabilityStore.fetchStatus()
 
@@ -611,6 +616,7 @@ onUnmounted(() => {
   networkStore.disconnectWebSocket()
   networkStore.stopContextPolling()
   networkStore.stopAgentRefresh()
+  networkStore.stopActivityRefresh()
   document.removeEventListener('click', handleClickOutside)
 })
 

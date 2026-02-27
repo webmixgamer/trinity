@@ -529,6 +529,47 @@ Two endpoints are available:
 }
 ```
 
+### Frontend Event Handling (REFRESH-001 - Added 2026-02-27)
+
+The Dashboard Timeline view handles `agent_activity` events to keep the timeline fresh.
+
+**Handler** (`src/frontend/src/stores/network.js`):
+```javascript
+function handleActivityStatusChange(event) {
+  // Refresh timeline when activity completes
+  if (event.activity_state === 'completed') {
+    fetchHistoricalCollaborations()
+  }
+}
+```
+
+**WebSocket Message Routing** (in `connectWebSocket()`):
+```javascript
+websocket.onmessage = (event) => {
+  const data = JSON.parse(event.data)
+  switch (data.type) {
+    case 'agent_activity':
+      handleActivityStatusChange(data)
+      break
+    case 'pong':
+      // Heartbeat response - connection is alive
+      break
+    // ... other handlers
+  }
+}
+```
+
+**Purpose**:
+- When activity completes, timeline refreshes to show updated execution bars
+- Part of three-layer refresh solution for Dashboard Timeline:
+  1. WebSocket heartbeat (prevents disconnection)
+  2. Activity event handler (real-time updates)
+  3. Fallback polling (safety net)
+
+**Related Documentation**:
+- [dashboard-timeline-view.md](dashboard-timeline-view.md) - Timeline Refresh Mechanisms section
+- [agent-network.md](agent-network.md) - WebSocket Heartbeat and Timeline Activity Refresh sections
+
 ---
 
 ## Database Operations
@@ -964,6 +1005,7 @@ activity_service.set_filtered_websocket_manager(filtered_manager)
 
 | Date | Changes |
 |------|---------|
+| 2026-02-27 | **Dashboard Timeline Refresh (REFRESH-001)**: Frontend now handles `agent_activity` WebSocket events via `handleActivityStatusChange()` in network.js. When activity completes (`activity_state: completed`), refreshes historical collaborations to update Timeline view. Part of three-layer refresh solution: heartbeat + event handler + fallback polling. See [dashboard-timeline-view.md](dashboard-timeline-view.md) and [agent-network.md](agent-network.md). |
 | 2025-12-02 | Initial implementation |
 | 2025-12-30 | Previous review |
 | 2026-01-15 | Added timezone handling documentation |
