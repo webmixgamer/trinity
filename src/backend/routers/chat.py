@@ -308,23 +308,9 @@ async def chat_with_agent(
             execution_time_ms=execution_time_ms
         )
 
-        # Track tool calls (granular tracking in agent_activities)
-        # Use execution_log_simplified which has the format expected by activity tracking
-        for tool_call in execution_log_simplified:
-            await activity_service.track_activity(
-                agent_name=name,
-                activity_type=ActivityType.TOOL_CALL,
-                user_id=current_user.id,
-                triggered_by="agent" if x_source_agent else "user",
-                parent_activity_id=chat_activity_id,
-                related_chat_message_id=assistant_message.id,
-                related_execution_id=task_execution_id,  # Link tool calls to execution
-                details={
-                    "tool_name": tool_call.get("tool", "unknown"),
-                    "duration_ms": tool_call.get("duration_ms"),
-                    "success": tool_call.get("success", True)
-                }
-            )
+        # Note: Tool calls are stored in chat_messages.tool_calls JSON column
+        # Individual tool_call activities were removed (Issue #45) - they were
+        # duplicate data that accumulated as orphans (never completed)
 
         # Track chat completion
         await activity_service.complete_activity(

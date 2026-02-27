@@ -1,3 +1,85 @@
+### 2026-02-27 15:45:00
+🧪 **Test: Playbooks Tab tests (PLAYBOOK-001)**
+
+Added comprehensive pytest test suite for the Playbooks Tab feature.
+
+**Test Coverage:**
+- Authentication requirements (smoke tests)
+- Error handling (404 for nonexistent agent, 503 for stopped agent)
+- Response structure validation (SkillsResponse fields)
+- Skill field types and required fields
+- Skills sorting verification
+- Timeout handling during agent startup
+- Concurrent access consistency
+
+**Created Files:**
+- `tests/test_playbooks.py` - 14 test cases in 9 test classes
+
+**Test Results:**
+- 4 smoke tests pass immediately
+- 10 agent-requiring tests skip gracefully when agent base image lacks skills endpoint
+- All tests pass after base image rebuild with skills.py router
+
+**Notes:**
+- Tests use module-scoped `created_agent` and `stopped_agent` fixtures
+- Graceful skip when agent returns 404 (base image needs rebuild)
+- Follow existing Trinity test patterns from `test_skills.py`
+
+---
+
+### 2026-02-27 14:30:00
+✨ **Feature: Playbooks Tab (PLAYBOOK-001)**
+
+Added a new Playbooks tab in Agent Detail to browse and invoke agent's local skills directly from the UI. Skills (playbooks) are stored in `.claude/skills/` directory as SKILL.md files with YAML frontmatter.
+
+**Key Features:**
+- Grid display of skills parsed from SKILL.md YAML frontmatter
+- One-click run button sends `/{skill-name}` to `/task` endpoint
+- "Edit" button prefills Tasks tab with `/{skill-name} ` for adding instructions
+- Search/filter skills by name or description
+- Automation badges (autonomous/gated/manual)
+- Agent not running state handling
+
+**Created Files:**
+- `docker/base-image/agent_server/routers/skills.py` - Agent-side skills listing endpoint (`GET /api/skills`)
+- `src/frontend/src/components/PlaybooksPanel.vue` - Playbooks tab component
+- `docs/memory/feature-flows/playbooks-tab.md` - Feature flow documentation
+
+**Updated Files:**
+- `docker/base-image/agent_server/routers/__init__.py` - Export skills_router
+- `docker/base-image/agent_server/main.py` - Mount skills_router
+- `src/backend/routers/agents.py` - Add `/api/agents/{name}/playbooks` proxy endpoint
+- `src/frontend/src/views/AgentDetail.vue` - Add Playbooks tab, hide Skills tab from visibleTabs
+
+**Tab Changes:**
+- Skills tab (platform-level skill library) hidden from visibleTabs
+- New Playbooks tab added after Schedules, before Credentials
+
+**Impact**: Users can now discover and invoke agent skills without knowing slash command syntax or accessing the terminal.
+
+---
+
+### 2026-02-27 12:15:00
+🐛 **Fix: Tool call activities orphan accumulation (Issue #45)**
+
+Removed granular tool_call activity tracking that created orphaned database records. Activities were created with STARTED state but never completed, accumulating ~1000 orphans per week on active instances.
+
+**Root Cause:**
+- `track_activity()` was called for each tool call but `complete_activity()` was never called
+- Only the parent chat activity was completed, leaving tool_call activities in STARTED state forever
+
+**Solution:**
+- Removed tool_call activity tracking loop (lines 311-327)
+- Tool calls are already stored in `chat_messages.tool_calls` JSON column (no data loss)
+- No frontend component used `tool_call` activities from `agent_activities` table
+
+**Updated Files:**
+- `src/backend/routers/chat.py` - Removed unused tool_call activity tracking
+
+**Impact**: Prevents database bloat, no functionality change (data was duplicate and unused).
+
+---
+
 ### 2026-02-27 10:30:00
 🐛 **Fix: Chat message ordering bug (CHAT-002)**
 
