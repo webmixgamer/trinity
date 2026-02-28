@@ -99,7 +99,22 @@ async def create_agent_internal(
     # Load template configuration
     if config.template:
         if config.template.startswith("github:"):
-            gh_template = get_github_template(config.template)
+            # GIT-002: First, check if template URL contains @branch syntax
+            # This applies to both pre-defined and dynamic templates
+            template_str = config.template[7:]  # Remove "github:" prefix
+            url_branch = None
+            if "@" in template_str:
+                template_str, url_branch = template_str.rsplit("@", 1)
+                # Validate branch name (alphanumeric plus - _ /)
+                if url_branch and url_branch.replace("-", "").replace("_", "").replace("/", "").isalnum():
+                    config.source_branch = url_branch
+                    logger.info(f"GIT-002: Parsed branch from URL: {url_branch}")
+                else:
+                    url_branch = None  # Invalid branch, ignore
+
+            # Reconstruct template ID without branch for lookup
+            template_lookup = f"github:{template_str}" if url_branch else config.template
+            gh_template = get_github_template(template_lookup)
 
             if gh_template:
                 # Pre-defined GitHub template from config.py
@@ -118,13 +133,15 @@ async def create_agent_internal(
                 config.resources = gh_template.get("resources", config.resources)
                 config.mcp_servers = gh_template.get("mcp_servers", config.mcp_servers)
             else:
-                # Dynamic GitHub template - use any github:owner/repo format
+                # Dynamic GitHub template - use any github:owner/repo[@branch] format
                 # Requires system GitHub PAT to be configured
-                repo_path = config.template[7:]  # Remove "github:" prefix
+                # Note: Branch was already parsed above; template_str already has branch removed
+                repo_path = template_str
+
                 if "/" not in repo_path:
                     raise HTTPException(
                         status_code=400,
-                        detail="Invalid GitHub template format. Use: github:owner/repo"
+                        detail="Invalid GitHub template format. Use: github:owner/repo or github:owner/repo@branch"
                     )
 
                 # Get system GitHub PAT from settings (SQLite) or env var
@@ -137,7 +154,7 @@ async def create_agent_internal(
 
                 github_repo_for_agent = repo_path
                 github_pat_for_agent = github_pat
-                logger.info(f"Using dynamic GitHub template: {repo_path}")
+                logger.info(f"Using dynamic GitHub template: {repo_path} (branch: {config.source_branch})")
 
             # Generate git sync instance ID and branch for Phase 7
             git_instance_id = git_service.generate_instance_id()

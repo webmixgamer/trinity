@@ -14,9 +14,14 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
     if [ "${GIT_SYNC_ENABLED}" = "true" ]; then
         # Check if repo is already cloned (persistent volume has existing .git)
         if [ -d "/home/developer/.git" ]; then
+            # GIT-002: On restart, preserve the current branch state
+            # The .git directory persists on the volume, so current branch (in .git/HEAD) is retained
+            # We only fetch to update remote refs - no checkout, no branch change
             echo "Repository already exists on persistent volume - skipping clone"
             echo "Running git fetch to sync with remote..."
             cd /home/developer
+            CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+            echo "Current branch: ${CURRENT_BRANCH} (preserved from previous run)"
             git fetch origin 2>&1 || echo "Note: Could not fetch from remote"
 
             echo "Existing repository ready with persisted files"
@@ -30,7 +35,16 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
             # Clone directly into /home/developer (first time setup on empty volume)
             rm -rf /home/developer/* /home/developer/.[!.]* 2>/dev/null || true
 
-            if git clone "${CLONE_URL}" /home/developer 2>&1; then
+            # GIT-002: Clone directly to the target branch if specified
+            CLONE_BRANCH="${GIT_SOURCE_BRANCH:-main}"
+            if [ "${GIT_SOURCE_MODE}" = "true" ] && [ -n "${CLONE_BRANCH}" ]; then
+                echo "Cloning branch: ${CLONE_BRANCH}"
+                CLONE_CMD="git clone -b ${CLONE_BRANCH} ${CLONE_URL} /home/developer"
+            else
+                CLONE_CMD="git clone ${CLONE_URL} /home/developer"
+            fi
+
+            if eval "${CLONE_CMD}" 2>&1; then
             echo "Repository cloned successfully with git history"
             cd /home/developer
 
@@ -96,7 +110,16 @@ if [ -n "${GITHUB_REPO}" ] && [ -n "${GITHUB_PAT}" ]; then
             echo "Git sync disabled - using shallow clone without git history"
 
         # Clone into a temp directory first
-        if git clone --depth 1 "${CLONE_URL}" /tmp/repo-clone 2>&1; then
+        # GIT-002: Support cloning specific branch for shallow clone
+        CLONE_BRANCH="${GIT_SOURCE_BRANCH:-main}"
+        if [ -n "${CLONE_BRANCH}" ] && [ "${CLONE_BRANCH}" != "main" ]; then
+            echo "Cloning branch: ${CLONE_BRANCH}"
+            SHALLOW_CLONE_CMD="git clone --depth 1 -b ${CLONE_BRANCH} ${CLONE_URL} /tmp/repo-clone"
+        else
+            SHALLOW_CLONE_CMD="git clone --depth 1 ${CLONE_URL} /tmp/repo-clone"
+        fi
+
+        if eval "${SHALLOW_CLONE_CMD}" 2>&1; then
             echo "Repository cloned successfully"
 
             # Copy all files from the cloned repo to the working directory

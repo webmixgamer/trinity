@@ -298,9 +298,10 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 ## 11. GitHub Integration
 
 ### 11.1 GitHub Sync
-- **Status**: ✅ Implemented (2025-11-29, Updated 2025-12-30)
+- **Status**: ✅ Implemented (2025-11-29, Updated 2026-02-28)
 - **Description**: Two sync modes - Source (pull-only, default) and Working Branch (bidirectional)
-- **Key Features**: Pull button, sync button, content folder gitignored
+- **Key Features**: Pull button, sync button, content folder gitignored, branch selection via URL syntax or parameter
+- **Branch Selection** (GIT-002): URL syntax `github:owner/repo@branch` or explicit `source_branch` parameter in MCP create_agent tool
 - **Flow**: `docs/memory/feature-flows/github-sync.md`
 
 ### 11.2 GitHub Repository Initialization

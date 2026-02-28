@@ -26,6 +26,7 @@ export interface AgentConfig {
   custom_instructions?: string;
   port?: number;  // SSH port - ui_port removed for security
   template?: string;
+  source_branch?: string;  // Branch to track (default: main). Can also use github:owner/repo@branch syntax.
 }
 
 export interface ChatResponse {

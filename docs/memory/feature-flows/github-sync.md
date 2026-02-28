@@ -43,6 +43,68 @@ source_branch: Optional[str] = "main"    # Branch to pull from
 source_mode: Optional[bool] = True       # True = source mode (pull only)
 ```
 
+#### Branch Selection (GIT-002)
+
+**URL Syntax** (recommended): Specify branch directly in template URL:
+```python
+# Via MCP tool or API
+create_agent(name="my-agent", template="github:owner/repo@develop")
+
+# Via system manifest
+agents:
+  my-agent:
+    template: "github:owner/repo@feature-branch"
+```
+
+**Explicit Parameter**: Pass `source_branch` separately:
+```python
+create_agent(name="my-agent", template="github:owner/repo", source_branch="develop")
+```
+
+**Precedence**: URL syntax (`@branch`) takes precedence if both are provided:
+```python
+# Uses "develop" branch (URL wins)
+create_agent(name="my-agent", template="github:owner/repo@develop", source_branch="main")
+```
+
+#### GIT-002 Implementation Details
+
+**Data Flow**: MCP Tool -> Backend CRUD -> Template Service -> startup.sh
+
+| Step | File | Line | Description |
+|------|------|------|-------------|
+| 1. MCP Parameter | `src/mcp-server/src/types.ts` | 29 | `source_branch?: string` in AgentConfig interface |
+| 2. Zod Schema | `src/mcp-server/src/tools/agents.ts` | 201-207 | `source_branch` parameter with description |
+| 3. URL Parsing | `src/backend/services/agent_service/crud.py` | 102-113 | Parse `@branch` from template URL, validate alphanumeric + `-_/` |
+| 4. Template Lookup | `src/backend/services/agent_service/crud.py` | 115-117 | Reconstruct URL without branch for template lookup |
+| 5. Env Var Set | `src/backend/services/agent_service/crud.py` | 328 | `GIT_SOURCE_BRANCH` set from `config.source_branch` |
+| 6. Template Clone | `src/backend/services/template_service.py` | 22-41 | `clone_github_repo()` accepts optional `branch` param, adds `-b branch` flag |
+| 7. Container Clone | `docker/base-image/startup.sh` | 38-45 | Uses `GIT_SOURCE_BRANCH` in `git clone -b` command |
+| 8. Branch Checkout | `docker/base-image/startup.sh` | 57-67 | Source mode checks out and tracks the specified branch |
+
+**Branch Validation** (`crud.py:109`):
+```python
+# Only alphanumeric, hyphen, underscore, and slash allowed
+if url_branch.replace("-", "").replace("_", "").replace("/", "").isalnum():
+```
+
+**Clone Command** (`startup.sh:42`):
+```bash
+CLONE_CMD="git clone -b ${CLONE_BRANCH} ${CLONE_URL} /home/developer"
+```
+
+#### Testing Checklist (GIT-002)
+
+| Test Case | Expected Result |
+|-----------|-----------------|
+| URL syntax: `github:owner/repo@feature-branch` | Agent cloned from `feature-branch` |
+| Explicit param: `source_branch: "develop"` | Agent cloned from `develop` |
+| Container restart | Branch persists via `GIT_SOURCE_BRANCH` env var |
+| Pull operation | Pulls from configured branch, not `main` |
+| Invalid branch name | Graceful error: "Could not checkout branch-name" |
+| Repo name with `@`: `github:owner/my@repo@branch` | Uses `rsplit("@", 1)` - last `@` is branch separator |
+| Both URL and param | URL syntax wins (precedence rule) |
+
 ### Environment Variables
 
 ```bash
@@ -604,6 +666,7 @@ Working - Architecture cleanup (2025-12-31)
 
 | Date | Changes |
 |------|---------|
+| 2026-02-28 | **Git Branch Support** (GIT-002): Added complete data flow documentation with line numbers. URL syntax (`github:owner/repo@branch`) parses branch in crud.py:102-113. MCP types.ts:29 and agents.ts:201-207 expose `source_branch` parameter. template_service.py:22-41 passes branch to git clone. startup.sh:38-45 uses `-b` flag. Added testing checklist from requirements spec. |
 | 2026-02-24 | **Async Docker Operations** (DOCKER-001): `execute_command_in_container()` in docker_service.py now async. All git_service.py calls await this function. `check_git_initialized()` now async. routers/git.py updated to await. |
 | 2026-01-30 | **Git pull permission fix**: `POST /{agent_name}/git/pull` changed from `OwnedAgentByName` to `AuthorizedAgentByName` - shared users can now pull from GitHub. Updated Access Control Dependencies, Endpoint Signatures, and Security Considerations sections. |
 | 2026-01-23 | **Line number verification**: Updated all line number references to match current implementation. Added GitSyncResult model, delete_agent_git_config function, agent-server endpoint table. Expanded useGitSync composable documentation with reactive state and computed properties. Added database indexes. |

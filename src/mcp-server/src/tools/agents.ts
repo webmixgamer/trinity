@@ -198,6 +198,13 @@ export function createAgentTools(
           .string()
           .optional()
           .describe("Custom behavioral instructions for the agent"),
+        source_branch: z
+          .string()
+          .optional()
+          .describe(
+            "Branch to track for this agent. Default: 'main'. " +
+            "Can also be specified in template URL as 'github:owner/repo@branch'."
+          ),
       }),
       execute: async (
         args: {
@@ -208,6 +215,7 @@ export function createAgentTools(
           tools?: string[];
           mcp_servers?: string[];
           custom_instructions?: string;
+          source_branch?: string;
         },
         context: any
       ) => {
@@ -224,6 +232,7 @@ export function createAgentTools(
           tools: args.tools,
           mcp_servers: args.mcp_servers,
           custom_instructions: args.custom_instructions,
+          source_branch: args.source_branch,
         };
 
         // Get auth context from FastMCP session (set by authenticate callback)

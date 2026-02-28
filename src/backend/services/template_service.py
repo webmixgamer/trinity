@@ -19,7 +19,7 @@ def get_github_template(template_id: str) -> Optional[dict]:
     return None
 
 
-def clone_github_repo(github_repo: str, github_pat: str, dest_path: Path) -> bool:
+def clone_github_repo(github_repo: str, github_pat: str, dest_path: Path, branch: str = None) -> bool:
     """
     Clone a GitHub repository using a Personal Access Token.
 
@@ -27,15 +27,22 @@ def clone_github_repo(github_repo: str, github_pat: str, dest_path: Path) -> boo
         github_repo: Repository in format 'org/repo' (e.g., 'Abilityai/agent-ruby')
         github_pat: GitHub Personal Access Token
         dest_path: Destination path to clone to
+        branch: Optional branch to clone (default: repo's default branch)
 
     Returns:
         True if successful, False otherwise
     """
     clone_url = f"https://oauth2:{github_pat}@github.com/{github_repo}.git"
 
+    # Build git clone command
+    clone_cmd = ["git", "clone", "--depth", "1"]
+    if branch:
+        clone_cmd.extend(["-b", branch])
+    clone_cmd.extend([clone_url, str(dest_path)])
+
     try:
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", clone_url, str(dest_path)],
+            clone_cmd,
             capture_output=True,
             text=True,
             timeout=120

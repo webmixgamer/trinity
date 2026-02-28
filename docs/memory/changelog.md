@@ -1,3 +1,35 @@
+### 2026-02-28 14:00:00
+✨ **Feature: Git Branch Support for Agent Creation (GIT-002)**
+
+Added support for specifying which branch to use when creating agents from GitHub templates. Supports both URL syntax and explicit parameter.
+
+**Key Features:**
+- URL syntax: `github:owner/repo@branch` parses branch from template URL
+- Explicit parameter: `source_branch` field in MCP `create_agent` tool
+- URL syntax takes precedence if both provided
+- Startup.sh clones directly to target branch using `-b` flag
+
+**Updated Files:**
+- `src/mcp-server/src/types.ts` - Added `source_branch?: string` to AgentConfig interface
+- `src/mcp-server/src/tools/agents.ts` - Added zod schema and parameter passing for source_branch
+- `src/backend/services/agent_service/crud.py` - Parse `@branch` from template URL syntax
+- `src/backend/services/template_service.py` - Added optional branch parameter to clone_github_repo()
+- `docker/base-image/startup.sh` - Use `-b branch` flag when cloning
+- `docs/memory/feature-flows/github-sync.md` - Documented branch selection with examples
+
+**Example Usage:**
+```javascript
+// URL syntax
+create_agent({name: "my-agent", template: "github:owner/repo@feature-branch"})
+
+// Explicit parameter
+create_agent({name: "my-agent", template: "github:owner/repo", source_branch: "develop"})
+```
+
+**Impact:** Users can now deploy agents tracking specific branches without manual container configuration.
+
+---
+
 ### 2026-02-28 10:30:00
 ⚙️ **Feature: Parallel Capacity Backend (CAPACITY-001)**
 
