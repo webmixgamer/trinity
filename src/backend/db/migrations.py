@@ -4,7 +4,7 @@ Database migrations for Trinity platform.
 Each migration function handles a specific schema change.
 Migrations are idempotent - safe to run multiple times.
 
-Migration Order (as of 2026-02-24):
+Migration Order (as of 2026-02-28):
 1. agent_sharing - Email-based sharing (from user_id)
 2. schedule_executions_observability - Context/cost/tools columns
 3. mcp_api_keys_agent_scope - Agent collaboration support
@@ -25,6 +25,7 @@ Migration Order (as of 2026-02-24):
 18. agent_dashboard_values - DASH-001 dashboard history table
 19. setup_completed_backfill - Auto-complete setup for existing installs
 20. slack_integration_tables - SLACK-001 Slack integration tables
+21. agent_ownership_parallel_capacity - CAPACITY-001 parallel execution slots
 """
 
 
@@ -55,6 +56,7 @@ def run_all_migrations(cursor, conn):
         ("agent_dashboard_values", _migrate_agent_dashboard_values_table),
         ("setup_completed_backfill", _migrate_setup_completed_backfill),
         ("slack_integration_tables", _migrate_slack_integration_tables),
+        ("agent_ownership_parallel_capacity", _migrate_agent_ownership_parallel_capacity),
     ]
 
     for name, migration_fn in migrations:
@@ -548,5 +550,21 @@ def _migrate_slack_integration_tables(cursor, conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)")
+
+    conn.commit()
+
+
+def _migrate_agent_ownership_parallel_capacity(cursor, conn):
+    """Add max_parallel_tasks column to agent_ownership table (CAPACITY-001).
+
+    Configures per-agent parallel execution capacity for the /task endpoint.
+    Range: 1-10, Default: 3.
+    """
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "max_parallel_tasks" not in columns:
+        print("Adding max_parallel_tasks column to agent_ownership for parallel capacity...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN max_parallel_tasks INTEGER DEFAULT 3")
 
     conn.commit()

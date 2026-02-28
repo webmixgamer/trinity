@@ -887,3 +887,36 @@ class SlackOAuthState(BaseModel):
     agent_name: str
     user_id: str
     timestamp: int
+
+
+# =========================================================================
+# Parallel Capacity Models (CAPACITY-001)
+# =========================================================================
+
+class CapacityUpdate(BaseModel):
+    """Request model for updating agent parallel capacity."""
+    max_parallel_tasks: int  # Must be 1-10
+
+
+class SlotInfo(BaseModel):
+    """Information about a single execution slot."""
+    slot_number: int
+    execution_id: str
+    started_at: str
+    message_preview: str
+    duration_seconds: int
+
+
+class AgentCapacity(BaseModel):
+    """Response model for agent capacity status."""
+    agent_name: str
+    max_parallel_tasks: int
+    active_slots: int
+    available_slots: int
+    slots: List[SlotInfo] = []
+
+
+class BulkSlotState(BaseModel):
+    """Response model for bulk slot state query (Dashboard)."""
+    agents: dict  # {agent_name: {"max": N, "active": M}}
+    timestamp: str

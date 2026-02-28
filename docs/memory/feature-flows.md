@@ -3,7 +3,25 @@
 > **Purpose**: Maps features to detailed vertical slice documentation.
 > Each flow documents the complete path from UI → API → Database → Side Effects.
 
-> **Updated (2026-02-27)**: Playbooks Tab (PLAYBOOK-001):
+> **Updated (2026-02-28)**: Parallel Execution Capacity (CAPACITY-001):
+> - **New feature flow**: [parallel-capacity.md](feature-flows/parallel-capacity.md) - Per-agent parallel execution slot tracking
+> - **Key features**: Configurable max_parallel_tasks (1-10, default 3), Redis ZSET slot tracking, 429 enforcement, 30-min TTL cleanup
+> - **New files**:
+>   - `src/backend/services/slot_service.py` - SlotService class with acquire/release/cleanup
+> - **Modified files**:
+>   - `src/backend/db/migrations.py` - Migration #21 adds max_parallel_tasks column
+>   - `src/backend/db/agents.py` - CRUD methods for capacity setting
+>   - `src/backend/db_models.py` - CapacityUpdate, SlotInfo, AgentCapacity, BulkSlotState models
+>   - `src/backend/routers/agents.py` - GET/PUT /capacity, GET /slots endpoints
+>   - `src/backend/routers/chat.py` - Slot acquisition/release in /task endpoint
+> - **New tests**: `tests/test_capacity.py` - 24 tests covering all capacity endpoints
+> - **API endpoints**:
+>   - `GET /api/agents/{name}/capacity` - Get capacity and slot state
+>   - `PUT /api/agents/{name}/capacity` - Set max_parallel_tasks (owners only)
+>   - `GET /api/agents/slots` - Bulk slot state for Dashboard polling
+> - **Related flows**: [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) (task endpoint), [execution-queue.md](feature-flows/execution-queue.md) (sequential mode)
+>
+> **Previous (2026-02-27)**: Playbooks Tab (PLAYBOOK-001):
 > - **New feature flow**: [playbooks-tab.md](feature-flows/playbooks-tab.md) - Invoke agent skills directly from UI
 > - **Key features**: Grid display of agent's `.claude/skills/` directory, one-click run, run-with-instructions
 > - **New files**:

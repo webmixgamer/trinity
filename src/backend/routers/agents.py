@@ -235,6 +235,34 @@ async def get_all_autonomy_status(
     return await get_all_autonomy_status_logic(current_user)
 
 
+@router.get("/slots")
+async def get_all_agent_slots(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get slot state for all agents (bulk endpoint for Dashboard polling).
+
+    Returns:
+    - agents: Dict mapping agent_name to {"max": N, "active": M}
+    - timestamp: ISO timestamp of response
+    """
+    from db_models import BulkSlotState
+    from services.slot_service import get_slot_service
+    from datetime import datetime
+
+    # Get all agents with their capacities
+    agent_capacities = db.get_all_agents_parallel_capacity()
+
+    # Get slot states from Redis
+    slot_service = get_slot_service()
+    slot_states = await slot_service.get_all_slot_states(agent_capacities)
+
+    return BulkSlotState(
+        agents=slot_states,
+        timestamp=datetime.utcnow().isoformat() + "Z"
+    )
+
+
 @router.get("/{agent_name}")
 async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request, current_user: CurrentUser):
     """Get details of a specific agent."""
@@ -1328,6 +1356,109 @@ async def create_ssh_access(
                 f"Key expires in {ttl_hours} hours"
             ]
         }
+
+
+# ============================================================================
+# Parallel Capacity Endpoints (CAPACITY-001)
+# ============================================================================
+
+@router.get("/{agent_name}/capacity")
+async def get_agent_capacity(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the parallel execution capacity and current slot usage for an agent.
+
+    Returns:
+    - agent_name: Name of the agent
+    - max_parallel_tasks: Maximum parallel tasks allowed (1-10)
+    - active_slots: Number of currently running executions
+    - available_slots: Remaining capacity
+    - slots: List of active slot details
+    """
+    from db_models import AgentCapacity, SlotInfo
+    from services.slot_service import get_slot_service
+
+    # Check access
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get max_parallel_tasks from database
+    max_tasks = db.get_max_parallel_tasks(agent_name)
+
+    # Get slot state from Redis
+    slot_service = get_slot_service()
+    slot_state = await slot_service.get_slot_state(agent_name, max_tasks)
+
+    # Convert to response model
+    slots = [
+        SlotInfo(
+            slot_number=s.slot_number,
+            execution_id=s.execution_id,
+            started_at=s.started_at,
+            message_preview=s.message_preview,
+            duration_seconds=s.duration_seconds
+        )
+        for s in slot_state.slots
+    ]
+
+    return AgentCapacity(
+        agent_name=agent_name,
+        max_parallel_tasks=max_tasks,
+        active_slots=slot_state.active_slots,
+        available_slots=slot_state.available_slots,
+        slots=slots
+    )
+
+
+@router.put("/{agent_name}/capacity")
+async def set_agent_capacity(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the parallel execution capacity for an agent.
+
+    Body:
+    - max_parallel_tasks: Maximum parallel tasks (1-10)
+
+    Only agent owners can modify capacity settings.
+    """
+    # Only owners can change capacity
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change capacity settings")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    max_tasks = body.get("max_parallel_tasks")
+    if max_tasks is None:
+        raise HTTPException(status_code=400, detail="max_parallel_tasks is required")
+
+    # Validate range
+    if not isinstance(max_tasks, int) or max_tasks < 1 or max_tasks > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="max_parallel_tasks must be an integer between 1 and 10"
+        )
+
+    # Update database
+    success = db.set_max_parallel_tasks(agent_name, max_tasks)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update capacity")
+
+    return {
+        "message": "Capacity updated",
+        "agent_name": agent_name,
+        "max_parallel_tasks": max_tasks
+    }
 
 
 # ============================================================================

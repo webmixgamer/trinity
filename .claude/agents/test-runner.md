@@ -151,6 +151,7 @@ The test suite covers:
 - **Agent Dashboard** (test_agent_dashboard.py) - Agent dashboard configuration and retrieval
 - **Agent Read-Only Mode** (test_read_only_mode.py) - Read-only mode toggle, hook injection, pattern configuration (CFG-007)
 - **Agent Tags** (test_tags.py) - [TESTS NEEDED] Tag CRUD, validation, filtering, agent deletion cleanup (ORG-001)
+- **Agent Capacity** (test_capacity.py) - Parallel execution capacity management, slot tracking, 429 enforcement (CAPACITY-001) [SMOKE + Agent]
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
@@ -197,9 +198,9 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~625 tests across 36 test files (excluding ORG-001 tests not yet implemented)
-**Smoke Tests**: ~174 tests (fast, no agent creation, includes NOTIF-001, SUB-001)
-**Agent-Requiring Tests**: ~399 tests
+**Total Tests**: ~649 tests across 37 test files (excluding ORG-001 tests not yet implemented)
+**Smoke Tests**: ~196 tests (fast, no agent creation, includes NOTIF-001, SUB-001, CAPACITY-001)
+**Agent-Requiring Tests**: ~401 tests
 **Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
 **WebSocket Tests**: ~10 tests (web terminal, execution streaming)
 **Tests Needed**: ~35 tests (ORG-001 tags ~20, system views ~15)
@@ -240,6 +241,52 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 | ORG-001 System Views pytest tests not implemented | `test_system_views.py` | Medium | Manual testing complete, pytest needed |
 | NOTIF-001 Notifications tests implemented | `test_notifications.py` | N/A | ✅ 40 tests implemented (38 smoke, 2 agent) |
 | SUB-001 Subscriptions tests implemented | `test_subscriptions.py` | N/A | ✅ 18 tests implemented (9 smoke, 9 agent) |
+| CAPACITY-001 Capacity tests implemented | `test_capacity.py` | N/A | ✅ 24 tests implemented (22 smoke, 2 agent) |
+
+## Recent Test Additions (2026-02-28)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_capacity.py` | Parallel Capacity Management (CAPACITY-001) | 24 tests (22 smoke, 2 agent) |
+
+**CAPACITY-001 Parallel Capacity Tests**:
+
+**Authentication (Smoke)** ✅
+- `test_get_capacity_requires_auth` - GET requires authentication
+- `test_put_capacity_requires_auth` - PUT requires authentication
+- `test_get_slots_requires_auth` - Bulk slots requires authentication
+
+**Capacity GET (Smoke)** ✅
+- `test_get_capacity_returns_structure` - Returns agent_name, max_parallel_tasks, active_slots, available_slots, slots
+- `test_get_capacity_default_is_three` - Default max_parallel_tasks is 3
+- `test_get_capacity_available_slots_calculation` - available_slots = max - active
+- `test_get_capacity_nonexistent_agent_returns_404` - 404 for unknown agent
+
+**Capacity Update (Smoke)** ✅
+- `test_put_capacity_update_and_restore` - Update and verify change
+- `test_put_capacity_minimum_value` - Accepts minimum (1)
+- `test_put_capacity_maximum_value` - Accepts maximum (10)
+- `test_put_capacity_rejects_zero` - Rejects 0 (400)
+- `test_put_capacity_rejects_negative` - Rejects negative (400)
+- `test_put_capacity_rejects_above_maximum` - Rejects >10 (400)
+- `test_put_capacity_rejects_non_integer` - Rejects floats (400)
+- `test_put_capacity_rejects_string` - Rejects strings (400)
+- `test_put_capacity_requires_field` - Requires max_parallel_tasks field
+- `test_put_capacity_nonexistent_agent_returns_404` - 404 for unknown agent
+
+**Bulk Slot State (Smoke)** ✅
+- `test_get_slots_returns_structure` - Returns agents dict and timestamp
+- `test_get_slots_includes_created_agent` - Agent appears in response
+- `test_get_slots_agent_structure` - Each agent has max and active fields
+- `test_get_slots_timestamp_format` - ISO format with Z suffix
+
+**Slot Tracking (Agent)** ✅
+- `test_slot_acquired_during_task` - Slot acquired/released during execution
+
+**Slot Info Structure (Smoke)** ✅
+- `test_slots_array_structure` - SlotInfo contains required fields
+
+---
 
 ## Recent Test Additions (2026-02-22)
 

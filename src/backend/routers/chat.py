@@ -17,6 +17,7 @@ from dependencies import get_current_user
 from services.docker_service import get_agent_container
 from services.activity_service import activity_service
 from services.execution_queue import get_execution_queue, QueueFullError, AgentBusyError
+from services.slot_service import get_slot_service
 from database import db
 from utils.credential_sanitizer import sanitize_execution_log, sanitize_response
 
@@ -422,12 +423,17 @@ async def _execute_task_background(
     execution_id: str,
     task_activity_id: str,
     collaboration_activity_id: Optional[str],
-    x_source_agent: Optional[str]
+    x_source_agent: Optional[str],
+    release_slot: bool = False
 ):
     """
     Background task execution for async mode.
     Runs the task and updates execution record/activities when complete.
+
+    Args:
+        release_slot: If True, release the slot when task completes (CAPACITY-001)
     """
+    slot_service = get_slot_service() if release_slot else None
     try:
         payload = {
             "message": request.message,
@@ -527,6 +533,11 @@ async def _execute_task_background(
                 error=error_msg
             )
 
+    finally:
+        # Release slot when task completes (CAPACITY-001)
+        if slot_service and release_slot:
+            await slot_service.release_slot(agent_name, execution_id)
+
 
 @router.post("/{name}/task")
 async def execute_parallel_task(
@@ -582,6 +593,29 @@ async def execute_parallel_task(
     )
     execution_id = execution.id if execution else None
 
+    # CAPACITY-001: Check and acquire slot for parallel execution
+    slot_service = get_slot_service()
+    max_parallel_tasks = db.get_max_parallel_tasks(name)
+    slot_acquired = await slot_service.acquire_slot(
+        agent_name=name,
+        execution_id=execution_id or f"temp-{datetime.utcnow().timestamp()}",
+        max_parallel_tasks=max_parallel_tasks,
+        message_preview=request.message[:100] if request.message else ""
+    )
+
+    if not slot_acquired:
+        # At capacity - return 429 and clean up execution record
+        if execution_id:
+            db.update_execution_status(
+                execution_id=execution_id,
+                status="failed",
+                error=f"Agent at capacity ({max_parallel_tasks}/{max_parallel_tasks} parallel tasks running)"
+            )
+        raise HTTPException(
+            status_code=429,
+            detail=f"Agent '{name}' is at capacity ({max_parallel_tasks} parallel tasks). Try again later."
+        )
+
     # Broadcast collaboration event if this is agent-to-agent communication
     # Track collaboration activity FIRST (belongs to source agent) - mirrors /api/chat pattern
     collaboration_activity_id = None
@@ -634,7 +668,7 @@ async def execute_parallel_task(
         if execution_id:
             db.update_execution_status(execution_id=execution_id, status="running")
 
-        # Spawn background task
+        # Spawn background task (slot will be released when task completes)
         asyncio.create_task(
             _execute_task_background(
                 agent_name=name,
@@ -642,7 +676,8 @@ async def execute_parallel_task(
                 execution_id=execution_id,
                 task_activity_id=task_activity_id,
                 collaboration_activity_id=collaboration_activity_id,
-                x_source_agent=x_source_agent
+                x_source_agent=x_source_agent,
+                release_slot=True  # CAPACITY-001: Release slot when background task completes
             )
         )
 
@@ -890,6 +925,10 @@ async def execute_parallel_task(
             status_code=503,
             detail="Failed to execute task. The agent may be unavailable."
         )
+
+    finally:
+        # CAPACITY-001: Release slot when sync task completes (success or failure)
+        await slot_service.release_slot(name, execution_id or f"temp-{datetime.utcnow().timestamp()}")
 
 
 @router.get("/{name}/chat/history")

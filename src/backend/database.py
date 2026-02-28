@@ -388,6 +388,19 @@ class DatabaseManager:
         return self._agent_ops.set_read_only_mode(agent_name, enabled, config)
 
     # =========================================================================
+    # Parallel Capacity (delegated to db/agents.py) - CAPACITY-001
+    # =========================================================================
+
+    def get_max_parallel_tasks(self, agent_name: str):
+        return self._agent_ops.get_max_parallel_tasks(agent_name)
+
+    def set_max_parallel_tasks(self, agent_name: str, max_tasks: int):
+        return self._agent_ops.set_max_parallel_tasks(agent_name, max_tasks)
+
+    def get_all_agents_parallel_capacity(self):
+        return self._agent_ops.get_all_agents_parallel_capacity()
+
+    # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
     # =========================================================================
 

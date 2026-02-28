@@ -1,3 +1,39 @@
+### 2026-02-28 10:30:00
+⚙️ **Feature: Parallel Capacity Backend (CAPACITY-001)**
+
+Implemented backend infrastructure for per-agent parallel execution capacity tracking. Agents can now run multiple `/task` executions concurrently with configurable limits.
+
+**Key Features:**
+- Per-agent `max_parallel_tasks` setting (1-10, default 3)
+- Redis ZSET-based slot tracking with automatic TTL cleanup
+- 429 Too Many Requests when agent is at capacity
+- REST endpoints for capacity management and monitoring
+
+**Created Files:**
+- `src/backend/services/slot_service.py` - SlotService with Redis ZSET tracking
+
+**Updated Files:**
+- `src/backend/db/schema.py` - Added `max_parallel_tasks` column to agent_ownership
+- `src/backend/db/migrations.py` - Migration #21 for max_parallel_tasks column
+- `src/backend/db/agents.py` - Added get/set_max_parallel_tasks, get_all_agents_parallel_capacity
+- `src/backend/database.py` - Added capacity delegation methods
+- `src/backend/db_models.py` - Added CapacityUpdate, SlotInfo, AgentCapacity, BulkSlotState models
+- `src/backend/routers/agents.py` - Added GET/PUT /api/agents/{name}/capacity, GET /api/agents/slots
+- `src/backend/routers/chat.py` - Integrated slot acquisition/release in /task endpoint
+
+**API Endpoints:**
+- `GET /api/agents/{name}/capacity` - Get capacity and current slot usage
+- `PUT /api/agents/{name}/capacity` - Update max_parallel_tasks (owners only)
+- `GET /api/agents/slots` - Bulk slot state for Dashboard polling
+
+**Redis Schema:**
+- `agent:slots:{name}` (ZSET) - Active execution IDs with start timestamps
+- `agent:slot:{name}:{execution_id}` (HASH) - Slot metadata with 30-min TTL
+
+**Impact**: Platform now enforces parallel execution limits per agent, preventing resource exhaustion and enabling fair capacity management.
+
+---
+
 ### 2026-02-27 15:45:00
 🧪 **Test: Playbooks Tab tests (PLAYBOOK-001)**
 

@@ -516,6 +516,70 @@ class AgentOperations:
             return cursor.rowcount > 0
 
     # =========================================================================
+    # Parallel Capacity (CAPACITY-001)
+    # =========================================================================
+
+    def get_max_parallel_tasks(self, agent_name: str) -> int:
+        """
+        Get max_parallel_tasks for an agent (default: 3).
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            Maximum number of parallel tasks allowed (1-10, default 3)
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(max_parallel_tasks, 3) as max_parallel_tasks
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                return row["max_parallel_tasks"]
+            return 3  # Default
+
+    def set_max_parallel_tasks(self, agent_name: str, max_tasks: int) -> bool:
+        """
+        Set max_parallel_tasks for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            max_tasks: Maximum parallel tasks (must be 1-10)
+
+        Returns:
+            True if update succeeded
+        """
+        # Validate range
+        if max_tasks < 1 or max_tasks > 10:
+            return False
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET max_parallel_tasks = ?
+                WHERE agent_name = ?
+            """, (max_tasks, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_all_agents_parallel_capacity(self) -> Dict[str, int]:
+        """
+        Get max_parallel_tasks for all agents.
+
+        Returns:
+            Dict mapping agent_name to max_parallel_tasks
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT agent_name, COALESCE(max_parallel_tasks, 3) as max_parallel_tasks
+                FROM agent_ownership
+            """)
+            return {row["agent_name"]: row["max_parallel_tasks"] for row in cursor.fetchall()}
+
+    # =========================================================================
     # Batch Metadata Query (N+1 Fix)
     # =========================================================================
 

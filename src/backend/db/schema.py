@@ -61,6 +61,7 @@ TABLES = {
             read_only_mode INTEGER DEFAULT 0,
             read_only_config TEXT,
             subscription_id TEXT,
+            max_parallel_tasks INTEGER DEFAULT 3,
             FOREIGN KEY (owner_id) REFERENCES users(id),
             FOREIGN KEY (subscription_id) REFERENCES subscription_credentials(id)
         )
