@@ -422,8 +422,7 @@ async def get_slack_connection_status(
 ):
     """Get Slack connection status for a public link."""
     # Verify user has access to the agent
-    access = db.get_user_agent_access_level(current_user.id, name)
-    if not access:
+    if not db.can_user_access_agent(current_user.username, name):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Verify link belongs to agent
@@ -457,9 +456,8 @@ async def initiate_slack_oauth(
     current_user: User = Depends(get_current_user)
 ):
     """Initiate Slack OAuth flow to connect a workspace."""
-    # Verify user is owner
-    access = db.get_user_agent_access_level(current_user.id, name)
-    if access != "owner" and current_user.role != "admin":
+    # Verify user is owner (can_user_share_agent returns True for owners and admins)
+    if not db.can_user_share_agent(current_user.username, name):
         raise HTTPException(status_code=403, detail="Only owners can connect Slack")
 
     # Verify link belongs to agent
@@ -493,9 +491,8 @@ async def disconnect_slack(
     current_user: User = Depends(get_current_user)
 ):
     """Disconnect Slack workspace from public link."""
-    # Verify user is owner
-    access = db.get_user_agent_access_level(current_user.id, name)
-    if access != "owner" and current_user.role != "admin":
+    # Verify user is owner (can_user_share_agent returns True for owners and admins)
+    if not db.can_user_share_agent(current_user.username, name):
         raise HTTPException(status_code=403, detail="Only owners can disconnect Slack")
 
     # Verify link belongs to agent
@@ -521,9 +518,8 @@ async def update_slack_connection(
     current_user: User = Depends(get_current_user)
 ):
     """Update Slack connection settings (enable/disable)."""
-    # Verify user is owner
-    access = db.get_user_agent_access_level(current_user.id, name)
-    if access != "owner" and current_user.role != "admin":
+    # Verify user is owner (can_user_share_agent returns True for owners and admins)
+    if not db.can_user_share_agent(current_user.username, name):
         raise HTTPException(status_code=403, detail="Only owners can modify Slack settings")
 
     # Verify link belongs to agent

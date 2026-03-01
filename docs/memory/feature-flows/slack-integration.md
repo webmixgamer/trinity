@@ -381,12 +381,14 @@ expected_signature = 'v0=' + hmac.new(
 
 ### Authorization Checks
 
-| Endpoint | Check | File:Line |
-|----------|-------|-----------|
-| Connect Slack | Owner or admin | `routers/slack.py:461-463` |
-| Disconnect | Owner or admin | `routers/slack.py:497-499` |
-| Update | Owner or admin | `routers/slack.py:525-527` |
-| Get status | Any access level | `routers/slack.py:425-427` |
+Uses standard codebase access control methods (consistent with other routers):
+
+| Endpoint | Check | Method | File:Line |
+|----------|-------|--------|-----------|
+| Connect Slack | Owner or admin | `db.can_user_share_agent()` | `routers/slack.py:460` |
+| Disconnect | Owner or admin | `db.can_user_share_agent()` | `routers/slack.py:495` |
+| Update | Owner or admin | `db.can_user_share_agent()` | `routers/slack.py:522` |
+| Get status | Any access level | `db.can_user_access_agent()` | `routers/slack.py:425` |
 
 ## Error Handling
 
@@ -711,3 +713,4 @@ Reload status (refresh UI)
 | 2026-02-25 | Claude | Initial implementation |
 | 2026-02-25 | Claude | Enhanced with exact line numbers and code references |
 | 2026-02-25 | Claude | Added Settings Configuration flow (admin UI for Slack credentials) |
+| 2026-03-01 | Claude | Fixed access checks to use `can_user_access_agent()`/`can_user_share_agent()` (Issue #48) |

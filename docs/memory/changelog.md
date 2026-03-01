@@ -1,3 +1,14 @@
+### 2026-03-01 12:00:00
+🐛 **Fix: Slack Integration Missing Access Check Method (Issue #48)**
+- Fixed `AttributeError: 'DatabaseManager' object has no attribute 'get_user_agent_access_level'`
+- Replaced non-existent `db.get_user_agent_access_level()` calls with existing methods
+- Used `db.can_user_access_agent()` for read access checks (GET endpoint)
+- Used `db.can_user_share_agent()` for owner-level access checks (POST/PUT/DELETE endpoints)
+- Fixed argument from `current_user.id` to `current_user.username` to match codebase pattern
+- Key files: `src/backend/routers/slack.py:425,460,495,522`
+
+---
+
 ### 2026-03-01 11:12:25
 🔧 **Fix: Agent Rename Navigation and Docker Labels**
 - Fixed route name mismatch in `AgentDetail.vue:486` (`agent-detail` → `AgentDetail`) that caused navigation failure after rename
