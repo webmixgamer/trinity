@@ -1,3 +1,12 @@
+### 2026-03-01 11:12:25
+🔧 **Fix: Agent Rename Navigation and Docker Labels**
+- Fixed route name mismatch in `AgentDetail.vue:486` (`agent-detail` → `AgentDetail`) that caused navigation failure after rename
+- Fixed `docker_service.py` to use container name as authoritative source instead of Docker labels (labels can't be updated without container recreation)
+- Both `get_agent_status_from_container()` and `list_all_agents_fast()` now derive agent name from container name `agent-{name}`
+- Key files: `src/frontend/src/views/AgentDetail.vue`, `src/backend/services/docker_service.py`
+
+---
+
 ### 2026-03-01 10:00:00
 ✨ **Feature: Agent Rename (RENAME-001)**
 

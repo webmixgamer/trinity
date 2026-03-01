@@ -31,7 +31,9 @@ def get_agent_container(name: str):
 def get_agent_status_from_container(container) -> AgentStatus:
     """Convert a Docker container to AgentStatus using container labels."""
     labels = container.labels
-    agent_name = labels.get("trinity.agent-name", container.name.replace("agent-", ""))
+    # Use container name as authoritative source (handles rename correctly)
+    # Container name is "agent-{name}", so strip the prefix
+    agent_name = container.name.replace("agent-", "")
 
     # Normalize Docker status to simpler values for frontend
     # Docker statuses: created, running, paused, restarting, removing, exited, dead
@@ -124,7 +126,8 @@ def list_all_agents_fast() -> List[AgentStatus]:
         agents = []
         for container in containers:
             labels = container.labels
-            agent_name = labels.get("trinity.agent-name", container.name.replace("agent-", ""))
+            # Use container name as authoritative source (handles rename correctly)
+            agent_name = container.name.replace("agent-", "")
 
             # Normalize Docker status to simpler values for frontend
             docker_status = container.status

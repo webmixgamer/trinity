@@ -483,7 +483,7 @@ async function renameAgent(newName) {
     showNotification(`Agent renamed to '${result.new_name}'${result.note ? `. ${result.note}` : ''}`, 'success')
 
     // Navigate to the new agent URL
-    router.replace({ name: 'agent-detail', params: { name: result.new_name } })
+    router.replace({ name: 'AgentDetail', params: { name: result.new_name } })
 
   } catch (error) {
     console.error('Failed to rename agent:', error)

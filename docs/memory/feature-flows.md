@@ -11,7 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
-| 2026-03-01 | RENAME-001 | Agent rename (UI pencil icon, MCP tool, 17 tables updated atomically) | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) |
+| 2026-03-01 | RENAME-001 | Agent rename via UI pencil icon, MCP tool, or REST API | [agent-rename.md](feature-flows/agent-rename.md) |
 | 2026-02-28 | GIT-002 | Git branch support for agent creation | [github-sync.md](feature-flows/github-sync.md) |
 | 2026-02-28 | CAPACITY-001 | Per-agent parallel execution capacity | [parallel-capacity.md](feature-flows/parallel-capacity.md) |
 | 2026-02-27 | PLAYBOOK-001 | Playbooks Tab - invoke agent skills from UI | [playbooks-tab.md](feature-flows/playbooks-tab.md) |
@@ -40,6 +40,7 @@
 | Flow | Document | Description |
 |------|----------|-------------|
 | Agent Lifecycle | [agent-lifecycle.md](feature-flows/agent-lifecycle.md) | Create, start, stop, delete Docker containers |
+| Agent Rename | [agent-rename.md](feature-flows/agent-rename.md) | Rename agents via UI, MCP, or API (RENAME-001) |
 | Agent Terminal | [agent-terminal.md](feature-flows/agent-terminal.md) | Browser-based xterm.js terminal with Claude/Gemini/Bash modes |
 | Credential Injection | [credential-injection.md](feature-flows/credential-injection.md) | CRED-002: Direct file injection, encrypted git storage |
 | Agent Scheduling | [scheduling.md](feature-flows/scheduling.md) | Cron-based automation with APScheduler |
