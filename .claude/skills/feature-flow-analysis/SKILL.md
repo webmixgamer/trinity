@@ -15,7 +15,7 @@ Create or update a feature flow document for end-to-end understanding.
 
 | Source | Location | Read | Write | Description |
 |--------|----------|------|-------|-------------|
-| Feature Flows Index | `docs/memory/feature-flows.md` | ✅ | ✅ | Flow index |
+| Feature Flows Index | `docs/memory/feature-flows.md` | ✅ | ✅ | Flow index (keep minimal!) |
 | Feature Flow Doc | `docs/memory/feature-flows/{name}.md` | ✅ | ✅ | Flow document |
 | Frontend Code | `src/frontend/src/` | ✅ | | Vue components |
 | Backend Code | `src/backend/` | ✅ | | FastAPI endpoints |
@@ -29,19 +29,7 @@ Create or update a feature flow document for end-to-end understanding.
 
 ### Step 1: Identify Feature
 
-If no feature name provided, ask:
-```
-Which feature would you like to analyze?
-Available options (from feature-flows.md pending list):
-- Agent Lifecycle
-- Credential Injection
-- Auth0 Authentication
-- Agent Chat
-- MCP Orchestration
-- Agent Sharing
-- Activity Monitoring
-- Template Processing
-```
+If no feature name provided, ask for one.
 
 ### Step 2: Trace Execution Path
 
@@ -51,40 +39,74 @@ Available options (from feature-flows.md pending list):
 - Document API call made
 
 **Backend (Endpoint → Logic → Docker/DB)**
-- Find FastAPI endpoint in `src/backend/main.py`
-- Trace business logic
-- Document Docker SDK calls or database operations
+- Find FastAPI endpoint in `src/backend/routers/`
+- Trace business logic in `src/backend/services/`
+- Document database operations
 
 **Agent (if applicable)**
-- Find agent-server.py endpoint
+- Find agent_server endpoint
 - Document Claude Code invocation
-- Note file operations
 
 ### Step 3: Document Side Effects
 
 - WebSocket broadcasts
-- Audit log events
+- Activity tracking
 - State changes
 
 ### Step 4: Document Error Handling
 
 - What can fail?
-- HTTP status codes returned
-- Error messages shown to user
+- HTTP status codes
+- Error messages
 
-### Step 5: Save Flow Document
+### Step 5: Add Testing Section
 
-- Path: `docs/memory/feature-flows/{feature-name}.md`
-- Use template from feature-flows.md
+Include step-by-step testing instructions:
+```markdown
+## Testing
+### Prerequisites
+- Services running
 
-### Step 6: Update Index
+### Test Steps
+1. **Action**: Do X
+   **Expected**: Y happens
+   **Verify**: Check Z
+```
 
-- Add entry to `docs/memory/feature-flows.md`
-- Mark as documented with components list
+### Step 6: Save Flow Document
 
-## Output Format
+Write to: `docs/memory/feature-flows/{feature-name}.md`
 
-Use the feature flow template:
+### Step 7: Update Index (MINIMAL!)
+
+**CRITICAL**: The index is for navigation, not documentation.
+
+**For NEW flows**, add:
+1. ONE row to "Recent Updates" table:
+   ```markdown
+   | YYYY-MM-DD | FEAT-ID | Feature name | [flow.md](feature-flows/flow.md) |
+   ```
+2. ONE row to the appropriate category table in "Documented Flows":
+   ```markdown
+   | Feature Name | [flow.md](feature-flows/flow.md) | One-line description |
+   ```
+
+**For UPDATED flows**:
+- Only update the flow document itself
+- Do NOT add entries to Recent Updates (use changelog.md for that)
+- Only update the index row if name/description changed
+
+**WRONG** (too verbose):
+```markdown
+| Agent Chat | [agent-chat.md](...) | Chat UI with sessions. **Files**: ChatPanel.vue (363 lines), chat.py:130-450... |
+```
+
+**RIGHT** (minimal):
+```markdown
+| Agent Chat | [agent-chat.md](feature-flows/agent-chat.md) | Real-time chat with agents |
+```
+
+## Output Template
 
 ```markdown
 # Feature: {Feature Name}
@@ -92,11 +114,8 @@ Use the feature flow template:
 ## Overview
 Brief description.
 
-## User Story
-As a [user], I want to [action] so that [benefit].
-
 ## Entry Points
-- **UI**: `path/to/Component.vue` - Action trigger
+- **UI**: `path/to/Component.vue:line` - Action trigger
 - **API**: `METHOD /api/endpoint`
 
 ## Frontend Layer
@@ -106,36 +125,36 @@ As a [user], I want to [action] so that [benefit].
 ### State Management
 - `stores/store.js` - actionName
 
-### API Calls
-await api.method(`/api/endpoint`)
-
 ## Backend Layer
 ### Endpoints
-- `src/backend/main.py:line` - handler()
+- `src/backend/routers/file.py:line` - handler()
 
 ### Business Logic
 1. Step one
 2. Step two
 
 ## Data Layer
-### Database Operations
 - Query: description
 - Update: description
 
 ## Side Effects
 - WebSocket: `{type, data}`
-- Audit: event logged
+- Activity: tracked
 
 ## Error Handling
 - Case → HTTP status
 
-## Security Considerations
-- Auth checks
-- Rate limiting
+## Testing
+### Prerequisites
+- Services running
+
+### Test Steps
+1. **Action**: X
+   **Expected**: Y
+   **Verify**: Z
 
 ## Related Flows
-- Upstream: flow
-- Downstream: flow
+- [related-flow.md](feature-flows/related-flow.md)
 ```
 
 ## Principle
@@ -145,10 +164,15 @@ Information density over completeness. Think debugging notes, not comprehensive 
 ## Completion Checklist
 
 - [ ] Feature identified
-- [ ] Frontend entry points traced
-- [ ] Backend endpoints documented
+- [ ] Frontend traced
+- [ ] Backend traced
 - [ ] Agent layer documented (if applicable)
 - [ ] Side effects listed
-- [ ] Error handling documented
+- [ ] Testing section added
 - [ ] Flow document saved
-- [ ] Index updated
+- [ ] Index updated (ONE LINE only)
+
+## Related Skills
+
+- [sync-feature-flows](../sync-feature-flows/) - Batch update flows from code changes
+- [update-docs](../update-docs/) - General documentation updates
