@@ -35,17 +35,24 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: Toggle switch shows Running/Stopped state, loading spinner during action, consistent UI across Dashboard, Agents page, and Agent Detail page
 - **Components**: `RunningStateToggle.vue` - Reusable toggle component with size variants (sm/md/lg)
 
-### 1.3 Agent Deletion
+### 1.3 Agent Rename (RENAME-001)
+- **Status**: ✅ Implemented (2026-03-01)
+- **Description**: Rename agents via UI or MCP without deleting and recreating
+- **Key Features**: Inline editing with pencil icon, `rename_agent` MCP tool, atomic DB updates, Docker container rename, WebSocket broadcast
+- **Restrictions**: System agents cannot be renamed, only owners/admins can rename
+- **API**: `PUT /api/agents/{name}/rename` with `{new_name: string}`
+
+### 1.4 Agent Deletion
 - **Status**: ✅ Implemented
 - **Description**: Delete agents and cleanup resources
 - **Key Features**: Container cleanup, network cleanup, cascade delete sharing records
 
-### 1.4 Agent Logs Viewing
+### 1.5 Agent Logs Viewing
 - **Status**: ✅ Implemented
 - **Description**: View container logs for debugging
 - **Key Features**: Logs tab, fixed-height scrollable container, auto-refresh, smart auto-scroll
 
-### 1.5 Agent Live Telemetry
+### 1.6 Agent Live Telemetry
 - **Status**: ✅ Implemented
 - **Description**: Real-time container metrics in agent header
 - **Key Features**: CPU/memory usage, network I/O, uptime display, auto-refresh every 10 seconds

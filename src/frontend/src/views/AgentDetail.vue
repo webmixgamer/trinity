@@ -56,6 +56,7 @@
             @update-tags="updateTags"
             @add-tag="addTag"
             @remove-tag="removeTag"
+            @rename="renameAgent"
           />
 
           <!-- Tabs -->
@@ -450,6 +451,45 @@ async function toggleRunning() {
     await stopAgent()
   } else {
     await startAgent()
+  }
+}
+
+// Rename agent (RENAME-001)
+const renameLoading = ref(false)
+
+async function renameAgent(newName) {
+  if (!agent.value || renameLoading.value) return
+
+  renameLoading.value = true
+
+  try {
+    const response = await fetch(`/api/agents/${agent.value.name}/rename`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ new_name: newName })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to rename agent')
+    }
+
+    const result = await response.json()
+
+    // Navigate to new URL with new agent name
+    showNotification(`Agent renamed to '${result.new_name}'${result.note ? `. ${result.note}` : ''}`, 'success')
+
+    // Navigate to the new agent URL
+    router.replace({ name: 'agent-detail', params: { name: result.new_name } })
+
+  } catch (error) {
+    console.error('Failed to rename agent:', error)
+    showNotification(error.message || 'Failed to rename agent', 'error')
+  } finally {
+    renameLoading.value = false
   }
 }
 

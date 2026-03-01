@@ -79,6 +79,17 @@ async def container_stats(container, stream: bool = False) -> Dict[str, Any]:
     )
 
 
+async def container_rename(container, new_name: str) -> None:
+    """Rename a container without blocking the event loop.
+
+    Args:
+        container: Docker container object
+        new_name: New name for the container
+    """
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(_docker_executor, lambda: container.rename(new_name))
+
+
 async def container_get(container_id: str) -> Any:
     """Get a container by ID/name without blocking the event loop.
 

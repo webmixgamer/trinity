@@ -299,11 +299,18 @@ class DatabaseManager:
     def delete_agent_ownership(self, agent_name: str):
         return self._agent_ops.delete_agent_ownership(agent_name)
 
+    def rename_agent(self, old_name: str, new_name: str):
+        return self._agent_ops.rename_agent(old_name, new_name)
+
+
     def can_user_access_agent(self, username: str, agent_name: str):
         return self._agent_ops.can_user_access_agent(username, agent_name)
 
     def can_user_delete_agent(self, username: str, agent_name: str):
         return self._agent_ops.can_user_delete_agent(username, agent_name)
+
+    def can_user_rename_agent(self, username: str, agent_name: str):
+        return self._agent_ops.can_user_rename_agent(username, agent_name)
 
     def is_system_agent(self, agent_name: str):
         return self._agent_ops.is_system_agent(agent_name)

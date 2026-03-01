@@ -168,6 +168,7 @@ export async function createServer(config: ServerConfig = {}) {
   server.addTool(agentTools.getAgent);
   server.addTool(agentTools.getAgentInfo);
   server.addTool(agentTools.createAgent);
+  server.addTool(agentTools.renameAgent);  // RENAME-001
   server.addTool(agentTools.deleteAgent);
   server.addTool(agentTools.startAgent);
   server.addTool(agentTools.stopAgent);

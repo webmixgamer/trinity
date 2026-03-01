@@ -617,6 +617,188 @@ class AgentOperations:
             """, (user_email, user_email))
             return [row["agent_name"] for row in cursor.fetchall()]
 
+    # =========================================================================
+    # Agent Rename (RENAME-001)
+    # =========================================================================
+
+    def rename_agent(self, old_name: str, new_name: str) -> bool:
+        """
+        Rename an agent by updating all database references.
+
+        This updates agent_name in all tables that reference it:
+        - agent_ownership (primary)
+        - agent_sharing
+        - agent_schedules
+        - schedule_executions
+        - chat_sessions
+        - chat_messages
+        - agent_activities
+        - agent_permissions (source and target)
+        - agent_shared_folder_config
+        - agent_git_config
+        - agent_skills
+        - agent_tags
+        - agent_public_links
+        - mcp_api_keys
+        - agent_health_checks
+        - agent_dashboard_values
+        - monitoring_alert_cooldowns
+
+        Args:
+            old_name: Current agent name
+            new_name: New agent name (must be unique)
+
+        Returns:
+            True if rename succeeded, False if failed
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                # Check if old agent exists
+                cursor.execute("SELECT 1 FROM agent_ownership WHERE agent_name = ?", (old_name,))
+                if not cursor.fetchone():
+                    return False
+
+                # Check if new name is already taken
+                cursor.execute("SELECT 1 FROM agent_ownership WHERE agent_name = ?", (new_name,))
+                if cursor.fetchone():
+                    return False
+
+                # Update all tables in order
+                # Primary table
+                cursor.execute(
+                    "UPDATE agent_ownership SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Sharing
+                cursor.execute(
+                    "UPDATE agent_sharing SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Schedules
+                cursor.execute(
+                    "UPDATE agent_schedules SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Executions
+                cursor.execute(
+                    "UPDATE schedule_executions SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Chat sessions
+                cursor.execute(
+                    "UPDATE chat_sessions SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Chat messages
+                cursor.execute(
+                    "UPDATE chat_messages SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Activities
+                cursor.execute(
+                    "UPDATE agent_activities SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Permissions (both source and target)
+                cursor.execute(
+                    "UPDATE agent_permissions SET source_agent = ? WHERE source_agent = ?",
+                    (new_name, old_name)
+                )
+                cursor.execute(
+                    "UPDATE agent_permissions SET target_agent = ? WHERE target_agent = ?",
+                    (new_name, old_name)
+                )
+
+                # Shared folder config
+                cursor.execute(
+                    "UPDATE agent_shared_folder_config SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Git config
+                cursor.execute(
+                    "UPDATE agent_git_config SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Skills
+                cursor.execute(
+                    "UPDATE agent_skills SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Tags
+                cursor.execute(
+                    "UPDATE agent_tags SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Public links
+                cursor.execute(
+                    "UPDATE agent_public_links SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # MCP API keys
+                cursor.execute(
+                    "UPDATE mcp_api_keys SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Health checks
+                cursor.execute(
+                    "UPDATE agent_health_checks SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Dashboard values
+                cursor.execute(
+                    "UPDATE agent_dashboard_values SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                # Monitoring cooldowns
+                cursor.execute(
+                    "UPDATE monitoring_alert_cooldowns SET agent_name = ? WHERE agent_name = ?",
+                    (new_name, old_name)
+                )
+
+                conn.commit()
+                return True
+
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                return False
+
+    def can_user_rename_agent(self, username: str, agent_name: str) -> bool:
+        """Check if a user can rename an agent (only owner or admin, NOT system agents)."""
+        user = self._user_ops.get_user_by_username(username)
+        if not user:
+            return False
+
+        # Check if this is a system agent - NO ONE can rename system agents
+        owner = self.get_agent_owner(agent_name)
+        if owner and owner.get("is_system", False):
+            return False
+
+        # Admins can rename any non-system agent
+        if user["role"] == "admin":
+            return True
+
+        # Only owners can rename their agents
+        if owner and owner["owner_username"] == username:
+            return True
+
+        return False
+
     def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
         """
         Fetch all agent metadata in a SINGLE query.

@@ -272,6 +272,30 @@ export class TrinityClient {
   }
 
   /**
+   * Rename an agent
+   */
+  async renameAgent(
+    name: string,
+    newName: string
+  ): Promise<{
+    message: string;
+    old_name: string;
+    new_name: string;
+    was_running: boolean;
+    note?: string;
+  }> {
+    return this.request<{
+      message: string;
+      old_name: string;
+      new_name: string;
+      was_running: boolean;
+      note?: string;
+    }>("PUT", `/api/agents/${encodeURIComponent(name)}/rename`, {
+      new_name: newName,
+    });
+  }
+
+  /**
    * Get credential status from a running agent
    */
   async getCredentialStatus(name: string): Promise<{

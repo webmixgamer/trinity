@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "description": "Universal infrastructure for deploying Claude Code agent configurations",
     "repository": "project_trinity",
-    "last_updated": "2025-12-23T12:16:00Z"
+    "last_updated": "2026-03-01T10:13:00Z"
   },
   "tech_stack": {
     "frontend": ["Vue.js 3.5", "Tailwind CSS 3.4", "Pinia 2.3", "Vite 6", "Auth0 Vue"],
@@ -16,6 +16,7 @@
     "implemented": [
       "agent_creation",
       "agent_start_stop",
+      "agent_rename",
       "agent_deletion",
       "agent_logs",
       "agent_live_telemetry",
@@ -90,7 +91,7 @@
       "port_local": 8080,
       "port_prod": 8007,
       "framework": "FastMCP",
-      "tools_count": 12
+      "tools_count": 13
     },
     "audit_logger": {
       "port_local": 8001,

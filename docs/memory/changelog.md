@@ -1,3 +1,41 @@
+### 2026-03-01 10:00:00
+✨ **Feature: Agent Rename (RENAME-001)**
+
+Added ability to rename agents via UI and MCP. Users can now rename agents from the Agent Detail page using a pencil icon next to the agent name, or via the `rename_agent` MCP tool.
+
+**Key Features:**
+- Pencil icon in Agent Header for inline name editing
+- Backend endpoint `PUT /api/agents/{name}/rename`
+- MCP tool `rename_agent` for programmatic renaming
+- Updates all database references atomically
+- Renames Docker container
+- WebSocket broadcast for real-time UI updates
+- System agents cannot be renamed
+- Only owners and admins can rename agents
+
+**Created/Updated Files:**
+- `src/backend/db/agents.py` - Added `rename_agent()` and `can_user_rename_agent()` methods
+- `src/backend/routers/agents.py` - Added `PUT /api/agents/{name}/rename` endpoint
+- `src/backend/services/docker_utils.py` - Added `container_rename()` async wrapper
+- `src/mcp-server/src/tools/agents.ts` - Added `rename_agent` MCP tool
+- `src/mcp-server/src/client.ts` - Added `renameAgent()` client method
+- `src/frontend/src/components/AgentHeader.vue` - Added editable name with pencil icon
+- `src/frontend/src/views/AgentDetail.vue` - Added `renameAgent()` handler
+
+**Example Usage:**
+```javascript
+// Via MCP
+rename_agent({name: "old-name", new_name: "new-name"})
+
+// Via API
+PUT /api/agents/old-name/rename
+{"new_name": "new-name"}
+```
+
+**Impact:** Users can now rename agents without having to delete and recreate them.
+
+---
+
 ### 2026-02-28 14:00:00
 ✨ **Feature: Git Branch Support for Agent Creation (GIT-002)**
 

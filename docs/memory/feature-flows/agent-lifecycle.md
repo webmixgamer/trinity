@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-02-24 - **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now wrapped with `services/docker_utils.py` async wrappers. Prevents event loop freezing during container start/stop/delete. See [async-docker-operations.md](async-docker-operations.md) for full details.
+> **Updated**: 2026-03-01 - **Agent Rename (RENAME-001)**: Added ability to rename agents via UI (pencil icon in AgentHeader) or MCP (`rename_agent` tool). Renames container, updates all 17 database tables atomically, broadcasts WebSocket event. System agents protected.
+>
+> **Previous (2026-02-24)**: **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now wrapped with `services/docker_utils.py` async wrappers. Prevents event loop freezing during container start/stop/delete. See [async-docker-operations.md](async-docker-operations.md) for full details.
 >
 > **Previous (2026-01-26)**: **UX: Unified Start/Stop Toggle**: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component across all pages (AgentHeader.vue, Agents.vue, AgentNode.vue). Added `toggleAgentRunning()` to agents.js and network.js stores.
 >
@@ -37,6 +39,11 @@ As a Trinity platform user, I want to create, start, stop, and delete agents so 
 ### Delete Agent
 - **UI**: `src/frontend/src/views/AgentDetail.vue:137-146` - Delete button (trash icon)
 - **API**: `DELETE /api/agents/{agent_name}`
+
+### Rename Agent (RENAME-001)
+- **UI**: `src/frontend/src/components/AgentHeader.vue` - Pencil icon next to agent name (visible for owners/admins, not system agents)
+- **API**: `PUT /api/agents/{agent_name}/rename`
+- **MCP**: `rename_agent` tool with `name` and `new_name` parameters
 
 ---
 
@@ -280,6 +287,59 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     # Delete ownership (line 296) - cascades to shares
     # Broadcast WebSocket (line 298-302), audit log (line 304-311)
 ```
+
+#### Rename Agent (RENAME-001) (`src/backend/routers/agents.py:1361-1460`)
+```python
+@router.put("/{agent_name}/rename")
+async def rename_agent_endpoint(agent_name: str, body: RenameAgentRequest, ...):
+    """
+    Rename an agent. System agents cannot be renamed.
+
+    1. Check permission (owner or admin, not system agent)
+    2. Validate and sanitize new name (Docker-compatible)
+    3. Stop container if running
+    4. Rename Docker container (container.rename())
+    5. Update all 17 database tables atomically (db.rename_agent())
+    6. Broadcast WebSocket 'agent_renamed' event
+    7. Return {message, old_name, new_name, was_running}
+    """
+```
+
+**Database Method** (`src/backend/db/agents.py:620-780`):
+```python
+def rename_agent(self, old_name: str, new_name: str) -> bool:
+    """
+    Atomically update agent_name in all tables:
+    - agent_ownership (primary)
+    - agent_sharing, agent_schedules, schedule_executions
+    - chat_sessions, chat_messages, agent_activities
+    - agent_permissions (source AND target)
+    - agent_shared_folder_config, agent_git_config
+    - agent_skills, agent_tags, agent_public_links
+    - mcp_api_keys, agent_health_checks, agent_dashboard_values
+    - monitoring_alert_cooldowns
+    """
+```
+
+**MCP Tool** (`src/mcp-server/src/tools/agents.ts:260-295`):
+```typescript
+renameAgent: {
+  name: "rename_agent",
+  parameters: z.object({
+    name: z.string().describe("Current agent name"),
+    new_name: z.string().describe("New agent name"),
+  }),
+  execute: async ({ name, new_name }) => {
+    return apiClient.renameAgent(name, new_name);
+  }
+}
+```
+
+**Frontend** (`src/frontend/src/components/AgentHeader.vue:8-30`):
+- Pencil icon button next to agent name (visible when `agent.can_share && !agent.is_system`)
+- Inline editing with input field, Enter to save, Escape to cancel
+- Emits `rename` event handled by `AgentDetail.vue:renameAgent()`
+- On success, navigates to new URL `/agents/{new_name}`
 
 #### Start Agent (`src/backend/routers/agents.py:315-339`)
 ```python
@@ -867,7 +927,7 @@ await log_audit_event(
 
 ---
 
-**Last Updated**: 2026-01-14
+**Last Updated**: 2026-03-01
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with service layer architecture and Trinity meta-prompt injection
 
@@ -877,6 +937,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-03-01 | **Agent Rename (RENAME-001)**: Added `PUT /api/agents/{name}/rename` endpoint (agents.py:1370-1510), `rename_agent` MCP tool (agents.ts:263-296), `renameAgent()` client method (client.ts:277-296), `db.rename_agent()` for atomic 17-table update (db/agents.py:624-780), `db.can_user_rename_agent()` permission check (db/agents.py:781-800), `container_rename()` async wrapper (docker_utils.py:82-90). Frontend: Pencil icon in AgentHeader.vue (lines 26-35), inline editing with Enter/Escape, `renameAgent()` handler in AgentDetail.vue (lines 460-494). System agents protected from rename. WebSocket `agent_renamed` event broadcast. |
 | 2026-02-24 | **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now use async wrappers from `services/docker_utils.py`. Affected: `start_agent_internal()`, `recreate_container_with_updated_config()`, `delete_agent_endpoint()`, `stop_agent_endpoint()`. Event loop no longer blocks during Docker operations. See [async-docker-operations.md](async-docker-operations.md). |
 | 2026-02-22 | **Subscription Injection on Startup (SUB-001)**: Added `inject_subscription_on_start()` to startup injection order between credentials and skills. Updated Authentication Model section to document 3 auth methods in priority order: Subscription OAuth (automatic), Manual OAuth (via /login), API key. Added cross-reference to [subscription-management.md](subscription-management.md). |
 | 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in AgentHeader.vue now use `size="sm"`: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77). RunningStateToggle.vue default size changed from 'md' to 'sm' (line 97). This provides visual consistency across all toggle locations (AgentHeader, Agents.vue, AgentNode.vue). |

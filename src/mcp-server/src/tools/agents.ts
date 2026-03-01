@@ -258,6 +258,44 @@ export function createAgentTools(
     },
 
     // ========================================================================
+    // rename_agent - Rename an agent (RENAME-001)
+    // ========================================================================
+    renameAgent: {
+      name: "rename_agent",
+      description:
+        "Rename an agent in the Trinity platform. " +
+        "Changes the agent name across all references (database, container, UI). " +
+        "System agents cannot be renamed. Only owners or admins can rename agents. " +
+        "The agent will be briefly stopped during the rename operation.",
+      parameters: z.object({
+        name: z.string().describe("The current name of the agent to rename"),
+        new_name: z.string().describe("The new name for the agent (will be sanitized for Docker compatibility)"),
+      }),
+      execute: async (
+        { name, new_name }: { name: string; new_name: string },
+        context?: { session?: McpAuthContext }
+      ) => {
+        const authContext = context?.session;
+
+        // Prevent system agent from renaming itself
+        if (authContext?.scope === "system" && authContext?.agentName === name) {
+          console.log(`[rename_agent] System agent cannot rename itself`);
+          return JSON.stringify({
+            error: "Cannot rename system agent",
+            reason: "System agents cannot be renamed.",
+            agent: name
+          }, null, 2);
+        }
+
+        console.log(`[rename_agent] Renaming agent '${name}' to '${new_name}'`);
+
+        const apiClient = getClient(authContext);
+        const result = await apiClient.renameAgent(name, new_name);
+        return JSON.stringify(result, null, 2);
+      },
+    },
+
+    // ========================================================================
     // delete_agent - Remove an agent
     // ========================================================================
     deleteAgent: {

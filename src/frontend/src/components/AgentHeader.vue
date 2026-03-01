@@ -5,7 +5,36 @@
       <div class="flex justify-between items-start">
         <!-- Left: Agent Identity -->
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ agent.name }}</h1>
+          <div class="flex items-center gap-2">
+            <!-- Editable agent name -->
+            <template v-if="isEditingName">
+              <input
+                ref="nameInput"
+                v-model="editedName"
+                type="text"
+                class="text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-indigo-500 focus:outline-none focus:border-indigo-600 py-0 px-0"
+                :class="{ 'border-red-500': nameError }"
+                @keydown.enter="saveName"
+                @keydown.escape="cancelEditName"
+                @blur="saveName"
+              />
+              <span v-if="nameError" class="text-xs text-red-500">{{ nameError }}</span>
+            </template>
+            <template v-else>
+              <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ agent.name }}</h1>
+              <!-- Rename pencil icon (only for owners/admins, not system agents) -->
+              <button
+                v-if="agent.can_share && !agent.is_system"
+                @click="startEditName"
+                class="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="Rename agent"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </template>
+          </div>
           <div class="flex items-center space-x-2 mt-1.5">
             <!-- Status badge -->
             <span :class="[
@@ -252,6 +281,7 @@
 </template>
 
 <script setup>
+import { ref, nextTick } from 'vue'
 import RuntimeBadge from './RuntimeBadge.vue'
 import SparklineChart from './SparklineChart.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
@@ -259,6 +289,12 @@ import AutonomyToggle from './AutonomyToggle.vue'
 import ReadOnlyToggle from './ReadOnlyToggle.vue'
 import TagsEditor from './TagsEditor.vue'
 import { useFormatters } from '../composables'
+
+// Name editing state
+const isEditingName = ref(false)
+const editedName = ref('')
+const nameError = ref('')
+const nameInput = ref(null)
 
 const props = defineProps({
   agent: {
@@ -342,7 +378,7 @@ const props = defineProps({
   }
 })
 
-defineEmits([
+const emit = defineEmits([
   'toggle',
   'delete',
   'toggle-autonomy',
@@ -353,8 +389,46 @@ defineEmits([
   'git-refresh',
   'update-tags',
   'add-tag',
-  'remove-tag'
+  'remove-tag',
+  'rename'
 ])
+
+// Name editing functions
+function startEditName() {
+  editedName.value = props.agent.name
+  nameError.value = ''
+  isEditingName.value = true
+  nextTick(() => {
+    nameInput.value?.focus()
+    nameInput.value?.select()
+  })
+}
+
+function cancelEditName() {
+  isEditingName.value = false
+  editedName.value = ''
+  nameError.value = ''
+}
+
+function saveName() {
+  const trimmed = editedName.value.trim()
+
+  // Validate
+  if (!trimmed) {
+    nameError.value = 'Name cannot be empty'
+    return
+  }
+
+  if (trimmed === props.agent.name) {
+    cancelEditName()
+    return
+  }
+
+  // Emit rename event for parent to handle
+  emit('rename', trimmed)
+  isEditingName.value = false
+  nameError.value = ''
+}
 
 const { formatBytes, formatUptime, formatRelativeTime } = useFormatters()
 </script>
