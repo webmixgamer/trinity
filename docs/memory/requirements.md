@@ -300,6 +300,12 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: SIGINT/SIGKILL flow, queue release, activity tracking
 - **Flow**: `docs/memory/feature-flows/execution-termination.md`
 
+### 10.5 Model Selection for Tasks & Schedules (MODEL-001)
+- **Status**: ✅ Implemented (2026-03-02)
+- **Description**: Select which Claude model to use for task execution and scheduled runs
+- **Key Features**: ModelSelector combobox with presets (Opus 4.5/4.6, Sonnet 4.5/4.6, Haiku 4.5), custom model input, localStorage persistence, model_used audit trail in execution records
+- **Requirements**: `docs/requirements/MODEL_SELECTION_TASKS_SCHEDULES.md`
+
 ---
 
 ## 11. GitHub Integration

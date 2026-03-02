@@ -1,3 +1,26 @@
+### 2026-03-02 13:50:00
+✨ **Feature: Model Selection for Tasks & Schedules (MODEL-001)**
+
+Users can now select which Claude model to use when running a task or creating/editing a schedule. Includes a shared combobox component with preset models (Opus 4.5/4.6, Sonnet 4.5/4.6, Haiku 4.5) and support for custom model names.
+
+- Database migration adds `model` column to `agent_schedules` and `model_used` to `schedule_executions`
+- Backend CRUD models and DB operations updated to read/write model fields
+- Scheduler service passes model through to agent containers on execution
+- New `ModelSelector.vue` shared component with dropdown presets + free text input
+- TasksPanel: model selector above task input, persists last-used model in localStorage
+- SchedulesPanel: model field in create/edit form, model badge in schedule list and execution detail
+- `model_used` displayed in execution history rows for audit
+
+**Key Files:**
+- `src/backend/db/migrations.py` (migration #22)
+- `src/backend/db/schema.py`, `src/backend/db_models.py`, `src/backend/db/schedules.py`
+- `src/backend/routers/schedules.py`, `src/backend/routers/chat.py`
+- `src/scheduler/service.py`, `src/scheduler/agent_client.py`, `src/scheduler/database.py`, `src/scheduler/models.py`
+- `src/frontend/src/components/ModelSelector.vue` (new)
+- `src/frontend/src/components/TasksPanel.vue`, `src/frontend/src/components/SchedulesPanel.vue`
+
+---
+
 ### 2026-03-02 10:30:00
 ✨ **Feature: Dashboard Filter Persistence**
 

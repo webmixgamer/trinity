@@ -143,6 +143,7 @@ TABLES = {
             next_run_at TEXT,
             timeout_seconds INTEGER DEFAULT 900,
             allowed_tools TEXT,
+            model TEXT,
             FOREIGN KEY (owner_id) REFERENCES users(id)
         )
     """,
@@ -165,6 +166,7 @@ TABLES = {
             cost REAL,
             tool_calls TEXT,
             execution_log TEXT,
+            model_used TEXT,
             FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
         )
     """,

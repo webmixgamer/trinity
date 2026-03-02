@@ -74,7 +74,8 @@ class SchedulerDatabase:
             last_run_at=datetime.fromisoformat(row["last_run_at"]) if row["last_run_at"] else None,
             next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None,
             timeout_seconds=row["timeout_seconds"] if "timeout_seconds" in row_keys and row["timeout_seconds"] else 900,
-            allowed_tools=allowed_tools
+            allowed_tools=allowed_tools,
+            model=row["model"] if "model" in row_keys else None
         )
 
     @staticmethod
@@ -197,7 +198,8 @@ class SchedulerDatabase:
         schedule_id: str,
         agent_name: str,
         message: str,
-        triggered_by: str = "schedule"
+        triggered_by: str = "schedule",
+        model_used: str = None
     ) -> Optional[ScheduleExecution]:
         """Create a new execution record."""
         execution_id = self._generate_id()
@@ -207,8 +209,9 @@ class SchedulerDatabase:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO schedule_executions (
-                    id, schedule_id, agent_name, status, started_at, message, triggered_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    id, schedule_id, agent_name, status, started_at, message, triggered_by,
+                    model_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 execution_id,
                 schedule_id,
@@ -216,7 +219,8 @@ class SchedulerDatabase:
                 "running",
                 now,
                 message,
-                triggered_by
+                triggered_by,
+                model_used
             ))
             conn.commit()
 

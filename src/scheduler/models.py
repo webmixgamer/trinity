@@ -45,6 +45,7 @@ class Schedule:
     next_run_at: Optional[datetime] = None
     timeout_seconds: int = 900  # Default 15 minutes
     allowed_tools: Optional[List[str]] = None  # None = all tools allowed
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 
 
 @dataclass

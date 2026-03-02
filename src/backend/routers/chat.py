@@ -589,7 +589,8 @@ async def execute_parallel_task(
         source_user_email=current_user.email or current_user.username,
         source_agent_name=x_source_agent,
         source_mcp_key_id=x_mcp_key_id,
-        source_mcp_key_name=x_mcp_key_name
+        source_mcp_key_name=x_mcp_key_name,
+        model_used=request.model
     )
     execution_id = execution.id if execution else None
 

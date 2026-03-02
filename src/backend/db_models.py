@@ -114,6 +114,7 @@ class ScheduleCreate(BaseModel):
     description: Optional[str] = None
     timeout_seconds: int = 900  # Default 15 minutes
     allowed_tools: Optional[List[str]] = None  # None = all tools allowed
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 
 
 class Schedule(BaseModel):
@@ -133,6 +134,7 @@ class Schedule(BaseModel):
     next_run_at: Optional[datetime] = None
     timeout_seconds: int = 900  # Default 15 minutes
     allowed_tools: Optional[List[str]] = None  # None = all tools allowed
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 
 
 class ScheduleExecution(BaseModel):
@@ -162,6 +164,8 @@ class ScheduleExecution(BaseModel):
     source_mcp_key_name: Optional[str] = None  # MCP API key name (denormalized)
     # Session resume support (EXEC-023)
     claude_session_id: Optional[str] = None    # Claude Code session ID for --resume
+    # Model selection (MODEL-001)
+    model_used: Optional[str] = None           # Model used for this execution
 
 
 # =========================================================================

@@ -26,6 +26,7 @@ Migration Order (as of 2026-02-28):
 19. setup_completed_backfill - Auto-complete setup for existing installs
 20. slack_integration_tables - SLACK-001 Slack integration tables
 21. agent_ownership_parallel_capacity - CAPACITY-001 parallel execution slots
+22. schedule_model_selection - MODEL-001 model selection for tasks/schedules
 """
 
 
@@ -57,6 +58,7 @@ def run_all_migrations(cursor, conn):
         ("setup_completed_backfill", _migrate_setup_completed_backfill),
         ("slack_integration_tables", _migrate_slack_integration_tables),
         ("agent_ownership_parallel_capacity", _migrate_agent_ownership_parallel_capacity),
+        ("schedule_model_selection", _migrate_schedule_model_selection),
     ]
 
     for name, migration_fn in migrations:
@@ -566,5 +568,30 @@ def _migrate_agent_ownership_parallel_capacity(cursor, conn):
     if "max_parallel_tasks" not in columns:
         print("Adding max_parallel_tasks column to agent_ownership for parallel capacity...")
         cursor.execute("ALTER TABLE agent_ownership ADD COLUMN max_parallel_tasks INTEGER DEFAULT 3")
+
+    conn.commit()
+
+
+def _migrate_schedule_model_selection(cursor, conn):
+    """Add model columns for MODEL-001: Model Selection for Tasks & Schedules.
+
+    - agent_schedules.model: Model to use when schedule fires (NULL = agent default)
+    - schedule_executions.model_used: Records which model was actually used
+    """
+    # Add model to agent_schedules
+    cursor.execute("PRAGMA table_info(agent_schedules)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "model" not in columns:
+        print("Adding model column to agent_schedules for model selection...")
+        cursor.execute("ALTER TABLE agent_schedules ADD COLUMN model TEXT")
+
+    # Add model_used to schedule_executions
+    cursor.execute("PRAGMA table_info(schedule_executions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "model_used" not in columns:
+        print("Adding model_used column to schedule_executions for model audit...")
+        cursor.execute("ALTER TABLE schedule_executions ADD COLUMN model_used TEXT")
 
     conn.commit()

@@ -80,6 +80,11 @@
               />
             </div>
 
+            <!-- Model Selector (MODEL-001) -->
+            <div>
+              <ModelSelector v-model="formData.model" label="Model" />
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
@@ -253,6 +258,12 @@
                 </svg>
                 {{ schedule.allowed_tools.length }} tools
               </span>
+              <span v-if="schedule.model" class="flex items-center" :title="`Model: ${schedule.model}`">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                {{ schedule.model }}
+              </span>
               <span v-if="schedule.next_run_at" class="flex items-center text-indigo-600 dark:text-indigo-400">
                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -377,6 +388,7 @@
                 >
                   {{ exec.triggered_by }}
                 </span>
+                <span v-if="exec.model_used" class="font-mono text-gray-400 dark:text-gray-500">{{ exec.model_used }}</span>
               </div>
               <div class="flex items-center space-x-3">
                 <!-- Context usage progress bar -->
@@ -441,7 +453,7 @@
           </div>
 
           <!-- Stats Row -->
-          <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 grid grid-cols-4 gap-4">
+          <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 grid grid-cols-5 gap-4">
             <div>
               <p class="text-xs text-gray-500 dark:text-gray-400">Duration</p>
               <p class="text-sm font-medium dark:text-white">{{ formatDuration(selectedExecution.duration_ms) || '-' }}</p>
@@ -462,6 +474,10 @@
                   ></div>
                 </div>
               </div>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Model</p>
+              <p class="text-sm font-medium font-mono dark:text-white">{{ selectedExecution.model_used || 'default' }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-500 dark:text-gray-400">Triggered By</p>
@@ -544,6 +560,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from './ConfirmDialog.vue'
+import ModelSelector from './ModelSelector.vue'
 import { useAuthStore } from '../stores/auth'
 
 const props = defineProps({
@@ -604,7 +621,8 @@ const formData = ref({
   timezone: 'UTC',
   enabled: true,
   timeout_seconds: 900,
-  allowed_tools: null  // null = all tools allowed
+  allowed_tools: null,  // null = all tools allowed
+  model: 'claude-opus-4-5'  // MODEL-001
 })
 
 // Tool categories for allowed tools selection
@@ -729,7 +747,8 @@ function closeForm() {
     timezone: 'UTC',
     enabled: true,
     timeout_seconds: 900,
-    allowed_tools: null
+    allowed_tools: null,
+    model: 'claude-opus-4-5'
   }
 }
 
@@ -744,7 +763,8 @@ function editSchedule(schedule) {
     timezone: schedule.timezone,
     enabled: schedule.enabled,
     timeout_seconds: schedule.timeout_seconds || 900,
-    allowed_tools: schedule.allowed_tools || null
+    allowed_tools: schedule.allowed_tools || null,
+    model: schedule.model || 'claude-opus-4-5'
   }
 }
 

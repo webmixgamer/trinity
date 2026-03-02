@@ -599,6 +599,7 @@ CREATE TABLE agent_schedules (
     updated_at TEXT NOT NULL,
     last_run_at TEXT,
     next_run_at TEXT,
+    model TEXT,                                  -- MODEL-001: Model override (NULL = agent default)
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 ```
@@ -617,6 +618,7 @@ CREATE TABLE schedule_executions (
     response TEXT,
     error TEXT,
     triggered_by TEXT NOT NULL,
+    model_used TEXT,                             -- MODEL-001: Which model was used
     FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
 );
 ```

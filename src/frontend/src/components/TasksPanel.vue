@@ -81,6 +81,10 @@
 
     <!-- New Task Input -->
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <!-- Model Selector (MODEL-001) -->
+      <div class="mb-3">
+        <ModelSelector v-model="selectedModel" label="Model" compact />
+      </div>
       <div class="flex items-stretch space-x-3">
         <div class="flex-1">
           <textarea
@@ -198,6 +202,7 @@
 
               <!-- Stats row -->
               <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <span v-if="task.model_used" class="font-mono bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{{ task.model_used }}</span>
                 <span v-if="task.duration_ms" class="font-mono">{{ formatDuration(task.duration_ms) }}</span>
                 <span v-if="task.cost" class="font-mono">${{ task.cost.toFixed(4) }}</span>
                 <div v-if="task.context_used && task.context_max" class="flex items-center space-x-1">
@@ -486,6 +491,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
+import ModelSelector from './ModelSelector.vue'
 
 // Template ref for highlighted task element
 const highlightedTaskRef = ref(null)
@@ -527,6 +533,13 @@ const expandLoadingTaskId = ref(null) // PERF-001: Track which task is loading d
 const taskDetailsCache = ref({}) // PERF-001: Cache for task details (response/error)
 const terminatingTaskId = ref(null)
 const triggerFilter = ref('all') // Filter by triggered_by type (AUDIT-001)
+
+// Model selection (MODEL-001)
+const taskModelKey = computed(() => `trinity-task-model-${props.agentName}`)
+const selectedModel = ref(localStorage.getItem(`trinity-task-model-${props.agentName}`) || 'claude-opus-4-5')
+watch(selectedModel, (val) => {
+  localStorage.setItem(taskModelKey.value, val)
+})
 
 // Execution log modal state
 const showLogModal = ref(false)
@@ -727,9 +740,11 @@ async function runNewTask() {
 
   try {
     // Use /task endpoint for parallel execution (doesn't block queue)
-    const response = await axios.post(`/api/agents/${props.agentName}/task`, {
-      message: taskMessage
-    }, {
+    const payload = { message: taskMessage }
+    if (selectedModel.value) {
+      payload.model = selectedModel.value
+    }
+    const response = await axios.post(`/api/agents/${props.agentName}/task`, payload, {
       headers: authStore.authHeader
     })
 

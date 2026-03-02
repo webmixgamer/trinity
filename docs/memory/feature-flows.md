@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-02 | MODEL-001 | Model selection for tasks and schedules | [model-selection.md](feature-flows/model-selection.md) |
 | 2026-03-02 | FILTER-001 | Dashboard filter persistence (time range, quick tags) | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) |
 | 2026-03-01 | RENAME-001 | Agent rename via UI pencil icon, MCP tool, or REST API | [agent-rename.md](feature-flows/agent-rename.md) |
 | 2026-02-28 | GIT-002 | Git branch support for agent creation | [github-sync.md](feature-flows/github-sync.md) |
@@ -150,7 +151,7 @@
 | Read-Only Mode | [read-only-mode.md](feature-flows/read-only-mode.md) | Code protection via hooks (CFG-007) |
 | Agent Resource Allocation | [agent-resource-allocation.md](feature-flows/agent-resource-allocation.md) | Per-agent memory/CPU limits |
 | Container Capabilities | [container-capabilities.md](feature-flows/container-capabilities.md) | Full capabilities mode |
-| Model Selection | [model-selection.md](feature-flows/model-selection.md) | View and change LLM model |
+| Model Selection | [model-selection.md](feature-flows/model-selection.md) | LLM model selection for terminal, tasks, and schedules |
 | Platform Settings | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page |
 | SSH Access | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials |
 | Subscription Management | [subscription-management.md](feature-flows/subscription-management.md) | Claude Max/Pro subscriptions (SUB-001) |

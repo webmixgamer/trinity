@@ -87,7 +87,8 @@ class ScheduleOperations:
             last_run_at=parse_iso_timestamp(row["last_run_at"]) if row["last_run_at"] else None,
             next_run_at=parse_iso_timestamp(row["next_run_at"]) if row["next_run_at"] else None,
             timeout_seconds=row["timeout_seconds"] if "timeout_seconds" in row_keys and row["timeout_seconds"] else 900,
-            allowed_tools=allowed_tools
+            allowed_tools=allowed_tools,
+            model=row["model"] if "model" in row_keys else None
         )
 
     @staticmethod
@@ -120,6 +121,8 @@ class ScheduleOperations:
             source_mcp_key_name=row["source_mcp_key_name"] if "source_mcp_key_name" in row_keys else None,
             # Session resume support (EXEC-023)
             claude_session_id=row["claude_session_id"] if "claude_session_id" in row_keys else None,
+            # Model selection (MODEL-001)
+            model_used=row["model_used"] if "model_used" in row_keys else None,
         )
 
     @staticmethod
@@ -182,8 +185,8 @@ class ScheduleOperations:
                     INSERT INTO agent_schedules (
                         id, agent_name, name, cron_expression, message, enabled,
                         timezone, description, owner_id, created_at, updated_at, next_run_at,
-                        timeout_seconds, allowed_tools
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        timeout_seconds, allowed_tools, model
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     schedule_id,
                     agent_name,
@@ -198,7 +201,8 @@ class ScheduleOperations:
                     now,
                     next_run_at_iso,
                     schedule_data.timeout_seconds,
-                    allowed_tools_json
+                    allowed_tools_json,
+                    schedule_data.model
                 ))
                 conn.commit()
 
@@ -216,7 +220,8 @@ class ScheduleOperations:
                     updated_at=datetime.fromisoformat(now),
                     next_run_at=next_run_at,
                     timeout_seconds=schedule_data.timeout_seconds,
-                    allowed_tools=schedule_data.allowed_tools
+                    allowed_tools=schedule_data.allowed_tools,
+                    model=schedule_data.model
                 )
             except sqlite3.IntegrityError:
                 return None
@@ -288,7 +293,7 @@ class ScheduleOperations:
 
             set_clauses = []
             params = []
-            allowed_fields = ["name", "cron_expression", "message", "enabled", "timezone", "description", "timeout_seconds", "allowed_tools"]
+            allowed_fields = ["name", "cron_expression", "message", "enabled", "timezone", "description", "timeout_seconds", "allowed_tools", "model"]
 
             for key, value in updates.items():
                 if key in allowed_fields:
@@ -439,6 +444,7 @@ class ScheduleOperations:
         source_agent_name: str = None,
         source_mcp_key_id: str = None,
         source_mcp_key_name: str = None,
+        model_used: str = None,
     ) -> Optional[ScheduleExecution]:
         """Create a new execution record for a manual/API-triggered task (no schedule).
 
@@ -451,6 +457,7 @@ class ScheduleOperations:
             source_agent_name: Calling agent name (for agent-to-agent)
             source_mcp_key_id: MCP API key ID (for mcp/agent triggers)
             source_mcp_key_name: MCP API key name (denormalized)
+            model_used: Model used for this execution (MODEL-001)
         """
         execution_id = self._generate_id()
         now = utc_now_iso()
@@ -461,8 +468,8 @@ class ScheduleOperations:
                 INSERT INTO schedule_executions (
                     id, schedule_id, agent_name, status, started_at, message, triggered_by,
                     source_user_id, source_user_email, source_agent_name,
-                    source_mcp_key_id, source_mcp_key_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_mcp_key_id, source_mcp_key_name, model_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 execution_id,
                 "__manual__",  # Special marker for manual/API-triggered tasks
@@ -476,6 +483,7 @@ class ScheduleOperations:
                 source_agent_name,
                 source_mcp_key_id,
                 source_mcp_key_name,
+                model_used,
             ))
             conn.commit()
 
@@ -492,6 +500,7 @@ class ScheduleOperations:
                 source_agent_name=source_agent_name,
                 source_mcp_key_id=source_mcp_key_id,
                 source_mcp_key_name=source_mcp_key_name,
+                model_used=model_used,
             )
 
     def create_schedule_execution(
@@ -505,6 +514,7 @@ class ScheduleOperations:
         source_agent_name: str = None,
         source_mcp_key_id: str = None,
         source_mcp_key_name: str = None,
+        model_used: str = None,
     ) -> Optional[ScheduleExecution]:
         """Create a new execution record for a scheduled task.
 
@@ -521,8 +531,8 @@ class ScheduleOperations:
                 INSERT INTO schedule_executions (
                     id, schedule_id, agent_name, status, started_at, message, triggered_by,
                     source_user_id, source_user_email, source_agent_name,
-                    source_mcp_key_id, source_mcp_key_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_mcp_key_id, source_mcp_key_name, model_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 execution_id,
                 schedule_id,
@@ -536,6 +546,7 @@ class ScheduleOperations:
                 source_agent_name,
                 source_mcp_key_id,
                 source_mcp_key_name,
+                model_used,
             ))
             conn.commit()
 
@@ -552,6 +563,7 @@ class ScheduleOperations:
                 source_agent_name=source_agent_name,
                 source_mcp_key_id=source_mcp_key_id,
                 source_mcp_key_name=source_mcp_key_name,
+                model_used=model_used,
             )
 
     def update_execution_status(
@@ -654,7 +666,7 @@ class ScheduleOperations:
                     id, schedule_id, agent_name, status, started_at, completed_at,
                     duration_ms, message, triggered_by, context_used, context_max, cost,
                     source_user_id, source_user_email, source_agent_name,
-                    source_mcp_key_id, source_mcp_key_name, claude_session_id
+                    source_mcp_key_id, source_mcp_key_name, claude_session_id, model_used
                 FROM schedule_executions
                 WHERE agent_name = ?
                 ORDER BY started_at DESC

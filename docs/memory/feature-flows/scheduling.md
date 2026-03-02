@@ -100,9 +100,10 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 
 ### 1. Create Schedule Flow
 
-**User Action:** Click "New Schedule" → Fill form → Click "Create"
+**User Action:** Click "New Schedule" → Fill form (incl. model selector) → Click "Create"
 
 > **Note (2026-02-11)**: Backend no longer calls scheduler directly. Schedules are created in the database, and the dedicated scheduler syncs automatically every 60 seconds.
+> **Note (2026-03-02, MODEL-001)**: Form now includes a Model selector (`ModelSelector.vue`). The `model` field is stored in `agent_schedules` and forwarded to the agent when the schedule fires.
 
 ```
 Frontend                          Backend                           Database
@@ -186,7 +187,8 @@ Check lock (Redis)
   |
   v
 Create execution record
-db.create_execution()
+db.create_execution(
+  model_used=schedule.model)
   |
   v
 Track activity start ----------> POST /api/internal/activities/track
@@ -194,8 +196,10 @@ Track activity start ----------> POST /api/internal/activities/track
   |                               broadcast(started)
   v
 Get agent client
-client.task(message) -----------------------------------------> POST /api/task
-  |                                                             Claude Code exec
+client.task(message,
+  model=schedule.model) ----------------------------------------> POST /api/task
+  |                                                               {model: "opus"}
+  |                                                               Claude Code exec
   v
 Parse response
 task_response.metrics
@@ -427,15 +431,17 @@ CREATE TABLE agent_schedules (
     next_run_at TEXT,                    -- Calculated next run
     timeout_seconds INTEGER DEFAULT 900, -- Execution timeout (default 15 min, max 2h)
     allowed_tools TEXT,                  -- JSON array of tool names, NULL = all tools allowed
+    model TEXT,                          -- Model override (MODEL-001), NULL = agent default
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 ```
 
-**New Fields (2026-02-20):**
+**New Fields (2026-02-20, 2026-03-02):**
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `timeout_seconds` | INTEGER | 900 | Per-schedule execution timeout (5m-2h) |
 | `allowed_tools` | TEXT | NULL | JSON array of allowed Claude Code tools, NULL = all tools |
+| `model` | TEXT | NULL | Model override for this schedule (MODEL-001). NULL = agent default |
 
 ### schedule_executions
 **Location**: `src/backend/database.py:273-295`
@@ -458,6 +464,8 @@ CREATE TABLE schedule_executions (
     context_max INTEGER,                 -- Max context window size
     cost REAL,                           -- Execution cost in USD
     tool_calls TEXT,                     -- JSON array of tool calls
+    execution_log TEXT,                  -- Full Claude Code execution transcript (JSON)
+    model_used TEXT,                     -- Model used for this execution (MODEL-001)
     FOREIGN KEY (schedule_id) REFERENCES agent_schedules(id)
 );
 ```
@@ -958,6 +966,7 @@ POST /schedules  ------>  db/schedules.py:create_schedule()
 ---
 
 ## Status
+**Updated 2026-03-02** - **MODEL-001 Model Selection**: Per-schedule model override. New `model` column on `agent_schedules`, `model_used` column on `schedule_executions`. ModelSelector.vue component in create/edit form. Model forwarded through scheduler service to agent container. model_used recorded on every execution for audit. See [model-selection.md](model-selection.md).
 **Updated 2026-02-22** - **Dashboard Schedule Stats**: Added `get_all_agents_schedule_counts()` method to `db/schedules.py:719-743`. Returns schedule counts (total and enabled) per agent. Used by `GET /api/agents/execution-stats` endpoint to populate `schedules_total` and `schedules_enabled` fields. Dashboard AgentNode now displays "X/Y schedules" with "(paused)" indicator when autonomy disabled.
 
 **Updated 2026-02-21** - **Bug Fix (EXEC-023)**: Fixed scheduled executions missing `claude_session_id`. The dedicated scheduler service (`src/scheduler/`) had its own code path for task execution that was not capturing `session_id` from agent responses. Four files were updated:
@@ -1188,9 +1197,9 @@ schedules                        |
   name: "...",                   db/schedules.py:141-214
   timeout_seconds: 1800,         create_schedule()
   allowed_tools: ["Read",...]    - Validate cron
-}                                - JSON.dumps(allowed_tools)
-                                 - INSERT with timeout_seconds,
-                                   allowed_tools columns
+  model: "claude-opus-4-6"       - JSON.dumps(allowed_tools)
+}                                - INSERT with timeout_seconds,
+                                   allowed_tools, model columns
                                  |
                                  v
                                  201 Created
@@ -1204,27 +1213,34 @@ schedules                        |
                                                                    _execute_schedule_with_lock()
                                                                    |
                                                                    v
+                                                                   db.create_execution(
+                                                                     model_used=schedule.model)
+                                                                   |
+                                                                   v
                                                                    client.task(
                                                                      message,
                                                                      timeout=schedule.timeout_seconds,
-                                                                     allowed_tools=schedule.allowed_tools
+                                                                     allowed_tools=schedule.allowed_tools,
+                                                                     model=schedule.model
                                                                    )
                                                                    |
                                                                    v
-                                                                   agent_client.py:101-149
+                                                                   agent_client.py:101-153
                                                                    POST /api/task                ──> Receives:
                                                                    {                                 - message
                                                                      message,                        - timeout_seconds
                                                                      timeout_seconds,                - allowed_tools
-                                                                     allowed_tools,
+                                                                     allowed_tools,                  - model
+                                                                     model,
                                                                      execution_id                    Claude Code CLI:
                                                                    }                                 --max-turns
                                                                                                      --allowedTools
+                                                                                                     --model
 ```
 
 ### Backend Models
 
-**ScheduleCreate** (`src/backend/db_models.py:106-116`):
+**ScheduleCreate** (`src/backend/db_models.py:107-118`):
 ```python
 class ScheduleCreate(BaseModel):
     name: str
@@ -1235,14 +1251,16 @@ class ScheduleCreate(BaseModel):
     description: Optional[str] = None
     timeout_seconds: int = 900  # Default 15 minutes
     allowed_tools: Optional[List[str]] = None  # None = all tools allowed
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 ```
 
-**Schedule** (`src/backend/db_models.py:118-135`):
+**Schedule** (`src/backend/db_models.py:120-138`):
 ```python
 class Schedule(BaseModel):
     # ... existing fields ...
     timeout_seconds: int = 900
     allowed_tools: Optional[List[str]] = None
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 ```
 
 **ScheduleUpdateRequest** (`src/backend/routers/schedules.py:76-86`):
@@ -1251,17 +1269,19 @@ class ScheduleUpdateRequest(BaseModel):
     # ... existing fields ...
     timeout_seconds: Optional[int] = None
     allowed_tools: Optional[List[str]] = None
+    model: Optional[str] = None  # Model override (MODEL-001)
 ```
 
 ### Scheduler Models
 
-**Schedule dataclass** (`src/scheduler/models.py:29-46`):
+**Schedule dataclass** (`src/scheduler/models.py:29-48`):
 ```python
 @dataclass
 class Schedule:
     # ... existing fields ...
     timeout_seconds: int = 900
     allowed_tools: Optional[List[str]] = None
+    model: Optional[str] = None  # Model override (MODEL-001). None = agent default
 ```
 
 ### Database Operations
@@ -1281,14 +1301,15 @@ if "allowed_tools" in row_keys and row["allowed_tools"]:
 
 ### Agent Client
 
-**task() method** (`src/scheduler/agent_client.py:101-149`):
+**task() method** (`src/scheduler/agent_client.py:101-153`):
 ```python
 async def task(
     self,
     message: str,
     timeout: float = None,
     execution_id: Optional[str] = None,
-    allowed_tools: Optional[list] = None
+    allowed_tools: Optional[list] = None,
+    model: Optional[str] = None          # MODEL-001
 ) -> AgentTaskResponse:
     timeout = timeout or self.timeout
 
@@ -1297,6 +1318,8 @@ async def task(
         payload["execution_id"] = execution_id
     if allowed_tools is not None:
         payload["allowed_tools"] = allowed_tools
+    if model:
+        payload["model"] = model           # MODEL-001
 
     response = await self._request(
         "POST", "/api/task",
@@ -1307,15 +1330,16 @@ async def task(
 
 ### Scheduler Service
 
-**Execution with config** (`src/scheduler/service.py:473-480`):
+**Execution with config** (`src/scheduler/service.py:591-598`):
 ```python
-# Send task to agent with schedule-specific timeout and allowed_tools
+# Send task to agent with schedule-specific timeout, allowed_tools, and model
 client = get_agent_client(schedule.agent_name)
 task_response = await client.task(
     schedule.message,
     timeout=schedule.timeout_seconds,
     execution_id=execution.id,
-    allowed_tools=schedule.allowed_tools
+    allowed_tools=schedule.allowed_tools,
+    model=schedule.model                    # MODEL-001
 )
 ```
 
@@ -1384,5 +1408,6 @@ task_response = await client.task(
 - **Upstream**:
   - Tasks Tab (`tasks-tab.md`) - "Make Repeatable" button emits `create-schedule` event to pre-fill schedule creation form (Added 2026-01-12)
 - **Related**:
+  - Model Selection (`model-selection.md`) - Per-schedule model override (MODEL-001, Added 2026-03-02)
   - ~~Agent Chat~~ (`agent-chat.md` - DEPRECATED) - Chat API still uses queue; user now uses Terminal ([agent-terminal.md](agent-terminal.md))
   - MCP Orchestration (`mcp-orchestration.md`) - All three sources share the queue

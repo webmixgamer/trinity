@@ -560,7 +560,8 @@ class SchedulerService:
             schedule_id=schedule.id,
             agent_name=schedule.agent_name,
             message=schedule.message,
-            triggered_by=triggered_by
+            triggered_by=triggered_by,
+            model_used=schedule.model
         )
 
         if not execution:
@@ -587,13 +588,14 @@ class SchedulerService:
         })
 
         try:
-            # Send task to agent with schedule-specific timeout and allowed_tools
+            # Send task to agent with schedule-specific timeout, allowed_tools, and model
             client = get_agent_client(schedule.agent_name)
             task_response = await client.task(
                 schedule.message,
                 timeout=schedule.timeout_seconds,
                 execution_id=execution.id,
-                allowed_tools=schedule.allowed_tools
+                allowed_tools=schedule.allowed_tools,
+                model=schedule.model
             )
 
             # Update execution status with parsed response

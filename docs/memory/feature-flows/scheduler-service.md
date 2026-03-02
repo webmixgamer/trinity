@@ -242,12 +242,13 @@ async def _execute_schedule_with_lock(self, schedule_id: str):
 
     logger.info(f"Executing schedule: {schedule.name} for agent {schedule.agent_name}")
 
-    # Create execution record
+    # Create execution record (MODEL-001: record model_used)
     execution = self.db.create_execution(
         schedule_id=schedule.id,
         agent_name=schedule.agent_name,
         message=schedule.message,
-        triggered_by="schedule"
+        triggered_by="schedule",
+        model_used=schedule.model
     )
 
     # Broadcast execution started
@@ -260,9 +261,13 @@ async def _execute_schedule_with_lock(self, schedule_id: str):
     })
 
     try:
-        # Send task to agent
+        # Send task to agent (MODEL-001: pass model to agent)
         client = get_agent_client(schedule.agent_name)
-        task_response = await client.task(schedule.message, execution_id=execution.id)
+        task_response = await client.task(
+            schedule.message,
+            execution_id=execution.id,
+            model=schedule.model
+        )
 
         # Update execution status with parsed response
         self.db.update_execution_status(
@@ -450,7 +455,8 @@ class AgentClient:
         message: str,
         timeout: float = None,
         execution_id: Optional[str] = None,
-        allowed_tools: Optional[List[str]] = None
+        allowed_tools: Optional[List[str]] = None,
+        model: Optional[str] = None          # MODEL-001
     ) -> AgentTaskResponse:
         """
         Execute a stateless task on the agent.
@@ -459,7 +465,7 @@ class AgentClient:
         - Does NOT maintain conversation history
         - Each call is independent
         - Returns raw Claude Code execution log
-        - Supports per-schedule timeout and tool restrictions (2026-02-20)
+        - Supports per-schedule timeout, tool restrictions (2026-02-20), and model override (2026-03-02)
         """
         timeout = timeout or self.timeout
 
@@ -468,6 +474,8 @@ class AgentClient:
             payload["execution_id"] = execution_id
         if allowed_tools:
             payload["allowed_tools"] = allowed_tools
+        if model:
+            payload["model"] = model           # MODEL-001
 
         response = await self._request(
             "POST",
@@ -607,7 +615,7 @@ async def _publish_event(self, event: dict):
 
 | Method | Line | SQL | Purpose |
 |--------|------|-----|---------|
-| `create_execution()` | 167-203 | `INSERT INTO schedule_executions` | Create execution record |
+| `create_execution()` | 167-203 | `INSERT INTO schedule_executions` | Create execution record (MODEL-001: includes `model_used`) |
 | `update_execution_status()` | 233-284 | `UPDATE schedule_executions SET status, response, ..., claude_session_id` | Complete execution (EXEC-023: added `claude_session_id` param) |
 | `get_execution(id)` | 252-258 | `SELECT * FROM schedule_executions WHERE id = ?` | Get execution |
 | `get_recent_executions()` | 260-269 | `SELECT * FROM schedule_executions ORDER BY started_at DESC` | List recent |
@@ -1236,6 +1244,7 @@ No immediate notification is needed from the backend.
 
 | Date | Change |
 |------|--------|
+| 2026-03-02 | **MODEL-001 Model Selection**: `Schedule` dataclass has `model` field. `AgentClient.task()` accepts `model` parameter. `create_execution()` records `model_used`. `service.py` passes `schedule.model` to both execution record and agent client. See [model-selection.md](model-selection.md). |
 | 2026-03-01 | **Skipped Execution Recording (Issue #46)**: Added APScheduler event listener for `EVENT_JOB_MAX_INSTANCES`. Skipped executions are now recorded in database with `status='skipped'` instead of being silently dropped. Added `create_skipped_execution()` and `create_skipped_process_schedule_execution()` database methods. WebSocket event `schedule_execution_skipped` broadcast for real-time UI. Frontend displays skipped status with purple styling. |
 | 2026-02-21 | **Session ID Capture (EXEC-023)**: Added `claude_session_id` capture for "Continue as Chat" support. `AgentTaskMetrics` now includes `session_id` field. `_parse_task_response()` extracts from agent response. `update_execution_status()` stores in database. Scheduled executions now support "Continue as Chat" like manual executions. |
 | 2026-02-20 | **Per-Schedule Execution Configuration**: AgentClient.task() now accepts `allowed_tools` parameter. Schedules can specify custom timeout (5m-2h) and tool restrictions. See scheduling.md for full documentation. |

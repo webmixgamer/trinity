@@ -42,7 +42,8 @@ As an agent operator, I want to view and trigger headless task executions from a
 **TasksPanel.vue** - Main tasks component with the following sections:
 - **Header (lines 4-47)**: Title, queue status indicator, refresh button
 - **Summary Stats (lines 49-69)**: Total tasks, success rate, total cost, avg duration - Compact layout with smaller padding (`px-3 py-2`) and text (`text-base`, `text-[10px]`)
-- **New Task Input (lines 71-101)**: Textarea for task message, Run button - Uses `items-stretch` so Run button height matches textarea
+- **New Task Input (lines 71-101)**: Model selector + textarea for task message, Run button - Uses `items-stretch` so Run button height matches textarea
+  - **Model Selector (line 86, MODEL-001)**: `ModelSelector` component above textarea, persisted per-agent in localStorage
   - **Keyboard shortcuts**: Enter to submit, Shift+Enter for newline, Cmd/Ctrl+Enter also works
 - **Task History (lines 103-315)**: Scrollable list of all tasks with expand/collapse
   - **Action Buttons per Task** (lines 210-311):
@@ -88,6 +89,11 @@ const expandLoadingTaskId = ref(null)  // PERF-001: Track which task is loading 
 const taskDetailsCache = ref({})     // PERF-001: Cache for task details (response/error)
 const terminatingTaskId = ref(null)  // Task being terminated (new 2026-01-12)
 const runningExecutions = ref([])    // Running executions from agent (for termination)
+
+// Model selection (MODEL-001) - persisted per-agent in localStorage
+const taskModelKey = computed(() => `trinity-task-model-${props.agentName}`)
+const selectedModel = ref(localStorage.getItem(`trinity-task-model-${props.agentName}`) || 'claude-opus-4-5')
+watch(selectedModel, (val) => { localStorage.setItem(taskModelKey.value, val) })
 ```
 
 **Computed Properties (lines 291-316)**:
@@ -180,10 +186,13 @@ async function runNewTask() {
   }
   pendingTasks.value.unshift(localTask)
 
-  // Submit to server
-  const response = await axios.post(`/api/agents/${props.agentName}/task`, {
-    message: taskMessage
-  }, { headers: authStore.authHeader })
+  // Submit to server (MODEL-001: include selected model)
+  const payload = { message: taskMessage }
+  if (selectedModel.value) {
+    payload.model = selectedModel.value
+  }
+  const response = await axios.post(`/api/agents/${props.agentName}/task`, payload, {
+    headers: authStore.authHeader })
 
   // Update local task with response data
   // Refresh server executions
@@ -589,6 +598,7 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 | `cost` | REAL | Cost in USD (nullable) |
 | `tool_calls` | TEXT | JSON array of tool calls (nullable) |
 | `execution_log` | TEXT | Full Claude Code execution transcript (JSON, nullable) *(added 2025-12-31)* |
+| `model_used` | TEXT | Model used for this execution (nullable) *(added 2026-03-02, MODEL-001)* |
 
 **Index** (PERF-001):
 ```sql
@@ -739,6 +749,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 - **Related**: [execution-termination.md](execution-termination.md) - Stop button, process registry, graceful termination
 - **Related**: [authenticated-chat-tab.md](authenticated-chat-tab.md) - Chat tab uses same `/task` endpoint for Dashboard tracking. **2026-02-20**: Session persistence via `save_to_session=true` parameter
 - **Related**: [persistent-chat-tracking.md](persistent-chat-tracking.md) - Chat session tables (`chat_sessions`, `chat_messages`) used by Chat tab via `/task` endpoint
+- **Related**: [model-selection.md](model-selection.md) - Model selector in task input, `model_used` field in execution records (MODEL-001)
 - **Downstream**: [activity-monitoring.md](activity-monitoring.md) - Activity tracking for tasks
 
 ---
@@ -747,6 +758,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
+| 2026-03-02 | **MODEL-001 Model Selection**: Added `ModelSelector.vue` component above task textarea (line 86). Model persisted per-agent in localStorage. Model sent in POST /task payload. `model_used` displayed in task history rows (line 205). New `model_used TEXT` column in `schedule_executions` table. |
 | 2026-02-21 | **PERF-001 Performance Optimization**: List endpoint now returns `ExecutionSummary` (excludes `response`, `error`, `tool_calls`, `execution_log`). Frontend loads details on-demand when user expands task row via `GET /api/agents/{name}/executions/{id}`. Added `taskDetailsCache` and `fetchTaskDetails()` function. New composite index `idx_executions_agent_started`. Data transfer reduced 50-100x. |
 | 2026-02-20 | **Make Repeatable enhancement**: Updated test step and Related Flows to note that schedules created via "Make Repeatable" now support per-schedule timeout and allowed_tools configuration. |
 | 2026-02-18 | **UI Redesign (UI-001)**: Reordered sections - Stats (49-69) now first, then Task Input (71-101), then Task History (103-315). Stats section more compact with smaller padding. Run button height now matches textarea. Updated line numbers throughout. |

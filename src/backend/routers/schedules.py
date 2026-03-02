@@ -83,6 +83,7 @@ class ScheduleUpdateRequest(BaseModel):
     description: Optional[str] = None
     timeout_seconds: Optional[int] = None
     allowed_tools: Optional[List[str]] = None
+    model: Optional[str] = None  # Model override (MODEL-001)
 
 
 class ScheduleResponse(BaseModel):
@@ -101,6 +102,7 @@ class ScheduleResponse(BaseModel):
     next_run_at: Optional[datetime]
     timeout_seconds: int = 900
     allowed_tools: Optional[List[str]] = None
+    model: Optional[str] = None  # Model override (MODEL-001)
 
     class Config:
         from_attributes = True
@@ -133,6 +135,8 @@ class ExecutionSummary(BaseModel):
     source_mcp_key_name: Optional[str] = None
     # Session resume (small) - EXEC-023
     claude_session_id: Optional[str] = None
+    # Model selection (small) - MODEL-001
+    model_used: Optional[str] = None
 
     # EXCLUDED (large fields - fetch via /executions/{id}):
     # - response: Optional[str]      # Full response text
@@ -174,6 +178,8 @@ class ExecutionResponse(BaseModel):
     source_mcp_key_name: Optional[str] = None
     # Session resume - EXEC-023
     claude_session_id: Optional[str] = None
+    # Model selection - MODEL-001
+    model_used: Optional[str] = None
 
     class Config:
         from_attributes = True

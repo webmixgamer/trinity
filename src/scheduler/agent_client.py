@@ -103,7 +103,8 @@ class AgentClient:
         message: str,
         timeout: float = None,
         execution_id: Optional[str] = None,
-        allowed_tools: Optional[list] = None
+        allowed_tools: Optional[list] = None,
+        model: Optional[str] = None
     ) -> AgentTaskResponse:
         """
         Execute a stateless task on the agent.
@@ -118,6 +119,7 @@ class AgentClient:
             timeout: Request timeout in seconds
             execution_id: Optional execution ID for process registry
             allowed_tools: Optional list of tool names to allow (None = all tools)
+            model: Optional model override (MODEL-001)
 
         Returns:
             AgentTaskResponse with parsed metrics
@@ -133,6 +135,8 @@ class AgentClient:
             payload["execution_id"] = execution_id
         if allowed_tools is not None:
             payload["allowed_tools"] = allowed_tools
+        if model:
+            payload["model"] = model
 
         response = await self._request(
             "POST",
