@@ -534,12 +534,16 @@ const {
   currentTime
 } = storeToRefs(networkStore)
 
-const selectedTimeRange = ref(24) // Default to 24 hours
+// Persisted state: Time range (default 24h, persisted to localStorage)
+const savedTimeRange = localStorage.getItem('trinity-dashboard-time-range')
+const selectedTimeRange = ref(savedTimeRange ? parseInt(savedTimeRange) : 24)
+
 const isHistoryPanelOpen = ref(false) // History panel starts closed
 
-// Quick Tag Filter state
+// Quick Tag Filter state (persisted to localStorage when not using System View)
 const availableTags = ref([])
-const selectedQuickTags = ref([])
+const savedQuickTags = localStorage.getItem('trinity-dashboard-quick-tags')
+const selectedQuickTags = ref(savedQuickTags ? JSON.parse(savedQuickTags) : [])
 const showTagDropdown = ref(false)
 
 // Computed: First 5 tags for inline display
@@ -552,6 +556,8 @@ watch(activeFilterTags, (tags) => {
   // Sync quick tags with system view selection
   if (activeViewId.value) {
     selectedQuickTags.value = [...tags]
+    // Clear persisted quick tags when using a system view
+    localStorage.removeItem('trinity-dashboard-quick-tags')
   }
 }, { immediate: true })
 
@@ -574,6 +580,18 @@ const stoppedCount = computed(() => {
 })
 
 onMounted(async () => {
+  // Initialize system views store (restores persisted view selection)
+  systemViewsStore.initialize()
+  await systemViewsStore.fetchViews()
+
+  // Apply persisted time range to network store
+  networkStore.timeRangeHours = selectedTimeRange.value
+
+  // Apply persisted quick tags filter (only if no system view is active)
+  if (!systemViewsStore.activeViewId && selectedQuickTags.value.length > 0) {
+    networkStore.setFilterTags([...selectedQuickTags.value])
+  }
+
   // Fetch agents first
   await networkStore.fetchAgents()
 
@@ -630,6 +648,8 @@ async function refreshAll() {
 
 async function onTimeRangeChange() {
   networkStore.timeRangeHours = selectedTimeRange.value
+  // Persist time range to localStorage
+  localStorage.setItem('trinity-dashboard-time-range', selectedTimeRange.value)
   await networkStore.fetchHistoricalCommunications()
 }
 
@@ -741,11 +761,15 @@ function toggleQuickTag(tag) {
   systemViewsStore.clearSelection()
   // Apply filter to network store
   networkStore.setFilterTags([...selectedQuickTags.value])
+  // Persist quick tags to localStorage
+  localStorage.setItem('trinity-dashboard-quick-tags', JSON.stringify(selectedQuickTags.value))
 }
 
 function clearQuickTags() {
   selectedQuickTags.value = []
   networkStore.setFilterTags([])
+  // Clear persisted quick tags
+  localStorage.removeItem('trinity-dashboard-quick-tags')
 }
 
 // Close dropdown when clicking outside

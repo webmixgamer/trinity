@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-02-27 - Dashboard Timeline Refresh Fix (REFRESH-001): Added WebSocket heartbeat (ping/pong every 30s), activity status change handler, and fallback activity polling (60s). See "WebSocket Heartbeat" and "Timeline Refresh" sections.
+> **Last Updated**: 2026-03-02 - Dashboard Filter Persistence (FILTER-001): Time range and quick tags now persist to localStorage. See "Dashboard Filter Persistence" section in [dashboard-timeline-view.md](dashboard-timeline-view.md).
+>
+> **Previous (2026-02-27)** - Dashboard Timeline Refresh Fix (REFRESH-001): Added WebSocket heartbeat (ping/pong every 30s), activity status change handler, and fallback activity polling (60s). See "WebSocket Heartbeat" and "Timeline Refresh" sections.
 >
 > **Previous (2026-02-22)** - Dashboard schedule stats display: AgentNode now shows "X/Y schedules" with "(paused)" indicator when autonomy disabled. Backend `/api/agents/execution-stats` extended with `schedules_total` and `schedules_enabled` fields.
 >
@@ -851,9 +853,17 @@ The Dashboard loads agents via `GET /api/agents` which uses `get_accessible_agen
 
 ### LocalStorage Persistence
 
-**Key**: `trinity-network-node-positions`
+All Dashboard state that persists across page reloads:
 
-**Schema**:
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `trinity-dashboard-time-range` | number | `24` | Time range in hours (1, 6, 24, 72, 168) |
+| `trinity-dashboard-quick-tags` | JSON array | `[]` | Selected quick tag filters |
+| `trinity-dashboard-view` | string | `timeline` | View mode: `graph` or `timeline` |
+| `trinity-show-tag-clouds` | boolean | `true` | Tag clouds visibility in graph view |
+| `trinity-network-node-positions` | JSON object | `{}` | Saved node positions (see below) |
+
+**Node Positions Schema**:
 ```json
 {
   "agent-name-1": { "x": 100, "y": 100 },
@@ -866,6 +876,8 @@ The Dashboard loads agents via `GET /api/agents` which uses `get_accessible_agen
 - **Save**: On node drag stop (`network.js:234-240`)
 - **Load**: On initial render (`network.js:242-250`)
 - **Clear**: On "Reset Layout" button (`network.js:252-255`)
+
+**System View Interaction**: Quick tags (`trinity-dashboard-quick-tags`) are cleared when a System View is selected, as the System View's tags take precedence. See [dashboard-timeline-view.md](dashboard-timeline-view.md) for details.
 
 ### Database Operations
 
@@ -1625,6 +1637,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-03-02 | **Dashboard Filter Persistence (FILTER-001)**: Time range and quick tags now persist to localStorage. Added `trinity-dashboard-time-range` (number) and `trinity-dashboard-quick-tags` (JSON array) keys. Quick tags are cleared when a System View is selected. Restored on mount via `Dashboard.vue:583-593`. Updated LocalStorage Persistence table with all persisted keys. See [dashboard-timeline-view.md](dashboard-timeline-view.md) for full details. |
 | 2026-02-27 | **Dashboard Timeline Refresh Fix (REFRESH-001)**: Added WebSocket heartbeat (ping/pong every 30s) to prevent silent disconnection after 60-120s idle. Backend: `main.py:362-376` ping handler. Frontend: `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` in network.js. Added `handleActivityStatusChange()` for `agent_activity` events. Added fallback activity polling (60s) via `startActivityRefresh()`, `stopActivityRefresh()`. Dashboard.vue lifecycle updated to start/stop activity refresh. |
 | 2026-02-22 | **Dashboard Schedule Stats Display**: Added schedule stats row to AgentNode.vue (lines 138-155) showing "X/Y schedules" with clock icon. Shows grayed "(paused)" text when autonomy is disabled. Backend `GET /api/agents/execution-stats` (agents.py:176-223) now includes `schedules_total` and `schedules_enabled` fields via new `db.get_all_agents_schedule_counts()` method (db/schedules.py:719-743). Frontend `fetchExecutionStats()` (network.js:747-784) extended to include schedule counts. |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (imported at AgentNode.vue:189). Running and Autonomy toggles positioned on same row (AgentNode.vue:57-86) for visual consistency with Agents page. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |

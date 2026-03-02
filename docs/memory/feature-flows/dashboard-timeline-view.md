@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-02-27 (Dashboard Timeline Refresh Fix - REFRESH-001)
+> **Last Updated**: 2026-03-02 (Dashboard Filter Persistence - FILTER-001)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`, `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
 
@@ -787,14 +787,124 @@ async def websocket_endpoint(websocket: WebSocket):
 | 3 | Wait 60 seconds | Timeline refreshes via polling |
 | 4 | Reconnect network | WebSocket reconnects, heartbeat resumes |
 
+## Dashboard Filter Persistence (FILTER-001 - Added 2026-03-02)
+
+Dashboard filters are now persisted to localStorage and restored on page reload.
+
+### Persisted State
+
+| Setting | localStorage Key | Default | Description |
+|---------|------------------|---------|-------------|
+| Time Range | `trinity-dashboard-time-range` | `24` (hours) | Dropdown: 1h, 6h, 24h, 3d, 7d |
+| Quick Tags | `trinity-dashboard-quick-tags` | `[]` (empty array) | Tag filter dropdown selection |
+| View Mode | `trinity-dashboard-view` | `timeline` | Graph or Timeline toggle |
+| Tag Clouds | `trinity-show-tag-clouds` | `true` | Clouds visibility toggle |
+| Node Positions | `trinity-network-node-positions` | `{}` (empty object) | Dragged node positions |
+
+**Note**: System View selection is persisted via `systemViewsStore.initialize()` and has its own localStorage key.
+
+### Implementation Details
+
+**File**: `src/frontend/src/views/Dashboard.vue`
+
+**Time Range Persistence** (Lines 537-539, 649-652):
+```javascript
+// Load on component definition
+const savedTimeRange = localStorage.getItem('trinity-dashboard-time-range')
+const selectedTimeRange = ref(savedTimeRange ? parseInt(savedTimeRange) : 24)
+
+// Save on change
+async function onTimeRangeChange() {
+  networkStore.timeRangeHours = selectedTimeRange.value
+  localStorage.setItem('trinity-dashboard-time-range', selectedTimeRange.value)
+  await networkStore.fetchHistoricalCommunications()
+}
+```
+
+**Quick Tags Persistence** (Lines 543-546, 557-561, 764-765, 771-772):
+```javascript
+// Load on component definition
+const savedQuickTags = localStorage.getItem('trinity-dashboard-quick-tags')
+const selectedQuickTags = ref(savedQuickTags ? JSON.parse(savedQuickTags) : [])
+
+// Save on toggle
+function toggleQuickTag(tag) {
+  // ... toggle logic ...
+  systemViewsStore.clearSelection()  // Clear system view when using quick tags
+  networkStore.setFilterTags([...selectedQuickTags.value])
+  localStorage.setItem('trinity-dashboard-quick-tags', JSON.stringify(selectedQuickTags.value))
+}
+
+// Clear persistence
+function clearQuickTags() {
+  selectedQuickTags.value = []
+  networkStore.setFilterTags([])
+  localStorage.removeItem('trinity-dashboard-quick-tags')
+}
+```
+
+**Restore on Mount** (Lines 583-593):
+```javascript
+onMounted(async () => {
+  systemViewsStore.initialize()  // Restores persisted system view selection
+  await systemViewsStore.fetchViews()
+
+  // Apply persisted time range to network store
+  networkStore.timeRangeHours = selectedTimeRange.value
+
+  // Apply persisted quick tags filter (only if no system view is active)
+  if (!systemViewsStore.activeViewId && selectedQuickTags.value.length > 0) {
+    networkStore.setFilterTags([...selectedQuickTags.value])
+  }
+  // ... rest of mount logic
+})
+```
+
+### System View vs Quick Tags Interaction
+
+When a System View is selected, quick tags are synced to match the view's tags but NOT persisted:
+
+```javascript
+// Dashboard.vue:552-561
+watch(activeFilterTags, (tags) => {
+  networkStore.setFilterTags(tags)
+  if (activeViewId.value) {
+    selectedQuickTags.value = [...tags]
+    // Clear persisted quick tags when using a system view
+    localStorage.removeItem('trinity-dashboard-quick-tags')
+  }
+}, { immediate: true })
+```
+
+This ensures:
+- Quick tags persist when user manually selects tags
+- Quick tags are cleared when user selects a System View
+- System View selection takes precedence over persisted quick tags on reload
+
+### Testing
+
+**Test Case: Filter Persistence**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Select "7d" from time range dropdown | Data reloads for 7 days |
+| 2 | Select 2 tags from quick tag dropdown | Graph filters to those tags |
+| 3 | Refresh the page (F5 or Cmd+R) | Time range shows "7d", tags still selected |
+| 4 | Check localStorage | `trinity-dashboard-time-range` = "168", `trinity-dashboard-quick-tags` = `["tag1","tag2"]` |
+
+**Test Case: System View Clears Quick Tags**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Select 2 tags from quick tag dropdown | Tags persisted to localStorage |
+| 2 | Select a System View from sidebar | Quick tags sync to view's tags |
+| 3 | Refresh the page | System View is restored, quick tags not persisted |
+| 4 | Check localStorage | `trinity-dashboard-quick-tags` key removed |
+
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-03-02 | **UX: Filter Persistence** - Dashboard now preserves filter state across page reload. Persisted: time range (`trinity-dashboard-time-range`), quick tags (`trinity-dashboard-quick-tags`). Previously persisted: view mode, tag clouds toggle, system view selection, node positions. Quick tags cleared when system view is selected. |
 | 2026-02-27 | **Fix (REFRESH-001)**: Dashboard Timeline Refresh - Added WebSocket ping/pong heartbeat (30s), activity status change handler for `agent_activity` events, and fallback activity polling (60s). Prevents timeline from going stale when idle. Backend: `main.py:362-376`. Frontend: `network.js` (4 new functions), `Dashboard.vue` (lifecycle hooks). |
-
-| Date | Change |
-|------|--------|
 | 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer (`db/schedules.py`); dedicated scheduler syncs every 60s (`scheduler/service.py`). Schedule markers appear immediately after schedule creation without container restart. See `scheduling.md` and `scheduler-service.md` for details. |
 | 2026-01-29 | **Feature (TSM-001)**: Timeline Schedule Markers - purple triangles at `next_run_at` positions for enabled schedules; hover tooltip with details; click navigates to Schedules tab. Data fetched via `fetchSchedules()` from `GET /api/ops/schedules?enabled_only=true` |
 | 2026-01-15 | **Critical Fix**: Timezone-aware timestamp handling - All timestamps now use UTC with 'Z' suffix. Frontend uses `parseUTC()` and `getTimestampMs()` utilities. Events display at correct positions regardless of server/user timezone difference. See `docs/TIMEZONE_HANDLING.md` |

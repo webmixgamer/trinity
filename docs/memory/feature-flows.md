@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-02 | FILTER-001 | Dashboard filter persistence (time range, quick tags) | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) |
 | 2026-03-01 | RENAME-001 | Agent rename via UI pencil icon, MCP tool, or REST API | [agent-rename.md](feature-flows/agent-rename.md) |
 | 2026-02-28 | GIT-002 | Git branch support for agent creation | [github-sync.md](feature-flows/github-sync.md) |
 | 2026-02-28 | CAPACITY-001 | Per-agent parallel execution capacity | [parallel-capacity.md](feature-flows/parallel-capacity.md) |

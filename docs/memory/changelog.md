@@ -1,3 +1,26 @@
+### 2026-03-02 10:30:00
+✨ **Feature: Dashboard Filter Persistence**
+
+Dashboard filters are now preserved across page reloads using localStorage.
+
+**Persisted State:**
+- Time range selector (1h/6h/24h/3d/7d) via `trinity-dashboard-time-range`
+- Quick tags filter via `trinity-dashboard-quick-tags` (JSON array)
+- System view selection (already persisted via `trinity-active-view`)
+- View mode Graph/Timeline (already persisted via `trinity-dashboard-view`)
+- Tag clouds toggle (already persisted via `trinity-show-tag-clouds`)
+
+**Implementation:**
+- Load persisted values on component initialization
+- Save to localStorage on user interaction (time range change, tag toggle)
+- Clear persisted quick tags when system view is selected (system views manage their own tags)
+- Proper initialization order in `onMounted()` to restore state before data fetch
+
+**Key Files:**
+- `src/frontend/src/views/Dashboard.vue:537-545,560-572,651-652,764-772`
+
+---
+
 ### 2026-03-01 14:00:00
 🐛 **Fix: Record Skipped Scheduled Executions (Issue #46)**
 
