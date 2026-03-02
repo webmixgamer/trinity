@@ -59,6 +59,27 @@
             <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
               Shared by {{ agent.owner }}
             </span>
+            <!-- Auth method badge -->
+            <span
+              v-if="authStatus"
+              class="px-2 py-0.5 text-xs font-medium rounded-full"
+              :class="authStatus.auth_mode === 'subscription'
+                ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+                : authStatus.auth_mode === 'api_key'
+                  ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                  : 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'"
+              :title="authStatus.auth_mode === 'subscription'
+                ? `Using subscription: ${authStatus.subscription_name}`
+                : authStatus.auth_mode === 'api_key'
+                  ? 'Using platform API key'
+                  : 'No auth configured'"
+            >
+              {{ authStatus.auth_mode === 'subscription'
+                ? authStatus.subscription_name
+                : authStatus.auth_mode === 'api_key'
+                  ? 'API Key'
+                  : 'No Auth' }}
+            </span>
           </div>
         </div>
         <!-- Right: Primary Actions -->
@@ -300,6 +321,10 @@ const props = defineProps({
   agent: {
     type: Object,
     required: true
+  },
+  authStatus: {
+    type: Object,
+    default: null
   },
   actionLoading: {
     type: Boolean,

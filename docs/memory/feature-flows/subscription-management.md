@@ -59,6 +59,7 @@ User's Machine                  Trinity Backend                    Agent Contain
 
 | UI Location | API Endpoint | Purpose |
 |-------------|--------------|---------|
+| **Agent Detail: AgentHeader badge** | `GET /api/subscriptions/agents/{agent_name}/auth` | Show auth method badge (subscription/API key/none) |
 | **Settings Page: Claude Subscriptions** | `GET /api/subscriptions` | List subscriptions (Settings UI) |
 | **Settings Page: Add Subscription** | `POST /api/subscriptions` | Register via file upload |
 | **Settings Page: Delete Button** | `DELETE /api/subscriptions/{id}` | Delete with cascade confirmation |
@@ -759,7 +760,79 @@ async def inject_subscription_on_start(agent_name: str) -> dict:
 
 ### Overview
 
-Determines how an agent is authenticated (subscription, API key, or not configured) by checking database assignments and optionally verifying with the running agent.
+Determines how an agent is authenticated (subscription, API key, or not configured) by checking database assignments and optionally verifying with the running agent. The auth status is displayed as a badge in the AgentHeader on the Agent Detail page.
+
+### Frontend: Auth Badge in AgentHeader
+
+The Agent Detail page loads the auth status on mount and displays it as a colored badge in Row 1 of the AgentHeader (after the "Shared by" badge).
+
+#### AgentDetail.vue - State & Loader (`src/frontend/src/views/AgentDetail.vue:304,692-703`)
+
+```javascript
+// State
+const authStatus = ref(null)
+
+// Load auth status (subscription vs API key)
+async function loadAuthStatus() {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.get(`/api/subscriptions/agents/${agent.value.name}/auth`, {
+      headers: authStore.authHeader
+    })
+    authStatus.value = response.data
+  } catch (err) {
+    // Non-critical - just don't show badge
+    authStatus.value = null
+  }
+}
+```
+
+Called on:
+- **Mount** (`onMounted`, line 806): `await loadAuthStatus()`
+- **Agent navigation** (`watch route.params.name`, line 726): `await loadAuthStatus()`
+- **Reset on navigation** (line 715): `authStatus.value = null` before loading new agent
+
+Passed to AgentHeader as prop (line 30): `:auth-status="authStatus"`
+
+#### AgentHeader.vue - Badge Display (`src/frontend/src/components/AgentHeader.vue:62-82`)
+
+The `authStatus` prop (`Object`, default `null`) renders a badge in the Row 1 badge area:
+
+| Auth Mode | Badge Color | Badge Text | Tooltip |
+|-----------|-------------|------------|---------|
+| `subscription` | Amber (`bg-amber-100`) | Subscription name (e.g., "eugene-max") | "Using subscription: {name}" |
+| `api_key` | Gray (`bg-gray-100`) | "API Key" | "Using platform API key" |
+| `not_configured` | Red (`bg-red-100`) | "No Auth" | "No auth configured" |
+
+```html
+<!-- Auth method badge -->
+<span
+  v-if="authStatus"
+  class="px-2 py-0.5 text-xs font-medium rounded-full"
+  :class="authStatus.auth_mode === 'subscription'
+    ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+    : authStatus.auth_mode === 'api_key'
+      ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+      : 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'"
+  :title="..."
+>
+  {{ authStatus.auth_mode === 'subscription'
+    ? authStatus.subscription_name
+    : authStatus.auth_mode === 'api_key'
+      ? 'API Key'
+      : 'No Auth' }}
+</span>
+```
+
+#### Row 1 Badge Order (AgentHeader.vue lines 38-83)
+
+The badges in Row 1 appear in this order:
+1. Status badge (running/stopped)
+2. Runtime badge (Claude/Gemini)
+3. Agent type
+4. System badge (if system agent)
+5. Shared badge (if shared)
+6. **Auth method badge** (subscription name / API Key / No Auth)
 
 ### Backend Endpoint (`src/backend/routers/subscriptions.py:262-283`)
 
@@ -1025,6 +1098,37 @@ Tools registered in `src/mcp-server/src/server.ts`.
 
 ---
 
+### UI Testing (Agent Detail - Auth Badge)
+
+#### Test: Auth Badge Shows Subscription Name
+1. Assign a subscription to an agent via MCP: `assign_subscription(agent_name: "my-agent", subscription_name: "eugene-max")`
+2. Navigate to Agent Detail page for "my-agent"
+3. Verify: Amber badge in header row shows "eugene-max"
+4. Verify: Hovering badge shows tooltip "Using subscription: eugene-max"
+
+#### Test: Auth Badge Shows API Key
+1. Ensure agent has platform API key enabled (default) and no subscription assigned
+2. Navigate to Agent Detail page
+3. Verify: Gray badge in header row shows "API Key"
+4. Verify: Hovering badge shows tooltip "Using platform API key"
+
+#### Test: Auth Badge Shows No Auth
+1. Clear subscription and disable platform API key for an agent
+2. Navigate to Agent Detail page
+3. Verify: Red badge in header row shows "No Auth"
+4. Verify: Hovering badge shows tooltip "No auth configured"
+
+#### Test: Auth Badge Resets on Agent Navigation
+1. Navigate to agent with subscription (amber badge visible)
+2. Click to navigate to a different agent (e.g., via sidebar)
+3. Verify: Badge briefly disappears (reset to null) then shows new agent's auth status
+
+#### Test: Auth Badge Handles API Errors Gracefully
+1. Navigate to agent detail for a non-existent or inaccessible agent name
+2. Verify: No badge shown (authStatus is null), no error displayed
+
+---
+
 ### UI Testing (Settings Page)
 
 #### Test: View Subscriptions List
@@ -1108,6 +1212,7 @@ Tools registered in `src/mcp-server/src/server.ts`.
 
 | Date | Changes |
 |------|---------|
+| 2026-03-02 | **Auth method badge in AgentHeader**: Added frontend documentation for Flow 4. AgentDetail.vue loads auth status on mount via `GET /api/subscriptions/agents/{agent_name}/auth` and passes it to AgentHeader as `authStatus` prop. AgentHeader displays colored badge in Row 1: amber (subscription name), gray (API Key), red (No Auth). Added Entry Point row for badge, test cases for badge display, and badge order documentation. |
 | 2026-03-02 | **Credential priority fix (Issue #57)**: Corrected Authentication Hierarchy -- `ANTHROPIC_API_KEY` takes precedence over OAuth, not vice versa. Assigning/clearing a subscription now restarts running agents (stop + start) to add/remove API key from container env. Updated Flow 2 with restart sequence, added Clear Subscription endpoint docs, updated `check_api_key_env_matches()` subscription-aware logic in Flow 3, updated `inject_subscription_to_agent()` max_retries from 3 to 5. |
 | 2026-02-23 | Added Frontend UI section for Settings page integration (lines 223-435, 872-883, 1268-1387) |
 | 2026-02-22 | Initial documentation for SUB-001 implementation |

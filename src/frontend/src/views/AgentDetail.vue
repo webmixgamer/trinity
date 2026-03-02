@@ -27,6 +27,7 @@
           <!-- Agent Header Component -->
           <AgentHeader
             :agent="agent"
+            :auth-status="authStatus"
             :action-loading="actionLoading"
             :autonomy-loading="autonomyLoading"
             :read-only-loading="readOnlyLoading"
@@ -298,6 +299,9 @@ const hasDashboard = ref(false)
 // Tags state (ORG-001)
 const agentTags = ref([])
 const allTags = ref([])
+
+// Auth status state
+const authStatus = ref(null)
 
 // Resume mode state (EXEC-023)
 const resumeSessionId = computed(() => route.query.resumeSessionId || null)
@@ -684,6 +688,20 @@ async function checkDashboardExists() {
   }
 }
 
+// Load auth status (subscription vs API key)
+async function loadAuthStatus() {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.get(`/api/subscriptions/agents/${agent.value.name}/auth`, {
+      headers: authStore.authHeader
+    })
+    authStatus.value = response.data
+  } catch (err) {
+    // Non-critical - just don't show badge
+    authStatus.value = null
+  }
+}
+
 // Watch for route changes (when navigating to a different agent)
 watch(() => route.params.name, async (newName, oldName) => {
   if (newName && newName !== oldName) {
@@ -693,6 +711,8 @@ watch(() => route.params.name, async (newName, oldName) => {
     hasDashboard.value = false
     // Reset tags for new agent
     agentTags.value = []
+    // Reset auth status for new agent
+    authStatus.value = null
     // Disconnect terminal from old agent
     if (terminalRef.value?.disconnect) {
       terminalRef.value.disconnect()
@@ -703,6 +723,7 @@ watch(() => route.params.name, async (newName, oldName) => {
     await loadApiKeySetting()
     await loadResourceLimits()
     await loadTags()
+    await loadAuthStatus()
     // Check if new agent has dashboard (only when running)
     if (agent.value?.status === 'running') {
       await checkDashboardExists()
@@ -781,6 +802,8 @@ onMounted(async () => {
   // Load tags (ORG-001)
   await loadTags()
   await loadAllTags()
+  // Load auth status
+  await loadAuthStatus()
   // Check for dashboard if agent is running
   if (agent.value?.status === 'running') {
     await checkDashboardExists()
