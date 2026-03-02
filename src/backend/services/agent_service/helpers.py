@@ -314,15 +314,23 @@ def check_api_key_env_matches(container, agent_name: str) -> bool:
     """
     Check if container's ANTHROPIC_API_KEY env var matches the current setting.
     Returns True if env matches config, False if recreation needed.
-    """
-    use_platform_key = db.get_use_platform_api_key(agent_name)
 
+    Claude Code prioritizes ANTHROPIC_API_KEY over OAuth credentials in
+    .credentials.json. When a subscription is assigned, the API key env var
+    must be removed so Claude Code uses the subscription's OAuth token.
+    """
     # Get current env vars from container
     env_list = container.attrs.get("Config", {}).get("Env", [])
     env_dict = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in env_list if "=" in e}
 
     has_api_key = "ANTHROPIC_API_KEY" in env_dict and env_dict["ANTHROPIC_API_KEY"]
 
+    # Subscription takes priority — if assigned, API key must NOT be present
+    has_subscription = db.get_agent_subscription_id(agent_name) is not None
+    if has_subscription:
+        return not has_api_key
+
+    use_platform_key = db.get_use_platform_api_key(agent_name)
     if use_platform_key:
         # Should have the platform key - check if it's current
         expected_key = get_anthropic_api_key()

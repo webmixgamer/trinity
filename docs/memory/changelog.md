@@ -1,3 +1,20 @@
+### 2026-03-02 19:00:00
+🐛 **Fix: Subscription Credentials Ignored — Claude Code Prioritizes API Key (SUB-001)**
+
+Claude Code prioritizes `ANTHROPIC_API_KEY` env var over OAuth credentials in `~/.claude/.credentials.json`. When both are present, Claude Code uses the API key and never falls back to OAuth, even if the key is invalid. Trinity was setting `ANTHROPIC_API_KEY` on all containers regardless of subscription assignment, causing all subscription-authenticated agents to fail.
+
+**Root Cause:** Incorrect assumption that subscription credentials take precedence over API key. The opposite is true — Claude Code checks `ANTHROPIC_API_KEY` first and fails immediately if invalid, never reaching the OAuth credentials.
+
+**Changes:**
+- `helpers.py` — `check_api_key_env_matches()` now checks for subscription assignment; if a subscription is assigned, `ANTHROPIC_API_KEY` must NOT be present in container env (triggers recreation if it is)
+- `lifecycle.py` — `recreate_container_with_updated_config()` removes `ANTHROPIC_API_KEY` when a subscription is assigned instead of always setting it based on `use_platform_api_key`
+- `routers/subscriptions.py` — Assigning a subscription now restarts the running agent to remove the API key from container env; clearing a subscription restarts to restore it
+- `subscription_service.py` — Fixed incorrect docstring claiming subscription takes precedence over API key
+
+**Impact:** All agents with subscriptions assigned will now correctly use OAuth credentials. Affects any agent where `use_platform_api_key=1` (default) AND a subscription is assigned.
+
+---
+
 ### 2026-03-02 17:00:00
 🐛 **Fix: Model Selector Dropdown Shows Only 1 Item (MODEL-001)**
 

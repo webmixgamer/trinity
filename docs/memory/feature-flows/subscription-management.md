@@ -12,14 +12,20 @@ As a Trinity platform admin, I want to register my Claude Max/Pro subscription c
 
 ## Key Concepts
 
-### Authentication Hierarchy
+### Authentication Hierarchy (Claude Code Credential Priority)
 
-When an agent authenticates with Claude Code, credentials are checked in this order:
+Claude Code checks credentials in this order (highest priority first):
 
-1. **Subscription OAuth** (`~/.claude/.credentials.json`) - Claude Max/Pro OAuth tokens
-2. **API Key** (`ANTHROPIC_API_KEY` env var) - Platform API key
+1. **API Key** (`ANTHROPIC_API_KEY` env var) - If present, Claude Code uses this and **ignores** OAuth
+2. **Subscription OAuth** (`~/.claude/.credentials.json`) - Claude Max/Pro OAuth tokens
 
-Subscription takes precedence if both exist. This allows cost-effective operation using Claude Max/Pro subscriptions instead of per-token API billing.
+**Critical**: Because `ANTHROPIC_API_KEY` takes precedence, Trinity must **remove** the env var from the container when a subscription is assigned. If both exist, Claude Code uses the API key and never falls back to OAuth, causing subscription-authenticated agents to fail.
+
+This mutual exclusion is enforced by:
+- `check_api_key_env_matches()` in `helpers.py` -- detects subscription + API key conflicts on agent start
+- `recreate_container_with_updated_config()` in `lifecycle.py` -- omits `ANTHROPIC_API_KEY` when subscription is assigned
+- `assign_subscription_to_agent` endpoint in `subscriptions.py` -- restarts running agents to remove the env var
+- `clear_agent_subscription` endpoint in `subscriptions.py` -- restarts running agents to restore the env var
 
 ### Data Model
 
@@ -458,40 +464,48 @@ Credentials are encrypted using the same AES-256-GCM encryption service as other
 
 ### Overview
 
-Admin assigns a registered subscription to an agent. If the agent is running, credentials are immediately injected (hot-injection).
+Admin assigns a registered subscription to an agent. If the agent is running, it is **restarted** (stop then start) so the container is recreated without `ANTHROPIC_API_KEY` in its environment. The start sequence then injects the subscription's OAuth credentials.
 
 ### Sequence Diagram
 
 ```
-Admin            MCP/Claude Code        Backend                   Agent
-  |                   |                    |                        |
-  | assign_           |                    |                        |
-  | subscription      |                    |                        |
-  |------------------>|                    |                        |
-  |                   | PUT /api/sub/      |                        |
-  |                   | agents/{name}      |                        |
-  |                   | ?sub_name=xxx      |                        |
-  |                   |------------------>|                        |
-  |                   |                    | Check access (owner)   |
-  |                   |                    | Get subscription ID    |
-  |                   |                    | Update agent_ownership |
-  |                   |                    |                        |
-  |                   |                    | If agent running:      |
-  |                   |                    | inject_subscription()  |
-  |                   |                    |----------------------->|
-  |                   |                    | POST /api/credentials/ |
-  |                   |                    | inject                 |
-  |                   |                    |                        |
-  |                   |                    | Write to ~/.claude/    |
-  |                   |                    | .credentials.json      |
-  |                   |                    |<-----------------------|
-  |                   |<-------------------|                        |
-  |<------------------|                    |                        |
-  | "Assigned +       |                    |                        |
-  |  injected"        |                    |                        |
+Admin            MCP/Claude Code        Backend                         Agent Container
+  |                   |                    |                                |
+  | assign_           |                    |                                |
+  | subscription      |                    |                                |
+  |------------------>|                    |                                |
+  |                   | PUT /api/sub/      |                                |
+  |                   | agents/{name}      |                                |
+  |                   | ?sub_name=xxx      |                                |
+  |                   |------------------>|                                |
+  |                   |                    | Check access (owner)           |
+  |                   |                    | Get subscription ID            |
+  |                   |                    | Update agent_ownership         |
+  |                   |                    |                                |
+  |                   |                    | If agent running:              |
+  |                   |                    |   container_stop()             |
+  |                   |                    |------------------------------->| STOP
+  |                   |                    |                                |
+  |                   |                    |   start_agent_internal()       |
+  |                   |                    |   check_api_key_env_matches()  |
+  |                   |                    |     -> sub assigned, API key   |
+  |                   |                    |        present -> MISMATCH     |
+  |                   |                    |   recreate_container()         |
+  |                   |                    |     -> omit ANTHROPIC_API_KEY  |
+  |                   |                    |------------------------------->| NEW CONTAINER
+  |                   |                    |   container_start()            |
+  |                   |                    |   inject_subscription_on_start |
+  |                   |                    |------------------------------->|
+  |                   |                    |   POST /api/credentials/inject |
+  |                   |                    |   .claude/.credentials.json    |
+  |                   |                    |<-------------------------------|
+  |                   |<-------------------|                                |
+  |<------------------|                    |                                |
+  | "Assigned +       |                    |                                |
+  |  restarted"       |                    |                                |
 ```
 
-### Backend Endpoint (`src/backend/routers/subscriptions.py:180-227`)
+### Backend Endpoint (`src/backend/routers/subscriptions.py:184-259`)
 
 ```python
 @router.put("/agents/{agent_name}")
@@ -514,28 +528,60 @@ async def assign_subscription_to_agent(
     # Update database
     db.assign_subscription_to_agent(agent_name, subscription.id)
 
-    # Hot-inject if agent is running
-    injection_result = None
-    try:
-        from services.subscription_service import inject_subscription_to_agent
-        injection_result = await inject_subscription_to_agent(agent_name, subscription.id)
-    except Exception as e:
-        logger.warning(f"Could not inject subscription to running agent: {e}")
+    # If agent is running, restart it so ANTHROPIC_API_KEY env var is
+    # removed from the container (Claude Code prioritizes API key over
+    # OAuth credentials -- the key must be absent for subscription to work).
+    container = get_agent_container(agent_name)
+    restart_result = None
+    injection_result = {"status": "skipped", "reason": "agent_not_running"}
+
+    if container and get_agent_status_from_container(container).status == "running":
+        try:
+            await container_stop(container)
+            start_result = await start_agent_internal(agent_name)
+            restart_result = "success"
+            injection_result = start_result.get("subscription_result", {})
+        except Exception as e:
+            restart_result = f"failed: {e}"
+            # Fall back to injection-only (may not work if API key still present)
+            injection_result = await inject_subscription_to_agent(agent_name, subscription.id)
 
     return {
         "success": True,
         "message": f"Subscription '{subscription_name}' assigned to agent '{agent_name}'",
-        "injection_result": injection_result
+        "agent_name": agent_name,
+        "subscription_name": subscription_name,
+        "injection_result": injection_result,
+        "restart_result": restart_result,
     }
 ```
 
-### Subscription Service (`src/backend/services/subscription_service.py:24-111`)
+### Clear Subscription Endpoint (`src/backend/routers/subscriptions.py:262-311`)
+
+When a subscription is cleared from a running agent, the agent is restarted so `ANTHROPIC_API_KEY` is restored to the container environment (if `use_platform_api_key` is enabled).
+
+```python
+@router.delete("/agents/{agent_name}")
+async def clear_agent_subscription(agent_name: str, ...):
+    """Clear subscription assignment from an agent."""
+    db.clear_agent_subscription(agent_name)
+
+    # Restart running agent so ANTHROPIC_API_KEY is restored
+    container = get_agent_container(agent_name)
+    if container and agent_status.status == "running":
+        await container_stop(container)
+        await start_agent_internal(agent_name)  # Recreates container with API key
+```
+
+Response includes `restart_result` field ("success" or "failed: {error}").
+
+### Subscription Service (`src/backend/services/subscription_service.py:27-114`)
 
 ```python
 async def inject_subscription_to_agent(
     agent_name: str,
     subscription_id: str,
-    max_retries: int = 3,
+    max_retries: int = 5,
     retry_delay: float = 2.0
 ) -> dict:
     """Inject subscription credentials into a running agent."""
@@ -580,42 +626,91 @@ async def inject_subscription_to_agent(
 
 ### Overview
 
-When an agent starts, the lifecycle service checks for an assigned subscription and injects credentials automatically.
+When an agent starts, the lifecycle service first checks whether the container needs recreation (including subscription-aware API key logic), then injects subscription credentials after the container is running.
+
+### Subscription-Aware Container Recreation
+
+Before starting, `check_api_key_env_matches()` (`helpers.py:313-341`) detects conflicts:
+
+```python
+def check_api_key_env_matches(container, agent_name: str) -> bool:
+    """
+    Claude Code prioritizes ANTHROPIC_API_KEY over OAuth credentials in
+    .credentials.json. When a subscription is assigned, the API key env var
+    must be removed so Claude Code uses the subscription's OAuth token.
+    """
+    has_api_key = "ANTHROPIC_API_KEY" in env_dict and env_dict["ANTHROPIC_API_KEY"]
+
+    # Subscription takes priority -- if assigned, API key must NOT be present
+    has_subscription = db.get_agent_subscription_id(agent_name) is not None
+    if has_subscription:
+        return not has_api_key  # True if key is absent (correct), False if present (needs recreation)
+
+    # ... normal API key check for non-subscription agents ...
+```
+
+If mismatch detected, `recreate_container_with_updated_config()` (`lifecycle.py:282-434`) handles the env var:
+
+```python
+has_subscription = db.get_agent_subscription_id(agent_name) is not None
+if has_subscription:
+    # Subscription assigned -- remove API key so Claude Code uses OAuth
+    env_vars.pop('ANTHROPIC_API_KEY', None)
+elif use_platform_key:
+    env_vars['ANTHROPIC_API_KEY'] = get_anthropic_api_key()
+else:
+    env_vars.pop('ANTHROPIC_API_KEY', None)
+```
 
 ### Sequence Diagram
 
 ```
-API Request        lifecycle.py                subscription_service.py        Agent
-     |                  |                              |                         |
-     | start_agent()    |                              |                         |
-     |----------------->|                              |                         |
-     |                  | container.start()            |                         |
-     |                  |----------------------------->|                         |
-     |                  |                              |                         |
-     |                  | inject_trinity_meta_prompt() |                         |
-     |                  |                              |                         |
-     |                  | inject_assigned_credentials()|                         |
-     |                  |                              |                         |
-     |                  | inject_subscription_on_start |                         |
-     |                  |---------------------------->|                         |
-     |                  |                              | db.get_agent_sub_id()   |
-     |                  |                              |                         |
-     |                  |                              | If subscription_id:     |
-     |                  |                              | inject_subscription()   |
-     |                  |                              |------------------------>|
-     |                  |                              | POST /api/credentials/  |
-     |                  |                              | inject                  |
-     |                  |                              |<------------------------|
-     |                  |<-----------------------------|                         |
-     |<-----------------|                              |                         |
+API Request        lifecycle.py                 helpers.py               subscription_service.py     Agent
+     |                  |                           |                           |                      |
+     | start_agent()    |                           |                           |                      |
+     |----------------->|                           |                           |                      |
+     |                  | check_api_key_env_matches |                           |                      |
+     |                  |-------------------------->|                           |                      |
+     |                  |   sub assigned + API key  |                           |                      |
+     |                  |   in env = MISMATCH       |                           |                      |
+     |                  |<--------------------------|                           |                      |
+     |                  |                           |                           |                      |
+     |                  | recreate_container()      |                           |                      |
+     |                  | (omit ANTHROPIC_API_KEY)   |                           |                      |
+     |                  |--------------------------------------------------------------------->| NEW
+     |                  |                           |                           |                      |
+     |                  | container.start()         |                           |                      |
+     |                  |--------------------------------------------------------------------->|
+     |                  |                           |                           |                      |
+     |                  | inject_subscription_on_start                          |                      |
+     |                  |------------------------------------------>|                          |
+     |                  |                           |               | inject_subscription()    |
+     |                  |                           |               |------------------------->|
+     |                  |                           |               | POST /api/credentials/   |
+     |                  |                           |               | inject                   |
+     |                  |                           |               |<-------------------------|
+     |                  |<------------------------------------------|                          |
+     |<-----------------|                           |                           |                      |
 ```
 
-### Lifecycle Integration (`src/backend/services/agent_service/lifecycle.py:239-243`)
+### Lifecycle Integration (`src/backend/services/agent_service/lifecycle.py:198-279`)
 
 ```python
 async def start_agent_internal(agent_name: str) -> dict:
     container = get_agent_container(agent_name)
-    # ... recreation check, container.start() ...
+
+    # Check if container needs recreation (includes subscription-aware API key check)
+    needs_recreation = (
+        not check_shared_folder_mounts_match(container, agent_name) or
+        not check_api_key_env_matches(container, agent_name) or  # <-- detects sub + API key conflict
+        not check_resource_limits_match(container, agent_name) or
+        not check_full_capabilities_match(container, agent_name)
+    )
+    if needs_recreation:
+        await recreate_container_with_updated_config(agent_name, container, "system")
+        container = get_agent_container(agent_name)
+
+    await container_start(container)
 
     # 1. Inject Trinity meta-prompt
     trinity_result = await inject_trinity_meta_prompt(agent_name)
@@ -638,7 +733,7 @@ async def start_agent_internal(agent_name: str) -> dict:
     }
 ```
 
-### Startup Injection (`src/backend/services/subscription_service.py:114-149`)
+### Startup Injection (`src/backend/services/subscription_service.py:117-152`)
 
 ```python
 async def inject_subscription_on_start(agent_name: str) -> dict:
@@ -1013,6 +1108,7 @@ Tools registered in `src/mcp-server/src/server.ts`.
 
 | Date | Changes |
 |------|---------|
+| 2026-03-02 | **Credential priority fix (Issue #57)**: Corrected Authentication Hierarchy -- `ANTHROPIC_API_KEY` takes precedence over OAuth, not vice versa. Assigning/clearing a subscription now restarts running agents (stop + start) to add/remove API key from container env. Updated Flow 2 with restart sequence, added Clear Subscription endpoint docs, updated `check_api_key_env_matches()` subscription-aware logic in Flow 3, updated `inject_subscription_to_agent()` max_retries from 3 to 5. |
 | 2026-02-23 | Added Frontend UI section for Settings page integration (lines 223-435, 872-883, 1268-1387) |
 | 2026-02-22 | Initial documentation for SUB-001 implementation |
 
@@ -1021,6 +1117,7 @@ Tools registered in `src/mcp-server/src/server.ts`.
 ## Related Flows
 
 - **Credential Injection** (`credential-injection.md`) - General credential system (CRED-002)
-- **Agent Lifecycle** (`agent-lifecycle.md`) - Subscription injection on agent start
+- **Agent Lifecycle** (`agent-lifecycle.md`) - Subscription injection on agent start, container recreation
+- **Subscription Credential Health** (`subscription-credential-health.md`) - Credential health monitoring and auto-remediation
 - **MCP Orchestration** (`mcp-orchestration.md`) - MCP tools including subscription management
 - **Settings Management** (`platform-settings.md`) - Platform API key configuration

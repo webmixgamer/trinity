@@ -4,8 +4,10 @@ Subscription credential management routes (SUB-001).
 Provides endpoints for registering Claude Max/Pro subscriptions
 and assigning them to agents.
 
-Key insight: Claude Code stores OAuth credentials in ~/.claude/.credentials.json.
-When both API key and subscription exist, subscription takes precedence.
+Key insight: Claude Code prioritizes ANTHROPIC_API_KEY env var over OAuth
+credentials in ~/.claude/.credentials.json. When assigning a subscription,
+we must remove ANTHROPIC_API_KEY from the container so Claude Code uses
+the subscription's OAuth token.
 """
 
 import logging
@@ -208,9 +210,35 @@ async def assign_subscription_to_agent(
             f"by {current_user.username}"
         )
 
-        # Try to inject credentials if agent is running
+        # If agent is running, restart it so ANTHROPIC_API_KEY env var is
+        # removed from the container (Claude Code prioritizes API key over
+        # OAuth credentials — the key must be absent for subscription to work).
+        from services.docker_service import get_agent_container, get_agent_status_from_container
+        from services.docker_utils import container_stop
         from services.subscription_service import inject_subscription_to_agent
-        injection_result = await inject_subscription_to_agent(agent_name, subscription.id)
+        from services.agent_service import start_agent_internal
+
+        container = get_agent_container(agent_name)
+        restart_result = None
+        injection_result = {"status": "skipped", "reason": "agent_not_running"}
+
+        if container:
+            agent_status = get_agent_status_from_container(container)
+            if agent_status.status == "running":
+                try:
+                    await container_stop(container)
+                    start_result = await start_agent_internal(agent_name)
+                    restart_result = "success"
+                    injection_result = start_result.get("subscription_result", {})
+                    logger.info(
+                        f"Restarted agent '{agent_name}' to apply subscription "
+                        f"(removed ANTHROPIC_API_KEY from container env)"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to restart agent '{agent_name}' for subscription: {e}")
+                    restart_result = f"failed: {e}"
+                    # Fall back to injection-only (may not work if API key still present)
+                    injection_result = await inject_subscription_to_agent(agent_name, subscription.id)
 
         if injection_result.get("status") == "failed":
             logger.error(
@@ -223,7 +251,8 @@ async def assign_subscription_to_agent(
             "message": f"Subscription '{subscription_name}' assigned to agent '{agent_name}'",
             "agent_name": agent_name,
             "subscription_name": subscription_name,
-            "injection_result": injection_result
+            "injection_result": injection_result,
+            "restart_result": restart_result,
         }
 
     except ValueError as e:
@@ -255,11 +284,30 @@ async def clear_agent_subscription(
             f"by {current_user.username}"
         )
 
+    # Restart running agent so ANTHROPIC_API_KEY is restored (if use_platform_api_key=1)
+    restart_result = None
+    from services.docker_service import get_agent_container, get_agent_status_from_container
+    from services.docker_utils import container_stop
+    from services.agent_service import start_agent_internal
+    container = get_agent_container(agent_name)
+    if container:
+        agent_status = get_agent_status_from_container(container)
+        if agent_status.status == "running":
+            try:
+                await container_stop(container)
+                await start_agent_internal(agent_name)
+                restart_result = "success"
+                logger.info(f"Restarted agent '{agent_name}' to restore API key after subscription removal")
+            except Exception as e:
+                logger.error(f"Failed to restart agent '{agent_name}' after subscription removal: {e}")
+                restart_result = f"failed: {e}"
+
     return {
         "success": True,
         "message": f"Subscription cleared from agent '{agent_name}'",
         "agent_name": agent_name,
-        "previous_subscription": current_sub.name if current_sub else None
+        "previous_subscription": current_sub.name if current_sub else None,
+        "restart_result": restart_result,
     }
 
 

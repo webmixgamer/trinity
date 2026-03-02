@@ -4,8 +4,11 @@ Subscription Service (SUB-001)
 Handles injection of Claude Max/Pro subscription credentials into agents
 and detection of authentication mode.
 
-Key insight: Claude Code stores OAuth credentials in ~/.claude/.credentials.json.
-When both API key and subscription exist, subscription takes precedence.
+IMPORTANT: Claude Code prioritizes ANTHROPIC_API_KEY env var over OAuth
+credentials in ~/.claude/.credentials.json. When a subscription is assigned,
+the ANTHROPIC_API_KEY must be removed from the container environment so
+Claude Code falls through to the OAuth token. The lifecycle and helpers
+modules handle this by omitting the env var during container creation/recreation.
 """
 
 import json

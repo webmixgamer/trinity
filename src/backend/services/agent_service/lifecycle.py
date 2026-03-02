@@ -294,13 +294,21 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
     env_vars = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in old_config.get("Env", []) if "=" in e}
     labels = old_config.get("Labels", {})
 
-    # Update ANTHROPIC_API_KEY based on current setting
+    # Update ANTHROPIC_API_KEY based on current setting.
+    # Claude Code prioritizes ANTHROPIC_API_KEY over OAuth credentials in
+    # .credentials.json, so when a subscription is assigned we must remove
+    # the API key to let Claude Code use the subscription's OAuth token.
+    has_subscription = db.get_agent_subscription_id(agent_name) is not None
     use_platform_key = db.get_use_platform_api_key(agent_name)
-    if use_platform_key:
-        # Use platform API key
+
+    if has_subscription:
+        # Subscription assigned — remove API key so Claude Code uses OAuth
+        env_vars.pop('ANTHROPIC_API_KEY', None)
+    elif use_platform_key:
+        # No subscription, use platform API key
         env_vars['ANTHROPIC_API_KEY'] = get_anthropic_api_key()
     else:
-        # Remove platform key - user will auth in terminal
+        # No subscription, no platform key — user will auth in terminal
         env_vars.pop('ANTHROPIC_API_KEY', None)
 
     # Get port from labels

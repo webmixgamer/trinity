@@ -22,6 +22,8 @@ Subscription credentials (`.claude/.credentials.json`) can go missing from agent
 
 Previously, credential loss was silent -- agents would fail tasks with cryptic authentication errors and no monitoring coverage existed for this case.
 
+**Related fix (Issue #57)**: A separate but related issue was that Claude Code prioritizes `ANTHROPIC_API_KEY` env var over OAuth credentials. Even when `.credentials.json` was present, if the container also had `ANTHROPIC_API_KEY` set, Claude Code would use the (potentially invalid) API key and never fall back to OAuth. This root cause is now prevented at the container level -- `check_api_key_env_matches()` and `recreate_container_with_updated_config()` ensure the API key is absent when a subscription is assigned. See [subscription-management.md](subscription-management.md) for details.
+
 ### Solution Architecture
 
 ```
@@ -467,6 +469,8 @@ db.create_health_check(
 
 3. **No frontend-specific credential health UI**: Credential status is surfaced through the existing monitoring page as a "degraded" status with the issue "Subscription credentials missing". There is no dedicated credential health indicator in the UI.
 
+4. **API key conflict now prevented at container level**: As of Issue #57, `ANTHROPIC_API_KEY` is removed from container env when a subscription is assigned. This eliminates the scenario where Claude Code ignores OAuth credentials in favor of an API key. The credential health monitoring still detects missing `.credentials.json` files, but the API key conflict case is no longer a failure mode.
+
 ---
 
 ## Testing
@@ -541,4 +545,5 @@ db.create_health_check(
 
 | Date | Changes |
 |------|---------|
+| 2026-03-02 | Updated for credential priority fix (Issue #57): Added note about API key conflict prevention at container level. Added limitation #4 about the resolved failure mode. |
 | 2026-03-02 | Initial documentation for subscription credential health monitoring (Issue #57) |
