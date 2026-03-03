@@ -1,3 +1,23 @@
+### 2026-03-03 19:00:00
+🔍 **Feature: Agents page filtering by name, status, and tags (Issue #55)**
+
+Added comprehensive filtering to the Agents page for quickly finding agents in large fleets:
+
+- **Name search**: Text input with search icon filters agents in real-time as you type
+- **Status filter**: Segmented button group (All / Running / Stopped) with indigo highlight
+- **Multi-tag filter**: Clickable tag chips showing all available tags with counts — select one or more to filter (OR logic across tags)
+- **Combined AND logic**: All three filters combine — name AND status AND tags must all match
+- **localStorage persistence**: All filter values persist across page reloads (name, status, selected tags)
+- **"Showing X of Y agents"** count when filters active
+- **Clear all filters** button to reset everything at once
+- **Smart empty state**: Shows "No matching agents" with clear filters button when filters exclude all agents
+- **Legacy migration**: Old single-tag filter (`trinity-agents-filter-tag`) auto-migrates to new multi-tag format
+
+**Key File:**
+- `src/frontend/src/views/Agents.vue` — Filter bar + script changes
+
+---
+
 ### 2026-03-03 18:00:00
 🎨 **UI: Two-row agent tiles, gap spacing, persistent tag filter**
 

@@ -1,8 +1,10 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03)
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03, Full Filtering 2026-03-03)
 > **Tested**: All features verified working
-> **Last Updated**: 2026-03-03 - Two-Row Tiles: Desktop rows split into top line (fixed grid: checkbox, dot, name+badges, activity, toggles, context, stats, arrow) and bottom line (tag pills, left-aligned under name). Tags column removed from grid. Gap-based spacing (`gap-1.5`) replaces border separators. Agent rows use `rounded-lg`. Tag filter persists in localStorage.
+> **Last Updated**: 2026-03-03 - Full Filtering (#55): Single-row header with title, search input, status segmented buttons (All/Running/Stopped), tag dropdown, sort dropdown, and Create Agent button all on one line. Filters combine with AND logic. Filter state persists in localStorage (`trinity-agents-filter-name`, `trinity-agents-filter-status`, `trinity-agents-filter-tag-dropdown`). Shows filtered count (X/Y) when filters active. Clear button. Smart empty state with "No matching agents" message. Legacy `trinity-agents-filter-tag` and `trinity-agents-filter-tags` auto-migrate to new dropdown format.
+>
+> **Previous (2026-03-03)** - Two-Row Tiles: Desktop rows split into top line (fixed grid: checkbox, dot, name+badges, activity, toggles, context, stats, arrow) and bottom line (tag pills, left-aligned under name). Tags column removed from grid. Gap-based spacing (`gap-1.5`) replaces border separators. Agent rows use `rounded-lg`. Tag filter persists in localStorage.
 >
 > **Previous (2026-03-03)** - Horizontal Row Tile Layout: Complete template rewrite from 3-column card grid to full-width horizontal rows with three responsive breakpoints (desktop/tablet/mobile). Column headers on desktop. System agent styling changed to purple left border accent. Chevron arrow replaces "View Details" button.
 >

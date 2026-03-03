@@ -15,24 +15,74 @@
           {{ notification.message }}
         </div>
 
-        <div class="flex justify-between items-center mb-4">
-          <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Agents</h1>
+        <!-- Header + Filter Bar (single row) -->
+        <div class="mb-3 flex items-center gap-3 flex-wrap">
+          <h1 class="text-3xl font-bold text-gray-900 dark:text-white mr-1">Agents</h1>
 
-          <div class="flex items-center space-x-4">
-            <!-- Tag Filter -->
-            <div v-if="availableTags.length > 0" class="flex items-center space-x-2">
-              <select
-                v-model="selectedFilterTag"
-                class="block rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2 px-3 bg-white dark:bg-gray-700 dark:text-gray-200 border"
-              >
-                <option value="">All Tags</option>
-                <option v-for="tagInfo in availableTags" :key="tagInfo.tag" :value="tagInfo.tag">
-                  #{{ tagInfo.tag }} ({{ tagInfo.count }})
-                </option>
-              </select>
-            </div>
+          <!-- Name search -->
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              v-model="filterName"
+              type="text"
+              placeholder="Search agents..."
+              class="block w-44 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2 pl-8 pr-3 bg-white dark:bg-gray-700 dark:text-gray-200 border"
+            />
+          </div>
 
-            <!-- Sort dropdown -->
+          <!-- Status filter -->
+          <div class="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+            <button
+              v-for="opt in statusOptions"
+              :key="opt.value"
+              @click="filterStatus = opt.value"
+              :class="[
+                'px-3 py-2 font-medium transition-colors',
+                filterStatus === opt.value
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+              ]"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+
+          <!-- Tag filter dropdown -->
+          <select
+            v-if="availableTags.length > 0"
+            v-model="selectedFilterTagDropdown"
+            class="block rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2 px-3 bg-white dark:bg-gray-700 dark:text-gray-200 border"
+          >
+            <option value="">All Tags</option>
+            <option v-for="tagInfo in availableTags" :key="tagInfo.tag" :value="tagInfo.tag">
+              #{{ tagInfo.tag }} ({{ tagInfo.count }})
+            </option>
+          </select>
+
+          <!-- Clear all filters -->
+          <button
+            v-if="hasActiveFilters"
+            @click="clearAllFilters"
+            class="px-2.5 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center gap-1"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear
+          </button>
+
+          <!-- Agent count -->
+          <span
+            v-if="hasActiveFilters"
+            class="text-xs text-gray-500 dark:text-gray-400"
+          >
+            {{ displayAgents.length }}/{{ totalAgentCount }}
+          </span>
+
+          <!-- Right side: sort + create -->
+          <div class="flex items-center gap-3 ml-auto">
             <select
               v-model="agentsStore.sortBy"
               class="block rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm py-2 px-3 bg-white dark:bg-gray-700 dark:text-gray-200 border"
@@ -47,7 +97,7 @@
 
             <button
               @click="showCreateModal = true"
-              class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded whitespace-nowrap"
             >
               Create Agent
             </button>
@@ -537,16 +587,30 @@
         <!-- Empty state -->
         <div v-if="displayAgents.length === 0" class="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow">
           <ServerIcon class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
-          <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No agents</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new agent.</p>
-          <div class="mt-6">
-            <button
-              @click="showCreateModal = true"
-              class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-            >
-              Create Agent
-            </button>
-          </div>
+          <template v-if="hasActiveFilters">
+            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No matching agents</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try adjusting your filters.</p>
+            <div class="mt-4">
+              <button
+                @click="clearAllFilters"
+                class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                Clear all filters
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No agents</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new agent.</p>
+            <div class="mt-6">
+              <button
+                @click="showCreateModal = true"
+                class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Create Agent
+              </button>
+            </div>
+          </template>
         </div>
 
         <!-- Create Agent Modal -->
@@ -578,33 +642,93 @@ const readOnlyLoading = ref(null)
 const agentReadOnlyStates = ref({}) // Map of agent_name -> boolean
 const isAdmin = ref(false)
 
+// Filter state
+const filterName = ref(localStorage.getItem('trinity-agents-filter-name') || '')
+const filterStatus = ref(localStorage.getItem('trinity-agents-filter-status') || 'all')
+const statusOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'running', label: 'Running' },
+  { value: 'stopped', label: 'Stopped' }
+]
+
 // Tag-related state
 const availableTags = ref([])
 const agentTags = ref({}) // Map of agent_name -> tags[]
-const selectedFilterTag = ref(localStorage.getItem('trinity-agents-filter-tag') || '')
+// Migrate old formats to single-tag dropdown
+const legacyTag = localStorage.getItem('trinity-agents-filter-tag')
+const legacyTags = localStorage.getItem('trinity-agents-filter-tags')
+const initialFilterTag = legacyTag || (legacyTags ? JSON.parse(legacyTags)[0] || '' : '') || localStorage.getItem('trinity-agents-filter-tag-dropdown') || ''
+if (legacyTag) localStorage.removeItem('trinity-agents-filter-tag')
+if (legacyTags) localStorage.removeItem('trinity-agents-filter-tags')
+const selectedFilterTagDropdown = ref(initialFilterTag)
 const selectedAgents = ref([])
 const showBulkAddTag = ref(false)
 const showBulkRemoveTag = ref(false)
 const bulkTagInput = ref('')
 
-// Persist tag filter selection across reloads
-watch(selectedFilterTag, (val) => {
+// Persist filter state across reloads
+watch(filterName, (val) => {
   if (val) {
-    localStorage.setItem('trinity-agents-filter-tag', val)
+    localStorage.setItem('trinity-agents-filter-name', val)
   } else {
-    localStorage.removeItem('trinity-agents-filter-tag')
+    localStorage.removeItem('trinity-agents-filter-name')
   }
 })
 
-// Computed to show system agent for admins, with optional tag filtering
+watch(filterStatus, (val) => {
+  if (val && val !== 'all') {
+    localStorage.setItem('trinity-agents-filter-status', val)
+  } else {
+    localStorage.removeItem('trinity-agents-filter-status')
+  }
+})
+
+watch(selectedFilterTagDropdown, (val) => {
+  if (val) {
+    localStorage.setItem('trinity-agents-filter-tag-dropdown', val)
+  } else {
+    localStorage.removeItem('trinity-agents-filter-tag-dropdown')
+  }
+})
+
+const hasActiveFilters = computed(() => {
+  return filterName.value.trim() !== '' || filterStatus.value !== 'all' || selectedFilterTagDropdown.value !== ''
+})
+
+function clearAllFilters() {
+  filterName.value = ''
+  filterStatus.value = 'all'
+  selectedFilterTagDropdown.value = ''
+}
+
+// Total agent count before filtering (for "Showing X of Y")
+const totalAgentCount = computed(() => {
+  const agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
+  return agents.length
+})
+
+// Computed to show system agent for admins, with combined filtering (AND logic)
 const displayAgents = computed(() => {
   let agents = isAdmin.value ? agentsStore.sortedAgentsWithSystem : agentsStore.sortedAgents
 
-  // Apply tag filter if selected
-  if (selectedFilterTag.value) {
+  // Filter by name
+  const nameQuery = filterName.value.trim().toLowerCase()
+  if (nameQuery) {
+    agents = agents.filter(agent => agent.name.toLowerCase().includes(nameQuery))
+  }
+
+  // Filter by status
+  if (filterStatus.value === 'running') {
+    agents = agents.filter(agent => agent.status === 'running')
+  } else if (filterStatus.value === 'stopped') {
+    agents = agents.filter(agent => agent.status !== 'running')
+  }
+
+  // Filter by tag (single tag dropdown)
+  if (selectedFilterTagDropdown.value) {
     agents = agents.filter(agent => {
       const tags = agentTags.value[agent.name] || []
-      return tags.includes(selectedFilterTag.value)
+      return tags.includes(selectedFilterTagDropdown.value)
     })
   }
 

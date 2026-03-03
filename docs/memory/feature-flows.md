@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-03 | #55 | Agents page filtering by name, status, and tags | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) |
 | 2026-03-03 | #54 | Two-row agent tiles, gap spacing, persistent tag filter | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) |
 | 2026-03-03 | #51 | Per-agent Files tab restored with two-panel file manager | [file-browser.md](feature-flows/file-browser.md) |
 | 2026-03-03 | #52 | Templates restored to main NavBar | NavBar component change (no new flow) |
@@ -181,7 +182,7 @@
 | Template Processing | [template-processing.md](feature-flows/template-processing.md) | GitHub and local template handling |
 | Templates Page | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing |
 | API Keys Page | [api-keys-page.md](feature-flows/api-keys-page.md) | `/api-keys` page UI flow |
-| Agents Page UI | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Horizontal row tiles with responsive breakpoints |
+| Agents Page UI | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Horizontal row tiles with filtering and responsive breakpoints |
 | Alerts Page | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts |
 
 ### Chat & Sessions
