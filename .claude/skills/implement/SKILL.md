@@ -301,6 +301,7 @@ Output final status:
 - [ ] All tests passing (or max fix attempts reached)
 - [ ] Feature flows synced via `/sync-feature-flows`
 - [ ] Documentation updated via `/update-docs`
+- [ ] GitHub issue updated (closed/commented) if issue number was provided
 - [ ] Completion report generated
 
 ## Error Recovery

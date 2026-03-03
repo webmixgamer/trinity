@@ -1,3 +1,24 @@
+### 2026-03-03 15:00:00
+🔧 **UI: Add Templates to main navigation & streamline Agent Detail layout (Issues #52, #53)**
+
+Two UI improvements for discoverability and screen real estate:
+
+**Issue #52 — Templates in main nav:**
+- Added Templates as top-level NavBar item (between Agents and Health)
+- Templates no longer highlights the Agents nav item
+
+**Issue #53 — Agent Detail layout decluttering:**
+- Removed secondary navigation bar (AgentSubNav) from Agent Detail page
+- Reduced vertical padding (py-6 → py-2, inner py-6 → py-2) to move content closer to top nav
+- Widened agent panel from max-w-7xl (1280px) to max-w-[1400px] (~10% wider)
+- Other pages (Agents, Files, Templates) retain their AgentSubNav
+
+**Key Files:**
+- `src/frontend/src/components/NavBar.vue` — Added Templates link, updated isAgentSection
+- `src/frontend/src/views/AgentDetail.vue` — Removed AgentSubNav, adjusted layout
+
+---
+
 ### 2026-03-03 13:04:00
 🔧 **UI: Hide Process tab from main navigation (Issue #50)**
 

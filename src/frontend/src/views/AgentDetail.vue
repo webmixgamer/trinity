@@ -1,10 +1,9 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
-    <AgentSubNav />
 
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 py-6 sm:px-0">
+    <main class="max-w-[1400px] mx-auto py-2 sm:px-6 lg:px-8">
+      <div class="px-4 py-2 sm:px-0">
         <div v-if="loading" class="text-center py-8">
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
         </div>
@@ -239,7 +238,6 @@ import axios from 'axios'
 import { useAgentsStore } from '../stores/agents'
 import { useAuthStore } from '../stores/auth'
 import NavBar from '../components/NavBar.vue'
-import AgentSubNav from '../components/AgentSubNav.vue'
 
 // Component name for KeepAlive matching
 defineOptions({
