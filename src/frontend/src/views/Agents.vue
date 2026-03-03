@@ -166,187 +166,370 @@
           </div>
         </div>
 
-        <!-- Agents Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Agents List -->
+        <div class="flex flex-col gap-1.5">
+          <!-- Column Header (lg+ only) -->
+          <div class="hidden lg:grid lg:grid-cols-[auto_auto_1fr_auto_auto_160px_auto_auto] lg:gap-x-4 items-center px-4 py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            <div class="w-4"></div>
+            <div class="w-3"></div>
+            <div>Name</div>
+            <div>Status</div>
+            <div>Controls</div>
+            <div>Context</div>
+            <div>Stats</div>
+            <div class="w-6"></div>
+          </div>
+
+          <!-- Agent Rows -->
           <div
             v-for="agent in displayAgents"
             :key="agent.name"
             :class="[
-              'bg-white dark:bg-gray-800 rounded-xl border shadow-lg p-5',
-              'transition-all duration-200 hover:shadow-xl',
-              'flex flex-col relative',
+              'bg-white dark:bg-gray-800 rounded-lg',
+              'transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-750',
               agent.is_system
-                ? 'ring-2 ring-purple-500/50 border-purple-300 dark:border-purple-700'
-                : agent.status === 'running'
-                  ? 'border-gray-200/60 dark:border-gray-700/50'
-                  : 'border-gray-200 dark:border-gray-700 opacity-75'
+                ? 'border-l-3 border-l-purple-500'
+                : '',
+              agent.status !== 'running' && !agent.is_system
+                ? 'opacity-75'
+                : ''
             ]"
           >
-            <!-- Header: Checkbox, Name, Runtime Badge, Status Dot -->
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center flex-1 mr-2 min-w-0">
-                <!-- Selection checkbox -->
+            <!-- Desktop layout (lg+) -->
+            <div class="hidden lg:flex lg:flex-col px-4 py-3">
+              <!-- Top row: fixed layout data -->
+              <div class="grid grid-cols-[auto_auto_1fr_auto_auto_160px_auto_auto] gap-x-4 items-center">
+                <!-- Checkbox -->
                 <input
                   type="checkbox"
                   :checked="selectedAgents.includes(agent.name)"
                   @change="toggleSelection(agent.name)"
-                  class="w-4 h-4 mr-2 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                  class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
                 />
+
+                <!-- Status dot -->
+                <div
+                  :class="[
+                    'w-2.5 h-2.5 rounded-full flex-shrink-0',
+                    isActive(agent.name) ? 'active-pulse' : ''
+                  ]"
+                  :style="{ backgroundColor: getStatusDotColor(agent.name) }"
+                ></div>
+
+                <!-- Name + badges -->
+                <div class="flex items-center min-w-0 gap-2">
+                  <router-link
+                    :to="`/agents/${agent.name}`"
+                    class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400"
+                    :title="agent.name"
+                  >
+                    {{ agent.name }}
+                  </router-link>
+                  <span
+                    v-if="agent.is_system"
+                    class="px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
+                  >
+                    SYSTEM
+                  </span>
+                  <RuntimeBadge :runtime="agent.runtime" :show-label="false" class="flex-shrink-0" />
+                  <span
+                    v-if="agent.is_shared"
+                    class="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded flex-shrink-0"
+                    :title="'Shared by ' + agent.owner"
+                  >
+                    Shared
+                  </span>
+                </div>
+
+                <!-- Activity label -->
+                <div
+                  :class="[
+                    'text-xs font-medium capitalize whitespace-nowrap',
+                    getActivityLabelClass(agent.name)
+                  ]"
+                >
+                  {{ getActivityState(agent.name) }}
+                </div>
+
+                <!-- Toggles -->
+                <div class="flex items-center gap-2">
+                  <RunningStateToggle
+                    :model-value="agent.status === 'running'"
+                    :loading="actionInProgress === agent.name"
+                    size="sm"
+                    @toggle="toggleAgentRunning(agent)"
+                  />
+                  <ReadOnlyToggle
+                    v-if="!agent.is_system && !agent.is_shared"
+                    :model-value="getAgentReadOnlyState(agent.name)"
+                    :loading="readOnlyLoading === agent.name"
+                    size="sm"
+                    @toggle="handleReadOnlyToggle(agent)"
+                  />
+                  <AutonomyToggle
+                    v-if="!agent.is_system"
+                    :model-value="agent.autonomy_enabled"
+                    :loading="autonomyLoading === agent.name"
+                    size="sm"
+                    @toggle="handleAutonomyToggle(agent)"
+                  />
+                </div>
+
+                <!-- Context bar -->
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all duration-500"
+                      :class="getProgressBarColor(agent.name)"
+                      :style="{ width: getContextPercent(agent.name) + '%' }"
+                    ></div>
+                  </div>
+                  <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 w-8 text-right tabular-nums">{{ getContextPercent(agent.name) }}%</span>
+                </div>
+
+                <!-- Stats -->
+                <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-1.5 whitespace-nowrap">
+                  <template v-if="hasExecutionStats(agent.name)">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }}</span>
+                    <span class="text-gray-300 dark:text-gray-600">·</span>
+                    <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
+                    <template v-if="getExecutionStats(agent.name).totalCost > 0">
+                      <span class="text-gray-300 dark:text-gray-600">·</span>
+                      <span class="font-medium text-gray-700 dark:text-gray-300">${{ getExecutionStats(agent.name).totalCost.toFixed(2) }}</span>
+                    </template>
+                    <template v-if="getLastExecutionDisplay(agent.name)">
+                      <span class="text-gray-300 dark:text-gray-600">·</span>
+                      <span>{{ getLastExecutionDisplay(agent.name) }}</span>
+                    </template>
+                    <template v-if="!agent.is_system && hasSchedules(agent.name)">
+                      <span class="text-gray-300 dark:text-gray-600">·</span>
+                      <svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span :class="agent.autonomy_enabled ? '' : 'line-through'">{{ getSchedulesEnabled(agent.name) }}/{{ getSchedulesTotal(agent.name) }}</span>
+                    </template>
+                  </template>
+                  <span v-else class="text-gray-400 dark:text-gray-500">--</span>
+                </div>
+
+                <!-- Arrow link -->
                 <router-link
                   :to="`/agents/${agent.name}`"
-                  class="text-gray-900 dark:text-white font-bold text-base truncate hover:text-indigo-600 dark:hover:text-indigo-400"
+                  class="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </router-link>
+              </div>
+
+              <!-- Bottom row: tags (always rendered for uniform height) -->
+              <div class="flex items-center gap-1 pl-[3.625rem] min-h-[1.375rem] pt-1">
+                <template v-if="getAgentTags(agent.name).length > 0">
+                  <span
+                    v-for="tag in getAgentTags(agent.name).slice(0, 3)"
+                    :key="tag"
+                    class="px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
+                    :title="'#' + tag"
+                  >
+                    #{{ tag }}
+                  </span>
+                  <span
+                    v-if="getAgentTags(agent.name).length > 3"
+                    class="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap"
+                  >
+                    +{{ getAgentTags(agent.name).length - 3 }}
+                  </span>
+                </template>
+              </div>
+            </div>
+
+            <!-- Tablet layout (md, < lg) -->
+            <div class="hidden md:flex md:flex-col lg:hidden px-4 py-3 gap-2">
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  :checked="selectedAgents.includes(agent.name)"
+                  @change="toggleSelection(agent.name)"
+                  class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                />
+                <div
+                  :class="[
+                    'w-2.5 h-2.5 rounded-full flex-shrink-0',
+                    isActive(agent.name) ? 'active-pulse' : ''
+                  ]"
+                  :style="{ backgroundColor: getStatusDotColor(agent.name) }"
+                ></div>
+                <router-link
+                  :to="`/agents/${agent.name}`"
+                  class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400"
                   :title="agent.name"
                 >
                   {{ agent.name }}
                 </router-link>
-                <!-- SYSTEM badge -->
                 <span
                   v-if="agent.is_system"
-                  class="ml-2 px-1.5 py-0.5 text-xs font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
+                  class="px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
                 >
                   SYSTEM
                 </span>
-                <!-- Runtime badge (Claude/Gemini) -->
-                <RuntimeBadge :runtime="agent.runtime" :show-label="false" class="ml-2 flex-shrink-0" />
-                <!-- Shared badge -->
+                <RuntimeBadge :runtime="agent.runtime" :show-label="false" class="flex-shrink-0" />
                 <span
                   v-if="agent.is_shared"
-                  class="ml-2 px-1.5 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded flex-shrink-0"
+                  class="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded flex-shrink-0"
                   :title="'Shared by ' + agent.owner"
                 >
                   Shared
                 </span>
+                <div class="ml-auto flex items-center gap-3">
+                  <div
+                    :class="[
+                      'text-xs font-medium capitalize',
+                      getActivityLabelClass(agent.name)
+                    ]"
+                  >
+                    {{ getActivityState(agent.name) }}
+                  </div>
+                  <router-link
+                    :to="`/agents/${agent.name}`"
+                    class="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </router-link>
+                </div>
               </div>
-              <!-- Status indicator dot -->
-              <div
-                :class="[
-                  'w-3 h-3 rounded-full flex-shrink-0',
-                  isActive(agent.name) ? 'active-pulse' : ''
-                ]"
-                :style="{ backgroundColor: getStatusDotColor(agent.name) }"
-              ></div>
-            </div>
-
-            <!-- Activity state -->
-            <div
-              :class="[
-                'text-xs font-medium capitalize mb-2',
-                getActivityLabelClass(agent.name)
-              ]"
-            >
-              {{ getActivityState(agent.name) }}
-            </div>
-
-            <!-- Running, Read-Only, and Autonomy toggles (same row) -->
-            <div class="flex items-center justify-between mb-2">
-              <RunningStateToggle
-                :model-value="agent.status === 'running'"
-                :loading="actionInProgress === agent.name"
-                size="sm"
-                @toggle="toggleAgentRunning(agent)"
-              />
-              <ReadOnlyToggle
-                v-if="!agent.is_system && !agent.is_shared"
-                :model-value="getAgentReadOnlyState(agent.name)"
-                :loading="readOnlyLoading === agent.name"
-                size="sm"
-                @toggle="handleReadOnlyToggle(agent)"
-              />
-              <AutonomyToggle
-                v-if="!agent.is_system"
-                :model-value="agent.autonomy_enabled"
-                :loading="autonomyLoading === agent.name"
-                size="sm"
-                @toggle="handleAutonomyToggle(agent)"
-              />
-            </div>
-
-            <!-- Type display -->
-            <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Type: {{ agent.type }}
-            </div>
-
-            <!-- Tags display (fixed height for consistent layout) -->
-            <div class="h-6 mb-2 overflow-hidden">
-              <div v-if="getAgentTags(agent.name).length > 0" class="flex flex-wrap gap-1">
+              <div class="flex items-center gap-3 pl-[3.25rem]">
+                <div class="flex items-center gap-2">
+                  <RunningStateToggle
+                    :model-value="agent.status === 'running'"
+                    :loading="actionInProgress === agent.name"
+                    size="sm"
+                    @toggle="toggleAgentRunning(agent)"
+                  />
+                  <ReadOnlyToggle
+                    v-if="!agent.is_system && !agent.is_shared"
+                    :model-value="getAgentReadOnlyState(agent.name)"
+                    :loading="readOnlyLoading === agent.name"
+                    size="sm"
+                    @toggle="handleReadOnlyToggle(agent)"
+                  />
+                  <AutonomyToggle
+                    v-if="!agent.is_system"
+                    :model-value="agent.autonomy_enabled"
+                    :loading="autonomyLoading === agent.name"
+                    size="sm"
+                    @toggle="handleAutonomyToggle(agent)"
+                  />
+                </div>
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                  <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all duration-500"
+                      :class="getProgressBarColor(agent.name)"
+                      :style="{ width: getContextPercent(agent.name) + '%' }"
+                    ></div>
+                  </div>
+                  <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{{ getContextPercent(agent.name) }}%</span>
+                </div>
+                <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-1.5 whitespace-nowrap">
+                  <template v-if="hasExecutionStats(agent.name)">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }}</span>
+                    <span class="text-gray-300 dark:text-gray-600">·</span>
+                    <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
+                    <template v-if="getLastExecutionDisplay(agent.name)">
+                      <span class="text-gray-300 dark:text-gray-600">·</span>
+                      <span>{{ getLastExecutionDisplay(agent.name) }}</span>
+                    </template>
+                  </template>
+                  <span v-else class="text-gray-400 dark:text-gray-500">--</span>
+                </div>
+              </div>
+              <!-- Tags row (tablet) -->
+              <div v-if="getAgentTags(agent.name).length > 0" class="flex items-center gap-1 pl-[3.25rem]">
                 <span
                   v-for="tag in getAgentTags(agent.name).slice(0, 3)"
                   :key="tag"
-                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
+                  class="px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 truncate max-w-20"
                   :title="'#' + tag"
                 >
                   #{{ tag }}
                 </span>
                 <span
                   v-if="getAgentTags(agent.name).length > 3"
-                  class="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500"
+                  class="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap"
                 >
                   +{{ getAgentTags(agent.name).length - 3 }}
                 </span>
               </div>
             </div>
 
-            <!-- Context progress bar -->
-            <div class="mb-3">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-gray-500 dark:text-gray-400">Context</span>
-                <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ getContextPercent(agent.name) }}%</span>
-              </div>
-              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+            <!-- Mobile layout (< md) -->
+            <div class="flex flex-col md:hidden px-4 py-3 gap-2">
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  :checked="selectedAgents.includes(agent.name)"
+                  @change="toggleSelection(agent.name)"
+                  class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                />
                 <div
-                  class="h-full rounded-full transition-all duration-500"
-                  :class="getProgressBarColor(agent.name)"
-                  :style="{ width: getContextPercent(agent.name) + '%' }"
+                  :class="[
+                    'w-2.5 h-2.5 rounded-full flex-shrink-0',
+                    isActive(agent.name) ? 'active-pulse' : ''
+                  ]"
+                  :style="{ backgroundColor: getStatusDotColor(agent.name) }"
                 ></div>
+                <router-link
+                  :to="`/agents/${agent.name}`"
+                  class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 flex-1 min-w-0"
+                  :title="agent.name"
+                >
+                  {{ agent.name }}
+                </router-link>
+                <span
+                  v-if="agent.is_system"
+                  class="px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 rounded flex-shrink-0"
+                >
+                  SYS
+                </span>
+                <RuntimeBadge :runtime="agent.runtime" :show-label="false" class="flex-shrink-0" />
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <RunningStateToggle
+                    :model-value="agent.status === 'running'"
+                    :loading="actionInProgress === agent.name"
+                    size="sm"
+                    @toggle="toggleAgentRunning(agent)"
+                  />
+                  <router-link
+                    :to="`/agents/${agent.name}`"
+                    class="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </router-link>
+                </div>
               </div>
-            </div>
-
-            <!-- Execution Stats Row -->
-            <div v-if="hasExecutionStats(agent.name)" class="flex items-center flex-wrap text-xs text-gray-500 dark:text-gray-400 gap-x-1.5 gap-y-0.5 mb-3">
-              <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }}</span>
-              <span>tasks</span>
-              <span class="text-gray-300 dark:text-gray-600">·</span>
-              <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
-              <template v-if="getExecutionStats(agent.name).totalCost > 0">
+              <div class="flex items-center gap-3 pl-[3.25rem] text-[11px] text-gray-500 dark:text-gray-400">
+                <div
+                  :class="[
+                    'font-medium capitalize',
+                    getActivityLabelClass(agent.name)
+                  ]"
+                >
+                  {{ getActivityState(agent.name) }}
+                </div>
                 <span class="text-gray-300 dark:text-gray-600">·</span>
-                <span class="font-medium text-gray-700 dark:text-gray-300">${{ getExecutionStats(agent.name).totalCost.toFixed(2) }}</span>
-              </template>
-              <template v-if="getLastExecutionDisplay(agent.name)">
-                <span class="text-gray-300 dark:text-gray-600">·</span>
-                <span>{{ getLastExecutionDisplay(agent.name) }}</span>
-              </template>
-            </div>
-            <div v-else class="text-xs text-gray-400 dark:text-gray-500 mb-3">
-              No tasks (24h)
-            </div>
-
-            <!-- Schedule Stats Row (always show for consistent height) -->
-            <div
-              v-if="!agent.is_system"
-              :class="[
-                'flex items-center text-xs gap-x-1.5 mb-3',
-                hasSchedules(agent.name) && agent.autonomy_enabled ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
-              ]"
-            >
-              <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span :class="hasSchedules(agent.name) && agent.autonomy_enabled ? 'font-medium text-gray-700 dark:text-gray-300' : ''">
-                {{ getSchedulesEnabled(agent.name) }}/{{ getSchedulesTotal(agent.name) }}
-              </span>
-              <span>schedules</span>
-              <span v-if="hasSchedules(agent.name) && !agent.autonomy_enabled" class="italic">(paused)</span>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="flex items-center justify-end mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
-              <!-- View Details button -->
-              <router-link
-                :to="`/agents/${agent.name}`"
-                class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold transition-all duration-200 border border-blue-200 dark:border-blue-700"
-              >
-                View Details
-              </router-link>
+                <span class="tabular-nums">{{ getContextPercent(agent.name) }}%</span>
+                <template v-if="hasExecutionStats(agent.name)">
+                  <span class="text-gray-300 dark:text-gray-600">·</span>
+                  <span class="font-medium">{{ getExecutionStats(agent.name).taskCount }} tasks</span>
+                  <span class="text-gray-300 dark:text-gray-600">·</span>
+                  <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -374,7 +557,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
 import AgentSubNav from '../components/AgentSubNav.vue'
@@ -398,11 +581,20 @@ const isAdmin = ref(false)
 // Tag-related state
 const availableTags = ref([])
 const agentTags = ref({}) // Map of agent_name -> tags[]
-const selectedFilterTag = ref('')
+const selectedFilterTag = ref(localStorage.getItem('trinity-agents-filter-tag') || '')
 const selectedAgents = ref([])
 const showBulkAddTag = ref(false)
 const showBulkRemoveTag = ref(false)
 const bulkTagInput = ref('')
+
+// Persist tag filter selection across reloads
+watch(selectedFilterTag, (val) => {
+  if (val) {
+    localStorage.setItem('trinity-agents-filter-tag', val)
+  } else {
+    localStorage.removeItem('trinity-agents-filter-tag')
+  }
+})
 
 // Computed to show system agent for admins, with optional tag filtering
 const displayAgents = computed(() => {
@@ -755,6 +947,18 @@ async function removeBulkTag(tag) {
     transform: scale(1.3);
     opacity: 0.8;
     box-shadow: 0 0 16px 4px rgba(16, 185, 129, 0.9);
+  }
+}
+
+/* Custom border width for system agent accent */
+.border-l-3 {
+  border-left-width: 3px;
+}
+
+/* Dark hover shade between gray-700 and gray-800 */
+@media (prefers-color-scheme: dark) {
+  .dark\:hover\:bg-gray-750:hover {
+    background-color: rgb(42, 48, 60);
   }
 }
 </style>

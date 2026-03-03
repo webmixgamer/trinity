@@ -1,8 +1,12 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12)
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03)
 > **Tested**: All features verified working
-> **Last Updated**: 2026-02-12 - UI Standardization: AutonomyToggle component used instead of inline implementation. Running and Autonomy toggles now on same row (lines 108-123).
+> **Last Updated**: 2026-03-03 - Two-Row Tiles: Desktop rows split into top line (fixed grid: checkbox, dot, name+badges, activity, toggles, context, stats, arrow) and bottom line (tag pills, left-aligned under name). Tags column removed from grid. Gap-based spacing (`gap-1.5`) replaces border separators. Agent rows use `rounded-lg`. Tag filter persists in localStorage.
+>
+> **Previous (2026-03-03)** - Horizontal Row Tile Layout: Complete template rewrite from 3-column card grid to full-width horizontal rows with three responsive breakpoints (desktop/tablet/mobile). Column headers on desktop. System agent styling changed to purple left border accent. Chevron arrow replaces "View Details" button.
+>
+> **Previous (2026-02-12)** - UI Standardization: AutonomyToggle component used instead of inline implementation. Running and Autonomy toggles now on same row (lines 108-123).
 >
 > **Previous (2026-01-26)** - UX: Unified Start/Stop Toggle: Replaced separate Start/Stop buttons with `RunningStateToggle.vue` component. Shows "Running" (green) or "Stopped" (gray) state. Uses `toggleAgentRunning()` from agents.js store.
 >
@@ -681,12 +685,80 @@ if (includeSystem && this.systemAgent) {
 
 ---
 
+## Enhancement: Horizontal Row Tile Layout (2026-03-03)
+
+### Overview
+
+Complete template rewrite from 3-column card grid to full-width horizontal row tiles (Issue #54). This is a **template-only + scoped styles change** -- no backend, store, or component changes.
+
+### Layout Change
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Container | `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4` | `flex flex-col` row list |
+| Item shape | Card with `shadow-lg`, `rounded-xl`, `p-5` | Flat row with `border-b`, `px-4 py-3` |
+| System agent | `ring-2 ring-purple-500/50` purple ring | `border-l-3 border-l-purple-500` left border accent |
+| Stopped agents | `opacity-75` (unchanged) | `opacity-75` (unchanged) |
+| Navigation | "View Details" button | Chevron arrow (`>`) at row end |
+| Type display | "Type: X" line shown | Removed |
+| Schedule stats | Separate row | Merged inline with execution stats via clock icon |
+
+### Three Responsive Breakpoints
+
+**Desktop (lg+)** -- `Agents.vue` lines 199-343:
+- CSS grid row: `grid-cols-[auto_auto_1fr_auto_auto_auto_160px_auto_auto]`
+- 9 columns: checkbox | status dot | name+badges | activity label | toggles | tags | context bar | stats | chevron
+- Column header row (lines 171-182): uppercase labels (NAME, STATUS, CONTROLS, TAGS, CONTEXT, STATS)
+
+**Tablet (md to lg)** -- `Agents.vue` lines 345-447:
+- Two-line compact layout using `flex-col`
+- Line 1: checkbox, status dot, name, badges, activity label, chevron
+- Line 2 (indented `pl-[3.25rem]`): toggles, context bar with `w-24` fixed width, stats summary
+
+**Mobile (<md)** -- `Agents.vue` lines 449-514:
+- Compact mini-card using `flex-col`
+- Line 1: checkbox, status dot, name, badges, RunningStateToggle only, chevron
+- Line 2 (indented): activity state, context %, task count, success rate (text-only, no bar)
+- System badge abbreviated to "SYS" (line 476)
+
+### New Scoped CSS (`Agents.vue` lines 905-936)
+
+```css
+/* Custom border width for system agent accent */
+.border-l-3 {
+  border-left-width: 3px;
+}
+
+/* Dark hover shade between gray-700 and gray-800 */
+@media (prefers-color-scheme: dark) {
+  .dark\:hover\:bg-gray-750:hover {
+    background-color: rgb(42, 48, 60);
+  }
+}
+```
+
+### Files Changed
+
+- `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` -- template (lines 169-516) and scoped styles (lines 905-936)
+
+### Files NOT Changed
+
+- `src/frontend/src/stores/agents.js` -- no changes
+- Backend endpoints -- no changes
+- Toggle components (RunningStateToggle, ReadOnlyToggle, AutonomyToggle) -- no changes
+- Helper functions in script section -- no changes (same functions, same logic)
+
+---
+
 ## References
 
-> Line numbers verified 2026-01-09
-- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (413 lines total)
-- **agents.js store**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js` (681 lines total)
-- **AgentNode.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentNode.vue` (393 lines) - Visual design reference
+> Line numbers verified 2026-03-03
+- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (937 lines total)
+  - Template: lines 1-538
+  - Script: lines 540-903
+  - Scoped styles: lines 905-936
+- **agents.js store**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
+- **AgentNode.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentNode.vue` - Visual design reference
 - **Backend agents router**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py`
   - Lines 138-141: GET /context-stats endpoint
   - Lines 144-165: GET /execution-stats endpoint
@@ -700,6 +772,7 @@ if (includeSystem && this.systemAgent) {
 
 | Date | Changes |
 |------|---------|
+| 2026-03-03 | **Horizontal Row Tile Layout (Issue #54)**: Complete template rewrite from 3-column card grid to full-width horizontal rows. Three responsive breakpoints: desktop (9-column CSS grid), tablet (two-line compact), mobile (mini-card). Column header row on desktop. System agent changed from purple ring to `border-l-3` left accent. Chevron arrow replaces "View Details" button. Type display removed. Schedule stats merged inline. New `.border-l-3` and `dark:hover:bg-gray-750` scoped styles. Template-only change -- no store or backend modifications. |
 | 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in Agents.vue now use consistent `size="sm"`: RunningStateToggle (line 245), ReadOnlyToggle (line 252), AutonomyToggle (line 259). ReadOnlyToggle no longer has `:show-label="false"` - it now shows labels like the other toggles. This matches the toggle size standardization across the system. |
 | 2026-02-18 | **Read-Only Toggle + Tags Layout Fix**: Added `ReadOnlyToggle` component to toggles row (Agents.vue:248-255) between Running and Autonomy. Fixed tags breaking tile layout by adding fixed height container (`h-6 overflow-hidden`, line 271) and `max-w-20 truncate` on individual tags (line 276). Added `agentReadOnlyStates` state (line 378), `readOnlyLoading` (line 377), `fetchAllReadOnlyStates()` (lines 544-563), `getAgentReadOnlyState()` (lines 540-542), `handleReadOnlyToggle()` (lines 565-594). Import at line 368. Toggle only shown for owned agents (`v-if="!agent.is_system && !agent.is_shared"`). |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (151 lines) imported at Agents.vue:367. Running, ReadOnly, and Autonomy toggles positioned on same row (Agents.vue:240-263) for visual consistency with Dashboard. See [autonomy-toggle-component.md](autonomy-toggle-component.md) for component details. |

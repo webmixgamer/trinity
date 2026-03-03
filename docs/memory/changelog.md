@@ -1,3 +1,36 @@
+### 2026-03-03 18:00:00
+🎨 **UI: Two-row agent tiles, gap spacing, persistent tag filter**
+
+Refined Agents page row layout with three improvements:
+
+- **Two-row desktop tiles**: Top row is a fixed CSS grid (checkbox, dot, name+badges, activity, toggles, context bar, stats, arrow). Bottom row shows tag pills left-aligned under the name — only renders if agent has tags. Tags column removed from grid (9→8 cols)
+- **Gap-based row spacing**: Replaced `border-b` separators with `gap-1.5` between rows. Each agent row now has `rounded-lg` for card-like appearance with visible background gaps
+- **Persistent tag filter**: `selectedFilterTag` initializes from `localStorage.getItem('trinity-agents-filter-tag')` and writes back via `watch`. Clearing to "All Tags" removes the key
+- **Tablet tags**: Tags row added to tablet layout (md breakpoint) with same styling
+
+**Key File:**
+- `src/frontend/src/views/Agents.vue` — Template + script changes
+
+---
+
+### 2026-03-03 17:00:00
+🔄 **UI: Agents page horizontal row tile layout (Issue #54)**
+
+Replaced 3-column card grid on Agents page with full-width horizontal row tiles for better scannability:
+
+- **Desktop (lg+)**: CSS grid row with checkbox, status dot, name+badges, activity label, toggles, tags, context bar, stats, chevron link — all columns aligned via header row
+- **Tablet (md)**: Two-line compact row — name/status on line 1, controls/context/stats on line 2
+- **Mobile (<md)**: Compact mini-card — name + running toggle on line 1, status/context/stats summary on line 2
+- **System agent**: Purple left border accent instead of ring
+- **Stopped agents**: Reduced opacity (preserved)
+- **Column header**: Subtle uppercase labels above agent list (desktop only)
+- **Schedule stats**: Merged inline with execution stats using clock icon
+
+**Key File:**
+- `src/frontend/src/views/Agents.vue` — Template-only change (lines 169-516)
+
+---
+
 ### 2026-03-03 16:00:00
 📁 **UI: Per-agent Files tab replacing standalone Files page (Issue #51)**
 
