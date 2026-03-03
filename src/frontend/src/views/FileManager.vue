@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
-    <AgentSubNav />
 
     <!-- Notification Banner -->
     <div v-if="notification"
@@ -284,7 +283,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import NavBar from '@/components/NavBar.vue'
-import AgentSubNav from '@/components/AgentSubNav.vue'
 import FileTreeNode from '@/components/file-manager/FileTreeNode.vue'
 import FilePreview from '@/components/file-manager/FilePreview.vue'
 
