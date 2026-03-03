@@ -1,3 +1,12 @@
+### 2026-03-03 13:04:00
+🔧 **UI: Hide Process tab from main navigation (Issue #50)**
+
+Removed the Processes link from the NavBar top-level navigation. Process Engine routes remain accessible via direct URL — only the nav link is hidden for UI simplification.
+
+- `src/frontend/src/components/NavBar.vue` — Removed Processes `<router-link>` from desktop nav
+
+---
+
 ### 2026-03-02 19:00:00
 🐛 **Fix: Subscription Credentials Ignored — Claude Code Prioritizes API Key (SUB-001)**
 
