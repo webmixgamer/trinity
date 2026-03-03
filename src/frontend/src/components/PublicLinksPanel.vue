@@ -81,22 +81,12 @@
                 {{ link.external_url || link.url }}
               </code>
               <button
-                @click="copyLink(link, false)"
+                @click="copyLink(link)"
                 class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                title="Copy internal link"
+                title="Copy link"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </button>
-              <button
-                v-if="link.external_url"
-                @click="copyLink(link, true)"
-                class="p-1.5 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                title="Copy external link (public internet)"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                 </svg>
               </button>
             </div>
@@ -373,9 +363,8 @@
       v-if="copyNotification"
       class="fixed bottom-4 right-4 px-4 py-2 bg-green-600 text-white rounded-lg shadow-lg text-sm z-50"
     >
-      <span v-if="copyNotification === 'external'">External link copied!</span>
-      <span v-else-if="copyNotification === 'slack-connected'">Slack workspace connected successfully!</span>
-      <span v-else>Internal link copied!</span>
+      <span v-if="copyNotification === 'slack-connected'">Slack workspace connected successfully!</span>
+      <span v-else>Link copied!</span>
     </div>
   </div>
 </template>
@@ -603,11 +592,11 @@ const disconnectSlack = async (link) => {
 }
 
 // Copy link to clipboard
-const copyLink = async (link, external = false) => {
+const copyLink = async (link) => {
   try {
-    const url = external && link.external_url ? link.external_url : link.url
+    const url = link.external_url || link.url
     await navigator.clipboard.writeText(url)
-    copyNotification.value = external ? 'external' : 'internal'
+    copyNotification.value = 'copied'
     setTimeout(() => {
       copyNotification.value = false
     }, 2000)
