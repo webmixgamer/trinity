@@ -2,7 +2,7 @@
   <div class="flex items-center" :class="containerClass">
     <span
       v-if="showLabel"
-      class="font-medium"
+      class="font-medium whitespace-nowrap min-w-[3rem] text-right"
       :class="[
         labelSizeClass,
         modelValue ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'

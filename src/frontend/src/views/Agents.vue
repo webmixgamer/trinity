@@ -218,14 +218,14 @@
         <!-- Agents List -->
         <div class="flex flex-col gap-1.5">
           <!-- Column Header (lg+ only) -->
-          <div class="hidden lg:grid lg:grid-cols-[auto_auto_1fr_56px_auto_180px_200px_auto] lg:gap-x-4 items-center px-4 py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <div class="hidden lg:grid lg:grid-cols-[auto_auto_1fr_46px_22rem_180px_auto_auto] lg:gap-x-4 items-center px-4 py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             <div class="w-4"></div>
             <div class="w-3"></div>
             <div>Name</div>
             <div>Status</div>
             <div>Controls</div>
             <div>Success</div>
-            <div>Stats</div>
+            <div>Exec / Sched</div>
             <div class="w-6"></div>
           </div>
 
@@ -249,7 +249,7 @@
               <!-- Two-row content block -->
               <div class="flex flex-col flex-1 min-w-0">
               <!-- Main grid (Row 1) -->
-              <div class="grid grid-cols-[auto_auto_1fr_56px_auto_180px_200px_auto] gap-x-4 items-center">
+              <div class="grid grid-cols-[auto_auto_1fr_46px_22rem_180px_auto_auto] gap-x-4 items-center">
                 <!-- Checkbox -->
                 <input
                   type="checkbox"
@@ -303,33 +303,37 @@
                 </div>
 
                 <!-- Toggles -->
-                <div class="flex items-center gap-2">
-                  <RunningStateToggle
-                    :model-value="agent.status === 'running'"
-                    :loading="actionInProgress === agent.name"
-                    size="sm"
-                    @toggle="toggleAgentRunning(agent)"
-                  />
-                  <ReadOnlyToggle
-                    v-if="!agent.is_system && !agent.is_shared"
-                    :model-value="getAgentReadOnlyState(agent.name)"
-                    :loading="readOnlyLoading === agent.name"
-                    size="sm"
-                    @toggle="handleReadOnlyToggle(agent)"
-                  />
-                  <AutonomyToggle
-                    v-if="!agent.is_system"
-                    :model-value="agent.autonomy_enabled"
-                    :loading="autonomyLoading === agent.name"
-                    size="sm"
-                    @toggle="handleAutonomyToggle(agent)"
-                  />
+                <div class="flex items-center gap-1">
+                  <div class="w-[7rem] flex-shrink-0 flex justify-end">
+                    <RunningStateToggle
+                      :model-value="agent.status === 'running'"
+                      :loading="actionInProgress === agent.name"
+                      size="sm"
+                      @toggle="toggleAgentRunning(agent)"
+                    />
+                  </div>
+                  <div class="w-[7.5rem] flex-shrink-0 flex justify-end" :class="{ 'invisible': agent.is_system || agent.is_shared }">
+                    <ReadOnlyToggle
+                      :model-value="getAgentReadOnlyState(agent.name)"
+                      :loading="readOnlyLoading === agent.name"
+                      size="sm"
+                      @toggle="handleReadOnlyToggle(agent)"
+                    />
+                  </div>
+                  <div class="w-[7rem] flex-shrink-0 flex justify-end" :class="{ 'invisible': agent.is_system }">
+                    <AutonomyToggle
+                      :model-value="agent.autonomy_enabled"
+                      :loading="autonomyLoading === agent.name"
+                      size="sm"
+                      @toggle="handleAutonomyToggle(agent)"
+                    />
+                  </div>
                 </div>
 
                 <!-- Success rate bar -->
                 <div class="flex items-center gap-2">
                   <template v-if="hasSuccessData(agent.name)">
-                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div class="w-20 flex-shrink-0 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
                       <div
                         class="h-full rounded-full transition-all duration-500"
                         :class="getSuccessBarColor(agent.name)"
@@ -340,7 +344,7 @@
                     <span v-if="has7dStats(agent.name)" class="text-[9px] text-gray-400 dark:text-gray-500 tabular-nums">(7d: {{ get7dSuccessRate(agent.name) }}%)</span>
                   </template>
                   <template v-else-if="has7dOnlyStats(agent.name)">
-                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div class="w-20 flex-shrink-0 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
                       <div
                         class="h-full rounded-full transition-all duration-500"
                         :class="get7dSuccessBarColor(agent.name)"
@@ -351,36 +355,29 @@
                     <span class="text-[9px] text-gray-400 dark:text-gray-500">(7d)</span>
                   </template>
                   <template v-else>
-                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div class="w-20 flex-shrink-0 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
                       <div class="h-full rounded-full bg-gray-300 dark:bg-gray-600" style="width: 0%"></div>
                     </div>
                     <span class="text-[10px] text-gray-400 dark:text-gray-500">&mdash;</span>
                   </template>
                 </div>
 
-                <!-- Stats -->
-                <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-1.5 whitespace-nowrap overflow-hidden">
-                  <template v-if="hasExecutionStats(agent.name)">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }}</span>
-                    <span class="text-gray-300 dark:text-gray-600">·</span>
-                    <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
-                    <template v-if="getExecutionStats(agent.name).totalCost > 0">
-                      <span class="text-gray-300 dark:text-gray-600">·</span>
-                      <span class="font-medium text-gray-700 dark:text-gray-300">${{ getExecutionStats(agent.name).totalCost.toFixed(2) }}</span>
-                    </template>
-                    <template v-if="getLastExecutionDisplay(agent.name)">
-                      <span class="text-gray-300 dark:text-gray-600">·</span>
-                      <span>{{ getLastExecutionDisplay(agent.name) }}</span>
-                    </template>
-                    <template v-if="!agent.is_system && hasSchedules(agent.name)">
-                      <span class="text-gray-300 dark:text-gray-600">·</span>
-                      <svg class="w-3 h-3 inline flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span :class="agent.autonomy_enabled ? '' : 'line-through'">{{ getSchedulesEnabled(agent.name) }}/{{ getSchedulesTotal(agent.name) }}</span>
-                    </template>
-                  </template>
-                  <span v-else class="text-gray-400 dark:text-gray-500">--</span>
+                <!-- Stats: executions + schedules -->
+                <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-2 whitespace-nowrap">
+                  <!-- Executions count -->
+                  <div class="flex items-center gap-1">
+                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span class="font-medium text-gray-700 dark:text-gray-300 tabular-nums">{{ hasExecutionStats(agent.name) ? getExecutionStats(agent.name).taskCount : 0 }}</span>
+                  </div>
+                  <!-- Schedules -->
+                  <div class="flex items-center gap-1">
+                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="tabular-nums" :class="[hasSchedules(agent.name) ? 'font-medium text-gray-700 dark:text-gray-300' : '', agent.autonomy_enabled ? '' : hasSchedules(agent.name) ? 'line-through' : '']">{{ getSchedulesEnabled(agent.name) }}/{{ getSchedulesTotal(agent.name) }}</span>
+                  </div>
                 </div>
 
                 <!-- Arrow link -->
@@ -539,12 +536,10 @@
                 />
                 <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-1.5 whitespace-nowrap">
                   <template v-if="hasExecutionStats(agent.name)">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }}</span>
-                    <span class="text-gray-300 dark:text-gray-600">·</span>
-                    <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
-                    <template v-if="getLastExecutionDisplay(agent.name)">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ getExecutionStats(agent.name).taskCount }} tasks</span>
+                    <template v-if="getExecutionStats(agent.name).totalCost > 0">
                       <span class="text-gray-300 dark:text-gray-600">·</span>
-                      <span>{{ getLastExecutionDisplay(agent.name) }}</span>
+                      <span class="font-medium text-gray-700 dark:text-gray-300">${{ getExecutionStats(agent.name).totalCost.toFixed(2) }}</span>
                     </template>
                   </template>
                   <span v-else class="text-gray-400 dark:text-gray-500">--</span>
