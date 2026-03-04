@@ -118,7 +118,7 @@
         ref="messagesRef"
         :messages="messages"
         :loading="loading"
-        loading-text="Thinking..."
+        :loading-text="loadingText"
         class="flex-1 px-2"
       >
         <template #empty>
@@ -159,6 +159,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { ChatMessages, ChatInput } from './chat'
+import { getStatusFromStreamEvent, MIN_LABEL_DISPLAY_MS, HEARTBEAT_TIMEOUT_MS } from '../utils/execution-status'
 
 const props = defineProps({
   agentName: {
@@ -186,8 +187,14 @@ const authStore = useAuthStore()
 const message = ref('')
 const messages = ref([])
 const loading = ref(false)
+const loadingText = ref('Thinking...')
 const error = ref(null)
 const messagesRef = ref(null)
+
+// SSE state (THINK-001)
+let heartbeatTimer = null
+let labelTimer = null
+let lastLabelTime = 0
 
 // Sessions
 const sessions = ref([])
@@ -309,6 +316,8 @@ const startNewChat = () => {
   resumeSessionIdLocal.value = null
   resumeExecutionIdLocal.value = null
   resumeBannerDismissed.value = false
+  // Close any active SSE connection
+  closeSSE()
 }
 
 // Dismiss resume mode banner (EXEC-023)
@@ -338,6 +347,154 @@ const buildContextPrompt = (userMessage) => {
   return context
 }
 
+// THINK-001: Update loading text with minimum display time to prevent flicker
+const updateLoadingText = (newText) => {
+  if (!newText) return
+
+  const now = Date.now()
+  const elapsed = now - lastLabelTime
+
+  if (elapsed < MIN_LABEL_DISPLAY_MS) {
+    // Schedule the update after remaining time
+    clearTimeout(labelTimer)
+    labelTimer = setTimeout(() => {
+      loadingText.value = newText
+      lastLabelTime = Date.now()
+    }, MIN_LABEL_DISPLAY_MS - elapsed)
+  } else {
+    loadingText.value = newText
+    lastLabelTime = now
+  }
+
+  // Reset heartbeat timer
+  resetHeartbeat()
+}
+
+// THINK-001: Reset heartbeat timer
+const resetHeartbeat = () => {
+  clearTimeout(heartbeatTimer)
+  heartbeatTimer = setTimeout(() => {
+    if (loading.value) {
+      loadingText.value = 'Working...'
+    }
+  }, HEARTBEAT_TIMEOUT_MS)
+}
+
+// THINK-001: Close SSE connection and cleanup timers
+let streamReader = null
+
+const closeSSE = () => {
+  if (streamReader) {
+    streamReader.cancel().catch(() => {})
+    streamReader = null
+  }
+  clearTimeout(heartbeatTimer)
+  clearTimeout(labelTimer)
+  heartbeatTimer = null
+  labelTimer = null
+}
+
+// THINK-001: Subscribe to execution SSE stream for status updates
+const subscribeToStream = (executionId) => {
+  closeSSE() // Clean up any existing connection
+  lastLabelTime = 0
+  resetHeartbeat()
+
+  // Use fetch with ReadableStream (EventSource doesn't support custom headers)
+  const url = `/api/agents/${props.agentName}/executions/${executionId}/stream`
+
+  fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${authStore.token}`,
+      'Accept': 'text/event-stream'
+    }
+  }).then(response => {
+    if (!response.ok) return
+
+    const reader = response.body.getReader()
+    streamReader = reader
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    function processStream() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          closeSSE()
+          return
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete SSE messages
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'stream_end') {
+                closeSSE()
+                return
+              }
+
+              if (data.type === 'error') {
+                console.warn('SSE stream error:', data.message)
+                continue
+              }
+
+              // Map event to status label
+              const status = getStatusFromStreamEvent(data)
+              if (status) {
+                updateLoadingText(status)
+              }
+            } catch (e) {
+              // Ignore parse errors for comments/keepalives
+            }
+          }
+        }
+
+        processStream()
+      }).catch(() => {
+        closeSSE()
+      })
+    }
+
+    processStream()
+  }).catch(() => {
+    // Stream failed - polling will handle completion
+    closeSSE()
+  })
+}
+
+// THINK-001: Poll execution status until complete
+const pollExecution = async (executionId) => {
+  const maxAttempts = 360 // 30 minutes at 5s intervals
+  let attempts = 0
+
+  while (attempts < maxAttempts && loading.value) {
+    attempts++
+    await new Promise(resolve => setTimeout(resolve, 5000))
+
+    try {
+      const response = await axios.get(
+        `/api/agents/${props.agentName}/executions/${executionId}`,
+        { headers: authStore.authHeader }
+      )
+
+      const execution = response.data
+      if (execution.status === 'success' || execution.status === 'failed' || execution.status === 'cancelled') {
+        return execution
+      }
+    } catch (err) {
+      console.error('Poll error:', err)
+    }
+  }
+
+  return null
+}
+
 // Send message
 const sendMessage = async (userMessage) => {
   if (!userMessage || loading.value || props.agentStatus !== 'running') return
@@ -354,17 +511,19 @@ const sendMessage = async (userMessage) => {
   message.value = ''
 
   loading.value = true
+  loadingText.value = 'Thinking...'
 
   try {
     // Build context with conversation history
     const contextPrompt = buildContextPrompt(userMessage)
 
-    // Build request payload
+    // Build request payload - use async_mode for SSE streaming (THINK-001)
     const payload = {
       message: contextPrompt,
       save_to_session: true,
       user_message: userMessage,
-      create_new_session: !currentSessionId.value
+      create_new_session: !currentSessionId.value,
+      async_mode: true
     }
 
     // EXEC-023: Include resume_session_id for ALL messages in resume mode
@@ -376,35 +535,61 @@ const sendMessage = async (userMessage) => {
       // All messages in a resumed session need --resume to maintain context.
     }
 
-    // Send via task endpoint (headless execution for Dashboard tracking)
-    // save_to_session: true persists to chat_sessions table for session dropdown
-    // user_message: original message without context (for clean session display)
-    // create_new_session: true when no current session (new chat or first message)
-    const response = await axios.post(`/api/agents/${props.agentName}/task`, payload, {
+    // POST with async_mode=true returns immediately with execution_id
+    const submitResponse = await axios.post(`/api/agents/${props.agentName}/task`, payload, {
       headers: authStore.authHeader
     })
 
-    // Add assistant response
-    if (response.data.response) {
-      messages.value.push({
-        role: 'assistant',
-        content: response.data.response
-      })
+    const executionId = submitResponse.data.execution_id
+    if (!executionId) {
+      throw new Error('No execution_id returned from async task submission')
     }
 
-    // Update current session ID if backend created/used one
-    if (response.data.chat_session_id) {
-      currentSessionId.value = response.data.chat_session_id
-      // Refresh sessions list to include the new session
+    // Subscribe to SSE stream for real-time status updates
+    subscribeToStream(executionId)
+
+    // Poll for completion (SSE handles status labels, polling handles result)
+    const execution = await pollExecution(executionId)
+
+    closeSSE()
+
+    if (execution) {
+      if (execution.status === 'success' && execution.response) {
+        messages.value.push({
+          role: 'assistant',
+          content: execution.response
+        })
+      } else if (execution.status === 'failed') {
+        error.value = execution.error || 'Task execution failed'
+      } else if (execution.status === 'cancelled') {
+        error.value = 'Task was cancelled'
+      }
+
+      // Update session ID from the execution
+      // The background task saves to chat_sessions and broadcasts chat_session_id
+      // We need to refresh sessions to pick up the new session
       await loadSessions(false)
+
+      // If we didn't have a session before, pick up the one just created
+      if (!currentSessionId.value && sessions.value.length > 0) {
+        const latestSession = sessions.value.find(s => s.status === 'active')
+        if (latestSession) {
+          currentSessionId.value = latestSession.id
+        }
+      }
+    } else {
+      error.value = 'Request timed out. Please try again.'
     }
   } catch (err) {
     console.error('Chat error:', err)
+    closeSSE()
     error.value = err.response?.data?.detail || 'Failed to send message. Please try again.'
     // Remove the user message if send failed
     messages.value.pop()
   } finally {
     loading.value = false
+    loadingText.value = 'Thinking...'
+    closeSSE()
   }
 }
 
@@ -440,6 +625,7 @@ watch(() => props.agentName, () => {
   messages.value = []
   currentSessionId.value = null
   error.value = null
+  closeSSE()
   if (props.agentStatus === 'running') {
     loadSessions()
   }
@@ -455,5 +641,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  closeSSE()
 })
 </script>

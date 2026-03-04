@@ -12,6 +12,13 @@
       "added": "2026-03-01",
       "categories": ["scheduler", "database", "executions"],
       "description": "Tests for recording skipped scheduled executions when max_instances=1 reached"
+    },
+    {
+      "file": "test_dynamic_thinking_status.py",
+      "feature": "THINK-001",
+      "added": "2026-03-03",
+      "categories": ["backend", "api", "frontend", "streaming"],
+      "description": "Tests for dynamic thinking status labels: status mapping logic, async mode, SSE streaming, session persistence"
     }
   ]
 }

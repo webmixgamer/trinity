@@ -7,7 +7,7 @@
           <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
           <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
         </div>
-        <span class="text-sm text-gray-500 dark:text-gray-400">{{ text }}</span>
+        <span class="text-sm text-gray-500 dark:text-gray-400 status-text" :key="text">{{ text }}</span>
       </div>
     </div>
   </div>
@@ -30,6 +30,22 @@ defineProps({
   }
   50% {
     transform: translateY(-4px);
+  }
+}
+
+/* Fade transition for status text changes */
+.status-text {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>

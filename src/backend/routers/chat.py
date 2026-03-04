@@ -424,7 +424,9 @@ async def _execute_task_background(
     task_activity_id: str,
     collaboration_activity_id: Optional[str],
     x_source_agent: Optional[str],
-    release_slot: bool = False
+    release_slot: bool = False,
+    user_id: Optional[int] = None,
+    user_email: Optional[str] = None
 ):
     """
     Background task execution for async mode.
@@ -432,6 +434,8 @@ async def _execute_task_background(
 
     Args:
         release_slot: If True, release the slot when task completes (CAPACITY-001)
+        user_id: User ID for session persistence (THINK-001)
+        user_email: User email for session persistence (THINK-001)
     """
     slot_service = get_slot_service() if release_slot else None
     try:
@@ -441,7 +445,8 @@ async def _execute_task_background(
             "allowed_tools": request.allowed_tools,
             "system_prompt": request.system_prompt,
             "timeout_seconds": request.timeout_seconds,
-            "execution_id": execution_id
+            "execution_id": execution_id,
+            "resume_session_id": request.resume_session_id  # EXEC-023: Claude Code session resume
         }
 
         start_time = datetime.utcnow()
@@ -460,14 +465,15 @@ async def _execute_task_background(
         execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
         metadata = response_data.get("metadata", {})
 
-        # Update execution record with success
         # SECURITY: Sanitize credentials from execution logs and response
+        sanitized_resp = sanitize_response(response_data.get("response"))
+        context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
+
+        # Update execution record with success
         if execution_id:
             execution_log = response_data.get("execution_log", [])
             execution_log_json = json.dumps(execution_log) if execution_log else None
             execution_log_json = sanitize_execution_log(execution_log_json)
-            sanitized_resp = sanitize_response(response_data.get("response"))
-            context_used = metadata.get("input_tokens", 0) + metadata.get("output_tokens", 0)
 
             db.update_execution_status(
                 execution_id=execution_id,
@@ -479,6 +485,59 @@ async def _execute_task_background(
                 tool_calls=execution_log_json,
                 execution_log=execution_log_json
             )
+
+        # THINK-001: Persist to chat session if requested (for authenticated Chat tab async mode)
+        if request.save_to_session and user_id and user_email:
+            try:
+                if request.create_new_session:
+                    session = db.create_new_chat_session(
+                        agent_name=agent_name,
+                        user_id=user_id,
+                        user_email=user_email
+                    )
+                else:
+                    session = db.get_or_create_chat_session(
+                        agent_name=agent_name,
+                        user_id=user_id,
+                        user_email=user_email
+                    )
+
+                original_user_message = request.user_message or request.message
+                db.add_chat_message(
+                    session_id=session.id,
+                    agent_name=agent_name,
+                    user_id=user_id,
+                    user_email=user_email,
+                    role="user",
+                    content=original_user_message
+                )
+
+                db.add_chat_message(
+                    session_id=session.id,
+                    agent_name=agent_name,
+                    user_id=user_id,
+                    user_email=user_email,
+                    role="assistant",
+                    content=sanitized_resp or "",
+                    cost=metadata.get("cost_usd"),
+                    context_used=context_used if context_used > 0 else None,
+                    context_max=metadata.get("context_window") or 200000,
+                    execution_time_ms=execution_time_ms
+                )
+
+                # Broadcast chat_session_id via WebSocket so frontend can update
+                if _websocket_manager:
+                    await _websocket_manager.broadcast(json.dumps({
+                        "type": "chat_response_ready",
+                        "execution_id": execution_id,
+                        "agent_name": agent_name,
+                        "chat_session_id": session.id,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }))
+
+                logger.debug(f"[Task Async] Saved to chat session {session.id} for agent '{agent_name}'")
+            except Exception as e:
+                logger.warning(f"[Task Async] Failed to save to chat session for agent '{agent_name}': {e}")
 
         # Complete activities
         await activity_service.complete_activity(
@@ -678,7 +737,9 @@ async def execute_parallel_task(
                 task_activity_id=task_activity_id,
                 collaboration_activity_id=collaboration_activity_id,
                 x_source_agent=x_source_agent,
-                release_slot=True  # CAPACITY-001: Release slot when background task completes
+                release_slot=True,  # CAPACITY-001: Release slot when background task completes
+                user_id=current_user.id,  # THINK-001: Pass user context for session persistence
+                user_email=current_user.email or current_user.username
             )
         )
 

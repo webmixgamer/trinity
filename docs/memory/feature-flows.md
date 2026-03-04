@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-03 | THINK-001 | Dynamic thinking status labels in Chat tab via SSE streaming | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) |
 | 2026-03-03 | CAPACITY-001 | Capacity meter UI on Agents page and Dashboard timeline (Phase 2) | [parallel-capacity.md](feature-flows/parallel-capacity.md) |
 | 2026-03-03 | #60 | Success rate bar replaces context bar on Dashboard nodes | [agent-network.md](feature-flows/agent-network.md) |
 | 2026-03-03 | #60 | Success rate bar replaces context bar in timeline tiles | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) |
@@ -85,7 +86,7 @@
 |------|----------|-------------|
 | Tasks Tab | [tasks-tab.md](feature-flows/tasks-tab.md) | Task execution UI with history |
 | Playbooks Tab | [playbooks-tab.md](feature-flows/playbooks-tab.md) | Invoke agent skills from UI (PLAYBOOK-001) |
-| Authenticated Chat Tab | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) | Simple chat UI in Agent Detail (CHAT-001) |
+| Authenticated Chat Tab | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) | Simple chat UI with dynamic status labels (CHAT-001, THINK-001) |
 | Execution Log Viewer | [execution-log-viewer.md](feature-flows/execution-log-viewer.md) | Modal for viewing execution transcripts |
 | Execution Detail Page | [execution-detail-page.md](feature-flows/execution-detail-page.md) | Dedicated page for execution details |
 | Continue Execution as Chat | [continue-execution-as-chat.md](feature-flows/continue-execution-as-chat.md) | Resume executions as interactive chat (EXEC-023) |

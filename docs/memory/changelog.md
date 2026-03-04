@@ -1,4 +1,23 @@
 ### 2026-03-03
+✨ **Feature: Dynamic Thinking Status Labels in Chat (THINK-001, Issue #41)**
+
+Replaced static "Thinking..." indicator in Chat tab with dynamic, real-time status labels reflecting the agent's actual activity. Status updates stream via SSE while the task executes in async mode.
+
+**Frontend:**
+- `src/frontend/src/components/ChatPanel.vue` — Switched from sync POST to `async_mode=true` + SSE stream subscription + polling for completion
+- `src/frontend/src/utils/execution-status.js` — **New** — Maps Claude Code stream-json events to status labels (e.g., `tool_use:Read` → "Reading file...")
+- `src/frontend/src/components/chat/ChatLoadingIndicator.vue` — Added CSS fade transition for smooth label changes
+
+**Backend:**
+- `src/backend/routers/chat.py` — `_execute_task_background` now supports `save_to_session` + `resume_session_id` for async mode chat persistence; broadcasts `chat_response_ready` WebSocket event on completion
+
+**UX Details:**
+- 500ms minimum display time per label (anti-flicker)
+- 10s heartbeat timeout falls back to "Working..."
+- Labels: Thinking, Responding, Reading file, Searching code, Running command, Editing code, Writing file, etc.
+
+---
+
 📊 **Feature: Capacity Meter — Vertical volume bar for execution slots**
 
 Added `CapacityMeter.vue` component showing parallel execution slot usage as a vertical bar with discrete cells. Fills bottom-to-top, color-coded by utilization (green < 50%, yellow < 80%, orange < 100%, red + pulse at 100%). Integrated across all fleet views.

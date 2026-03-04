@@ -160,6 +160,13 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Spec**: `docs/requirements/AUTHENTICATED_CHAT_TAB.md`
 - **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
 
+### 5.7 Dynamic Thinking Status (THINK-001)
+- **Status**: ✅ Implemented (2026-03-03)
+- **Description**: Real-time status labels in Chat tab reflecting agent activity (replaces static "Thinking...")
+- **Key Features**: SSE stream subscription, tool-name-to-label mapping, 500ms anti-flicker, 10s heartbeat timeout, async_mode task execution with session persistence
+- **Spec**: `docs/requirements/DYNAMIC_THINKING_STATUS.md`
+- **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
+
 ---
 
 ## 6. Activity Monitoring
