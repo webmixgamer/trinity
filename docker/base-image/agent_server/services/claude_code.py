@@ -525,10 +525,13 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
 
             # Check for errors
             if return_code != 0:
-                logger.error(f"Claude Code failed (exit {return_code}): {stderr_output[:500]}")
+                error_detail = stderr_output[:500] if stderr_output else ""
+                if not error_detail:
+                    error_detail = _diagnose_exit_failure(return_code)
+                logger.error(f"Claude Code failed (exit {return_code}): {error_detail}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Claude Code execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                    detail=f"Claude Code execution failed (exit code {return_code}): {error_detail[:300]}"
                 )
 
             # Build final response text
@@ -561,6 +564,30 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     except Exception as e:
         logger.error(f"Claude Code execution error: {e}")
         raise HTTPException(status_code=500, detail=f"Execution error: {str(e)}")
+
+
+def _diagnose_exit_failure(return_code: int) -> str:
+    """Diagnose common Claude Code exit failures when stderr is empty."""
+    # Check for missing credentials
+    has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    has_oauth = Path(Path.home() / ".claude" / ".credentials.json").exists()
+
+    if not has_api_key and not has_oauth:
+        return "No authentication configured. Set ANTHROPIC_API_KEY or assign a Claude subscription."
+    if not has_api_key and has_oauth:
+        return "OAuth credentials may be expired or invalid. Try re-assigning the subscription."
+
+    # Exit code hints
+    hints = {
+        1: "General error. Check agent logs for details.",
+        2: "Misuse of command or invalid arguments.",
+        126: "Claude Code command found but not executable.",
+        127: "Claude Code command not found. Base image may need rebuilding.",
+        137: "Process killed (SIGKILL). Likely out of memory — check agent resource limits.",
+        139: "Segmentation fault.",
+        143: "Process terminated (SIGTERM).",
+    }
+    return hints.get(return_code, f"Process exited with code {return_code}. Check agent container logs.")
 
 
 def get_execution_lock():
@@ -750,11 +777,14 @@ async def execute_headless_task(
 
             # Check for errors
             if return_code != 0:
-                error_preview = verbose_transcript[:500] if verbose_transcript else "Unknown error"
+                error_preview = verbose_transcript[:500] if verbose_transcript else ""
+                if not error_preview:
+                    # Try to provide a meaningful fallback based on common failure patterns
+                    error_preview = _diagnose_exit_failure(return_code)
                 logger.error(f"[Headless Task] Task {task_session_id} failed (exit {return_code}): {error_preview}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Task execution failed: {error_preview[:200]}"
+                    detail=f"Task execution failed (exit code {return_code}): {error_preview[:300]}"
                 )
 
             # Build final response text

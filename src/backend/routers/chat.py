@@ -565,7 +565,16 @@ async def _execute_task_background(
         logger.info(f"[Task Async] Completed background task for agent '{agent_name}', execution_id={execution_id}")
 
     except Exception as e:
+        # Extract detailed error from HTTP response body if available
         error_msg = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                if "detail" in error_data:
+                    error_msg = error_data["detail"]
+            except Exception:
+                if hasattr(e.response, 'text') and e.response.text:
+                    error_msg = e.response.text[:500]
         logger.error(f"[Task Async] Background task failed for agent '{agent_name}': {error_msg}")
 
         # Update execution record with failure

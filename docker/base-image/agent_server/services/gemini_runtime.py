@@ -214,10 +214,17 @@ class GeminiRuntime(AgentRuntime):
 
             # Check for errors
             if return_code != 0:
-                logger.error(f"Gemini CLI failed (exit {return_code}): {stderr_output[:500]}")
+                error_detail = stderr_output[:500] if stderr_output else ""
+                if not error_detail:
+                    has_key = bool(os.environ.get("GOOGLE_API_KEY"))
+                    if not has_key:
+                        error_detail = "No GOOGLE_API_KEY configured. Add it via credentials."
+                    else:
+                        error_detail = f"Process exited with code {return_code}. Check agent container logs."
+                logger.error(f"Gemini CLI failed (exit {return_code}): {error_detail}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Gemini execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                    detail=f"Gemini execution failed (exit code {return_code}): {error_detail[:300]}"
                 )
 
             # Build final response text
@@ -601,10 +608,17 @@ class GeminiRuntime(AgentRuntime):
 
             # Check for errors
             if return_code != 0:
-                logger.error(f"[Headless Task {session_id}] Gemini CLI failed (exit {return_code}): {stderr_output[:500]}")
+                error_detail = stderr_output[:500] if stderr_output else ""
+                if not error_detail:
+                    has_key = bool(os.environ.get("GOOGLE_API_KEY"))
+                    if not has_key:
+                        error_detail = "No GOOGLE_API_KEY configured. Add it via credentials."
+                    else:
+                        error_detail = f"Process exited with code {return_code}. Check agent container logs."
+                logger.error(f"[Headless Task {session_id}] Gemini CLI failed (exit {return_code}): {error_detail}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Gemini execution failed: {stderr_output[:200] if stderr_output else 'Unknown error'}"
+                    detail=f"Gemini execution failed (exit code {return_code}): {error_detail[:300]}"
                 )
 
             # Build final response text
