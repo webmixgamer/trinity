@@ -312,33 +312,43 @@ async def check_shared_folder_mounts_match(container, agent_name: str) -> bool:
 
 def check_api_key_env_matches(container, agent_name: str) -> bool:
     """
-    Check if container's ANTHROPIC_API_KEY env var matches the current setting.
+    Check if container's auth env vars match the current setting.
     Returns True if env matches config, False if recreation needed.
 
-    Claude Code prioritizes ANTHROPIC_API_KEY over OAuth credentials in
-    .credentials.json. When a subscription is assigned, the API key env var
-    must be removed so Claude Code uses the subscription's OAuth token.
+    SUB-002: When a subscription is assigned, CLAUDE_CODE_OAUTH_TOKEN must be
+    present with the correct value, and ANTHROPIC_API_KEY must be absent.
     """
     # Get current env vars from container
     env_list = container.attrs.get("Config", {}).get("Env", [])
     env_dict = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in env_list if "=" in e}
 
     has_api_key = "ANTHROPIC_API_KEY" in env_dict and env_dict["ANTHROPIC_API_KEY"]
+    has_oauth_token = "CLAUDE_CODE_OAUTH_TOKEN" in env_dict and env_dict["CLAUDE_CODE_OAUTH_TOKEN"]
 
-    # Subscription takes priority — if assigned, API key must NOT be present
-    has_subscription = db.get_agent_subscription_id(agent_name) is not None
-    if has_subscription:
-        return not has_api_key
+    # Subscription takes priority — if assigned, must have token and NOT have API key
+    subscription_id = db.get_agent_subscription_id(agent_name)
+    if subscription_id is not None:
+        if has_api_key:
+            return False
+        if not has_oauth_token:
+            return False
+        # Verify token value matches DB
+        expected_token = db.get_subscription_token(subscription_id)
+        if expected_token and env_dict.get("CLAUDE_CODE_OAUTH_TOKEN") != expected_token:
+            return False
+        return True
 
     use_platform_key = db.get_use_platform_api_key(agent_name)
     if use_platform_key:
-        # Should have the platform key - check if it's current
+        # Should have the platform key and NOT have oauth token
+        if has_oauth_token:
+            return False
         expected_key = get_anthropic_api_key()
         current_key = env_dict.get("ANTHROPIC_API_KEY", "")
         return current_key == expected_key
     else:
-        # Should NOT have the key
-        return not has_api_key
+        # Should NOT have the key or oauth token
+        return not has_api_key and not has_oauth_token
 
 
 def check_resource_limits_match(container, agent_name: str) -> bool:

@@ -1,6 +1,11 @@
 # Feature: Subscription Credential Health Monitoring
 
-## Overview
+> **SUPERSEDED by SUB-002** (2026-03-03): This feature flow is no longer applicable.
+> SUB-002 replaced `.credentials.json` file injection with `CLAUDE_CODE_OAUTH_TOKEN` env var
+> injection. Credential file monitoring, auto-remediation, and the related alert have been removed.
+> See `docs/requirements/SUBSCRIPTION_LONG_LIVED_TOKENS.md` for the new design.
+
+## Overview (Historical — SUB-001)
 
 Extends the monitoring service (MON-001) and subscription system (SUB-001) to detect when subscription credentials are missing from agent containers, auto-remediate by re-injecting them, fire alerts when remediation fails, and improve error surfacing in both the subscription assignment endpoint and the scheduler.
 

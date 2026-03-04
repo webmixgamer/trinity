@@ -376,42 +376,6 @@ class MonitoringAlertService:
         await self._broadcast_alert(notification)
         return notification.id
 
-    async def alert_subscription_credentials_missing(
-        self,
-        agent_name: str,
-        subscription_name: str
-    ) -> Optional[str]:
-        """Send alert when subscription credentials are missing from agent container."""
-        condition = "subscription:credentials_missing"
-
-        if db.is_in_alert_cooldown(agent_name, condition, self.config.unhealthy_cooldown):
-            return None
-
-        notification = db.create_notification(
-            agent_name=agent_name,
-            data=NotificationCreate(
-                notification_type="alert",
-                title=f"Agent {agent_name} missing subscription credentials",
-                message=(
-                    f"Subscription '{subscription_name}' is assigned but "
-                    f".credentials.json is missing from the agent container. "
-                    f"Auto-remediation failed."
-                ),
-                priority="high",
-                category="health",
-                metadata={
-                    "agent_name": agent_name,
-                    "subscription_name": subscription_name,
-                    "condition": condition,
-                    "timestamp": utc_now_iso()
-                }
-            )
-        )
-
-        db.set_alert_cooldown(agent_name, condition)
-        await self._broadcast_alert(notification)
-        return notification.id
-
     async def alert_resource_critical(
         self,
         agent_name: str,

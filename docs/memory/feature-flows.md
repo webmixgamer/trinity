@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-03 | SUB-002 | Subscription management rewrite: token-based auth via env var | [subscription-management.md](feature-flows/subscription-management.md) |
 | 2026-03-03 | THINK-001 | Dynamic thinking status labels in Chat tab via SSE streaming | [authenticated-chat-tab.md](feature-flows/authenticated-chat-tab.md) |
 | 2026-03-03 | CAPACITY-001 | Capacity meter UI on Agents page and Dashboard timeline (Phase 2) | [parallel-capacity.md](feature-flows/parallel-capacity.md) |
 | 2026-03-03 | #60 | Success rate bar replaces context bar on Dashboard nodes | [agent-network.md](feature-flows/agent-network.md) |
@@ -21,7 +22,7 @@
 | 2026-03-03 | #51 | Per-agent Files tab restored with two-panel file manager | [file-browser.md](feature-flows/file-browser.md) |
 | 2026-03-03 | #52 | Templates restored to main NavBar | NavBar component change (no new flow) |
 | 2026-03-03 | #53 | Agent Detail: removed sub-nav, widened panel, reduced padding | Layout change to AgentDetail.vue (no new flow) |
-| 2026-03-02 | SUB-001 | Subscription credential priority fix (API key vs OAuth) | [subscription-management.md](feature-flows/subscription-management.md) |
+| 2026-03-02 | SUB-001 | Subscription credential priority fix (superseded by SUB-002) | [subscription-management.md](feature-flows/subscription-management.md) |
 | 2026-03-02 | MON-001/SUB-001 | Subscription credential health monitoring and auto-remediation | [subscription-credential-health.md](feature-flows/subscription-credential-health.md) |
 | 2026-03-02 | MODEL-001 | Model selection for tasks and schedules | [model-selection.md](feature-flows/model-selection.md) |
 | 2026-03-02 | FILTER-001 | Dashboard filter persistence (time range, quick tags) | [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) |
@@ -167,7 +168,7 @@
 | Model Selection | [model-selection.md](feature-flows/model-selection.md) | LLM model selection for terminal, tasks, and schedules |
 | Platform Settings | [platform-settings.md](feature-flows/platform-settings.md) | Admin settings page |
 | SSH Access | [ssh-access.md](feature-flows/ssh-access.md) | Ephemeral SSH credentials |
-| Subscription Management | [subscription-management.md](feature-flows/subscription-management.md) | Claude Max/Pro subscriptions (SUB-001) |
+| Subscription Management | [subscription-management.md](feature-flows/subscription-management.md) | Claude Max/Pro subscription tokens via env var (SUB-002) |
 
 ### System & Infrastructure
 

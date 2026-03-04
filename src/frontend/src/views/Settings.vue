@@ -428,39 +428,24 @@
                     </div>
                   </div>
 
-                  <!-- Credentials Upload -->
+                  <!-- Token Input (SUB-002) -->
                   <div class="mt-4">
                     <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                      Credentials (from ~/.claude/.credentials.json)
+                      Token (from <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">claude setup-token</code>)
                     </label>
-                    <div class="flex gap-2">
-                      <!-- File Upload -->
-                      <label class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
-                             :class="{ 'border-green-500 bg-green-50 dark:bg-green-900/20': newSubscription.credentials }">
-                        <input
-                          type="file"
-                          accept=".json,application/json"
-                          class="hidden"
-                          @change="handleCredentialFileUpload"
-                          :disabled="addingSubscription"
-                          ref="credentialFileInput"
-                        />
-                        <div class="text-center">
-                          <svg v-if="!newSubscription.credentials" class="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <svg v-else class="mx-auto h-8 w-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span class="mt-1 block text-sm text-gray-600 dark:text-gray-400">
-                            {{ newSubscription.credentials ? 'Credentials loaded' : 'Drop .credentials.json or click to browse' }}
-                          </span>
-                        </div>
-                      </label>
-                    </div>
+                    <input
+                      type="password"
+                      v-model="newSubscription.token"
+                      placeholder="sk-ant-oat01-..."
+                      :disabled="addingSubscription"
+                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      :class="{ 'border-red-400 dark:border-red-500': newSubscription.token && !newSubscription.token.startsWith('sk-ant-oat01-') }"
+                    />
+                    <p v-if="newSubscription.token && !newSubscription.token.startsWith('sk-ant-oat01-')" class="mt-1 text-xs text-red-500">
+                      Token must start with sk-ant-oat01-
+                    </p>
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Get credentials by running <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">claude login</code> locally, then upload
-                      <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">~/.claude/.credentials.json</code>
+                      Run <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">claude setup-token</code> locally to generate a long-lived token (~1 year)
                     </p>
                   </div>
 
@@ -468,14 +453,14 @@
                   <div class="mt-4 flex justify-end">
                     <button
                       @click="clearNewSubscription"
-                      v-if="newSubscription.name || newSubscription.credentials"
+                      v-if="newSubscription.name || newSubscription.token"
                       class="mr-3 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
                     >
                       Clear
                     </button>
                     <button
                       @click="addSubscription"
-                      :disabled="!newSubscription.name || !newSubscription.credentials || addingSubscription"
+                      :disabled="!newSubscription.name || !newSubscription.token.startsWith('sk-ant-oat01-') || addingSubscription"
                       class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <svg v-if="addingSubscription" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -1043,17 +1028,16 @@ const skillsLibraryStatus = ref({
 const syncingSkillsLibrary = ref(false)
 const savingSkillsLibrary = ref(false)
 
-// Subscriptions state (SUB-001)
+// Subscriptions state (SUB-002)
 const subscriptions = ref([])
 const loadingSubscriptions = ref(false)
 const addingSubscription = ref(false)
 const deletingSubscription = ref(null)
 const expandedSubscriptions = ref(new Set())
-const credentialFileInput = ref(null)
 const newSubscription = ref({
   name: '',
   type: 'max',
-  credentials: null
+  token: ''
 })
 
 const hasChanges = computed(() => {
@@ -1504,40 +1488,16 @@ async function loadSubscriptions() {
   }
 }
 
-function handleCredentialFileUpload(event) {
-  const file = event.target.files[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    try {
-      // Validate JSON
-      const credentials = JSON.parse(e.target.result)
-      newSubscription.value.credentials = e.target.result
-    } catch (parseError) {
-      error.value = 'Invalid JSON file. Please upload a valid .credentials.json file.'
-      newSubscription.value.credentials = null
-    }
-  }
-  reader.onerror = () => {
-    error.value = 'Failed to read file'
-  }
-  reader.readAsText(file)
-}
-
 function clearNewSubscription() {
   newSubscription.value = {
     name: '',
     type: 'max',
-    credentials: null
-  }
-  if (credentialFileInput.value) {
-    credentialFileInput.value.value = ''
+    token: ''
   }
 }
 
 async function addSubscription() {
-  if (!newSubscription.value.name || !newSubscription.value.credentials) return
+  if (!newSubscription.value.name || !newSubscription.value.token.startsWith('sk-ant-oat01-')) return
 
   addingSubscription.value = true
   error.value = null
@@ -1545,7 +1505,7 @@ async function addSubscription() {
   try {
     await axios.post('/api/subscriptions', {
       name: newSubscription.value.name,
-      credentials_json: newSubscription.value.credentials,
+      token: newSubscription.value.token,
       subscription_type: newSubscription.value.type || null
     }, {
       headers: authStore.authHeader

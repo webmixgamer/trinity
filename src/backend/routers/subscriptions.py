@@ -1,18 +1,16 @@
 """
-Subscription credential management routes (SUB-001).
+Subscription credential management routes (SUB-002).
 
-Provides endpoints for registering Claude Max/Pro subscriptions
-and assigning them to agents.
+Provides endpoints for registering Claude Max/Pro subscription tokens
+(from `claude setup-token`) and assigning them to agents.
 
-Key insight: Claude Code prioritizes ANTHROPIC_API_KEY env var over OAuth
-credentials in ~/.claude/.credentials.json. When assigning a subscription,
-we must remove ANTHROPIC_API_KEY from the container so Claude Code uses
-the subscription's OAuth token.
+Tokens are injected as `CLAUDE_CODE_OAUTH_TOKEN` env var on agent containers.
+Claude Code prioritizes ANTHROPIC_API_KEY over the OAuth token, so when a
+subscription is assigned, ANTHROPIC_API_KEY is removed from the container.
 """
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from typing import Optional, List
 
 from models import User
@@ -45,29 +43,17 @@ async def register_subscription(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Register a new subscription credential.
+    Register a new subscription token.
 
-    Admin-only. Takes the raw credentials JSON from ~/.claude/.credentials.json
-    and encrypts it for storage. Use upsert semantics - if a subscription with
+    Admin-only. Takes a long-lived token from `claude setup-token` and
+    encrypts it for storage. Use upsert semantics - if a subscription with
     the same name exists, it will be updated.
 
-    Example:
-        cat ~/.claude/.credentials.json | pbcopy
-        # Then use the API or MCP tool to register
+    Token must start with `sk-ant-oat01-` (Claude Code OAuth access token).
     """
     require_admin(current_user)
 
     try:
-        # Validate that credentials_json is valid JSON
-        import json
-        try:
-            json.loads(request.credentials_json)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=400,
-                detail="credentials_json must be valid JSON"
-            )
-
         # Get the user's ID
         user = db.get_user_by_username(current_user.username)
         if not user:
@@ -75,7 +61,7 @@ async def register_subscription(
 
         subscription = db.create_subscription(
             name=request.name,
-            credentials_json=request.credentials_json,
+            token=request.token,
             owner_id=user["id"],
             subscription_type=request.subscription_type,
             rate_limit_tier=request.rate_limit_tier,
@@ -190,8 +176,9 @@ async def assign_subscription_to_agent(
     """
     Assign a subscription to an agent.
 
-    Owner access required. If the agent is running, credentials will be
-    injected immediately.
+    Owner access required. If the agent is running, it will be restarted
+    so the container is recreated with `CLAUDE_CODE_OAUTH_TOKEN` env var
+    and `ANTHROPIC_API_KEY` removed.
     """
     # Check agent access (owner or admin)
     if not db.can_user_access_agent(current_user.username, agent_name):
@@ -210,48 +197,34 @@ async def assign_subscription_to_agent(
             f"by {current_user.username}"
         )
 
-        # If agent is running, restart it so ANTHROPIC_API_KEY env var is
-        # removed from the container (Claude Code prioritizes API key over
-        # OAuth credentials — the key must be absent for subscription to work).
+        # If agent is running, restart it so the container is recreated
+        # with CLAUDE_CODE_OAUTH_TOKEN env var and without ANTHROPIC_API_KEY
         from services.docker_service import get_agent_container, get_agent_status_from_container
         from services.docker_utils import container_stop
-        from services.subscription_service import inject_subscription_to_agent
         from services.agent_service import start_agent_internal
 
         container = get_agent_container(agent_name)
         restart_result = None
-        injection_result = {"status": "skipped", "reason": "agent_not_running"}
 
         if container:
             agent_status = get_agent_status_from_container(container)
             if agent_status.status == "running":
                 try:
                     await container_stop(container)
-                    start_result = await start_agent_internal(agent_name)
+                    await start_agent_internal(agent_name)
                     restart_result = "success"
-                    injection_result = start_result.get("subscription_result", {})
                     logger.info(
-                        f"Restarted agent '{agent_name}' to apply subscription "
-                        f"(removed ANTHROPIC_API_KEY from container env)"
+                        f"Restarted agent '{agent_name}' to apply subscription token"
                     )
                 except Exception as e:
                     logger.error(f"Failed to restart agent '{agent_name}' for subscription: {e}")
                     restart_result = f"failed: {e}"
-                    # Fall back to injection-only (may not work if API key still present)
-                    injection_result = await inject_subscription_to_agent(agent_name, subscription.id)
-
-        if injection_result.get("status") == "failed":
-            logger.error(
-                f"Subscription injection failed for agent '{agent_name}': "
-                f"{injection_result.get('error', 'unknown')}"
-            )
 
         return {
             "success": True,
             "message": f"Subscription '{subscription_name}' assigned to agent '{agent_name}'",
             "agent_name": agent_name,
             "subscription_name": subscription_name,
-            "injection_result": injection_result,
             "restart_result": restart_result,
         }
 

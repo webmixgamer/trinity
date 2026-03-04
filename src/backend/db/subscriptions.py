@@ -1,9 +1,11 @@
 """
-Subscription credentials database operations (SUB-001).
+Subscription credentials database operations (SUB-002).
 
-Manages Claude Max/Pro subscription credentials for agents.
+Manages Claude Max/Pro subscription tokens for agents.
+Tokens are generated via `claude setup-token` (~1 year lifetime) and injected
+as `CLAUDE_CODE_OAUTH_TOKEN` env var on agent containers.
 Subscriptions are registered once and can be assigned to multiple agents.
-Credentials are encrypted using the same AES-256-GCM system as other credentials.
+Tokens are encrypted using the same AES-256-GCM system as other credentials.
 """
 
 import uuid
@@ -64,7 +66,7 @@ class SubscriptionOperations:
     def create_subscription(
         self,
         name: str,
-        credentials_json: str,
+        token: str,
         owner_id: int,
         subscription_type: Optional[str] = None,
         rate_limit_tier: Optional[str] = None,
@@ -73,11 +75,11 @@ class SubscriptionOperations:
         Create or update a subscription credential.
 
         Performs upsert by name - if a subscription with the same name exists,
-        it will be updated with the new credentials.
+        it will be updated with the new token.
 
         Args:
             name: Unique name for the subscription (e.g., "eugene-max")
-            credentials_json: Raw JSON from ~/.claude/.credentials.json
+            token: Long-lived token from `claude setup-token` (sk-ant-oat01-...)
             owner_id: User ID of the subscription owner
             subscription_type: Type like "max" or "pro"
             rate_limit_tier: Rate limit tier if known
@@ -85,10 +87,9 @@ class SubscriptionOperations:
         Returns:
             The created/updated SubscriptionCredential
         """
-        # Encrypt the credentials
+        # Encrypt the token
         encryption_service = self._get_encryption_service()
-        # Wrap credentials in a dict for the encryption format
-        encrypted = encryption_service.encrypt({".credentials.json": credentials_json})
+        encrypted = encryption_service.encrypt({"token": token})
 
         now = datetime.utcnow().isoformat()
 
@@ -185,22 +186,25 @@ class SubscriptionOperations:
                 return self._row_to_subscription(row)
             return None
 
-    def get_subscription_credentials(self, subscription_id: str) -> Optional[str]:
+    def get_subscription_token(self, subscription_id: str) -> Optional[str]:
         """
-        Get the decrypted credentials JSON for a subscription.
+        Get the decrypted token for a subscription.
 
-        INTERNAL USE ONLY - credentials should not be exposed via API.
+        INTERNAL USE ONLY - tokens should not be exposed via API.
 
         Args:
             subscription_id: The subscription UUID
 
         Returns:
-            Decrypted credentials JSON string or None
+            Decrypted token string or None (including for legacy format subscriptions)
         """
+        import logging
+        _logger = logging.getLogger(__name__)
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT encrypted_credentials FROM subscription_credentials WHERE id = ?",
+                "SELECT name, encrypted_credentials FROM subscription_credentials WHERE id = ?",
                 (subscription_id,)
             )
             row = cursor.fetchone()
@@ -212,8 +216,21 @@ class SubscriptionOperations:
             encryption_service = self._get_encryption_service()
             decrypted = encryption_service.decrypt(row["encrypted_credentials"])
 
-            # Extract the credentials JSON from the wrapper
-            return decrypted.get(".credentials.json")
+            # SUB-002 format: {"token": "sk-ant-oat01-..."}
+            token = decrypted.get("token")
+            if token:
+                return token
+
+            # Legacy SUB-001 format: {".credentials.json": "..."} — return None with warning
+            if ".credentials.json" in decrypted:
+                _logger.warning(
+                    f"Subscription '{row['name']}' ({subscription_id}) uses legacy "
+                    f".credentials.json format. Re-register with `claude setup-token`."
+                )
+                return None
+
+            _logger.warning(f"Subscription '{row['name']}' ({subscription_id}) has unknown credential format")
+            return None
 
     def list_subscriptions(self, owner_id: Optional[int] = None) -> List[SubscriptionCredential]:
         """

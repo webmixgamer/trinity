@@ -940,12 +940,12 @@ export class TrinityClient {
   // ============================================================================
 
   /**
-   * Register a new subscription credential
-   * Admin-only. Stores encrypted OAuth credentials from Claude Max/Pro.
+   * Register a new subscription token
+   * Admin-only. Stores encrypted long-lived token from `claude setup-token`.
    */
   async registerSubscription(
     name: string,
-    credentialsJson: string,
+    token: string,
     subscriptionType?: string,
     rateLimitTier?: string
   ): Promise<{
@@ -960,7 +960,7 @@ export class TrinityClient {
       "/api/subscriptions",
       {
         name,
-        credentials_json: credentialsJson,
+        token,
         subscription_type: subscriptionType,
         rate_limit_tier: rateLimitTier,
       }

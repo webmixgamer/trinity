@@ -42,20 +42,20 @@ export function createSubscriptionTools(
     registerSubscription: {
       name: "register_subscription",
       description:
-        "Register a Claude Max/Pro subscription credential. " +
-        "Admin-only. Takes the raw credentials JSON from ~/.claude/.credentials.json. " +
+        "Register a Claude Max/Pro subscription token. " +
+        "Admin-only. Takes a long-lived token from `claude setup-token`. " +
         "If a subscription with the same name exists, it will be updated. " +
-        "Example: cat ~/.claude/.credentials.json | pbcopy, then pass the content.",
+        "Token must start with 'sk-ant-oat01-'.",
       parameters: z.object({
         name: z.string().describe("Unique name for the subscription (e.g., 'eugene-max')"),
-        credentials_json: z.string().describe("Raw JSON from ~/.claude/.credentials.json"),
+        token: z.string().describe("Long-lived token from `claude setup-token` (sk-ant-oat01-...)"),
         subscription_type: z.string().optional().describe("Type: 'max' or 'pro'"),
         rate_limit_tier: z.string().optional().describe("Rate limit tier if known"),
       }),
       execute: async (
         params: {
           name: string;
-          credentials_json: string;
+          token: string;
           subscription_type?: string;
           rate_limit_tier?: string;
         },
@@ -66,7 +66,7 @@ export function createSubscriptionTools(
 
         const result = await apiClient.registerSubscription(
           params.name,
-          params.credentials_json,
+          params.token,
           params.subscription_type,
           params.rate_limit_tier
         );

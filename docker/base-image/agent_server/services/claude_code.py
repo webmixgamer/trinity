@@ -570,12 +570,12 @@ def _diagnose_exit_failure(return_code: int) -> str:
     """Diagnose common Claude Code exit failures when stderr is empty."""
     # Check for missing credentials
     has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    has_oauth = Path(Path.home() / ".claude" / ".credentials.json").exists()
+    has_oauth_token = bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))
 
-    if not has_api_key and not has_oauth:
-        return "No authentication configured. Set ANTHROPIC_API_KEY or assign a Claude subscription."
-    if not has_api_key and has_oauth:
-        return "OAuth credentials may be expired or invalid. Try re-assigning the subscription."
+    if not has_api_key and not has_oauth_token:
+        return "No authentication configured. Set ANTHROPIC_API_KEY or assign a subscription token."
+    if not has_api_key and has_oauth_token:
+        return "Subscription token may be expired or revoked. Generate a new one with 'claude setup-token'."
 
     # Exit code hints
     hints = {

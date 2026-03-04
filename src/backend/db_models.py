@@ -8,7 +8,7 @@ For API request/response models, see models.py.
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # =========================================================================
@@ -615,15 +615,22 @@ class NotificationAcknowledge(BaseModel):
 
 
 # =========================================================================
-# Subscription Credential Models (SUB-001: Claude Max/Pro Subscription Management)
+# Subscription Credential Models (SUB-002: Long-Lived Subscription Tokens)
 # =========================================================================
 
 class SubscriptionCredentialCreate(BaseModel):
-    """Request model for registering a subscription."""
+    """Request model for registering a subscription token from `claude setup-token`."""
     name: str  # Unique name for the subscription (e.g., "eugene-max")
-    credentials_json: str  # Raw JSON from ~/.claude/.credentials.json
+    token: str  # Long-lived token from `claude setup-token` (sk-ant-oat01-...)
     subscription_type: Optional[str] = None  # "max", "pro", etc.
     rate_limit_tier: Optional[str] = None  # Rate limit tier if known
+
+    @field_validator('token')
+    @classmethod
+    def validate_token_prefix(cls, v: str) -> str:
+        if not v.startswith('sk-ant-oat01-'):
+            raise ValueError("Token must start with 'sk-ant-oat01-' (from `claude setup-token`)")
+        return v
 
 
 class SubscriptionCredential(BaseModel):

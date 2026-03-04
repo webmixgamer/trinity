@@ -145,7 +145,6 @@ async def get_credentials_status():
         ".mcp.json",
         ".mcp.json.template",
         ".credentials.enc",  # Encrypted credentials file
-        ".claude/.credentials.json",  # Subscription OAuth credentials (SUB-001)
     ]
 
     for filename in credential_files:

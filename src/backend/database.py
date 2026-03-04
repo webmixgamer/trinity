@@ -963,13 +963,13 @@ class DatabaseManager:
         return self._notification_ops.count_pending_notifications(agent_name)
 
     # =========================================================================
-    # Subscription Credentials (delegated to db/subscriptions.py) - SUB-001
+    # Subscription Credentials (delegated to db/subscriptions.py) - SUB-002
     # =========================================================================
 
-    def create_subscription(self, name: str, credentials_json: str, owner_id: int,
+    def create_subscription(self, name: str, token: str, owner_id: int,
                             subscription_type: str = None, rate_limit_tier: str = None):
         return self._subscription_ops.create_subscription(
-            name, credentials_json, owner_id, subscription_type, rate_limit_tier
+            name, token, owner_id, subscription_type, rate_limit_tier
         )
 
     def get_subscription(self, subscription_id: str):
@@ -978,8 +978,8 @@ class DatabaseManager:
     def get_subscription_by_name(self, name: str):
         return self._subscription_ops.get_subscription_by_name(name)
 
-    def get_subscription_credentials(self, subscription_id: str):
-        return self._subscription_ops.get_subscription_credentials(subscription_id)
+    def get_subscription_token(self, subscription_id: str):
+        return self._subscription_ops.get_subscription_token(subscription_id)
 
     def list_subscriptions(self, owner_id: int = None):
         return self._subscription_ops.list_subscriptions(owner_id)

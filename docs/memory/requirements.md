@@ -782,29 +782,30 @@ The Process Engine supports six step types:
   2. MCP server header integration
   3. Frontend display and filtering
 
-### 20.3 Subscription Management (SUB-001)
-- **Status**: ✅ Implemented (2026-02-22)
-- **Requirement ID**: SUB-001
+### 20.3 Subscription Management (SUB-002 — replaces SUB-001)
+- **Status**: ✅ Implemented (2026-03-03)
+- **Requirement ID**: SUB-002
 - **Priority**: HIGH
-- **Description**: Centralized management of Claude Max/Pro subscription credentials. Register subscriptions once, assign to multiple agents, with deterministic auth mode detection.
+- **Replaces**: SUB-001 (`.credentials.json` injection — removed)
+- **Description**: Centralized management of Claude Max/Pro subscription tokens. Register long-lived tokens from `claude setup-token` (~1 year lifetime), assign to multiple agents via `CLAUDE_CODE_OAUTH_TOKEN` env var injection.
 - **Key Features**:
-  - Subscription registry storing encrypted OAuth credentials (AES-256-GCM)
+  - Subscription registry storing encrypted tokens (AES-256-GCM)
   - MCP tools: `register_subscription`, `list_subscriptions`, `assign_subscription`, `get_agent_auth`, `delete_subscription`
   - REST endpoints: `POST/GET/DELETE /api/subscriptions`, `PUT/DELETE/GET /api/subscriptions/agents/{name}`
-  - Automatic injection of `~/.claude/.credentials.json` on agent start
-  - Hot-injection to running agents on assignment
+  - Token injected as `CLAUDE_CODE_OAUTH_TOKEN` env var on container creation
+  - No file injection — env var persists across restarts automatically
   - Auth detection endpoint showing which method each agent uses
   - Fleet auth report at `/api/ops/auth-report`
 - **Workflow**:
-  1. User authenticates locally via `claude login`
-  2. Registers subscription via MCP: `register_subscription("name", credentials_json)`
+  1. User runs `claude setup-token` locally to generate long-lived token
+  2. Registers subscription via MCP: `register_subscription("name", "sk-ant-oat01-...")`
   3. Assigns to agents: `assign_subscription("agent-name", "subscription-name")`
-  4. Trinity injects credentials; subscription takes precedence over API key
+  4. Agent container is (re)created with `CLAUDE_CODE_OAUTH_TOKEN` env var; `ANTHROPIC_API_KEY` removed
 - **Database**: `subscription_credentials` table, `subscription_id` FK on `agent_ownership`
 - **Files**:
   - `src/backend/db/subscriptions.py` - Database operations
   - `src/backend/routers/subscriptions.py` - REST API
-  - `src/backend/services/subscription_service.py` - Injection service
+  - `src/backend/services/subscription_service.py` - Auth mode detection
   - `src/mcp-server/src/tools/subscriptions.ts` - MCP tools
 
 ---

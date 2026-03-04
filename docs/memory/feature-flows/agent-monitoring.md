@@ -1,5 +1,7 @@
 # Feature: Agent Monitoring Service (MON-001)
 
+> **SUB-002 Update (2026-03-03):** Credential file monitoring removed. SUB-002 injects tokens as container env vars (`CLAUDE_CODE_OAUTH_TOKEN`) instead of `.credentials.json` files. Env vars persist across restarts and do not require file-presence monitoring or auto-remediation. The `credential_status` field on `BusinessHealthCheck` is deprecated (always `None`). The `alert_subscription_credentials_missing()` alert function has been removed.
+
 ## Overview
 
 Multi-layer health monitoring system for agent fleet. Performs periodic Docker container, network, and business logic health checks. Stores results in database, sends alerts on status changes, and broadcasts real-time updates via WebSocket.
@@ -49,6 +51,7 @@ Docker > Network > Business
 CRITICAL: Container not found / stopped / OOM killed
 UNHEALTHY: Network unreachable / Runtime not available
 DEGRADED: High CPU/Memory / High latency / High context usage / Stuck executions
+         (credential_status == "missing" no longer triggers DEGRADED — removed in SUB-002)
 HEALTHY: All checks passing
 ```
 
@@ -379,7 +382,7 @@ async def get_fleet_status(current_user: User = Depends(get_current_user)):
 | `check_network_health(agent_name, timeout)` | 134-182 | HTTP /health endpoint, latency |
 | `check_business_health(agent_name, timeout)` | 185-277 | Runtime, context, executions |
 | `aggregate_health(docker, network, business, config)` | 280-353 | Combine into single status |
-| `perform_health_check(agent_name, config, store_results)` | 360-522 | Run all checks, store, alert |
+| `perform_health_check(agent_name, config, store_results)` | 360-522 | Run all checks, store, alert (credential auto-remediation removed in SUB-002) |
 | `perform_fleet_health_check(agent_names, config, store_results)` | 525-595 | Parallel checks with semaphore |
 
 **Docker Health Check** (lines 56-131):
@@ -436,12 +439,17 @@ async def check_business_health(agent_name: str, timeout: float = 10.0) -> Busin
     exec_response = await client.get(f"http://agent-{agent_name}:8000/api/executions/running")
     stuck_execution_count = count_stuck_executions(executions)
 
+    # NOTE: credential_status is deprecated (always None) since SUB-002.
+    # Credential file checks (/api/credentials/status) and degradation logic removed.
+    # Tokens are now injected as container env vars, not files.
+
     return BusinessHealthCheck(
         status=determine_status(),
         runtime_available=runtime_available,
         context_percent=context_percent,
         active_execution_count=len(executions),
-        stuck_execution_count=stuck_execution_count
+        stuck_execution_count=stuck_execution_count,
+        credential_status=None  # deprecated (SUB-002)
     )
 ```
 
@@ -530,6 +538,7 @@ async def _send_degradation_alert(self, ...):
 - `alert_high_restart_count()` - Container restarting frequently
 - `alert_stuck_execution()` - Execution running > 30 min
 - `alert_resource_critical()` - High CPU/memory usage
+- ~~`alert_subscription_credentials_missing()`~~ - **Removed** (SUB-002): credential file monitoring no longer needed
 
 ### Database Operations (`src/backend/db/monitoring.py`)
 
@@ -849,5 +858,6 @@ Monitoring service stopped
 
 | Date | Changes |
 |------|---------|
+| 2026-03-03 | **SUB-002 credential monitoring removal**: Removed credential file checks from `check_business_health()`, `aggregate_health()`, and `perform_health_check()`. Removed `alert_subscription_credentials_missing()` from `monitoring_alerts.py`. Removed auto-remediation via `inject_subscription_on_start()`. `credential_status` field deprecated (always `None`). Tokens now injected as container env vars. |
 | 2026-02-23 | **Admin-only access restriction**: NavBar "Health" link now requires admin (`v-if="isAdmin"` at NavBar.vue:26), route meta updated to `requiresAdmin: true` (router/index.js:39). Frontend Layer section already documented this correctly. |
 | 2026-02-23 | Initial documentation for MON-001 implementation |

@@ -241,11 +241,6 @@ async def start_agent_internal(agent_name: str) -> dict:
     credentials_result = await inject_assigned_credentials(agent_name)
     credentials_status = credentials_result.get("status", "unknown")
 
-    # Inject subscription credentials if assigned (SUB-001)
-    from services.subscription_service import inject_subscription_on_start
-    subscription_result = await inject_subscription_on_start(agent_name)
-    subscription_status = subscription_result.get("status", "unknown")
-
     # Inject assigned skills from the Skills page
     skills_result = await inject_assigned_skills(agent_name)
     skills_status = skills_result.get("status", "unknown")
@@ -270,8 +265,6 @@ async def start_agent_internal(agent_name: str) -> dict:
         "trinity_result": trinity_result,
         "credentials_injection": credentials_status,
         "credentials_result": credentials_result,
-        "subscription_injection": subscription_status,
-        "subscription_result": subscription_result,
         "skills_injection": skills_status,
         "skills_result": skills_result,
         "read_only_injection": read_only_result.get("status", "unknown"),
@@ -294,22 +287,28 @@ async def recreate_container_with_updated_config(agent_name: str, old_container,
     env_vars = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in old_config.get("Env", []) if "=" in e}
     labels = old_config.get("Labels", {})
 
-    # Update ANTHROPIC_API_KEY based on current setting.
-    # Claude Code prioritizes ANTHROPIC_API_KEY over OAuth credentials in
-    # .credentials.json, so when a subscription is assigned we must remove
-    # the API key to let Claude Code use the subscription's OAuth token.
-    has_subscription = db.get_agent_subscription_id(agent_name) is not None
+    # Update auth env vars based on current setting (SUB-002).
+    # Claude Code prioritizes ANTHROPIC_API_KEY over CLAUDE_CODE_OAUTH_TOKEN,
+    # so when a subscription is assigned we must remove the API key and set
+    # the token env var instead.
+    subscription_id = db.get_agent_subscription_id(agent_name)
+    has_subscription = subscription_id is not None
     use_platform_key = db.get_use_platform_api_key(agent_name)
 
     if has_subscription:
-        # Subscription assigned — remove API key so Claude Code uses OAuth
+        # Subscription assigned — inject token, remove API key
+        token = db.get_subscription_token(subscription_id)
+        if token:
+            env_vars['CLAUDE_CODE_OAUTH_TOKEN'] = token
         env_vars.pop('ANTHROPIC_API_KEY', None)
     elif use_platform_key:
         # No subscription, use platform API key
         env_vars['ANTHROPIC_API_KEY'] = get_anthropic_api_key()
+        env_vars.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
     else:
         # No subscription, no platform key — user will auth in terminal
         env_vars.pop('ANTHROPIC_API_KEY', None)
+        env_vars.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
 
     # Get port from labels
     ssh_port = int(labels.get("trinity.ssh-port", 2222))

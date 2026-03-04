@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-03-02 - **Subscription credential priority fix (Issue #57)**: `check_api_key_env_matches()` now detects subscription + API key conflict. Container recreation removes `ANTHROPIC_API_KEY` when subscription assigned. Authentication Model corrected: API key takes precedence over OAuth in Claude Code.
+> **Updated**: 2026-03-03 - **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call from `start_agent_internal()`. `check_api_key_env_matches()` now performs three-way env var check (subscription token, API key, or neither). `recreate_container_with_updated_config()` manages `CLAUDE_CODE_OAUTH_TOKEN` env var directly.
+>
+> **Previous (2026-03-02)**: **Subscription credential priority fix (Issue #57)**: `check_api_key_env_matches()` now detects subscription + API key conflict. Container recreation removes `ANTHROPIC_API_KEY` when subscription assigned. Authentication Model corrected: API key takes precedence over OAuth in Claude Code.
 >
 > **Previous (2026-03-01)**: **Agent Rename (RENAME-001)**: Added ability to rename agents via UI (pencil icon in AgentHeader) or MCP (`rename_agent` tool). Renames container, updates all 17 database tables atomically, broadcasts WebSocket event. System agents protected.
 >
@@ -179,8 +181,8 @@ The agent router uses a **thin router + service layer** architecture:
 
 | Module | Lines | Key Functions |
 |--------|-------|---------------|
-| `helpers.py` | ~404 | `get_accessible_agents()` (uses batch query), `get_next_version_name()`, `check_shared_folder_mounts_match()`, `check_api_key_env_matches()` (subscription-aware) |
-| `lifecycle.py` | ~435 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` (subscription-aware API key handling) |
+| `helpers.py` | ~404 | `get_accessible_agents()` (uses batch query), `get_next_version_name()`, `check_shared_folder_mounts_match()`, `check_api_key_env_matches()` (SUB-002: three-way check for `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` / neither) |
+| `lifecycle.py` | ~435 | `inject_trinity_meta_prompt()`, `start_agent_internal()`, `recreate_container_with_updated_config()` (SUB-002: manages `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` env vars) |
 | `crud.py` | 507 | `create_agent_internal()` |
 | `terminal.py` | 342 | `TerminalSessionManager` class |
 
@@ -377,9 +379,11 @@ async def start_agent_internal(agent_name: str) -> dict:
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Check if container needs recreation for shared folders, API key, resources, or capabilities
-    # NOTE: check_api_key_env_matches() is subscription-aware -- if a subscription is assigned
-    # but ANTHROPIC_API_KEY is in the container env, it triggers recreation to remove the key.
+    # Check if container needs recreation for shared folders, API key/token, resources, or capabilities
+    # NOTE: check_api_key_env_matches() performs a three-way check (SUB-002):
+    #   - Subscription assigned: must have CLAUDE_CODE_OAUTH_TOKEN, must NOT have ANTHROPIC_API_KEY
+    #   - Platform key enabled: must have ANTHROPIC_API_KEY, must NOT have CLAUDE_CODE_OAUTH_TOKEN
+    #   - Neither: both must be absent
     await container_reload(container)
     needs_recreation = (
         not await check_shared_folder_mounts_match(container, agent_name) or
@@ -389,7 +393,8 @@ async def start_agent_internal(agent_name: str) -> dict:
     )
 
     if needs_recreation:
-        # Recreate container with updated config (omits ANTHROPIC_API_KEY if subscription assigned)
+        # Recreate container with updated config
+        # (sets CLAUDE_CODE_OAUTH_TOKEN if subscription, removes ANTHROPIC_API_KEY, or vice versa)
         await recreate_container_with_updated_config(agent_name, container, "system")
         container = get_agent_container(agent_name)
 
@@ -401,12 +406,11 @@ async def start_agent_internal(agent_name: str) -> dict:
     # 2. Import credentials from encrypted .credentials.enc file (CRED-002)
     credentials_result = await inject_assigned_credentials(agent_name)
 
-    # 3. Inject subscription credentials if assigned (SUB-001)
-    from services.subscription_service import inject_subscription_on_start
-    subscription_result = await inject_subscription_on_start(agent_name)
-
-    # 4. Inject assigned skills from the Skills page
+    # 3. Inject assigned skills from the Skills page
     skills_result = await inject_assigned_skills(agent_name)
+
+    # NOTE: Subscription tokens are NO LONGER injected post-start (SUB-002).
+    # They are set as CLAUDE_CODE_OAUTH_TOKEN env var at container creation/recreation time.
 
     return {
         "message": f"Agent {agent_name} started",
@@ -414,8 +418,6 @@ async def start_agent_internal(agent_name: str) -> dict:
         "trinity_result": trinity_result,
         "credentials_injection": credentials_result.get("status", "unknown"),
         "credentials_result": credentials_result,
-        "subscription_injection": subscription_result.get("status", "unknown"),
-        "subscription_result": subscription_result,
         "skills_injection": skills_result.get("status", "unknown"),
         "skills_result": skills_result
     }
@@ -424,31 +426,32 @@ async def start_agent_internal(agent_name: str) -> dict:
 **Startup Injection Order** (After container.start()):
 1. **Trinity Meta-Prompt** (`inject_trinity_meta_prompt`) - Planning commands and `.trinity/` directory
 2. **Credentials** (`inject_assigned_credentials`) - CRED-002: Decrypt `.credentials.enc` and write files
-3. **Subscription** (`inject_subscription_on_start`) - SUB-001: Inject `~/.claude/.credentials.json` if subscription assigned
-4. **Skills** (`inject_assigned_skills`) - Write skill files to `~/.claude/skills/{name}/SKILL.md`
-5. **Read-Only Hooks** (`inject_read_only_hooks`) - If read-only mode enabled
+3. **Skills** (`inject_assigned_skills`) - Write skill files to `~/.claude/skills/{name}/SKILL.md`
+4. **Read-Only Hooks** (`inject_read_only_hooks`) - If read-only mode enabled
+
+> **SUB-002 Note**: Subscription tokens are no longer injected post-start. They are set as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation time, before the container starts.
 
 **Container Recreation Triggers:**
 - **Shared folder changes**: Mounts added/removed based on `shared_folder_config`
-- **API key / subscription changes**: `ANTHROPIC_API_KEY` added/removed based on `use_platform_api_key` AND subscription assignment (see below)
+- **Auth env var changes** (SUB-002): `ANTHROPIC_API_KEY` and/or `CLAUDE_CODE_OAUTH_TOKEN` added/removed based on `use_platform_api_key` AND subscription assignment. Three-way check ensures mutual exclusion.
 - **Resource limit changes**: Memory/CPU limits updated in database
 - **Capabilities changes**: System-wide full_capabilities setting changed
 - API key retrieval uses `get_anthropic_api_key()` from `services/settings_service.py` (line 118)
 
-**Authentication Model** (Updated 2026-03-02):
+**Authentication Model** (Updated 2026-03-03 for SUB-002):
 
 Claude Code checks credentials in **priority order** (highest first):
 
 1. **API key**: `ANTHROPIC_API_KEY` environment variable -- if present, Claude Code uses this and **ignores** OAuth
-2. **Subscription OAuth** (SUB-001): `~/.claude/.credentials.json` injected automatically
+2. **Subscription OAuth** (SUB-002): `CLAUDE_CODE_OAUTH_TOKEN` env var set at container creation/recreation
 3. **OAuth session** (manual login): User runs `/login` in web terminal
 
-**Critical**: Because `ANTHROPIC_API_KEY` takes precedence, the env var must be **absent** from the container when a subscription is assigned. This mutual exclusion is enforced by:
+**Critical**: Because `ANTHROPIC_API_KEY` takes precedence, the env var must be **absent** from the container when a subscription is assigned. The two auth env vars are mutually exclusive. This is enforced by:
 
-- `check_api_key_env_matches()` (`helpers.py:313-341`): On every agent start, detects if a subscription is assigned but `ANTHROPIC_API_KEY` is still in the container env. Returns `False` to trigger container recreation.
-- `recreate_container_with_updated_config()` (`lifecycle.py:282-434`): When rebuilding the container, checks `db.get_agent_subscription_id()`. If a subscription exists, `ANTHROPIC_API_KEY` is omitted from the new container's environment.
-- `assign_subscription_to_agent` endpoint (`subscriptions.py:184-259`): Assigning a subscription to a **running** agent triggers a restart (stop + start) to remove the API key from the container env.
-- `clear_agent_subscription` endpoint (`subscriptions.py:262-311`): Clearing a subscription from a **running** agent triggers a restart to restore the API key.
+- `check_api_key_env_matches()` (`helpers.py:313-351`): Three-way check on every agent start. If subscription assigned: must have `CLAUDE_CODE_OAUTH_TOKEN` with correct value, must NOT have `ANTHROPIC_API_KEY`. If platform key: must have `ANTHROPIC_API_KEY`, must NOT have `CLAUDE_CODE_OAUTH_TOKEN`. If neither: both must be absent. Returns `False` to trigger container recreation on any mismatch.
+- `recreate_container_with_updated_config()` (`lifecycle.py:275-434`): When rebuilding the container, checks `db.get_agent_subscription_id()`. If a subscription exists, sets `CLAUDE_CODE_OAUTH_TOKEN` from `db.get_subscription_token()` and removes `ANTHROPIC_API_KEY`. If no subscription but platform key enabled, sets `ANTHROPIC_API_KEY` and removes `CLAUDE_CODE_OAUTH_TOKEN`. Otherwise removes both.
+- `assign_subscription_to_agent` endpoint (`subscriptions.py:184-259`): Assigning a subscription to a **running** agent triggers a restart (stop + start) so the container is recreated with `CLAUDE_CODE_OAUTH_TOKEN` env var.
+- `clear_agent_subscription` endpoint (`subscriptions.py:262-311`): Clearing a subscription from a **running** agent triggers a restart to remove the token and restore the API key.
 
 The mandatory `ANTHROPIC_API_KEY` check was removed from Claude Code execution functions, allowing headless calls (scheduled tasks, MCP triggers, parallel tasks) to work with subscription authentication.
 
@@ -501,8 +504,11 @@ async def inject_trinity_prompt(
                 await asyncio.sleep(retry_delay)
 ```
 
-**Container Recreation** (`src/backend/services/agent_service/lifecycle.py:282-434`):
-Handles recreating containers with updated volume mounts and environment variables. Subscription-aware: checks `db.get_agent_subscription_id()` to decide whether to include `ANTHROPIC_API_KEY` in the new container's environment. If a subscription is assigned, the API key is omitted (`env_vars.pop('ANTHROPIC_API_KEY', None)`). Uses `get_anthropic_api_key()` from settings service when restoring the key.
+**Container Recreation** (`src/backend/services/agent_service/lifecycle.py:275-434`):
+Handles recreating containers with updated volume mounts and environment variables. Subscription-aware (SUB-002): checks `db.get_agent_subscription_id()` to manage auth env vars. Three cases:
+- **Subscription assigned**: Sets `CLAUDE_CODE_OAUTH_TOKEN` from `db.get_subscription_token()`, removes `ANTHROPIC_API_KEY`
+- **Platform key enabled (no subscription)**: Sets `ANTHROPIC_API_KEY` from `get_anthropic_api_key()`, removes `CLAUDE_CODE_OAUTH_TOKEN`
+- **Neither**: Removes both `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`
 
 #### Stop Agent (`src/backend/routers/agents.py:342-360`)
 ```python
@@ -939,7 +945,7 @@ await log_audit_event(
 
 ---
 
-**Last Updated**: 2026-03-02
+**Last Updated**: 2026-03-03
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with service layer architecture and Trinity meta-prompt injection
 
@@ -949,10 +955,11 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-03-03 | **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call and `subscription_result`/`subscription_status` from `start_agent_internal()` return dict. `check_api_key_env_matches()` now performs three-way check: subscription (must have token, no API key), platform key (must have key, no token), neither (both absent). `recreate_container_with_updated_config()` sets/removes `CLAUDE_CODE_OAUTH_TOKEN` alongside `ANTHROPIC_API_KEY`. |
 | 2026-03-02 | **Subscription credential priority fix (Issue #57)**: Updated Authentication Model to reflect correct Claude Code credential priority (API key > OAuth). `check_api_key_env_matches()` now subscription-aware -- detects subscription + API key conflict and triggers container recreation to remove `ANTHROPIC_API_KEY`. `recreate_container_with_updated_config()` omits API key when subscription assigned. Updated `start_agent_internal()` code block to match current implementation (includes subscription injection step). Updated container recreation line references. |
 | 2026-03-01 | **Agent Rename (RENAME-001)**: Added `PUT /api/agents/{name}/rename` endpoint (agents.py:1370-1510), `rename_agent` MCP tool (agents.ts:263-296), `renameAgent()` client method (client.ts:277-296), `db.rename_agent()` for atomic 17-table update (db/agents.py:624-780), `db.can_user_rename_agent()` permission check (db/agents.py:781-800), `container_rename()` async wrapper (docker_utils.py:82-90). Frontend: Pencil icon in AgentHeader.vue (lines 26-35), inline editing with Enter/Escape, `renameAgent()` handler in AgentDetail.vue (lines 460-494). System agents protected from rename. WebSocket `agent_renamed` event broadcast. |
 | 2026-02-24 | **Async Docker Operations (DOCKER-001)**: All blocking Docker SDK calls now use async wrappers from `services/docker_utils.py`. Affected: `start_agent_internal()`, `recreate_container_with_updated_config()`, `delete_agent_endpoint()`, `stop_agent_endpoint()`. Event loop no longer blocks during Docker operations. See [async-docker-operations.md](async-docker-operations.md). |
-| 2026-02-22 | **Subscription Injection on Startup (SUB-001)**: Added `inject_subscription_on_start()` to startup injection order between credentials and skills. Updated Authentication Model section to document 3 auth methods in priority order: Subscription OAuth (automatic), Manual OAuth (via /login), API key. Added cross-reference to [subscription-management.md](subscription-management.md). |
+| 2026-02-22 | **Subscription Injection on Startup (SUB-001)**: ~~Added `inject_subscription_on_start()` to startup injection order between credentials and skills.~~ *Superseded by SUB-002 (2026-03-03): subscription tokens now injected as env var at container creation, not post-start.* Updated Authentication Model section to document 3 auth methods in priority order. Added cross-reference to [subscription-management.md](subscription-management.md). |
 | 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in AgentHeader.vue now use `size="sm"`: RunningStateToggle (line 41), AutonomyToggle (line 68), ReadOnlyToggle (line 77). RunningStateToggle.vue default size changed from 'md' to 'sm' (line 97). This provides visual consistency across all toggle locations (AgentHeader, Agents.vue, AgentNode.vue). |
 | 2026-02-18 | **UI-001 Redesign + Tab Restructuring**: Updated AgentHeader structure (3-row layout), RunningStateToggle now at lines 38-43 in Row 1. Default tab changed from 'info' to 'tasks' (line 275). **Logs tab and Files tab removed from visibleTabs. Terminal tab repositioned after Git tab.** New tab order (lines 504-529): Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, Terminal, Folders*, Public Links*, Info. |
 | 2026-02-15 | **Claude Max subscription support**: Updated documentation to reflect that agents can now use Claude Max subscription for all executions (including headless). When "Authenticate in Terminal" is enabled and user logs in via `/login`, the OAuth session in `~/.claude.json` is used for scheduled tasks, MCP calls, and parallel tasks instead of requiring `ANTHROPIC_API_KEY`. |

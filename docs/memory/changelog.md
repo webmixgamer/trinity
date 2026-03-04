@@ -1,4 +1,33 @@
 ### 2026-03-03
+🔄 **Feature: Long-Lived Subscription Tokens (SUB-002 — replaces SUB-001)**
+
+Replaced `.credentials.json` file injection with `CLAUDE_CODE_OAUTH_TOKEN` env var injection. Tokens from `claude setup-token` (~1 year lifetime) replace short-lived OAuth blobs that expired every 8-15 hours.
+
+**Backend:**
+- `src/backend/db_models.py` — `SubscriptionCredentialCreate`: `credentials_json` → `token` field with `sk-ant-oat01-` prefix validator
+- `src/backend/db/subscriptions.py` — `create_subscription()`: stores `{"token": token}` instead of `{".credentials.json": ...}`; `get_subscription_credentials()` → `get_subscription_token()` with legacy format detection
+- `src/backend/database.py` — Updated wrapper methods
+- `src/backend/services/subscription_service.py` — Deleted `inject_subscription_to_agent()` and `inject_subscription_on_start()`; simplified `get_agent_auth_mode()` to DB-only detection
+- `src/backend/services/agent_service/lifecycle.py` — Removed subscription injection call from `start_agent_internal()`; `recreate_container_with_updated_config()` now sets `CLAUDE_CODE_OAUTH_TOKEN` env var
+- `src/backend/services/agent_service/helpers.py` — `check_api_key_env_matches()` now verifies `CLAUDE_CODE_OAUTH_TOKEN` presence/value
+- `src/backend/routers/subscriptions.py` — `POST /api/subscriptions` uses `token` field; `PUT /agents/{name}` simplified (no injection call)
+- `src/backend/services/monitoring_service.py` — Removed `.credentials.json` file check, auto-remediation, and credential_status degradation
+- `src/backend/services/monitoring_alerts.py` — Deleted `alert_subscription_credentials_missing()`
+
+**Agent:**
+- `docker/base-image/agent_server/services/claude_code.py` — `_diagnose_exit_failure()` checks `CLAUDE_CODE_OAUTH_TOKEN` env var instead of `.credentials.json` file
+
+**MCP Server:**
+- `src/mcp-server/src/tools/subscriptions.ts` — `register_subscription` tool: `credentials_json` → `token` param
+- `src/mcp-server/src/client.ts` — `registerSubscription()`: `credentialsJson` → `token`
+
+**Frontend:**
+- `src/frontend/src/views/Settings.vue` — Replaced file upload with password input for token; inline `sk-ant-oat01-` validation
+
+**Migration:** Existing subscriptions with legacy format return `None` with warning log. Admins must re-register using `claude setup-token`.
+
+---
+
 ✨ **Feature: Dynamic Thinking Status Labels in Chat (THINK-001, Issue #41)**
 
 Replaced static "Thinking..." indicator in Chat tab with dynamic, real-time status labels reflecting the agent's actual activity. Status updates stream via SSE while the task executes in async mode.
