@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-03-02 - Dashboard Filter Persistence (FILTER-001): Time range and quick tags now persist to localStorage. See "Dashboard Filter Persistence" section in [dashboard-timeline-view.md](dashboard-timeline-view.md).
+> **Last Updated**: 2026-03-03 - Replace Context Bar with Success Rate Bar (Issue #60): AgentNode and SystemAgentNode now display a success rate progress bar instead of context usage bar. Dual-window stats (24h primary + 7d secondary). Backend `GET /api/agents/execution-stats` extended with `include_7d` parameter and new `get_all_agents_execution_stats_dual()` DB method.
+>
+> **Previous (2026-03-02)** - Dashboard Filter Persistence (FILTER-001): Time range and quick tags now persist to localStorage. See "Dashboard Filter Persistence" section in [dashboard-timeline-view.md](dashboard-timeline-view.md).
 >
 > **Previous (2026-02-27)** - Dashboard Timeline Refresh Fix (REFRESH-001): Added WebSocket heartbeat (ping/pong every 30s), activity status change handler, and fallback activity polling (60s). See "WebSocket Heartbeat" and "Timeline Refresh" sections.
 >
@@ -82,14 +84,14 @@ Custom node component for each agent (updated 2025-12-30).
 - Lines 16-20: Top connection handle for incoming edges
 - Lines 104-108: Bottom connection handle for outgoing edges
 
-**Dark Mode Support** (Added 2025-12-14):
-- Lines 9-11: Card uses `dark:bg-gray-800`, `dark:border-gray-700` (system agents: `dark:bg-purple-900/20 dark:border-purple-700`)
-- Line 19: Handle uses `dark:!border-gray-800`
-- Line 27: Agent name uses `dark:text-white`
-- Lines 51-60: Activity state labels use dark-aware classes
-- Lines 74-75: Context label uses `dark:text-gray-400`, value uses `dark:text-gray-300`
-- Line 77: Progress bar background uses `dark:bg-gray-700`
-- Line 89: View Details button uses `dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300`
+**Dark Mode Support** (Added 2025-12-14, updated 2026-03-03):
+- Lines 10-12: Card uses `dark:bg-gray-800/80`, `dark:border-gray-700/50` (system agents: `dark:bg-purple-900/30 dark:border-purple-700/50`)
+- Line 20: Handle uses `dark:!border-gray-800`
+- Line 29: Agent name uses `dark:text-white`
+- Lines 68-76: Activity state labels use dark-aware classes
+- Lines 107-114: Success bar label uses `dark:text-gray-400`, value uses color-coded text classes
+- Line 116: Progress bar background uses `dark:bg-gray-700`
+- Line 191: View Details button uses `dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300`
 
 **Header Section**:
 - Lines 25-49: Agent name (truncated) with RuntimeBadge, SYSTEM badge (if applicable), and status indicator dot
@@ -110,8 +112,16 @@ Custom node component for each agent (updated 2025-12-30).
 - **Same Row Layout**: Running and Autonomy toggles positioned on same row (lines 57-86) for visual consistency with Agents page
 - Lines 88-102: GitHub repo display (if from GitHub template)
 
-**Progress Bars**:
-- Lines 71-84: Context usage progress bar with percentage and color coding
+**Success Rate Bar** (Replaced Context Bar - Issue #60, 2026-03-03):
+- Lines 104-130: Success rate progress bar with dual-window display (24h primary, 7d secondary)
+- **Display Logic**:
+  - **24h data available** (taskCount > 0): Shows 24h success rate bar + optional 7d secondary text
+  - **7d-only data** (taskCount=0, taskCount7d > 0): Shows 7d success rate bar with "(7d)" label
+  - **No data** (no 7d executions): Shows gray dash (mdash) placeholder
+- **Color Coding**:
+  - Green (`bg-green-500`): >= 90% success rate
+  - Yellow (`bg-yellow-500`): 50-89% success rate
+  - Red (`bg-red-500`): < 50% success rate
 
 **Execution Stats Display** (Lines 119-136):
 - Lines 120-133: Compact stats row for agents with task history:
@@ -128,13 +138,21 @@ Custom node component for each agent (updated 2025-12-30).
 - When autonomy is disabled, shows grayed "(paused)" text after schedule count
 - Color changes based on autonomy state: normal gray when enabled, light gray when disabled
 
-**Stats Row Format**:
+**Stats Row Format** (Execution Stats - Lines 132-149):
 | Element | Source | Styling |
 |---------|--------|---------|
 | Task count | `executionStats.taskCount` | Bold gray |
 | Success rate | `executionStats.successRate` | Color-coded: green (>=80%), yellow (50-80%), red (<50%) |
 | Total cost | `executionStats.totalCost` | Bold gray, `$X.XX` format |
 | Last run | `executionStats.lastExecutionAt` | Relative time ("2m ago") |
+
+**Success Rate Bar Data** (used by success bar section):
+| Field | Source | Description |
+|-------|--------|-------------|
+| `taskCount` | `executionStats.taskCount` | 24h task count |
+| `successRate` | `executionStats.successRate` | 24h success rate |
+| `taskCount7d` | `executionStats.taskCount7d` | 7d task count (NEW) |
+| `successRate7d` | `executionStats.successRate7d` | 7d success rate (NEW) |
 
 **Schedule Stats Row Format**:
 | Element | Source | Styling |
@@ -148,19 +166,53 @@ Custom node component for each agent (updated 2025-12-30).
 - Lines 105-120: "View Details" button (for regular agents) or "System Dashboard" link (for system agents) with `nodrag` class and **mt-auto** for bottom alignment
 - Lines 252-254: `viewDetails()` - Navigates to `/agents/:name` on button click
 
-**Computed Properties** (Lines 131-250):
-- `isSystemAgent` (148-150): checks if agent is a system agent
-- `activityState` (153-155): active, idle, or offline based on `data.activityState`
-- `statusDotColor` (175-180): Green (#10b981) for active/idle, gray (#9ca3af) for offline
-- `contextPercentDisplay` (203-206): Rounded context percentage
-- `progressBarColor` (213-219): Green/Yellow/Orange/Red based on context usage threshold
-- `executionStats` (222-224): Execution stats object from node data
-- `hasExecutionStats` (226-228): True if taskCount > 0
-- `successRateColorClass` (230-236): Color class based on success rate threshold
-- `lastExecutionDisplay` (238-250): Relative time string for last execution
-- `schedulesTotal` (343-345): Total schedule count from `executionStats.schedulesTotal`
-- `schedulesEnabled` (347-349): Enabled schedule count from `executionStats.schedulesEnabled`
-- `hasSchedules` (351-353): True if `schedulesTotal > 0`
+**Computed Properties** (Lines 240-398):
+- `isSystemAgent` (246-248): checks if agent is a system agent
+- `autonomyEnabled` (251-253): whether autonomy mode is enabled
+- `activityState` (256-258): active, idle, or offline based on `data.activityState`
+- `statusDotColor` (278-283): Green (#10b981) for active/idle, gray (#9ca3af) for offline
+- `successBarPercent` (306-309): Rounded 24h success rate percentage
+- `hasSuccessData` (311-313): True if 24h taskCount > 0
+- `has7dOnly` (315-317): True if no 24h tasks but 7d tasks exist (fallback display)
+- `show7dSecondary` (319-321): True if both 24h and 7d data available (shows secondary text)
+- `successRate7d` (323-326): Rounded 7d success rate percentage
+- `successBarColor` (328-333): Green/Yellow/Red bg class based on 24h success rate
+- `successBarColorText` (335-340): Green/Yellow/Red text class for 24h percentage display
+- `successBarColor7d` (342-347): Green/Yellow/Red bg class based on 7d success rate
+- `successBarColorText7d` (349-354): Green/Yellow/Red text class for 7d percentage display
+- `executionStats` (357-359): Execution stats object from node data
+- `hasExecutionStats` (361-363): True if taskCount > 0
+- `successRateColorClass` (365-371): Color class based on success rate threshold
+- `lastExecutionDisplay` (373-385): Relative time string for last execution
+- `schedulesTotal` (388-390): Total schedule count from `executionStats.schedulesTotal`
+- `schedulesEnabled` (392-394): Enabled schedule count from `executionStats.schedulesEnabled`
+- `hasSchedules` (396-398): True if `schedulesTotal > 0`
+
+#### SystemAgentNode.vue (`src/frontend/src/components/SystemAgentNode.vue`)
+Custom node component for the Trinity System Agent (updated 2026-03-03 - Issue #60).
+
+**Layout** (400px wide, min 130px height):
+- Purple gradient card with distinct styling
+- Trinity icon with "Trinity System Agent / Platform Orchestrator" header
+- Online/Offline status badge with pulsing dot
+- **Stats row** (Lines 52-75): Success rate bar + execution stats in compact layout
+- "System Dashboard" link to `/system-agent`
+
+**Stats Row** (Lines 52-75, updated Issue #60):
+- "Success" label with inline progress bar (w-20) showing `successBarPercent`
+- Color-coded bar: Green (>=90%), Yellow (50-89%), Red (<50%)
+- Execution stats: task count and success rate percentage
+
+**Computed Properties** (Lines 106-145):
+- `isRunning` (106-108): checks if `data.status === 'running'`
+- `executionStats` (111-113): Execution stats from node data
+- `hasExecutionStats` (115-117): True if taskCount > 0
+- `successRateColorClass` (119-125): Color class for success rate text
+- `successBarPercent` (128-131): Rounded success rate for bar width
+- `successBarColor` (133-138): Green/Yellow/Red bg class based on rate
+- `successBarColorText` (140-145): Green/Yellow/Red text class for percentage
+
+**Note**: SystemAgentNode uses 24h-only success rate (no 7d secondary display), unlike AgentNode which shows dual-window data.
 
 ### State Management
 
@@ -184,7 +236,7 @@ Pinia store managing graph state and WebSocket communication. **Note**: Previous
 - `timeRangeHours` (45) - Selected filter (1, 6, 24, 72, 168)
 - `isLoadingHistory` (46) - Loading indicator for historical data queries
 - `contextStats` (47) - Map of agent name -> context stats
-- `executionStats` (48) - Map of agent name -> execution stats (task count, success rate, cost, last run)
+- `executionStats` (50) - Map of agent name -> execution stats (task count, success rate, cost, last run, schedule counts, **taskCount7d**, **successRate7d**)
 - `contextPollingInterval` (49) - Interval ID for context polling
 - `agentRefreshInterval` (50) - Interval ID for agent list refresh
 - **Replay State** (52-59): `isReplayMode`, `isPlaying`, `replaySpeed`, `currentEventIndex`, `replayInterval`, `replayStartTime`, `replayElapsedMs`
@@ -383,10 +435,12 @@ Removes node and all connected edges.
 - Fetches context stats from `/api/agents/context-stats`
 - Updates node data with context percentage and activity state
 
-##### fetchExecutionStats() (Lines 747-784)
+##### fetchExecutionStats() (Lines 922-963)
 ```javascript
 async function fetchExecutionStats() {
-  const response = await axios.get('/api/agents/execution-stats')
+  const response = await axios.get('/api/agents/execution-stats', {
+    params: { include_7d: true }
+  })
   const agentStats = response.data.agents
 
   // Update execution stats map
@@ -400,8 +454,10 @@ async function fetchExecutionStats() {
       successRate: stat.success_rate,
       totalCost: stat.total_cost,
       lastExecutionAt: stat.last_execution_at,
-      schedulesTotal: stat.schedules_total || 0,     // NEW: Total schedules
-      schedulesEnabled: stat.schedules_enabled || 0  // NEW: Enabled schedules
+      schedulesTotal: stat.schedules_total || 0,
+      schedulesEnabled: stat.schedules_enabled || 0,
+      taskCount7d: stat.task_count_7d || 0,       // NEW: 7d task count
+      successRate7d: stat.success_rate_7d || 0     // NEW: 7d success rate
     }
   })
   executionStats.value = newStats
@@ -415,6 +471,8 @@ async function fetchExecutionStats() {
   })
 }
 ```
+
+**Note**: The `include_7d: true` parameter triggers the backend to use `get_all_agents_execution_stats_dual()` which returns both 24h and 7d stats in a single SQL query.
 
 ##### startContextPolling() / stopContextPolling() (Lines 660-686)
 - Polls every 10 seconds for context stats AND execution stats
@@ -672,20 +730,25 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 
 **Note**: Business logic moved to `src/backend/services/agent_service/stats.py` for cleaner separation.
 
-#### GET /api/agents/execution-stats (Lines 176-223)
+#### GET /api/agents/execution-stats (Lines 180-246)
 ```python
 @router.get("/execution-stats")
 async def get_agents_execution_stats(
     hours: int = 24,
+    include_7d: bool = False,       # NEW: dual-window stats (Issue #60)
     current_user: User = Depends(get_current_user)
 ):
     """Get execution statistics for all accessible agents.
 
-    Returns task counts, success rates, costs, last execution times,
-    and schedule counts for all agents the user can access.
+    Args:
+        hours: Time window in hours (default: 24)
+        include_7d: If true, include 7-day stats alongside 24h stats
     """
     # Get all stats from database
-    all_stats = db.get_all_agents_execution_stats(hours=hours)
+    if include_7d:
+        all_stats = db.get_all_agents_execution_stats_dual()
+    else:
+        all_stats = db.get_all_agents_execution_stats(hours=hours)
 
     # Get schedule counts for all agents
     schedule_counts = db.get_all_agents_schedule_counts()
@@ -696,38 +759,41 @@ async def get_agents_execution_stats(
     filtered_stats = []
     for stat in all_stats:
         if stat["name"] in accessible_agents:
-            # Add schedule counts to each stat
             agent_schedules = schedule_counts.get(stat["name"], {"total": 0, "enabled": 0})
             stat["schedules_total"] = agent_schedules["total"]
             stat["schedules_enabled"] = agent_schedules["enabled"]
             filtered_stats.append(stat)
 
-    # Also include agents with schedules but no executions in the time window
+    # Also include agents with schedules but no executions
     stats_agents = {s["name"] for s in filtered_stats}
     for agent_name in accessible_agents:
         if agent_name not in stats_agents:
             agent_schedules = schedule_counts.get(agent_name, {"total": 0, "enabled": 0})
             if agent_schedules["total"] > 0:
-                filtered_stats.append({
+                empty_stat = {
                     "name": agent_name,
-                    "task_count_24h": 0,
-                    "success_count": 0,
-                    "failed_count": 0,
-                    "running_count": 0,
-                    "success_rate": 0,
-                    "total_cost": 0,
+                    "task_count_24h": 0, "success_count": 0, "failed_count": 0,
+                    "running_count": 0, "success_rate": 0, "total_cost": 0,
                     "last_execution_at": None,
                     "schedules_total": agent_schedules["total"],
                     "schedules_enabled": agent_schedules["enabled"]
-                })
+                }
+                if include_7d:
+                    empty_stat.update({
+                        "task_count_7d": 0, "success_count_7d": 0, "failed_count_7d": 0,
+                        "running_count_7d": 0, "success_rate_7d": 0, "total_cost_7d": 0,
+                        "last_execution_at_7d": None
+                    })
+                filtered_stats.append(empty_stat)
 
     return {"agents": filtered_stats}
 ```
 
-**Query Parameter**:
+**Query Parameters**:
 - `hours`: Time window in hours (default: 24)
+- `include_7d`: If true, include 7-day stats alongside 24h stats (default: false) **(NEW - Issue #60)**
 
-**Response Format**:
+**Response Format** (with `include_7d=true`):
 ```json
 {
   "agents": [
@@ -741,20 +807,25 @@ async def get_agents_execution_stats(
       "total_cost": 0.45,
       "last_execution_at": "2025-12-31T22:45:30.123456",
       "schedules_total": 3,
-      "schedules_enabled": 2
+      "schedules_enabled": 2,
+      "task_count_7d": 85,
+      "success_count_7d": 78,
+      "failed_count_7d": 7,
+      "running_count_7d": 0,
+      "success_rate_7d": 91.8,
+      "total_cost_7d": 3.25,
+      "last_execution_at_7d": "2025-12-31T22:45:30.123456"
     }
   ]
 }
 ```
 
-**Database Layer**: `src/backend/db/schedules.py:673-717`
+**Database Layer - Single-Window**: `src/backend/db/schedules.py:673-717`
 ```python
 def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
     """Get execution statistics for all agents."""
-    # Single aggregation query per agent
     cursor.execute("""
-        SELECT
-            agent_name,
+        SELECT agent_name,
             COUNT(*) as task_count,
             SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
@@ -767,17 +838,40 @@ def get_all_agents_execution_stats(self, hours: int = 24) -> List[Dict]:
     """, (f"-{hours}",))
 ```
 
+**Database Layer - Dual-Window (NEW - Issue #60)**: `src/backend/db/schedules.py:788-846`
+```python
+def get_all_agents_execution_stats_dual(self) -> List[Dict]:
+    """Get execution statistics for all agents with both 24h and 7d windows.
+
+    Single SQL query using CASE WHEN to compute both time windows efficiently.
+    """
+    cursor.execute("""
+        SELECT agent_name,
+            SUM(CASE WHEN started_at > datetime('now', '-24 hours') THEN 1 ELSE 0 END) as task_count_24h,
+            SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'success' THEN 1 ELSE 0 END) as success_count_24h,
+            SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'failed' THEN 1 ELSE 0 END) as failed_count_24h,
+            SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'running' THEN 1 ELSE 0 END) as running_count_24h,
+            SUM(CASE WHEN started_at > datetime('now', '-24 hours') THEN COALESCE(cost, 0) ELSE 0 END) as total_cost_24h,
+            MAX(CASE WHEN started_at > datetime('now', '-24 hours') THEN started_at ELSE NULL END) as last_execution_at_24h,
+            COUNT(*) as task_count_7d,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count_7d,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count_7d,
+            SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count_7d,
+            SUM(COALESCE(cost, 0)) as total_cost_7d,
+            MAX(started_at) as last_execution_at_7d
+        FROM schedule_executions
+        WHERE started_at > datetime('now', '-168 hours')
+        GROUP BY agent_name
+    """)
+    # Returns both 24h and 7d stats per agent in single query
+```
+
 **Schedule Counts Method**: `src/backend/db/schedules.py:719-743`
 ```python
 def get_all_agents_schedule_counts(self) -> Dict[str, Dict[str, int]]:
-    """Get schedule counts (total and enabled) for all agents.
-
-    Returns:
-        Dict mapping agent_name to {"total": X, "enabled": Y}
-    """
+    """Get schedule counts (total and enabled) for all agents."""
     cursor.execute("""
-        SELECT
-            agent_name,
+        SELECT agent_name,
             COUNT(*) as total,
             SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled
         FROM agent_schedules
@@ -790,6 +884,10 @@ def get_all_agents_schedule_counts(self) -> Dict[str, Dict[str, int]]:
 def get_all_agents_execution_stats(self, hours: int = 24):
     """Get execution statistics for all agents."""
     return self._schedule_ops.get_all_agents_execution_stats(hours)
+
+def get_all_agents_execution_stats_dual(self):
+    """Get execution statistics for all agents with both 24h and 7d windows."""
+    return self._schedule_ops.get_all_agents_execution_stats_dual()
 
 def get_all_agents_schedule_counts(self):
     """Get schedule counts (total and enabled) for all agents."""
@@ -1310,9 +1408,11 @@ Removes node and edges from graph.
 
 ## UI/UX Enhancements (2025-12-02)
 
-### Context Window Monitoring
+### Context Stats Polling & Success Rate Display
 
-**Objective**: Display real-time context usage for each agent with visual progress bars
+**Objective**: Detect agent activity state (active/idle/offline) via context stats polling, and display success rate bars for each agent.
+
+**Note (2026-03-03 - Issue #60)**: The visual context usage progress bar has been replaced with a success rate bar. Context stats polling (`GET /api/agents/context-stats`) still runs every 10 seconds but is now used **only for activity state detection** (active/idle/offline). The visible progress bar on AgentNode now shows execution success rate sourced from `GET /api/agents/execution-stats` with `include_7d=true`.
 
 **Backend Implementation**:
 
@@ -1387,20 +1487,25 @@ stopContextPolling()       // Clear interval on unmount (609-619)
 #### Agent Node Component
 **File**: `src/frontend/src/components/AgentNode.vue`
 
-**Visual Design** (280px wide, min 160px height):
-- Clean white card with subtle shadow (dark mode: gray-800)
-- Agent name in bold gray text (dark mode: white)
-- Activity state label below name
-- Context progress bar with percentage
+**Visual Design** (320px wide, min 180px height):
+- Clean white card with subtle shadow and backdrop blur (dark mode: gray-800)
+- Agent name in bold gray text (clickable, links to detail page)
+- RuntimeBadge + SYSTEM badge (if applicable)
+- Running/Autonomy toggle row
+- GitHub repo display
+- **Success rate bar** (replaced context bar - Issue #60)
+- Execution stats row (task count, success rate, cost, last run)
+- Schedule stats row
+- Resource indicators (memory, CPU)
 - Status indicator dot (pulses when active)
 - "View Details" button at bottom
 
-**Progress Bar Color Coding** (Lines 197-203):
+**Success Rate Bar Color Coding** (Lines 328-333, 342-347):
 ```javascript
-0-49%:   Green   (bg-green-500)
-50-74%:  Yellow  (bg-yellow-500)
-75-89%:  Orange  (bg-orange-500)
-90-100%: Red     (bg-red-500)
+>= 90%:  Green   (bg-green-500)
+50-89%:  Yellow  (bg-yellow-500)
+< 50%:   Red     (bg-red-500)
+No data: Gray dash (no bar rendered)
 ```
 
 **Activity States**:
@@ -1410,28 +1515,49 @@ stopContextPolling()       // Clear interval on unmount (609-619)
 | Idle | "Idle" | Green (#10b981) | No |
 | Offline | "Offline" | Gray (#9ca3af) | No |
 
-**Template Structure** (Lines 2-118):
+**Template Structure** (Lines 2-211):
 ```vue
-<div class="px-5 py-4 rounded-xl border-2 shadow-lg bg-white dark:bg-gray-800 flex flex-col">
-  <!-- Agent name + status dot -->
+<div class="px-5 py-4 rounded-xl border shadow-lg bg-white/80 dark:bg-gray-800/80 flex flex-col"
+     style="width: 320px; min-height: 180px;">
+  <!-- Agent name + RuntimeBadge + SYSTEM badge + status dot -->
   <div class="flex items-center justify-between mb-2">
-    <div class="text-gray-900 dark:text-white font-bold">{{ data.label }}</div>
+    <div class="text-gray-900 dark:text-white font-bold truncate">{{ data.label }}</div>
     <div :style="{ backgroundColor: statusDotColor }" :class="isActive ? 'active-pulse' : ''"></div>
   </div>
 
-  <!-- Activity state label -->
-  <div class="text-xs font-medium" :class="activityStateColor">{{ activityStateLabel }}</div>
+  <!-- Running + Autonomy toggles row -->
+  <div class="flex items-center justify-between mb-2">
+    <RunningStateToggle v-if="!isSystemAgent" ... />
+    <AutonomyToggle v-if="!isSystemAgent" ... />
+  </div>
 
-  <!-- Context progress bar (always shown) -->
-  <div v-if="showProgressBar">
-    <div class="flex justify-between">
-      <span class="text-gray-500 dark:text-gray-400">Context</span>
-      <span class="text-gray-700 dark:text-gray-300">{{ contextPercentDisplay }}%</span>
+  <!-- GitHub repo display -->
+  <div class="flex items-center space-x-1 mb-3 h-4">...</div>
+
+  <!-- Success rate bar (replaced context bar - Issue #60) -->
+  <div class="mb-3">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-xs text-gray-500">Success</span>
+      <div class="flex items-center gap-1.5">
+        <!-- 24h data: show percentage + optional 7d secondary -->
+        <span v-if="hasSuccessData" :class="successBarColorText">{{ successBarPercent }}%</span>
+        <span v-if="show7dSecondary" class="text-[10px]">(7d: {{ successRate7d }}%)</span>
+        <!-- No data at all: show dash -->
+        <span v-if="!hasSuccessData && !has7dOnly">&mdash;</span>
+        <!-- 7d-only fallback -->
+        <span v-if="has7dOnly" :class="successBarColorText7d">{{ successRate7d }}%</span>
+        <span v-if="has7dOnly" class="text-[10px]">(7d)</span>
+      </div>
     </div>
     <div class="bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-      <div :class="progressBarColor" :style="{ width: contextPercentDisplay + '%' }"></div>
+      <div v-if="hasSuccessData" :class="successBarColor" :style="{ width: successBarPercent + '%' }"></div>
+      <div v-else-if="has7dOnly" :class="successBarColor7d" :style="{ width: successRate7d + '%' }"></div>
     </div>
   </div>
+
+  <!-- Execution stats row: "12 tasks . 92% . $0.45 . 2m ago" -->
+  <!-- Schedule stats row: "[clock] 2/3 schedules (paused)" -->
+  <!-- Resource indicators: Memory / CPU -->
 
   <!-- View Details button -->
   <button class="nodrag ... mt-auto" @click="viewDetails">View Details</button>
@@ -1527,13 +1653,16 @@ onUnmounted(() => {
 
 ### Testing
 
-**Test Case**: Context Progress Bar Display
+**Test Case**: Success Rate Bar Display (Updated 2026-03-03 - Issue #60)
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | Chat with agent | Context percent increases |
-| 2 | Wait 5 seconds | Dashboard updates with new percentage |
-| 3 | Check progress bar color | Green -> Yellow -> Orange -> Red as usage grows |
-| 4 | Stop agent | Progress bar disappears, state shows "Offline" |
+| 1 | View agent with 24h executions | Success bar shows 24h rate with color (green/yellow/red) |
+| 2 | Agent with both 24h and 7d data | Shows 24h bar + "(7d: X%)" secondary text |
+| 3 | Agent with only 7d data (no 24h) | Shows 7d rate bar with "(7d)" label |
+| 4 | Agent with no executions at all | Shows gray dash, no bar rendered |
+| 5 | Agent with 100% success rate | Green bar, full width |
+| 6 | Agent with 50-89% success rate | Yellow bar |
+| 7 | Agent with < 50% success rate | Red bar |
 
 **Test Case**: Activity State Transitions
 | Step | Action | Expected Result |
@@ -1555,14 +1684,21 @@ onUnmounted(() => {
 | 5 | Check cost accumulation | Total cost sums all task costs |
 | 6 | Agent with no tasks | Shows "No tasks (24h)" placeholder |
 
-**Test Case**: Execution Stats Success Rate Colors
+**Test Case**: Execution Stats Success Rate Colors (in stats row text)
 | Success Rate | Expected Color |
 |--------------|----------------|
 | >= 80% | Green (`text-green-600`) |
 | 50-79% | Yellow (`text-yellow-600`) |
 | < 50% | Red (`text-red-600`) |
 
-**Status**: Working (2026-01-01)
+**Test Case**: Success Rate Bar Colors (in progress bar)
+| Success Rate | Bar Color | Text Color |
+|--------------|-----------|------------|
+| >= 90% | Green (`bg-green-500`) | `text-green-600` |
+| 50-89% | Yellow (`bg-yellow-500`) | `text-yellow-600` |
+| < 50% | Red (`bg-red-500`) | `text-red-600` |
+
+**Status**: Working (2026-03-03)
 
 ---
 
@@ -1637,6 +1773,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-03-03 | **Replace Context Bar with Success Rate Bar (Issue #60)**: AgentNode.vue (lines 104-130) now displays a success rate progress bar instead of context usage bar. Dual-window display: 24h primary bar + 7d secondary text when both available; 7d-only bar when no 24h data; gray dash when no data. Color coding: Green (>=90%), Yellow (50-89%), Red (<50%). SystemAgentNode.vue (lines 52-75) updated similarly with 24h-only success bar in stats row. Removed computed properties: `contextPercentDisplay`, `showProgressBar`, `progressBarColor`. Added computed properties: `successBarPercent`, `hasSuccessData`, `has7dOnly`, `show7dSecondary`, `successRate7d`, `successBarColor`, `successBarColorText`, `successBarColor7d`, `successBarColorText7d`. network.js `fetchExecutionStats()` now calls `/api/agents/execution-stats` with `{ params: { include_7d: true } }` and stores `taskCount7d`/`successRate7d`. Backend: Added `include_7d: bool = False` parameter to `/api/agents/execution-stats` (agents.py:180-246). New `get_all_agents_execution_stats_dual()` method (db/schedules.py:788-846) computes both 24h and 7d stats in single SQL query. Facade method added to database.py:556-558. Context polling still runs for activity state detection. |
 | 2026-03-02 | **Dashboard Filter Persistence (FILTER-001)**: Time range and quick tags now persist to localStorage. Added `trinity-dashboard-time-range` (number) and `trinity-dashboard-quick-tags` (JSON array) keys. Quick tags are cleared when a System View is selected. Restored on mount via `Dashboard.vue:583-593`. Updated LocalStorage Persistence table with all persisted keys. See [dashboard-timeline-view.md](dashboard-timeline-view.md) for full details. |
 | 2026-02-27 | **Dashboard Timeline Refresh Fix (REFRESH-001)**: Added WebSocket heartbeat (ping/pong every 30s) to prevent silent disconnection after 60-120s idle. Backend: `main.py:362-376` ping handler. Frontend: `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` in network.js. Added `handleActivityStatusChange()` for `agent_activity` events. Added fallback activity polling (60s) via `startActivityRefresh()`, `stopActivityRefresh()`. Dashboard.vue lifecycle updated to start/stop activity refresh. |
 | 2026-02-22 | **Dashboard Schedule Stats Display**: Added schedule stats row to AgentNode.vue (lines 138-155) showing "X/Y schedules" with clock icon. Shows grayed "(paused)" text when autonomy is disabled. Backend `GET /api/agents/execution-stats` (agents.py:176-223) now includes `schedules_total` and `schedules_enabled` fields via new `db.get_all_agents_schedule_counts()` method (db/schedules.py:719-743). Frontend `fetchExecutionStats()` (network.js:747-784) extended to include schedule counts. |
@@ -1663,14 +1800,15 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 ### Code Files
 - `src/frontend/src/views/Dashboard.vue` - Main view with Agent Network visualization
-- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node with execution stats display (lines 86-103)
-- `src/frontend/src/stores/network.js` - Pinia store for graph state (renamed from collaborations.js)
+- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node with success rate bar (lines 104-130) and execution stats (lines 132-149)
+- `src/frontend/src/components/SystemAgentNode.vue` - System agent node with success rate bar in stats row (lines 52-75)
+- `src/frontend/src/stores/network.js` - Pinia store for graph state, `fetchExecutionStats()` with `include_7d: true` (lines 922-963)
 - `src/frontend/src/router/index.js` - Routes (/ for Dashboard, /network redirects to /)
 - `src/frontend/src/components/NavBar.vue` - Navigation (Dashboard link)
 - `src/backend/routers/chat.py` - WebSocket broadcast for messages
-- `src/backend/routers/agents.py` - Context stats (line 134) and execution stats (line 140) endpoints
-- `src/backend/db/schedules.py` - Database operations including `get_all_agents_execution_stats()` (line 445)
-- `src/backend/database.py` - Delegate method for execution stats (line 872)
+- `src/backend/routers/agents.py` - Context stats (line 175) and execution stats with `include_7d` param (line 180) endpoints
+- `src/backend/db/schedules.py` - Database operations: `get_all_agents_execution_stats()` (line 673), `get_all_agents_execution_stats_dual()` (line 788)
+- `src/backend/database.py` - Delegate methods for execution stats (line 552) and dual stats (line 556)
 - `src/backend/main.py` - WebSocket endpoint (line 211)
 
 ### Deleted/Renamed Files

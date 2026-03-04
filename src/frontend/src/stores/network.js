@@ -921,7 +921,9 @@ export const useNetworkStore = defineStore('network', () => {
   // Fetch execution stats from backend
   async function fetchExecutionStats() {
     try {
-      const response = await axios.get('/api/agents/execution-stats')
+      const response = await axios.get('/api/agents/execution-stats', {
+        params: { include_7d: true }
+      })
       const agentStats = response.data.agents
 
       // Update execution stats map
@@ -936,7 +938,9 @@ export const useNetworkStore = defineStore('network', () => {
           totalCost: stat.total_cost,
           lastExecutionAt: stat.last_execution_at,
           schedulesTotal: stat.schedules_total || 0,
-          schedulesEnabled: stat.schedules_enabled || 0
+          schedulesEnabled: stat.schedules_enabled || 0,
+          taskCount7d: stat.task_count_7d || 0,
+          successRate7d: stat.success_rate_7d || 0
         }
       })
       executionStats.value = newStats

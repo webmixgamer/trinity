@@ -161,16 +161,22 @@
               />
             </div>
 
-            <!-- Row 2: Context bar (inline) -->
+            <!-- Row 2: Success rate bar (inline) -->
             <div class="flex items-center gap-2">
               <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
                 <div
+                  v-if="getRowSuccessPercent(row) > 0"
                   class="h-full rounded-full transition-all duration-500"
-                  :class="getProgressBarClass(row.contextPercent)"
-                  :style="{ width: (row.contextPercent || 0) + '%' }"
+                  :class="getSuccessBarClass(getRowSuccessPercent(row))"
+                  :style="{ width: getRowSuccessPercent(row) + '%' }"
                 ></div>
               </div>
-              <span class="text-[10px] font-medium text-gray-500 dark:text-gray-400 w-7 text-right">{{ Math.round(row.contextPercent || 0) }}%</span>
+              <span
+                v-if="getRowSuccessPercent(row) > 0"
+                class="text-[10px] font-medium w-7 text-right"
+                :class="getSuccessBarClass(getRowSuccessPercent(row)).replace('bg-', 'text-')"
+              >{{ getRowSuccessPercent(row) }}%</span>
+              <span v-else class="text-[10px] text-gray-400 dark:text-gray-500 w-7 text-right">&mdash;</span>
             </div>
 
             <!-- Row 3: Stats (compact) -->
@@ -906,11 +912,20 @@ function getActivityStateColor(row) {
   return 'text-gray-500 dark:text-gray-400'
 }
 
-function getProgressBarClass(percent) {
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 75) return 'bg-orange-500'
+function getRowSuccessPercent(row) {
+  if (row.executionStats && row.executionStats.taskCount > 0) {
+    return Math.round(row.executionStats.successRate || 0)
+  }
+  if (row.executionStats && (row.executionStats.taskCount7d || 0) > 0) {
+    return Math.round(row.executionStats.successRate7d || 0)
+  }
+  return 0
+}
+
+function getSuccessBarClass(percent) {
+  if (percent >= 90) return 'bg-green-500'
   if (percent >= 50) return 'bg-yellow-500'
-  return 'bg-green-500'
+  return 'bg-red-500'
 }
 
 function getSuccessRateClass(rate) {

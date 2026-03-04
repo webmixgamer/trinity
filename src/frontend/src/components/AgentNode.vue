@@ -101,17 +101,30 @@
         </template>
       </div>
 
-      <!-- Context progress bar -->
-      <div v-if="showProgressBar" class="mb-3">
+      <!-- Success rate bar -->
+      <div class="mb-3">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-500 dark:text-gray-400">Context</span>
-          <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ contextPercentDisplay }}%</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">Success</span>
+          <div class="flex items-center gap-1.5">
+            <span v-if="hasSuccessData" class="text-xs font-semibold" :class="successBarColorText">{{ successBarPercent }}%</span>
+            <span v-if="show7dSecondary" class="text-[10px] text-gray-400 dark:text-gray-500">(7d: {{ successRate7d }}%)</span>
+            <span v-if="!hasSuccessData && !has7dOnly" class="text-xs text-gray-400 dark:text-gray-500">&mdash;</span>
+            <span v-if="has7dOnly" class="text-xs font-semibold" :class="successBarColorText7d">{{ successRate7d }}%</span>
+            <span v-if="has7dOnly" class="text-[10px] text-gray-400 dark:text-gray-500">(7d)</span>
+          </div>
         </div>
         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
           <div
+            v-if="hasSuccessData"
             class="h-full rounded-full transition-all duration-500"
-            :class="progressBarColor"
-            :style="{ width: contextPercentDisplay + '%' }"
+            :class="successBarColor"
+            :style="{ width: successBarPercent + '%' }"
+          ></div>
+          <div
+            v-else-if="has7dOnly"
+            class="h-full rounded-full transition-all duration-500"
+            :class="successBarColor7d"
+            :style="{ width: successRate7d + '%' }"
           ></div>
         </div>
       </div>
@@ -289,23 +302,55 @@ const githubRepoShort = computed(() => {
   return repo
 })
 
-// Context progress bar
-const contextPercentDisplay = computed(() => {
-  const percent = props.data.contextPercent || 0
-  return Math.round(percent)
+// Success rate bar
+const successBarPercent = computed(() => {
+  if (!executionStats.value) return 0
+  return Math.round(executionStats.value.successRate || 0)
 })
 
-const showProgressBar = computed(() => {
-  // Always show progress bar for consistent card height
-  return true
+const hasSuccessData = computed(() => {
+  return executionStats.value && executionStats.value.taskCount > 0
 })
 
-const progressBarColor = computed(() => {
-  const percent = contextPercentDisplay.value
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 75) return 'bg-orange-500'
+const has7dOnly = computed(() => {
+  return executionStats.value && executionStats.value.taskCount === 0 && (executionStats.value.taskCount7d || 0) > 0
+})
+
+const show7dSecondary = computed(() => {
+  return hasSuccessData.value && (executionStats.value?.taskCount7d || 0) > 0
+})
+
+const successRate7d = computed(() => {
+  if (!executionStats.value) return 0
+  return Math.round(executionStats.value.successRate7d || 0)
+})
+
+const successBarColor = computed(() => {
+  const percent = successBarPercent.value
+  if (percent >= 90) return 'bg-green-500'
   if (percent >= 50) return 'bg-yellow-500'
-  return 'bg-green-500'
+  return 'bg-red-500'
+})
+
+const successBarColorText = computed(() => {
+  const percent = successBarPercent.value
+  if (percent >= 90) return 'text-green-600 dark:text-green-400'
+  if (percent >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const successBarColor7d = computed(() => {
+  const percent = successRate7d.value
+  if (percent >= 90) return 'bg-green-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
+})
+
+const successBarColorText7d = computed(() => {
+  const percent = successRate7d.value
+  if (percent >= 90) return 'text-green-600 dark:text-green-400'
+  if (percent >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
 })
 
 // Execution stats

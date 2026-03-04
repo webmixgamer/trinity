@@ -1,6 +1,6 @@
 # Feature Flow: Dashboard Timeline View
 
-> **Last Updated**: 2026-03-02 (Dashboard Filter Persistence - FILTER-001)
+> **Last Updated**: 2026-03-03 (Replace Context Bar with Success Rate Bar - Issue #60)
 > **Status**: Implemented
 > **Requirements Doc**: `docs/requirements/DASHBOARD_TIMELINE_VIEW.md`, `docs/requirements/TIMELINE_ALL_EXECUTIONS.md`, `docs/requirements/TIMELINE_SCHEDULE_MARKERS.md`
 
@@ -32,12 +32,10 @@ The Dashboard offers two views for monitoring the agent fleet:
    - For 24h range, zoom is 12x (shows ~2 hours of activity)
    - Auto-scrolls to "Now" position
 
-2. **Rich Agent Tiles** (left column, 240px):
-   - Row 1: Agent name, system badge (SYS), status dot with active pulse
-   - Row 2: Autonomy toggle (AUTO/Manual switch)
-   - Row 3: Context progress bar with percentage
-   - Row 4: Execution stats (tasks, success rate, cost) or "No tasks"
-   - Row 5: Memory limit display
+2. **Rich Agent Tiles** (left column, 288px):
+   - Row 1: Agent name, system badge (SYS), status dot with active pulse, autonomy toggle
+   - Row 2: Success rate bar with percentage (24h primary, 7d fallback, dash if no data)
+   - Row 3: Execution stats (tasks, success rate, cost) or "No tasks", memory limit
 
 3. **Live Event Streaming**
    - WebSocket remains connected (unlike old Replay mode)
@@ -124,8 +122,8 @@ The Dashboard offers two views for monitoring the agent fleet:
 | `agents` | `networkStore.agents` | Agent list with status |
 | `nodes` | VueFlow nodes array | Full node data for tiles |
 | `events` | `networkStore.historicalCollaborations` | Timeline events (executions + collaborations) |
-| `contextStats` | `networkStore.contextStats` | Context usage per agent |
-| `executionStats` | `networkStore.executionStats` | Task stats per agent |
+| `contextStats` | `networkStore.contextStats` | Activity state detection per agent (not displayed as bar) |
+| `executionStats` | `networkStore.executionStats` | Task stats per agent (includes 24h + 7d dual-window stats) |
 | `isLiveMode` | Hardcoded `true` | Enables live features |
 | `timeRangeHours` | `selectedTimeRange` | For default zoom calculation |
 | `schedules` | `networkStore.schedules` | Enabled schedules for markers (TSM-001) |
@@ -477,6 +475,67 @@ function getBarTooltip(activity) {
   return `${prefix} ${status} - ${duration}`
 }
 ```
+
+### 13. Success Rate Bar in Agent Tiles (Issue #60, replaces Context Bar)
+
+Row 2 in timeline agent tiles displays a **success rate bar** instead of the previous context progress bar. The bar shows 24h success rate as primary, falling back to 7d if no 24h data exists, and a dash if no data at all.
+
+**Template** (`ReplayTimeline.vue:164-180`):
+```html
+<!-- Row 2: Success rate bar (inline) -->
+<div class="flex items-center gap-2">
+  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+    <div
+      v-if="getRowSuccessPercent(row) > 0"
+      class="h-full rounded-full transition-all duration-500"
+      :class="getSuccessBarClass(getRowSuccessPercent(row))"
+      :style="{ width: getRowSuccessPercent(row) + '%' }"
+    ></div>
+  </div>
+  <span v-if="getRowSuccessPercent(row) > 0" ...>{{ getRowSuccessPercent(row) }}%</span>
+  <span v-else ...>&mdash;</span>
+</div>
+```
+
+**Helpers** (`ReplayTimeline.vue:915-929`):
+```javascript
+// Returns 24h success rate if available, falls back to 7d, returns 0 if no data
+function getRowSuccessPercent(row) {
+  if (row.executionStats && row.executionStats.taskCount > 0) {
+    return Math.round(row.executionStats.successRate || 0)
+  }
+  if (row.executionStats && (row.executionStats.taskCount7d || 0) > 0) {
+    return Math.round(row.executionStats.successRate7d || 0)
+  }
+  return 0
+}
+
+// Color thresholds: green >= 90%, yellow 50-89%, red < 50%
+function getSuccessBarClass(percent) {
+  if (percent >= 90) return 'bg-green-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
+}
+```
+
+**Dual-Window Execution Stats** (`network.js:922-963`):
+```javascript
+// fetchExecutionStats() now requests 7d stats as well
+const response = await axios.get('/api/agents/execution-stats', {
+  params: { include_7d: true }
+})
+
+// Stored fields include both windows:
+newStats[stat.name] = {
+  taskCount: stat.task_count_24h,     // 24h task count
+  successRate: stat.success_rate,      // 24h success rate
+  taskCount7d: stat.task_count_7d,     // 7d task count (fallback)
+  successRate7d: stat.success_rate_7d, // 7d success rate (fallback)
+  // ... other fields
+}
+```
+
+**Note**: The `contextStats` prop is still passed to `ReplayTimeline` and used for `activityState` detection (active/idle/offline status dot), but it no longer drives a visible bar in the tile layout.
 
 ## Testing
 
@@ -903,6 +962,7 @@ This ensures:
 
 | Date | Change |
 |------|--------|
+| 2026-03-03 | **UX: Success Rate Bar (Issue #60)** - Row 2 in timeline agent tiles now shows a success rate bar instead of context progress bar. Uses 24h success rate (primary) with 7d fallback. Helpers: `getRowSuccessPercent()`, `getSuccessBarClass()`. Removed: `getProgressBarClass()`. `contextStats` prop still passed for activity state detection but no longer displayed as a bar. `fetchExecutionStats()` now requests `include_7d: true` for dual-window stats (`taskCount7d`, `successRate7d`). Tile layout condensed from 5 rows to 3 rows (autonomy toggle moved to Row 1). |
 | 2026-03-02 | **UX: Filter Persistence** - Dashboard now preserves filter state across page reload. Persisted: time range (`trinity-dashboard-time-range`), quick tags (`trinity-dashboard-quick-tags`). Previously persisted: view mode, tag clouds toggle, system view selection, node positions. Quick tags cleared when system view is selected. |
 | 2026-02-27 | **Fix (REFRESH-001)**: Dashboard Timeline Refresh - Added WebSocket ping/pong heartbeat (30s), activity status change handler for `agent_activity` events, and fallback activity polling (60s). Prevents timeline from going stale when idle. Backend: `main.py:362-376`. Frontend: `network.js` (4 new functions), `Dashboard.vue` (lifecycle hooks). |
 | 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer (`db/schedules.py`); dedicated scheduler syncs every 60s (`scheduler/service.py`). Schedule markers appear immediately after schedule creation without container restart. See `scheduling.md` and `scheduler-service.md` for details. |

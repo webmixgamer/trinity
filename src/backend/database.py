@@ -553,6 +553,10 @@ class DatabaseManager:
         """Get execution statistics for all agents."""
         return self._schedule_ops.get_all_agents_execution_stats(hours)
 
+    def get_all_agents_execution_stats_dual(self):
+        """Get execution statistics for all agents with both 24h and 7d windows."""
+        return self._schedule_ops.get_all_agents_execution_stats_dual()
+
     def get_all_agents_schedule_counts(self):
         """Get schedule counts (total and enabled) for all agents."""
         return self._schedule_ops.get_all_agents_schedule_counts()

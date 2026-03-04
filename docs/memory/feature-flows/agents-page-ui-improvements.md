@@ -1,8 +1,10 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03, Full Filtering 2026-03-03)
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03, Full Filtering 2026-03-03, Success Rate Bar 2026-03-03)
 > **Tested**: All features verified working
-> **Last Updated**: 2026-03-03 - Full Filtering (#55): Single-row header with title, search input, status segmented buttons (All/Running/Stopped), tag dropdown, sort dropdown, and Create Agent button all on one line. Filters combine with AND logic. Filter state persists in localStorage (`trinity-agents-filter-name`, `trinity-agents-filter-status`, `trinity-agents-filter-tag-dropdown`). Shows filtered count (X/Y) when filters active. Clear button. Smart empty state with "No matching agents" message. Legacy `trinity-agents-filter-tag` and `trinity-agents-filter-tags` auto-migrate to new dropdown format.
+> **Last Updated**: 2026-03-03 - Success Rate Bar (#60): Replaced context usage progress bars with success rate bars across all three breakpoints (desktop, tablet, mobile). Column header "Context" renamed to "Success", grid col 160px to 180px. Sort dropdown "Context Usage" replaced with "Success Rate" (value `success_desc`). Dual-window stats (24h + 7d) fetched via `include_7d=true` param. Color coding: green (>=90%), yellow (50-89%), red (<50%), gray dash for no data. Fallback logic: 24h bar + 7d secondary text, 7d-only bar, or gray dash.
+>
+> **Previous (2026-03-03)** - Full Filtering (#55): Single-row header with title, search input, status segmented buttons (All/Running/Stopped), tag dropdown, sort dropdown, and Create Agent button all on one line. Filters combine with AND logic. Filter state persists in localStorage (`trinity-agents-filter-name`, `trinity-agents-filter-status`, `trinity-agents-filter-tag-dropdown`). Shows filtered count (X/Y) when filters active. Clear button. Smart empty state with "No matching agents" message. Legacy `trinity-agents-filter-tag` and `trinity-agents-filter-tags` auto-migrate to new dropdown format.
 >
 > **Previous (2026-03-03)** - Two-Row Tiles: Desktop rows split into top line (fixed grid: checkbox, dot, name+badges, activity, toggles, context, stats, arrow) and bottom line (tag pills, left-aligned under name). Tags column removed from grid. Gap-based spacing (`gap-1.5`) replaces border separators. Agent rows use `rounded-lg`. Tag filter persists in localStorage.
 >
@@ -16,7 +18,7 @@
 
 ## Overview
 
-Enhance the Agents list page (`/agents`) with status indicators, context stats, and sorting capabilities by reusing existing APIs and components from the Collaboration Dashboard.
+Enhance the Agents list page (`/agents`) with status indicators, success rate bars, execution stats, and sorting capabilities by reusing existing APIs and components from the Collaboration Dashboard.
 
 ## Current State Analysis
 
@@ -25,7 +27,7 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 - Shows: agent name, type, port, RuntimeBadge (Claude/Gemini)
 - **Running State Toggle** (2026-01-26): `RunningStateToggle.vue` component with "Running/Stopped" label, green/gray styling, loading spinner
 - "Shared by X" badge for shared agents
-- Activity state indicators, context stats, sorting (implemented 2025-12-07)
+- Activity state indicators, success rate bars, execution stats, sorting (implemented 2025-12-07, context bar replaced with success rate bar 2026-03-03)
 
 ### Collaboration Dashboard (AgentNode.vue) - Already Has
 - Activity state (Active/Idle/Offline) with pulsing green dot
@@ -37,6 +39,7 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 | Endpoint | Purpose | Used By |
 |----------|---------|---------|
 | `GET /api/agents/context-stats` | Context % + activity state for all agents | network.js, agents.js |
+| `GET /api/agents/execution-stats?include_7d=true` | Task counts, success rates (24h + 7d), costs | agents.js |
 | `GET /api/agents` | Base agent list | agents.js, network.js |
 
 ---
@@ -62,23 +65,27 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 }
 ```
 
-### 2. Context Progress Bar
-**Description**: Show context window usage as a progress bar with color coding
+### 2. Success Rate Bar (replaced Context Progress Bar in Issue #60)
+**Description**: Show execution success rate as a progress bar with dual-window (24h + 7d) stats
 
 **Visual Design**:
-- Mini progress bar under agent name
-- Color coding by percentage:
-  - 0-49%: Green (`bg-green-500`)
-  - 50-74%: Yellow (`bg-yellow-500`)
-  - 75-89%: Orange (`bg-orange-500`)
-  - 90-100%: Red (`bg-red-500`)
-- Text: "Context: XX%"
-- Only shown for running agents (hide for stopped/offline)
+- Mini progress bar in dedicated "Success" column
+- Color coding by success rate percentage:
+  - 90-100%: Green (`bg-green-500`)
+  - 50-89%: Yellow (`bg-yellow-500`)
+  - 0-49%: Red (`bg-red-500`)
+  - No data: Gray bar with em-dash
+- Fallback logic:
+  - **24h data available**: Show 24h bar + percentage, plus 7d rate in parentheses if available
+  - **7d only (no 24h)**: Show 7d bar + percentage with "(7d)" label
+  - **No data in 7d**: Gray empty bar with em-dash
+- Shown for all agents (not just running ones)
 
-**Data Source**: `GET /api/agents/context-stats`
-- `contextPercent`: Number (0-100)
-- `contextUsed`: Number (tokens used)
-- `contextMax`: Number (max tokens)
+**Data Source**: `GET /api/agents/execution-stats?include_7d=true`
+- `task_count_24h`: Number (tasks in last 24h)
+- `success_rate`: Number (0-100, 24h window)
+- `task_count_7d`: Number (tasks in last 7 days)
+- `success_rate_7d`: Number (0-100, 7d window)
 
 ### 3. Sorting & Filtering
 **Description**: Add sort controls to organize agent list
@@ -87,7 +94,7 @@ Enhance the Agents list page (`/agents`) with status indicators, context stats, 
 - **Default**: Creation date (newest first) - `agent.created`
 - Name (A-Z, Z-A)
 - Status (running first, stopped first)
-- Context usage (highest first) - needs context stats
+- Success rate (highest first) - sorts by `successRate` from execution stats
 
 **UI**: Dropdown select in header area, next to "Create Agent" button
 
@@ -189,7 +196,7 @@ Keep agents.js self-contained. Extract shared logic into a composable if needed 
               <option value="created_asc">Oldest First</option>
               <option value="name_asc">Name (A-Z)</option>
               <option value="status">Running First</option>
-              <option value="context_desc">Context Usage</option>
+              <option value="success_desc">Success Rate</option>
             </select>
 
             <button @click="showCreateModal = true" class="...">
@@ -232,19 +239,36 @@ Keep agents.js self-contained. Extract shared logic into a composable if needed 
 
                         <p class="text-sm text-gray-500">Type: {{ agent.type }}</p>
 
-                        <!-- NEW: Context progress bar (only for running) -->
-                        <div v-if="agent.status === 'running'" class="mt-2 max-w-xs">
-                          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
-                            <span>Context</span>
-                            <span>{{ getContextPercent(agent.name) }}%</span>
-                          </div>
-                          <div class="w-full bg-gray-200 rounded-full h-1.5">
-                            <div
-                              :class="getProgressBarColor(agent.name)"
-                              :style="{ width: getContextPercent(agent.name) + '%' }"
-                              class="h-full rounded-full transition-all duration-500"
-                            ></div>
-                          </div>
+                        <!-- Success rate bar (replaced context bar in Issue #60) -->
+                        <div class="flex items-center gap-2">
+                          <template v-if="hasSuccessData(agent.name)">
+                            <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                class="h-full rounded-full transition-all duration-500"
+                                :class="getSuccessBarColor(agent.name)"
+                                :style="{ width: getSuccessBarPercent(agent.name) + '%' }"
+                              ></div>
+                            </div>
+                            <span :class="getSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ getSuccessBarPercent(agent.name) }}%</span>
+                            <span v-if="has7dStats(agent.name)">(7d: {{ get7dSuccessRate(agent.name) }}%)</span>
+                          </template>
+                          <template v-else-if="has7dOnlyStats(agent.name)">
+                            <!-- 7d-only fallback -->
+                            <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                class="h-full rounded-full transition-all duration-500"
+                                :class="get7dSuccessBarColor(agent.name)"
+                                :style="{ width: get7dSuccessRate(agent.name) + '%' }"
+                              ></div>
+                            </div>
+                            <span :class="get7dSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ get7dSuccessRate(agent.name) }}%</span>
+                            <span>(7d)</span>
+                          </template>
+                          <template v-else>
+                            <!-- No data: gray bar + dash -->
+                            <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden"></div>
+                            <span>&mdash;</span>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -293,18 +317,44 @@ const getActivityLabelClass = (agentName) => {
   return 'text-xs text-gray-500'
 }
 
-// Context helpers
-const getContextPercent = (agentName) => {
-  const stats = agentsStore.contextStats[agentName]
-  return stats ? Math.round(stats.contextPercent || 0) : 0
+// Success rate bar helpers (replaced context helpers in Issue #60)
+const getSuccessBarPercent = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats ? Math.round(stats.successRate || 0) : 0
 }
 
-const getProgressBarColor = (agentName) => {
-  const percent = getContextPercent(agentName)
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 75) return 'bg-orange-500'
+const getSuccessBarColor = (agentName) => {
+  const percent = getSuccessBarPercent(agentName)
+  if (percent >= 90) return 'bg-green-500'
   if (percent >= 50) return 'bg-yellow-500'
-  return 'bg-green-500'
+  return 'bg-red-500'
+}
+
+const hasSuccessData = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount > 0
+}
+
+const has7dOnlyStats = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount === 0 && stats.taskCount7d > 0
+}
+
+const has7dStats = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount7d > 0
+}
+
+const get7dSuccessRate = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats ? Math.round(stats.successRate7d || 0) : 0
+}
+
+const get7dSuccessBarColor = (agentName) => {
+  const percent = get7dSuccessRate(agentName)
+  if (percent >= 90) return 'bg-green-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
 }
 ```
 
@@ -321,14 +371,24 @@ const getProgressBarColor = (agentName) => {
 2. **`src/frontend/src/views/Agents.vue`**
    - Add sort dropdown and sorting logic
    - Add activity state indicator (dot + label)
-   - Add context progress bar for running agents
+   - Add success rate bar (replaced context bar in Issue #60)
    - Add CSS for pulse animation
    - Call polling on mount/unmount
 
+3. **`src/backend/routers/agents.py`**
+   - Added `include_7d: bool = False` param to GET /execution-stats
+
+4. **`src/backend/db/schedules.py`**
+   - Added `get_all_agents_execution_stats_dual()` with single SQL CASE WHEN
+
+5. **`src/backend/database.py`**
+   - Added facade method for the dual query
+
 ### New Code Reuse
-- **API**: `GET /api/agents/context-stats` (already exists)
+- **API**: `GET /api/agents/context-stats` (already exists, for activity state)
+- **API**: `GET /api/agents/execution-stats?include_7d=true` (dual-window stats for success rate bar)
 - **CSS**: Pulse animation from AgentNode.vue
-- **Logic**: Progress bar color coding from AgentNode.vue
+- **Logic**: Success rate bar color coding (green/yellow/red thresholds)
 - **Logic**: Activity state detection from network.js
 
 ---
@@ -340,10 +400,10 @@ const getProgressBarColor = (agentName) => {
    - Implement sorting computed property
    - Default to newest first
 
-2. **Phase 2: Context Stats**
-   - Add store methods for context stats polling
+2. **Phase 2: Stats & Success Rate**
+   - Add store methods for context and execution stats polling
    - Add activity state indicator (dot + label)
-   - Add context progress bar
+   - Add success rate bar (replaced context progress bar)
 
 3. **Phase 3: Polish**
    - Add loading states
@@ -414,13 +474,15 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
    - Last execution time (relative display: "just now", "2m ago", "1h ago", "1d ago")
    - Fallback: "No tasks (24h)" when no execution data
 
-3. **Context Progress Bar Always Visible** (`Agents.vue` lines 140-153)
+3. **Success Rate Bar** (`Agents.vue` -- replaced context progress bar in Issue #60)
    - Shows for all agents (not just running ones)
-   - Color coded by percentage:
-     - Green (`bg-green-500`) for 0-49%
-     - Yellow (`bg-yellow-500`) for 50-74%
-     - Orange (`bg-orange-500`) for 75-89%
-     - Red (`bg-red-500`) for 90-100%
+   - Uses execution stats `successRate` (24h) and `successRate7d` (7d) from `GET /api/agents/execution-stats?include_7d=true`
+   - Color coded by success rate percentage:
+     - Green (`bg-green-500`) for 90-100%
+     - Yellow (`bg-yellow-500`) for 50-89%
+     - Red (`bg-red-500`) for 0-49%
+     - Gray with em-dash for no data
+   - Fallback: 24h bar + 7d secondary text; 7d-only bar; gray dash
    - Smooth transition: `transition-all duration-500`
 
 4. **RuntimeBadge Integration** (`Agents.vue` line 68)
@@ -435,8 +497,8 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
    ```
 
 2. **New Actions**:
-   - `fetchExecutionStats()` (lines 523-547): Fetches from `GET /api/agents/execution-stats`
-     - Maps response to: `taskCount`, `successCount`, `failedCount`, `runningCount`, `successRate`, `totalCost`, `lastExecutionAt`
+   - `fetchExecutionStats()` (lines 523-547): Fetches from `GET /api/agents/execution-stats?include_7d=true`
+     - Maps response to: `taskCount`, `successCount`, `failedCount`, `runningCount`, `successRate`, `totalCost`, `lastExecutionAt`, `taskCount7d`, `successRate7d`
    - `toggleAutonomy(agentName)` (lines 550-576): Calls `PUT /api/agents/{name}/autonomy`
      - Toggles `agent.autonomy_enabled` locally after successful API call
      - Returns `{ success, enabled, schedulesUpdated }`
@@ -453,8 +515,13 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
 | `isActive(agentName)` | 288-290 | Returns true if agent is actively processing |
 | `getStatusDotColor(agentName)` | 292-297 | Returns hex color for status dot |
 | `getActivityLabelClass(agentName)` | 299-303 | Returns Tailwind classes for activity label |
-| `getContextPercent(agentName)` | 306-309 | Returns rounded context percentage (0-100) |
-| `getProgressBarColor(agentName)` | 311-317 | Returns Tailwind bg class based on percentage |
+| `getSuccessBarPercent(agentName)` | ~848-851 | Returns rounded 24h success rate (0-100) |
+| `getSuccessBarColor(agentName)` | ~853-858 | Returns Tailwind bg class (green/yellow/red) based on success rate |
+| `hasSuccessData(agentName)` | ~860-863 | Returns true if 24h taskCount > 0 |
+| `has7dOnlyStats(agentName)` | ~865-868 | Returns true if 24h=0 but 7d taskCount > 0 |
+| `has7dStats(agentName)` | ~870-873 | Returns true if 7d taskCount > 0 |
+| `get7dSuccessRate(agentName)` | ~875-878 | Returns rounded 7d success rate (0-100) |
+| `get7dSuccessBarColor(agentName)` | ~880-885 | Returns Tailwind bg class for 7d rate |
 | `getExecutionStats(agentName)` | 320-322 | Returns execution stats object or null |
 | `hasExecutionStats(agentName)` | 324-327 | Returns true if taskCount > 0 |
 | `getSuccessRateColorClass(agentName)` | 329-336 | Returns color class for success rate |
@@ -463,10 +530,11 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
 
 ### Backend Endpoints
 
-1. **GET /api/agents/execution-stats** (`agents.py` lines 144-165)
+1. **GET /api/agents/execution-stats** (`agents.py` lines 180-246)
    - Returns task counts, success rates, costs for all accessible agents
-   - Query param: `hours` (default: 24)
-   - Response: `{ agents: [{ name, task_count_24h, success_count, failed_count, running_count, success_rate, total_cost, last_execution_at }] }`
+   - Query params: `hours` (default: 24), `include_7d` (default: false)
+   - When `include_7d=true`: calls `db.get_all_agents_execution_stats_dual()` which uses a single SQL query with `CASE WHEN` for both 24h and 7d windows (`db/schedules.py` lines 788-846)
+   - Response (with `include_7d=true`): `{ agents: [{ name, task_count_24h, success_count, failed_count, running_count, success_rate, total_cost, last_execution_at, task_count_7d, success_count_7d, failed_count_7d, running_count_7d, success_rate_7d, total_cost_7d, last_execution_at_7d, schedules_total, schedules_enabled }] }`
 
 2. **PUT /api/agents/{name}/autonomy** (`agents.py` lines 775-790)
    - Body: `{ enabled: boolean }`
@@ -485,7 +553,7 @@ Major UI overhaul to align Agents page with Dashboard (AgentNode.vue) tiles. Cha
 | Layout | Vertical list (`<ul>` with `<li>`) | 3-column responsive grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`) |
 | Autonomy | Not shown | Toggle switch with AUTO/Manual label |
 | Execution Stats | Not shown | Tasks · Success Rate · Cost · Last Run row |
-| Context Bar | Only for running agents | All agents (consistent card height) |
+| Success Rate Bar | N/A (was context bar) | Success rate bar with 24h + 7d dual windows, color-coded |
 | Card Style | Simple table rows | Styled cards with shadow-lg, rounded-xl, hover:shadow-xl |
 | Status Indicator | Basic badge | Pulsing dot with activity state label |
 
@@ -499,9 +567,11 @@ User loads /agents page
         │       ├── list_all_agents_fast() - Docker labels only (no stats)
         │       └── db.get_all_agent_metadata() - Single JOIN query for all metadata
         │           └── Returns: owner, is_system, autonomy, limits, git config, share access
-        └── agentsStore.startContextPolling() [agents.js:578-594]
+        └── agentsStore.startContextPolling() [agents.js:642-658]
             ├── fetchContextStats() → GET /api/agents/context-stats
-            ├── fetchExecutionStats() → GET /api/agents/execution-stats
+            ├── fetchExecutionStats() → GET /api/agents/execution-stats?include_7d=true
+            │   └── Backend: db.get_all_agents_execution_stats_dual() [db/schedules.py:788-846]
+            │       └── Single SQL with CASE WHEN for 24h + 7d windows
             └── setInterval(5000) for continuous updates
 
 User toggles autonomy switch
@@ -560,13 +630,13 @@ The `/api/agents` endpoint benefits from two optimizations:
 | 3 | Verify success rate colors | Green ≥80%, yellow 50-79%, red <50% |
 | 4 | Wait 10 seconds | Stats auto-refresh |
 
-#### Context Progress Bar
+#### Success Rate Bar
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | View stopped agent | Context bar shows 0% (gray area visible) |
-| 2 | View running agent | Context bar shows actual percentage |
-| 3 | Chat with agent | Progress bar fills as context grows |
-| 4 | Check color changes | Green → yellow → orange → red as % increases |
+| 1 | View agent with 24h executions | Success bar filled, percentage shown, 7d rate in parentheses if available |
+| 2 | View agent with 7d-only executions | Bar shows 7d rate with "(7d)" label |
+| 3 | View agent with no recent executions | Gray empty bar with em-dash |
+| 4 | Check color changes | Green (>=90%) / yellow (50-89%) / red (<50%) |
 
 ### Related Components
 
@@ -708,19 +778,19 @@ Complete template rewrite from 3-column card grid to full-width horizontal row t
 ### Three Responsive Breakpoints
 
 **Desktop (lg+)** -- `Agents.vue` lines 199-343:
-- CSS grid row: `grid-cols-[auto_auto_1fr_auto_auto_auto_160px_auto_auto]`
-- 9 columns: checkbox | status dot | name+badges | activity label | toggles | tags | context bar | stats | chevron
-- Column header row (lines 171-182): uppercase labels (NAME, STATUS, CONTROLS, TAGS, CONTEXT, STATS)
+- CSS grid row: `grid-cols-[auto_auto_1fr_auto_auto_180px_auto_auto]`
+- 8 columns: checkbox | status dot | name+badges | activity label | toggles | success rate bar | stats | chevron
+- Column header row: uppercase labels (NAME, STATUS, CONTROLS, SUCCESS, STATS)
 
 **Tablet (md to lg)** -- `Agents.vue` lines 345-447:
 - Two-line compact layout using `flex-col`
 - Line 1: checkbox, status dot, name, badges, activity label, chevron
-- Line 2 (indented `pl-[3.25rem]`): toggles, context bar with `w-24` fixed width, stats summary
+- Line 2 (indented `pl-[3.25rem]`): toggles, success rate bar with `w-24` fixed width, stats summary
 
 **Mobile (<md)** -- `Agents.vue` lines 449-514:
 - Compact mini-card using `flex-col`
 - Line 1: checkbox, status dot, name, badges, RunningStateToggle only, chevron
-- Line 2 (indented): activity state, context %, task count, success rate (text-only, no bar)
+- Line 2 (indented): activity state, success rate % (text-only, no bar), task count
 - System badge abbreviated to "SYS" (line 476)
 
 ### New Scoped CSS (`Agents.vue` lines 905-936)
@@ -755,16 +825,22 @@ Complete template rewrite from 3-column card grid to full-width horizontal row t
 ## References
 
 > Line numbers verified 2026-03-03
-- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (937 lines total)
-  - Template: lines 1-538
-  - Script: lines 540-903
-  - Scoped styles: lines 905-936
-- **agents.js store**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js`
+- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (1151 lines total)
+  - Template: lines 1-658
+  - Script: lines 660-1117
+  - Scoped styles: lines 1119-1150
+- **agents.js store**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/stores/agents.js` (745 lines total)
+  - `fetchExecutionStats()`: lines 584-611 (calls `/api/agents/execution-stats?include_7d=true`)
+  - `success_desc` sort case: lines 64-70
 - **AgentNode.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentNode.vue` - Visual design reference
 - **Backend agents router**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/routers/agents.py`
-  - Lines 138-141: GET /context-stats endpoint
-  - Lines 144-165: GET /execution-stats endpoint
+  - Lines 175-177: GET /context-stats endpoint
+  - Lines 180-246: GET /execution-stats endpoint (with `include_7d` param)
   - Lines 775-790: PUT /{name}/autonomy endpoint
+- **Backend dual stats query**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/db/schedules.py`
+  - Lines 788-846: `get_all_agents_execution_stats_dual()` - single SQL with CASE WHEN for 24h + 7d
+- **Backend database facade**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/database.py`
+  - Lines 556-558: `get_all_agents_execution_stats_dual()` facade method
 - **Backend helpers**: `/Users/eugene/Dropbox/trinity/trinity/src/backend/services/agent_service/helpers.py`
   - Lines 83-153: `get_accessible_agents()` with batch query optimization
 
@@ -774,6 +850,7 @@ Complete template rewrite from 3-column card grid to full-width horizontal row t
 
 | Date | Changes |
 |------|---------|
+| 2026-03-03 | **Success Rate Bar (Issue #60)**: Replaced context usage progress bars with success rate bars across desktop, tablet, and mobile layouts. Column header "Context" renamed to "Success", grid col 160px to 180px. Sort dropdown "Context Usage" (`context_desc`) replaced with "Success Rate" (`success_desc`), sorts by `successRate`. Removed helpers: `getContextPercent()`, `getProgressBarColor()`. Added helpers: `getSuccessBarPercent()`, `getSuccessBarColor()`, `hasSuccessData()`, `has7dOnlyStats()`, `has7dStats()`, `get7dSuccessRate()`, `get7dSuccessBarColor()`. `fetchExecutionStats()` now calls `/api/agents/execution-stats?include_7d=true`, stores `taskCount7d` and `successRate7d` per agent. Backend: added `include_7d: bool = False` param to GET /execution-stats, added `get_all_agents_execution_stats_dual()` with single SQL CASE WHEN for both 24h and 7d windows (db/schedules.py), added facade method in database.py. |
 | 2026-03-03 | **Horizontal Row Tile Layout (Issue #54)**: Complete template rewrite from 3-column card grid to full-width horizontal rows. Three responsive breakpoints: desktop (9-column CSS grid), tablet (two-line compact), mobile (mini-card). Column header row on desktop. System agent changed from purple ring to `border-l-3` left accent. Chevron arrow replaces "View Details" button. Type display removed. Schedule stats merged inline. New `.border-l-3` and `dark:hover:bg-gray-750` scoped styles. Template-only change -- no store or backend modifications. |
 | 2026-02-18 17:50 | **Toggle Size Consistency**: All toggles in Agents.vue now use consistent `size="sm"`: RunningStateToggle (line 245), ReadOnlyToggle (line 252), AutonomyToggle (line 259). ReadOnlyToggle no longer has `:show-label="false"` - it now shows labels like the other toggles. This matches the toggle size standardization across the system. |
 | 2026-02-18 | **Read-Only Toggle + Tags Layout Fix**: Added `ReadOnlyToggle` component to toggles row (Agents.vue:248-255) between Running and Autonomy. Fixed tags breaking tile layout by adding fixed height container (`h-6 overflow-hidden`, line 271) and `max-w-20 truncate` on individual tags (line 276). Added `agentReadOnlyStates` state (line 378), `readOnlyLoading` (line 377), `fetchAllReadOnlyStates()` (lines 544-563), `getAgentReadOnlyState()` (lines 540-542), `handleReadOnlyToggle()` (lines 565-594). Import at line 368. Toggle only shown for owned agents (`v-if="!agent.is_system && !agent.is_shared"`). |

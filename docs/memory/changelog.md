@@ -1,3 +1,28 @@
+### 2026-03-03
+📊 **Feature: Replace context bars with success rate bars (Issue #60)**
+
+Replaced context usage progress bars with success rate bars across fleet-view components. Added dual-window (24h + 7d) execution statistics via a single efficient SQL query.
+
+**Backend:**
+- `src/backend/db/schedules.py` — Added `get_all_agents_execution_stats_dual()` using CASE WHEN for both 24h and 7d windows in a single query
+- `src/backend/routers/agents.py` — Added `include_7d` query param to `/api/agents/execution-stats` (backward compatible, default false)
+
+**Frontend Stores:**
+- `src/frontend/src/stores/agents.js` — Fetch with `include_7d=true`, store `taskCount7d` and `successRate7d`, renamed sort option `context_desc` → `success_desc`
+- `src/frontend/src/stores/network.js` — Same API call change, pass 7d data through to node data
+
+**Frontend Components (4 files):**
+- `src/frontend/src/views/Agents.vue` — Replaced context bar with success rate bar in desktop (column 180px), tablet, and mobile layouts; column header "Context" → "Success"; new helpers: `getSuccessBarPercent()`, `getSuccessBarColor()`, `has7dStats()`, `get7dSuccessRate()`
+- `src/frontend/src/components/AgentNode.vue` — Replaced "Context" section with "Success" bar including 7d secondary text
+- `src/frontend/src/components/SystemAgentNode.vue` — Replaced "Context" in stats row with "Success" bar
+- `src/frontend/src/components/ReplayTimeline.vue` — Replaced Row 2 context bar with success rate bar; new helpers: `getRowSuccessPercent()`, `getSuccessBarClass()`
+
+**Color coding:** green >= 90%, yellow 50-89%, red < 50%, gray with dash for no data.
+**Fallback logic:** 24h bar + 7d text when both available; 7d-only bar when no 24h data; gray dash when no executions in 7d.
+**Scope exclusion:** No changes to Agent Detail page. Context polling still active for activity state detection.
+
+---
+
 ### 2026-03-03 19:00:00
 🔍 **Feature: Agents page filtering by name, status, and tags (Issue #55)**
 

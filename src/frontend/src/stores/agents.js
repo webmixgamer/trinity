@@ -61,11 +61,11 @@ export const useAgentsStore = defineStore('agents', {
           case 'status':
             sorted.sort((a, b) => (b.status === 'running' ? 1 : 0) - (a.status === 'running' ? 1 : 0))
             break
-          case 'context_desc':
+          case 'success_desc':
             sorted.sort((a, b) => {
-              const aContext = this.contextStats[a.name]?.contextPercent || 0
-              const bContext = this.contextStats[b.name]?.contextPercent || 0
-              return bContext - aContext
+              const aRate = this.executionStats[a.name]?.successRate || 0
+              const bRate = this.executionStats[b.name]?.successRate || 0
+              return bRate - aRate
             })
             break
         }
@@ -585,6 +585,7 @@ export const useAgentsStore = defineStore('agents', {
       try {
         const authStore = useAuthStore()
         const response = await axios.get('/api/agents/execution-stats', {
+          params: { include_7d: true },
           headers: authStore.authHeader
         })
         const agentStats = response.data.agents || []
@@ -598,7 +599,9 @@ export const useAgentsStore = defineStore('agents', {
             runningCount: stat.running_count || 0,
             successRate: stat.success_rate || 0,
             totalCost: stat.total_cost || 0,
-            lastExecutionAt: stat.last_execution_at
+            lastExecutionAt: stat.last_execution_at,
+            taskCount7d: stat.task_count_7d || 0,
+            successRate7d: stat.success_rate_7d || 0
           }
         })
         this.executionStats = newStats

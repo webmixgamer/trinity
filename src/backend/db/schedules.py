@@ -785,6 +785,66 @@ class ScheduleOperations:
 
             return results
 
+    def get_all_agents_execution_stats_dual(self) -> List[Dict]:
+        """Get execution statistics for all agents with both 24h and 7d windows.
+
+        Single SQL query using CASE WHEN to compute both time windows efficiently.
+
+        Returns:
+            List of dicts with agent execution stats for both 24h and 7d windows.
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    agent_name,
+                    SUM(CASE WHEN started_at > datetime('now', '-24 hours') THEN 1 ELSE 0 END) as task_count_24h,
+                    SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'success' THEN 1 ELSE 0 END) as success_count_24h,
+                    SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'failed' THEN 1 ELSE 0 END) as failed_count_24h,
+                    SUM(CASE WHEN started_at > datetime('now', '-24 hours') AND status = 'running' THEN 1 ELSE 0 END) as running_count_24h,
+                    SUM(CASE WHEN started_at > datetime('now', '-24 hours') THEN COALESCE(cost, 0) ELSE 0 END) as total_cost_24h,
+                    MAX(CASE WHEN started_at > datetime('now', '-24 hours') THEN started_at ELSE NULL END) as last_execution_at_24h,
+                    COUNT(*) as task_count_7d,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count_7d,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count_7d,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_count_7d,
+                    SUM(COALESCE(cost, 0)) as total_cost_7d,
+                    MAX(started_at) as last_execution_at_7d
+                FROM schedule_executions
+                WHERE started_at > datetime('now', '-168 hours')
+                GROUP BY agent_name
+            """)
+
+            results = []
+            for row in cursor.fetchall():
+                task_count_24h = row["task_count_24h"] or 0
+                success_count_24h = row["success_count_24h"] or 0
+                success_rate_24h = round((success_count_24h / task_count_24h * 100), 1) if task_count_24h > 0 else 0
+
+                task_count_7d = row["task_count_7d"] or 0
+                success_count_7d = row["success_count_7d"] or 0
+                success_rate_7d = round((success_count_7d / task_count_7d * 100), 1) if task_count_7d > 0 else 0
+
+                results.append({
+                    "name": row["agent_name"],
+                    "task_count_24h": task_count_24h,
+                    "success_count": success_count_24h,
+                    "failed_count": row["failed_count_24h"] or 0,
+                    "running_count": row["running_count_24h"] or 0,
+                    "success_rate": success_rate_24h,
+                    "total_cost": round(row["total_cost_24h"] or 0, 4),
+                    "last_execution_at": row["last_execution_at_24h"],
+                    "task_count_7d": task_count_7d,
+                    "success_count_7d": success_count_7d,
+                    "failed_count_7d": row["failed_count_7d"] or 0,
+                    "running_count_7d": row["running_count_7d"] or 0,
+                    "success_rate_7d": success_rate_7d,
+                    "total_cost_7d": round(row["total_cost_7d"] or 0, 4),
+                    "last_execution_at_7d": row["last_execution_at_7d"]
+                })
+
+            return results
+
     def get_all_agents_schedule_counts(self) -> Dict[str, Dict[str, int]]:
         """Get schedule counts (total and enabled) for all agents.
 

@@ -180,15 +180,23 @@ async def get_agents_context_stats(current_user: User = Depends(get_current_user
 @router.get("/execution-stats")
 async def get_agents_execution_stats(
     hours: int = 24,
+    include_7d: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Get execution statistics for all accessible agents.
 
     Returns task counts, success rates, costs, last execution times,
     and schedule counts for all agents the user can access.
+
+    Args:
+        hours: Time window in hours (default: 24)
+        include_7d: If true, include 7-day stats alongside 24h stats
     """
     # Get all stats from database
-    all_stats = db.get_all_agents_execution_stats(hours=hours)
+    if include_7d:
+        all_stats = db.get_all_agents_execution_stats_dual()
+    else:
+        all_stats = db.get_all_agents_execution_stats(hours=hours)
 
     # Get schedule counts for all agents
     schedule_counts = db.get_all_agents_schedule_counts()
@@ -211,7 +219,7 @@ async def get_agents_execution_stats(
         if agent_name not in stats_agents:
             agent_schedules = schedule_counts.get(agent_name, {"total": 0, "enabled": 0})
             if agent_schedules["total"] > 0:
-                filtered_stats.append({
+                empty_stat = {
                     "name": agent_name,
                     "task_count_24h": 0,
                     "success_count": 0,
@@ -222,7 +230,18 @@ async def get_agents_execution_stats(
                     "last_execution_at": None,
                     "schedules_total": agent_schedules["total"],
                     "schedules_enabled": agent_schedules["enabled"]
-                })
+                }
+                if include_7d:
+                    empty_stat.update({
+                        "task_count_7d": 0,
+                        "success_count_7d": 0,
+                        "failed_count_7d": 0,
+                        "running_count_7d": 0,
+                        "success_rate_7d": 0,
+                        "total_cost_7d": 0,
+                        "last_execution_at_7d": None
+                    })
+                filtered_stats.append(empty_stat)
 
     return {"agents": filtered_stats}
 

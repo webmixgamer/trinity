@@ -91,7 +91,7 @@
               <option value="name_asc">Name (A-Z)</option>
               <option value="name_desc">Name (Z-A)</option>
               <option value="status">Running First</option>
-              <option value="context_desc">Context Usage</option>
+              <option value="success_desc">Success Rate</option>
             </select>
 
             <button
@@ -218,13 +218,13 @@
         <!-- Agents List -->
         <div class="flex flex-col gap-1.5">
           <!-- Column Header (lg+ only) -->
-          <div class="hidden lg:grid lg:grid-cols-[auto_auto_1fr_auto_auto_160px_auto_auto] lg:gap-x-4 items-center px-4 py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <div class="hidden lg:grid lg:grid-cols-[auto_auto_1fr_auto_auto_180px_auto_auto] lg:gap-x-4 items-center px-4 py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             <div class="w-4"></div>
             <div class="w-3"></div>
             <div>Name</div>
             <div>Status</div>
             <div>Controls</div>
-            <div>Context</div>
+            <div>Success</div>
             <div>Stats</div>
             <div class="w-6"></div>
           </div>
@@ -247,7 +247,7 @@
             <!-- Desktop layout (lg+) -->
             <div class="hidden lg:flex lg:flex-col px-4 py-3">
               <!-- Top row: fixed layout data -->
-              <div class="grid grid-cols-[auto_auto_1fr_auto_auto_160px_auto_auto] gap-x-4 items-center">
+              <div class="grid grid-cols-[auto_auto_1fr_auto_auto_180px_auto_auto] gap-x-4 items-center">
                 <!-- Checkbox -->
                 <input
                   type="checkbox"
@@ -324,16 +324,36 @@
                   />
                 </div>
 
-                <!-- Context bar -->
+                <!-- Success rate bar -->
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500"
-                      :class="getProgressBarColor(agent.name)"
-                      :style="{ width: getContextPercent(agent.name) + '%' }"
-                    ></div>
-                  </div>
-                  <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 w-8 text-right tabular-nums">{{ getContextPercent(agent.name) }}%</span>
+                  <template v-if="hasSuccessData(agent.name)">
+                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        :class="getSuccessBarColor(agent.name)"
+                        :style="{ width: getSuccessBarPercent(agent.name) + '%' }"
+                      ></div>
+                    </div>
+                    <span class="text-[10px] font-semibold tabular-nums" :class="getSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ getSuccessBarPercent(agent.name) }}%</span>
+                    <span v-if="has7dStats(agent.name)" class="text-[9px] text-gray-400 dark:text-gray-500 tabular-nums">(7d: {{ get7dSuccessRate(agent.name) }}%)</span>
+                  </template>
+                  <template v-else-if="has7dOnlyStats(agent.name)">
+                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        :class="get7dSuccessBarColor(agent.name)"
+                        :style="{ width: get7dSuccessRate(agent.name) + '%' }"
+                      ></div>
+                    </div>
+                    <span class="text-[10px] font-semibold tabular-nums" :class="get7dSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ get7dSuccessRate(agent.name) }}%</span>
+                    <span class="text-[9px] text-gray-400 dark:text-gray-500">(7d)</span>
+                  </template>
+                  <template v-else>
+                    <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div class="h-full rounded-full bg-gray-300 dark:bg-gray-600" style="width: 0%"></div>
+                    </div>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500">&mdash;</span>
+                  </template>
                 </div>
 
                 <!-- Stats -->
@@ -473,14 +493,30 @@
                   />
                 </div>
                 <div class="flex items-center gap-2 flex-1 min-w-0">
-                  <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      class="h-full rounded-full transition-all duration-500"
-                      :class="getProgressBarColor(agent.name)"
-                      :style="{ width: getContextPercent(agent.name) + '%' }"
-                    ></div>
-                  </div>
-                  <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{{ getContextPercent(agent.name) }}%</span>
+                  <template v-if="hasSuccessData(agent.name)">
+                    <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        :class="getSuccessBarColor(agent.name)"
+                        :style="{ width: getSuccessBarPercent(agent.name) + '%' }"
+                      ></div>
+                    </div>
+                    <span class="text-[10px] font-semibold tabular-nums" :class="getSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ getSuccessBarPercent(agent.name) }}%</span>
+                  </template>
+                  <template v-else-if="has7dOnlyStats(agent.name)">
+                    <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        :class="get7dSuccessBarColor(agent.name)"
+                        :style="{ width: get7dSuccessRate(agent.name) + '%' }"
+                      ></div>
+                    </div>
+                    <span class="text-[10px] font-semibold tabular-nums" :class="get7dSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ get7dSuccessRate(agent.name) }}%</span>
+                  </template>
+                  <template v-else>
+                    <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden"></div>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500">&mdash;</span>
+                  </template>
                 </div>
                 <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 gap-x-1.5 whitespace-nowrap">
                   <template v-if="hasExecutionStats(agent.name)">
@@ -570,13 +606,15 @@
                 >
                   {{ getActivityState(agent.name) }}
                 </div>
-                <span class="text-gray-300 dark:text-gray-600">·</span>
-                <span class="tabular-nums">{{ getContextPercent(agent.name) }}%</span>
-                <template v-if="hasExecutionStats(agent.name)">
+                <template v-if="hasSuccessData(agent.name)">
+                  <span class="text-gray-300 dark:text-gray-600">·</span>
+                  <span class="font-medium" :class="getSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ getSuccessBarPercent(agent.name) }}%</span>
                   <span class="text-gray-300 dark:text-gray-600">·</span>
                   <span class="font-medium">{{ getExecutionStats(agent.name).taskCount }} tasks</span>
+                </template>
+                <template v-else-if="has7dOnlyStats(agent.name)">
                   <span class="text-gray-300 dark:text-gray-600">·</span>
-                  <span :class="getSuccessRateColorClass(agent.name)" class="font-medium">{{ getExecutionStats(agent.name).successRate }}%</span>
+                  <span class="font-medium" :class="get7dSuccessBarColor(agent.name).replace('bg-', 'text-')">{{ get7dSuccessRate(agent.name) }}% (7d)</span>
                 </template>
               </div>
             </div>
@@ -806,18 +844,44 @@ const getActivityLabelClass = (agentName) => {
   return 'text-gray-500 dark:text-gray-400'
 }
 
-// Context helpers
-const getContextPercent = (agentName) => {
-  const stats = agentsStore.contextStats[agentName]
-  return stats ? Math.round(stats.contextPercent || 0) : 0
+// Success rate bar helpers
+const getSuccessBarPercent = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats ? Math.round(stats.successRate || 0) : 0
 }
 
-const getProgressBarColor = (agentName) => {
-  const percent = getContextPercent(agentName)
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 75) return 'bg-orange-500'
+const getSuccessBarColor = (agentName) => {
+  const percent = getSuccessBarPercent(agentName)
+  if (percent >= 90) return 'bg-green-500'
   if (percent >= 50) return 'bg-yellow-500'
-  return 'bg-green-500'
+  return 'bg-red-500'
+}
+
+const hasSuccessData = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount > 0
+}
+
+const has7dOnlyStats = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount === 0 && stats.taskCount7d > 0
+}
+
+const has7dStats = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats && stats.taskCount7d > 0
+}
+
+const get7dSuccessRate = (agentName) => {
+  const stats = agentsStore.executionStats[agentName]
+  return stats ? Math.round(stats.successRate7d || 0) : 0
+}
+
+const get7dSuccessBarColor = (agentName) => {
+  const percent = get7dSuccessRate(agentName)
+  if (percent >= 90) return 'bg-green-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
 }
 
 // Execution stats helpers

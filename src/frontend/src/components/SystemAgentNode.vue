@@ -50,17 +50,19 @@
 
       <!-- Stats row -->
       <div class="flex items-center justify-between bg-white/50 dark:bg-gray-800/50 rounded-lg px-4 py-2 mb-3">
-        <!-- Context -->
+        <!-- Success rate -->
         <div class="flex items-center space-x-2">
-          <span class="text-xs text-gray-500 dark:text-gray-400">Context</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">Success</span>
           <div class="w-20 bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
             <div
+              v-if="hasExecutionStats"
               class="h-full rounded-full transition-all duration-500"
-              :class="progressBarColor"
-              :style="{ width: contextPercentDisplay + '%' }"
+              :class="successBarColor"
+              :style="{ width: successBarPercent + '%' }"
             ></div>
           </div>
-          <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ contextPercentDisplay }}%</span>
+          <span v-if="hasExecutionStats" class="text-xs font-semibold" :class="successBarColorText">{{ successBarPercent }}%</span>
+          <span v-else class="text-xs text-gray-400 dark:text-gray-500">&mdash;</span>
         </div>
 
         <!-- Execution stats -->
@@ -105,20 +107,6 @@ const isRunning = computed(() => {
   return props.data.status === 'running'
 })
 
-// Context progress bar
-const contextPercentDisplay = computed(() => {
-  const percent = props.data.contextPercent || 0
-  return Math.round(percent)
-})
-
-const progressBarColor = computed(() => {
-  const percent = contextPercentDisplay.value
-  if (percent >= 90) return 'bg-red-500'
-  if (percent >= 75) return 'bg-orange-500'
-  if (percent >= 50) return 'bg-yellow-500'
-  return 'bg-green-500'
-})
-
 // Execution stats
 const executionStats = computed(() => {
   return props.data.executionStats || null
@@ -133,6 +121,26 @@ const successRateColorClass = computed(() => {
   const rate = executionStats.value.successRate
   if (rate >= 80) return 'text-green-600 dark:text-green-400'
   if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+// Success rate bar
+const successBarPercent = computed(() => {
+  if (!executionStats.value) return 0
+  return Math.round(executionStats.value.successRate || 0)
+})
+
+const successBarColor = computed(() => {
+  const percent = successBarPercent.value
+  if (percent >= 90) return 'bg-green-500'
+  if (percent >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
+})
+
+const successBarColorText = computed(() => {
+  const percent = successBarPercent.value
+  if (percent >= 90) return 'text-green-600 dark:text-green-400'
+  if (percent >= 50) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
 })
 </script>
