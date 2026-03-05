@@ -2,6 +2,7 @@
 
 **Event:** Nevermined "Autonomous Business Hackathon: When Agents Run Businesses"
 **Dates:** March 5-6, 2026 - San Francisco
+**Prizes:** $1,500 total — $1,000 for 1st place, $500 for 2nd place
 **Contact:** Eugene Vyborov - eugene@ability.ai
 
 ---
