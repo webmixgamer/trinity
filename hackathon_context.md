@@ -230,6 +230,7 @@ These are written directly to the agent's `.env` file and hot-reloaded — no re
 **Using your own Anthropic key/subscription per agent:**
 - **API Key:** Set in platform Settings → Anthropic API Key (shared by all agents)
 - **Subscription:** If you have Claude Max/Pro, run `claude setup-token` locally, then register the token in Settings → Subscriptions and assign it to specific agents
+- **Need a subscription?** Claude Code MAX subscriptions can be provided and assigned to your agents on request — just ask Eugene
 
 ---
 
