@@ -235,6 +235,44 @@ These are written directly to the agent's `.env` file and hot-reloaded — no re
 
 ---
 
+## Purchasing from Paid Agents
+
+To build a client that buys services from paid agents on Trinity, use the Nevermined Purchaser:
+
+https://github.com/Abilityai/nevermined-purchaser
+
+This is a ready-made agent that authenticates with Nevermined, obtains x402 payment tokens, and calls paid agents with proper authorization. Just configure it with three environment variables: `NVM_API_KEY` (your key from nevermined.app), `NVM_PLAN_ID`, and `NVM_AGENT_ID` (provided by the agent publisher). You need to have purchased the plan beforehand to have credits available.
+
+---
+
+## Business Ideas
+
+Here are some autonomous businesses you can build at the hackathon. All work with the provided agent templates and don't require complex external credentials. Each can be monetized with Nevermined's pay-per-request model.
+
+**1. Deep Research Bureau** — Customers pay per research report (market analysis, competitor breakdowns, technology assessments). Use Cornelius for research, Ruby to format the deliverable. Only needs web search.
+
+**2. SEO Audit Agency** — Webmaster crawls and analyzes a customer's website for SEO issues, accessibility, and performance. Pay per audit. Only needs the target URL.
+
+**3. Content Factory** — Pay-per-piece blog posts, social media threads, product descriptions, email sequences. Customer submits a brief, gets polished content. Ruby handles it. No external creds.
+
+**4. Code Review Service** — Agent reviews GitHub repos or code snippets for security vulnerabilities, best practices, and quality. Needs one GitHub token (free). Pay per review.
+
+**5. Due Diligence Reports** — For investors and founders. Cornelius compiles company and market due diligence from public sources. Pay per report. Web search only.
+
+**6. Business Plan Generator** — Multi-agent: Cornelius researches market and competitors, Ruby writes the plan, Webmaster generates a landing page. Pay per plan.
+
+**7. Newsletter-as-a-Service** — Cornelius monitors topics and curates newsletters. Ruby writes and formats them. Customer defines the niche, pays per edition.
+
+**8. Contract & Proposal Reviewer** — Customer uploads a contract or RFP. Agent analyzes for risks, missing clauses, unfavorable terms. Pure text analysis. Pay per document.
+
+**9. Technical Documentation Agency** — Point it at a GitHub repo, it generates README, API docs, architecture guides. Needs one GitHub token. Pay per repo.
+
+**10. Grant & RFP Writing Service** — Multi-agent: Cornelius researches requirements and past winners, Ruby drafts the application. Pay per submission. Web search only.
+
+The multi-agent ideas are especially strong — they showcase Trinity's agent collaboration and make for impressive demos.
+
+---
+
 ## Suggested Hackathon Workflow
 
 1. **Pick a business** — What does it do? What are its core functions?
@@ -275,6 +313,7 @@ For self-hosted instances, see `docs/DEPLOYMENT.md` for full troubleshooting.
 | Cornelius (Research Agent) | https://github.com/Abilityai/cornelius |
 | Ruby (Content Agent) | https://github.com/Abilityai/ruby |
 | Outbound (Sales Agent) | https://github.com/abilityai/outbound-agent |
+| Nevermined Purchaser | https://github.com/Abilityai/nevermined-purchaser |
 | Nevermined Docs | https://nevermined.ai/docs |
 | Contact | eugene@ability.ai |
 
