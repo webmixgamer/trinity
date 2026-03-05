@@ -4,11 +4,14 @@ Public endpoints for unauthenticated access (Phase 12.2: Public Agent Links).
 These endpoints do NOT require authentication and are used by public users
 to access agents via shareable links.
 """
+import asyncio
+import json
 import secrets
 import httpx
 import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from database import (
@@ -212,7 +215,7 @@ async def confirm_verification_code(
     )
 
 
-@router.post("/chat/{token}", response_model=PublicChatResponse)
+@router.post("/chat/{token}")
 async def public_chat(
     token: str,
     chat_request: PublicChatRequest,
@@ -313,6 +316,38 @@ async def public_chat(
     # slot management, credential sanitization, and Dashboard timeline visibility.
     source_email = verified_email or f"anonymous ({client_ip})"
     task_execution_service = get_task_execution_service()
+
+    # Async mode (THINK-001): return execution_id immediately for SSE streaming
+    if chat_request.async_mode:
+        # Create execution record early so we have an ID
+        execution = db.create_task_execution(
+            agent_name=agent_name,
+            message=context_prompt,
+            triggered_by="public",
+            source_user_email=source_email,
+        )
+        execution_id = execution.id if execution else None
+
+        # Spawn background task
+        asyncio.create_task(_execute_public_chat_background(
+            agent_name=agent_name,
+            context_prompt=context_prompt,
+            source_email=source_email,
+            execution_id=execution_id,
+            chat_session_id=chat_session.id,
+            session_identifier=session_identifier,
+            identifier_type=identifier_type,
+        ))
+
+        return {
+            "status": "accepted",
+            "execution_id": execution_id,
+            "agent_name": agent_name,
+            "session_id": session_identifier if identifier_type == "anonymous" else None,
+            "async_mode": True,
+        }
+
+    # Sync mode: wait for result
     result = await task_execution_service.execute_task(
         agent_name=agent_name,
         message=context_prompt,
@@ -592,3 +627,138 @@ async def clear_public_session(
         cleared=True,
         new_session_id=new_session_id
     )
+
+
+# ============================================================================
+# Async Public Chat Support (THINK-001 for Public Links)
+# ============================================================================
+
+async def _execute_public_chat_background(
+    agent_name: str,
+    context_prompt: str,
+    source_email: str,
+    execution_id: str,
+    chat_session_id: str,
+    session_identifier: str,
+    identifier_type: str,
+):
+    """
+    Background task for async public chat execution.
+
+    Runs the task via TaskExecutionService (which handles slot management,
+    activity tracking, and credential sanitization) and stores the assistant
+    response in the public chat session.
+    """
+    try:
+        task_execution_service = get_task_execution_service()
+        result = await task_execution_service.execute_task(
+            agent_name=agent_name,
+            message=context_prompt,
+            triggered_by="public",
+            source_user_email=source_email,
+            timeout_seconds=120,
+            execution_id=execution_id,
+        )
+
+        if result.status == "success" and result.response:
+            db.add_public_chat_message(
+                session_id=chat_session_id,
+                role="assistant",
+                content=result.response,
+                cost=result.cost
+            )
+        elif result.status == "failed":
+            logger.error(f"[PublicChatAsync] Task failed for {agent_name}: {result.error}")
+    except Exception as e:
+        logger.error(f"[PublicChatAsync] Background execution error for {agent_name}: {e}")
+
+
+@router.get("/executions/{token}/{execution_id}/stream")
+async def public_stream_execution(
+    token: str,
+    execution_id: str,
+    request: Request,
+):
+    """
+    Stream execution log entries via SSE for a public chat execution.
+
+    Validates the public link token instead of JWT authentication.
+    Proxies the SSE stream from the agent container to the frontend.
+    """
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    agent_name = link["agent_name"]
+    container = get_agent_container(agent_name)
+    if not container or container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    # Verify the execution belongs to this agent
+    execution = db.get_execution(execution_id)
+    if not execution or execution.agent_name != agent_name:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    async def proxy_stream():
+        """Proxy SSE stream from agent container."""
+        agent_url = f"http://agent-{agent_name}:8000/api/executions/{execution_id}/stream"
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", agent_url) as response:
+                    if response.status_code != 200:
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Agent returned {response.status_code}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+                        return
+
+                    async for chunk in response.aiter_text():
+                        yield chunk
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to connect to agent'})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+        except Exception as e:
+            logger.error(f"[PublicStream] Error streaming from agent {agent_name}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+
+    return StreamingResponse(
+        proxy_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@router.get("/executions/{token}/{execution_id}/status")
+async def public_execution_status(
+    token: str,
+    execution_id: str,
+    request: Request,
+):
+    """
+    Get the status of a public chat execution.
+
+    Used by the frontend to poll for completion after async submission.
+    Validates the public link token instead of JWT authentication.
+    """
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    agent_name = link["agent_name"]
+
+    # Verify the execution belongs to this agent
+    execution = db.get_execution(execution_id)
+    if not execution or execution.agent_name != agent_name:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    return {
+        "execution_id": execution.id,
+        "status": execution.status,
+        "response": execution.response if execution.status in ("success", "failed") else None,
+        "error": execution.error if execution.status == "failed" else None,
+    }

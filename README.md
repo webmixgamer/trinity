@@ -138,6 +138,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 ### Core Platform
 - **Isolated Agent Containers** — Each agent runs in its own Docker container with dedicated resources
 - **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
+- **Agent Rename** — Rename agents via UI, MCP, or API without deleting and recreating
 - **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
 - **Dashboard Timeline View** — Visual timeline showing executions with trigger-based color coding (manual/scheduled/MCP/agent-triggered)
 - **Host Telemetry** — Real-time CPU, memory, and disk monitoring in the dashboard header
@@ -160,7 +161,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 
 ### Agent Capabilities
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
-- **MCP Integration** — 55 tools for external agent orchestration via Model Context Protocol
+- **MCP Integration** — 59 tools for external agent orchestration via Model Context Protocol
 - **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
 - **Persistent Memory** — File-based and database-backed memory across sessions
 - **Shared Folders** — File-based state sharing between agents via Docker volumes
@@ -169,6 +170,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types, historical tracking, and sparkline visualization
 - **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
 - **Playbooks Tab** — Browse and invoke agent skills (`.claude/skills/`) directly from the UI
+- **Dynamic Thinking Status** — Real-time status labels reflecting agent activity in both authenticated and public chat (Reading file, Searching code, etc.)
 - **Read-Only Mode** — Protect source code from modification while allowing output to designated directories
 - **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
@@ -177,7 +179,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
 - **Fleet Health Monitoring** — Multi-layer health checks (Docker, network, business) with alerting and WebSocket updates
 - **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
-- **Subscription Management** — Centralized Claude Max/Pro subscription sharing across multiple agents
+- **Subscription Management** — Centralized Claude Max/Pro subscription tokens (`claude setup-token`) shared across agents via env var injection
 - **Agent Tags & System Views** — Organize agents with tags and saved filter views for fleet management
 - **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
 - **Live Execution Streaming** — Real-time streaming of execution logs to the web UI
@@ -187,6 +189,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Trinity Connect** — WebSocket event streaming for local Claude Code integration with MCP key authentication
 - **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
 - **Public Agent Links** — Shareable links for unauthenticated agent access with session persistence and Slack integration
+- **Paid Agent Access (x402)** — Per-agent monetization via Nevermined x402 payment protocol with verify/settle lifecycle
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
 - **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
 
@@ -301,7 +304,7 @@ trinity/
 │   │   └── services/
 │   │       └── process_engine/  # Process Engine (DDD architecture)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
-│   ├── mcp-server/       # Trinity MCP server (55 tools)
+│   ├── mcp-server/       # Trinity MCP server (59 tools)
 │   └── scheduler/        # Dedicated scheduler service (Redis locks)
 ├── docker/
 │   ├── base-image/       # Universal agent base image
@@ -420,6 +423,7 @@ Trinity includes an MCP server for external orchestration of agents:
 | `create_agent` | Create a new agent from template |
 | `start_agent` | Start a stopped agent |
 | `stop_agent` | Stop a running agent |
+| `rename_agent` | Rename an agent |
 | `delete_agent` | Delete an agent |
 
 #### Communication
@@ -451,6 +455,7 @@ Trinity includes an MCP server for external orchestration of agents:
 - **Subscriptions** (6 tools) — Register and assign Claude Max/Pro subscriptions to agents
 - **Skills** (7 tools) — List, create, update, delete, assign skills to agents
 - **Monitoring** (3 tools) — Get fleet health, agent health details, trigger health checks
+- **Payments** (4 tools) — Configure Nevermined x402 payments, toggle, view payment history
 - **Notifications** (1 tool) — Send structured notifications from agents to platform
 
 ## Multi-Agent Systems

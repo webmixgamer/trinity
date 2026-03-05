@@ -389,6 +389,7 @@ class PublicChatRequest(BaseModel):
     message: str
     session_token: Optional[str] = None  # Required if link requires email verification
     session_id: Optional[str] = None  # For anonymous links (stored in localStorage)
+    async_mode: bool = False  # When true, return execution_id immediately for SSE streaming
 
 
 class PublicChatResponse(BaseModel):
@@ -932,3 +933,70 @@ class BulkSlotState(BaseModel):
     """Response model for bulk slot state query (Dashboard)."""
     agents: dict  # {agent_name: {"max": N, "active": M}}
     timestamp: str
+
+
+# =========================================================================
+# Nevermined Payment Models (NVM-001: x402 Payment Integration)
+# =========================================================================
+
+class NeverminedConfigCreate(BaseModel):
+    """Request model for configuring Nevermined payments on an agent."""
+    nvm_api_key: str  # Format: "env:jwt" e.g. "sandbox:eyJhbGci..."
+    nvm_environment: str = "sandbox"  # sandbox, live, staging_sandbox, staging_live, custom
+    nvm_agent_id: str  # Registered agent ID from Nevermined
+    nvm_plan_id: str  # Registered plan ID from Nevermined
+    credits_per_request: int = 1
+
+    @field_validator('nvm_environment')
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        valid = {"sandbox", "live", "staging_sandbox", "staging_live", "custom"}
+        if v not in valid:
+            raise ValueError(f"nvm_environment must be one of: {', '.join(sorted(valid))}")
+        return v
+
+    @field_validator('credits_per_request')
+    @classmethod
+    def validate_credits(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("credits_per_request must be >= 1")
+        return v
+
+
+class NeverminedConfig(BaseModel):
+    """Stored Nevermined configuration for an agent (no decrypted key)."""
+    id: str
+    agent_name: str
+    nvm_environment: str
+    nvm_agent_id: str
+    nvm_plan_id: str
+    credits_per_request: int
+    enabled: bool
+    created_at: str
+    updated_at: str
+
+
+class NeverminedPaymentResult(BaseModel):
+    """Result from a verify or settle operation."""
+    success: bool
+    payer: Optional[str] = None
+    agent_request_id: Optional[str] = None
+    credits_redeemed: Optional[str] = None
+    remaining_balance: Optional[str] = None
+    tx_hash: Optional[str] = None
+    error: Optional[str] = None
+
+
+class NeverminedPaymentLog(BaseModel):
+    """A payment log entry."""
+    id: str
+    agent_name: str
+    execution_id: Optional[str] = None
+    action: str  # verify, settle, settle_failed, reject
+    subscriber_address: Optional[str] = None
+    credits_amount: Optional[int] = None
+    tx_hash: Optional[str] = None
+    remaining_balance: Optional[int] = None
+    success: bool
+    error: Optional[str] = None
+    created_at: str

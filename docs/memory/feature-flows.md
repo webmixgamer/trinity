@@ -11,6 +11,9 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-04 | TMPL-001 | Admin-configurable GitHub template repositories via Settings UI | [platform-settings.md](feature-flows/platform-settings.md), [templates-page.md](feature-flows/templates-page.md) |
+| 2026-03-04 | THINK-001 | Dynamic thinking status extended to Public Chat (async mode + SSE) | [public-agent-links.md](feature-flows/public-agent-links.md) |
+| 2026-03-04 | NVM-001 | Nevermined x402 payment integration for agent monetization | [nevermined-payments.md](feature-flows/nevermined-payments.md) |
 | 2026-03-04 | EXEC-024 | Unified task execution service for all callers | [task-execution-service.md](feature-flows/task-execution-service.md) |
 | 2026-03-03 | SUB-003 | Agent assign/unassign controls in subscription expanded rows | [subscription-management.md](feature-flows/subscription-management.md) |
 | 2026-03-03 | SUB-002 | Subscription management rewrite: token-based auth via env var | [subscription-management.md](feature-flows/subscription-management.md) |
@@ -119,12 +122,13 @@
 | MCP API Keys | [mcp-api-keys.md](feature-flows/mcp-api-keys.md) | API key management |
 | Execution Origin Tracking | [AUDIT-001-execution-origin-tracking.md](feature-flows/AUDIT-001-execution-origin-tracking.md) | Track who triggered executions |
 
-### Public Access
+### Public Access & Monetization
 
 | Flow | Document | Description |
 |------|----------|-------------|
 | Public Agent Links | [public-agent-links.md](feature-flows/public-agent-links.md) | Shareable public links with optional email verification |
 | Slack Integration | [slack-integration.md](feature-flows/slack-integration.md) | Slack as delivery channel for public links (SLACK-001) |
+| Nevermined x402 Payments | [nevermined-payments.md](feature-flows/nevermined-payments.md) | Per-agent paid API via x402 payment protocol (NVM-001) |
 
 ### MCP & Integration
 
@@ -259,6 +263,7 @@ Preserved in `feature-flows/archive/` for historical reference.
 | [EXTERNAL_PUBLIC_URL.md](../requirements/EXTERNAL_PUBLIC_URL.md) | ✅ | External URL for public links |
 | [EXECUTION_ORIGIN_TRACKING.md](../requirements/EXECUTION_ORIGIN_TRACKING.md) | ✅ | Track who triggered executions |
 | [AGENT_SYSTEMS_AND_TAGS.md](../requirements/AGENT_SYSTEMS_AND_TAGS.md) | ✅ | Tags and System Views |
+| [NEVERMINED_PAYMENT_INTEGRATION.md](../requirements/NEVERMINED_PAYMENT_INTEGRATION.md) | ✅ | Per-agent x402 payment monetization |
 
 ### Pending
 

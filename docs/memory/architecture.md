@@ -529,6 +529,20 @@ PENDING → RUNNING → COMPLETED
 - `process_failed` - Execution failed
 - `approval_required` - Human approval needed
 
+### Nevermined Payments (NVM-001)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/paid/{agent_name}/chat` | x402 | Paid chat (402/403/200) |
+| GET | `/api/paid/{agent_name}/info` | None | Payment requirements |
+| POST | `/api/nevermined/agents/{name}/config` | JWT | Configure payments |
+| GET | `/api/nevermined/agents/{name}/config` | JWT | Get config |
+| DELETE | `/api/nevermined/agents/{name}/config` | JWT | Remove config |
+| PUT | `/api/nevermined/agents/{name}/config/toggle` | JWT | Enable/disable |
+| GET | `/api/nevermined/agents/{name}/payments` | JWT | Payment history |
+| GET | `/api/nevermined/settlement-failures` | Admin | Failed settlements |
+| POST | `/api/nevermined/retry-settlement/{log_id}` | Admin | Retry settlement |
+
 ---
 
 ## Database Schema

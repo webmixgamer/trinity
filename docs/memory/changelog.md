@@ -1,4 +1,60 @@
 ### 2026-03-04
+⚙️ **Feature: Admin-Configurable GitHub Template Repositories (TMPL-001)**
+
+Made the list of GitHub repos shown as agent templates configurable by admin users via Settings UI. `config.py` stores only default repo identifiers (no metadata). All template metadata (display_name, description, resources, mcp_servers) is fetched from each repo's `template.yaml` via GitHub API at runtime, with 10-minute in-memory cache and concurrent fetching.
+
+**Backend:**
+- `src/backend/config.py` — Replaced `GITHUB_TEMPLATES`/`ALL_GITHUB_TEMPLATES` (hardcoded metadata) with `DEFAULT_GITHUB_TEMPLATE_REPOS` (list of repo strings)
+- `src/backend/services/settings_service.py` — Added `get_github_templates()`, `set_github_templates()`, `delete_github_templates()` to SettingsService
+- `src/backend/services/template_service.py` — Added GitHub API metadata fetching (`_fetch_template_yaml`, `_fetch_all_metadata`) with TTL cache; `get_all_templates()` resolves full template dicts from repo metadata; `get_github_template()` resolves single template; removed all hardcoded metadata, local template support
+- `src/backend/routers/templates.py` — Simplified to use `get_all_templates()` and `get_github_template()`; removed local template scanning, env-template endpoint
+- `src/backend/routers/settings.py` — Added `GET/PUT/DELETE /api/settings/github-templates` (admin-only); validates `owner/repo` format; GET returns both raw admin overrides and resolved metadata (`resolved_name`, `resolved_description`) from GitHub API
+
+**Frontend:**
+- `src/frontend/src/views/Settings.vue` — Added "GitHub Templates" section after Email Whitelist with add/remove/save/reset UI, defaults badge, dirty-state tracking
+
+---
+
+✨ **Feature: Dynamic Thinking Status for Public Chat (THINK-001 extension)**
+
+Extended THINK-001 dynamic thinking status labels to Public Chat. Public link users now see real-time agent activity labels (Reading file, Searching code, Running command, etc.) instead of static "Thinking..." while waiting for responses.
+
+**Backend:**
+- `src/backend/db_models.py` — Added `async_mode` field to `PublicChatRequest`
+- `src/backend/routers/public.py` — Added async mode support to `public_chat` endpoint (spawns background task, returns `execution_id`); added `GET /api/public/executions/{token}/{execution_id}/stream` (SSE proxy with link-token auth); added `GET /api/public/executions/{token}/{execution_id}/status` (polling endpoint)
+
+**Frontend:**
+- `src/frontend/src/views/PublicChat.vue` — Switched from sync POST to async mode + SSE stream subscription + polling for completion; imports `execution-status.js` utilities; added anti-flicker label timing, heartbeat timeout, SSE cleanup on unmount
+
+---
+
+💰 **Feature: Nevermined x402 Payment Integration (NVM-001)**
+
+Integrated Nevermined's x402 payment protocol into Trinity for per-agent monetization. External users pay per-request via `payment-signature` HTTP header. Internal fleet traffic remains free. Two-phase payment pattern: verify before work, settle after success — failed requests never cost the caller.
+
+**New files:**
+- `src/backend/db/nevermined.py` — DB operations (encrypted config + payment log)
+- `src/backend/services/nevermined_payment_service.py` — Verify/settle via payments-py SDK with timeouts and retry
+- `src/backend/routers/paid.py` — `POST /api/paid/{agent}/chat` (x402 flow), `GET /api/paid/{agent}/info`
+- `src/backend/routers/nevermined.py` — Admin config CRUD, payment history, settlement failure management
+- `src/frontend/src/components/NeverminedPanel.vue` — Payments tab with config form, toggle, payment log table
+- `src/mcp-server/src/tools/nevermined.ts` — 4 MCP tools for payment config management
+- `scripts/poc/nevermined_demo.py` — Buyer-side demo script
+
+**Modified:**
+- `src/backend/db_models.py` — Added `NeverminedConfigCreate`, `NeverminedConfig`, `NeverminedPaymentResult`, `NeverminedPaymentLog`
+- `src/backend/db/schema.py` — Added `nevermined_agent_config` + `nevermined_payment_log` tables and indexes
+- `src/backend/db/migrations.py` — Added migration #23 `nevermined_tables`
+- `src/backend/database.py` — Wired `NeverminedOperations` with delegate methods
+- `src/backend/main.py` — Registered `paid_router` and `nevermined_router`
+- `docker/backend/Dockerfile` — Added `payments-py==1.2.1` dependency
+- `src/frontend/src/views/AgentDetail.vue` — Added "Payments" tab with `NeverminedPanel`
+- `src/mcp-server/src/client.ts` — Added 4 Nevermined API methods
+- `src/mcp-server/src/server.ts` — Registered 4 Nevermined tools
+- `src/mcp-server/src/tools/index.ts` — Exported `createNeverminedTools`
+
+---
+
 🐛 **Fix: Public links with expiration crash on timezone-naive datetime comparison (Issue #62)**
 
 Fixed `TypeError: can't compare offset-naive and offset-aware datetimes` in `db/public_links.py`. Public links with an `expires_at` value stored timezone-aware timestamps (e.g., `2026-03-31T17:03:00.000Z`) but compared them against `datetime.utcnow()` which returns naive datetimes. Added `_utcnow()` (returns `datetime.now(timezone.utc)`) and `_parse_aware()` helpers. Fixed all three comparison sites: `is_link_valid()`, `verify_code()`, `validate_session()`.

@@ -10,8 +10,9 @@ This service breaks the circular dependency where services were importing
 from routers.settings. Now all settings retrieval logic lives here, and
 routers.settings re-exports these functions for backward compatibility.
 """
+import json
 import os
-from typing import Optional
+from typing import List, Optional
 from database import db
 
 
@@ -107,6 +108,37 @@ class SettingsService:
             return key
         return os.getenv('SLACK_SIGNING_SECRET', '')
 
+    # =========================================================================
+    # GitHub Templates (TMPL-001)
+    # =========================================================================
+
+    def get_github_templates(self) -> Optional[List[dict]]:
+        """
+        Get admin-configured GitHub templates from system_settings.
+
+        Returns:
+            list[dict] - configured templates (may be empty list)
+            None - no configuration (use hardcoded defaults)
+        """
+        raw = self.get_setting('github_templates')
+        if raw is None:
+            return None
+        try:
+            templates = json.loads(raw)
+            if not isinstance(templates, list):
+                return None
+            return templates
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def set_github_templates(self, templates: List[dict]) -> None:
+        """Save GitHub templates configuration to system_settings."""
+        db.set_setting('github_templates', json.dumps(templates))
+
+    def delete_github_templates(self) -> bool:
+        """Delete GitHub templates configuration (revert to defaults)."""
+        return db.delete_setting('github_templates')
+
     def get_ops_setting(self, key: str, as_type: type = str):
         """
         Get an ops setting with type conversion.
@@ -201,3 +233,9 @@ def get_skills_library_branch() -> str:
     Default: "main"
     """
     return settings_service.get_setting('skills_library_branch', 'main')
+
+
+# GitHub Templates (TMPL-001)
+def get_github_templates() -> Optional[List[dict]]:
+    """Get admin-configured GitHub templates, or None for defaults."""
+    return settings_service.get_github_templates()

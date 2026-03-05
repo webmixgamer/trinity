@@ -2,7 +2,7 @@
 
 ## Overview
 
-Admin-only page for managing system-wide configuration including API keys (Anthropic, GitHub), Trinity Prompt, email whitelist, SSH access toggle, and ops configuration settings.
+Admin-only page for managing system-wide configuration including API keys (Anthropic, GitHub), Trinity Prompt, email whitelist, SSH access toggle, ops configuration settings, and GitHub template configuration (TMPL-001).
 
 ## User Stories
 
@@ -26,6 +26,9 @@ Admin-only page for managing system-wide configuration including API keys (Anthr
   - `GET /api/settings/ops/config` - Get ops configuration
   - `PUT /api/settings/ops/config` - Update ops settings
   - `POST /api/settings/ops/reset` - Reset ops to defaults
+  - `GET /api/settings/github-templates` - Get GitHub templates config (TMPL-001)
+  - `PUT /api/settings/github-templates` - Set GitHub templates (TMPL-001)
+  - `DELETE /api/settings/github-templates` - Reset templates to defaults (TMPL-001)
 
 ---
 
@@ -293,10 +296,88 @@ VALUES (?, ?, ?)
 
 ---
 
+## GitHub Templates Configuration (TMPL-001)
+
+**Status**: Implemented (2026-03-04)
+
+Admins can configure which GitHub repositories appear as agent templates via the Settings page, replacing the hardcoded `config.py` list.
+
+### Data Flow
+
+```
+Settings.vue (GitHub Templates section)
+    |
+    GET /api/settings/github-templates
+    |
+    ├─ DB has config → {source: "settings", templates: [...]}
+    └─ No DB config  → {source: "defaults", templates: [...from config.py...]}
+    |
+    PUT /api/settings/github-templates
+    + Body: {templates: [{github_repo, display_name, description}, ...]}
+    |
+    └─ SettingsService.set_github_templates() → JSON in system_settings
+    |
+    DELETE /api/settings/github-templates
+    └─ Revert to config.py defaults
+```
+
+### Backend Endpoints
+
+| Endpoint | File:Line | Description |
+|----------|-----------|-------------|
+| `GET /api/settings/github-templates` | `settings.py:657` | Get configured templates (admin) |
+| `PUT /api/settings/github-templates` | `settings.py:693` | Set templates list (admin) |
+| `DELETE /api/settings/github-templates` | `settings.py:724` | Reset to defaults (admin) |
+
+### Template List Resolution
+
+```python
+# routers/templates.py:17-26
+@router.get("")
+async def list_templates():
+    db_templates = get_github_templates_from_db()
+    templates = db_templates if db_templates is not None else list(ALL_GITHUB_TEMPLATES)
+    templates.sort(...)
+    return templates
+```
+
+**Priority**: DB-configured list takes full precedence. When set, only DB entries are shown. When deleted, falls back to `config.py` `ALL_GITHUB_TEMPLATES`.
+
+### Service Layer
+
+| Method | File:Line | Description |
+|--------|-----------|-------------|
+| `get_github_templates()` | `settings_service.py:118` | Get from DB (returns None if not configured) |
+| `set_github_templates()` | `settings_service.py:136` | Save as JSON to system_settings |
+| `delete_github_templates()` | `settings_service.py:139` | Delete DB config (revert to defaults) |
+| `expand_github_template()` | `template_service.py:14` | Convert minimal entry to full template dict |
+| `get_github_templates_from_db()` | `template_service.py:35` | Get expanded templates from DB |
+
+### Frontend (Settings.vue)
+
+GitHub Templates section (lines 793-918) with:
+- Template list with edit/delete per entry
+- Add form (owner/repo input + optional display name)
+- "Using defaults" / "Custom config" badge
+- "Reset to Defaults" button
+
+### Storage
+
+Templates stored as JSON in `system_settings` table under key `github_templates`:
+```json
+[
+  {"github_repo": "owner/repo", "display_name": "Name", "description": "Desc"},
+  ...
+]
+```
+
+---
+
 ## Related Flows
 
 - **Upstream**: [first-time-setup.md](first-time-setup.md) - Initial admin password and API key configuration
 - **Downstream**: [template-processing.md](template-processing.md) - Uses GitHub PAT for private repo cloning
+- **Downstream**: [templates-page.md](templates-page.md) - Templates page uses configured list
 - **Related**: [internal-system-agent.md](internal-system-agent.md) - Ops settings affect fleet health checks
 - **Related**: [ssh-access.md](ssh-access.md) - `ssh_access_enabled` setting controls MCP tool availability
 
@@ -374,4 +455,5 @@ VALUES (?, ?, ?)
 
 | Date | Change |
 |------|--------|
+| 2026-03-04 | **TMPL-001 GitHub Templates Configuration**: Added admin UI and API endpoints for configuring which GitHub repos appear as agent templates. New section with data flow, endpoints, service layer, and storage details. Updated overview, entry points, related flows. |
 | 2026-01-13 | Initial documentation for Platform Settings feature flow |

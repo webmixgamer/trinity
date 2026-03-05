@@ -99,81 +99,14 @@ CORS_ORIGINS = [
     "http://localhost:8080",
 ] + _extra_origins
 
-# GitHub Templates
-# Configure your own GitHub agent templates here or via a config file.
-# Format: github:owner/repo - requires GITHUB_PAT credential for private repos
-# See docs/AGENT_TEMPLATE_SPEC.md for template structure
-GITHUB_TEMPLATES = [
-    {
-        "id": "github:abilityai/agent-ruby",
-        "display_name": "Ruby - Content & Publishing",
-        "description": "Content creation and multi-platform social media distribution agent",
-        "github_repo": "abilityai/agent-ruby",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": ["HEYGEN_API_KEY", "TWITTER_API_KEY", "CLOUDINARY_API_KEY"],
-        # Optional: shared_folders - default expose/consume settings (Req 9.11)
-        # "shared_folders": {"expose": True, "consume": False}
-    },
-    {
-        "id": "github:abilityai/agent-cornelius",
-        "display_name": "Cornelius - Knowledge Manager",
-        "description": "Knowledge base manager for Obsidian vault and insight extraction",
-        "github_repo": "abilityai/agent-cornelius",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": ["SMART_VAULT_PATH", "GEMINI_API_KEY"]
-    },
-    {
-        "id": "github:abilityai/agent-corbin",
-        "display_name": "Corbin - Business Assistant",
-        "description": "Business operations and Google Workspace management agent",
-        "github_repo": "abilityai/agent-corbin",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": [],
-        "required_credentials": ["GOOGLE_CLOUD_PROJECT_ID", "LINKEDIN_API_KEY"]
-    },
-    # Ruby Multi-Agent Content System
-    {
-        "id": "github:abilityai/ruby-orchestrator",
-        "display_name": "Ruby Orchestrator - Calendar & State Manager",
-        "description": "Master coordinator for content scheduling, state management, and agent triggering",
-        "github_repo": "abilityai/ruby-orchestrator",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": ["trinity"],
-        "required_credentials": ["TRINITY_API_URL", "TRINITY_API_KEY"]
-    },
-    {
-        "id": "github:abilityai/ruby-content",
-        "display_name": "Ruby Content - Discovery & Production",
-        "description": "Content discovery, classification, and production agent with AI short generation",
-        "github_repo": "abilityai/ruby-content",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": ["heygen", "cloudinary-asset-mgmt", "aistudio", "giphy"],
-        "required_credentials": ["HEYGEN_API_KEY", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "CLOUDINARY_CLOUD_NAME", "GEMINI_API_KEY", "GIPHY_API_KEY", "KLAP_API_KEY", "KLAP_BASE_URL", "CREATOMATE_API_KEY"]
-    },
-    {
-        "id": "github:abilityai/ruby-engagement",
-        "display_name": "Ruby Engagement - Social & Growth",
-        "description": "Engagement monitoring, viral reply hunting, and comment response agent",
-        "github_repo": "abilityai/ruby-engagement",
-        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
-        "source": "github",
-        "resources": {"cpu": "2", "memory": "4g"},
-        "mcp_servers": ["twitter-mcp", "mcp-metricool", "aistudio"],
-        "required_credentials": ["TWITTER_API_KEY", "TWITTER_API_SECRET_KEY", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET", "METRICOOL_USER_TOKEN", "METRICOOL_USER_ID", "GEMINI_API_KEY", "BLOTATO_API_KEY", "BLOTATO_BASE_URL", "BLOTATO_YOUTUBE_ID", "BLOTATO_INSTAGRAM_ID", "BLOTATO_LINKEDIN_ID", "BLOTATO_TWITTER_ID", "BLOTATO_THREADS_ID", "BLOTATO_TIKTOK_ID"]
-    }
+# Default GitHub Template Repositories
+# Just repo identifiers — metadata is fetched from each repo's template.yaml at runtime.
+# Admins can override this list via Settings → GitHub Templates (stored in system_settings).
+DEFAULT_GITHUB_TEMPLATE_REPOS = [
+    "abilityai/agent-ruby",
+    "abilityai/agent-cornelius",
+    "abilityai/agent-corbin",
+    "abilityai/ruby-orchestrator",
+    "abilityai/ruby-content",
+    "abilityai/ruby-engagement",
 ]
-
-# Combined templates list
-ALL_GITHUB_TEMPLATES = GITHUB_TEMPLATES

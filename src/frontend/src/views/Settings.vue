@@ -793,6 +793,127 @@ Example:
             </div>
           </div>
 
+          <!-- GitHub Templates Section (TMPL-001) -->
+          <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">GitHub Templates</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Configure which GitHub repositories appear as agent templates.
+                <span v-if="githubTemplatesSource === 'defaults'" class="inline-flex items-center ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  Using defaults
+                </span>
+                <span v-else class="inline-flex items-center ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                  Custom config
+                </span>
+              </p>
+            </div>
+
+            <div class="px-6 py-4">
+              <div class="space-y-4">
+                <!-- Add Template Form -->
+                <div class="flex gap-2">
+                  <input
+                    v-model="newTemplateRepo"
+                    type="text"
+                    placeholder="owner/repo"
+                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    :disabled="savingGithubTemplates"
+                    @keyup.enter="addGithubTemplate"
+                  />
+                  <input
+                    v-model="newTemplateName"
+                    type="text"
+                    placeholder="Display name (optional)"
+                    class="w-48 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                    :disabled="savingGithubTemplates"
+                    @keyup.enter="addGithubTemplate"
+                  />
+                  <button
+                    @click="addGithubTemplate"
+                    :disabled="!newTemplateRepo || savingGithubTemplates"
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add
+                  </button>
+                </div>
+                <p v-if="templateValidationError" class="text-sm text-red-600 dark:text-red-400">
+                  {{ templateValidationError }}
+                </p>
+
+                <!-- Templates Table -->
+                <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Repository
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          Display Name
+                        </th>
+                        <th scope="col" class="relative px-6 py-3">
+                          <span class="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                      <tr v-if="loadingGithubTemplates">
+                        <td colspan="3" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                        </td>
+                      </tr>
+                      <tr v-else-if="githubTemplates.length === 0">
+                        <td colspan="3" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                          No templates configured. Add a GitHub repo above or reset to defaults.
+                        </td>
+                      </tr>
+                      <tr v-else v-for="(tmpl, index) in githubTemplates" :key="tmpl.github_repo" class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-gray-100">
+                          {{ tmpl.github_repo }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {{ tmpl.resolved_name || tmpl.display_name || '-' }}
+                          <span v-if="tmpl.display_name" class="ml-1 text-xs text-indigo-500">(custom)</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            @click="removeGithubTemplate(index)"
+                            :disabled="savingGithubTemplates"
+                            class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-between items-center">
+                  <button
+                    @click="resetGithubTemplates"
+                    :disabled="savingGithubTemplates || githubTemplatesSource === 'defaults'"
+                    class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Reset to Defaults
+                  </button>
+                  <button
+                    @click="saveGithubTemplates"
+                    :disabled="savingGithubTemplates || !githubTemplatesDirty"
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg v-if="savingGithubTemplates" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Save Templates
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- SSH Access Section -->
           <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -1009,6 +1130,19 @@ const newEmail = ref('')
 const addingEmail = ref(false)
 const removingEmail = ref(null)
 const loadingWhitelist = ref(false)
+
+// GitHub Templates state (TMPL-001)
+const githubTemplates = ref([])
+const githubTemplatesOriginal = ref([])
+const githubTemplatesSource = ref('defaults')
+const newTemplateRepo = ref('')
+const newTemplateName = ref('')
+const templateValidationError = ref('')
+const loadingGithubTemplates = ref(false)
+const savingGithubTemplates = ref(false)
+const githubTemplatesDirty = computed(() => {
+  return JSON.stringify(githubTemplates.value) !== JSON.stringify(githubTemplatesOriginal.value)
+})
 
 const trinityPrompt = ref('')
 const originalPrompt = ref('')
@@ -1422,6 +1556,106 @@ function formatDate(dateString) {
   return date.toLocaleDateString()
 }
 
+// GitHub Templates methods (TMPL-001)
+const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/
+
+async function loadGithubTemplates() {
+  loadingGithubTemplates.value = true
+  try {
+    const response = await axios.get('/api/settings/github-templates', {
+      headers: authStore.authHeader
+    })
+    githubTemplates.value = response.data.templates || []
+    githubTemplatesOriginal.value = JSON.parse(JSON.stringify(githubTemplates.value))
+    githubTemplatesSource.value = response.data.source || 'defaults'
+  } catch (e) {
+    console.error('Failed to load GitHub templates:', e)
+  } finally {
+    loadingGithubTemplates.value = false
+  }
+}
+
+function addGithubTemplate() {
+  templateValidationError.value = ''
+  const repo = newTemplateRepo.value.trim()
+  if (!repo) return
+
+  if (!REPO_PATTERN.test(repo)) {
+    templateValidationError.value = "Invalid format. Use 'owner/repo' (e.g., 'octocat/hello-world')."
+    return
+  }
+
+  // Check for duplicates
+  if (githubTemplates.value.some(t => t.github_repo === repo)) {
+    templateValidationError.value = `'${repo}' is already in the list.`
+    return
+  }
+
+  githubTemplates.value.push({
+    github_repo: repo,
+    display_name: newTemplateName.value.trim(),
+    description: ''
+  })
+
+  newTemplateRepo.value = ''
+  newTemplateName.value = ''
+}
+
+function removeGithubTemplate(index) {
+  githubTemplates.value.splice(index, 1)
+}
+
+async function saveGithubTemplates() {
+  savingGithubTemplates.value = true
+  error.value = null
+
+  try {
+    await axios.put('/api/settings/github-templates', {
+      templates: githubTemplates.value.map(t => ({
+        github_repo: t.github_repo,
+        display_name: t.display_name || '',
+        description: t.description || ''
+      }))
+    }, {
+      headers: authStore.authHeader
+    })
+
+    githubTemplatesOriginal.value = JSON.parse(JSON.stringify(githubTemplates.value))
+    githubTemplatesSource.value = 'settings'
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to save GitHub templates'
+  } finally {
+    savingGithubTemplates.value = false
+  }
+}
+
+async function resetGithubTemplates() {
+  if (!confirm('Reset GitHub templates to hardcoded defaults? This will remove your custom configuration.')) return
+
+  savingGithubTemplates.value = true
+  error.value = null
+
+  try {
+    await axios.delete('/api/settings/github-templates', {
+      headers: authStore.authHeader
+    })
+
+    await loadGithubTemplates()
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Failed to reset GitHub templates'
+  } finally {
+    savingGithubTemplates.value = false
+  }
+}
+
 // SSH Access methods
 async function loadOpsSettings() {
   try {
@@ -1695,6 +1929,7 @@ onMounted(() => {
   // For now, allow access - backend will reject if not admin
   loadSettings()
   loadEmailWhitelist()
+  loadGithubTemplates()
   loadOpsSettings()
   loadSkillsLibrarySettings()
   loadSubscriptions()

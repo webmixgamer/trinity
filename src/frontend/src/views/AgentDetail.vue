@@ -147,6 +147,11 @@
               <CredentialsPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
+            <!-- Nevermined Payments Tab Content -->
+            <div v-if="activeTab === 'nevermined'">
+              <NeverminedPanel :agent-name="agent.name" />
+            </div>
+
             <!-- Sharing Tab Content -->
             <div v-if="activeTab === 'sharing' && agent.can_share">
               <SharingPanel
@@ -268,6 +273,7 @@ import TerminalPanelContent from '../components/TerminalPanelContent.vue'
 import SkillsPanel from '../components/SkillsPanel.vue'
 import PlaybooksPanel from '../components/PlaybooksPanel.vue'
 import ChatPanel from '../components/ChatPanel.vue'
+import NeverminedPanel from '../components/NeverminedPanel.vue'
 
 // Import composables
 import { useNotification } from '../composables'
@@ -567,7 +573,8 @@ const visibleTabs = computed(() => {
   tabs.push(
     { id: 'schedules', label: 'Schedules' },
     { id: 'playbooks', label: 'Playbooks' },
-    { id: 'credentials', label: 'Credentials' }
+    { id: 'credentials', label: 'Credentials' },
+    { id: 'nevermined', label: 'Payments' }
   )
 
   // Access control tabs - hide for system agent (system agent has full access)

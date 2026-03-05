@@ -27,6 +27,7 @@ Migration Order (as of 2026-02-28):
 20. slack_integration_tables - SLACK-001 Slack integration tables
 21. agent_ownership_parallel_capacity - CAPACITY-001 parallel execution slots
 22. schedule_model_selection - MODEL-001 model selection for tasks/schedules
+23. nevermined_tables - NVM-001 Nevermined payment integration tables
 """
 
 
@@ -59,6 +60,7 @@ def run_all_migrations(cursor, conn):
         ("slack_integration_tables", _migrate_slack_integration_tables),
         ("agent_ownership_parallel_capacity", _migrate_agent_ownership_parallel_capacity),
         ("schedule_model_selection", _migrate_schedule_model_selection),
+        ("nevermined_tables", _migrate_nevermined_tables),
     ]
 
     for name, migration_fn in migrations:
@@ -594,4 +596,45 @@ def _migrate_schedule_model_selection(cursor, conn):
         print("Adding model_used column to schedule_executions for model audit...")
         cursor.execute("ALTER TABLE schedule_executions ADD COLUMN model_used TEXT")
 
+    conn.commit()
+
+
+def _migrate_nevermined_tables(cursor, conn):
+    """Create Nevermined payment integration tables (NVM-001).
+
+    - nevermined_agent_config: Per-agent payment configuration with encrypted NVM_API_KEY
+    - nevermined_payment_log: Payment verification and settlement audit trail
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS nevermined_agent_config (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT UNIQUE NOT NULL,
+            encrypted_credentials TEXT NOT NULL,
+            nvm_environment TEXT NOT NULL,
+            nvm_agent_id TEXT NOT NULL,
+            nvm_plan_id TEXT NOT NULL,
+            credits_per_request INTEGER NOT NULL DEFAULT 1,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS nevermined_payment_log (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            execution_id TEXT,
+            action TEXT NOT NULL,
+            subscriber_address TEXT,
+            credits_amount INTEGER,
+            tx_hash TEXT,
+            remaining_balance INTEGER,
+            success INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_config_agent ON nevermined_agent_config(agent_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_agent ON nevermined_payment_log(agent_name, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_execution ON nevermined_payment_log(execution_id)")
     conn.commit()

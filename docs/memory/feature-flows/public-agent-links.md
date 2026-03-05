@@ -22,9 +22,10 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 |  (Owner management)            (Public chat interface)            |
 |                                                                    |
 |  - Create/edit/delete links    - Email verification flow          |
-|  - Copy link URL               - Chat interface                   |
+|  - Copy link URL               - Chat interface (async mode)      |
 |  - View usage stats            - Session management               |
-|  - Enable/disable              - Error handling                   |
+|  - Enable/disable              - SSE status streaming (THINK-001) |
+|                                - Error handling                   |
 +-------------------------------------------------------------------+
                                   |
                                   v
@@ -36,7 +37,9 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 |                                                                    |
 |  - CRUD endpoints              - Link validation                  |
 |  - Owner verification          - Email verification               |
-|  - Usage stats                 - Public chat                      |
+|  - Usage stats                 - Public chat (async mode)         |
+|                                - SSE stream proxy (THINK-001)     |
+|                                - Execution status polling         |
 +-------------------------------------------------------------------+
                                   |
          +------------------------+------------------------+
@@ -86,22 +89,35 @@ Owner (AgentDetail) -> POST /api/agents/{name}/public-links
 Public User -> GET /api/public/link/{token}
             -> Backend returns {valid: true, require_email: false}
 
-Public User -> POST /api/public/chat/{token}
+Public User -> POST /api/public/chat/{token}  {async_mode: true}
             -> Backend validates token
             -> Check rate limit (30/min per IP)
             -> Record usage
-            -> TaskExecutionService.execute_task(triggered_by="public")
-               -> Create schedule_executions record
-               -> Acquire capacity slot (429 if at capacity)
-               -> Track activity start
-               -> POST agent /api/task (with retry)
-               -> Sanitize credentials from response
-               -> Track activity completion
-               -> Release slot
-            -> Return response
+            -> Create execution record early (for SSE)
+            -> Spawn _execute_public_chat_background()
+            -> Return {status: "accepted", execution_id, agent_name}
+
+Frontend -> GET /api/public/executions/{token}/{execution_id}/stream
+         -> SSE proxy: agent status events (Reading file, Running command, etc.)
+         -> Frontend maps events to loading labels via getStatusFromStreamEvent()
+
+Frontend -> GET /api/public/executions/{token}/{execution_id}/status (polling, 5s)
+         -> Returns {status, response, error}
+         -> Frontend displays assistant response on success
+
+Background -> TaskExecutionService.execute_task(triggered_by="public")
+           -> Acquire capacity slot (429 if at capacity)
+           -> Track activity start
+           -> POST agent /api/task (with retry)
+           -> Sanitize credentials from response
+           -> Track activity completion
+           -> Release slot
+           -> Store assistant response in public_chat_messages
 ```
 
 > **EXEC-024 (2026-03-04)**: Public chat now routes through `TaskExecutionService` instead of a raw `httpx` call. This means public executions create `schedule_executions` records, appear in the Tasks tab and Dashboard timeline, count toward agent capacity slots, and have credential-sanitized logs.
+
+> **THINK-001 (2026-03-04)**: Public chat uses async mode with SSE streaming for real-time status labels. The frontend submits with `async_mode: true`, subscribes to the SSE stream for status updates (same `execution-status.js` utilities as authenticated chat), and polls for completion.
 
 ### 3. Public Chat (Email Required)
 
@@ -134,7 +150,7 @@ Public User -> POST /api/public/chat/{token}
 | `src/frontend/src/components/SharingPanel.vue` | 82-83 | Embeds PublicLinksPanel within Sharing tab |
 | `src/frontend/src/components/SharingPanel.vue` | 92 | Import statement for PublicLinksPanel |
 | `src/frontend/src/components/PublicLinksPanel.vue` | 1-503 | Owner management panel |
-| `src/frontend/src/views/PublicChat.vue` | 1-684 | Public chat interface (PUB-003 intro, PUB-004 header metadata, PUB-005 session persistence, PUB-006 bottom-aligned messages) |
+| `src/frontend/src/views/PublicChat.vue` | 1-786 | Public chat interface (PUB-003 intro, PUB-004 header metadata, PUB-005 session persistence, PUB-006 bottom-aligned messages, THINK-001 dynamic status) |
 
 > **Note (2026-02-18)**: AgentDetail.vue no longer directly renders PublicLinksPanel. The component is now embedded within SharingPanel.vue.
 
@@ -153,13 +169,18 @@ Public User -> POST /api/public/chat/{token}
 
 | Method | Line | Description |
 |--------|------|-------------|
-| `loadLinkInfo()` | 294 | Validate link token, receives agent metadata |
+| `loadLinkInfo()` | 302 | Validate link token, receives agent metadata |
 | `requestCode()` | 332 | Request verification email |
 | `verifyCode()` | 355 | Confirm 6-digit code, calls `fetchIntro()` |
 | `loadHistory()` | 402 | Load chat history from server (PUB-005) |
 | `fetchIntro()` | 441 | Fetch agent introduction (PUB-003) |
 | `confirmNewConversation()` | 476 | Clear session and restart (PUB-005) |
-| `sendMessage()` | 517 | Send chat message |
+| `updateLoadingText()` | 525 | THINK-001: Update loading text with anti-flicker timing |
+| `resetHeartbeat()` | 546 | THINK-001: Reset heartbeat timer (fallback to "Working...") |
+| `closeSSE()` | 556 | THINK-001: Close SSE connection and cleanup timers |
+| `subscribeToStream()` | 568 | THINK-001: Subscribe to public execution SSE stream |
+| `pollExecution()` | 635 | THINK-001: Poll public execution status until complete |
+| `sendMessage()` | 661 | Send chat message (async mode with SSE streaming) |
 
 ### Shared Chat Components (CHAT-001 Refactor)
 
@@ -170,11 +191,22 @@ PublicChat.vue now uses shared components from `src/frontend/src/components/chat
 | `ChatMessages` | `ChatMessages.vue` (87 lines) | Message list with bottom-aligned layout, auto-scroll |
 | `ChatInput` | `ChatInput.vue` (83 lines) | Auto-resize textarea with send button |
 | `ChatBubble` | `ChatBubble.vue` (56 lines) | Message bubble with markdown rendering (assistant) |
-| `ChatLoadingIndicator` | `ChatLoadingIndicator.vue` (36 lines) | Bouncing dots "Thinking..." indicator |
+| `ChatLoadingIndicator` | `ChatLoadingIndicator.vue` (36 lines) | Bouncing dots with dynamic status text (THINK-001) |
 
-**Import** (line 258):
+### Shared Utilities (THINK-001)
+
+PublicChat.vue uses execution status utilities from `src/frontend/src/utils/execution-status.js`:
+
+| Export | Description |
+|--------|-------------|
+| `getStatusFromStreamEvent(data)` | Maps Claude Code stream-json events to labels (Read → "Reading file...", Bash → "Running command...", etc.) |
+| `MIN_LABEL_DISPLAY_MS` (500ms) | Minimum display time per label to prevent flicker |
+| `HEARTBEAT_TIMEOUT_MS` (10000ms) | Timeout before falling back to "Working..." |
+
+**Imports** (lines 258-259):
 ```javascript
 import { ChatMessages, ChatInput } from '../components/chat'
+import { getStatusFromStreamEvent, MIN_LABEL_DISPLAY_MS, HEARTBEAT_TIMEOUT_MS } from '../utils/execution-status'
 ```
 
 **Usage** (lines 200-248):
@@ -212,8 +244,10 @@ import { ChatMessages, ChatInput } from '../components/chat'
 | `GET /api/public/link/{token}` | `public.py:43` | `get_public_link_info()` |
 | `POST /api/public/verify/request` | `public.py:73` | `request_verification_code()` |
 | `POST /api/public/verify/confirm` | `public.py:130` | `confirm_verification_code()` |
-| `POST /api/public/chat/{token}` | `public.py:215` | `public_chat()` |
+| `POST /api/public/chat/{token}` | `public.py:215` | `public_chat()` (supports `async_mode` for THINK-001) |
 | `GET /api/public/intro/{token}` | `public.py:374` | `get_agent_intro()` |
+| `GET /api/public/executions/{token}/{execution_id}/stream` | `public.py:676` | `public_stream_execution()` (THINK-001 SSE proxy) |
+| `GET /api/public/executions/{token}/{execution_id}/status` | `public.py:735` | `public_execution_status()` (THINK-001 polling) |
 
 ### Database Operations
 
@@ -247,7 +281,7 @@ import { ChatMessages, ChatInput } from '../components/chat'
 | `VerificationRequest` | `db_models.py:343` | Request verification code |
 | `VerificationConfirm` | `db_models.py:349` | Confirm verification code |
 | `VerificationResponse` | `db_models.py:356` | Verification result |
-| `PublicChatRequest` | `db_models.py:364` | Chat message request |
+| `PublicChatRequest` | `db_models.py:364` | Chat message request (includes `async_mode` for THINK-001) |
 | `PublicChatResponse` | `db_models.py:370` | Chat message response |
 
 ## Database Schema
@@ -399,7 +433,7 @@ PUBLIC_CHAT_URL=
 | `src/backend/routers/public_links.py` | Owner CRUD endpoints (206 lines) |
 | `src/backend/routers/public_links.py:30-39` | URL builders: `_build_public_url()`, `_build_external_url()` |
 | `src/backend/routers/public_links.py:42-61` | `_link_to_response()` - converts DB dict to API model |
-| `src/backend/routers/public.py` | Public endpoints |
+| `src/backend/routers/public.py` | Public endpoints (764 lines, includes THINK-001 async mode, SSE proxy, status polling) |
 | `src/backend/services/task_execution_service.py` | Unified task execution lifecycle (EXEC-024) |
 | `src/backend/services/email_service.py` | Email sending service |
 | `src/backend/db_models.py:301-374` | Pydantic models |
@@ -413,8 +447,9 @@ PUBLIC_CHAT_URL=
 
 | File | Description |
 |------|-------------|
-| `src/frontend/src/views/PublicChat.vue` | Public chat page (611 lines, refactored to use shared components) |
+| `src/frontend/src/views/PublicChat.vue` | Public chat page (786 lines, THINK-001 SSE streaming + shared components) |
 | `src/frontend/src/components/chat/index.js` | Shared component exports (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator) |
+| `src/frontend/src/utils/execution-status.js` | Shared status mapping utilities (THINK-001) |
 | `src/frontend/src/components/PublicLinksPanel.vue` | Owner panel (503 lines) |
 | `src/frontend/src/components/SharingPanel.vue` | Embeds PublicLinksPanel (lines 82-83, 92) |
 | `src/frontend/src/router/index.js:18-22` | Route definition |
@@ -485,6 +520,7 @@ docker-compose exec backend python -m pytest tests/test_public_links.py -v
 - **Upstream**: Agent Lifecycle (agent must exist and be running), Agent Sharing (now hosts PublicLinksPanel in same tab)
 - **Downstream**: Agent Chat (shares `TaskExecutionService.execute_task()` unified execution path)
 - **Related**: [Authenticated Chat Tab](authenticated-chat-tab.md) - shares chat components (ChatMessages, ChatInput, ChatBubble, ChatLoadingIndicator)
+- **Related**: [Dynamic Thinking Status](dynamic-thinking-status.md) (THINK-001) - shares `execution-status.js` utilities and SSE streaming pattern
 - **Related**: Agent Sharing (manages `can_share` permission, embeds PublicLinksPanel via SharingPanel.vue)
 - **Related**: [Slack Integration](slack-integration.md) (SLACK-001) - Slack as delivery channel for public links
 
@@ -993,12 +1029,13 @@ Return {response, session_id (for anonymous), message_count}
 
 ### Request/Response Models
 
-**PublicChatRequest** (`db_models.py:370-374`):
+**PublicChatRequest** (`db_models.py:370-376`):
 ```python
 class PublicChatRequest(BaseModel):
     message: str
     session_token: Optional[str] = None  # Email links
     session_id: Optional[str] = None     # Anonymous links (from localStorage)
+    async_mode: bool = False             # THINK-001: return execution_id for SSE streaming
 ```
 
 **PublicChatResponse** (`db_models.py:377-382`):
@@ -1227,9 +1264,9 @@ db.add_public_chat_message(
 | `src/backend/db/public_chat.py` | 307 | PublicChatOperations class, `PUBLIC_LINK_MODE_HEADER` constant (line 18), `build_context_prompt()` (245-280) |
 | `src/backend/database.py` | 1437 | Tables (660-687), indexes (781-783), delegation (1404-1432) |
 | `src/backend/db_models.py` | 483 | PublicChatSession (389-398), PublicChatMessage (401-408), updated Request/Response (370-382) |
-| `src/backend/routers/public.py` | 595 | Updated chat (215-362) uses TaskExecutionService, history (457-530), session (533-594), response models (29-39) |
+| `src/backend/routers/public.py` | 764 | Updated chat (215-362, async mode at 320-348), THINK-001 background task (636-673), SSE proxy (676-732), status poll (735-764), history (457-530), session (533-594) |
 | `src/backend/services/task_execution_service.py` | 391 | Unified execution lifecycle: slot mgmt, execution records, activity tracking, credential sanitization |
-| `src/frontend/src/views/PublicChat.vue` | 684 | State (325-339), loadHistory (456-492), sendMessage (571-633), confirmNewConversation (530-568), New button (17-27), messagesContainer ref (334), bottom-aligned layout (191-193) |
+| `src/frontend/src/views/PublicChat.vue` | 786 | State (278-294), loadHistory (402-465), sendMessage (661-744, async mode), THINK-001 SSE (525-632), pollExecution (635-658), confirmNewConversation (476-522), New button (13-23), bottom-aligned layout (191-193) |
 
 ### Error Handling
 
@@ -1460,6 +1497,131 @@ See [slack-integration.md](slack-integration.md) for complete implementation det
 
 ---
 
+## Dynamic Thinking Status (THINK-001)
+
+**Status**: Implemented (2026-03-04)
+**Feature Flow**: [dynamic-thinking-status.md](dynamic-thinking-status.md)
+
+Real-time status labels during public chat execution, replacing the static "Thinking..." indicator with dynamic labels like "Reading file...", "Running command...", "Searching code...", etc.
+
+### Architecture
+
+```
+PublicChat.vue                         Backend (public.py)              Agent Container
+     |                                      |                               |
+     |  POST /api/public/chat/{token}       |                               |
+     |  {message, async_mode: true}         |                               |
+     |------------------------------------->|                               |
+     |                                      | create execution record       |
+     |  {status: "accepted",               | spawn background task         |
+     |   execution_id: "..."}              |                               |
+     |<-------------------------------------|                               |
+     |                                      |                               |
+     |  GET .../executions/{token}/{id}/stream                              |
+     |------------------------------------->|  GET /api/executions/{id}/stream
+     |                                      |------------------------------>|
+     |  SSE: {type: "stream-json",         |  SSE: stream-json events      |
+     |   tool: "Read", ...}                |<------------------------------|
+     |<-------------------------------------|                               |
+     |  getStatusFromStreamEvent()          |                               |
+     |  -> "Reading file..."               |  execute_task()               |
+     |                                      |------------------------------>|
+     |  GET .../executions/{token}/{id}/status (polling every 5s)          |
+     |------------------------------------->|                               |
+     |  {status: "running"}                |                               |
+     |<-------------------------------------|                               |
+     |                                      |  task complete                |
+     |  {status: "success",               |<------------------------------|
+     |   response: "..."}                  |                               |
+     |<-------------------------------------|                               |
+```
+
+### Backend Implementation
+
+**Async mode in `public_chat()`** (`public.py:320-348`):
+- When `async_mode=True`, creates execution record early via `db.create_task_execution()`
+- Spawns `_execute_public_chat_background()` via `asyncio.create_task()`
+- Returns `{status: "accepted", execution_id, agent_name, session_id, async_mode: true}` immediately
+
+**`_execute_public_chat_background()`** (`public.py:636-673`):
+- Runs task via `TaskExecutionService.execute_task()` with pre-created `execution_id`
+- Stores assistant response in `public_chat_messages` on success
+- Logs errors without raising (background task)
+
+**SSE stream proxy** (`public.py:676-732`):
+- `GET /api/public/executions/{token}/{execution_id}/stream`
+- Validates public link token (no JWT required)
+- Verifies execution belongs to the agent associated with the link
+- Proxies SSE stream from `http://agent-{name}:8000/api/executions/{id}/stream`
+- Returns `StreamingResponse` with `text/event-stream` media type
+
+**Execution status polling** (`public.py:735-764`):
+- `GET /api/public/executions/{token}/{execution_id}/status`
+- Validates public link token
+- Returns `{execution_id, status, response, error}`
+- `response` only populated when status is `success` or `failed`
+
+### Frontend Implementation
+
+**State** (`PublicChat.vue:288-294`):
+```javascript
+const loadingText = ref('Thinking...')    // Dynamic status text
+let heartbeatTimer = null                  // Fallback timer
+let labelTimer = null                      // Anti-flicker timer
+let lastLabelTime = 0                      // Last label update timestamp
+let streamReader = null                    // SSE reader reference
+```
+
+**`sendMessage()`** (`PublicChat.vue:661-744`):
+1. Submits with `async_mode: true` (line 681)
+2. Receives `execution_id` from response (line 695)
+3. Calls `subscribeToStream(executionId)` for SSE status labels (line 707)
+4. Calls `pollExecution(executionId)` for completion (line 710)
+5. On completion: closes SSE, displays assistant response
+
+**`subscribeToStream()`** (`PublicChat.vue:568-632`):
+- Uses `fetch()` (not `EventSource`) since no auth headers needed for public endpoints
+- Reads SSE stream via `response.body.getReader()`
+- Parses `data:` lines as JSON, calls `getStatusFromStreamEvent()` to map to labels
+- Calls `updateLoadingText()` with the result
+
+**`updateLoadingText()`** (`PublicChat.vue:525-543`):
+- Enforces minimum 500ms display per label (`MIN_LABEL_DISPLAY_MS`)
+- Defers updates if within the minimum window
+- Calls `resetHeartbeat()` on each update
+
+**`resetHeartbeat()`** (`PublicChat.vue:546-553`):
+- Sets 10-second timer (`HEARTBEAT_TIMEOUT_MS`)
+- Falls back to "Working..." if no SSE events received
+
+**`pollExecution()`** (`PublicChat.vue:635-658`):
+- Polls `GET /api/public/executions/{token}/{execution_id}/status` every 5 seconds
+- Returns execution data when status is `success`, `failed`, or `cancelled`
+- Maximum 360 attempts (30 minutes)
+
+**`closeSSE()`** (`PublicChat.vue:556-565`):
+- Cancels `streamReader`, clears timers
+- Called on completion, error, and `onUnmounted`
+
+**Template** (`PublicChat.vue:204`):
+```vue
+<ChatLoadingIndicator :loading-text="loadingText" />
+```
+(Changed from static `loading-text="Thinking..."` to dynamic `:loading-text="loadingText"`)
+
+### Security
+
+- SSE stream and status endpoints validate the public link token instead of JWT
+- Execution ownership verified: the execution must belong to the agent associated with the link
+- No sensitive execution data exposed (only status, response text, and error message)
+
+### Related
+
+- **Authenticated chat**: `ChatPanel.vue` uses the same `execution-status.js` utilities with JWT-authenticated endpoints
+- **Feature flow**: [dynamic-thinking-status.md](dynamic-thinking-status.md) documents the core THINK-001 implementation
+
+---
+
 ## Revision History
 
 | Date | Changes |
@@ -1479,3 +1641,4 @@ See [slack-integration.md](slack-integration.md) for complete implementation det
 | 2026-02-17 | **Implemented PUB-006 Public Client Mode Awareness**: Agents now receive `PUBLIC_LINK_MODE_HEADER` constant ("### Trinity: Public Link Access Mode") prepended to all public chat prompts via `build_context_prompt()` in `db/public_chat.py:17-18,265-266`. **UI: Bottom-aligned messages**: Chat messages now stack from bottom up (like iMessage/Slack) using flexbox with spacer div (lines 191-193), new `messagesContainer` ref for scroll handling (line 334). File line count: PublicChat.vue now 684 lines. |
 | 2026-02-25 | **SLACK-001 Slack Integration**: Added Slack as delivery channel for public links. New section documenting Slack integration, updated Related Flows to include slack-integration.md. See [slack-integration.md](slack-integration.md) for full implementation details. |
 | 2026-03-04 | **EXEC-024 TaskExecutionService refactor**: `POST /api/public/chat/{token}` now routes through `TaskExecutionService.execute_task(triggered_by="public")` instead of raw `httpx` call. Public executions now create `schedule_executions` records, appear in Tasks tab and Dashboard timeline, count toward capacity slots (429 when full), and have credential-sanitized logs. Updated architecture diagram, data flow sections, chat endpoint steps, cost tracking, error handling, and file references. Added `task_execution_service.py` to files list. |
+| 2026-03-04 | **THINK-001 Dynamic Thinking Status for Public Chat**: Added async mode (`async_mode` field in `PublicChatRequest`), SSE stream proxy (`GET /api/public/executions/{token}/{id}/stream`), execution status polling (`GET /api/public/executions/{token}/{id}/status`), and background task function (`_execute_public_chat_background`). Frontend updated: `sendMessage()` uses async mode, `subscribeToStream()` for SSE, `pollExecution()` for completion, `updateLoadingText()` with anti-flicker timing, `resetHeartbeat()` fallback. Updated endpoints table, data flow, methods table, components, files. public.py now 764 lines, PublicChat.vue now 786 lines. |

@@ -123,6 +123,12 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Status**: ✅ Implemented
 - **Description**: Clone via `github:Org/repo` format with PAT authentication
 
+### 4.2.1 Admin-Configurable GitHub Templates (TMPL-001)
+- **Status**: ✅ Implemented
+- **Description**: Admin can configure which GitHub repos appear as agent templates via Settings UI. All metadata (display name, description, resources, MCP servers) is fetched from each repo's `template.yaml` via GitHub API (cached 10 min).
+- **Key Features**: `config.py` holds default repo list (no metadata), `system_settings` table (`github_templates` key) stores admin overrides, `GET/PUT/DELETE /api/settings/github-templates` endpoints, Settings UI with add/remove/save/reset
+- **Behavior**: `None` (key missing) = use defaults, `[]` = no GitHub templates, `[{...}]` = custom list. Admin-provided display_name overrides repo's template.yaml value.
+
 ### 4.3 Template Metadata
 - **Status**: ✅ Implemented
 - **Description**: Read template.yaml for display name, description, resources, credentials
@@ -161,9 +167,10 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
 
 ### 5.7 Dynamic Thinking Status (THINK-001)
-- **Status**: ✅ Implemented (2026-03-03)
-- **Description**: Real-time status labels in Chat tab reflecting agent activity (replaces static "Thinking...")
+- **Status**: ✅ Implemented (2026-03-03, extended 2026-03-04)
+- **Description**: Real-time status labels in Chat tab and Public Chat reflecting agent activity (replaces static "Thinking...")
 - **Key Features**: SSE stream subscription, tool-name-to-label mapping, 500ms anti-flicker, 10s heartbeat timeout, async_mode task execution with session persistence
+- **Scope**: Authenticated Chat tab + Public Chat links (both use async_mode + SSE streaming)
 - **Spec**: `docs/requirements/DYNAMIC_THINKING_STATUS.md`
 - **Flow**: `docs/memory/feature-flows/authenticated-chat-tab.md`
 
@@ -933,9 +940,69 @@ The Process Engine supports six step types:
 
 ---
 
+## 23. Nevermined Payment Integration (x402 Protocol)
+
+> **Design**: Per-agent monetization via Nevermined x402 payment protocol.
+> Spec: `docs/requirements/NEVERMINED_PAYMENT_INTEGRATION.md`
+> Flow: `docs/memory/feature-flows/nevermined-payments.md`
+
+### 23.1 Backend Foundation
+- **Status**: ✅ Implemented (2026-03-04)
+- **Requirement ID**: NVM-001
+- **Description**: Database schema, encrypted credential storage, payment logging
+- **Key Features**:
+  - `nevermined_agent_config` table with AES-256-GCM encrypted NVM_API_KEY
+  - `nevermined_payment_log` audit trail for verify/settle/reject actions
+  - Migration #23 (idempotent)
+  - `NeverminedOperations` DB module following subscription pattern
+
+### 23.2 Payment Service
+- **Status**: ✅ Implemented (2026-03-04)
+- **Requirement ID**: NVM-001
+- **Description**: Verify/settle lifecycle via payments-py SDK
+- **Key Features**:
+  - `NeverminedPaymentService` with lazy SDK imports (`NEVERMINED_AVAILABLE` flag)
+  - `build_402_response()` using SDK's `build_payment_required()` helper
+  - `verify_payment()` — 15s timeout, wrapped in `asyncio.to_thread()`
+  - `settle_payment()` — 30s timeout, 3 retries with exponential backoff
+  - Graceful degradation: 501 if SDK not installed
+
+### 23.3 Paid Chat Endpoint
+- **Status**: ✅ Implemented (2026-03-04)
+- **Requirement ID**: NVM-001
+- **Description**: Public x402 endpoint for external callers
+- **Endpoints**:
+  - `POST /api/paid/{agent_name}/chat` — 402/403/200 flow
+  - `GET /api/paid/{agent_name}/info` — Public agent info + payment requirements
+- **Flow**: No header → 402; invalid token → 403; valid → verify → execute → settle → receipt
+
+### 23.4 Admin Configuration
+- **Status**: ✅ Implemented (2026-03-04)
+- **Requirement ID**: NVM-001
+- **Description**: Authenticated CRUD for Nevermined config
+- **Endpoints**:
+  - `POST/GET/DELETE /api/nevermined/agents/{name}/config`
+  - `PUT /api/nevermined/agents/{name}/config/toggle`
+  - `GET /api/nevermined/agents/{name}/payments`
+  - `GET /api/nevermined/settlement-failures` (admin)
+  - `POST /api/nevermined/retry-settlement/{log_id}` (admin)
+
+### 23.5 Frontend UI
+- **Status**: ✅ Implemented (2026-03-04)
+- **Description**: Payments tab in Agent Detail page
+- **Component**: `NeverminedPanel.vue`
+- **Features**: Config form, enable/disable toggle, paid endpoint URL display, payment log table
+
+### 23.6 MCP Tools
+- **Status**: ✅ Implemented (2026-03-04)
+- **Description**: 4 MCP tools for Nevermined management
+- **Tools**: `configure_nevermined`, `get_nevermined_config`, `toggle_nevermined`, `get_nevermined_payments`
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)
 - Mobile application
-- Billing/payment integration
+- Fiat/Stripe payment integration (Nevermined handles crypto payments)
 - Agent marketplace

@@ -5,6 +5,7 @@ Provides endpoints for managing system-wide configuration like the Trinity promp
 Admin-only access for modification, read access for all authenticated users.
 """
 import os
+import re
 import httpx
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -633,6 +634,132 @@ async def remove_email_from_whitelist(
         )
 
     return {"success": True, "email": email}
+
+# ============================================================================
+# GitHub Templates Configuration (TMPL-001)
+# ============================================================================
+
+class GitHubTemplateEntry(BaseModel):
+    """A single GitHub template entry."""
+    github_repo: str
+    display_name: str = ""
+    description: str = ""
+
+
+class GitHubTemplatesUpdate(BaseModel):
+    """Request body for updating GitHub templates."""
+    templates: List[GitHubTemplateEntry]
+
+
+_REPO_PATTERN = re.compile(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$')
+
+
+@router.get("/github-templates")
+async def get_github_templates(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get configured GitHub templates.
+
+    Admin-only. Returns the configured list or the hardcoded defaults.
+    Display names and descriptions are resolved from each repo's template.yaml.
+    """
+    require_admin(current_user)
+
+    from config import DEFAULT_GITHUB_TEMPLATE_REPOS
+    from services.template_service import _fetch_all_metadata
+
+    db_templates = settings_service.get_github_templates()
+    if db_templates is not None:
+        repos = [e["github_repo"] for e in db_templates]
+        all_metadata = _fetch_all_metadata(repos)
+        enriched = []
+        for entry in db_templates:
+            repo = entry["github_repo"]
+            meta = all_metadata.get(repo, {})
+            admin_name = entry.get("display_name", "")
+            admin_desc = entry.get("description", "")
+            enriched.append({
+                "github_repo": repo,
+                "display_name": admin_name,
+                "description": admin_desc,
+                "resolved_name": admin_name or meta.get("display_name") or meta.get("name") or repo.split("/")[-1],
+                "resolved_description": admin_desc or meta.get("description", ""),
+            })
+        return {
+            "source": "settings",
+            "templates": enriched
+        }
+    else:
+        all_metadata = _fetch_all_metadata(DEFAULT_GITHUB_TEMPLATE_REPOS)
+        defaults = []
+        for repo in DEFAULT_GITHUB_TEMPLATE_REPOS:
+            meta = all_metadata.get(repo, {})
+            defaults.append({
+                "github_repo": repo,
+                "display_name": "",
+                "description": "",
+                "resolved_name": meta.get("display_name") or meta.get("name") or repo.split("/")[-1],
+                "resolved_description": meta.get("description", ""),
+            })
+        return {
+            "source": "defaults",
+            "templates": defaults
+        }
+
+
+@router.put("/github-templates")
+async def update_github_templates(
+    body: GitHubTemplatesUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the GitHub templates list.
+
+    Admin-only. Validates owner/repo format for each entry.
+    """
+    require_admin(current_user)
+
+    # Validate each entry
+    for entry in body.templates:
+        if not _REPO_PATTERN.match(entry.github_repo):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid repository format: '{entry.github_repo}'. Expected 'owner/repo'."
+            )
+
+    # Convert to list of dicts for storage
+    templates_data = [entry.model_dump() for entry in body.templates]
+    settings_service.set_github_templates(templates_data)
+
+    return {
+        "success": True,
+        "count": len(templates_data)
+    }
+
+
+@router.delete("/github-templates")
+async def delete_github_templates(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Reset GitHub templates to hardcoded defaults.
+
+    Admin-only. Removes the DB override so the system falls back to config.py defaults.
+    """
+    require_admin(current_user)
+
+    deleted = settings_service.delete_github_templates()
+
+    return {
+        "success": True,
+        "deleted": deleted,
+        "message": "GitHub templates reset to defaults"
+    }
+
 
 # ============================================================================
 # Generic Settings CRUD - /{key} catch-all routes

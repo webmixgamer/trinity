@@ -522,6 +522,38 @@ TABLES = {
             FOREIGN KEY (link_id) REFERENCES agent_public_links(id) ON DELETE CASCADE
         )
     """,
+
+    # Nevermined Payment Integration (NVM-001)
+    "nevermined_agent_config": """
+        CREATE TABLE IF NOT EXISTS nevermined_agent_config (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT UNIQUE NOT NULL,
+            encrypted_credentials TEXT NOT NULL,
+            nvm_environment TEXT NOT NULL,
+            nvm_agent_id TEXT NOT NULL,
+            nvm_plan_id TEXT NOT NULL,
+            credits_per_request INTEGER NOT NULL DEFAULT 1,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """,
+
+    "nevermined_payment_log": """
+        CREATE TABLE IF NOT EXISTS nevermined_payment_log (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            execution_id TEXT,
+            action TEXT NOT NULL,
+            subscriber_address TEXT,
+            credits_amount INTEGER,
+            tx_hash TEXT,
+            remaining_balance INTEGER,
+            success INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at TEXT NOT NULL
+        )
+    """,
 }
 
 # =============================================================================
@@ -634,6 +666,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)",
     "CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)",
     "CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)",
+
+    # Nevermined payment indexes (NVM-001)
+    "CREATE INDEX IF NOT EXISTS idx_nvm_config_agent ON nevermined_agent_config(agent_name)",
+    "CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_agent ON nevermined_payment_log(agent_name, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_execution ON nevermined_payment_log(execution_id)",
 ]
 
 

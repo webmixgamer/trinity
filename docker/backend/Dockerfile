@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm 
 RUN pip install --no-cache-dir \
     fastapi==0.115.6 \
     uvicorn[standard]==0.34.0 \
-    pydantic==2.10.4 \
+    "pydantic>=2.10.4,<3" \
     python-jose[cryptography]==3.3.0 \
     passlib[bcrypt]==1.7.4 \
     bcrypt==4.2.1 \
@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     apscheduler==3.11.0 \
     croniter==5.0.1 \
     pytz==2024.2 \
-    psutil==6.1.1
+    psutil==6.1.1 \
+    payments-py==1.2.1
 
 # Copy all backend source files
 COPY ../../src/backend/main.py /app/

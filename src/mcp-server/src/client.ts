@@ -1061,4 +1061,92 @@ export class TrinityClient {
       `/api/subscriptions/agents/${encodeURIComponent(agentName)}/auth`
     );
   }
+
+  // ============================================================================
+  // Nevermined Payment Integration (NVM-001)
+  // ============================================================================
+
+  /**
+   * Configure Nevermined payments for an agent
+   */
+  async configureNevermined(
+    agentName: string,
+    config: {
+      nvm_api_key: string;
+      nvm_environment: string;
+      nvm_agent_id: string;
+      nvm_plan_id: string;
+      credits_per_request?: number;
+    }
+  ): Promise<{
+    id: string;
+    agent_name: string;
+    nvm_environment: string;
+    nvm_agent_id: string;
+    nvm_plan_id: string;
+    credits_per_request: number;
+    enabled: boolean;
+  }> {
+    return this.request(
+      "POST",
+      `/api/nevermined/agents/${encodeURIComponent(agentName)}/config`,
+      config
+    );
+  }
+
+  /**
+   * Get Nevermined config for an agent (no decrypted key)
+   */
+  async getNeverminedConfig(agentName: string): Promise<{
+    id: string;
+    agent_name: string;
+    nvm_environment: string;
+    nvm_agent_id: string;
+    nvm_plan_id: string;
+    credits_per_request: number;
+    enabled: boolean;
+  }> {
+    return this.request(
+      "GET",
+      `/api/nevermined/agents/${encodeURIComponent(agentName)}/config`
+    );
+  }
+
+  /**
+   * Enable or disable Nevermined payments for an agent
+   */
+  async toggleNevermined(
+    agentName: string,
+    enabled: boolean
+  ): Promise<{ detail: string; enabled: boolean }> {
+    return this.request(
+      "PUT",
+      `/api/nevermined/agents/${encodeURIComponent(agentName)}/config/toggle?enabled=${enabled}`
+    );
+  }
+
+  /**
+   * Get payment history for an agent
+   */
+  async getNeverminedPayments(
+    agentName: string,
+    limit: number = 50
+  ): Promise<Array<{
+    id: string;
+    agent_name: string;
+    execution_id?: string;
+    action: string;
+    subscriber_address?: string;
+    credits_amount?: number;
+    tx_hash?: string;
+    remaining_balance?: number;
+    success: boolean;
+    error?: string;
+    created_at: string;
+  }>> {
+    return this.request(
+      "GET",
+      `/api/nevermined/agents/${encodeURIComponent(agentName)}/payments?limit=${limit}`
+    );
+  }
 }

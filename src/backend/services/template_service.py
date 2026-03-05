@@ -1,22 +1,207 @@
 """
 Template service for processing agent templates.
+
+Metadata for GitHub templates is fetched from each repo's template.yaml
+via the GitHub API and cached in memory (10-minute TTL).
 """
+import base64
 import json
+import logging
 import re
 import subprocess
 import shutil
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional
 from pathlib import Path
+import httpx
 import yaml
-from config import ALL_GITHUB_TEMPLATES
+from config import DEFAULT_GITHUB_TEMPLATE_REPOS, GITHUB_PAT_CREDENTIAL_ID
+
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# GitHub Metadata Fetching & Caching
+# ============================================================================
+
+_metadata_cache: Dict[str, tuple] = {}  # repo -> (timestamp, metadata_dict)
+_CACHE_TTL = 600  # 10 minutes
+
+
+def _fetch_template_yaml(repo: str, pat: str) -> dict:
+    """Fetch and parse template.yaml from a GitHub repo via the API.
+
+    Returns parsed YAML dict, or empty dict if not found / error.
+    """
+    try:
+        headers = {"Accept": "application/vnd.github+json"}
+        if pat:
+            headers["Authorization"] = f"Bearer {pat}"
+
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                f"https://api.github.com/repos/{repo}/contents/template.yaml",
+                headers=headers,
+            )
+
+        if resp.status_code != 200:
+            logger.debug("template.yaml not found for %s (HTTP %s)", repo, resp.status_code)
+            return {}
+
+        data = resp.json()
+        content = base64.b64decode(data["content"]).decode("utf-8")
+        return yaml.safe_load(content) or {}
+    except Exception as e:
+        logger.warning("Failed to fetch template.yaml for %s: %s", repo, e)
+        return {}
+
+
+def _get_github_pat() -> str:
+    """Get GitHub PAT (avoids circular import)."""
+    from services.settings_service import get_github_pat
+    return get_github_pat()
+
+
+def _get_cached_metadata(repo: str) -> dict:
+    """Return cached metadata for a repo, fetching if stale or missing."""
+    cached = _metadata_cache.get(repo)
+    if cached and time.time() - cached[0] < _CACHE_TTL:
+        return cached[1]
+
+    pat = _get_github_pat()
+    metadata = _fetch_template_yaml(repo, pat)
+    _metadata_cache[repo] = (time.time(), metadata)
+    return metadata
+
+
+def _fetch_all_metadata(repos: List[str]) -> Dict[str, dict]:
+    """Fetch template.yaml for multiple repos, using cache and concurrency."""
+    results = {}
+    to_fetch = []
+
+    for repo in repos:
+        cached = _metadata_cache.get(repo)
+        if cached and time.time() - cached[0] < _CACHE_TTL:
+            results[repo] = cached[1]
+        else:
+            to_fetch.append(repo)
+
+    if to_fetch:
+        pat = _get_github_pat()
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {
+                pool.submit(_fetch_template_yaml, repo, pat): repo
+                for repo in to_fetch
+            }
+            for future in as_completed(futures):
+                repo = futures[future]
+                try:
+                    metadata = future.result()
+                except Exception:
+                    metadata = {}
+                _metadata_cache[repo] = (time.time(), metadata)
+                results[repo] = metadata
+
+    return results
+
+
+# ============================================================================
+# Template Expansion
+# ============================================================================
+
+def _build_template(repo: str, metadata: dict, admin_override: dict = None) -> dict:
+    """Build a full template dict from repo + fetched metadata + optional admin overrides.
+
+    Priority for display_name / description:
+      1. Admin-configured value (from Settings DB entry) — if non-empty
+      2. template.yaml value (from GitHub) — if available
+      3. Repo name fallback
+    """
+    override = admin_override or {}
+
+    display_name = (
+        override.get("display_name")
+        or metadata.get("display_name")
+        or metadata.get("name")
+        or repo.split("/")[-1]
+    )
+    description = (
+        override.get("description")
+        or metadata.get("description", "")
+    )
+
+    return {
+        "id": f"github:{repo}",
+        "display_name": display_name,
+        "description": description,
+        "github_repo": repo,
+        "github_credential_id": GITHUB_PAT_CREDENTIAL_ID,
+        "source": "github",
+        "resources": metadata.get("resources", {"cpu": "2", "memory": "4g"}),
+        "skills": metadata.get("skills", []),
+        "mcp_servers": metadata.get("mcp_servers", []),
+        "required_credentials": metadata.get("required_credentials", []),
+    }
+
+
+# ============================================================================
+# Public API
+# ============================================================================
+
+def get_all_templates() -> List[dict]:
+    """Return the full resolved template list (DB-configured or defaults).
+
+    Fetches metadata from GitHub for each repo (cached).
+    """
+    from services.settings_service import get_github_templates
+
+    db_entries = get_github_templates()
+
+    if db_entries is not None:
+        # Admin-configured list
+        repos = [e["github_repo"] for e in db_entries]
+        all_metadata = _fetch_all_metadata(repos)
+        return [
+            _build_template(e["github_repo"], all_metadata.get(e["github_repo"], {}), e)
+            for e in db_entries
+        ]
+    else:
+        # Defaults
+        all_metadata = _fetch_all_metadata(DEFAULT_GITHUB_TEMPLATE_REPOS)
+        return [
+            _build_template(repo, all_metadata.get(repo, {}))
+            for repo in DEFAULT_GITHUB_TEMPLATE_REPOS
+        ]
 
 
 def get_github_template(template_id: str) -> Optional[dict]:
-    """Get GitHub template by ID (e.g., 'github:Abilityai/agent-ruby')."""
-    for template in ALL_GITHUB_TEMPLATES:
-        if template["id"] == template_id:
-            return template
-    return None
+    """Get a single GitHub template by ID (e.g., 'github:owner/repo').
+
+    Resolves metadata from GitHub (cached).
+    """
+    if not template_id.startswith("github:"):
+        return None
+
+    repo = template_id[len("github:"):]
+
+    # Check if it's in the configured list (DB or defaults)
+    from services.settings_service import get_github_templates
+    db_entries = get_github_templates()
+
+    if db_entries is not None:
+        for entry in db_entries:
+            if entry["github_repo"] == repo:
+                metadata = _get_cached_metadata(repo)
+                return _build_template(repo, metadata, entry)
+
+    # Check defaults
+    if repo in DEFAULT_GITHUB_TEMPLATE_REPOS:
+        metadata = _get_cached_metadata(repo)
+        return _build_template(repo, metadata)
+
+    # Dynamic: repo not in any configured list but still a valid github: ID
+    metadata = _get_cached_metadata(repo)
+    return _build_template(repo, metadata)
 
 
 def clone_github_repo(github_repo: str, github_pat: str, dest_path: Path, branch: str = None) -> bool:

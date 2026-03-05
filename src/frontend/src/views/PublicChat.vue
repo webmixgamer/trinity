@@ -201,7 +201,7 @@
           ref="messagesRef"
           :messages="messages"
           :loading="chatLoading"
-          loading-text="Thinking..."
+          :loading-text="loadingText"
           class="flex-1"
         >
           <template #empty>
@@ -252,10 +252,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ChatMessages, ChatInput } from '../components/chat'
+import { getStatusFromStreamEvent, MIN_LABEL_DISPLAY_MS, HEARTBEAT_TIMEOUT_MS } from '../utils/execution-status'
 
 const route = useRoute()
 const token = computed(() => route.params.token)
@@ -284,6 +285,13 @@ const messages = ref([])
 const chatLoading = ref(false)
 const chatError = ref(null)
 const messagesRef = ref(null)
+const loadingText = ref('Thinking...')
+
+// SSE state (THINK-001 for public chat)
+let heartbeatTimer = null
+let labelTimer = null
+let lastLabelTime = 0
+let streamReader = null
 
 // Intro
 const introLoading = ref(false)
@@ -513,6 +521,142 @@ const confirmNewConversation = async () => {
   }
 }
 
+// THINK-001: Update loading text with minimum display time to prevent flicker
+const updateLoadingText = (newText) => {
+  if (!newText) return
+
+  const now = Date.now()
+  const elapsed = now - lastLabelTime
+
+  if (elapsed < MIN_LABEL_DISPLAY_MS) {
+    clearTimeout(labelTimer)
+    labelTimer = setTimeout(() => {
+      loadingText.value = newText
+      lastLabelTime = Date.now()
+    }, MIN_LABEL_DISPLAY_MS - elapsed)
+  } else {
+    loadingText.value = newText
+    lastLabelTime = now
+  }
+
+  resetHeartbeat()
+}
+
+// THINK-001: Reset heartbeat timer
+const resetHeartbeat = () => {
+  clearTimeout(heartbeatTimer)
+  heartbeatTimer = setTimeout(() => {
+    if (chatLoading.value) {
+      loadingText.value = 'Working...'
+    }
+  }, HEARTBEAT_TIMEOUT_MS)
+}
+
+// THINK-001: Close SSE connection and cleanup timers
+const closeSSE = () => {
+  if (streamReader) {
+    streamReader.cancel().catch(() => {})
+    streamReader = null
+  }
+  clearTimeout(heartbeatTimer)
+  clearTimeout(labelTimer)
+  heartbeatTimer = null
+  labelTimer = null
+}
+
+// THINK-001: Subscribe to public execution SSE stream for status updates
+const subscribeToStream = (executionId) => {
+  closeSSE()
+  lastLabelTime = 0
+  resetHeartbeat()
+
+  const url = `/api/public/executions/${token.value}/${executionId}/stream`
+
+  fetch(url, {
+    headers: { 'Accept': 'text/event-stream' }
+  }).then(response => {
+    if (!response.ok) return
+
+    const reader = response.body.getReader()
+    streamReader = reader
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    function processStream() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          closeSSE()
+          return
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'stream_end') {
+                closeSSE()
+                return
+              }
+
+              if (data.type === 'error') {
+                console.warn('SSE stream error:', data.message)
+                continue
+              }
+
+              const status = getStatusFromStreamEvent(data)
+              if (status) {
+                updateLoadingText(status)
+              }
+            } catch (e) {
+              // Ignore parse errors for comments/keepalives
+            }
+          }
+        }
+
+        processStream()
+      }).catch(() => {
+        closeSSE()
+      })
+    }
+
+    processStream()
+  }).catch(() => {
+    closeSSE()
+  })
+}
+
+// THINK-001: Poll public execution status until complete
+const pollExecution = async (executionId) => {
+  const maxAttempts = 360 // 30 minutes at 5s intervals
+  let attempts = 0
+
+  while (attempts < maxAttempts && chatLoading.value) {
+    attempts++
+    await new Promise(resolve => setTimeout(resolve, 5000))
+
+    try {
+      const response = await axios.get(
+        `/api/public/executions/${token.value}/${executionId}/status`
+      )
+
+      const execution = response.data
+      if (execution.status === 'success' || execution.status === 'failed' || execution.status === 'cancelled') {
+        return execution
+      }
+    } catch (err) {
+      console.error('Poll error:', err)
+    }
+  }
+
+  return null
+}
+
 // Send chat message
 const sendMessage = async (userMessage) => {
   if (!userMessage || chatLoading.value) return
@@ -529,10 +673,12 @@ const sendMessage = async (userMessage) => {
   message.value = ''
 
   chatLoading.value = true
+  loadingText.value = 'Thinking...'
 
   try {
     const payload = {
-      message: userMessage
+      message: userMessage,
+      async_mode: true
     }
 
     // Include session token if email verification was required
@@ -543,21 +689,45 @@ const sendMessage = async (userMessage) => {
       payload.session_id = chatSessionId.value
     }
 
-    const response = await axios.post(`/api/public/chat/${token.value}`, payload)
+    // Submit with async_mode=true — returns execution_id immediately
+    const submitResponse = await axios.post(`/api/public/chat/${token.value}`, payload)
 
-    // Store session_id from response for anonymous links
-    if (response.data.session_id && !linkInfo.value?.require_email) {
-      chatSessionId.value = response.data.session_id
-      localStorage.setItem(`public_chat_session_id_${token.value}`, response.data.session_id)
+    const executionId = submitResponse.data.execution_id
+    if (!executionId) {
+      throw new Error('No execution_id returned from async submission')
     }
 
-    // Add assistant response to chat
-    messages.value.push({
-      role: 'assistant',
-      content: response.data.response
-    })
+    // Store session_id from response for anonymous links
+    if (submitResponse.data.session_id && !linkInfo.value?.require_email) {
+      chatSessionId.value = submitResponse.data.session_id
+      localStorage.setItem(`public_chat_session_id_${token.value}`, submitResponse.data.session_id)
+    }
+
+    // Subscribe to SSE stream for real-time status updates
+    subscribeToStream(executionId)
+
+    // Poll for completion (SSE handles status labels, polling handles result)
+    const execution = await pollExecution(executionId)
+
+    closeSSE()
+
+    if (execution) {
+      if (execution.status === 'success' && execution.response) {
+        messages.value.push({
+          role: 'assistant',
+          content: execution.response
+        })
+      } else if (execution.status === 'failed') {
+        chatError.value = execution.error || 'Failed to process your request. Please try again.'
+      } else if (execution.status === 'cancelled') {
+        chatError.value = 'Request was cancelled.'
+      }
+    } else {
+      chatError.value = 'Request timed out. Please try again.'
+    }
   } catch (err) {
     console.error('Chat error:', err)
+    closeSSE()
     if (err.response?.status === 401) {
       // Session expired, clear and show verification again
       sessionToken.value = ''
@@ -570,6 +740,8 @@ const sendMessage = async (userMessage) => {
     }
   } finally {
     chatLoading.value = false
+    loadingText.value = 'Thinking...'
+    closeSSE()
   }
 }
 
@@ -594,6 +766,10 @@ onMounted(async () => {
       }
     }
   }
+})
+
+onUnmounted(() => {
+  closeSSE()
 })
 </script>
 

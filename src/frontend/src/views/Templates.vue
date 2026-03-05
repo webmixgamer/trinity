@@ -85,121 +85,25 @@
                     {{ template.description || 'No description available' }}
                   </p>
 
-                  <!-- MCP Servers -->
-                  <div v-if="template.mcp_servers && template.mcp_servers.length > 0" class="mb-4">
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">MCP Servers:</p>
-                    <div class="flex flex-wrap gap-1">
-                      <span
-                        v-for="server in template.mcp_servers.slice(0, 4)"
-                        :key="server"
-                        class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded"
-                      >
-                        {{ server }}
-                      </span>
-                      <span
-                        v-if="template.mcp_servers.length > 4"
-                        class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded"
-                      >
-                        +{{ template.mcp_servers.length - 4 }} more
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Resources & Credentials -->
+                  <!-- Stats row: Skills, MCPs, Credentials -->
                   <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
-                    <span class="flex items-center">
+                    <span v-if="template.skills?.length" class="flex items-center">
                       <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      {{ template.resources?.cpu || '2' }} CPU, {{ template.resources?.memory || '4g' }}
+                      {{ template.skills.length }} skills
                     </span>
-                    <span class="flex items-center">
+                    <span v-if="template.mcp_servers?.length" class="flex items-center">
+                      <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+                      </svg>
+                      {{ template.mcp_servers.length }} MCPs
+                    </span>
+                    <span v-if="template.required_credentials?.length" class="flex items-center">
                       <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                       </svg>
-                      {{ template.required_credentials?.length || 0 }} credentials
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  @click="useTemplate(template)"
-                  class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition-colors mt-auto"
-                >
-                  Use Template
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Local Templates Section -->
-          <div v-if="localTemplates.length > 0" class="mb-8">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center">
-              <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-              </svg>
-              Local Templates
-              <span class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">({{ localTemplates.length }})</span>
-            </h2>
-            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              <div
-                v-for="template in localTemplates"
-                :key="template.id"
-                class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg p-6 hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow flex flex-col"
-              >
-                <div class="flex items-start justify-between mb-3">
-                  <div class="flex items-center">
-                    <div class="flex-shrink-0 w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
-                      <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div class="ml-3">
-                      <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ template.display_name }}</h3>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">{{ template.id }}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Content area that grows -->
-                <div class="flex-grow">
-                  <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-3">
-                    {{ template.description || 'No description available' }}
-                  </p>
-
-                  <!-- MCP Servers -->
-                  <div v-if="template.mcp_servers && template.mcp_servers.length > 0" class="mb-4">
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">MCP Servers:</p>
-                    <div class="flex flex-wrap gap-1">
-                      <span
-                        v-for="server in template.mcp_servers.slice(0, 4)"
-                        :key="server"
-                        class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded"
-                      >
-                        {{ server }}
-                      </span>
-                      <span
-                        v-if="template.mcp_servers.length > 4"
-                        class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded"
-                      >
-                        +{{ template.mcp_servers.length - 4 }} more
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Resources & Credentials -->
-                  <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
-                    <span class="flex items-center">
-                      <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                      </svg>
-                      {{ template.resources?.cpu || '2' }} CPU, {{ template.resources?.memory || '4g' }}
-                    </span>
-                    <span class="flex items-center">
-                      <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                      </svg>
-                      {{ template.required_credentials?.length || 0 }} credentials
+                      {{ template.required_credentials.length }} credentials
                     </span>
                   </div>
                 </div>
@@ -287,10 +191,6 @@ const selectedTemplateId = ref('')
 // Computed properties to separate GitHub and local templates
 const githubTemplates = computed(() => {
   return templates.value.filter(t => t.source === 'github')
-})
-
-const localTemplates = computed(() => {
-  return templates.value.filter(t => t.source === 'local' || !t.source)
 })
 
 // Extract display name without "(GitHub)" suffix for cleaner display

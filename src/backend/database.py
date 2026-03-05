@@ -123,6 +123,7 @@ from db.subscriptions import SubscriptionOperations
 from db.monitoring import MonitoringOperations
 from db.dashboard_history import DashboardHistoryOperations
 from db.slack import SlackOperations
+from db.nevermined import NeverminedOperations
 
 
 def init_database():
@@ -248,6 +249,7 @@ class DatabaseManager:
         self._monitoring_ops = MonitoringOperations()
         self._dashboard_history_ops = DashboardHistoryOperations()
         self._slack_ops = SlackOperations()
+        self._nevermined_ops = NeverminedOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -1137,6 +1139,43 @@ class DatabaseManager:
 
     def cleanup_expired_slack_pending_verifications(self):
         return self._slack_ops.cleanup_expired_pending_verifications()
+
+    # =========================================================================
+    # Nevermined Payment Integration (delegated to db/nevermined.py) - NVM-001
+    # =========================================================================
+
+    def create_or_update_nevermined_config(self, agent_name, nvm_api_key, nvm_environment,
+                                            nvm_agent_id, nvm_plan_id, credits_per_request=1):
+        return self._nevermined_ops.create_or_update_config(
+            agent_name, nvm_api_key, nvm_environment, nvm_agent_id, nvm_plan_id, credits_per_request
+        )
+
+    def get_nevermined_config(self, agent_name):
+        return self._nevermined_ops.get_config(agent_name)
+
+    def get_nevermined_config_with_key(self, agent_name):
+        return self._nevermined_ops.get_config_with_key(agent_name)
+
+    def delete_nevermined_config(self, agent_name):
+        return self._nevermined_ops.delete_config(agent_name)
+
+    def set_nevermined_enabled(self, agent_name, enabled):
+        return self._nevermined_ops.set_enabled(agent_name, enabled)
+
+    def is_nevermined_enabled(self, agent_name):
+        return self._nevermined_ops.is_nevermined_enabled(agent_name)
+
+    def log_nevermined_payment(self, agent_name, action, success, **kwargs):
+        return self._nevermined_ops.log_payment(agent_name, action, success, **kwargs)
+
+    def get_nevermined_payment_log(self, agent_name, limit=50):
+        return self._nevermined_ops.get_payment_log(agent_name, limit)
+
+    def get_nevermined_settlement_failures(self, limit=50):
+        return self._nevermined_ops.get_settlement_failures(limit)
+
+    def get_nevermined_payment_log_entry(self, log_id):
+        return self._nevermined_ops.get_payment_log_entry(log_id)
 
 
 # Global database manager instance

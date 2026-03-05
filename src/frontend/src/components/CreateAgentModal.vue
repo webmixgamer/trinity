@@ -142,8 +142,8 @@
                   <div v-if="selectedTemplate.mcp_servers && selectedTemplate.mcp_servers.length > 0" class="mt-2">
                     <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">MCP Servers:</p>
                     <div class="flex flex-wrap gap-1">
-                      <span v-for="server in selectedTemplate.mcp_servers" :key="server" class="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded">
-                        {{ server }}
+                      <span v-for="server in selectedTemplate.mcp_servers" :key="typeof server === 'string' ? server : server.name" class="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded">
+                        {{ typeof server === 'string' ? server : server.name }}
                       </span>
                     </div>
                   </div>

@@ -122,38 +122,25 @@ const fetchTemplates = async () => {
 
 | Line | Endpoint | Purpose |
 |------|----------|---------|
-| 16 | Router prefix | `APIRouter(prefix="/api/templates", tags=["templates"])` |
-| 19-59 | `GET /api/templates` | List all available templates |
-| 62-172 | `GET /api/templates/env-template` | Get .env template file |
-| 174-220 | `GET /api/templates/{template_id:path}` | Get single template details |
+| 14 | Router prefix | `APIRouter(prefix="/api/templates", tags=["templates"])` |
+| 17-26 | `GET /api/templates` | List templates (DB-configured or config.py defaults) |
+| 29-41 | `GET /api/templates/{template_id:path}` | Get single template details |
 
-### List Templates Endpoint (`routers/templates.py:19-59`)
+### List Templates Endpoint (`routers/templates.py:17-26`)
 ```python
 @router.get("")
 async def list_templates(current_user: User = Depends(get_current_user)):
-    """List available agent templates (both local and GitHub-based)."""
-    templates_dir = Path("/agent-configs/templates")
-    if not templates_dir.exists():
-        templates_dir = Path("./config/agent-templates")
+    """List available agent templates (GitHub-based only)."""
+    # Use DB-configured list if set, else hardcoded defaults
+    db_templates = get_github_templates_from_db()
+    templates = db_templates if db_templates is not None else list(ALL_GITHUB_TEMPLATES)
 
-    templates = []
-
-    # Add GitHub-native templates first (from config.py)
-    for gh_template in ALL_GITHUB_TEMPLATES:
-        templates.append(gh_template)
-
-    # Add local templates from config/agent-templates/
-    if templates_dir.exists():
-        for template_path in templates_dir.iterdir():
-            if template_path.is_dir():
-                template_yaml = template_path / "template.yaml"
-                if template_yaml.exists():
-                    # Parse YAML, extract credentials, build response
-
-    # Sort by priority (lower = higher), then by display_name
+    # Sort by priority (lower = higher in list), then by display_name
     templates.sort(key=lambda t: (t.get("priority", 100), t.get("display_name", "")))
     return templates
 ```
+
+> **TMPL-001 (2026-03-04)**: Template list now checks DB-configured templates first (set via Settings → GitHub Templates). If the admin has configured a custom list, only those templates are shown. Otherwise falls back to hardcoded `ALL_GITHUB_TEMPLATES` from `config.py`. Local template scanning was removed.
 
 ### Template Response Schema
 ```json
@@ -191,8 +178,15 @@ async def list_templates(current_user: User = Depends(get_current_user)):
 
 ## Template Sources
 
-### GitHub Templates (`src/backend/config.py:91-164`)
-Hardcoded in `GITHUB_TEMPLATES` list, exported as `ALL_GITHUB_TEMPLATES`.
+### GitHub Templates
+
+**Source priority** (TMPL-001):
+1. **DB-configured list** — set via Settings → GitHub Templates (`system_settings` key `github_templates`)
+2. **Hardcoded defaults** — `config.py` `ALL_GITHUB_TEMPLATES` (fallback when no DB config)
+
+DB templates are stored as minimal entries `{github_repo, display_name, description}` and expanded at runtime via `expand_github_template()` in `template_service.py:14-32`.
+
+**Hardcoded defaults** (`src/backend/config.py`):
 
 ```python
 GITHUB_TEMPLATES = [
@@ -460,6 +454,7 @@ curl "http://localhost:8000/api/templates/env-template?template_id=github:abilit
 
 | Date | Changes |
 |------|---------|
+| 2026-03-04 | **TMPL-001 Configurable GitHub Templates**: Template list now uses DB-configured templates (via Settings → GitHub Templates) with fallback to `config.py` defaults. Local template scanning removed. `templates.py` simplified to 42 lines. Added `get_github_templates_from_db()` and `expand_github_template()` in `template_service.py`. Updated endpoint table, list endpoint code, template sources section, related flows. |
 | 2026-01-21 | **Initial creation**: Documented complete vertical slice for Templates Page feature - navigation, UI components, API endpoints, template sources, credential extraction, create flow, error handling |
 
 ---
@@ -467,6 +462,7 @@ curl "http://localhost:8000/api/templates/env-template?template_id=github:abilit
 ## Related Flows
 
 - **Upstream**: Authentication (user must be logged in)
+- **Upstream**: [platform-settings.md](platform-settings.md) - TMPL-001 GitHub Templates configuration
 - **Downstream**: [template-processing.md](template-processing.md) - Deep dive on template processing during agent creation
 - **Downstream**: [agent-lifecycle.md](agent-lifecycle.md) - Agent creation and container initialization
 - **Related**: [credential-injection.md](credential-injection.md) - How template credentials are injected

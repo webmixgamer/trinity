@@ -63,6 +63,8 @@ from routers.notifications import router as notifications_router, set_websocket_
 from routers.subscriptions import router as subscriptions_router
 from routers.monitoring import router as monitoring_router, set_websocket_manager as set_monitoring_ws_manager, set_filtered_websocket_manager as set_monitoring_filtered_ws_manager
 from routers.slack import public_router as slack_public_router, auth_router as slack_auth_router
+from routers.paid import router as paid_router
+from routers.nevermined import router as nevermined_router
 
 # Import activity service
 from services.activity_service import activity_service
@@ -326,6 +328,8 @@ app.include_router(subscriptions_router)  # Subscription Management (SUB-001)
 app.include_router(monitoring_router)  # Agent Monitoring (MON-001)
 app.include_router(slack_public_router)  # Slack Integration Public (SLACK-001)
 app.include_router(slack_auth_router)  # Slack Integration Auth (SLACK-001)
+app.include_router(paid_router)  # Nevermined Paid Chat (NVM-001)
+app.include_router(nevermined_router)  # Nevermined Admin Config (NVM-001)
 
 
 # WebSocket endpoint
