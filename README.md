@@ -1,3 +1,5 @@
+> **Nevermined Hackathon Participants:** See the [Hackathon Getting Started Guide](hackathon_context.md) for instance access, agent templates, and instructions.
+
 <div align="center">
   <img src="docs/assets/trinity-logo.svg" alt="Trinity" width="120"/>
   <h1>Trinity</h1>
