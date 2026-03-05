@@ -991,6 +991,7 @@ onUnmounted(() => {
 
 | Date | Changes |
 |------|---------|
+| 2026-03-04 | **Paid/Public trigger types**: Added `paid` (yellow `#eab308`) and `public` (teal `#0d9488`) bar colors, legend entries, and tooltip labels to `getBarColor()` and `getBarTooltip()`. |
 | 2026-02-12 | **UI Standardization**: AutonomyToggle now uses reusable `AutonomyToggle.vue` component (lines 155-161, imported at line 356). No label shown (`showLabel="false"`) for compact timeline rows. See [autonomy-toggle-component.md](autonomy-toggle-component.md). |
 | 2026-01-29 | **Fix**: Scheduler sync bug resolved - `next_run_at` now calculated in database layer; dedicated scheduler syncs every 60s. Schedule markers appear immediately after schedule creation without container restart. |
 | 2026-01-29 | **Fix (TSM-001)**: Timeline scale issue - far-off schedules (days away) no longer extend timeline excessively. Added 2-hour max limit for future extension. Markers only visible if `next_run_at` within 2 hours of NOW |
@@ -1026,6 +1027,8 @@ onUnmounted(() => {
 | Activity bars (MCP) | `#ec4899` (pink-500) | MCP executions via Claude Code |
 | Activity bars (scheduled) | `#8b5cf6` (purple-500) | Scheduled task executions |
 | Activity bars (agent-triggered) | `#06b6d4` (cyan-500) | Agent-triggered executions |
+| Activity bars (paid) | `#eab308` (yellow-500) | Paid executions (Nevermined payment) |
+| Activity bars (public) | `#0d9488` (teal-500) | Public link executions |
 | Activity bars (in-progress) | `#f59e0b` (amber-500) | Currently running tasks (grows in real-time) |
 | Activity bars (error) | `#ef4444` (red-500) | Failed executions |
 | Activity bars (inactive) | Lighter variant | Events after cursor (30% opacity reduction) |

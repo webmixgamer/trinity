@@ -426,6 +426,8 @@ const triggerIconClass = computed(() => {
   const trigger = execution.value.triggered_by
   if (trigger === 'schedule') return 'bg-purple-100 dark:bg-purple-900/50'
   if (trigger === 'manual') return 'bg-amber-100 dark:bg-amber-900/50'
+  if (trigger === 'paid') return 'bg-yellow-100 dark:bg-yellow-900/50'
+  if (trigger === 'public') return 'bg-teal-100 dark:bg-teal-900/50'
   return 'bg-cyan-100 dark:bg-cyan-900/50'
 })
 
@@ -434,6 +436,8 @@ const triggerIconColor = computed(() => {
   const trigger = execution.value.triggered_by
   if (trigger === 'schedule') return 'text-purple-600 dark:text-purple-400'
   if (trigger === 'manual') return 'text-amber-600 dark:text-amber-400'
+  if (trigger === 'paid') return 'text-yellow-600 dark:text-yellow-400'
+  if (trigger === 'public') return 'text-teal-600 dark:text-teal-400'
   return 'text-cyan-600 dark:text-cyan-400'
 })
 

@@ -17,6 +17,8 @@
           <option value="schedule">Schedule</option>
           <option value="mcp">MCP</option>
           <option value="agent">Agent</option>
+          <option value="paid">Paid</option>
+          <option value="public">Public</option>
         </select>
         <!-- Queue Status Indicator -->
         <div v-if="queueStatus" class="flex items-center space-x-2">
@@ -181,6 +183,8 @@
                     'px-1.5 py-0.5 rounded text-xs',
                     task.triggered_by === 'manual' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                     task.triggered_by === 'schedule' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                    task.triggered_by === 'paid' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' :
+                    task.triggered_by === 'public' ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300' :
                     'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                   ]"
                 >

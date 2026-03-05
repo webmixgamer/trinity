@@ -82,6 +82,14 @@
             <span class="w-2 h-2 rounded" style="background-color: #06b6d4"></span>
             <span>Agent-Triggered</span>
           </span>
+          <span class="flex items-center space-x-1" title="Paid executions (via Nevermined payment)">
+            <span class="w-2 h-2 rounded" style="background-color: #eab308"></span>
+            <span>Paid</span>
+          </span>
+          <span class="flex items-center space-x-1" title="Public link executions">
+            <span class="w-2 h-2 rounded" style="background-color: #0d9488"></span>
+            <span>Public</span>
+          </span>
           <span class="flex items-center space-x-1" title="Schedule marker (shows next scheduled run time)">
             <span class="text-purple-500 text-xs font-bold">▼</span>
             <span>Next Run</span>
@@ -1024,6 +1032,16 @@ function getBarColor(activity) {
     return activity.active ? '#22c55e' : '#86efac'
   }
 
+  // Paid executions (Nevermined payment) → Yellow/Gold
+  if (triggeredBy === 'paid') {
+    return activity.active ? '#eab308' : '#fde047'
+  }
+
+  // Public link executions → Teal
+  if (triggeredBy === 'public') {
+    return activity.active ? '#0d9488' : '#2dd4bf'
+  }
+
   // Default blue for unknown types
   if (activity.active) return '#3b82f6'
   return '#93c5fd'
@@ -1045,6 +1063,10 @@ function getBarTooltip(activity) {
     prefix = 'MCP Task'
   } else if (triggeredBy === 'manual') {
     prefix = 'Manual Task'
+  } else if (triggeredBy === 'paid') {
+    prefix = 'Paid Task'
+  } else if (triggeredBy === 'public') {
+    prefix = 'Public Task'
   } else if (triggeredBy === 'user') {
     prefix = 'Task'
   } else {

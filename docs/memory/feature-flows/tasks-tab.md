@@ -727,6 +727,8 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 |---------|-------|
 | manual | Blue |
 | schedule | Purple |
+| paid | Yellow |
+| public | Teal |
 | agent | Gray |
 
 ---
@@ -758,6 +760,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
+| 2026-03-04 | **Paid/Public trigger types**: Added `paid` (yellow) and `public` (teal) to Trigger Badges table and filter dropdown. |
 | 2026-03-02 | **MODEL-001 Model Selection**: Added `ModelSelector.vue` component above task textarea (line 86). Model persisted per-agent in localStorage. Model sent in POST /task payload. `model_used` displayed in task history rows (line 205). New `model_used TEXT` column in `schedule_executions` table. |
 | 2026-02-21 | **PERF-001 Performance Optimization**: List endpoint now returns `ExecutionSummary` (excludes `response`, `error`, `tool_calls`, `execution_log`). Frontend loads details on-demand when user expands task row via `GET /api/agents/{name}/executions/{id}`. Added `taskDetailsCache` and `fetchTaskDetails()` function. New composite index `idx_executions_agent_started`. Data transfer reduced 50-100x. |
 | 2026-02-20 | **Make Repeatable enhancement**: Updated test step and Related Flows to note that schedules created via "Make Repeatable" now support per-schedule timeout and allowed_tools configuration. |

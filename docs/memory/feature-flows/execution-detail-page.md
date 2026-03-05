@@ -400,6 +400,8 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 |---------|------|------------|------------|
 | schedule | Calendar | Purple | Purple |
 | manual | Click/Cursor | Amber | Amber |
+| paid | Lightning | Yellow | Yellow |
+| public | Lightning | Teal | Teal |
 | user/other | Lightning | Cyan | Cyan |
 
 ### Execution Transcript Entry Types (Lines 226-296)
@@ -527,6 +529,7 @@ location /api/ {
 
 | Date | Changes |
 |------|---------|
+| 2026-03-04 | **Paid/Public trigger types**: Added `paid` (yellow bg/icon) and `public` (teal bg/icon) to Trigger Icon Colors table. |
 | 2026-02-21 | **PERF-001**: Added note distinguishing `ExecutionResponse` (full, used here) from `ExecutionSummary` (lightweight, used by list endpoint). Execution Detail page continues to fetch full data via `GET /api/agents/{name}/executions/{id}`. |
 | 2026-02-20 | Added "Continue as Chat" button (EXEC-023) - visible when `claude_session_id` exists and status is not "running". Navigates to Chat tab with `resumeSessionId` and `executionId` query params. See [continue-execution-as-chat.md](continue-execution-as-chat.md) for full flow. |
 | 2026-02-05 | Added "Live SSE Streaming" section documenting real-time log streaming. Documented nginx configuration requirements (`proxy_buffering off`, `proxy_cache off`, `chunked_transfer_encoding on`) needed for production streaming. Added frontend fetch/ReadableStream implementation details. |
