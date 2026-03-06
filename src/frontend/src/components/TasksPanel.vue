@@ -83,9 +83,24 @@
 
     <!-- New Task Input -->
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-      <!-- Model Selector (MODEL-001) -->
-      <div class="mb-3">
-        <ModelSelector v-model="selectedModel" label="Model" compact />
+      <!-- Model & Timeout Selectors -->
+      <div class="flex items-center space-x-3 mb-3">
+        <div class="flex-1">
+          <ModelSelector v-model="selectedModel" label="Model" compact />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Timeout</label>
+          <select
+            v-model="taskTimeout"
+            class="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option :value="300">5 min</option>
+            <option :value="900">15 min</option>
+            <option :value="1800">30 min</option>
+            <option :value="3600">1 hour</option>
+            <option :value="7200">2 hours</option>
+          </select>
+        </div>
       </div>
       <div class="flex items-stretch space-x-3">
         <div class="flex-1">
@@ -545,6 +560,13 @@ watch(selectedModel, (val) => {
   localStorage.setItem(taskModelKey.value, val)
 })
 
+// Timeout selection
+const taskTimeoutKey = computed(() => `trinity-task-timeout-${props.agentName}`)
+const taskTimeout = ref(parseInt(localStorage.getItem(`trinity-task-timeout-${props.agentName}`)) || 900)
+watch(taskTimeout, (val) => {
+  localStorage.setItem(taskTimeoutKey.value, val)
+})
+
 // Execution log modal state
 const showLogModal = ref(false)
 const logData = ref(null)
@@ -744,7 +766,7 @@ async function runNewTask() {
 
   try {
     // Use /task endpoint for parallel execution (doesn't block queue)
-    const payload = { message: taskMessage }
+    const payload = { message: taskMessage, timeout_seconds: taskTimeout.value }
     if (selectedModel.value) {
       payload.model = selectedModel.value
     }
