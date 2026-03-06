@@ -190,6 +190,79 @@ Each request costs credits regardless of session continuity.
 
 ---
 
+## Complete Python Example
+
+This script runs the full flow: discover payment requirements, order credits, generate an access token, and call the agent.
+
+```bash
+pip install payments-py requests python-dotenv
+```
+
+```python
+import requests
+from payments_py import Payments, PaymentOptions
+
+# --- Configuration ---
+NVM_API_KEY = "sandbox:your-jwt-here"       # From nevermined.app > Settings > API Keys
+NVM_ENVIRONMENT = "sandbox"                  # "sandbox" or "live"
+AGENT_URL = "https://your-trinity-instance/api/paid/my-agent/chat"
+INFO_URL = "https://your-trinity-instance/api/paid/my-agent/info"
+
+# --- Step 1: Discover ---
+info = requests.get(INFO_URL).json()
+plan_id = info["payment_required"]["accepts"][0]["planId"]
+agent_id = info["payment_required"]["accepts"][0]["extra"]["agentId"]
+print(f"Plan: {plan_id}, Agent: {agent_id}, Cost: {info['credits_per_request']} credits")
+
+# --- Step 2: Purchase credits (one-time) ---
+payments = Payments.get_instance(PaymentOptions(
+    nvm_api_key=NVM_API_KEY,
+    environment=NVM_ENVIRONMENT,
+))
+order = payments.plans.order_plan(plan_id)
+print(f"Balance: {order['balance']['remaining']} credits")
+
+# --- Step 3: Get access token ---
+token_result = payments.x402.get_x402_access_token(plan_id, agent_id)
+access_token = token_result["accessToken"]
+
+# --- Step 4: Call the agent ---
+response = requests.post(
+    AGENT_URL,
+    json={"message": "What is the weather in San Francisco?"},
+    headers={"payment-signature": access_token},
+    timeout=120,
+)
+result = response.json()
+print(f"Status: {result['status']}")
+print(f"Response: {result['response']}")
+if result.get("payment", {}).get("settled"):
+    print(f"Credits burned: {result['payment']['credits_burned']}")
+    print(f"Remaining: {result['payment']['remaining_balance']}")
+```
+
+Step 2 only needs to run once (or when credits run low). Steps 3-4 repeat for each request — generate a fresh token each time.
+
+---
+
+## Ready-Made Client
+
+The **[Nevermined Purchaser](https://github.com/Abilityai/nevermined-purchaser)** is a working client agent that handles the full payment flow. Configure three environment variables and call any paid Trinity agent:
+
+```bash
+git clone https://github.com/Abilityai/nevermined-purchaser.git
+cd nevermined-purchaser
+cp .env.example .env
+# Edit .env: set NVM_API_KEY, NVM_PLAN_ID, NVM_AGENT_ID
+
+pip install -r requirements.txt
+python pay_and_call.py call --url https://your-instance/api/paid/my-agent/chat --message "Hello"
+```
+
+The purchaser also supports balance checking (`python pay_and_call.py balance`) and can override plan/agent IDs per call for multi-agent scenarios.
+
+---
+
 ## Responses
 
 ### 200 — Success (credits charged)
@@ -314,6 +387,7 @@ Your API key's environment **must** match the agent's network. A `sandbox:` key 
 
 ## Further Reading
 
+- [Nevermined Purchaser Agent](https://github.com/Abilityai/nevermined-purchaser) — Ready-made client for calling paid agents
 - [Nevermined x402 Protocol](https://docs.nevermined.app/docs/development-guide/nevermined-x402)
 - [Nevermined 5-Minute Setup](https://docs.nevermined.app/docs/integrate/quickstart/5-minute-setup)
 - [Python SDK](https://docs.nevermined.app/docs/api-reference/python/x402-module) | [TypeScript SDK](https://docs.nevermined.app/docs/api-reference/typescript/x402) | [CLI](https://docs.nevermined.app/docs/api-reference/cli/purchases)
