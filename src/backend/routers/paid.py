@@ -5,6 +5,8 @@ Provides the public paid endpoint for external callers using Nevermined x402 pro
 Internal fleet traffic (chat_with_agent MCP tool) bypasses this entirely.
 """
 
+import base64
+import json
 import logging
 from typing import Optional
 
@@ -118,12 +120,20 @@ async def paid_chat(agent_name: str, request_body: PaidChatRequest, request: Req
                 content={"detail": "Failed to build payment requirements"},
             )
 
+        # x402 spec: payment-required header as base64-encoded JSON
+        payment_required_b64 = base64.b64encode(
+            json.dumps(payment_required).encode()
+        ).decode()
+
         return JSONResponse(
             status_code=402,
             content={
                 "detail": "Payment required",
                 "payment_required": payment_required,
                 "credits_per_request": config.credits_per_request,
+            },
+            headers={
+                "payment-required": payment_required_b64,
             },
         )
 
