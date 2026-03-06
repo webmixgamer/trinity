@@ -2,7 +2,8 @@
 Nevermined admin configuration router (NVM-001).
 
 Authenticated endpoints for managing per-agent Nevermined payment configuration.
-All endpoints require authentication + agent owner/admin access.
+Read endpoints (GET) allow owner, shared users, and admins.
+Write endpoints (POST/PUT/DELETE) require owner or admin access.
 """
 
 import logging
@@ -23,8 +24,14 @@ router = APIRouter(prefix="/api/nevermined", tags=["nevermined"])
 logger = logging.getLogger(__name__)
 
 
-def _require_agent_access(agent_name: str, current_user: User):
-    """Verify the user is owner or admin for the agent."""
+def _require_read_access(agent_name: str, current_user: User):
+    """Verify the user can view agent payment config (owner, shared, or admin)."""
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
+def _require_write_access(agent_name: str, current_user: User):
+    """Verify the user can modify agent payment config (owner or admin only)."""
     if current_user.role == "admin":
         return
     if not db.can_user_share_agent(current_user.username, agent_name):
@@ -48,7 +55,7 @@ async def configure_nevermined(
 ):
     """Configure Nevermined payment settings for an agent."""
     _check_sdk()
-    _require_agent_access(name, current_user)
+    _require_write_access(name, current_user)
 
     try:
         config = db.create_or_update_nevermined_config(
@@ -72,7 +79,7 @@ async def get_nevermined_config(
     current_user: User = Depends(get_current_user),
 ):
     """Get Nevermined config for an agent (no decrypted key)."""
-    _require_agent_access(name, current_user)
+    _require_read_access(name, current_user)
 
     config = db.get_nevermined_config(name)
     if not config:
@@ -86,7 +93,7 @@ async def delete_nevermined_config(
     current_user: User = Depends(get_current_user),
 ):
     """Remove Nevermined config from an agent."""
-    _require_agent_access(name, current_user)
+    _require_write_access(name, current_user)
 
     deleted = db.delete_nevermined_config(name)
     if not deleted:
@@ -104,7 +111,7 @@ async def toggle_nevermined(
 ):
     """Enable or disable Nevermined payments for an agent."""
     _check_sdk()
-    _require_agent_access(name, current_user)
+    _require_write_access(name, current_user)
 
     updated = db.set_nevermined_enabled(name, enabled)
     if not updated:
@@ -122,7 +129,7 @@ async def get_payment_history(
     current_user: User = Depends(get_current_user),
 ):
     """Get payment history for an agent."""
-    _require_agent_access(name, current_user)
+    _require_read_access(name, current_user)
     return db.get_nevermined_payment_log(name, limit)
 
 

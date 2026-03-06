@@ -3,13 +3,14 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
-> **Updated**: 2026-03-04 (EXEC-024 service extraction)
+> **Updated**: 2026-03-06 (session isolation + permission validation)
 > **Verified**: 2026-02-05
 
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-03-06 | **Session Isolation + Permission Validation**: Fixed bug where headless tasks could run with `permissionMode: "default"` instead of `bypassPermissions`, causing all tool calls to be silently denied. Added `--no-session-persistence` and unique `--session-id` per headless task to prevent session file collision with interactive `/api/chat` sessions. Added `permissionMode` validation on the `init` stream-json message — kills process immediately and returns HTTP 503 if bypass not active. Flags skipped when `resume_session_id` is provided (EXEC-023 needs persistence). |
 | 2026-03-04 | **EXEC-024 Service Extraction**: Sync path of `POST /api/agents/{name}/task` refactored. The ~250 lines of inline execution logic (slot acquisition, activity tracking, agent call with retry, sanitization, execution record updates, error handling, slot release) extracted into `TaskExecutionService.execute_task()` in `src/backend/services/task_execution_service.py`. Sync path in `chat.py:713-730` now delegates to the service. `agent_post_with_retry()` moved to the service module and imported back into `chat.py` for use by `/chat` and `_execute_task_background`. Async mode path unchanged (still uses `_execute_task_background` inline). |
 | 2026-03-02 | **MODEL-001 Model Selection**: `model_used` field now recorded on every execution record via `db.create_task_execution(model_used=request.model)`. Backend `chat.py:593` passes model to execution record. TasksPanel sends `model` in POST body. See [model-selection.md](model-selection.md). |
 | 2026-02-17 | **Added PUB-003 use case**: Public Chat Agent Introduction uses `/api/task` to fetch agent intro. Cross-reference to public-agent-links.md added. |
@@ -150,12 +151,20 @@ POST /api/task
 | - Build command:                            |
 |   claude -p --output-format stream-json     |
 |   --verbose --dangerously-skip-permissions  |
+|   --no-session-persistence                  |
+|   --session-id {unique-per-task}            |
 |   [--model X] [--allowedTools Y]            |
 |   [--append-system-prompt Z]                |
 |   [--max-turns N]                           |
 |   [--mcp-config ~/.mcp.json]                |
 |                                             |
 | - NO --continue flag (stateless)            |
+| - Session isolation flags prevent collision |
+|   with /api/chat sessions (skipped when     |
+|   resume_session_id is provided)            |
+| - Validates permissionMode on init message  |
+|   → kills process + HTTP 503 if not         |
+|   bypassPermissions                         |
 | - Parse streaming JSON output               |
 | - Return response with session_id           |
 +---------------------------------------------+
@@ -919,6 +928,8 @@ The mandatory `ANTHROPIC_API_KEY` check was removed from `execute_headless_task(
 4. **Tool Restrictions**: `allowed_tools` parameter for sandboxing
 5. **Timeout**: Hard limit (`timeout_seconds`) prevents wall-clock runaway
 6. **Turn Limit**: `max_turns` prevents infinite agentic loops
+7. **Session Isolation**: `--no-session-persistence` + unique `--session-id` prevent headless tasks from interfering with interactive sessions or each other via shared `~/.claude/projects/` state
+8. **Permission Mode Validation**: `permissionMode` in init message validated immediately — process killed and HTTP 503 returned if `bypassPermissions` not active, preventing silent hour-long timeouts with zero work completed
 
 ## Chat Session Persistence (CHAT-001)
 

@@ -647,6 +647,14 @@ async def execute_headless_task(
         if resume_session_id:
             cmd.extend(["--resume", resume_session_id])
             logger.info(f"[Headless Task] Resuming session: {resume_session_id}")
+        else:
+            # Session isolation: prevent headless tasks from writing session files
+            # that could collide with interactive /api/chat sessions or other tasks.
+            # --no-session-persistence avoids shared state in ~/.claude/projects/
+            # --session-id ensures unique namespace per task execution
+            cmd.append("--no-session-persistence")
+            task_unique_id = execution_id or str(uuid.uuid4())
+            cmd.extend(["--session-id", task_unique_id])
 
         # Add MCP config if .mcp.json exists (for agent-to-agent collaboration via Trinity MCP)
         mcp_config_path = Path.home() / ".mcp.json"
@@ -681,6 +689,7 @@ async def execute_headless_task(
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
+        permission_mode_validated = False  # Track whether init message confirmed bypassPermissions
         # Use provided execution_id if available (enables termination tracking from backend)
         task_session_id = execution_id or str(uuid.uuid4())
 
@@ -738,12 +747,38 @@ async def execute_headless_task(
                         raw_messages.append(raw_msg)
                         # Publish to live streaming subscribers
                         registry.publish_log_entry(task_session_id, raw_msg)
+
+                        # Validate permissionMode on init message (first message from Claude Code).
+                        # If permission bypass isn't active, kill immediately instead of timing out
+                        # after hours with zero work completed (all tool calls silently denied).
+                        if raw_msg.get("type") == "init" and not permission_mode_validated:
+                            perm_mode = raw_msg.get("permissionMode", "unknown")
+                            if perm_mode == "bypassPermissions":
+                                permission_mode_validated = True
+                                logger.info(f"[Headless Task] Permission mode confirmed: {perm_mode}")
+                            else:
+                                logger.error(
+                                    f"[Headless Task] CRITICAL: Permission bypass not active! "
+                                    f"permissionMode={perm_mode} (expected bypassPermissions). "
+                                    f"Killing process to prevent silent timeout. "
+                                    f"Task: {task_session_id}"
+                                )
+                                process.kill()
+                                process.wait()
+                                raise RuntimeError(
+                                    f"Permission bypass failed: permissionMode={perm_mode}. "
+                                    f"This may be caused by a stale Claude Code session process "
+                                    f"or project settings overriding the CLI flag. "
+                                    f"Try restarting the agent container."
+                                )
                     except json.JSONDecodeError:
                         pass
                     # SECURITY: Sanitize the line before processing
                     sanitized_line = sanitize_subprocess_line(line)
                     # Process each line for metadata/tool tracking
                     process_stream_line(sanitized_line, execution_log, metadata, tool_start_times, response_parts)
+            except RuntimeError:
+                raise  # Re-raise permission mode failures
             except Exception as e:
                 logger.error(f"[Headless Task] Error reading stdout: {e}")
 
@@ -769,6 +804,14 @@ async def execute_headless_task(
                     status_code=504,
                     detail=f"Task execution timed out after {timeout_seconds} seconds"
                 )
+            except RuntimeError as e:
+                # Permission mode validation failure — fast-fail with actionable error
+                if "Permission bypass failed" in str(e):
+                    raise HTTPException(
+                        status_code=503,
+                        detail=str(e)
+                    )
+                raise
 
             # Build verbose transcript from stderr (the human-readable execution log)
             # SECURITY: Sanitize stderr output

@@ -1,3 +1,37 @@
+### 2026-03-06
+🐛 **Fix: Headless task permission bypass ignored after GitHub template clone**
+
+Fixed a bug where headless tasks (via `POST /api/task`) could run with `permissionMode: "default"` instead of `bypassPermissions`, causing all tool calls to be silently denied and tasks to time out with zero work completed. Root cause was concurrent session file writes between interactive `/api/chat` sessions and headless task processes sharing `~/.claude/projects/` state.
+
+**Three fixes applied to `docker/base-image/agent_server/services/claude_code.py`:**
+
+1. **Session isolation** — Added `--no-session-persistence` and unique `--session-id` per headless task to prevent session file collision with interactive sessions or other concurrent tasks. Skipped when `resume_session_id` is provided (EXEC-023 needs persistence).
+
+2. **Permission mode validation** — On the `init` message from Claude Code stream-json output, verify `permissionMode` is `"bypassPermissions"`. If not, kill the process immediately and return HTTP 503 with actionable error message instead of silently timing out after hours.
+
+3. **Error propagation** — `RuntimeError` from permission validation propagates through the asyncio executor and is converted to HTTP 503 with clear instructions to restart the agent container.
+
+- `docker/base-image/agent_server/services/claude_code.py` — `execute_headless_task()`: added `--no-session-persistence` + `--session-id` flags for non-resume tasks; added `permissionMode` validation on init message with fast-fail; added `RuntimeError` → HTTP 503 error path
+
+---
+
+### 2026-03-05
+🐛 **Fix: Nevermined config returns 403 for shared users (Issue #72)**
+
+Split Nevermined endpoint permissions into read/write access levels. GET endpoints (config, payment history) now use `can_user_access_agent` allowing shared users to view. POST/PUT/DELETE endpoints (save, toggle, delete) remain owner-only via `can_user_share_agent`. Frontend `NeverminedPanel.vue` now accepts `canEdit` prop to show read-only view with disabled form, hidden action buttons, and a permission notice banner for shared users.
+
+**Backend:**
+- `src/backend/routers/nevermined.py` — Replaced `_require_agent_access` with `_require_read_access` (GET) and `_require_write_access` (POST/PUT/DELETE)
+
+**Frontend:**
+- `src/frontend/src/components/NeverminedPanel.vue` — Added `canEdit` prop, read-only banner, disabled inputs/toggle, hidden save/remove buttons
+- `src/frontend/src/views/AgentDetail.vue` — Pass `can-edit` prop to NeverminedPanel
+
+**Tests:**
+- `tests/test_nevermined_permissions.py` — Owner CRUD, unauthenticated rejection, nonexistent agent checks
+
+---
+
 ### 2026-03-04
 ⚙️ **Feature: Admin-Configurable GitHub Template Repositories (TMPL-001)**
 

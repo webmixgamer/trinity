@@ -149,7 +149,7 @@
 
             <!-- Nevermined Payments Tab Content -->
             <div v-if="activeTab === 'nevermined'">
-              <NeverminedPanel :agent-name="agent.name" />
+              <NeverminedPanel :agent-name="agent.name" :can-edit="agent.can_share" />
             </div>
 
             <!-- Sharing Tab Content -->

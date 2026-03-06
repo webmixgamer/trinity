@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-06 | — | Headless task session isolation + permission mode validation | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) |
 | 2026-03-04 | TMPL-001 | Admin-configurable GitHub template repositories via Settings UI | [platform-settings.md](feature-flows/platform-settings.md), [templates-page.md](feature-flows/templates-page.md) |
 | 2026-03-04 | THINK-001 | Dynamic thinking status extended to Public Chat (async mode + SSE) | [public-agent-links.md](feature-flows/public-agent-links.md) |
 | 2026-03-04 | NVM-001 | Nevermined x402 payment integration for agent monetization | [nevermined-payments.md](feature-flows/nevermined-payments.md) |

@@ -38,6 +38,7 @@ Admin/Owner
     POST /api/nevermined/agents/{name}/config
     + Body: { nvm_api_key, nvm_environment, nvm_agent_id, nvm_plan_id, credits_per_request }
     |
+    ├─ _require_write_access() → owner or admin only
     ├─ NeverminedOperations.create_or_update_config()
     │     ├─ Encrypt nvm_api_key via CredentialEncryptionService (AES-256-GCM)
     │     └─ Upsert nevermined_agent_config row
@@ -45,6 +46,17 @@ Admin/Owner
     PUT /api/nevermined/agents/{name}/config/toggle?enabled=true
     |
     └─ Agent is now accepting paid requests
+
+Shared User (view-only)
+    |
+    GET /api/nevermined/agents/{name}/config
+    GET /api/nevermined/agents/{name}/payments
+    |
+    ├─ _require_read_access() → owner, shared, or admin
+    └─ Returns config (no decrypted key) / payment log
+    |
+    POST/PUT/DELETE → 403 "Owner access required"
+    Frontend shows read-only view with disabled form controls
 ```
 
 ## Files
@@ -85,11 +97,11 @@ Admin/Owner
 |--------|------|------|-------------|
 | `POST` | `/api/paid/{agent_name}/chat` | x402 | Paid chat (402/403/200) |
 | `GET` | `/api/paid/{agent_name}/info` | None | Payment info |
-| `POST` | `/api/nevermined/agents/{name}/config` | JWT | Configure |
-| `GET` | `/api/nevermined/agents/{name}/config` | JWT | Read config |
-| `DELETE` | `/api/nevermined/agents/{name}/config` | JWT | Remove config |
-| `PUT` | `/api/nevermined/agents/{name}/config/toggle` | JWT | Enable/disable |
-| `GET` | `/api/nevermined/agents/{name}/payments` | JWT | Payment history |
+| `POST` | `/api/nevermined/agents/{name}/config` | JWT (owner) | Configure |
+| `GET` | `/api/nevermined/agents/{name}/config` | JWT (shared+) | Read config |
+| `DELETE` | `/api/nevermined/agents/{name}/config` | JWT (owner) | Remove config |
+| `PUT` | `/api/nevermined/agents/{name}/config/toggle` | JWT (owner) | Enable/disable |
+| `GET` | `/api/nevermined/agents/{name}/payments` | JWT (shared+) | Payment history |
 | `GET` | `/api/nevermined/settlement-failures` | Admin | Failed settlements |
 | `POST` | `/api/nevermined/retry-settlement/{log_id}` | Admin | Retry settlement |
 

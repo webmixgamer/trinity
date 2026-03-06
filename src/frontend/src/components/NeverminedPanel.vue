@@ -21,9 +21,10 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ config.enabled ? 'Enabled' : 'Disabled' }}</span>
             <button
               @click="toggleEnabled"
-              :disabled="toggling"
+              :disabled="toggling || !canEdit"
               :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
                 config.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
               ]"
             >
@@ -38,6 +39,13 @@
         </div>
 
         <div class="p-4 space-y-4">
+          <!-- Read-only notice for shared users -->
+          <div v-if="!canEdit" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+            <p class="text-sm text-yellow-800 dark:text-yellow-300">
+              You have view-only access to this agent's payment configuration. Only the agent owner can modify settings.
+            </p>
+          </div>
+
           <!-- Paid Endpoint URL (show when configured) -->
           <div v-if="config && config.enabled" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
             <label class="block text-xs font-medium text-green-700 dark:text-green-400 mb-1">Paid Endpoint</label>
@@ -64,8 +72,9 @@
                 <input
                   v-model="form.nvm_api_key"
                   :type="showApiKey ? 'text' : 'password'"
+                  :disabled="!canEdit"
                   placeholder="sandbox:eyJhbGci..."
-                  class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  :class="['w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500', canEdit ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed']"
                 />
                 <button
                   type="button"
@@ -89,7 +98,8 @@
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Environment</label>
               <select
                 v-model="form.nvm_environment"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                :disabled="!canEdit"
+                :class="['w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500', canEdit ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed']"
               >
                 <option value="sandbox">Sandbox (testnet)</option>
                 <option value="live">Live (mainnet)</option>
@@ -106,8 +116,9 @@
                 <input
                   v-model="form.nvm_agent_id"
                   type="text"
+                  :disabled="!canEdit"
                   placeholder="304071263598..."
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  :class="['w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500', canEdit ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed']"
                 />
               </div>
               <div>
@@ -115,8 +126,9 @@
                 <input
                   v-model="form.nvm_plan_id"
                   type="text"
+                  :disabled="!canEdit"
                   placeholder="828208014058..."
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  :class="['w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500', canEdit ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed']"
                 />
               </div>
             </div>
@@ -128,12 +140,13 @@
                 v-model.number="form.credits_per_request"
                 type="number"
                 min="1"
-                class="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                :disabled="!canEdit"
+                :class="['w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500', canEdit ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed']"
               />
             </div>
 
-            <!-- Actions -->
-            <div class="flex items-center space-x-3 pt-2">
+            <!-- Actions (owner/admin only) -->
+            <div v-if="canEdit" class="flex items-center space-x-3 pt-2">
               <button
                 type="submit"
                 :disabled="saving || !isFormValid"
@@ -216,6 +229,10 @@ const props = defineProps({
   agentName: {
     type: String,
     required: true
+  },
+  canEdit: {
+    type: Boolean,
+    default: true
   }
 })
 

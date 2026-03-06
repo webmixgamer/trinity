@@ -19,6 +19,13 @@
       "added": "2026-03-03",
       "categories": ["backend", "api", "frontend", "streaming"],
       "description": "Tests for dynamic thinking status labels: status mapping logic, async mode, SSE streaming, session persistence"
+    },
+    {
+      "file": "test_nevermined_permissions.py",
+      "feature": "Issue #72",
+      "added": "2026-03-05",
+      "categories": ["backend", "api", "permissions", "nevermined"],
+      "description": "Tests for Nevermined config read/write permission split: owner CRUD, unauthenticated rejection, nonexistent agent handling"
     }
   ]
 }
