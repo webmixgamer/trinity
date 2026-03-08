@@ -107,17 +107,14 @@ const routes = [
     component: () => import('../views/Approvals.vue'),
     meta: { requiresAuth: true }
   },
+  // Legacy redirects: Events and Alerts consolidated into Operating Room
   {
     path: '/alerts',
-    name: 'Alerts',
-    component: () => import('../views/Alerts.vue'),
-    meta: { requiresAuth: true }
+    redirect: '/operating-room?tab=cost-alerts'
   },
   {
     path: '/events',
-    name: 'Events',
-    component: () => import('../views/Events.vue'),
-    meta: { requiresAuth: true }
+    redirect: '/operating-room?tab=notifications'
   },
   {
     path: '/executions/:id',

@@ -1,6 +1,10 @@
 # Feature: Alerts Page
 
 > Cost threshold alerts for process execution monitoring
+>
+> **CONSOLIDATED (2026-03-08)**: The standalone Alerts page (`/alerts`) has been consolidated into the Operating Room as the **Cost Alerts** tab. The `/alerts` route now redirects to `/operating-room?tab=cost-alerts`. The UI content was extracted into `src/frontend/src/components/operator/CostAlertsPanel.vue`. See [operating-room.md](operating-room.md) for current documentation.
+>
+> `src/frontend/src/views/Alerts.vue` has been **deleted**. The alerts store (`alerts.js`) and all backend APIs remain unchanged.
 
 ---
 

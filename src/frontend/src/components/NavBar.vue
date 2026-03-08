@@ -44,11 +44,11 @@
             >
               Ops
               <span
-                v-if="operatorQueueStore.pendingCount > 0"
+                v-if="combinedOpsCount > 0"
                 class="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white rounded-full"
-                :class="operatorQueueStore.criticalCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'"
+                :class="hasCriticalOpsItem ? 'bg-red-500 animate-pulse' : 'bg-orange-500'"
               >
-                {{ operatorQueueStore.pendingCount > 99 ? '99+' : operatorQueueStore.pendingCount }}
+                {{ combinedOpsCount > 99 ? '99+' : combinedOpsCount }}
               </span>
             </router-link>
             <!-- HIDDEN: Processes nav link - Process Engine de-emphasized from top nav (Issue #50) -->
@@ -71,41 +71,6 @@
           </div>
         </div>
         <div class="flex items-center space-x-4">
-          <!-- Agent Events/Notifications -->
-          <router-link
-            to="/events"
-            class="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
-            title="Agent Events"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <span
-              v-if="notificationsStore.pendingCount > 0"
-              class="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white transform rounded-full"
-              :class="notificationsStore.hasUrgentPending ? 'bg-red-500 animate-pulse' : 'bg-blue-500'"
-            >
-              {{ notificationsStore.pendingCount > 99 ? '99+' : notificationsStore.pendingCount }}
-            </span>
-          </router-link>
-
-          <!-- Cost Alerts Notification -->
-          <router-link
-            to="/alerts"
-            class="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
-            title="Cost Alerts"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            <span
-              v-if="alertsStore.activeCount > 0"
-              class="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white transform bg-red-500 rounded-full"
-            >
-              {{ alertsStore.activeCount > 99 ? '99+' : alertsStore.activeCount }}
-            </span>
-          </router-link>
-
           <!-- WebSocket Status -->
           <span class="text-sm text-gray-500 dark:text-gray-400">
             <span class="inline-block h-2 w-2 rounded-full mr-1" :class="isConnected ? 'bg-green-400' : 'bg-gray-400 dark:bg-gray-600'"></span>
@@ -248,6 +213,15 @@ const isAgentSection = computed(() => {
   const path = route.value.path
   return path.startsWith('/agents')
 })
+
+// Combined Ops badge counts
+const combinedOpsCount = computed(() =>
+  operatorQueueStore.pendingCount + notificationsStore.pendingCount + alertsStore.activeCount
+)
+
+const hasCriticalOpsItem = computed(() =>
+  operatorQueueStore.criticalCount > 0 || notificationsStore.hasUrgentPending || alertsStore.activeCount > 0
+)
 
 // Check if currently in process section (for highlighting nav)
 const isProcessSection = computed(() => {

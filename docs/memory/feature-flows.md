@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-08 | OPS-001 | Operating Room — consolidated Events + Cost Alerts into 4-tab layout | [operating-room.md](feature-flows/operating-room.md) |
 | 2026-03-08 | OPS-001 | Operating Room — restart-resilient sync, refresh button, stale prompt detection | [operating-room.md](feature-flows/operating-room.md) |
 | 2026-03-08 | — | Fix `--session-id` UUID validation failure in headless task execution | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) |
 | 2026-03-07 | OPS-001 | Operating Room — full implementation (backend, sync service, frontend, meta-prompt) | [operating-room.md](feature-flows/operating-room.md) |
@@ -175,8 +176,8 @@
 | Flow | Document | Description |
 |------|----------|-------------|
 | Agent Notifications | [agent-notifications.md](feature-flows/agent-notifications.md) | Agent-to-platform notifications (NOTIF-001) |
-| Events Page UI | [events-page.md](feature-flows/events-page.md) | View and manage notifications |
-| Operating Room | [operating-room.md](feature-flows/operating-room.md) | Operator inbox for agent requests (OPS-001) |
+| Events Page UI | [events-page.md](feature-flows/events-page.md) | Consolidated into Operating Room Notifications tab |
+| Operating Room | [operating-room.md](feature-flows/operating-room.md) | Unified operator command center: queue, notifications, cost alerts (OPS-001) |
 
 ### Configuration & Settings
 
@@ -211,7 +212,7 @@
 | Templates Page | [templates-page.md](feature-flows/templates-page.md) | `/templates` route for browsing |
 | API Keys Page | [api-keys-page.md](feature-flows/api-keys-page.md) | `/api-keys` page UI flow |
 | Agents Page UI | [agents-page-ui-improvements.md](feature-flows/agents-page-ui-improvements.md) | Horizontal row tiles with success rate bars, filtering, responsive breakpoints |
-| Alerts Page | [alerts-page.md](feature-flows/alerts-page.md) | Cost threshold alerts |
+| Alerts Page | [alerts-page.md](feature-flows/alerts-page.md) | Consolidated into Operating Room Cost Alerts tab |
 
 ### Chat & Sessions
 

@@ -1,4 +1,23 @@
 ### 2026-03-08
+🔀 **Feature: Consolidate Ops / Events / Cost Alerts into Operating Room**
+
+Merged three separate sections (Operating Room, Events, Cost Alerts) into a single unified Operating Room view with 4 tabs: Needs Response, Notifications, Cost Alerts, Resolved. Removed the Events and Alerts bell icons from NavBar. The Ops badge now shows a combined count across all three data sources with critical highlighting. Old routes `/events` and `/alerts` redirect to `/operating-room` with the appropriate tab query parameter.
+
+**New components:**
+- `src/frontend/src/components/operator/NotificationsPanel.vue` — Extracted from Events.vue
+- `src/frontend/src/components/operator/CostAlertsPanel.vue` — Extracted from Alerts.vue
+
+**Modified files:**
+- `src/frontend/src/views/OperatingRoom.vue` — 4-tab layout, 3 stores, query param tab support, combined subtitle
+- `src/frontend/src/components/NavBar.vue` — Removed 2 bell icons, combined Ops badge count
+- `src/frontend/src/router/index.js` — `/events` and `/alerts` redirect to `/operating-room`
+
+**Deleted files:**
+- `src/frontend/src/views/Events.vue` — Replaced by NotificationsPanel in Operating Room
+- `src/frontend/src/views/Alerts.vue` — Replaced by CostAlertsPanel in Operating Room
+
+---
+
 🎭 **Feature: Emotion avatar variants with automatic cycling (AVATAR-002)**
 
 Agents now get 8 emotion variants generated in the background after avatar creation. Emotions: happy, thoughtful, surprised, determined, calm, amused, curious, confident. On the AgentDetail page, the avatar cycles to a random emotion every 30 seconds. Agents list and dashboard use the base avatar (no cycling). Emotion files are cleaned up on avatar delete and renamed on agent rename.

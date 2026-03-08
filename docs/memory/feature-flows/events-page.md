@@ -1,5 +1,9 @@
 # Feature: Events Page UI (NOTIF-002)
 
+> **CONSOLIDATED (2026-03-08)**: The standalone Events page (`/events`) has been consolidated into the Operating Room as the **Notifications** tab. The `/events` route now redirects to `/operating-room?tab=notifications`. The UI content was extracted into `src/frontend/src/components/operator/NotificationsPanel.vue`. See [operating-room.md](operating-room.md) for current documentation.
+>
+> `src/frontend/src/views/Events.vue` has been **deleted**. The notifications store (`notifications.js`) and all backend APIs remain unchanged.
+
 ## Overview
 
 Dedicated Events page for viewing, filtering, and managing agent notifications. Provides a unified stream of all agent events with real-time updates via WebSocket.
