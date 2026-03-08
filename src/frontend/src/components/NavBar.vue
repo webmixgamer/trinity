@@ -37,6 +37,20 @@
             >
               Health
             </router-link>
+            <router-link
+              to="/operating-room"
+              class="border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium relative"
+              :class="{ 'border-blue-500 dark:border-blue-400 text-gray-900 dark:text-white': $route.path === '/operating-room' }"
+            >
+              Ops
+              <span
+                v-if="operatorQueueStore.pendingCount > 0"
+                class="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white rounded-full"
+                :class="operatorQueueStore.criticalCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'"
+              >
+                {{ operatorQueueStore.pendingCount > 99 ? '99+' : operatorQueueStore.pendingCount }}
+              </span>
+            </router-link>
             <!-- HIDDEN: Processes nav link - Process Engine de-emphasized from top nav (Issue #50) -->
             <!-- REMOVED: Credentials nav link - credentials are now managed per-agent only -->
             <router-link
@@ -212,6 +226,7 @@ import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import { useAlertsStore } from '../stores/alerts'
 import { useNotificationsStore } from '../stores/notifications'
+import { useOperatorQueueStore } from '../stores/operatorQueue'
 import { useWebSocket } from '../utils/websocket'
 import axios from 'axios'
 
@@ -220,6 +235,7 @@ const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const alertsStore = useAlertsStore()
 const notificationsStore = useNotificationsStore()
+const operatorQueueStore = useOperatorQueueStore()
 const { isConnected } = useWebSocket()
 
 // Check if user is admin (fetch from backend)

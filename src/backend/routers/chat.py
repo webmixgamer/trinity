@@ -324,7 +324,9 @@ async def chat_with_agent(
         import logging
         # Extract detailed error message from agent response if available
         error_msg = f"HTTP error: {type(e).__name__}"
+        agent_status_code = None
         if hasattr(e, 'response') and e.response is not None:
+            agent_status_code = e.response.status_code
             try:
                 error_data = e.response.json()
                 if "detail" in error_data:
@@ -357,6 +359,10 @@ async def chat_with_agent(
                 status="failed",
                 error=error_msg
             )
+
+        # Preserve 429 (rate limit) from agent so frontend can show clear message
+        if agent_status_code == 429:
+            raise HTTPException(status_code=429, detail=error_msg)
 
         raise HTTPException(
             status_code=503,

@@ -269,6 +269,7 @@
 
                 <!-- Name + badges -->
                 <div class="flex items-center min-w-0 gap-2">
+                  <AgentAvatar :name="agent.name" :avatar-url="agent.avatar_url" size="sm" />
                   <router-link
                     :to="`/agents/${agent.name}`"
                     class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400"
@@ -438,6 +439,7 @@
                   ]"
                   :style="{ backgroundColor: getStatusDotColor(agent.name) }"
                 ></div>
+                <AgentAvatar :name="agent.name" :avatar-url="agent.avatar_url" size="sm" />
                 <router-link
                   :to="`/agents/${agent.name}`"
                   class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400"
@@ -580,6 +582,7 @@
                   ]"
                   :style="{ backgroundColor: getStatusDotColor(agent.name) }"
                 ></div>
+                <AgentAvatar :name="agent.name" :avatar-url="agent.avatar_url" size="sm" />
                 <router-link
                   :to="`/agents/${agent.name}`"
                   class="text-gray-900 dark:text-white font-semibold text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 flex-1 min-w-0"
@@ -676,6 +679,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import NavBar from '../components/NavBar.vue'
 import CreateAgentModal from '../components/CreateAgentModal.vue'
+import AgentAvatar from '../components/AgentAvatar.vue'
 import RuntimeBadge from '../components/RuntimeBadge.vue'
 import RunningStateToggle from '../components/RunningStateToggle.vue'
 import AutonomyToggle from '../components/AutonomyToggle.vue'

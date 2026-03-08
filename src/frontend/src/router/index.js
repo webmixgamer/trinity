@@ -132,6 +132,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/operating-room',
+    name: 'OperatingRoom',
+    component: () => import('../views/OperatingRoom.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/api-keys',
     name: 'ApiKeys',
     component: () => import('../views/ApiKeys.vue'),

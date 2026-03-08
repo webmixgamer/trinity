@@ -67,14 +67,15 @@ As an authenticated user, I want a simple chat interface with my agents that:
 ### State Management
 
 ```javascript
-// ChatPanel.vue state (lines 187-197)
+// ChatPanel.vue state (lines 187-203)
 const message = ref('')              // Current input
 const messages = ref([])             // Current conversation
 const loading = ref(false)           // Send in progress
 const loadingText = ref('Thinking...') // Dynamic status label (THINK-001)
 const error = ref(null)              // Error message
+const isRateLimitError = computed()  // Detects rate/usage limit errors for amber styling
 
-// SSE state (THINK-001) - lines 195-197
+// SSE state (THINK-001) - lines 200-203
 let heartbeatTimer = null            // 10s timeout fallback to "Working..."
 let labelTimer = null                // Min 500ms display time scheduler
 let lastLabelTime = 0                // Timestamp of last label change
@@ -675,11 +676,22 @@ See [continue-execution-as-chat.md](continue-execution-as-chat.md) for complete 
 | Poll timeout (30 min) | N/A | Frontend error: "Request timed out. Please try again." |
 | SSE stream error | N/A | Logged, polling handles completion fallback |
 | Session load failed | N/A | Frontend error: "Failed to load conversation history" |
+| Rate/usage limit hit | N/A | Amber-styled error with "Subscription Usage Limit" header (see below) |
+
+### Rate Limit Error Styling
+
+Rate limit and subscription usage errors are visually distinguished from generic errors. A computed property `isRateLimitError` (`src/frontend/src/components/ChatPanel.vue:193-197`) detects these by checking if `error.value` contains any of: `"usage limit"`, `"rate limit"`, `"out of extra usage"`, or `"out of usage"` (case-insensitive).
+
+When detected (lines 140-143):
+- Error box uses **amber** styling (`bg-amber-100`, `border-amber-200`, `text-amber-600`) instead of the default **red** styling
+- A bold header **"Subscription Usage Limit"** is displayed above the error message text
+- This helps users understand the error is a billing/quota issue, not a system failure
 
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-03-07 | **Rate limit error styling**. Added `isRateLimitError` computed property (line 193) that detects subscription/rate limit errors by keyword matching. Error display (lines 140-143) now uses amber styling (`bg-amber-100`, `text-amber-700`) with a "Subscription Usage Limit" header for these errors, distinguishing them from red generic errors. |
 | 2026-03-03 | **THINK-001: Dynamic Thinking Status**. Refactored `sendMessage()` from synchronous POST to async mode (`async_mode=true`). Added SSE stream subscription via `fetch` + `ReadableStream` for real-time status labels. New utility `execution-status.js` maps Claude Code `stream-json` events to human-readable labels ("Reading file...", "Searching code...", etc.). Added 500ms minimum display time per label to prevent flicker. Added 10s heartbeat timeout fallback to "Working...". Added polling loop (5s intervals) for execution completion. Updated `ChatLoadingIndicator.vue` with CSS fade transition animation (`:key` binding for re-render). Backend `_execute_task_background` now accepts `user_id`/`user_email` for session persistence in async mode. |
 | 2026-02-27 | **Bug Fix (CHAT-002)**: Fixed chat message ordering issue. Replaced fragile flex spacer technique (`<div class="flex-1">` pushing content down) with `min-h-full flex flex-col justify-end` pattern in `ChatMessages.vue`. This provides reliable bottom-alignment without race conditions between spacer resizing and message rendering. |
 | 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed resume mode context lost after first message. Since `/task` is stateless (no `--continue`), clearing `resumeSessionIdLocal` after first message caused subsequent messages to lose context. Fix: (1) Added `resumeBannerDismissed` flag for banner-only dismissal, (2) Keep `resumeSessionIdLocal` for ALL messages, (3) `dismissResumeMode()` only hides banner (session ID persists), (4) Clear resume mode only on "New Chat" or session switch. See lines 207-211, 323-328, 532-536. |

@@ -1,8 +1,10 @@
 # Feature: Agents Page UI Improvements
 
-> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03, Full Filtering 2026-03-03, Success Rate Bar 2026-03-03, Capacity Meter + Fixed Grid 2026-03-03)
+> **Status**: Implemented (2025-12-07, Enhanced 2026-01-09, System Agent Consolidation 2026-01-13, Toggle UX 2026-01-26, Component Standardization 2026-02-12, Horizontal Row Tiles 2026-03-03, Two-Row Tiles + Persistent Filter 2026-03-03, Full Filtering 2026-03-03, Success Rate Bar 2026-03-03, Capacity Meter + Fixed Grid 2026-03-03, Agent Avatars 2026-03-07)
 > **Tested**: All features verified working
-> **Last Updated**: 2026-03-03 - Capacity Meter + Fixed Grid Columns: Added CapacityMeter component to desktop and tablet layouts. Desktop: flex sibling alongside two-row content block (height=48, width=6), default fallback active=0/max=3. Tablet: between success bar and stats (height=28, width=10), conditional on slot data. Fixed grid column widths: Activity column 56px, Stats column 200px with `overflow-hidden` to prevent layout shifts from varying stats content.
+> **Last Updated**: 2026-03-07 - Agent Avatars: Added `AgentAvatar` component (from `../components/AgentAvatar.vue`) to all three view modes (desktop, tablet, mobile) in Agents.vue. Each renders `<AgentAvatar :name="agent.name" :avatar-url="agent.avatar_url" size="sm" />` next to the agent name. Desktop: line 272, Tablet: line 442, Mobile: line 585.
+>
+> **Previous (2026-03-03)** - Capacity Meter + Fixed Grid Columns: Added CapacityMeter component to desktop and tablet layouts. Desktop: flex sibling alongside two-row content block (height=48, width=6), default fallback active=0/max=3. Tablet: between success bar and stats (height=28, width=10), conditional on slot data. Fixed grid column widths: Activity column 56px, Stats column 200px with `overflow-hidden` to prevent layout shifts from varying stats content.
 >
 > **Previous (2026-03-03)** - Success Rate Bar (#60): Replaced context usage progress bars with success rate bars across all three breakpoints (desktop, tablet, mobile). Column header "Context" renamed to "Success", grid col 160px to 180px. Sort dropdown "Context Usage" replaced with "Success Rate" (value `success_desc`). Dual-window stats (24h + 7d) fetched via `include_7d=true` param. Color coding: green (>=90%), yellow (50-89%), red (<50%), gray dash for no data. Fallback logic: 24h bar + 7d secondary text, 7d-only bar, or gray dash.
 >
@@ -377,6 +379,8 @@ const get7dSuccessBarColor = (agentName) => {
    - Add success rate bar (replaced context bar in Issue #60)
    - Add CapacityMeter to desktop and tablet layouts
    - Import `CapacityMeter` from `../components/CapacityMeter.vue`
+   - Import `AgentAvatar` from `../components/AgentAvatar.vue` (line 682)
+   - Add `AgentAvatar` with `size="sm"` in all 3 view modes: desktop (line 272), tablet (line 442), mobile (line 585)
    - Add `getSlotStats()` helper reading from `agentsStore.slotStats`
    - Add CSS for pulse animation
    - Call polling on mount/unmount
@@ -401,6 +405,7 @@ const get7dSuccessBarColor = (agentName) => {
 - **API**: `GET /api/agents/slots` (parallel capacity slot stats for CapacityMeter)
 - **CSS**: Pulse animation from AgentNode.vue
 - **Component**: `CapacityMeter.vue` (reusable vertical bar for slot utilization)
+- **Component**: `AgentAvatar.vue` (deterministic gradient avatar with optional image, props: `name`, `avatarUrl`, `size`)
 - **Logic**: Success rate bar color coding (green/yellow/red thresholds)
 - **Logic**: Activity state detection from network.js
 
@@ -854,16 +859,25 @@ Complete template rewrite from 3-column card grid to full-width horizontal row t
 
 ## References
 
-> Line numbers verified 2026-03-03
-- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (1083 lines total)
-  - Template: lines 1-658
-  - Script: lines 660-1050 (approx)
-  - Scoped styles: lines 1050-1083 (approx)
-  - Import CapacityMeter: line 688
+> Line numbers verified 2026-03-07
+- **Agents.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/views/Agents.vue` (1175 lines total)
+  - Template: lines 1-675
+  - Script: lines 677-1141
+  - Scoped styles: lines 1143-1175
+  - Import AgentAvatar: line 682
+  - Import CapacityMeter: line 687
+  - Desktop AgentAvatar: line 272 (inside name+badges cell)
+  - Tablet AgentAvatar: line 442 (between status dot and name)
+  - Mobile AgentAvatar: line 585 (between status dot and name)
   - Desktop CapacityMeter: lines 419-425 (height=48, width=6, fallback active=0/max=3)
   - Tablet CapacityMeter: lines 533-539 (height=28, width=10, conditional)
   - Desktop grid template: line 252 (`grid-cols-[auto_auto_1fr_56px_auto_180px_200px_auto]`)
   - `getSlotStats()` helper: lines 908-910
+- **AgentAvatar.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/AgentAvatar.vue` (89 lines)
+  - Props: `name` (required), `avatarUrl` (optional), `size` (sm/md/lg/xl/2xl, default md)
+  - Size "sm" = 24x24px (`w-6 h-6`), text `text-[10px]`
+  - Shows uploaded avatar image, falls back to deterministic gradient with initials
+  - Gradient derived from name hash; initials from first two parts split on space/hyphen
 - **CapacityMeter.vue**: `/Users/eugene/Dropbox/trinity/trinity/src/frontend/src/components/CapacityMeter.vue` (58 lines)
   - Props: `active`, `max`, `height`, `width`
   - Color coding: green/yellow/orange/red by utilization, capacity-pulse animation at 100%
@@ -891,6 +905,7 @@ Complete template rewrite from 3-column card grid to full-width horizontal row t
 
 | Date | Changes |
 |------|---------|
+| 2026-03-07 | **Agent Avatars**: Added `AgentAvatar` component (`../components/AgentAvatar.vue`, import at line 682) to all three view modes in `Agents.vue`. Desktop: line 272 (inside name+badges grid cell). Tablet: line 442 (between status dot and name link). Mobile: line 585 (between status dot and name link). All use `size="sm"` (24x24px) with `:name="agent.name" :avatar-url="agent.avatar_url"`. Shows uploaded avatar image or deterministic gradient with initials as fallback. |
 | 2026-03-03 | **Capacity Meter + Fixed Grid Columns**: Added `CapacityMeter` component (from `../components/CapacityMeter.vue`) to desktop and tablet layouts. Desktop: flex sibling alongside the two-row content block (`ml-1 flex-shrink-0 self-stretch`, height=48, width=6), default fallback active=0/max=3 when no slot data. Tablet: placed between success bar and stats (height=28, width=10), conditional `v-if="getSlotStats(agent.name)"`. Added `getSlotStats()` helper reading `agentsStore.slotStats`. Fixed desktop grid column widths from `grid-cols-[auto_auto_1fr_auto_auto_180px_auto_auto]` to `grid-cols-[auto_auto_1fr_56px_auto_180px_200px_auto]` -- Activity column fixed at 56px, Stats column fixed at 200px with `overflow-hidden` to prevent layout shifts when agents have varying stats content. Store: `slotStats` state (line 16), `fetchSlotStats()` action (lines 616-638) calling `GET /api/agents/slots`, polled every 5s via `startContextPolling()`. |
 | 2026-03-03 | **Success Rate Bar (Issue #60)**: Replaced context usage progress bars with success rate bars across desktop, tablet, and mobile layouts. Column header "Context" renamed to "Success", grid col 160px to 180px. Sort dropdown "Context Usage" (`context_desc`) replaced with "Success Rate" (`success_desc`), sorts by `successRate`. Removed helpers: `getContextPercent()`, `getProgressBarColor()`. Added helpers: `getSuccessBarPercent()`, `getSuccessBarColor()`, `hasSuccessData()`, `has7dOnlyStats()`, `has7dStats()`, `get7dSuccessRate()`, `get7dSuccessBarColor()`. `fetchExecutionStats()` now calls `/api/agents/execution-stats?include_7d=true`, stores `taskCount7d` and `successRate7d` per agent. Backend: added `include_7d: bool = False` param to GET /execution-stats, added `get_all_agents_execution_stats_dual()` with single SQL CASE WHEN for both 24h and 7d windows (db/schedules.py), added facade method in database.py. |
 | 2026-03-03 | **Horizontal Row Tile Layout (Issue #54)**: Complete template rewrite from 3-column card grid to full-width horizontal rows. Three responsive breakpoints: desktop (9-column CSS grid), tablet (two-line compact), mobile (mini-card). Column header row on desktop. System agent changed from purple ring to `border-l-3` left accent. Chevron arrow replaces "View Details" button. Type display removed. Schedule stats merged inline. New `.border-l-3` and `dark:hover:bg-gray-750` scoped styles. Template-only change -- no store or backend modifications. |

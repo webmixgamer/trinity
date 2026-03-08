@@ -2,8 +2,8 @@
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <NavBar />
 
-    <main class="max-w-[1400px] mx-auto py-2 sm:px-6 lg:px-8">
-      <div class="px-4 py-2 sm:px-0">
+    <main class="max-w-[1400px] mx-auto py-2 sm:px-6 lg:px-8 overflow-visible">
+      <div class="px-4 py-2 sm:px-0 overflow-visible">
         <div v-if="loading" class="text-center py-8">
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
         </div>
@@ -22,7 +22,7 @@
           {{ error }}
         </div>
 
-        <div v-if="agent">
+        <div v-if="agent" class="ml-14">
           <!-- Agent Header Component -->
           <AgentHeader
             :agent="agent"
@@ -57,6 +57,7 @@
             @add-tag="addTag"
             @remove-tag="removeTag"
             @rename="renameAgent"
+            @open-avatar-modal="showAvatarModal = true"
           />
 
           <!-- Tabs -->
@@ -216,6 +217,16 @@
       @save="saveResourceLimits"
     />
 
+    <!-- Avatar Generate Modal (AVATAR-001) -->
+    <AvatarGenerateModal
+      :show="showAvatarModal"
+      :agent-name="agent?.name || ''"
+      :initial-prompt="avatarIdentityPrompt"
+      :current-avatar-url="agent?.avatar_url || null"
+      @close="showAvatarModal = false"
+      @updated="onAvatarUpdated"
+    />
+
     <!-- Confirm Dialog -->
     <ConfirmDialog
       v-model:visible="confirmDialog.visible"
@@ -264,6 +275,7 @@ import FoldersPanel from '../components/FoldersPanel.vue'
 // Panel Components (newly extracted)
 import AgentHeader from '../components/AgentHeader.vue'
 import ResourceModal from '../components/ResourceModal.vue'
+import AvatarGenerateModal from '../components/AvatarGenerateModal.vue'
 import LogsPanel from '../components/LogsPanel.vue'
 import CredentialsPanel from '../components/CredentialsPanel.vue'
 import SharingPanel from '../components/SharingPanel.vue'
@@ -296,6 +308,8 @@ const loading = ref(true)
 const error = ref('')
 const activeTab = ref('tasks')
 const showResourceModal = ref(false)
+const showAvatarModal = ref(false)
+const avatarIdentityPrompt = ref('')
 const taskPrefillMessage = ref('')
 const schedulePrefillMessage = ref('')
 const hasDashboard = ref(false)
@@ -614,6 +628,24 @@ async function loadAgent() {
   }
 }
 
+// Avatar management (AVATAR-001)
+async function loadAvatarIdentity() {
+  if (!agent.value?.name) return
+  try {
+    const response = await axios.get(`/api/agents/${agent.value.name}/avatar/identity`, {
+      headers: authStore.authHeader
+    })
+    avatarIdentityPrompt.value = response.data.identity_prompt || ''
+  } catch (err) {
+    // Not critical
+  }
+}
+
+async function onAvatarUpdated() {
+  await loadAgent()
+  await loadAvatarIdentity()
+}
+
 // Tags management (ORG-001)
 async function loadTags() {
   if (!agent.value?.name) return
@@ -808,6 +840,8 @@ onMounted(async () => {
   // Load tags (ORG-001)
   await loadTags()
   await loadAllTags()
+  // Load avatar identity (AVATAR-001)
+  await loadAvatarIdentity()
   // Load auth status
   await loadAuthStatus()
   // Check for dashboard if agent is running

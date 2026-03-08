@@ -1,3 +1,141 @@
+### 2026-03-08
+🎨 **Style: Avatar generation now uses cinematic lifestyle photography aesthetic (AVATAR-001)**
+
+Rewrote the avatar prompt engineering to use a Kodak Portra 400 film-inspired cinematic portrait style instead of the previous digital illustration style. Avatars now generate as warm, authentic-feeling portraits with shallow depth of field, muted pastel tones, lifted shadows, creamy highlights, and subtle film grain.
+
+**Modified files:**
+- `src/backend/services/image_generation_prompts.py` — Rewrote `AVATAR_BEST_PRACTICES` with cinematic lifestyle photography rules
+
+---
+
+🔧 **Fix: Subscription usage limit errors now surface clear, actionable messages (SUB-002)**
+
+Previously, when a Claude Code subscription hit its usage limit, agents returned a generic "Claude Code execution failed (exit code 1)" error with no indication of the actual problem. Now the system detects rate limit errors from Claude Code's stream-json output and returns:
+- **HTTP 429** status (instead of 500)
+- Clear message: "Subscription usage limit: You're out of extra usage · resets [time]. To resolve: (1) wait for the usage reset, (2) set an ANTHROPIC_API_KEY on this agent for pay-per-use billing, or (3) assign a different subscription token in Settings → Subscriptions."
+- Frontend displays rate limit errors with amber (warning) styling instead of red (error)
+
+Detection works across both chat mode (`/api/chat`) and task mode (`/api/task`) by parsing the `error` field from Claude Code's `assistant` messages and the `is_error` flag from `result` messages in stream-json format.
+
+**Modified files:**
+- `docker/base-image/agent_server/models.py` — Added `error_type` and `error_message` fields to ExecutionMetadata
+- `docker/base-image/agent_server/services/claude_code.py` — Added `_is_rate_limit_message()`, `_format_rate_limit_error()` helpers; detect rate limit in `process_stream_line()` from assistant and result messages; raise HTTP 429 in both `execute_claude_code()` and `execute_headless_task()`
+- `src/backend/routers/chat.py` — Preserve 429 status from agent responses (was being converted to 503)
+- `src/frontend/src/components/ChatPanel.vue` — Added `isRateLimitError` computed property; amber styling for rate limit errors with "Subscription Usage Limit" header
+
+---
+
+🎨 **UI: Enlarged overlapping avatar on Agent Detail page (AVATAR-001)**
+
+Redesigned the avatar display on the Agent Detail header to a social-media-style overlapping circle. The avatar is now 96px (2xl size), centered exactly on the left edge of the header card (50% inside, 50% outside) using `left-0 -translate-x-1/2`. Features an indigo border (`border-indigo-400/500`) and shadow. Hover overlay with camera icon for generating avatars. Content area has `ml-14` to accommodate the protruding half. The Agents list, Dashboard nodes, and other pages remain unchanged.
+
+**Modified files:**
+- `src/frontend/src/components/AgentAvatar.vue` — Added `2xl` size (96px, text-2xl)
+- `src/frontend/src/components/AgentHeader.vue` — Repositioned avatar as absolute overlapping element with indigo border and hover overlay
+- `src/frontend/src/views/AgentDetail.vue` — Added `ml-14` wrapper and `overflow-visible` to accommodate avatar protrusion
+
+---
+
+### 2026-03-07
+🔧 **Fix: Avatar display — remove auth from GET endpoint, fix Gemini model name and config field (AVATAR-001, IMG-001)**
+
+Three fixes to make avatar display work end-to-end:
+1. Removed JWT auth from `GET /api/agents/{name}/avatar` — browser `<img>` tags cannot send Authorization headers, so avatars are now served as public assets
+2. Fixed Gemini model name: `gemini-2.5-flash-preview-image-generation` → `gemini-2.5-flash-image` (old model removed from API)
+3. Fixed Gemini config field: `imageSizeOptions` → `imageConfig` (correct field name per Gemini API)
+4. Added `avatar_url` to single-agent detail endpoint (`GET /api/agents/{name}`) — was only in bulk list endpoint
+
+**Modified files:**
+- `src/backend/routers/avatar.py` — Removed auth from GET avatar endpoint
+- `src/backend/routers/agents.py` — Added avatar_url to single-agent detail response
+- `src/backend/services/image_generation_service.py` — Fixed model name and config field
+- `docs/memory/feature-flows/image-generation.md` — Updated model name and field references
+
+---
+
+✅ **Feature: Operating Room — Full Implementation (OPS-001)**
+
+Implemented the complete Operating Room feature: backend database, REST API, file sync service, frontend wired to real API, WebSocket real-time updates, and meta-prompt integration. Agents write requests to `~/.trinity/operator-queue.json`, platform syncs them to DB, and the Operating Room UI presents them as actionable cards with inline response controls.
+
+**New files:**
+- `src/backend/db/operator_queue.py` — Database operations (create, list, respond, cancel, stats)
+- `src/backend/routers/operator_queue.py` — REST API (6 endpoints with JWT auth)
+- `src/backend/services/operator_queue_service.py` — Background sync service (5s polling, bidirectional)
+- `tests/test_operator_queue.py` — API tests (37 tests, 100% pass rate)
+
+**Modified files:**
+- `src/backend/db/schema.py` — Added `operator_queue` table with 5 indexes
+- `src/backend/db/migrations.py` — Migration #25 for operator_queue table
+- `src/backend/database.py` — DatabaseManager delegation methods
+- `src/backend/main.py` — Router mount, WebSocket injection, sync service lifecycle
+- `src/frontend/src/stores/operatorQueue.js` — Rewrote with backend API integration (replaced mock data)
+- `src/frontend/src/utils/websocket.js` — Added operator queue event handling
+- `src/frontend/src/views/OperatingRoom.vue` — Added polling, lifecycle hooks
+- `config/trinity-meta-prompt/prompt.md` — Added "Operator Communication" section for agents
+- `tests/registry.json` — Registered test file
+- `docs/memory/feature-flows/operating-room.md` — Updated to reflect full implementation
+
+---
+
+🎨 **Feature: Operating Room UI Mockup (OPS-001, superseded by full implementation above)**
+
+Added Operating Room — a card-based inbox where operators respond to agent requests. Frontend mockup with mock data covering all three request types (approval, question, alert).
+
+**New files:**
+- `src/frontend/src/views/OperatingRoom.vue` — Main page with Open/Resolved tabs
+- `src/frontend/src/components/operator/QueueCard.vue` — Expandable card with agent avatar, markdown body, inline response controls
+- `src/frontend/src/components/operator/ResolvedCard.vue` — Compact resolved item card
+- `src/frontend/src/stores/operatorQueue.js` — Pinia store with mock data and response actions
+
+**Modified files:**
+- `src/frontend/src/router/index.js` — Added `/operating-room` route
+- `src/frontend/src/components/NavBar.vue` — Added "Ops" nav link with pending count badge
+
+---
+
+✨ **Feature: AI-Generated Agent Avatars (AVATAR-001)**
+
+Added AI-generated circular avatars for agents. Users provide an identity prompt (e.g., "a wise owl"), and the platform generates a consistent avatar via the existing Gemini image generation service. Avatars are cached on disk and displayed across all UI surfaces with initials fallback.
+
+**New files:**
+- `src/backend/routers/avatar.py` — REST endpoints: GET/POST/DELETE avatar, GET identity
+- `src/frontend/src/components/AgentAvatar.vue` — Reusable avatar component with gradient+initials fallback
+- `src/frontend/src/components/AvatarGenerateModal.vue` — Modal for generating/removing avatars
+
+**Modified files:**
+- `src/backend/db/schema.py` — Added `avatar_identity_prompt`, `avatar_updated_at` to agent_ownership
+- `src/backend/db/migrations.py` — Migration #24 for avatar columns
+- `src/backend/db/agents.py` — Avatar DB methods + avatar_updated_at in batch query
+- `src/backend/database.py` — Delegation methods for avatar operations
+- `src/backend/services/image_generation_prompts.py` — Added "avatar" use case with specialized best practices
+- `src/backend/main.py` — Registered avatar router
+- `src/backend/services/agent_service/helpers.py` — Added avatar_url to agent data flow
+- `src/backend/routers/agents.py` — Avatar cleanup on delete + rename
+- `src/frontend/src/components/AgentHeader.vue` — Avatar display + generate button
+- `src/frontend/src/components/AgentNode.vue` — Avatar in dashboard graph nodes
+- `src/frontend/src/views/Agents.vue` — Avatar in all 3 responsive layouts
+- `src/frontend/src/views/AgentDetail.vue` — AvatarGenerateModal integration
+- `src/frontend/src/stores/network.js` — Pass avatarUrl in node data
+
+---
+
+✨ **Feature: Platform Image Generation Service (IMG-001)**
+
+Added a platform-level image generation capability using Google Gemini. The service implements a two-step pipeline: (1) prompt refinement via Gemini 2.5 Flash text model using embedded best practices, then (2) image generation via Gemini 2.5 Flash Image model. Supports four use cases (general, thumbnail, diagram, social) with seven aspect ratios. Other code (routers, services, MCP tools, agents) can call `get_image_generation_service().generate_image()` to produce images.
+
+**New files:**
+- `src/backend/services/image_generation_service.py` — Core service with singleton pattern, `generate_image()`, `refine_prompt()`, Gemini API calls via httpx
+- `src/backend/services/image_generation_prompts.py` — Best practices constants for each use case
+- `src/backend/routers/image_generation.py` — REST endpoints: `POST /api/images/generate`, `GET /api/images/models`
+
+**Modified files:**
+- `src/backend/config.py` — Added `GEMINI_API_KEY` config
+- `src/backend/main.py` — Mounted image generation router
+- `docker-compose.yml` — Added `GEMINI_API_KEY` env passthrough
+- `.env.example` — Added `GEMINI_API_KEY` documentation section
+
+---
+
 ### 2026-03-06
 🐛 **Fix: Headless task permission bypass ignored after GitHub template clone**
 

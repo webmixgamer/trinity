@@ -65,6 +65,9 @@ from routers.monitoring import router as monitoring_router, set_websocket_manage
 from routers.slack import public_router as slack_public_router, auth_router as slack_auth_router
 from routers.paid import router as paid_router
 from routers.nevermined import router as nevermined_router
+from routers.image_generation import router as image_generation_router
+from routers.avatar import router as avatar_router
+from routers.operator_queue import router as operator_queue_router, set_websocket_manager as set_operator_queue_ws_manager
 
 # Import activity service
 from services.activity_service import activity_service
@@ -74,6 +77,9 @@ from services.system_agent_service import system_agent_service
 
 # Import log archive service
 from services.log_archive_service import log_archive_service
+
+# Import operator queue sync service
+from services.operator_queue_service import operator_queue_service, set_websocket_manager as set_opqueue_sync_ws_manager
 
 
 # Import process engine WebSocket publisher
@@ -184,6 +190,8 @@ set_notifications_ws_manager(manager)
 set_notifications_filtered_ws_manager(filtered_manager)
 set_monitoring_ws_manager(manager)
 set_monitoring_filtered_ws_manager(filtered_manager)
+set_operator_queue_ws_manager(manager)
+set_opqueue_sync_ws_manager(manager)
 
 # Inject trinity meta-prompt function into system agent router
 set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
@@ -242,6 +250,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Error starting log archive service: {e}")
 
+    # Start operator queue sync service (OPS-001)
+    try:
+        operator_queue_service.start()
+        print("Operator queue sync service started")
+    except Exception as e:
+        print(f"Error starting operator queue sync service: {e}")
+
     # Run process execution recovery (IT5 P0 reliability feature)
     try:
         recovery_report = await run_execution_recovery()
@@ -270,6 +285,13 @@ async def lifespan(app: FastAPI):
         print("Log archive service stopped")
     except Exception as e:
         print(f"Error stopping log archive service: {e}")
+
+    # Shutdown operator queue sync service
+    try:
+        operator_queue_service.stop()
+        print("Operator queue sync service stopped")
+    except Exception as e:
+        print(f"Error stopping operator queue sync service: {e}")
 
 
 # Create FastAPI app
@@ -330,6 +352,9 @@ app.include_router(slack_public_router)  # Slack Integration Public (SLACK-001)
 app.include_router(slack_auth_router)  # Slack Integration Auth (SLACK-001)
 app.include_router(paid_router)  # Nevermined Paid Chat (NVM-001)
 app.include_router(nevermined_router)  # Nevermined Admin Config (NVM-001)
+app.include_router(image_generation_router)  # Image Generation (IMG-001)
+app.include_router(avatar_router)  # Agent Avatars (AVATAR-001)
+app.include_router(operator_queue_router)  # Operator Queue (OPS-001)
 
 
 # WebSocket endpoint

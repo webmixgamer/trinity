@@ -151,6 +151,13 @@ def get_accessible_agents(current_user: User) -> list:
         agent_dict["memory_limit"] = metadata.get("memory_limit")
         agent_dict["cpu_limit"] = metadata.get("cpu_limit")
 
+        # Avatar URL (AVATAR-001)
+        avatar_updated_at = metadata.get("avatar_updated_at")
+        agent_dict["avatar_url"] = (
+            f"/api/agents/{agent_name}/avatar?v={avatar_updated_at}"
+            if avatar_updated_at else None
+        )
+
         accessible_agents.append(agent_dict)
 
     return accessible_agents

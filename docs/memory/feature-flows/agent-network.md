@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-03-03 - Replace Context Bar with Success Rate Bar (Issue #60): AgentNode and SystemAgentNode now display a success rate progress bar instead of context usage bar. Dual-window stats (24h primary + 7d secondary). Backend `GET /api/agents/execution-stats` extended with `include_7d` parameter and new `get_all_agents_execution_stats_dual()` DB method.
+> **Last Updated**: 2026-03-07 - Agent Avatars in Network Graph: AgentNode now displays an `AgentAvatar` component in the node header (line 28), showing the agent's avatar image or initials-based fallback. `avatarUrl` field added to node data in `convertAgentsToNodes()` for both system agents (line 426) and regular agents (line 460) in `network.js`.
+>
+> **Previous (2026-03-03)** - Replace Context Bar with Success Rate Bar (Issue #60): AgentNode and SystemAgentNode now display a success rate progress bar instead of context usage bar. Dual-window stats (24h primary + 7d secondary). Backend `GET /api/agents/execution-stats` extended with `include_7d` parameter and new `get_all_agents_execution_stats_dual()` DB method.
 >
 > **Previous (2026-03-02)** - Dashboard Filter Persistence (FILTER-001): Time range and quick tags now persist to localStorage. See "Dashboard Filter Persistence" section in [dashboard-timeline-view.md](dashboard-timeline-view.md).
 >
@@ -77,12 +79,16 @@ Main dashboard view component with integrated Agent Network visualization.
 - Lines 565-605: Replay mode handlers (toggleMode, handlePlay, handlePause, handleStop, etc.)
 
 #### AgentNode.vue (`src/frontend/src/components/AgentNode.vue`)
-Custom node component for each agent (updated 2025-12-30).
+Custom node component for each agent (updated 2026-03-07).
 
-**Layout** (280px wide, min 160px height):
+**Layout** (320px wide, min 180px height):
 - Lines 2-14: Clean white card with rounded corners, border, shadow, **flex flex-col** for layout. System agents get distinct purple styling.
-- Lines 16-20: Top connection handle for incoming edges
-- Lines 104-108: Bottom connection handle for outgoing edges
+- Lines 17-21: Top connection handle for incoming edges
+- Lines 207-211: Bottom connection handle for outgoing edges
+
+**Imports** (Lines 215-223):
+- `AgentAvatar` from `./AgentAvatar.vue` (line 219) - Avatar display component
+- `RuntimeBadge`, `RunningStateToggle`, `AutonomyToggle` - Other node sub-components
 
 **Dark Mode Support** (Added 2025-12-14, updated 2026-03-03):
 - Lines 10-12: Card uses `dark:bg-gray-800/80`, `dark:border-gray-700/50` (system agents: `dark:bg-purple-900/30 dark:border-purple-700/50`)
@@ -94,9 +100,10 @@ Custom node component for each agent (updated 2025-12-30).
 - Line 191: View Details button uses `dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-300`
 
 **Header Section**:
-- Lines 25-49: Agent name (truncated) with RuntimeBadge, SYSTEM badge (if applicable), and status indicator dot
-- Lines 42-48: Status dot with activity-based color (green for active/idle, gray for offline)
-- Line 45: Pulsing animation for active agents (`active-pulse` class)
+- Lines 25-55: Agent name (truncated) with AgentAvatar, RuntimeBadge, SYSTEM badge (if applicable), and status indicator dot
+- Line 28: `AgentAvatar` component (`:name="data.label" :avatar-url="data.avatarUrl" size="md"`) displays agent avatar image or initials-based gradient fallback before the agent name
+- Lines 47-54: Status dot with activity-based color (green for active/idle, gray for offline)
+- Line 51: Pulsing animation for active agents (`active-pulse` class)
 
 **Status Display**:
 - Lines 57-66: **Running State Toggle** - for non-system agents:
@@ -319,11 +326,11 @@ Groups communications by source-target pair and creates inactive edges:
 }
 ```
 
-##### convertAgentsToNodes() (Lines 250-287)
-- Calculates grid layout: `Math.ceil(Math.sqrt(agentList.length))`
-- Spacing: 350px between nodes (increased to prevent overlap)
+##### convertAgentsToNodes() (Lines 311-469)
+- Separates system agent from regular agents; groups regular agents by primary tag for layout
 - Loads saved positions from localStorage or uses default grid
 - Creates node objects with `type: 'agent'`, draggable, and status data
+- **Avatar Data**: Includes `avatarUrl: agent.avatar_url || null` in node data for both system agents (line 426) and regular agents (line 460), sourced from the `GET /api/agents` response
 - **Bug Fix (2025-12-09)**: Sets initial `activityState` based on agent status:
   ```javascript
   activityState: agent.status === 'running' ? 'idle' : 'offline'
@@ -1489,6 +1496,7 @@ stopContextPolling()       // Clear interval on unmount (609-619)
 
 **Visual Design** (320px wide, min 180px height):
 - Clean white card with subtle shadow and backdrop blur (dark mode: gray-800)
+- **AgentAvatar** (32x32px, `size="md"`) before agent name - shows avatar image or initials-based gradient fallback
 - Agent name in bold gray text (clickable, links to detail page)
 - RuntimeBadge + SYSTEM badge (if applicable)
 - Running/Autonomy toggle row
@@ -1515,12 +1523,13 @@ No data: Gray dash (no bar rendered)
 | Idle | "Idle" | Green (#10b981) | No |
 | Offline | "Offline" | Gray (#9ca3af) | No |
 
-**Template Structure** (Lines 2-211):
+**Template Structure** (Lines 2-212):
 ```vue
 <div class="px-5 py-4 rounded-xl border shadow-lg bg-white/80 dark:bg-gray-800/80 flex flex-col"
      style="width: 320px; min-height: 180px;">
-  <!-- Agent name + RuntimeBadge + SYSTEM badge + status dot -->
+  <!-- Agent avatar + name + RuntimeBadge + SYSTEM badge + status dot -->
   <div class="flex items-center justify-between mb-2">
+    <AgentAvatar :name="data.label" :avatar-url="data.avatarUrl" size="md" class="mr-2 flex-shrink-0" />
     <div class="text-gray-900 dark:text-white font-bold truncate">{{ data.label }}</div>
     <div :style="{ backgroundColor: statusDotColor }" :class="isActive ? 'active-pulse' : ''"></div>
   </div>
@@ -1773,6 +1782,7 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 | Date | Changes |
 |------|---------|
+| 2026-03-07 | **Agent Avatars in Network Graph**: AgentNode.vue now displays `AgentAvatar` component (line 28) in the node header, showing agent avatar image or initials-based gradient fallback. Props: `:name="data.label" :avatar-url="data.avatarUrl" size="md"`. Import added at line 219. `avatarUrl` field added to node data in `convertAgentsToNodes()` in network.js for system agents (line 426) and regular agents (line 460), sourced from `agent.avatar_url`. |
 | 2026-03-03 | **Replace Context Bar with Success Rate Bar (Issue #60)**: AgentNode.vue (lines 104-130) now displays a success rate progress bar instead of context usage bar. Dual-window display: 24h primary bar + 7d secondary text when both available; 7d-only bar when no 24h data; gray dash when no data. Color coding: Green (>=90%), Yellow (50-89%), Red (<50%). SystemAgentNode.vue (lines 52-75) updated similarly with 24h-only success bar in stats row. Removed computed properties: `contextPercentDisplay`, `showProgressBar`, `progressBarColor`. Added computed properties: `successBarPercent`, `hasSuccessData`, `has7dOnly`, `show7dSecondary`, `successRate7d`, `successBarColor`, `successBarColorText`, `successBarColor7d`, `successBarColorText7d`. network.js `fetchExecutionStats()` now calls `/api/agents/execution-stats` with `{ params: { include_7d: true } }` and stores `taskCount7d`/`successRate7d`. Backend: Added `include_7d: bool = False` parameter to `/api/agents/execution-stats` (agents.py:180-246). New `get_all_agents_execution_stats_dual()` method (db/schedules.py:788-846) computes both 24h and 7d stats in single SQL query. Facade method added to database.py:556-558. Context polling still runs for activity state detection. |
 | 2026-03-02 | **Dashboard Filter Persistence (FILTER-001)**: Time range and quick tags now persist to localStorage. Added `trinity-dashboard-time-range` (number) and `trinity-dashboard-quick-tags` (JSON array) keys. Quick tags are cleared when a System View is selected. Restored on mount via `Dashboard.vue:583-593`. Updated LocalStorage Persistence table with all persisted keys. See [dashboard-timeline-view.md](dashboard-timeline-view.md) for full details. |
 | 2026-02-27 | **Dashboard Timeline Refresh Fix (REFRESH-001)**: Added WebSocket heartbeat (ping/pong every 30s) to prevent silent disconnection after 60-120s idle. Backend: `main.py:362-376` ping handler. Frontend: `startWebSocketHeartbeat()`, `stopWebSocketHeartbeat()` in network.js. Added `handleActivityStatusChange()` for `agent_activity` events. Added fallback activity polling (60s) via `startActivityRefresh()`, `stopActivityRefresh()`. Dashboard.vue lifecycle updated to start/stop activity refresh. |
@@ -1800,7 +1810,8 @@ INFO: 172.28.0.6:57454 - "GET /api/agents/context-stats HTTP/1.1" 200 OK        
 
 ### Code Files
 - `src/frontend/src/views/Dashboard.vue` - Main view with Agent Network visualization
-- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node with success rate bar (lines 104-130) and execution stats (lines 132-149)
+- `src/frontend/src/components/AgentNode.vue` - Custom Vue Flow node with AgentAvatar (line 28), success rate bar (lines 105-131), and execution stats (lines 133-150)
+- `src/frontend/src/components/AgentAvatar.vue` - Reusable avatar component (avatar image with initials-based gradient fallback)
 - `src/frontend/src/components/SystemAgentNode.vue` - System agent node with success rate bar in stats row (lines 52-75)
 - `src/frontend/src/stores/network.js` - Pinia store for graph state, `fetchExecutionStats()` with `include_7d: true` (lines 922-963)
 - `src/frontend/src/router/index.js` - Routes (/ for Dashboard, /network redirects to /)

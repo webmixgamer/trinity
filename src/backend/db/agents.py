@@ -799,6 +799,50 @@ class AgentOperations:
 
         return False
 
+    # =========================================================================
+    # Avatar Identity (AVATAR-001)
+    # =========================================================================
+
+    def set_avatar_identity(self, agent_name: str, prompt: str, updated_at: str) -> bool:
+        """Set avatar identity prompt and updated timestamp for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership
+                SET avatar_identity_prompt = ?, avatar_updated_at = ?
+                WHERE agent_name = ?
+            """, (prompt, updated_at, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_avatar_identity(self, agent_name: str) -> Optional[Dict]:
+        """Get avatar identity prompt and metadata for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT avatar_identity_prompt, avatar_updated_at
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row and row["avatar_identity_prompt"]:
+                return {
+                    "identity_prompt": row["avatar_identity_prompt"],
+                    "updated_at": row["avatar_updated_at"],
+                }
+            return None
+
+    def clear_avatar_identity(self, agent_name: str) -> bool:
+        """Clear avatar identity prompt and timestamp for an agent."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership
+                SET avatar_identity_prompt = NULL, avatar_updated_at = NULL
+                WHERE agent_name = ?
+            """, (agent_name,))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def get_all_agent_metadata(self, user_email: str = None) -> Dict[str, Dict]:
         """
         Fetch all agent metadata in a SINGLE query.
@@ -833,6 +877,7 @@ class AgentOperations:
                     COALESCE(ao.use_platform_api_key, 1) as use_platform_api_key,
                     ao.memory_limit,
                     ao.cpu_limit,
+                    ao.avatar_updated_at,
                     gc.github_repo,
                     gc.working_branch as github_branch,
                     CASE
@@ -861,6 +906,7 @@ class AgentOperations:
                     "github_repo": row["github_repo"],
                     "github_branch": row["github_branch"],
                     "is_shared_with_user": bool(row["is_shared_with_user"]),
+                    "avatar_updated_at": row["avatar_updated_at"],
                 }
 
             return result

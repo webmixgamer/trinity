@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-03-03 - **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call from `start_agent_internal()`. `check_api_key_env_matches()` now performs three-way env var check (subscription token, API key, or neither). `recreate_container_with_updated_config()` manages `CLAUDE_CODE_OAUTH_TOKEN` env var directly.
+> **Updated**: 2026-03-07 - **AVATAR-001: Avatar lifecycle integration**: Delete agent now cleans up cached avatar file (`/data/avatars/{name}.png`). Rename agent now renames avatar file. Get agent response now includes `avatar_url` field from avatar identity data.
+>
+> **Previous (2026-03-03)**: **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call from `start_agent_internal()`. `check_api_key_env_matches()` now performs three-way env var check (subscription token, API key, or neither). `recreate_container_with_updated_config()` manages `CLAUDE_CODE_OAUTH_TOKEN` env var directly.
 >
 > **Previous (2026-03-02)**: **Subscription credential priority fix (Issue #57)**: `check_api_key_env_matches()` now detects subscription + API key conflict. Container recreation removes `ANTHROPIC_API_KEY` when subscription assigned. Authentication Model corrected: API key takes precedence over OAuth in Claude Code.
 >
@@ -220,6 +222,17 @@ class AgentStatus(BaseModel):
     template: Optional[str] = None
 ```
 
+**Response Enrichment** (`src/backend/routers/agents.py:309-314` - AVATAR-001):
+The `GET /api/agents/{agent_name}` response dict is enriched with `avatar_url`:
+```python
+# Avatar URL (AVATAR-001)
+identity = db.get_avatar_identity(agent_name)
+if identity and identity.get("updated_at"):
+    agent_dict["avatar_url"] = f"/api/agents/{agent_name}/avatar?v={identity['updated_at']}"
+else:
+    agent_dict["avatar_url"] = None
+```
+
 ### Endpoints
 
 #### Create Agent (`src/backend/routers/agents.py:189-192`)
@@ -288,8 +301,12 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
     # Delete MCP API key (line 272-276)
     # Delete agent permissions (line 278-282)
     # Delete shared folder config (line 284-294)
-    # Delete ownership (line 296) - cascades to shares
-    # Broadcast WebSocket (line 298-302), audit log (line 304-311)
+    # Delete agent tags (line 416-420)
+    # Delete cached avatar file (AVATAR-001, line 422-428):
+    #   avatar_path = Path("/data/avatars") / f"{agent_name}.png"
+    #   if avatar_path.exists(): avatar_path.unlink()
+    # Delete ownership (line 430) - cascades to shares
+    # Broadcast WebSocket (line 432-436), return response (line 438)
 ```
 
 #### Rename Agent (RENAME-001) (`src/backend/routers/agents.py:1361-1460`)
@@ -304,8 +321,10 @@ async def rename_agent_endpoint(agent_name: str, body: RenameAgentRequest, ...):
     3. Stop container if running
     4. Rename Docker container (container.rename())
     5. Update all 17 database tables atomically (db.rename_agent())
-    6. Broadcast WebSocket 'agent_renamed' event
-    7. Return {message, old_name, new_name, was_running}
+    6. Rename cached avatar file (AVATAR-001, line 1511-1518):
+       /data/avatars/{old_name}.png -> /data/avatars/{new_name}.png
+    7. Broadcast WebSocket 'agent_renamed' event
+    8. Return {message, old_name, new_name, was_running}
     """
 ```
 
@@ -820,8 +839,10 @@ await log_audit_event(
 4. **MCP API Key**: Agent's Trinity MCP access key revoked
 5. **Permissions**: Agent-to-agent permissions deleted (source and target)
 6. **Shared Folders**: Shared folder config and shared volume deleted
-7. **Ownership**: Ownership record deleted
-8. **Shares**: All shares cascade deleted via foreign key constraint
+7. **Tags**: Agent tags deleted (ORG-001)
+8. **Avatar File**: Cached avatar image `/data/avatars/{name}.png` deleted (AVATAR-001)
+9. **Ownership**: Ownership record deleted
+10. **Shares**: All shares cascade deleted via foreign key constraint
 
 ---
 
@@ -930,6 +951,7 @@ await log_audit_event(
 - [ ] Sharing records cascade deleted
 - [ ] Schedules deleted
 - [ ] MCP API key deleted
+- [ ] Avatar file deleted (if existed): `/data/avatars/{name}.png` gone
 - [ ] Audit log has `agent_management:delete` event
 
 **Edge Cases**:
@@ -945,7 +967,7 @@ await log_audit_event(
 
 ---
 
-**Last Updated**: 2026-03-03
+**Last Updated**: 2026-03-07
 **Status**: Working (all CRUD operations functional with Trinity injection)
 **Issues**: None - agent lifecycle fully operational with service layer architecture and Trinity meta-prompt injection
 
@@ -955,6 +977,7 @@ await log_audit_event(
 
 | Date | Changes |
 |------|---------|
+| 2026-03-07 | **AVATAR-001: Avatar lifecycle integration**: Delete agent now cleans up `/data/avatars/{name}.png` (agents.py:422-428). Rename agent now renames avatar file from old to new name (agents.py:1511-1518). Get agent response enriched with `avatar_url` field from `db.get_avatar_identity()` (agents.py:309-314). Added avatar file to cascading deletes list. |
 | 2026-03-03 | **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call and `subscription_result`/`subscription_status` from `start_agent_internal()` return dict. `check_api_key_env_matches()` now performs three-way check: subscription (must have token, no API key), platform key (must have key, no token), neither (both absent). `recreate_container_with_updated_config()` sets/removes `CLAUDE_CODE_OAUTH_TOKEN` alongside `ANTHROPIC_API_KEY`. |
 | 2026-03-02 | **Subscription credential priority fix (Issue #57)**: Updated Authentication Model to reflect correct Claude Code credential priority (API key > OAuth). `check_api_key_env_matches()` now subscription-aware -- detects subscription + API key conflict and triggers container recreation to remove `ANTHROPIC_API_KEY`. `recreate_container_with_updated_config()` omits API key when subscription assigned. Updated `start_agent_internal()` code block to match current implementation (includes subscription injection step). Updated container recreation line references. |
 | 2026-03-01 | **Agent Rename (RENAME-001)**: Added `PUT /api/agents/{name}/rename` endpoint (agents.py:1370-1510), `rename_agent` MCP tool (agents.ts:263-296), `renameAgent()` client method (client.ts:277-296), `db.rename_agent()` for atomic 17-table update (db/agents.py:624-780), `db.can_user_rename_agent()` permission check (db/agents.py:781-800), `container_rename()` async wrapper (docker_utils.py:82-90). Frontend: Pencil icon in AgentHeader.vue (lines 26-35), inline editing with Enter/Escape, `renameAgent()` handler in AgentDetail.vue (lines 460-494). System agents protected from rename. WebSocket `agent_renamed` event broadcast. |

@@ -1,0 +1,238 @@
+"""
+Operator Queue Sync Service (OPS-001).
+
+Background service that polls agent containers for operator-queue.json files,
+syncs new requests to the database, and writes operator responses back to
+agent files.
+
+Polling cycle:
+  1. Get list of running agents
+  2. For each agent, read ~/.trinity/operator-queue.json
+  3. Detect new 'pending' entries -> create DB records, broadcast WebSocket
+  4. Detect 'acknowledged' entries -> update DB records
+  5. Write operator responses back to agent JSON files
+  6. Handle expired entries
+"""
+
+import asyncio
+import json
+import logging
+from typing import Optional
+
+from database import db
+from services.agent_client import AgentClient
+
+logger = logging.getLogger(__name__)
+
+# WebSocket manager injected from main.py
+_websocket_manager = None
+
+QUEUE_FILE_PATH = ".trinity/operator-queue.json"
+DEFAULT_POLL_INTERVAL = 5  # seconds
+
+
+def set_websocket_manager(manager):
+    """Set the WebSocket manager for broadcasting events."""
+    global _websocket_manager
+    _websocket_manager = manager
+
+
+class OperatorQueueSyncService:
+    """Background service that syncs operator queue files with the database."""
+
+    def __init__(self, poll_interval: int = DEFAULT_POLL_INTERVAL):
+        self.poll_interval = poll_interval
+        self._task: Optional[asyncio.Task] = None
+        self._running = False
+
+    def start(self):
+        """Start the background polling loop."""
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._poll_loop())
+        logger.info(f"Operator queue sync service started (interval={self.poll_interval}s)")
+
+    def stop(self):
+        """Stop the background polling loop."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        logger.info("Operator queue sync service stopped")
+
+    async def _poll_loop(self):
+        """Main polling loop."""
+        while self._running:
+            try:
+                await self._poll_cycle()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Operator queue sync error: {e}")
+
+            try:
+                await asyncio.sleep(self.poll_interval)
+            except asyncio.CancelledError:
+                break
+
+    async def _poll_cycle(self):
+        """Single poll cycle: sync all running agents."""
+        from services.docker_service import list_all_agents_fast
+
+        try:
+            agents = list_all_agents_fast()
+        except Exception as e:
+            logger.debug(f"Could not list agents: {e}")
+            return
+
+        running_agents = [a.name for a in agents if a.status == "running"]
+        if not running_agents:
+            return
+
+        # Expire items past their deadline
+        expired_count = db.mark_operator_queue_expired()
+        if expired_count > 0:
+            logger.info(f"Expired {expired_count} operator queue items")
+
+        # Sync each agent concurrently (with a reasonable limit)
+        tasks = [self._sync_agent(name) for name in running_agents]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _sync_agent(self, agent_name: str):
+        """Sync a single agent's operator queue file."""
+        client = AgentClient(agent_name)
+
+        # 1. Read the queue file from the agent
+        try:
+            result = await client.read_file(QUEUE_FILE_PATH, timeout=5.0)
+        except Exception:
+            # Agent not reachable or file API not ready — skip silently
+            return
+
+        if not result.get("success") or result.get("not_found"):
+            return  # No queue file — agent doesn't use operator queue
+
+        content = result.get("content")
+        if not content:
+            return
+
+        try:
+            queue_data = json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON in operator-queue.json for {agent_name}")
+            return
+
+        requests = queue_data.get("requests", [])
+        if not requests:
+            return
+
+        # 2. Process each request
+        new_items = []
+        acknowledged_items = []
+
+        for req in requests:
+            req_id = req.get("id")
+            if not req_id:
+                continue
+
+            req_status = req.get("status", "pending")
+
+            if req_status == "pending" and not db.operator_queue_item_exists(req_id):
+                # New item — create in DB
+                try:
+                    db.create_operator_queue_item(agent_name, req)
+                    new_items.append(req)
+                except Exception as e:
+                    logger.error(f"Failed to create queue item {req_id}: {e}")
+
+            elif req_status == "acknowledged":
+                # Agent acknowledged our response
+                if db.mark_operator_queue_acknowledged(req_id):
+                    acknowledged_items.append(req_id)
+
+        # 3. Broadcast new items via WebSocket
+        if new_items and _websocket_manager:
+            for item in new_items:
+                try:
+                    await _websocket_manager.broadcast(json.dumps({
+                        "type": "operator_queue_new",
+                        "data": {
+                            "id": item["id"],
+                            "agent_name": agent_name,
+                            "type": item.get("type", "question"),
+                            "priority": item.get("priority", "medium"),
+                            "title": item.get("title", ""),
+                            "created_at": item.get("created_at", ""),
+                        }
+                    }))
+                except Exception as e:
+                    logger.error(f"Failed to broadcast queue event: {e}")
+
+        if acknowledged_items and _websocket_manager:
+            for ack_id in acknowledged_items:
+                try:
+                    await _websocket_manager.broadcast(json.dumps({
+                        "type": "operator_queue_acknowledged",
+                        "data": {
+                            "id": ack_id,
+                            "agent_name": agent_name,
+                        }
+                    }))
+                except Exception:
+                    pass
+
+        # 4. Write responses back to the agent's file
+        responded_items = db.get_operator_queue_responded_for_agent(agent_name)
+        if responded_items:
+            await self._write_responses_to_agent(agent_name, client, queue_data, responded_items)
+
+    async def _write_responses_to_agent(
+        self,
+        agent_name: str,
+        client: AgentClient,
+        queue_data: dict,
+        responded_items: list,
+    ):
+        """Write operator responses back to the agent's queue file."""
+        requests = queue_data.get("requests", [])
+        updated = False
+
+        # Build a lookup of responded items by ID
+        response_map = {item["id"]: item for item in responded_items}
+
+        for req in requests:
+            req_id = req.get("id")
+            if req_id in response_map and req.get("status") == "pending":
+                resp = response_map[req_id]
+                req["status"] = "responded"
+                req["response"] = resp["response"]
+                req["response_text"] = resp.get("response_text")
+                req["responded_by"] = resp.get("responded_by_email")
+                req["responded_at"] = resp.get("responded_at")
+                updated = True
+
+        if not updated:
+            return
+
+        # Write the updated file back to the agent
+        try:
+            new_content = json.dumps(queue_data, indent=2)
+            result = await client.write_file(
+                QUEUE_FILE_PATH,
+                new_content,
+                timeout=10.0,
+                platform=True,  # Allow writes to .trinity directory
+            )
+            if result.get("success"):
+                logger.info(f"Wrote {len(response_map)} responses back to {agent_name}")
+            else:
+                logger.warning(
+                    f"Failed to write responses to {agent_name}: {result.get('error')}"
+                )
+        except Exception as e:
+            logger.error(f"Error writing responses to {agent_name}: {e}")
+
+
+# Global service instance
+operator_queue_service = OperatorQueueSyncService()

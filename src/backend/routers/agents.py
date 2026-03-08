@@ -8,6 +8,7 @@ import os
 import json
 import docker
 import logging
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, WebSocket
 from pydantic import BaseModel
@@ -305,6 +306,13 @@ async def get_agent_endpoint(agent_name: AuthorizedAgentByName, request: Request
     read_only_data = db.get_read_only_mode(agent_name)
     agent_dict["read_only_enabled"] = read_only_data["enabled"]
 
+    # Avatar URL (AVATAR-001)
+    identity = db.get_avatar_identity(agent_name)
+    if identity and identity.get("updated_at"):
+        agent_dict["avatar_url"] = f"/api/agents/{agent_name}/avatar?v={identity['updated_at']}"
+    else:
+        agent_dict["avatar_url"] = None
+
     if agent_dict["can_share"]:
         shares = db.get_agent_shares(agent_name)
         agent_dict["shares"] = [s.dict() for s in shares]
@@ -410,6 +418,14 @@ async def delete_agent_endpoint(agent_name: str, request: Request, current_user:
         db.delete_agent_tags(agent_name)
     except Exception as e:
         logger.warning(f"Failed to delete tags for agent {agent_name}: {e}")
+
+    # Delete cached avatar (AVATAR-001)
+    try:
+        avatar_path = Path("/data/avatars") / f"{agent_name}.png"
+        if avatar_path.exists():
+            avatar_path.unlink()
+    except Exception as e:
+        logger.warning(f"Failed to delete avatar for agent {agent_name}: {e}")
 
     db.delete_agent_ownership(agent_name)
 
@@ -1491,6 +1507,15 @@ async def rename_agent_endpoint(
                 status_code=500,
                 detail="Failed to update database. Agent name may already be taken."
             )
+
+        # Rename cached avatar file (AVATAR-001)
+        try:
+            old_avatar = Path("/data/avatars") / f"{agent_name}.png"
+            new_avatar = Path("/data/avatars") / f"{sanitized_name}.png"
+            if old_avatar.exists():
+                old_avatar.rename(new_avatar)
+        except Exception as e:
+            logger.warning(f"Failed to rename avatar for agent {agent_name}: {e}")
 
         # Broadcast rename event
         event = {

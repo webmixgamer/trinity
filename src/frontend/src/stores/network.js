@@ -422,7 +422,8 @@ export const useNetworkStore = defineStore('network', () => {
           activityState: systemAgent.status === 'running' ? 'idle' : 'offline',
           memoryLimit: systemAgent.memory_limit || null,
           cpuLimit: systemAgent.cpu_limit || null,
-          tags: systemAgent.tags || []
+          tags: systemAgent.tags || [],
+          avatarUrl: systemAgent.avatar_url || null
         },
         position: savedPositions[systemAgent.name] || systemDefaultPosition,
         draggable: true
@@ -455,7 +456,8 @@ export const useNetworkStore = defineStore('network', () => {
             activityState: agent.status === 'running' ? 'idle' : 'offline',
             memoryLimit: agent.memory_limit || null,
             cpuLimit: agent.cpu_limit || null,
-            tags: agent.tags || []
+            tags: agent.tags || [],
+            avatarUrl: agent.avatar_url || null
           },
           position: savedPositions[agent.name] || defaultPosition,
           draggable: true

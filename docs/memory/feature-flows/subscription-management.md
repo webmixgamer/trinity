@@ -1050,7 +1050,16 @@ MCP client methods: `src/mcp-server/src/client.ts:946-1063`
 | Subscription not found | 404 | "Subscription '{name}' not found" |
 | Agent not found | 400 | "Agent {name} not found in ownership table" |
 | User not found | 404 | "User not found" |
+| Subscription usage exhausted | 429 | "Subscription usage limit: [reset message]. To resolve: (1) wait for reset, (2) set ANTHROPIC_API_KEY, or (3) assign different subscription" |
 | Failed registration | 500 | "Failed to register subscription: {error}" |
+
+### Rate Limit Detection
+
+When Claude Code hits subscription usage limits, the error is detected from the stream-json output:
+- `assistant` messages with `"error": "rate_limit"` field
+- `result` messages with `"is_error": true` and text matching usage limit patterns
+
+The error flows through: Claude Code → `process_stream_line()` (stores in `metadata.error_type`) → `execute_claude_code()`/`execute_headless_task()` (raises HTTP 429) → backend gateway (preserves 429) → frontend (amber warning styling with "Subscription Usage Limit" header).
 
 ---
 

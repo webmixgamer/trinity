@@ -25,6 +25,7 @@
       <!-- Header with name, runtime badge, system badge, and status dot -->
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center flex-1 mr-2 min-w-0">
+          <AgentAvatar :name="data.label" :avatar-url="data.avatarUrl" size="md" class="mr-2 flex-shrink-0" />
           <div
             class="nodrag text-gray-900 dark:text-white font-bold text-base truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
             :title="data.label"
@@ -215,6 +216,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Handle, Position } from '@vue-flow/core'
+import AgentAvatar from './AgentAvatar.vue'
 import RuntimeBadge from './RuntimeBadge.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
 import AutonomyToggle from './AutonomyToggle.vue'

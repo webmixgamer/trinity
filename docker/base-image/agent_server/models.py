@@ -86,6 +86,8 @@ class ExecutionMetadata(BaseModel):
     cache_creation_tokens: int = 0
     cache_read_tokens: int = 0
     context_window: int = 200000  # Default max context
+    error_type: Optional[str] = None  # Error classification from Claude Code (e.g., "rate_limit")
+    error_message: Optional[str] = None  # Human-readable error message from Claude Code
 
 
 # ============================================================================

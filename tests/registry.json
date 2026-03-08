@@ -26,6 +26,13 @@
       "added": "2026-03-05",
       "categories": ["backend", "api", "permissions", "nevermined"],
       "description": "Tests for Nevermined config read/write permission split: owner CRUD, unauthenticated rejection, nonexistent agent handling"
+    },
+    {
+      "file": "test_operator_queue.py",
+      "feature": "OPS-001",
+      "added": "2026-03-07",
+      "categories": ["backend", "api", "operator-queue", "operating-room"],
+      "description": "Tests for Operator Queue API: list/get/respond/cancel items, stats, auth requirements, agent-specific queries, input validation"
     }
   ]
 }

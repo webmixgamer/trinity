@@ -28,6 +28,8 @@ Migration Order (as of 2026-02-28):
 21. agent_ownership_parallel_capacity - CAPACITY-001 parallel execution slots
 22. schedule_model_selection - MODEL-001 model selection for tasks/schedules
 23. nevermined_tables - NVM-001 Nevermined payment integration tables
+24. agent_avatar_columns - AVATAR-001 AI-generated agent avatar support
+25. operator_queue_table - OPS-001 Operator Queue & Operating Room
 """
 
 
@@ -61,6 +63,8 @@ def run_all_migrations(cursor, conn):
         ("agent_ownership_parallel_capacity", _migrate_agent_ownership_parallel_capacity),
         ("schedule_model_selection", _migrate_schedule_model_selection),
         ("nevermined_tables", _migrate_nevermined_tables),
+        ("agent_avatar_columns", _migrate_agent_avatar_columns),
+        ("operator_queue_table", _migrate_operator_queue_table),
     ]
 
     for name, migration_fn in migrations:
@@ -637,4 +641,63 @@ def _migrate_nevermined_tables(cursor, conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_config_agent ON nevermined_agent_config(agent_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_agent ON nevermined_payment_log(agent_name, created_at DESC)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nvm_payment_log_execution ON nevermined_payment_log(execution_id)")
+    conn.commit()
+
+
+def _migrate_agent_avatar_columns(cursor, conn):
+    """Add avatar columns to agent_ownership table (AVATAR-001).
+
+    - avatar_identity_prompt: User's character description for avatar generation
+    - avatar_updated_at: ISO timestamp for cache-busting
+    """
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    new_columns = [
+        ("avatar_identity_prompt", "TEXT"),
+        ("avatar_updated_at", "TEXT"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            print(f"Adding {col_name} column to agent_ownership for avatar support...")
+            cursor.execute(f"ALTER TABLE agent_ownership ADD COLUMN {col_name} {col_type}")
+
+    conn.commit()
+
+
+def _migrate_operator_queue_table(cursor, conn):
+    """Create operator_queue table for Operator Queue & Operating Room (OPS-001).
+
+    Stores queue items from agents requesting operator input:
+    approvals, questions, and alerts with response tracking.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS operator_queue (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            title TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT,
+            context TEXT,
+            execution_id TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            response TEXT,
+            response_text TEXT,
+            responded_by_id TEXT,
+            responded_by_email TEXT,
+            responded_at TEXT,
+            acknowledged_at TEXT,
+            FOREIGN KEY (responded_by_id) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operator_queue_agent ON operator_queue(agent_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operator_queue_status ON operator_queue(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operator_queue_priority ON operator_queue(priority)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operator_queue_type ON operator_queue(type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operator_queue_created ON operator_queue(created_at DESC)")
     conn.commit()

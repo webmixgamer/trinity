@@ -62,6 +62,8 @@ TABLES = {
             read_only_config TEXT,
             subscription_id TEXT,
             max_parallel_tasks INTEGER DEFAULT 3,
+            avatar_identity_prompt TEXT,
+            avatar_updated_at TEXT,
             FOREIGN KEY (owner_id) REFERENCES users(id),
             FOREIGN KEY (subscription_id) REFERENCES subscription_credentials(id)
         )
@@ -523,6 +525,33 @@ TABLES = {
         )
     """,
 
+    # -------------------------------------------------------------------------
+    # Operator Queue Tables (OPS-001)
+    # -------------------------------------------------------------------------
+    "operator_queue": """
+        CREATE TABLE IF NOT EXISTS operator_queue (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            title TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT,
+            context TEXT,
+            execution_id TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            response TEXT,
+            response_text TEXT,
+            responded_by_id TEXT,
+            responded_by_email TEXT,
+            responded_at TEXT,
+            acknowledged_at TEXT,
+            FOREIGN KEY (responded_by_id) REFERENCES users(id)
+        )
+    """,
+
     # Nevermined Payment Integration (NVM-001)
     "nevermined_agent_config": """
         CREATE TABLE IF NOT EXISTS nevermined_agent_config (
@@ -666,6 +695,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_slack_verifications_user ON slack_user_verifications(slack_user_id, slack_team_id)",
     "CREATE INDEX IF NOT EXISTS idx_slack_verifications_link ON slack_user_verifications(link_id)",
     "CREATE INDEX IF NOT EXISTS idx_slack_pending_user ON slack_pending_verifications(slack_user_id, slack_team_id)",
+
+    # Operator queue indexes (OPS-001)
+    "CREATE INDEX IF NOT EXISTS idx_operator_queue_agent ON operator_queue(agent_name)",
+    "CREATE INDEX IF NOT EXISTS idx_operator_queue_status ON operator_queue(status)",
+    "CREATE INDEX IF NOT EXISTS idx_operator_queue_priority ON operator_queue(priority)",
+    "CREATE INDEX IF NOT EXISTS idx_operator_queue_type ON operator_queue(type)",
+    "CREATE INDEX IF NOT EXISTS idx_operator_queue_created ON operator_queue(created_at DESC)",
 
     # Nevermined payment indexes (NVM-001)
     "CREATE INDEX IF NOT EXISTS idx_nvm_config_agent ON nevermined_agent_config(agent_name)",

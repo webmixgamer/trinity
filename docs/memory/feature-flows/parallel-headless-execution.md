@@ -3,13 +3,14 @@
 > **Requirement**: 12.1 - Parallel Headless Execution
 > **Status**: Implemented
 > **Created**: 2025-12-22
-> **Updated**: 2026-03-08 (session-id UUID fix)
+> **Updated**: 2026-03-07 (ExecutionMetadata error fields)
 > **Verified**: 2026-02-05
 
 ## Revision History
 
 | Date | Changes |
 |------|---------|
+| 2026-03-07 | **ExecutionMetadata Error Fields**: Added `error_type` and `error_message` fields to `ExecutionMetadata` model (`models.py:89-90`). Populated during stream parsing in `claude_code.py` from two sources: `result` messages with `is_error=true` (line 294-301, classifies as `rate_limit` or `execution_error`) and `assistant` messages with `error` field (line 331-339, uses Claude Code's classification directly). Enables the platform to distinguish rate limits from other failures for better error handling (429 vs 503). |
 | 2026-03-08 | **Session ID UUID Fix**: Fixed `--session-id` validation failure. Claude Code requires `--session-id` to be a valid UUID but `execution_id` (from `secrets.token_urlsafe(16)`) is a base64url string. Changed `claude_code.py:725` to always generate `uuid.uuid4()` for `--session-id` instead of reusing `execution_id`. The `execution_id` still tracks the task internally. |
 | 2026-03-06 | **Session Isolation + Permission Validation**: Fixed bug where headless tasks could run with `permissionMode: "default"` instead of `bypassPermissions`, causing all tool calls to be silently denied. Added `--no-session-persistence` and unique `--session-id` per headless task to prevent session file collision with interactive `/api/chat` sessions. Added `permissionMode` validation on the `init` stream-json message — kills process immediately and returns HTTP 503 if bypass not active. Flags skipped when `resume_session_id` is provided (EXEC-023 needs persistence). |
 | 2026-03-04 | **EXEC-024 Service Extraction**: Sync path of `POST /api/agents/{name}/task` refactored. The ~250 lines of inline execution logic (slot acquisition, activity tracking, agent call with retry, sanitization, execution record updates, error handling, slot release) extracted into `TaskExecutionService.execute_task()` in `src/backend/services/task_execution_service.py`. Sync path in `chat.py:713-730` now delegates to the service. `agent_post_with_retry()` moved to the service module and imported back into `chat.py` for use by `/chat` and `_execute_task_background`. Async mode path unchanged (still uses `_execute_task_background` inline). |
@@ -177,6 +178,7 @@ POST /api/task
 
 | File | Line | Purpose |
 |------|------|---------|
+| `models.py` | 75-91 | ExecutionMetadata model (includes `error_type`, `error_message` fields) |
 | `models.py` | 215-232 | ParallelTaskRequest, ParallelTaskResponse models |
 | `services/claude_code.py` | 553-739 | execute_headless_task() — always generates UUID for `--session-id` |
 | `services/gemini_runtime.py` | 489-642 | execute_headless() for Gemini CLI |
@@ -249,7 +251,9 @@ The router (`chat.py:560-812`) still handles: container validation, execution re
     "duration_ms": 5000,
     "input_tokens": 1000,
     "output_tokens": 500,
-    "tool_count": 3
+    "tool_count": 3,
+    "error_type": null,
+    "error_message": null
   },
   "session_id": "uuid",          // Unique per task
   "timestamp": "2025-12-22T...",
@@ -320,6 +324,53 @@ Retrieve the full execution log for any task execution.
 | timeout_seconds | number | 300 | Timeout in seconds (parallel only) |
 | max_turns | number | null | Max agentic turns for runaway prevention (parallel only) |
 | async | boolean | false | Fire-and-forget mode - return immediately with execution_id (parallel only) |
+
+## Execution Error Classification
+
+**Added**: 2026-03-07
+
+The `ExecutionMetadata` model (`docker/base-image/agent_server/models.py:75-91`) includes two fields for error classification:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error_type` | `Optional[str]` | Error classification (e.g., `"rate_limit"`, `"execution_error"`) |
+| `error_message` | `Optional[str]` | Human-readable error message from Claude Code |
+
+### How Errors Are Classified
+
+Errors are detected during stream-json parsing in `docker/base-image/agent_server/services/claude_code.py`:
+
+**Source 1 -- `result` message with `is_error=true`** (line 294-301):
+```python
+if msg.get("is_error") and not metadata.error_type:
+    metadata.error_message = result_text
+    if _is_rate_limit_message(result_text):
+        metadata.error_type = "rate_limit"
+    else:
+        metadata.error_type = "execution_error"
+```
+
+**Source 2 -- `assistant` message with `error` field** (line 331-339):
+```python
+if msg_type == "assistant" and msg.get("error"):
+    metadata.error_type = msg["error"]  # e.g., "rate_limit"
+    # Extract error text from content blocks
+    for block in error_content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            metadata.error_message = block.get("text", "")
+```
+
+### How Error Type Drives HTTP Status Codes
+
+After execution completes, `error_type` determines the HTTP response:
+
+| `error_type` | HTTP Status | Handler Location |
+|--------------|-------------|------------------|
+| `"rate_limit"` | 429 | `claude_code.py:549-555` (chat), `claude_code.py:892-898` (headless) |
+| `"execution_error"` | 503 | Falls through to non-zero return code handling |
+| `null` | 200 | Normal success path |
+
+The `_format_rate_limit_error()` helper (`claude_code.py:623-631`) uses `metadata.error_message` to build an actionable error detail string that suggests resolution steps (wait for reset, set API key, or reassign subscription).
 
 ## Key Differences: Chat vs Task
 

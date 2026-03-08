@@ -137,8 +137,9 @@
       </ChatMessages>
 
       <!-- Error message -->
-      <div v-if="error" class="mx-4 mb-2 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
-        <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+      <div v-if="error" class="mx-4 mb-2 p-3 rounded-lg" :class="isRateLimitError ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800' : 'bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800'">
+        <p v-if="isRateLimitError" class="text-sm font-medium text-amber-700 dark:text-amber-400 mb-1">Subscription Usage Limit</p>
+        <p class="text-sm" :class="isRateLimitError ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'">{{ error }}</p>
       </div>
 
       <!-- Input area -->
@@ -189,6 +190,11 @@ const messages = ref([])
 const loading = ref(false)
 const loadingText = ref('Thinking...')
 const error = ref(null)
+const isRateLimitError = computed(() => {
+  if (!error.value) return false
+  const lower = error.value.toLowerCase()
+  return lower.includes('usage limit') || lower.includes('rate limit') || lower.includes('out of extra usage') || lower.includes('out of usage')
+})
 const messagesRef = ref(null)
 
 // SSE state (THINK-001)

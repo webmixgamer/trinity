@@ -1000,6 +1000,124 @@ The Process Engine supports six step types:
 
 ---
 
+## 24. Platform Image Generation (IMG-001)
+
+> **Design**: Platform-level image generation service using Gemini. Two-step pipeline:
+> prompt refinement (Gemini 2.5 Flash text) + image generation (Gemini 2.5 Flash Image).
+
+### 24.1 Image Generation Service
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: IMG-001
+- **Description**: Core service for generating images from text prompts
+- **Key Features**:
+  - Two-step pipeline: prompt refinement → image generation
+  - Use-case-specific best practices (general, thumbnail, diagram, social)
+  - Configurable aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)
+  - Optional prompt refinement bypass
+  - Singleton pattern, httpx async client
+- **Config**: `GEMINI_API_KEY` environment variable
+
+### 24.2 REST Endpoints
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: IMG-001
+- **Description**: REST API for image generation
+- **Endpoints**:
+  - `POST /api/images/generate` — Generate image from prompt (JWT required)
+  - `GET /api/images/models` — List available models and options (JWT required)
+
+### 24.3 Future: MCP Tools
+- **Status**: ⏳ Not Started
+- **Description**: MCP tools for agents to generate images
+
+### 24.4 Future: Frontend UI
+- **Status**: ⏳ Not Started
+- **Description**: UI for image generation in agent detail or standalone page
+
+---
+
+## 25. AI-Generated Agent Avatars (AVATAR-001)
+
+> **Design**: AI-generated circular avatars for agents using the existing Gemini image generation service.
+> Users provide an identity prompt, the platform generates a consistent avatar cached on disk.
+
+### 25.1 Avatar Generation
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: AVATAR-001
+- **Description**: Generate agent avatars from identity prompts using Gemini image service
+- **Key Features**:
+  - Identity prompt stored in DB (avatar_identity_prompt column)
+  - Avatar use case in image generation prompts (optimized for circular crop, bold colors, digital illustration)
+  - PNG cached at /data/avatars/{agent_name}.png
+  - Cache-busting via avatar_updated_at timestamp
+
+### 25.2 Avatar REST API
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: AVATAR-001
+- **Endpoints**:
+  - `GET /api/agents/{name}/avatar` — Serve cached PNG (JWT, access check)
+  - `GET /api/agents/{name}/avatar/identity` — Get identity prompt + metadata (JWT, access check)
+  - `POST /api/agents/{name}/avatar/generate` — Generate avatar (JWT, owner only)
+  - `DELETE /api/agents/{name}/avatar` — Remove avatar (JWT, owner only)
+
+### 25.3 Avatar UI Components
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: AVATAR-001
+- **Description**: Reusable avatar component with fallback, shown across all agent surfaces
+- **Components**:
+  - `AgentAvatar.vue` — Circular avatar with gradient+initials fallback (sm/md/lg/xl sizes)
+  - `AvatarGenerateModal.vue` — Modal for generating/removing avatars
+- **Integration**: AgentHeader, AgentNode (dashboard), Agents list (3 layouts)
+
+### 25.4 Avatar Lifecycle
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: AVATAR-001
+- **Description**: Avatar files cleaned up on agent delete, renamed on agent rename
+
+---
+
+## 26. Operator Queue & Operating Room (OPS-001)
+
+> **Requirements Doc**: [OPERATOR_QUEUE_OPERATING_ROOM.md](../requirements/OPERATOR_QUEUE_OPERATING_ROOM.md)
+> **Feature Flow**: [operating-room.md](feature-flows/operating-room.md)
+
+### 26.1 Agent-Side Protocol
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: OPS-001-AGENT
+- **Description**: File-based operator queue (`~/.trinity/operator-queue.json`) for agent-to-platform communication. Request types: approval, question, alert. Meta-prompt section teaches agents the protocol.
+- **Files**: `config/trinity-meta-prompt/prompt.md` (Operator Communication section)
+
+### 26.2 Platform File Sync Service
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: OPS-001-SYNC
+- **Description**: Background polling service (5s interval) syncs agent queue files with platform database. Reads new agent requests, writes operator responses back to agent files, handles expiration and acknowledgement.
+- **Files**: `src/backend/services/operator_queue_service.py`
+
+### 26.3 Backend REST API
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: OPS-001-API
+- **Description**: REST API for queue items — list with filters, get single item, submit response, cancel, stats, agent-specific queries. WebSocket events for real-time updates.
+- **Files**: `src/backend/routers/operator_queue.py`, `src/backend/db/operator_queue.py`
+- **Tests**: `tests/test_operator_queue.py` (37 tests)
+
+### 26.4 Operating Room UI
+- **Status**: ✅ Implemented (2026-03-07)
+- **Requirement ID**: OPS-001-UI
+- **Description**: Card-based inbox for processing agent requests. Single-column feed with agent avatars, Open/Resolved tabs, inline response controls with auto-advance. NavBar badge for pending count. WebSocket real-time updates with polling fallback.
+- **Files**: OperatingRoom.vue, QueueCard.vue, ResolvedCard.vue, operatorQueue.js store, NavBar badge
+- **Remaining**: Sound/desktop notifications for critical items
+
+### 26.5 Agent Collaboration Skill
+- **Status**: ⏳ Not Started
+- **Requirement ID**: OPS-001-SKILL
+- **Description**: Marketplace skill teaching agents how to write requests, read responses, escalate, and internalize operator preferences into memory.
+
+### 26.6 MCP Tools
+- **Status**: ⏳ Not Started
+- **Requirement ID**: OPS-001-MCP
+- **Description**: MCP tools for programmatic queue access — list items, respond to requests, get stats. Enables orchestrator agents to auto-process queue items.
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)

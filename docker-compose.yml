@@ -17,6 +17,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}  # Optional - set for production
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}  # For Gemini-powered agents
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}  # For platform image generation (IMG-001)
       - GITHUB_PAT=${GITHUB_PAT:-}
       - HOST_TEMPLATES_PATH=${PWD}/config/agent-templates
       - HOST_META_PROMPT_PATH=${PWD}/config/trinity-meta-prompt

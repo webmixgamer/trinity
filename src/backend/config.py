@@ -99,6 +99,10 @@ CORS_ORIGINS = [
     "http://localhost:8080",
 ] + _extra_origins
 
+# Google Gemini API Key (for platform image generation - IMG-001)
+# Falls back to GOOGLE_API_KEY (used for Gemini-powered agents) if GEMINI_API_KEY not set
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+
 # Default GitHub Template Repositories
 # Just repo identifiers — metadata is fetched from each repo's template.yaml at runtime.
 # Admins can override this list via Settings → GitHub Templates (stored in system_settings).

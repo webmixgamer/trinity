@@ -1,7 +1,25 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg mb-4">
+  <div class="bg-white dark:bg-gray-800 shadow dark:shadow-gray-900 rounded-lg mb-4 relative">
+    <!-- Overlapping Avatar (AVATAR-001) - centered on left edge of card (50% in, 50% out) -->
+    <div class="absolute left-0 top-3 z-10 group -translate-x-1/2">
+      <div class="rounded-full border-[3px] border-indigo-400 dark:border-indigo-500 shadow-lg cursor-pointer" @click="agent.can_share && !agent.is_system ? $emit('open-avatar-modal') : null">
+        <AgentAvatar :name="agent.name" :avatar-url="agent.avatar_url" size="2xl" />
+      </div>
+      <!-- Camera icon overlay on hover (owner only) -->
+      <div
+        v-if="agent.can_share && !agent.is_system"
+        class="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 group-hover:bg-black/40 transition-colors cursor-pointer border-[3px] border-transparent"
+        @click="$emit('open-avatar-modal')"
+      >
+        <svg class="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+    </div>
+
     <!-- ROW 1: Identity + Primary Action -->
-    <div class="p-4 pb-3">
+    <div class="p-4 pb-3 pl-14">
       <div class="flex justify-between items-start">
         <!-- Left: Agent Identity -->
         <div>
@@ -107,7 +125,7 @@
     </div>
 
     <!-- ROW 2: Settings + Stats (combined) -->
-    <div class="px-4 py-2.5 border-t border-gray-100 dark:border-gray-700 flex items-center">
+    <div class="pl-14 pr-4 py-2.5 border-t border-gray-100 dark:border-gray-700 flex items-center">
       <!-- Left side: Mode toggles + Tags -->
       <div class="flex items-center">
         <!-- Autonomy Toggle (not for system agents) -->
@@ -303,6 +321,7 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
+import AgentAvatar from './AgentAvatar.vue'
 import RuntimeBadge from './RuntimeBadge.vue'
 import SparklineChart from './SparklineChart.vue'
 import RunningStateToggle from './RunningStateToggle.vue'
@@ -415,7 +434,8 @@ const emit = defineEmits([
   'update-tags',
   'add-tag',
   'remove-tag',
-  'rename'
+  'rename',
+  'open-avatar-modal'
 ])
 
 // Name editing functions

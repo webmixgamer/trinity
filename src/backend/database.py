@@ -124,6 +124,7 @@ from db.monitoring import MonitoringOperations
 from db.dashboard_history import DashboardHistoryOperations
 from db.slack import SlackOperations
 from db.nevermined import NeverminedOperations
+from db.operator_queue import OperatorQueueOperations
 
 
 def init_database():
@@ -250,6 +251,7 @@ class DatabaseManager:
         self._dashboard_history_ops = DashboardHistoryOperations()
         self._slack_ops = SlackOperations()
         self._nevermined_ops = NeverminedOperations()
+        self._operator_queue_ops = OperatorQueueOperations()
 
     # =========================================================================
     # User Management (delegated to db/users.py)
@@ -408,6 +410,19 @@ class DatabaseManager:
 
     def get_all_agents_parallel_capacity(self):
         return self._agent_ops.get_all_agents_parallel_capacity()
+
+    # =========================================================================
+    # Avatar Identity (delegated to db/agents.py) - AVATAR-001
+    # =========================================================================
+
+    def set_avatar_identity(self, agent_name: str, prompt: str, updated_at: str):
+        return self._agent_ops.set_avatar_identity(agent_name, prompt, updated_at)
+
+    def get_avatar_identity(self, agent_name: str):
+        return self._agent_ops.get_avatar_identity(agent_name)
+
+    def clear_avatar_identity(self, agent_name: str):
+        return self._agent_ops.clear_avatar_identity(agent_name)
 
     # =========================================================================
     # MCP API Key Management (delegated to db/mcp_keys.py)
@@ -1176,6 +1191,43 @@ class DatabaseManager:
 
     def get_nevermined_payment_log_entry(self, log_id):
         return self._nevermined_ops.get_payment_log_entry(log_id)
+
+    # =========================================================================
+    # Operator Queue (delegated to db/operator_queue.py) - OPS-001
+    # =========================================================================
+
+    def create_operator_queue_item(self, agent_name, item):
+        return self._operator_queue_ops.create_item(agent_name, item)
+
+    def get_operator_queue_item(self, item_id):
+        return self._operator_queue_ops.get_item(item_id)
+
+    def list_operator_queue_items(self, **kwargs):
+        return self._operator_queue_ops.list_items(**kwargs)
+
+    def respond_to_operator_queue_item(self, item_id, response, response_text,
+                                        responded_by_id, responded_by_email):
+        return self._operator_queue_ops.respond_to_item(
+            item_id, response, response_text, responded_by_id, responded_by_email
+        )
+
+    def cancel_operator_queue_item(self, item_id):
+        return self._operator_queue_ops.cancel_item(item_id)
+
+    def mark_operator_queue_acknowledged(self, item_id):
+        return self._operator_queue_ops.mark_acknowledged(item_id)
+
+    def mark_operator_queue_expired(self):
+        return self._operator_queue_ops.mark_expired()
+
+    def get_operator_queue_stats(self):
+        return self._operator_queue_ops.get_stats()
+
+    def get_operator_queue_responded_for_agent(self, agent_name):
+        return self._operator_queue_ops.get_responded_items_for_agent(agent_name)
+
+    def operator_queue_item_exists(self, item_id):
+        return self._operator_queue_ops.item_exists(item_id)
 
 
 # Global database manager instance

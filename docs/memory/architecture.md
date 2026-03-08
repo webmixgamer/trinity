@@ -112,6 +112,8 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `processes.py` - Process definition CRUD, execution control (NEW: 2026-01-16)
 - `process_templates.py` - Process template listing and retrieval (NEW: 2026-01-16)
 - `slack.py` - Slack integration (OAuth, events, DM handling) (NEW: 2026-02-25, SLACK-001)
+- `image_generation.py` - Image generation REST endpoints (NEW: 2026-03-07, IMG-001)
+- `avatar.py` - Agent avatar generation and serving endpoints (NEW: 2026-03-07, AVATAR-001)
 
 **Services (`services/`):**
 - `docker_service.py` - Docker container management
@@ -125,6 +127,8 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - `process_engine/` - Process Engine service (NEW: 2026-01-16, see below)
 - `slack_service.py` - Slack API client (OAuth, messaging, verification) (NEW: 2026-02-25, SLACK-001)
 - `task_execution_service.py` - Unified task execution lifecycle (slot mgmt, activity tracking, sanitization) (NEW: 2026-03-04, EXEC-024)
+- `image_generation_service.py` - Platform image generation via Gemini (prompt refinement + image gen) (NEW: 2026-03-07, IMG-001)
+- `image_generation_prompts.py` - Best practices prompts for image generation use cases (NEW: 2026-03-07, IMG-001)
 
 **Logging (`logging_config.py`):**
 - Structured JSON logging for production
@@ -529,6 +533,24 @@ PENDING → RUNNING → COMPLETED
 - `process_failed` - Execution failed
 - `approval_required` - Human approval needed
 
+### Operator Queue (OPS-001)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/operator-queue` | List queue items (filters: status, type, priority, agent_name, since) |
+| GET | `/api/operator-queue/stats` | Queue statistics (counts by status/type/priority/agent) |
+| GET | `/api/operator-queue/{id}` | Get single queue item |
+| POST | `/api/operator-queue/{id}/respond` | Submit operator response |
+| POST | `/api/operator-queue/{id}/cancel` | Cancel pending item |
+| GET | `/api/operator-queue/agents/{name}` | Items for specific agent |
+
+**WebSocket Events (Operator Queue):**
+- `operator_queue_new` — New items synced from agent
+- `operator_queue_responded` — Operator responded to item
+- `operator_queue_acknowledged` — Agent acknowledged response
+
+**Background Service:** `OperatorQueueSyncService` polls running agents every 5s, reads `~/.trinity/operator-queue.json`, syncs to DB, writes responses back.
+
 ### Nevermined Payments (NVM-001)
 
 | Method | Path | Auth | Description |
@@ -858,6 +880,36 @@ CREATE TABLE process_approvals (
 );
 CREATE INDEX idx_process_approvals_status ON process_approvals(status);
 CREATE INDEX idx_process_approvals_execution ON process_approvals(execution_id);
+```
+
+**operator_queue:** (OPS-001 - Operating Room, NEW: 2026-03-07)
+```sql
+CREATE TABLE operator_queue (
+    id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL,
+    type TEXT NOT NULL,                -- approval, question, alert
+    status TEXT NOT NULL DEFAULT 'pending', -- pending, responded, acknowledged, expired, cancelled
+    priority TEXT NOT NULL DEFAULT 'medium', -- critical, high, medium, low
+    title TEXT NOT NULL,
+    question TEXT NOT NULL,
+    options TEXT,                       -- JSON array (approval choices)
+    context TEXT,                       -- JSON metadata from agent
+    execution_id TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT,
+    response TEXT,
+    response_text TEXT,
+    responded_by_id TEXT,
+    responded_by_email TEXT,
+    responded_at TEXT,
+    acknowledged_at TEXT,
+    FOREIGN KEY (responded_by_id) REFERENCES users(id)
+);
+CREATE INDEX idx_opqueue_status ON operator_queue(status);
+CREATE INDEX idx_opqueue_agent ON operator_queue(agent_name);
+CREATE INDEX idx_opqueue_priority ON operator_queue(priority);
+CREATE INDEX idx_opqueue_created ON operator_queue(created_at);
+CREATE INDEX idx_opqueue_agent_status ON operator_queue(agent_name, status);
 ```
 
 **Process Engine Features:**
