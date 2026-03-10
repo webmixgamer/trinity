@@ -387,7 +387,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -460,8 +460,7 @@ const logEntries = computed(() => {
 })
 
 const renderedResponse = computed(() => {
-  if (!execution.value?.response) return ''
-  return marked(execution.value.response)
+  return renderMarkdown(execution.value?.response)
 })
 
 // Methods

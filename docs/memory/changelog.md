@@ -1,4 +1,38 @@
 ### 2026-03-09
+🔒 **Security: Implement immediate actions from security analysis (C-001, C-002, C-003, M-004, M-006, H-002, H-005)**
+
+Seven security fixes from the OWASP-based security analysis:
+
+1. **C-001**: `GET /credentials/encryption-key` restricted to admin-only (`require_admin` dependency)
+2. **C-002**: `/ws` WebSocket endpoint now requires JWT authentication; unauthenticated connections are rejected after 5s timeout. Frontend updated to pass token via query parameter.
+3. **C-003**: `/api/internal/` endpoints now require `X-Internal-Secret` header. Falls back to `SECRET_KEY` if `INTERNAL_API_SECRET` not set. Scheduler updated to pass the header.
+4. **M-004**: All chat router endpoints now use `get_authorized_agent` dependency — users can only interact with agents they own or have been shared access to.
+5. **M-006**: Credential inject/export/import endpoints now use `get_authorized_agent_by_name` — users can only manage credentials for agents they have access to.
+6. **H-002**: Removed `:-changeme` default password fallback from `docker-compose.prod.yml`. Deployment now fails if `ADMIN_PASSWORD` is not set.
+7. **H-005**: All 9 `v-html` instances now use DOMPurify sanitization via shared `utils/markdown.js`. Centralized marked+DOMPurify rendering replaces per-component `marked()` calls.
+
+**Modified files:**
+- `src/backend/routers/credentials.py` — Admin-only encryption key + agent access control
+- `src/backend/main.py` — Authenticated WebSocket with first-message fallback
+- `src/backend/routers/internal.py` — Shared-secret dependency for internal API
+- `src/backend/routers/chat.py` — Agent access control on all endpoints
+- `src/scheduler/config.py` — `internal_api_secret` config field
+- `src/scheduler/service.py` — Pass `X-Internal-Secret` header
+- `docker-compose.yml` — `INTERNAL_API_SECRET` env var for backend + scheduler
+- `docker-compose.prod.yml` — Remove default password, add `INTERNAL_API_SECRET`
+- `src/frontend/src/utils/markdown.js` — New shared DOMPurify+marked utility
+- `src/frontend/src/utils/websocket.js` — Pass JWT token to WebSocket
+- `src/frontend/src/stores/network.js` — Pass JWT token to WebSocket
+- `src/frontend/src/components/chat/ChatBubble.vue` — Use sanitized markdown
+- `src/frontend/src/views/ExecutionDetail.vue` — Use sanitized markdown
+- `src/frontend/src/views/ProcessDocs.vue` — Use sanitized markdown
+- `src/frontend/src/components/DashboardPanel.vue` — Use sanitized markdown
+- `src/frontend/src/components/ProcessChatAssistant.vue` — Use sanitized markdown
+- `src/frontend/src/components/operator/QueueCard.vue` — Use sanitized markdown
+- `src/frontend/src/components/operator/QueueItemDetail.vue` — Use sanitized markdown
+
+---
+
 🔧 **Fix: MCP schedule tools missing timeout_seconds, allowed_tools, and model parameters (#85)**
 
 MCP server's `create_agent_schedule` and `update_agent_schedule` tools now expose `timeout_seconds`, `allowed_tools`, and `model` parameters that the backend already supported. Users can now set custom execution timeouts, restrict tools, and override models when managing schedules via MCP.

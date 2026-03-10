@@ -19,7 +19,7 @@ from models import (
     CredentialImportResponse,
 )
 from config import OAUTH_CONFIGS, BACKEND_URL
-from dependencies import get_current_user
+from dependencies import get_current_user, require_admin, get_authorized_agent_by_name
 from services.docker_service import get_agent_container, get_agent_status_from_container
 
 router = APIRouter(prefix="/api", tags=["credentials"])
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api", tags=["credentials"])
 
 @router.get("/agents/{agent_name}/credentials/status")
 async def get_agent_credentials_status(
-    agent_name: str,
+    agent_name: str = Depends(get_authorized_agent_by_name),
     current_user: User = Depends(get_current_user)
 ):
     """Get credential status from a running agent."""
@@ -149,9 +149,9 @@ async def list_oauth_providers():
 
 @router.post("/agents/{agent_name}/credentials/inject")
 async def inject_credentials(
-    agent_name: str,
     request_body: CredentialInjectRequest,
     request: Request,
+    agent_name: str = Depends(get_authorized_agent_by_name),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -211,8 +211,8 @@ async def inject_credentials(
 
 @router.post("/agents/{agent_name}/credentials/export")
 async def export_credentials(
-    agent_name: str,
     request: Request,
+    agent_name: str = Depends(get_authorized_agent_by_name),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -256,8 +256,8 @@ async def export_credentials(
 
 @router.post("/agents/{agent_name}/credentials/import")
 async def import_credentials(
-    agent_name: str,
     request: Request,
+    agent_name: str = Depends(get_authorized_agent_by_name),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -298,11 +298,13 @@ async def import_credentials(
 @router.get("/credentials/encryption-key")
 async def get_encryption_key(
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin)
 ):
     """
     Get the platform's credential encryption key.
     Enables local agents to encrypt/decrypt .credentials.enc files.
+
+    Security: Admin-only access (C-001).
     """
     key = os.getenv("CREDENTIAL_ENCRYPTION_KEY")
     if not key:

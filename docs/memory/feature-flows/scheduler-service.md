@@ -104,6 +104,7 @@ As a **platform administrator**, I want **scheduled tasks to execute exactly onc
 | `AGENT_TIMEOUT` | `900` | Default agent request timeout (15 min) - can be overridden per-schedule |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `PUBLISH_EVENTS` | `true` | Enable Redis event publishing |
+| `INTERNAL_API_SECRET` | _(empty)_ | Shared secret for backend internal API auth (C-003). Must match backend's `INTERNAL_API_SECRET` or `SECRET_KEY`. |
 
 ---
 
@@ -884,7 +885,7 @@ def create_skipped_execution(
 1. **Database Access**: Read-only access to schedules; write access only to executions
 2. **Lock Tokens**: Random 16-byte hex tokens prevent lock hijacking
 3. **Agent Communication**: Internal Docker network, no external exposure
-4. **No Authentication**: Health endpoints are unauthenticated (internal use only)
+4. **Internal API Auth**: Calls to backend `/api/internal/` endpoints include `X-Internal-Secret` header (C-003, 2026-03-09). Health endpoints remain unauthenticated (internal use only).
 5. **Credential Isolation**: Scheduler has no access to agent credentials
 
 ---

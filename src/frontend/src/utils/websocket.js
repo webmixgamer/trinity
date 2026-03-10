@@ -14,7 +14,8 @@ export function useWebSocket() {
   const connect = () => {
     if (ws.value) return
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+    const token = localStorage.getItem('token')
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${token ? '?token=' + encodeURIComponent(token) : ''}`
     ws.value = new WebSocket(wsUrl)
 
     ws.value.onopen = () => {

@@ -730,9 +730,13 @@ class SchedulerService:
         Returns the activity_id or None if the call fails.
         """
         try:
+            headers = {}
+            if config.internal_api_secret:
+                headers["X-Internal-Secret"] = config.internal_api_secret
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{config.backend_url}/api/internal/activities/track",
+                    headers=headers,
                     json={
                         "agent_name": agent_name,
                         "activity_type": "schedule_start",
@@ -780,9 +784,13 @@ class SchedulerService:
             return
 
         try:
+            headers = {}
+            if config.internal_api_secret:
+                headers["X-Internal-Secret"] = config.internal_api_secret
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{config.backend_url}/api/internal/activities/{activity_id}/complete",
+                    headers=headers,
                     json={
                         "status": status,
                         "details": details,

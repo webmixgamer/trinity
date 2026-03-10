@@ -472,7 +472,8 @@ export const useNetworkStore = defineStore('network', () => {
     // Reset intentional disconnect flag when intentionally connecting
     intentionalDisconnect.value = false
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+    const token = localStorage.getItem('token')
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${token ? '?token=' + encodeURIComponent(token) : ''}`
 
     // Prevent duplicate connections
     if (websocket.value?.readyState === WebSocket.OPEN) {

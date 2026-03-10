@@ -203,14 +203,8 @@
 <script setup>
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { SparklesIcon, PaperAirplaneIcon, CheckIcon } from '@heroicons/vue/24/outline'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import api from '../api'
-
-// Configure marked for simple output
-marked.setOptions({
-  breaks: true,
-  gfm: true
-})
 
 // Props and emits
 const props = defineProps({
@@ -546,10 +540,7 @@ function parseMessageParts(content) {
 
 // Apply YAML to editor
 // Render markdown to HTML
-function renderMarkdown(text) {
-  if (!text) return ''
-  return marked(text)
-}
+// renderMarkdown imported from utils/markdown
 
 // Auto-resize textarea
 function autoResize(event) {

@@ -338,7 +338,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useAgentsStore } from '../stores/agents'
 import SparklineChart from './SparklineChart.vue'
 
@@ -395,11 +395,7 @@ const formatRelativeTime = (isoString) => {
   return `${Math.floor(diffSeconds / 86400)}d ago`
 }
 
-// Render markdown
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  return marked.parse(content)
-}
+// renderMarkdown imported from utils/markdown
 
 // Get trend color
 const getTrendColor = (trend) => {

@@ -20,7 +20,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../../utils/markdown'
 
 const props = defineProps({
   role: {
@@ -34,22 +34,7 @@ const props = defineProps({
   }
 })
 
-// Configure marked for safe, simple output
-marked.setOptions({
-  breaks: true,  // Convert \n to <br>
-  gfm: true      // GitHub Flavored Markdown
-})
-
-// Custom renderer to open links in new window
-const renderer = new marked.Renderer()
-renderer.link = (href, title, text) => {
-  const titleAttr = title ? ` title="${title}"` : ''
-  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
-}
-marked.use({ renderer })
-
 const renderedContent = computed(() => {
-  if (!props.content) return ''
-  return marked(props.content)
+  return renderMarkdown(props.content)
 })
 </script>

@@ -11,6 +11,7 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-09 | SEC | Security hardening: WS auth, internal API secret, agent ACL on chat/credentials, DOMPurify | [credential-injection.md](feature-flows/credential-injection.md), [scheduler-service.md](feature-flows/scheduler-service.md) |
 | 2026-03-08 | AVATAR-003 | Default avatar generation — admin button in Settings, robot/android aesthetic | [agent-avatars.md](feature-flows/agent-avatars.md), [platform-settings.md](feature-flows/platform-settings.md) |
 | 2026-03-08 | OPS-001 | Operating Room — consolidated Events + Cost Alerts into 4-tab layout | [operating-room.md](feature-flows/operating-room.md) |
 | 2026-03-08 | OPS-001 | Operating Room — restart-resilient sync, refresh button, stale prompt detection | [operating-room.md](feature-flows/operating-room.md) |

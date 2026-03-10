@@ -12,6 +12,7 @@ Refactored for better concern separation:
 - routers/: API endpoints organized by domain
 - utils/: Helper functions
 """
+import asyncio
 import json
 from datetime import datetime
 from typing import List
@@ -367,13 +368,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     - Query parameter: /ws?token=<jwt_token>
     - First message after connection (for backward compatibility)
 
-    SECURITY: Authentication is optional for read-only updates,
-    but should be enforced in production for sensitive data.
+    Security (C-002): Authentication is required. Connections without a valid
+    JWT token are rejected. Token can be provided via query parameter or as
+    the first message ("Bearer <token>").
     """
     from jose import JWTError, jwt as jose_jwt
     from config import SECRET_KEY, ALGORITHM
 
-    # Validate token if provided
+    # Validate token if provided via query parameter
     authenticated = False
     username = None
 
@@ -384,11 +386,42 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
             if username:
                 authenticated = True
         except JWTError:
-            # Invalid token - allow connection but mark as unauthenticated
-            # In production, you may want to reject the connection
-            pass
+            await websocket.close(code=4001, reason="Invalid authentication token")
+            return
 
-    await manager.connect(websocket)
+    if not authenticated:
+        # Accept temporarily to allow first-message auth (backward compatibility)
+        await websocket.accept()
+        try:
+            # Wait for auth message with a timeout
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+            if data.startswith("Bearer "):
+                try:
+                    msg_token = data[7:]
+                    payload = jose_jwt.decode(msg_token, SECRET_KEY, algorithms=[ALGORITHM])
+                    username = payload.get("sub")
+                    if username:
+                        authenticated = True
+                        await websocket.send_text(json.dumps({"type": "authenticated", "user": username}))
+                except JWTError:
+                    pass
+
+            if not authenticated:
+                await websocket.close(code=4001, reason="Authentication required")
+                return
+        except (asyncio.TimeoutError, WebSocketDisconnect):
+            try:
+                await websocket.close(code=4001, reason="Authentication required")
+            except Exception:
+                pass
+            return
+
+        # First-message auth succeeded — add to manager
+        manager.active_connections.append(websocket)
+    else:
+        # Token auth succeeded — connect normally
+        await manager.connect(websocket)
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -400,19 +433,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                     await websocket.send_text(json.dumps({"type": "pong"}))
                     continue
             except (json.JSONDecodeError, TypeError):
-                pass  # Not JSON, continue with other handling
-
-            # Could authenticate via first message if not done via query param
-            if not authenticated and data.startswith("Bearer "):
-                try:
-                    msg_token = data[7:]
-                    payload = jose_jwt.decode(msg_token, SECRET_KEY, algorithms=[ALGORITHM])
-                    username = payload.get("sub")
-                    if username:
-                        authenticated = True
-                        await websocket.send_text(json.dumps({"type": "authenticated", "user": username}))
-                except JWTError:
-                    pass
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 

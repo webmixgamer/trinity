@@ -7,7 +7,7 @@ import os
 import json
 import docker
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -492,7 +492,6 @@ async def create_agent_internal(
             _avatar_prompt = template_data.get("avatar_prompt") if template_data else None
             if _avatar_prompt:
                 try:
-                    from datetime import datetime, timezone
                     db.set_default_avatar(config.name, _avatar_prompt, datetime.now(timezone.utc).isoformat())
                     logger.info(f"[AVATAR-003] Seeded avatar prompt from template for {config.name}")
                 except Exception as e:

@@ -57,6 +57,11 @@ class SchedulerConfig:
         "BACKEND_URL", "http://backend:8000"
     ))
 
+    # Internal API shared secret (C-003) - must match backend's INTERNAL_API_SECRET or SECRET_KEY
+    internal_api_secret: str = field(default_factory=lambda: os.getenv(
+        "INTERNAL_API_SECRET", ""
+    ))
+
     # Logging
     log_level: str = field(default_factory=lambda: os.getenv(
         "LOG_LEVEL", "INFO"

@@ -1147,6 +1147,18 @@ Agent starts → If .credentials.enc exists → Decrypt → Write files
 - Isolated network (`172.28.0.0/16`)
 - No external UI port exposure
 
+### Internal API Security (C-003)
+
+Internal endpoints (`/api/internal/`) used by the scheduler and agent containers require shared-secret authentication via `X-Internal-Secret` header. Falls back to `SECRET_KEY` if `INTERNAL_API_SECRET` env var is not set.
+
+### WebSocket Security (C-002)
+
+The `/ws` endpoint requires JWT authentication. Token provided via `?token=` query parameter or as first message (`Bearer <token>`, 5s timeout). Unauthenticated connections are rejected. The `/ws/events` endpoint requires MCP API key authentication (unchanged).
+
+### Frontend XSS Protection (H-005)
+
+All markdown rendering in Vue components uses `DOMPurify` sanitization via `utils/markdown.js`. No direct `v-html` with unsanitized content.
+
 ---
 
 ## External Integrations

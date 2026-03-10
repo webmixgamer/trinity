@@ -844,6 +844,11 @@ The Process Engine supports six step types:
 - HTTPS in production (Let's Encrypt)
 - Container isolation (network, filesystem)
 - Comprehensive audit logging via audit_log table (SEC-001)
+- **Encryption key endpoint admin-only** (C-001, 2026-03-09)
+- **WebSocket authentication required** (C-002, 2026-03-09)
+- **Internal API shared-secret auth** (C-003, 2026-03-09)
+- **Agent access control on chat/credential endpoints** (M-004/M-006, 2026-03-09)
+- **DOMPurify XSS protection on all v-html** (H-005, 2026-03-09)
 
 ### Scalability
 - Support 50+ concurrent agents

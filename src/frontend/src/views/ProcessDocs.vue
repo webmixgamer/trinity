@@ -249,7 +249,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import NavBar from '../components/NavBar.vue'
 import ProcessSubNav from '../components/ProcessSubNav.vue'
 import {
@@ -277,12 +277,6 @@ const showMobileSidebar = ref(false)
 const notification = ref(null)
 const showRestartConfirm = ref(false)
 
-// Configure marked for syntax highlighting
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-})
-
 // Computed
 const currentSlug = computed(() => {
   const slug = route.params.slug
@@ -302,8 +296,7 @@ const currentTitle = computed(() => {
 })
 
 const renderedContent = computed(() => {
-  if (!markdownContent.value) return ''
-  return marked(markdownContent.value)
+  return renderMarkdown(markdownContent.value)
 })
 
 // Navigation helpers

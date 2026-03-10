@@ -191,7 +191,7 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../../utils/markdown'
 import { useOperatorQueueStore } from '../../stores/operatorQueue'
 
 const store = useOperatorQueueStore()
@@ -259,10 +259,7 @@ function statusBadge(status) {
   return badges[status] || ''
 }
 
-function renderMarkdown(text) {
-  if (!text) return ''
-  return marked.parse(text, { breaks: true })
-}
+// renderMarkdown imported from utils/markdown
 
 function formatDate(isoString) {
   if (!isoString) return ''

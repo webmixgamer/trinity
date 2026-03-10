@@ -430,11 +430,12 @@ async def decrypt_and_inject(request: InternalDecryptInjectRequest):
 
 ## Security Considerations
 
-1. **Encryption Key**: AES-256-GCM key derived from `CREDENTIAL_ENCRYPTION_KEY` env var or JWT secret
-2. **File Permissions**: All credential files written with 600 permissions (owner read/write only)
-3. **Internal API**: `/api/internal/*` endpoints accessible only from Docker network (no auth)
-4. **No Secret Logging**: Credential values never logged, only file names and counts
-5. **Git Safety**: `.credentials.enc` is safe to commit - encrypted with platform key
+1. **Encryption Key**: AES-256-GCM key derived from `CREDENTIAL_ENCRYPTION_KEY` env var or JWT secret. The `GET /credentials/encryption-key` endpoint is admin-only (C-001, 2026-03-09).
+2. **Agent Access Control**: All credential endpoints (`inject`, `export`, `import`, `status`) require `get_authorized_agent_by_name` dependency — users can only manage credentials for agents they own or have been shared access to (M-006, 2026-03-09).
+3. **File Permissions**: All credential files written with 600 permissions (owner read/write only)
+4. **Internal API**: `/api/internal/*` endpoints require `X-Internal-Secret` header (C-003, 2026-03-09)
+5. **No Secret Logging**: Credential values never logged, only file names and counts
+6. **Git Safety**: `.credentials.enc` is safe to commit - encrypted with platform key
 
 ---
 

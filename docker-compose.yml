@@ -40,6 +40,8 @@ services:
       - TRINITY_DB_PATH=/data/trinity.db
       # Credential Encryption
       - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-}
+      # Internal API shared secret (C-003) - for scheduler/agent communication
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./src/backend:/app
@@ -162,6 +164,7 @@ services:
       - LOCK_TIMEOUT=600
       - AGENT_TIMEOUT=900
       - PUBLISH_EVENTS=true
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
     volumes:
       - trinity-data:/data
     depends_on:

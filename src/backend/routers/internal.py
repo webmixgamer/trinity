@@ -1,13 +1,16 @@
 """
-Internal endpoints (no authentication required).
+Internal endpoints with shared-secret authentication (C-003).
 
 These endpoints are called by:
 - Agent containers on the Docker network to communicate back to the backend
 - Dedicated scheduler service (trinity-scheduler) for activity tracking
 
-They are not exposed externally.
+Security: Requires X-Internal-Secret header matching INTERNAL_API_SECRET env var.
+Falls back to SECRET_KEY if INTERNAL_API_SECRET is not set.
 """
-from fastapi import APIRouter, HTTPException
+import os
+import hmac
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, Dict
 import logging
@@ -17,9 +20,33 @@ from services.activity_service import activity_service
 
 logger = logging.getLogger(__name__)
 
+
+def _get_internal_secret() -> str:
+    """Get the internal API shared secret."""
+    from config import SECRET_KEY
+    return os.getenv("INTERNAL_API_SECRET") or SECRET_KEY
+
+
+async def verify_internal_secret(request: Request):
+    """
+    Dependency to verify internal API shared secret (C-003).
+
+    Checks the X-Internal-Secret header against the configured secret.
+    """
+    secret = _get_internal_secret()
+    provided = request.headers.get("X-Internal-Secret", "")
+    if not provided or not hmac.compare_digest(provided, secret):
+        logger.warning(f"Internal API request rejected: invalid or missing X-Internal-Secret from {request.client.host}")
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or missing internal API secret"
+        )
+
+
 router = APIRouter(
     prefix="/api/internal",
     tags=["internal"],
+    dependencies=[Depends(verify_internal_secret)],
 )
 
 

@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "description": "Universal infrastructure for deploying Claude Code agent configurations",
     "repository": "project_trinity",
-    "last_updated": "2026-03-01T10:13:00Z"
+    "last_updated": "2026-03-09T16:42:00Z"
   },
   "tech_stack": {
     "frontend": ["Vue.js 3.5", "Tailwind CSS 3.4", "Pinia 2.3", "Vite 6", "Auth0 Vue"],
@@ -55,7 +55,11 @@
       "container_security",
       "gcp_production_deployment",
       "mcp_key_auto_creation",
-      "first_time_setup_ux"
+      "first_time_setup_ux",
+      "websocket_authentication",
+      "internal_api_shared_secret",
+      "agent_access_control_chat",
+      "dompurify_xss_protection"
     ],
     "in_progress": [
       "github_native_agents"

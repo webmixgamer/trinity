@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional
 
 from models import User, ChatMessageRequest, ModelChangeRequest, ParallelTaskRequest, ActivityType, ExecutionSource
-from dependencies import get_current_user
+from dependencies import get_current_user, get_authorized_agent
 from services.docker_service import get_agent_container
 from services.activity_service import activity_service
 from services.execution_queue import get_execution_queue, QueueFullError, AgentBusyError
@@ -57,8 +57,8 @@ async def broadcast_collaboration_event(source_agent: str, target_agent: str, ac
 
 @router.post("/{name}/chat")
 async def chat_with_agent(
-    name: str,
     request: ChatMessageRequest,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user),
     x_source_agent: Optional[str] = Header(None),
     x_via_mcp: Optional[str] = Header(None),
@@ -565,8 +565,8 @@ async def _execute_task_background(
 
 @router.post("/{name}/task")
 async def execute_parallel_task(
-    name: str,
     request: ParallelTaskRequest,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user),
     x_source_agent: Optional[str] = Header(None),
     x_via_mcp: Optional[str] = Header(None),
@@ -820,7 +820,7 @@ async def execute_parallel_task(
 
 @router.get("/{name}/chat/history")
 async def get_agent_chat_history(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Get agent's conversation history."""
@@ -853,7 +853,7 @@ async def get_agent_chat_history(
 
 @router.delete("/{name}/chat/history")
 async def reset_agent_chat_history(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Reset/clear agent's conversation history (start a new session)."""
@@ -894,7 +894,7 @@ async def reset_agent_chat_history(
 
 @router.get("/{name}/chat/session")
 async def get_agent_chat_session(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Get agent's current session info including context usage."""
@@ -929,7 +929,7 @@ async def get_agent_chat_session(
 
 @router.get("/{name}/activity")
 async def get_agent_activity(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Get session activity for real-time monitoring."""
@@ -974,8 +974,8 @@ async def get_agent_activity(
 
 @router.get("/{name}/activity/{tool_id}")
 async def get_agent_activity_detail(
-    name: str,
     tool_id: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Get full details for a specific tool call."""
@@ -1008,7 +1008,7 @@ async def get_agent_activity_detail(
 
 @router.delete("/{name}/activity")
 async def clear_agent_activity(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Clear session activity (called when starting a new session)."""
@@ -1043,7 +1043,7 @@ async def clear_agent_activity(
 
 @router.get("/{name}/model")
 async def get_agent_model(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Get agent's current model configuration."""
@@ -1076,8 +1076,8 @@ async def get_agent_model(
 
 @router.put("/{name}/model")
 async def set_agent_model(
-    name: str,
     request: ModelChangeRequest,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Set agent's model for subsequent messages."""
@@ -1114,9 +1114,9 @@ async def set_agent_model(
 
 @router.get("/{name}/chat/history/persistent")
 async def get_persistent_chat_history(
-    name: str,
     limit: int = 100,
     user_filter: bool = False,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1156,8 +1156,8 @@ async def get_persistent_chat_history(
 
 @router.get("/{name}/chat/sessions")
 async def get_agent_chat_sessions(
-    name: str,
     status: str = None,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1191,9 +1191,9 @@ async def get_agent_chat_sessions(
 
 @router.get("/{name}/chat/sessions/{session_id}")
 async def get_chat_session_detail(
-    name: str,
     session_id: str,
     limit: int = 100,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1229,8 +1229,8 @@ async def get_chat_session_detail(
 
 @router.post("/{name}/chat/sessions/{session_id}/close")
 async def close_chat_session(
-    name: str,
     session_id: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """Close a chat session (marks it as closed but keeps the history)."""
@@ -1263,9 +1263,9 @@ async def close_chat_session(
 
 @router.post("/{name}/executions/{execution_id}/terminate")
 async def terminate_agent_execution(
-    name: str,
     execution_id: str,
     task_execution_id: Optional[str] = None,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1351,7 +1351,7 @@ async def terminate_agent_execution(
 
 @router.get("/{name}/executions/running")
 async def get_agent_running_executions(
-    name: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -1383,8 +1383,8 @@ async def get_agent_running_executions(
 
 @router.get("/{name}/executions/{execution_id}/stream")
 async def stream_execution_log(
-    name: str,
     execution_id: str,
+    name: str = Depends(get_authorized_agent),
     current_user: User = Depends(get_current_user)
 ):
     """

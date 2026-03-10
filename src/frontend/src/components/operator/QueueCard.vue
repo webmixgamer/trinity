@@ -171,7 +171,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../../utils/markdown'
 import { useOperatorQueueStore } from '../../stores/operatorQueue'
 
 const props = defineProps({
@@ -231,10 +231,7 @@ function priorityPill(priority) {
   }[priority] || ''
 }
 
-function renderMarkdown(text) {
-  if (!text) return ''
-  return marked.parse(text, { breaks: true })
-}
+// renderMarkdown imported from utils/markdown
 
 function timeAgo(isoString) {
   const now = new Date()
