@@ -353,7 +353,7 @@ async def public_chat(
         message=context_prompt,
         triggered_by="public",
         source_user_email=source_email,
-        timeout_seconds=120,
+        timeout_seconds=900,
     )
 
     if result.status == "failed":
@@ -656,7 +656,7 @@ async def _execute_public_chat_background(
             message=context_prompt,
             triggered_by="public",
             source_user_email=source_email,
-            timeout_seconds=120,
+            timeout_seconds=900,
             execution_id=execution_id,
         )
 
