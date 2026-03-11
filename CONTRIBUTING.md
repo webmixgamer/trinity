@@ -33,18 +33,21 @@ By contributing to Trinity, you agree that your contributions will be licensed u
 
 ### Pull Requests
 
+See `docs/DEVELOPMENT_WORKFLOW.md` for the full SDLC (Backlog → Ready → In Progress → Dev Testing → Review → Done).
+
 1. **Fork and clone** the repository
-2. **Create a branch** from `main`:
+2. **Find or create an issue** — every PR must link to an issue
+3. **Create a branch** from `main`:
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. **Make your changes** following our coding standards
-4. **Test your changes** locally
-5. **Commit with clear messages**:
+4. **Make your changes** following our coding standards
+5. **Test your changes** locally
+6. **Commit with clear messages**:
    ```bash
    git commit -m "feat: Add support for custom metrics"
    ```
-6. **Push and create a PR** against `main`
+7. **Push and create a PR** against `main` — include `Fixes #N` in the description
 
 ### Commit Message Format
 
@@ -91,7 +94,7 @@ cp .env.example .env
 ./scripts/deploy/start.sh
 
 # 5. Access the platform
-# Web UI: http://localhost:3000
+# Web UI: http://localhost
 # API: http://localhost:8000/docs
 ```
 

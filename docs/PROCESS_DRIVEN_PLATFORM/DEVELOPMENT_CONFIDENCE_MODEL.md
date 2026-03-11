@@ -3,6 +3,7 @@
 > **Purpose**: Define the architectural and testing principles that give developers confidence to ship changes without extensive UI/E2E testing
 > **Philosophy**: If the domain is correct and orchestration is correct, the system "just works"
 > **Date**: 2026-01-17
+> **Scope**: This document applies to the Process Engine domain layer (Phase 14). For the project-wide SDLC, see `docs/DEVELOPMENT_WORKFLOW.md`.
 
 ---
 

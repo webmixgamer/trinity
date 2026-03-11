@@ -350,7 +350,7 @@ Same response as agent server, plus:
 | `src/frontend/src/stores/agents.js` | Replace getAgentMetrics with getAgentDashboard |
 | `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` | Replace Custom Metrics section with Dashboard |
 | `docs/memory/requirements.md` | Update Req 9.9 |
-| `docs/memory/roadmap.md` | Add Dashboard item |
+| GitHub Issues | Create issue for Dashboard item |
 | `config/agent-templates/*/template.yaml` | Remove metrics: section |
 
 ---

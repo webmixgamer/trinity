@@ -12,7 +12,7 @@ Query GitHub Issues to check current priorities, blockers, and work status.
 
 ## Purpose
 
-Provides quick access to roadmap priorities stored in GitHub Issues. Replaces manual roadmap.md lookup with live issue queries.
+Provides quick access to roadmap priorities stored in GitHub Issues and the **Trinity Roadmap** project board. See `docs/DEVELOPMENT_WORKFLOW.md` for the full SDLC.
 
 ## State Dependencies
 

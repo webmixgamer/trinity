@@ -1,198 +1,253 @@
 # Development Workflow
 
 > **For developers and AI assistants** working on this project.
-> This guide explains how to use the project's tools, agents, and documentation effectively.
+> This guide defines Trinity's Software Development Lifecycle (SDLC) and explains how to use the project's tools, agents, and documentation effectively.
 
 ---
 
-## The Development Cycle
+## Software Development Lifecycle (SDLC)
+
+Trinity follows a 6-stage lifecycle. Every piece of work flows through these stages, tracked via the **Trinity Roadmap** GitHub Project board and issue labels.
+
+```
+ Backlog → Ready → In Progress → Dev Testing → Review → Done
+```
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     DEVELOPMENT CYCLE                                │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   1. CONTEXT LOADING                                                │
-│      ↓                                                              │
-│   /read-docs → Load requirements, architecture, roadmap             │
-│      ↓                                                              │
-│   Read relevant feature-flows/* for the area you'll work on         │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   2. DEVELOPMENT                                                    │
-│      ↓                                                              │
-│   Implement changes following existing patterns                     │
-│      ↓                                                              │
-│   Reference feature flows for data flow understanding               │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   3. TESTING                                                        │
-│      ↓                                                              │
-│   test-runner agent → Run test suite (required)                     │
-│      ↓                                                              │
-│   Manual verification → UI/API tests (recommended)                  │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   4. DOCUMENTATION                                                  │
-│      ↓                                                              │
-│   feature-flow-analyzer agent → Create/update feature flows         │
-│      ↓                                                              │
-│   /update-docs → Update changelog, architecture, requirements       │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   5. PR VALIDATION (before merge)                                   │
-│      ↓                                                              │
-│   /validate-pr → Validate PR meets all methodology requirements     │
-│      ↓                                                              │
-│   Review report → APPROVE / REQUEST CHANGES / NEEDS DISCUSSION      │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+│                    TRINITY SDLC                                     │
+├──────────┬──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ BACKLOG  │  Issue created, triaged with priority + type labels      │
+│          │  GitHub Project: Todo                                    │
+│          │                                                          │
+├──────────┼──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ READY    │  Issue refined, acceptance criteria defined               │
+│          │  Label: status-ready                                     │
+│          │  GitHub Project: Todo                                    │
+│          │                                                          │
+├──────────┼──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ IN       │  Developer assigned, branch created                      │
+│ PROGRESS │  Label: status-in-progress                               │
+│          │  GitHub Project: In Progress                             │
+│          │                                                          │
+├──────────┼──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ DEV      │  PR opened, deployed to dev server for validation        │
+│ TESTING  │  Label: status-review                                    │
+│          │  Dev server: dev.abilityai.dev                           │
+│          │                                                          │
+├──────────┼──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ REVIEW   │  /validate-pr passes, code review approved               │
+│          │  PR approved, ready to merge                             │
+│          │                                                          │
+├──────────┼──────────────────────────────────────────────────────────┤
+│          │                                                          │
+│ DONE     │  PR merged to main, issue closed                         │
+│          │  Dev server updated, docs up to date                     │
+│          │  GitHub Project: Done                                    │
+│          │                                                          │
+└──────────┴──────────────────────────────────────────────────────────┘
 ```
+
+### Prioritization
+
+| Priority | Label | Meaning |
+|----------|-------|---------|
+| **P0** | `priority-p0` | Blocking/urgent — drop everything |
+| **P1** | `priority-p1` | Critical path — current focus |
+| **P2** | `priority-p2` | Important — next up |
+| **P3** | `priority-p3` | Nice-to-have — when time allows |
+
+Within P1, the **Tier** field on the project board provides sub-prioritization: **P1a** (highest) → **P1b** → **P1c**.
+
+**Rule**: Work P0 first, then P1 by issue number (oldest first).
+
+### Issue Types
+
+| Label | Purpose |
+|-------|---------|
+| `type-feature` | New functionality |
+| `type-bug` | Bug fix |
+| `type-refactor` | Code improvement |
+| `type-docs` | Documentation |
+
+### Key Rules
+
+- **Every PR links to an issue** — use `Fixes #N` in the PR description
+- **Assign yourself** when you start work on an issue
+- **Keep labels and board in sync** — update both when stage changes
+- **Dev server is the gate** — validate on `dev.abilityai.dev` before merge
+- **No merge without passing `/validate-pr`**
 
 ---
 
-## Phase 1: Context Loading
+## Stage Details
 
-**Always start a development session by loading context.**
+### 1. Backlog
 
-### Option A: Full Context Load (New Session)
+Issues are created via GitHub issue templates (bug report or feature request). On creation:
 
-Use the `/read-docs` command:
+1. Apply **priority** label (P0-P3)
+2. Apply **type** label (feature/bug/refactor/docs)
+3. Add to **Trinity Roadmap** project board (lands in Todo)
+4. Add description with enough context to understand the problem
+
+Issues stay in Backlog until they're refined enough to be actionable.
+
+### 2. Ready
+
+An issue moves to Ready when it has:
+
+- Clear description of what needs to happen
+- Acceptance criteria (how do we know it's done?)
+- No unresolved blockers (if blocked, apply `status-blocked` label)
+
+**Action**: Apply `status-ready` label. Issue stays in "Todo" column on the board.
+
+### 3. In Progress
+
+When picking up work:
+
+1. **Assign yourself** to the issue
+2. Apply `status-in-progress` label, remove `status-ready`
+3. Move to **In Progress** on the project board
+4. Create a feature branch from `main`
+
+Then follow the development cycle:
+
+#### Context Loading
+
+Always start by loading context.
 
 ```
 /read-docs
 ```
 
-This loads:
-- `docs/memory/requirements.md` - Feature requirements (source of truth)
-- `docs/memory/architecture.md` - System design
-- `docs/memory/roadmap.md` - Current priorities
-- `docs/memory/changelog.md` - Recent changes
-
-### Option B: Targeted Context (Specific Feature Work)
-
-If you know what you're working on, load the relevant feature flow directly:
+This loads requirements, architecture, and changelog. For targeted work, read the relevant feature flow directly:
 
 ```
-# Example: Working on user authentication
 @docs/memory/feature-flows/user-login.md
-
-# Example: Working on data export
-@docs/memory/feature-flows/data-export.md
 ```
-
-### Available Feature Flows
 
 See `docs/memory/feature-flows.md` for the complete index.
 
----
-
-## Phase 2: Development
-
-### Before Writing Code
+#### Development
 
 1. **Check requirements**: Does `requirements.md` cover this feature?
-2. **Check roadmap**: Is this the current priority?
-3. **Read feature flow**: Understand existing data flow before modifying
-
-### During Development
-
-- Follow patterns established in existing code
-- Reference feature flows for:
-  - API endpoint locations
-  - Database operations
-  - Event handling
-  - Error handling patterns
-- Use the TodoWrite tool to track multi-step tasks
-
----
-
-## Phase 3: Testing
-
-**Every development session must end with testing.**
-
-### Minimum: Run Test Suite
-
-Use the `test-runner` agent:
-
-```
-Run the tests
-```
-
-This runs the test suite and reports:
-- Pass/fail counts
-- Failure analysis
-- Recommendations
-
-**Test Tiers:**
-- **Smoke tests** (~1min): Quick validation
-- **Core tests** (~5min): Standard validation (default)
-- **Full suite** (~15min): Comprehensive coverage
-
-### Manual Verification
-
-For quick checks during development:
+2. **Read feature flow**: Understand existing data flow before modifying
+3. **Implement**: Follow patterns established in existing code
+4. **Local testing**: Run tests and verify locally
 
 ```bash
-# Application running?
+# Health check
 curl http://localhost:8000/health
 
-# Test specific endpoint
-curl http://localhost:8000/api/endpoint
+# Run tests
+# Use the test-runner agent
 ```
 
----
+#### Documentation
 
-## Phase 4: Documentation
-
-**After tests pass, update documentation.**
-
-### If You Modified Feature Behavior
-
-**Use the `feature-flow-analyzer` agent:**
-
-```
-Analyze and update the feature flow for user-login
-```
-
-Or use the command:
-
-```
-/feature-flow-analysis user-login
-```
-
-This will:
-1. Trace the feature from UI → Backend → Database
-2. Update or create `docs/memory/feature-flows/{feature}.md`
-3. Update the feature flows index
-
-### For All Changes
-
-**Use the `/update-docs` command:**
+After tests pass, update documentation:
 
 ```
 /update-docs
 ```
 
-Claude Code will determine which documents need updates:
-
 | Document | When to Update |
 |----------|----------------|
-| `changelog.md` | Always - add timestamped entry |
+| `changelog.md` | Always — add timestamped entry |
 | `architecture.md` | API changes, schema changes, new integrations |
 | `requirements.md` | New features, scope changes |
-| `roadmap.md` | Task completion, new discoveries |
-| `feature-flows/*.md` | Behavior changes (use analyzer) |
+| `feature-flows/*.md` | Behavior changes (use `/feature-flow-analysis`) |
+
+### 4. Dev Testing
+
+When local development is complete:
+
+1. **Open a PR** — reference the issue with `Fixes #N`
+2. **Deploy to dev server** — `dev.abilityai.dev` is the validation environment
+3. **Verify on dev** — test the feature on real infrastructure, not just localhost
+4. Apply `status-review` label, remove `status-in-progress`
+
+The dev server is a GCP instance running the full Trinity stack. It mirrors production and is the final check before merge.
+
+### 5. Review
+
+Run PR validation:
+
+```
+/validate-pr 42
+```
+
+**What gets validated:**
+
+| Category | Check |
+|----------|-------|
+| **Changelog** | Entry exists with timestamp and emoji |
+| **Requirements** | Updated if new feature or scope change |
+| **Architecture** | Updated if API/schema/integration changes |
+| **Feature Flows** | Created/updated for behavior changes |
+| **Security** | No secrets, keys, emails, IPs in diff |
+| **Code Quality** | Minimal changes, follows patterns |
+| **Traceability** | Links to requirements and issue |
+
+The validator produces a report with a recommendation: **APPROVE**, **REQUEST CHANGES**, or **NEEDS DISCUSSION**.
+
+If changes are requested, the developer fixes and re-requests review. The reviewer runs `/validate-pr` again.
+
+### 6. Done
+
+When the PR is approved and merged:
+
+1. Issue is **auto-closed** via `Fixes #N`
+2. Move to **Done** on the project board
+3. Remove status labels
+4. Dev server is updated to the new `main`
+
+---
+
+## GitHub Project Board
+
+**Trinity Roadmap** (GitHub Project #6) is the single view of all work.
+
+| Column | Meaning |
+|--------|---------|
+| **Todo** | Backlog + Ready issues |
+| **In Progress** | Actively being worked on |
+| **Done** | Merged and shipped |
+
+### Label ↔ Board Sync
+
+Keep these in sync at all times:
+
+| Stage | Label | Board Column |
+|-------|-------|--------------|
+| Backlog | *(none)* | Todo |
+| Ready | `status-ready` | Todo |
+| In Progress | `status-in-progress` | In Progress |
+| Blocked | `status-blocked` | In Progress |
+| Dev Testing / Review | `status-review` | In Progress |
+| Done | *(none)* | Done |
+
+---
+
+## Environments
+
+| Environment | URL | Purpose |
+|-------------|-----|---------|
+| **Local** | `http://localhost` | Development |
+| **Dev Server** | `dev.abilityai.dev` | Pre-merge validation |
+
+The dev server runs the full Trinity stack (backend, frontend, MCP server, scheduler, Redis, Vector) on a GCP VM, accessed via Tailscale. It is updated to track `main` and is used to validate changes on real infrastructure before they ship.
 
 ---
 
 ## Sub-Agents Reference
-
-### When to Use Each Agent
 
 | Agent | Use When |
 |-------|----------|
@@ -200,37 +255,24 @@ Claude Code will determine which documents need updates:
 | `feature-flow-analyzer` | After modifying feature behavior |
 | `security-analyzer` | Before commits touching auth, credentials, or APIs |
 
-### Invoking Agents
-
-Agents are invoked automatically by Claude Code when appropriate, or you can request them:
-
-```
-# Run tests
-Use the test-runner agent to run the tests
-
-# Analyze a feature
-Use the feature-flow-analyzer to document the user-login feature
-
-# Security check
-Use the security-analyzer to review the auth code
-```
+Agents are invoked automatically by Claude Code when appropriate, or you can request them directly.
 
 ---
 
 ## Slash Commands Reference
 
-| Command | Purpose | When to Use |
-|---------|---------|-------------|
-| `/read-docs` | Load project context | Start of session |
-| `/update-docs` | Update documentation | After changes |
-| `/feature-flow-analysis <feature>` | Document feature flow | After modifying features |
-| `/security-check` | Validate no secrets in staged files | Before every commit |
-| `/add-testing` | Add tests for a feature | Improving coverage |
-| `/validate-pr <number>` | Validate PR against methodology | Before merging PRs |
+| Command | Purpose | SDLC Stage |
+|---------|---------|------------|
+| `/read-docs` | Load project context | In Progress |
+| `/update-docs` | Update documentation | In Progress |
+| `/feature-flow-analysis <feature>` | Document feature flow | In Progress |
+| `/security-check` | Validate no secrets in staged files | In Progress |
+| `/add-testing` | Add tests for a feature | In Progress |
+| `/validate-pr <number>` | Validate PR against methodology | Review |
 
 ---
 
-## Memory Files Explained
+## Memory Files
 
 The `docs/memory/` directory contains persistent project state:
 
@@ -238,22 +280,18 @@ The `docs/memory/` directory contains persistent project state:
 docs/memory/
 ├── requirements.md      ← SINGLE SOURCE OF TRUTH for features
 ├── architecture.md      ← Current system design (~1000 lines max)
-├── roadmap.md           ← Prioritized task queue
 ├── changelog.md         ← Timestamped history (~500 lines)
 ├── feature-flows.md     ← Index of all feature flow documents
 └── feature-flows/       ← Individual feature documentation
-    ├── user-login.md
-    ├── data-export.md
-    └── ... (more flows)
 ```
 
-### How They Work Together
+### How They Connect
 
 ```
 requirements.md  ──defines──►  What features exist
        │
        ▼
-roadmap.md       ──prioritizes──►  What to work on next
+GitHub Issues    ──prioritizes──►  What to work on next
        │
        ▼
 feature-flows/*  ──documents──►  How features work
@@ -267,182 +305,36 @@ architecture.md  ──maintains──►  Current system state
 
 ---
 
-## Example Development Session
-
-### Scenario: Add a new field to user profile
-
-```
-# 1. CONTEXT LOADING
-You: /read-docs
-You: Also read the user-profile feature flow
-
-# 2. DEVELOPMENT
-You: Add an "avatar" field to user profiles
-
-Claude: [Reads feature flow, implements changes across frontend/backend]
-
-# 3. TESTING
-You: Run the tests to make sure nothing broke
-
-Claude: [Invokes test-runner agent, reports results]
-
-# 4. DOCUMENTATION
-You: Update the feature flow for user-profile and update docs
-
-Claude: [Invokes feature-flow-analyzer, then /update-docs]
-```
-
-### Scenario: Fix a bug in data export
-
-```
-# 1. CONTEXT LOADING
-You: @docs/memory/feature-flows/data-export.md
-You: The CSV export isn't including timestamps
-
-# 2. DEVELOPMENT
-Claude: [Reads flow, traces issue, implements fix]
-
-# 3. TESTING
-You: Test it
-
-Claude: [Runs relevant tests, verifies fix]
-
-# 4. DOCUMENTATION
-You: Update the docs
-
-Claude: [Updates changelog, possibly updates feature flow if behavior changed]
-```
-
----
-
 ## Development Skills
 
-Skills are methodology guides in `.claude/skills/` that define HOW to approach specific tasks.
+Skills in `.claude/skills/` define HOW to approach specific tasks:
 
-### Available Skills
-
-| Skill | Purpose | When to Apply |
-|-------|---------|---------------|
-| `verification` | Evidence-based completion claims | Before saying "done" or "fixed" |
-| `systematic-debugging` | Root cause investigation | When fixing bugs or failures |
-| `tdd` | Test-driven development | When writing new code |
-| `code-review` | Receiving review feedback | When responding to PR comments |
-
-### Key Principles
-
-**Verification**: No completion claims without evidence. Run the command, show the output.
-
-**Debugging**: Find root cause BEFORE attempting fixes. No quick patches.
-
-**TDD**: Write failing test first, then minimal code to pass.
-
-**Code Review**: Technical rigor over social comfort. Verify before implementing.
-
-See `.claude/skills/{name}/SKILL.md` for full methodology guides.
-
----
-
-## Best Practices
-
-### DO
-
-- ✅ Always load context before starting work
-- ✅ Read feature flows before modifying features
-- ✅ Run tests after every significant change
-- ✅ Update feature flows when behavior changes
-- ✅ Use sub-agents for specialized tasks
-- ✅ Keep changelog entries concise but informative
-- ✅ Run `/security-check` before every commit
-- ✅ Run `/validate-pr` before approving any PR
-- ✅ Provide evidence with completion claims (verification skill)
-- ✅ Investigate root cause before fixing bugs (debugging skill)
-
-### DON'T
-
-- ❌ Skip context loading ("I remember from last time")
-- ❌ Modify features without reading their flow
-- ❌ Commit without running tests
-- ❌ Leave feature flows outdated after changes
-- ❌ Write new documentation files without being asked
-- ❌ Over-document - keep it minimal and useful
-- ❌ Merge PRs without running validation
-- ❌ Claim "done" without showing verification output
-- ❌ Guess at bug fixes without root cause analysis
-
----
-
-## Phase 5: PR Validation
-
-**Before merging any PR, validate it meets all methodology requirements.**
-
-### Run PR Validation
-
-```
-/validate-pr 42
-```
-
-Or with full URL:
-```
-/validate-pr https://github.com/org/repo/pull/42
-```
-
-### What Gets Validated
-
-| Category | Validation |
-|----------|------------|
-| **Changelog** | Entry exists with timestamp and emoji |
-| **Roadmap** | Updated if task completed or new work discovered |
-| **Requirements** | Updated if new feature or scope change |
-| **Architecture** | Updated if API/schema/integration changes |
-| **Feature Flows** | Created/updated for behavior changes, correct format |
-| **Security** | No secrets, keys, emails, IPs in diff |
-| **Code Quality** | Minimal changes, follows patterns |
-| **Traceability** | Links to requirements |
-
-### Validation Report
-
-The command generates a structured report with:
-- Summary table showing pass/fail for each category
-- Documentation and security checklists
-- Issues found (Critical, Warnings, Suggestions)
-- **Recommendation**: APPROVE / REQUEST CHANGES / NEEDS DISCUSSION
-
-### Example Workflow
-
-```
-# Reviewer receives PR notification
-You: /validate-pr 42
-
-# Claude analyzes and generates report
-Claude: ## PR Validation Report
-        ...
-        ### Recommendation
-        **REQUEST CHANGES**
-        - [ ] Changelog entry missing
-        - [ ] Feature flow needs Testing section
-
-# Reviewer posts comment with required changes
-# Developer fixes and requests re-review
-# Reviewer runs /validate-pr 42 again
-```
+| Skill | Principle | When |
+|-------|-----------|------|
+| `verification` | No "done" claims without evidence | Before saying "done" |
+| `systematic-debugging` | Find root cause BEFORE fixing | When fixing bugs |
+| `tdd` | Failing test first, then minimal code | When writing new code |
+| `code-review` | Verify feedback technically first | When responding to PR comments |
 
 ---
 
 ## Quick Start Checklist
 
-For every development session:
+**For every development session:**
 
+- [ ] Check GitHub Issues — pick the highest priority ready issue
+- [ ] Assign yourself, move to In Progress
 - [ ] Load context (`/read-docs` or read relevant feature flows)
-- [ ] Understand what you're modifying (read the feature flow)
 - [ ] Implement changes
 - [ ] Run tests (`test-runner` agent)
-- [ ] Update feature flow if behavior changed (`feature-flow-analyzer` agent)
 - [ ] Update documentation (`/update-docs`)
-- [ ] Run security check before commit (`/security-check`)
+- [ ] Open PR with `Fixes #N`
+- [ ] Deploy and verify on dev server
+- [ ] Run `/validate-pr`
 
-For PR reviews:
+**For PR reviews:**
 
-- [ ] Run `/validate-pr <number>` before approving
+- [ ] Run `/validate-pr <number>`
 - [ ] Verify all Critical issues resolved
-- [ ] Review Warnings with human judgment
-- [ ] Approve only when report shows all ✅
+- [ ] Confirm feature works on dev server
+- [ ] Approve only when report shows all pass

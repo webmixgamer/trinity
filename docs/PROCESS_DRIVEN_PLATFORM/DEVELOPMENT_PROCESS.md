@@ -3,6 +3,7 @@
 > **Status**: Active
 > **Last Updated**: 2026-01-14
 > **Purpose**: Define how we develop the Process Engine feature
+> **Scope**: This document is specific to the Process Engine feature (Phase 14), not the project-wide SDLC. For the project-wide development lifecycle, see `docs/DEVELOPMENT_WORKFLOW.md`.
 
 ---
 

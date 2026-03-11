@@ -194,7 +194,7 @@ Agent orchestration platform for business process automation, autonomous operati
 ## Related Documents
 
 - `docs/requirements/AUDIT_TRAIL_ARCHITECTURE.md` - SEC-001 design
-- `.claude/memory/roadmap.md` - Current task queue
+- GitHub Issues + **Trinity Roadmap** project board - Current task queue (replaces `roadmap.md`)
 - `docs/memory/feature-flows/execution-detail-page.md` - Existing execution UI
 - `docs/memory/feature-flows/scheduling.md` - Current scheduling system
 

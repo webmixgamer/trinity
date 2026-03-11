@@ -57,6 +57,25 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 
 ---
 
+## SDLC
+
+All work follows a 6-stage lifecycle tracked via the **Trinity Roadmap** GitHub Project board:
+
+```
+ Backlog → Ready → In Progress → Dev Testing → Review → Done
+```
+
+- **Backlog**: Issue created, triaged with priority (P0-P3) and type labels
+- **Ready**: Acceptance criteria defined, `status-ready` label applied
+- **In Progress**: Developer assigned, branch created, `status-in-progress` label
+- **Dev Testing**: PR opened, deployed to dev server for validation
+- **Review**: `/validate-pr` passes, code review approved
+- **Done**: PR merged, issue closed, dev server updated
+
+**Full details**: `docs/DEVELOPMENT_WORKFLOW.md`
+
+---
+
 ## Rules of Engagement
 
 ### 1. Requirements-Driven Development
@@ -71,8 +90,9 @@ Each agent runs as an isolated Docker container with standardized interfaces for
 - No creating documentation files unless explicitly requested
 
 ### 3. Follow the Roadmap
-- Check GitHub Issues for current priorities (`/roadmap` or `gh issue list`)
-- Work P0 issues first, then P1, by issue number (oldest first)
+- Check GitHub Issues and the **Trinity Roadmap** project board for current priorities (`/roadmap` or `gh issue list`)
+- Work P0 issues first, then P1 by Tier (P1a → P1b → P1c), then by issue number (oldest first)
+- Assign yourself, update labels and board status as you progress (see SDLC above)
 - Close issues when complete
 
 ### 4. Mandatory Documentation Updates
@@ -107,12 +127,11 @@ Follow methodology guides in `.claude/skills/`:
 
 | File | Purpose |
 |------|---------|
-| `.claude/memory/requirements.md` | **SINGLE SOURCE OF TRUTH** - All features |
-| `.claude/memory/architecture.md` | Current system design (~1000 lines max) |
-| GitHub Issues | Prioritized task queue (labels: priority-p0/p1/p2/p3) |
-| `.claude/memory/changelog.md` | Timestamped history (~500 lines) |
-| `.claude/memory/feature-flows.md` | Index of vertical slice docs |
-| `.claude/memory/project_index.json` | Machine-readable project state |
+| `docs/memory/requirements.md` | **SINGLE SOURCE OF TRUTH** - All features |
+| `docs/memory/architecture.md` | Current system design (~1000 lines max) |
+| `docs/memory/changelog.md` | Timestamped history (~500 lines) |
+| `docs/memory/feature-flows.md` | Index of vertical slice docs |
+| GitHub Issues + Project Board | Prioritized task queue — **Trinity Roadmap** board (Todo/In Progress/Done), priority labels (P0-P3), Tier sub-priority (P1a/P1b/P1c) |
 
 ---
 
@@ -293,7 +312,7 @@ The `abilities` repo contains **all Trinity skills** bundled in the `trinity-onb
 
 ## See Also
 
-- **Development Workflow**: `docs/DEVELOPMENT_WORKFLOW.md` ← Start here for dev process
+- **SDLC & Development Workflow**: `docs/DEVELOPMENT_WORKFLOW.md` ← Start here for dev process
 - **Full Architecture**: `.claude/memory/architecture.md`
 - **All Requirements**: `.claude/memory/requirements.md`
 - **Current Roadmap**: https://github.com/abilityai/trinity/issues
