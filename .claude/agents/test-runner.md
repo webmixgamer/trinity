@@ -185,6 +185,16 @@ The test suite covers:
 ### Direct Agent Tests
 - **Agent Server Direct** (agent_server/) - Direct agent server tests [SKIPPED unless TEST_AGENT_NAME set]
 
+### Scheduler Tests
+- **Scheduler Service** (scheduler_tests/test_service.py) - Initialization, shutdown, schedule CRUD, lock acquisition, activity tracking
+- **Async Dispatch** (scheduler_tests/test_async_dispatch.py) - Fire-and-forget dispatch, DB polling, status overwrite guard (SCHED-ASYNC-001)
+- **Model Selection** (scheduler_tests/test_model_selection.py) - Schedule model configuration, fallback behavior
+- **Skipped Executions** (scheduler_tests/test_skipped_executions.py) - Recording skipped executions when max_instances=1
+- **Database** (scheduler_tests/test_database.py) - Scheduler database operations
+- **Locking** (scheduler_tests/test_locking.py) - Redis lock acquisition and renewal
+- **Cron** (scheduler_tests/test_cron.py) - Cron expression parsing, next run calculation
+- **Config** (scheduler_tests/test_config.py) - Scheduler configuration loading
+
 ## Performance Notes (2026-02-05)
 
 **Fixture Optimization**:
@@ -198,12 +208,11 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~649 tests across 37 test files (excluding ORG-001 tests not yet implemented)
-**Smoke Tests**: ~196 tests (fast, no agent creation, includes NOTIF-001, SUB-001, CAPACITY-001)
-**Agent-Requiring Tests**: ~401 tests
-**Slow Tests**: ~55 tests (chat execution, fleet ops, system agent ops, execution termination)
+**Total Tests**: ~2040 tests across 108 test files
+**Smoke Tests**: ~504 tests (fast, no agent creation)
+**Core Tests (not slow)**: ~1951 tests
+**Slow Tests**: ~89 tests (chat execution, fleet ops, system agent ops, execution termination)
 **WebSocket Tests**: ~10 tests (web terminal, execution streaming)
-**Tests Needed**: ~35 tests (ORG-001 tags ~20, system views ~15)
 
 ## Expected Skipped Tests (~38 tests)
 
@@ -230,7 +239,7 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
 
-## Known Issues (2026-02-20)
+## Known Issues (2026-03-12)
 
 | Issue | Test | Severity | Status |
 |-------|------|----------|--------|
@@ -239,9 +248,54 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 | Trinity Connect tests not implemented | `test_trinity_connect.py` | Medium | Tests needed for /ws/events endpoint |
 | ORG-001 Tags pytest tests not implemented | `test_tags.py` | Medium | Manual testing complete, pytest needed |
 | ORG-001 System Views pytest tests not implemented | `test_system_views.py` | Medium | Manual testing complete, pytest needed |
-| NOTIF-001 Notifications tests implemented | `test_notifications.py` | N/A | ✅ 40 tests implemented (38 smoke, 2 agent) |
-| SUB-001 Subscriptions tests implemented | `test_subscriptions.py` | N/A | ✅ 18 tests implemented (9 smoke, 9 agent) |
-| CAPACITY-001 Capacity tests implemented | `test_capacity.py` | N/A | ✅ 24 tests implemented (22 smoke, 2 agent) |
+
+### Recently Fixed
+
+| Issue | Fix | Date |
+|-------|-----|------|
+| Executions stuck in 'running' status (#90) | TaskExecutionService now wraps slot acquisition in try block | 2026-03-12 |
+| Scheduler async dispatch TCP drops (#101) | SCHED-ASYNC-001: Async fire-and-forget with DB polling | 2026-03-11 |
+| Headless tasks fail with token error (#81) | Default model to sonnet for headless tasks | 2026-03-11 |
+
+### Recently Implemented Tests
+
+| Feature | Test File | Tests |
+|---------|-----------|-------|
+| SCHED-ASYNC-001 Async Dispatch | `scheduler_tests/test_async_dispatch.py` | ✅ 11 tests |
+| CAPACITY-001 Capacity | `test_capacity.py` | ✅ 24 tests |
+| SUB-001 Subscriptions | `test_subscriptions.py` | ✅ 18 tests |
+| NOTIF-001 Notifications | `test_notifications.py` | ✅ 40 tests |
+
+## Recent Test Additions (2026-03-11)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `scheduler_tests/test_async_dispatch.py` | Scheduler Async Dispatch (SCHED-ASYNC-001) | 11 tests |
+
+**SCHED-ASYNC-001 Async Dispatch Tests**:
+
+**Async Dispatch** ✅
+- `test_dispatch_sends_async_mode_true` - Scheduler sends async_mode=True to backend
+- `test_dispatch_uses_short_timeout` - HTTP call uses 30s timeout (not full task timeout)
+
+**DB Polling** ✅
+- `test_poll_finds_success_on_first_poll` - Returns immediately when status is success
+- `test_poll_finds_failed_status` - Recognizes failed status
+- `test_poll_waits_for_completion` - Polls until status changes from running
+- `test_poll_timeout_raises_exception` - Raises exception if polling exceeds timeout
+
+**Status Overwrite Guard** ✅
+- `test_exception_does_not_overwrite_success` - Backend-finalized success preserved
+- `test_exception_preserves_backend_finalized_status` - Failed/cancelled not overwritten
+
+**Backward Compatibility** ✅
+- `test_sync_response_returned_directly` - Non-async backend response handled
+- `test_http_error_raises_exception` - HTTP errors propagate correctly
+
+**End-to-End** ✅
+- `test_full_async_execution_flow` - Complete async dispatch → poll → completion flow
+
+---
 
 ## Recent Test Additions (2026-02-28)
 

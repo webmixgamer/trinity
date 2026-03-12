@@ -1,3 +1,23 @@
+### 2026-03-12
+🔧 **Fix: Executions stuck in 'running' status when slot acquisition fails (#90)**
+
+Fixed a bug where scheduled task executions could get permanently stuck in 'running' status with NULL `claude_session_id` and `duration_ms`. The issue occurred when exceptions were thrown during slot acquisition or database operations before the main try/except block in `TaskExecutionService.execute_task()`.
+
+**Root cause:** The try block that handled exceptions and updated execution status to FAILED only covered the code *after* slot acquisition (step 4+). If `db.get_max_parallel_tasks()` or `slot_service.acquire_slot()` threw an exception, it propagated without updating the execution record.
+
+**Note:** The GitHub issue incorrectly hypothesized that scheduler and backend used separate databases. Investigation confirmed they share a single SQLite database (`/data/trinity.db`).
+
+**Fix:**
+- Wrapped the entire execution flow (from slot acquisition onwards) in a try block
+- Added `slot_acquired` flag to track state for conditional slot release in finally block
+- Added defensive error handling to `_execute_task_internal_background()` to update execution status on uncaught exceptions
+
+**Modified files:**
+- `src/backend/services/task_execution_service.py` — Moved try block earlier to cover slot acquisition; added `slot_acquired` flag; conditional slot release in finally
+- `src/backend/routers/internal.py` — Added fallback DB update in `_execute_task_internal_background()` exception handler
+
+---
+
 ### 2026-03-11
 🔧 **Fix: Task execution fails with misleading "token expired" error on subscription-incompatible model (#81)**
 

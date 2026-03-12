@@ -247,8 +247,12 @@ async def _execute_task_internal_background(task_service, request: InternalTaskE
     Background coroutine for async task execution (SCHED-ASYNC-001).
 
     TaskExecutionService handles all lifecycle: slot acquisition, activity
-    tracking, DB updates, and cleanup. This wrapper just logs outcomes.
+    tracking, DB updates, and cleanup. This wrapper logs outcomes and ensures
+    execution status is updated on any uncaught exception (fixes issue #90).
     """
+    from database import db
+    from models import TaskExecutionStatus
+
     try:
         result = await task_service.execute_task(
             agent_name=request.agent_name,
@@ -264,6 +268,25 @@ async def _execute_task_internal_background(task_service, request: InternalTaskE
             f"status={result.status}, execution_id={result.execution_id}"
         )
     except Exception as e:
+        # If an exception escapes TaskExecutionService, ensure execution is marked failed
+        # to prevent stuck 'running' status (fixes issue #90)
+        error_msg = f"Background execution failed: {e}"
         logger.error(
             f"Async task failed for {request.agent_name}: {e}"
         )
+        if request.execution_id:
+            try:
+                existing = db.get_execution(request.execution_id)
+                if existing and existing.status not in (
+                    TaskExecutionStatus.SUCCESS,
+                    TaskExecutionStatus.FAILED,
+                    TaskExecutionStatus.CANCELLED,
+                ):
+                    db.update_execution_status(
+                        execution_id=request.execution_id,
+                        status=TaskExecutionStatus.FAILED,
+                        error=error_msg,
+                    )
+                    logger.info(f"Updated execution {request.execution_id} to FAILED")
+            except Exception as db_err:
+                logger.error(f"Failed to update execution status: {db_err}")

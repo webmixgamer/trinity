@@ -68,14 +68,17 @@ Full execution lifecycle in one method:
 Step  Action                                    Line   Dependency
 ----  ----------------------------------------  -----  ----------------------------------
 1     Create execution record (if not provided)  148    db.create_task_execution()
-2     Acquire capacity slot                      164    slot_service.acquire_slot()
-3     Track activity start (CHAT_START)          188    activity_service.track_activity()
-4     POST to agent /api/task with retry         218    agent_post_with_retry()
-5     Sanitize response + execution log          240    sanitize_execution_log(), sanitize_response()
-6     Update execution record with result        251    db.update_execution_status()
-7     Complete activity                          265    activity_service.complete_activity()
-8     Release slot (always, in finally block)    371    slot_service.release_slot()
+      [try block starts - #90 fix]              166    Ensures FAILED status on any exception
+2     Acquire capacity slot                      168    slot_service.acquire_slot()
+3     Track activity start (CHAT_START)          192    activity_service.track_activity()
+4     POST to agent /api/task with retry         221    agent_post_with_retry()
+5     Sanitize response + execution log          239    sanitize_execution_log(), sanitize_response()
+6     Update execution record with result        254    db.update_execution_status()
+7     Complete activity                          268    activity_service.complete_activity()
+8     Release slot (if acquired, in finally)     375    slot_service.release_slot()
 ```
+
+> **Fix #90**: The try block starts at step 2 (slot acquisition) to ensure any exception updates execution status to FAILED. The `slot_acquired` flag ensures we only release slots that were successfully acquired.
 
 **Signature:**
 ```python
@@ -273,10 +276,13 @@ execute_task()
   |
   +-- 7. activity_service.complete_activity(status="completed")
   |
-  +-- 8. [FINALLY] slot_service.release_slot()
+  +-- 8. [FINALLY] slot_service.release_slot() (only if slot_acquired=True)
   |
   v
 return TaskExecutionResult(status="success", ...)
+
+Note: The entire flow from step 2 onwards is wrapped in a try block (#90 fix).
+Any exception updates execution status to FAILED before releasing the slot.
 ```
 
 ## Agent Payload
