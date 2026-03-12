@@ -27,8 +27,8 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Configuration
-SLOT_TTL_SECONDS = 1800  # 30 minutes - safety net for orphaned slots
-SLOT_METADATA_TTL = 1800  # 30 minutes
+SLOT_TTL_BUFFER = 300  # 5 minute buffer added to agent timeout for slot TTL
+DEFAULT_SLOT_TTL_SECONDS = 1200  # 20 minutes - fallback if no agent timeout known
 
 
 @dataclass
@@ -79,7 +79,8 @@ class SlotService:
         agent_name: str,
         execution_id: str,
         max_parallel_tasks: int,
-        message_preview: str = ""
+        message_preview: str = "",
+        timeout_seconds: int = 900
     ) -> bool:
         """
         Try to acquire a slot for an execution.
@@ -89,6 +90,7 @@ class SlotService:
             execution_id: Unique execution ID
             max_parallel_tasks: Maximum allowed parallel tasks for this agent
             message_preview: First 100 chars of message for display
+            timeout_seconds: Agent's execution timeout (TIMEOUT-001). Slot TTL = timeout + 5min buffer.
 
         Returns:
             True if slot acquired, False if at capacity
@@ -96,8 +98,11 @@ class SlotService:
         slots_key = self._slots_key(agent_name)
         now = time.time()
 
-        # Clean up expired slots first
-        await self._cleanup_stale_slots_for_agent(agent_name)
+        # TIMEOUT-001: Dynamic slot TTL based on agent timeout + buffer
+        slot_ttl = timeout_seconds + SLOT_TTL_BUFFER
+
+        # Clean up expired slots first (uses dynamic TTL for this agent)
+        await self._cleanup_stale_slots_for_agent(agent_name, slot_ttl)
 
         # Check current count
         current_count = self.redis.zcard(slots_key)
@@ -111,19 +116,20 @@ class SlotService:
         # Add slot (ZADD with timestamp score)
         self.redis.zadd(slots_key, {execution_id: now})
 
-        # Store metadata
+        # Store metadata with dynamic TTL
         metadata_key = self._metadata_key(agent_name, execution_id)
         slot_number = current_count + 1  # Assign next available slot number
         self.redis.hset(metadata_key, mapping={
             "started_at": datetime.utcnow().isoformat(),
             "message_preview": message_preview[:100] if message_preview else "",
-            "slot_number": str(slot_number)
+            "slot_number": str(slot_number),
+            "timeout_seconds": str(timeout_seconds)
         })
-        self.redis.expire(metadata_key, SLOT_METADATA_TTL)
+        self.redis.expire(metadata_key, slot_ttl)
 
         logger.info(
             f"[Slots] Agent '{agent_name}' acquired slot {slot_number}/{max_parallel_tasks} "
-            f"for execution {execution_id}"
+            f"for execution {execution_id} (TTL={slot_ttl}s)"
         )
         return True
 
@@ -220,10 +226,16 @@ class SlotService:
 
         return result
 
-    async def _cleanup_stale_slots_for_agent(self, agent_name: str) -> int:
-        """Remove slots older than TTL for a single agent."""
+    async def _cleanup_stale_slots_for_agent(self, agent_name: str, slot_ttl: int = None) -> int:
+        """Remove slots older than TTL for a single agent.
+
+        Args:
+            agent_name: Name of the agent
+            slot_ttl: Slot TTL in seconds. If None, uses DEFAULT_SLOT_TTL_SECONDS.
+        """
         slots_key = self._slots_key(agent_name)
-        cutoff = time.time() - SLOT_TTL_SECONDS
+        ttl = slot_ttl if slot_ttl is not None else DEFAULT_SLOT_TTL_SECONDS
+        cutoff = time.time() - ttl
 
         # Get stale entries before removing
         stale = self.redis.zrangebyscore(slots_key, "-inf", cutoff)

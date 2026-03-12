@@ -86,7 +86,7 @@ class ParallelTaskRequest(BaseModel):
     model: Optional[str] = None  # Model override: sonnet, opus, haiku, or full model name
     allowed_tools: Optional[List[str]] = None  # Tool restrictions (--allowedTools)
     system_prompt: Optional[str] = None  # Additional instructions (--append-system-prompt)
-    timeout_seconds: Optional[int] = 900  # Execution timeout (15 minutes default)
+    timeout_seconds: Optional[int] = None  # Execution timeout (None = use agent's config, default 15 min)
     max_turns: Optional[int] = None  # Maximum agentic turns (--max-turns) for runaway prevention
     async_mode: Optional[bool] = False  # If true, return immediately with execution_id (fire-and-forget)
     save_to_session: Optional[bool] = False  # If true, persist messages to chat_sessions (for authenticated Chat tab)

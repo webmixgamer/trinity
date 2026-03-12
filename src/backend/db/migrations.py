@@ -31,6 +31,7 @@ Migration Order (as of 2026-02-28):
 24. agent_avatar_columns - AVATAR-001 AI-generated agent avatar support
 25. operator_queue_table - OPS-001 Operator Queue & Operating Room
 26. agent_ownership_default_avatar - AVATAR-003 default avatar flag
+27. agent_ownership_execution_timeout - TIMEOUT-001 per-agent execution timeout
 """
 
 
@@ -67,6 +68,7 @@ def run_all_migrations(cursor, conn):
         ("agent_avatar_columns", _migrate_agent_avatar_columns),
         ("operator_queue_table", _migrate_operator_queue_table),
         ("agent_ownership_default_avatar", _migrate_agent_ownership_default_avatar),
+        ("agent_ownership_execution_timeout", _migrate_agent_ownership_execution_timeout),
     ]
 
     for name, migration_fn in migrations:
@@ -717,5 +719,22 @@ def _migrate_agent_ownership_default_avatar(cursor, conn):
     if "is_default_avatar" not in columns:
         print("Adding is_default_avatar column to agent_ownership for default avatar support...")
         cursor.execute("ALTER TABLE agent_ownership ADD COLUMN is_default_avatar INTEGER DEFAULT 0")
+
+    conn.commit()
+
+
+def _migrate_agent_ownership_execution_timeout(cursor, conn):
+    """Add execution_timeout_seconds column to agent_ownership table (TIMEOUT-001).
+
+    Per-agent configurable execution timeout. All execution paths (task API, chat,
+    scheduler, MCP, paid endpoints) read from this setting when no explicit timeout
+    is provided. Default: 900 seconds (15 minutes).
+    """
+    cursor.execute("PRAGMA table_info(agent_ownership)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "execution_timeout_seconds" not in columns:
+        print("Adding execution_timeout_seconds column to agent_ownership for per-agent timeout...")
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN execution_timeout_seconds INTEGER DEFAULT 900")
 
     conn.commit()

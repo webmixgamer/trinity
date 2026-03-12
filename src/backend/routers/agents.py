@@ -1680,6 +1680,83 @@ async def set_agent_capacity(
 
 
 # ============================================================================
+# Execution Timeout Endpoints (TIMEOUT-001)
+# ============================================================================
+
+@router.get("/{agent_name}/timeout")
+async def get_agent_timeout(
+    agent_name: str = Depends(get_authorized_agent),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the execution timeout setting for an agent.
+
+    Returns:
+    - execution_timeout_seconds: Timeout in seconds (default 900 = 15 minutes)
+
+    All execution paths (task API, chat, scheduler, MCP, paid endpoints) use
+    this value when no explicit timeout is provided in the request.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    timeout_seconds = db.get_execution_timeout(agent_name)
+
+    return {
+        "agent_name": agent_name,
+        "execution_timeout_seconds": timeout_seconds,
+        "execution_timeout_minutes": timeout_seconds // 60,
+    }
+
+
+@router.put("/{agent_name}/timeout")
+async def set_agent_timeout(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the execution timeout for an agent.
+
+    Body:
+    - execution_timeout_seconds: Timeout in seconds (60-7200, i.e., 1 min to 2 hours)
+
+    Only agent owners can modify timeout settings.
+    """
+    # Only owners can change timeout
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change timeout settings")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    timeout_seconds = body.get("execution_timeout_seconds")
+    if timeout_seconds is None:
+        raise HTTPException(status_code=400, detail="execution_timeout_seconds is required")
+
+    # Validate range: 1 minute to 2 hours
+    if not isinstance(timeout_seconds, int) or timeout_seconds < 60 or timeout_seconds > 7200:
+        raise HTTPException(
+            status_code=400,
+            detail="execution_timeout_seconds must be an integer between 60 and 7200 (1 min to 2 hours)"
+        )
+
+    # Update database
+    success = db.set_execution_timeout(agent_name, timeout_seconds)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update timeout")
+
+    return {
+        "message": "Timeout updated",
+        "agent_name": agent_name,
+        "execution_timeout_seconds": timeout_seconds,
+        "execution_timeout_minutes": timeout_seconds // 60,
+    }
+
+
+# ============================================================================
 # Terminal WebSocket Endpoint
 # ============================================================================
 

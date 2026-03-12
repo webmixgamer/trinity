@@ -120,7 +120,7 @@ class TaskExecutionService:
         source_mcp_key_id: Optional[str] = None,
         source_mcp_key_name: Optional[str] = None,
         model: Optional[str] = None,
-        timeout_seconds: int = 120,
+        timeout_seconds: Optional[int] = None,
         resume_session_id: Optional[str] = None,
         allowed_tools: Optional[list] = None,
         system_prompt: Optional[str] = None,
@@ -133,6 +133,10 @@ class TaskExecutionService:
         execution record (e.g. the authenticated /task endpoint creates it
         early for async-mode support). Otherwise a new record is created here.
 
+        Args:
+            timeout_seconds: Execution timeout. If None, uses agent's configured
+                timeout (TIMEOUT-001). Default agent timeout is 900s (15 minutes).
+
         Returns a :class:`TaskExecutionResult` on both success and failure
         (never raises for agent-level errors — callers inspect ``result.status``).
 
@@ -144,6 +148,10 @@ class TaskExecutionService:
         slot_service = get_slot_service()
         activity_id: Optional[str] = None
         slot_acquired = False  # Track whether slot was acquired for proper cleanup
+
+        # TIMEOUT-001: Use agent's configured timeout if not explicitly provided
+        if timeout_seconds is None:
+            timeout_seconds = db.get_execution_timeout(agent_name)
 
         # ---- 1. Create execution record (if not provided) ----------------
         if not execution_id:
@@ -171,6 +179,7 @@ class TaskExecutionService:
                 execution_id=execution_id or f"temp-{datetime.utcnow().timestamp()}",
                 max_parallel_tasks=max_parallel_tasks,
                 message_preview=message[:100] if message else "",
+                timeout_seconds=timeout_seconds,  # TIMEOUT-001: Pass for dynamic slot TTL
             )
 
             if not slot_acquired:

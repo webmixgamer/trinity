@@ -178,7 +178,7 @@ class InternalTaskExecutionRequest(BaseModel):
     message: str
     triggered_by: str = "schedule"
     model: Optional[str] = None
-    timeout_seconds: int = 900
+    timeout_seconds: Optional[int] = None  # TIMEOUT-001: None = use agent's config (default 15 min)
     allowed_tools: Optional[List[str]] = None
     execution_id: Optional[str] = None
     async_mode: bool = False

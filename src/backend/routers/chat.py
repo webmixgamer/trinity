@@ -205,6 +205,9 @@ async def chat_with_agent(
 
     execution_success = False
     try:
+        # TIMEOUT-001: Use agent's configured timeout for chat mode
+        chat_timeout = float(db.get_execution_timeout(name))
+
         payload = {"message": request.message, "stream": False}
         if request.model:
             payload["model"] = request.model
@@ -218,7 +221,7 @@ async def chat_with_agent(
             payload,
             max_retries=3,
             retry_delay=1.0,
-            timeout=600.0  # 10 min timeout for chat mode
+            timeout=chat_timeout + 10  # Add buffer for HTTP overhead
         )
         response.raise_for_status()
 
@@ -395,12 +398,17 @@ async def _execute_task_background(
     """
     slot_service = get_slot_service() if release_slot else None
     try:
+        # TIMEOUT-001: Use agent's configured timeout if not explicitly provided
+        effective_timeout = request.timeout_seconds
+        if effective_timeout is None:
+            effective_timeout = db.get_execution_timeout(agent_name)
+
         payload = {
             "message": request.message,
             "model": request.model,
             "allowed_tools": request.allowed_tools,
             "system_prompt": request.system_prompt,
-            "timeout_seconds": request.timeout_seconds,
+            "timeout_seconds": effective_timeout,
             "execution_id": execution_id,
             "resume_session_id": request.resume_session_id  # EXEC-023: Claude Code session resume
         }
@@ -413,7 +421,7 @@ async def _execute_task_background(
             payload,
             max_retries=3,
             retry_delay=1.0,
-            timeout=float(request.timeout_seconds or 600) + 10
+            timeout=float(effective_timeout) + 10
         )
         response.raise_for_status()
 
@@ -649,11 +657,16 @@ async def execute_parallel_task(
     if request.async_mode:
         slot_service = get_slot_service()
         max_parallel_tasks = db.get_max_parallel_tasks(name)
+        # TIMEOUT-001: Use agent's configured timeout for slot TTL
+        effective_timeout = request.timeout_seconds
+        if effective_timeout is None:
+            effective_timeout = db.get_execution_timeout(name)
         slot_acquired = await slot_service.acquire_slot(
             agent_name=name,
             execution_id=execution_id or f"temp-{datetime.utcnow().timestamp()}",
             max_parallel_tasks=max_parallel_tasks,
-            message_preview=request.message[:100] if request.message else ""
+            message_preview=request.message[:100] if request.message else "",
+            timeout_seconds=effective_timeout
         )
 
         if not slot_acquired:
@@ -728,7 +741,7 @@ async def execute_parallel_task(
         source_mcp_key_id=x_mcp_key_id,
         source_mcp_key_name=x_mcp_key_name,
         model=request.model,
-        timeout_seconds=request.timeout_seconds or 900,
+        timeout_seconds=request.timeout_seconds,  # TIMEOUT-001: None = use agent's config
         resume_session_id=request.resume_session_id,
         allowed_tools=request.allowed_tools,
         system_prompt=request.system_prompt,

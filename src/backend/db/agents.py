@@ -580,6 +580,55 @@ class AgentOperations:
             return {row["agent_name"]: row["max_parallel_tasks"] for row in cursor.fetchall()}
 
     # =========================================================================
+    # Execution Timeout (TIMEOUT-001)
+    # =========================================================================
+
+    def get_execution_timeout(self, agent_name: str) -> int:
+        """
+        Get execution_timeout_seconds for an agent (default: 900 = 15 minutes).
+
+        Args:
+            agent_name: Name of the agent
+
+        Returns:
+            Timeout in seconds (default 900)
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COALESCE(execution_timeout_seconds, 900) as execution_timeout_seconds
+                FROM agent_ownership WHERE agent_name = ?
+            """, (agent_name,))
+            row = cursor.fetchone()
+            if row:
+                return row["execution_timeout_seconds"]
+            return 900  # Default 15 minutes
+
+    def set_execution_timeout(self, agent_name: str, timeout_seconds: int) -> bool:
+        """
+        Set execution_timeout_seconds for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            timeout_seconds: Timeout in seconds (must be 60-7200, i.e., 1 min to 2 hours)
+
+        Returns:
+            True if update succeeded
+        """
+        # Validate range: 1 minute minimum, 2 hours maximum
+        if timeout_seconds < 60 or timeout_seconds > 7200:
+            return False
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE agent_ownership SET execution_timeout_seconds = ?
+                WHERE agent_name = ?
+            """, (timeout_seconds, agent_name))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # =========================================================================
     # Batch Metadata Query (N+1 Fix)
     # =========================================================================
 

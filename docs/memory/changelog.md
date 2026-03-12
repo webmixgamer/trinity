@@ -1,4 +1,26 @@
 ### 2026-03-12
+⚙️ **Feature: Per-agent configurable execution timeout (#99)**
+
+Added per-agent execution timeout configuration. All execution paths (task API, chat, scheduler, MCP, paid endpoints) now use the agent's configured timeout when no explicit timeout is provided.
+
+**Key changes:**
+- Default timeout changed from 120s to 900s (15 minutes) platform-wide
+- Each agent can configure `execution_timeout_seconds` (60-7200s, i.e., 1 min to 2 hours)
+- Slot TTL now dynamically calculated as agent timeout + 5 min buffer
+- API endpoints: `GET/PUT /api/agents/{name}/timeout`
+
+**Implementation:**
+- `db/schema.py`, `db/migrations.py` — Added `execution_timeout_seconds` column (default 900)
+- `db/agents.py` — Added `get_execution_timeout()` and `set_execution_timeout()` methods
+- `routers/agents.py` — Added timeout GET/PUT endpoints
+- `services/task_execution_service.py` — Reads agent timeout when not explicitly provided
+- `routers/chat.py` — Chat and task endpoints use agent timeout
+- `routers/internal.py` — Scheduler uses agent timeout
+- `services/slot_service.py` — Dynamic slot TTL based on agent timeout + 5 min buffer
+- `models.py` — `ParallelTaskRequest.timeout_seconds` now defaults to `None` (use agent config)
+
+---
+
 🔧 **Fix: Executions stuck in 'running' status when slot acquisition fails (#90)**
 
 Fixed a bug where scheduled task executions could get permanently stuck in 'running' status with NULL `claude_session_id` and `duration_ms`. The issue occurred when exceptions were thrown during slot acquisition or database operations before the main try/except block in `TaskExecutionService.execute_task()`.

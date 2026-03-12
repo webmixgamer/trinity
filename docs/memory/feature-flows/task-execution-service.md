@@ -93,13 +93,15 @@ async def execute_task(
     source_mcp_key_id: Optional[str] = None,
     source_mcp_key_name: Optional[str] = None,
     model: Optional[str] = None,
-    timeout_seconds: int = 120,
+    timeout_seconds: Optional[int] = None,  # TIMEOUT-001: None = use agent's config (default 15 min)
     resume_session_id: Optional[str] = None,
     allowed_tools: Optional[list] = None,
     system_prompt: Optional[str] = None,
     execution_id: Optional[str] = None,
 ) -> TaskExecutionResult:
 ```
+
+**TIMEOUT-001**: When `timeout_seconds` is `None`, the service reads the agent's configured timeout via `db.get_execution_timeout(agent_name)`. Default agent timeout is 900 seconds (15 minutes).
 
 If `execution_id` is provided, the caller has already created the execution record (e.g. `chat.py` creates it early for async-mode support). Otherwise the service creates one.
 
@@ -185,7 +187,7 @@ Key behavioral change: public executions now get full tracking that was previous
 | Acquire slot | `SlotService.acquire_slot()` | `agent:slots:{name}` (ZSET), `agent:slot:{name}:{exec_id}` (HASH) |
 | Release slot | `SlotService.release_slot()` | Same keys, ZREM + DELETE |
 
-Slot TTL: 30 minutes (safety net for orphaned slots).
+Slot TTL: Dynamic (agent timeout + 5 min buffer). See parallel-capacity.md for details.
 
 ## Side Effects
 

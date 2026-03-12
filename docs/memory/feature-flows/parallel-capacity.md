@@ -10,6 +10,7 @@
 
 | Date | Changes |
 |------|---------|
+| 2026-03-12 | TIMEOUT-001: Slot TTL now dynamic (agent timeout + 5 min buffer), not fixed 30 min. Aligns with per-agent configurable execution timeout. |
 | 2026-03-09 | Scheduled tasks now route through TaskExecutionService via internal API — capacity meter shows slot usage for cron/manual schedule executions |
 | 2026-03-04 | EXEC-024: Slot management split - sync path delegated to TaskExecutionService, public links gain slot enforcement |
 | 2026-03-03 | Phase 2: Frontend UI - CapacityMeter component, store plumbing, Agents page + Dashboard timeline integration |
@@ -528,7 +529,7 @@ Fields:
   - started_at: ISO timestamp
   - message_preview: First 100 chars of message
   - slot_number: Assigned slot (1-N)
-TTL: 30 minutes (EXPIRE)
+TTL: Dynamic (agent timeout + 5 min buffer, EXPIRE)
 ```
 
 ## Slot Lifecycle
@@ -549,8 +550,8 @@ As of EXEC-024, slot acquisition/release is handled by different code paths depe
 ```python
 # src/backend/services/slot_service.py:77-128
 async def acquire_slot(self, agent_name, execution_id, max_parallel_tasks, message_preview=""):
-    # 1. Clean stale slots (>30 min old)
-    await self._cleanup_stale_slots_for_agent(agent_name)
+    # 1. Clean stale slots (> agent timeout + 5 min)
+    await self._cleanup_stale_slots_for_agent(agent_name, slot_ttl)
 
     # 2. Check capacity
     current_count = self.redis.zcard(slots_key)
@@ -560,9 +561,9 @@ async def acquire_slot(self, agent_name, execution_id, max_parallel_tasks, messa
     # 3. Add slot
     self.redis.zadd(slots_key, {execution_id: time.time()})
 
-    # 4. Store metadata with TTL
+    # 4. Store metadata with dynamic TTL
     self.redis.hset(metadata_key, mapping={...})
-    self.redis.expire(metadata_key, 1800)  # 30 min
+    self.redis.expire(metadata_key, slot_ttl)  # agent timeout + 5 min
 
     return True
 ```
@@ -584,7 +585,7 @@ async def release_slot(self, agent_name, execution_id):
 ```python
 # src/backend/services/slot_service.py:223-245
 async def _cleanup_stale_slots_for_agent(self, agent_name):
-    cutoff = time.time() - SLOT_TTL_SECONDS  # 30 min
+    cutoff = time.time() - slot_ttl  # agent timeout + 5 min buffer
 
     # Get stale entries
     stale = self.redis.zrangebyscore(slots_key, "-inf", cutoff)
@@ -614,7 +615,7 @@ async def _cleanup_stale_slots_for_agent(self, agent_name):
 1. **Authorization**: Only agent owners can modify `max_parallel_tasks`
 2. **Validation**: Strict range enforcement (1-10)
 3. **Atomic operations**: Redis operations prevent race conditions
-4. **TTL safety net**: Orphaned slots auto-expire after 30 minutes
+4. **TTL safety net**: Orphaned slots auto-expire (agent timeout + 5 min buffer)
 5. **No credential exposure**: Message previews truncated to 100 chars
 
 ## Testing

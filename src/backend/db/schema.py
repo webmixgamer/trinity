@@ -62,6 +62,7 @@ TABLES = {
             read_only_config TEXT,
             subscription_id TEXT,
             max_parallel_tasks INTEGER DEFAULT 3,
+            execution_timeout_seconds INTEGER DEFAULT 900,
             avatar_identity_prompt TEXT,
             avatar_updated_at TEXT,
             is_default_avatar INTEGER DEFAULT 0,
