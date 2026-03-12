@@ -19,7 +19,8 @@ Load all project documentation into context for this session.
 | Feature Flows | `docs/memory/feature-flows.md` | ✅ | | Flow index |
 | Deployment | `docs/DEPLOYMENT.md` | ✅ | | Deploy guide |
 | Testing | `docs/TESTING_GUIDE.md` | ✅ | | Test standards |
-| GitHub Issues | `abilityai/trinity` | ✅ | | Roadmap |
+| GitHub Issues | `abilityai/trinity` | ✅ | | P0 issues |
+| GitHub Project | `abilityai project #6` | ✅ | | Ranked P1 pipeline |
 | Changelog | `docs/memory/changelog.md` | ✅ | | Recent changes |
 
 ## Process
@@ -33,12 +34,22 @@ Read these files in full (no summaries until all are loaded):
 - `docs/DEPLOYMENT.md` - Production deployment guide
 - `docs/TESTING_GUIDE.md` - Testing approach and standards
 
-### Step 2: Query GitHub Issues
+### Step 2: Query GitHub Roadmap
+
+Query P0 issues and the ranked P1 pipeline from the GitHub Project:
 
 ```bash
+# P0 issues (urgent, do immediately)
 gh issue list --repo abilityai/trinity --label "priority-p0" --state open --json number,title,labels
-gh issue list --repo abilityai/trinity --label "priority-p1" --state open --json number,title,labels
+
+# Ranked P1 pipeline from Trinity Roadmap project (sorted by Rank field)
+gh project item-list 6 --owner abilityai --format json --limit 20
 ```
+
+The project includes Rank (1-N) and Tier (P1a/P1b/P1c) fields:
+- **P1a** — Do next (bugs + high-impact)
+- **P1b** — Important (user-facing features)
+- **P1c** — Backlog (architecture + future)
 
 ### Step 3: Read Recent Changelog
 
@@ -60,9 +71,14 @@ Note: `CLAUDE.md` is loaded automatically at session start - no need to read it 
 ```
 Documentation loaded. Ready to work on Trinity.
 
-Top P0: [first P0 issue from GitHub]
-Top P1: [first P1 issue from GitHub]
-Recent Change: [most recent changelog entry]
+P0: [P0 issues or "None"]
+
+Pipeline (from Trinity Roadmap project, ranked):
+  P1a: #[rank1] [title], #[rank2] [title], ...
+  P1b: #[rank5] [title], #[rank6] [title], ...
+  P1c: [count] issues in backlog
+
+Recent: [most recent changelog entry]
 ```
 
 ## When to Use
@@ -83,6 +99,7 @@ Load context first, then act. Never modify code without understanding the curren
 - [ ] Feature-flows.md read
 - [ ] Deployment guide read
 - [ ] Testing guide read
-- [ ] GitHub Issues queried
+- [ ] P0 issues queried
+- [ ] Ranked P1 pipeline queried from Project #6
 - [ ] Recent changelog reviewed
-- [ ] Summary reported
+- [ ] Summary reported with ranked pipeline

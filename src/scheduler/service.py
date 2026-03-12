@@ -8,6 +8,7 @@ Uses distributed locks to prevent duplicate executions.
 import asyncio
 import logging
 import json
+import time
 from datetime import datetime
 from typing import Dict, Optional, List, Callable
 
@@ -646,19 +647,34 @@ class SchedulerService:
             error_msg = str(e)
             logger.error(f"Schedule {schedule.name} execution failed: {error_msg}")
 
-            self.db.update_execution_status(
-                execution_id=execution.id,
-                status=ExecutionStatus.FAILED,
-                error=error_msg
-            )
+            # SCHED-ASYNC-001: Check current status before overwriting.
+            # The backend's TaskExecutionService may have already finalized
+            # the execution (e.g., marked it as 'success') before the scheduler
+            # caught a connection error or polling timeout.
+            current = self.db.get_execution(execution.id)
+            if current and current.status != ExecutionStatus.RUNNING:
+                # Backend already finalized — don't overwrite with 'failed'
+                logger.info(
+                    f"Schedule {schedule.name} execution {execution.id} already finalized "
+                    f"as '{current.status}' — not overwriting with 'failed'"
+                )
+                actual_status = current.status
+            else:
+                # Genuinely failed — mark as failed
+                self.db.update_execution_status(
+                    execution_id=execution.id,
+                    status=ExecutionStatus.FAILED,
+                    error=error_msg
+                )
+                actual_status = ExecutionStatus.FAILED
 
             await self._publish_event({
                 "type": "schedule_execution_completed",
                 "agent": schedule.agent_name,
                 "schedule_id": schedule.id,
                 "execution_id": execution.id,
-                "status": "failed",
-                "error": error_msg
+                "status": actual_status,
+                "error": error_msg if actual_status == ExecutionStatus.FAILED else None
             })
 
     async def _call_backend_execute_task(
@@ -674,15 +690,16 @@ class SchedulerService:
         """
         Execute a task via the backend's internal TaskExecutionService endpoint.
 
-        This routes through the same code path as authenticated /task and public
-        chat, ensuring slot management, activity tracking, credential sanitization,
-        and dashboard capacity meter visibility.
+        Uses async fire-and-forget dispatch with DB polling (SCHED-ASYNC-001):
+        1. POST with async_mode=True and 30s timeout (dispatch only)
+        2. If backend accepts, poll DB every poll_interval seconds until done
+        3. Backward compatible: if backend returns sync result, use it directly
 
         Returns:
             dict with execution_id, status, response, cost, context_used, etc.
 
         Raises:
-            Exception on HTTP or connection errors.
+            Exception on HTTP errors, dispatch failures, or polling timeout.
         """
         headers = {}
         if config.internal_api_secret:
@@ -693,6 +710,7 @@ class SchedulerService:
             "message": message,
             "triggered_by": triggered_by,
             "timeout_seconds": timeout_seconds,
+            "async_mode": True,
         }
         if model:
             payload["model"] = model
@@ -701,23 +719,92 @@ class SchedulerService:
         if execution_id:
             payload["execution_id"] = execution_id
 
-        # Use a timeout slightly longer than the task timeout to allow for
-        # slot acquisition delay and the agent's own processing buffer.
-        request_timeout = float(timeout_seconds) + 30
+        # Step 1: Dispatch with short timeout (30s max for the HTTP round-trip)
+        dispatch_timeout = 30.0
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{config.backend_url}/api/internal/execute-task",
                 headers=headers,
                 json=payload,
-                timeout=request_timeout,
+                timeout=dispatch_timeout,
             )
 
-            if response.status_code == 200:
-                return response.json()
-            else:
+            if response.status_code != 200:
                 error_text = response.text[:500] if response.text else f"HTTP {response.status_code}"
                 raise Exception(f"Backend execute-task returned {response.status_code}: {error_text}")
+
+            result = response.json()
+
+        # Step 2: Check if backend accepted async mode
+        if result.get("status") == "accepted" and result.get("async_mode"):
+            # Async accepted — poll DB for completion
+            logger.info(
+                f"Backend accepted async execution for {agent_name}, "
+                f"execution_id={execution_id}, polling every {config.poll_interval}s"
+            )
+            return await self._poll_execution_completion(
+                execution_id=execution_id,
+                timeout_seconds=timeout_seconds,
+            )
+
+        # Backward compatibility: backend returned a sync result (old backend
+        # without async_mode support). Use the result directly.
+        return result
+
+    async def _poll_execution_completion(
+        self,
+        execution_id: str,
+        timeout_seconds: int,
+    ) -> dict:
+        """
+        Poll the DB for execution completion (SCHED-ASYNC-001).
+
+        Polls every config.poll_interval seconds until the execution status
+        is no longer 'running', or the deadline is exceeded.
+
+        Returns:
+            dict with status, response, error, cost, etc. from the execution record.
+
+        Raises:
+            Exception if polling deadline exceeded.
+        """
+        # Deadline = task timeout + 60s buffer for slot acquisition and cleanup
+        deadline = time.monotonic() + float(timeout_seconds) + 60
+        poll_count = 0
+
+        while time.monotonic() < deadline:
+            await asyncio.sleep(config.poll_interval)
+            poll_count += 1
+
+            execution = self.db.get_execution(execution_id)
+            if not execution:
+                logger.warning(f"Execution {execution_id} not found in DB during polling (poll #{poll_count})")
+                continue
+
+            if execution.status != ExecutionStatus.RUNNING:
+                logger.info(
+                    f"Execution {execution_id} completed: status={execution.status} "
+                    f"(polled {poll_count} times)"
+                )
+                return {
+                    "execution_id": execution.id,
+                    "status": execution.status,
+                    "response": execution.response,
+                    "error": execution.error,
+                    "cost": execution.cost,
+                    "context_used": execution.context_used,
+                    "context_max": execution.context_max,
+                }
+
+            if poll_count % 6 == 0:  # Log every ~60s at default 10s interval
+                elapsed = int(time.monotonic() - (deadline - float(timeout_seconds) - 60))
+                logger.info(f"Execution {execution_id} still running ({elapsed}s elapsed, poll #{poll_count})")
+
+        raise Exception(
+            f"Polling deadline exceeded for execution {execution_id} "
+            f"(timeout_seconds={timeout_seconds}, polls={poll_count})"
+        )
 
     # =========================================================================
     # Schedule Management (for runtime updates)

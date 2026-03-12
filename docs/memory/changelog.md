@@ -1,4 +1,19 @@
 ### 2026-03-11
+🔧 **Fix: Scheduler async fire-and-forget with DB polling (#101)**
+
+Replaced the blocking HTTP call from scheduler to backend with async fire-and-forget dispatch + DB polling. This prevents TCP connection drops during long-running agent executions (10-60+ min) that caused false `failed` status and zero execution records.
+
+**Changes:**
+- `src/backend/routers/internal.py` — Added `async_mode` field to `InternalTaskExecutionRequest`; when `True`, spawns background task and returns `{"status": "accepted"}` immediately
+- `src/scheduler/service.py` — Rewrote `_call_backend_execute_task()` to POST with `async_mode=True` and 30s timeout, then poll DB every `poll_interval` seconds; added `_poll_execution_completion()` method; added status overwrite guard in exception handler to prevent overwriting backend-finalized statuses
+- `src/scheduler/config.py` — Added `poll_interval` config (default 10s, from `POLL_INTERVAL` env var)
+- `src/backend/services/cleanup_service.py` — Increased stale timeouts from 30 to 120 minutes to prevent premature cleanup of long-running tasks
+- `docs/memory/requirements.md` — Added §10.6 SCHED-ASYNC-001, updated §12.9 cleanup timeout
+
+**Tests:** `tests/scheduler_tests/test_async_dispatch.py` — 11 tests covering async dispatch, DB polling, status overwrite guard, backward compatibility, timeout handling
+
+---
+
 🏷️ **Refactor: Standardize execution status values (#92)**
 
 Introduced canonical `TaskExecutionStatus` enum (`running`, `success`, `failed`, `cancelled`, `skipped`) for all task/schedule execution status values persisted to the database. Renamed the queue-internal `ExecutionStatus` to `QueueItemStatus` to avoid confusion with the process engine's separate `ExecutionStatus` enum.

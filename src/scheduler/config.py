@@ -52,6 +52,11 @@ class SchedulerConfig:
         "AGENT_TIMEOUT", "900"
     )))  # 15 minutes
 
+    # Polling interval for async task completion (SCHED-ASYNC-001)
+    poll_interval: int = field(default_factory=lambda: int(os.getenv(
+        "POLL_INTERVAL", "10"
+    )))  # seconds between DB polls while waiting for task completion
+
     # Backend API (for process executions)
     backend_url: str = field(default_factory=lambda: os.getenv(
         "BACKEND_URL", "http://backend:8000"

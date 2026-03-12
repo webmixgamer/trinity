@@ -105,6 +105,7 @@ As a **platform administrator**, I want **scheduled tasks to execute exactly onc
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `PUBLISH_EVENTS` | `true` | Enable Redis event publishing |
 | `INTERNAL_API_SECRET` | _(empty)_ | Shared secret for backend internal API auth (C-003). Must match backend's `INTERNAL_API_SECRET` or `SECRET_KEY`. |
+| `POLL_INTERVAL` | `10` | Seconds between DB polls while waiting for async task completion (SCHED-ASYNC-001) |
 
 ---
 
@@ -428,23 +429,27 @@ def _renewal_loop(self):
 
 **Purpose**: Send scheduled task to backend's `TaskExecutionService`, which handles the full execution lifecycle (slot management, activity tracking, agent HTTP call, credential sanitization).
 
-> **Note**: Prior to 2026-03-09, the scheduler called agent containers directly via `AgentClient.task()`. This bypassed the `SlotService`, so scheduled executions did not appear in the capacity meter. The scheduler now routes through the backend's internal API.
+> **Note (2026-03-11, SCHED-ASYNC-001)**: The scheduler now uses **async fire-and-forget dispatch** to avoid TCP connection drops on long-running tasks. The HTTP call returns immediately with `{"status": "accepted"}`, and the scheduler polls the shared SQLite DB for completion.
 
 ```
 service.py                      Backend Internal API             TaskExecutionService
 _call_backend_execute_task()     POST /api/internal/              execute_task()
-  --> httpx.post()      -->     execute-task           -->       |
-      {agent_name,               internal.py                     +-- acquire slot
-       message,                                                  +-- track activity
-       triggered_by,                                             +-- POST agent /api/task
-       model?,                                                   +-- sanitize credentials
-       timeout_seconds,                                          +-- update execution
-       allowed_tools?,                                           +-- release slot
-       execution_id?}                                            |
+  --> httpx.post()      -->     execute-task           -->       (spawned as background task)
+      {agent_name,               async_mode=True                  +-- acquire slot
+       message,                  internal.py                      +-- track activity
+       triggered_by,                                              +-- POST agent /api/task
+       model?,           <--    200 OK (immediate)                +-- sanitize credentials
+       timeout_seconds,          {status: "accepted"}             +-- update execution in DB
+       allowed_tools?,                                            +-- release slot
+       execution_id?,
+       async_mode: true}
                                                                  v
-  <-- 200 OK  <---------------------------------------------   TaskExecutionResult
-      {execution_id, status, response, cost, ...}
+  _poll_execution_completion()                          DB updated: status → success/failed
+  --> db.get_execution(id)  -->  SQLite poll (every 10s)
+  --> returns when status != "running"
 ```
+
+**Backward Compatibility**: If the backend returns a non-`accepted` response (old backend without `async_mode` support), the scheduler treats it as a sync result and returns directly.
 
 The `agent_client.py` module still exists for reference but is no longer used in the main execution path. The `TaskExecutionService` in the backend handles the actual agent HTTP calls via `agent_post_with_retry()`.
 
@@ -634,6 +639,7 @@ typing-extensions>=4.9.0
 | `test_locking.py` | Distributed locks | Redis lock acquire/release |
 | `test_agent_client.py` | HTTP client | Agent communication |
 | `test_service.py` | Scheduler service | Full integration tests |
+| `test_async_dispatch.py` | Async dispatch + polling | SCHED-ASYNC-001 (11 tests) |
 | `conftest.py` | Fixtures | Mock database, Redis, models |
 
 ### Running Tests
@@ -682,9 +688,11 @@ async def test_execute_schedule_skips_if_locked(self, db_with_data, mock_lock_ma
 | Autonomy disabled | Log info, return | Execution skipped |
 | Lock not acquired | Log info, return | Execution skipped (another running) |
 | **Max instances reached** | Create skipped execution, publish event | **Recorded with status='skipped'** (Issue #46) |
-| Agent not reachable | Update status=failed, publish event | Error recorded |
-| Agent timeout | Update status=failed, publish event | Error recorded |
-| Agent error response | Update status=failed, publish event | Error recorded |
+| Agent not reachable | Update status=failed (with overwrite guard), publish event | Error recorded |
+| Agent timeout | Update status=failed (with overwrite guard), publish event | Error recorded |
+| Agent error response | Update status=failed (with overwrite guard), publish event | Error recorded |
+| **TCP disconnect (SCHED-ASYNC-001)** | **Check DB before overwriting — if backend already finalized, preserve status** | **No false failures** |
+| **Polling deadline exceeded** | Raise exception, overwrite guard checks DB status | Error recorded (if genuinely stale) |
 | Redis publish fails | Log error, continue | Execution still succeeds |
 
 ---
@@ -1043,17 +1051,17 @@ schedules.py:trigger_schedule    main.py:_trigger_handler        internal.py:tra
 ```
 Scheduler Service                     Backend Internal API
 _execute_schedule_with_lock()   -->   POST /api/internal/execute-task
-|                                     {agent_name, message, ...}
+|                                     {agent_name, message, ..., async_mode: true}
 v                                     |
-(scheduler waits for response)        v
-                                      TaskExecutionService.execute_task()
-                                        → activity_service.track_activity(CHAT_START)
-                                        → POST to agent /api/task
-                                        → activity_service.complete_activity()
-                                        → slot_service.release_slot()
-                                      |
-                                      v
-<-- 200 OK  <----------------------   {execution_id, status, response, ...}
+<-- 200 accepted (immediate) <---     Backend spawns background task:
+|                                       TaskExecutionService.execute_task()
+v                                         → activity_service.track_activity(CHAT_START)
+_poll_execution_completion()              → POST to agent /api/task
+  polls DB every 10s                      → activity_service.complete_activity()
+  until status != "running"               → slot_service.release_slot()
+|                                         → update execution status in DB
+v
+Returns result from DB
 ```
 
 **Slot management + activity tracking** are now unified with all other execution paths (sync, async, public) through the `TaskExecutionService`. This ensures scheduled executions appear on the Dashboard timeline capacity meter.
@@ -1125,6 +1133,7 @@ No immediate notification is needed from the backend.
 
 | Date | Change |
 |------|--------|
+| 2026-03-11 | **Async Fire-and-Forget with DB Polling (SCHED-ASYNC-001, Issue #101)**: Replaced blocking HTTP call with async dispatch + DB polling to prevent TCP connection drops on long-running tasks (10-60+ min). Backend accepts `async_mode=True`, spawns background task, returns immediately. Scheduler polls DB every `poll_interval` seconds. Added status overwrite guard in exception handler. Cleanup service timeouts increased from 30 to 120 min. Added `POLL_INTERVAL` config. 11 new tests in `test_async_dispatch.py`. |
 | 2026-03-09 | **Unified Execution via TaskExecutionService**: Scheduler now calls `POST /api/internal/execute-task` instead of agent containers directly. This routes through `TaskExecutionService` for slot management, activity tracking, credential sanitization, and Dashboard capacity meter visibility. Removed direct `AgentClient` usage and manual activity tracking methods. See [parallel-capacity.md](parallel-capacity.md) and [task-execution-service.md](task-execution-service.md). |
 | 2026-03-02 | **MODEL-001 Model Selection**: `Schedule` dataclass has `model` field. `AgentClient.task()` accepts `model` parameter. `create_execution()` records `model_used`. `service.py` passes `schedule.model` to both execution record and agent client. See [model-selection.md](model-selection.md). |
 | 2026-03-01 | **Skipped Execution Recording (Issue #46)**: Added APScheduler event listener for `EVENT_JOB_MAX_INSTANCES`. Skipped executions are now recorded in database with `status='skipped'` instead of being silently dropped. Added `create_skipped_execution()` and `create_skipped_process_schedule_execution()` database methods. WebSocket event `schedule_execution_skipped` broadcast for real-time UI. Frontend displays skipped status with purple styling. |

@@ -11,6 +11,8 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-11 | SCHED-ASYNC-001 | Scheduler async fire-and-forget with DB polling, status overwrite guard, cleanup timeout 30→120 min | [scheduler-service.md](feature-flows/scheduler-service.md), [cleanup-service.md](feature-flows/cleanup-service.md) |
+| 2026-03-11 | CLEANUP-001 | Background cleanup service for stale executions, activities, and slots | [cleanup-service.md](feature-flows/cleanup-service.md) |
 | 2026-03-10 | AVATAR | Avatar display in Dashboard Timeline tiles (lg size, border ring) | [agent-avatars.md](feature-flows/agent-avatars.md), [dashboard-timeline-view.md](feature-flows/dashboard-timeline-view.md) |
 | 2026-03-09 | AVATAR | Avatar image optimization — WebP conversion via Pillow, stable emotion cache keys | [agent-avatars.md](feature-flows/agent-avatars.md) |
 | 2026-03-09 | CAPACITY-001 | Scheduled tasks route through TaskExecutionService — capacity meter now tracks cron/manual executions | [parallel-capacity.md](feature-flows/parallel-capacity.md), [scheduler-service.md](feature-flows/scheduler-service.md), [task-execution-service.md](feature-flows/task-execution-service.md) |
@@ -208,6 +210,7 @@
 | Vector Logging | [vector-logging.md](feature-flows/vector-logging.md) | Centralized log aggregation |
 | OpenTelemetry Integration | [opentelemetry-integration.md](feature-flows/opentelemetry-integration.md) | OTel metrics export |
 | Async Docker Operations | [async-docker-operations.md](feature-flows/async-docker-operations.md) | Non-blocking Docker SDK wrappers |
+| Cleanup Service | [cleanup-service.md](feature-flows/cleanup-service.md) | Background recovery of stale executions, activities, and slots (CLEANUP-001) |
 
 ### Templates & Pages
 

@@ -21,9 +21,9 @@ No dedicated frontend UI. The cleanup service is a headless backend service. Sta
 
 #### Configuration Constants (lines 23-25)
 ```python
-CLEANUP_INTERVAL_SECONDS = 300       # 5 minutes
-EXECUTION_STALE_TIMEOUT_MINUTES = 30
-ACTIVITY_STALE_TIMEOUT_MINUTES = 30
+CLEANUP_INTERVAL_SECONDS = 300        # 5 minutes
+EXECUTION_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
+ACTIVITY_STALE_TIMEOUT_MINUTES = 120   # SCHED-ASYNC-001: increased from 30 to support long-running tasks
 ```
 
 #### CleanupReport (lines 28-45)
@@ -249,9 +249,9 @@ WHERE id = ?
 - Backend startup is not blocked if the cleanup service fails to start
 
 ### Timeout Values
-All three cleanup targets use the same 30-minute threshold:
-- Executions: `EXECUTION_STALE_TIMEOUT_MINUTES = 30`
-- Activities: `ACTIVITY_STALE_TIMEOUT_MINUTES = 30`
+Execution and activity timeouts were increased to 120 minutes (SCHED-ASYNC-001) to support long-running scheduled tasks (10-60+ min). Redis slot TTL remains at 30 minutes since slots are released by TaskExecutionService on completion.
+- Executions: `EXECUTION_STALE_TIMEOUT_MINUTES = 120`
+- Activities: `ACTIVITY_STALE_TIMEOUT_MINUTES = 120`
 - Slots: `SLOT_TTL_SECONDS = 1800` (30 minutes)
 
 ### No Frontend Dependency

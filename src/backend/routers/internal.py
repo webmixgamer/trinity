@@ -8,6 +8,7 @@ These endpoints are called by:
 Security: Requires X-Internal-Secret header matching INTERNAL_API_SECRET env var.
 Falls back to SECRET_KEY if INTERNAL_API_SECRET is not set.
 """
+import asyncio
 import os
 import hmac
 from fastapi import APIRouter, HTTPException, Depends, Request
@@ -180,6 +181,7 @@ class InternalTaskExecutionRequest(BaseModel):
     timeout_seconds: int = 900
     allowed_tools: Optional[List[str]] = None
     execution_id: Optional[str] = None
+    async_mode: bool = False
 
 
 @router.post("/execute-task")
@@ -194,9 +196,26 @@ async def execute_task_internal(request: InternalTaskExecutionRequest):
 
     The scheduler creates the execution record before calling this endpoint
     and passes the execution_id so the service skips record creation.
+
+    When async_mode=True (SCHED-ASYNC-001), the endpoint spawns a background
+    task and returns immediately with {"status": "accepted"}. The scheduler
+    then polls the DB for completion instead of holding the HTTP connection.
     """
+    task_service = get_task_execution_service()
+
+    if request.async_mode:
+        # Fire-and-forget: spawn background task, return immediately
+        asyncio.create_task(_execute_task_internal_background(
+            task_service, request
+        ))
+        return {
+            "status": "accepted",
+            "execution_id": request.execution_id,
+            "async_mode": True,
+        }
+
+    # Synchronous mode (default, backward compatible)
     try:
-        task_service = get_task_execution_service()
         result = await task_service.execute_task(
             agent_name=request.agent_name,
             message=request.message,
@@ -221,3 +240,30 @@ async def execute_task_internal(request: InternalTaskExecutionRequest):
     except Exception as e:
         logger.error(f"Internal task execution failed for {request.agent_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _execute_task_internal_background(task_service, request: InternalTaskExecutionRequest):
+    """
+    Background coroutine for async task execution (SCHED-ASYNC-001).
+
+    TaskExecutionService handles all lifecycle: slot acquisition, activity
+    tracking, DB updates, and cleanup. This wrapper just logs outcomes.
+    """
+    try:
+        result = await task_service.execute_task(
+            agent_name=request.agent_name,
+            message=request.message,
+            triggered_by=request.triggered_by,
+            model=request.model,
+            timeout_seconds=request.timeout_seconds,
+            allowed_tools=request.allowed_tools,
+            execution_id=request.execution_id,
+        )
+        logger.info(
+            f"Async task completed for {request.agent_name}: "
+            f"status={result.status}, execution_id={result.execution_id}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Async task failed for {request.agent_name}: {e}"
+        )

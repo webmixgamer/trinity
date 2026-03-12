@@ -33,6 +33,13 @@
       "added": "2026-03-07",
       "categories": ["backend", "api", "operator-queue", "operating-room"],
       "description": "Tests for Operator Queue API: list/get/respond/cancel items, stats, auth requirements, agent-specific queries, input validation"
+    },
+    {
+      "file": "scheduler_tests/test_async_dispatch.py",
+      "feature": "SCHED-ASYNC-001",
+      "added": "2026-03-11",
+      "categories": ["scheduler", "backend", "async", "polling"],
+      "description": "Tests for scheduler async fire-and-forget dispatch with DB polling: async dispatch, polling, status overwrite guard, backward compatibility, timeout handling"
     }
   ]
 }

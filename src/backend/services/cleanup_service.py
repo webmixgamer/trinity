@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 CLEANUP_INTERVAL_SECONDS = 300  # 5 minutes
-EXECUTION_STALE_TIMEOUT_MINUTES = 30
-ACTIVITY_STALE_TIMEOUT_MINUTES = 30
+EXECUTION_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
+ACTIVITY_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
 
 
 @dataclass
