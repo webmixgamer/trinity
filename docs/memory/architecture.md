@@ -394,7 +394,7 @@ PENDING → RUNNING → COMPLETED
 
 ## API Endpoints
 
-### Agents (30 endpoints)
+### Agents (32 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/agents` | List all agents |
@@ -427,6 +427,8 @@ PENDING → RUNNING → COMPLETED
 | POST | `/api/agents/{name}/ssh-access` | Generate ephemeral SSH credentials (NEW: 2026-01-02) |
 | GET | `/api/agents/{name}/read-only` | Get read-only mode status and config (NEW: 2026-02-17) |
 | PUT | `/api/agents/{name}/read-only` | Enable/disable read-only mode (blocks source file writes) |
+| GET | `/api/agents/{name}/timeout` | Get execution timeout setting (NEW: 2026-03-12) |
+| PUT | `/api/agents/{name}/timeout` | Set execution timeout (60-7200s, default 900s = 15min) |
 
 **Note**: Route ordering is critical. `/context-stats` and `/autonomy-status` must be defined BEFORE `/{name}` catch-all route to avoid 404 errors.
 
@@ -589,6 +591,8 @@ CREATE TABLE agent_ownership (
     agent_name TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    max_parallel_tasks INTEGER DEFAULT 3,          -- CAPACITY-001
+    execution_timeout_seconds INTEGER DEFAULT 900, -- TIMEOUT-001 (15 min)
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 ```

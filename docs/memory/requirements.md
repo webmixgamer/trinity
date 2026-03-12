@@ -333,6 +333,20 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - Configurable `POLL_INTERVAL` env var (default 10s)
 - **Root Cause**: TCP connection drops after 15-30 min on long-running scheduled tasks, causing false `failed` status even though agent work completed successfully
 
+### 10.7 Per-Agent Execution Timeout (TIMEOUT-001)
+- **Status**: ✅ Implemented (2026-03-12)
+- **Requirement ID**: TIMEOUT-001
+- **GitHub Issue**: #99
+- **Description**: Configurable execution timeout per agent, consistent across all trigger methods
+- **Key Features**:
+  - `execution_timeout_seconds` column in `agent_ownership` (default 900s = 15 min)
+  - All execution paths (task API, chat, scheduler, MCP, paid endpoints) use agent's timeout
+  - Per-execution override still supported when explicitly provided
+  - Slot TTL dynamically calculated as agent timeout + 5 min buffer
+  - API: `GET/PUT /api/agents/{name}/timeout`
+  - Validation: 60-7200s (1 min to 2 hours)
+- **Flow**: `docs/memory/feature-flows/parallel-capacity.md` (updated), `docs/memory/feature-flows/task-execution-service.md` (updated)
+
 ---
 
 ## 11. GitHub Integration
