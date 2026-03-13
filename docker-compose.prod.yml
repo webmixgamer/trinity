@@ -80,7 +80,7 @@ services:
     tmpfs:
       - /tmp:noexec,nosuid,size=100m
     # Production: no --reload flag
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --timeout-worker-healthcheck 120
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

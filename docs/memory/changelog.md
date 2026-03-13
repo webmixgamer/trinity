@@ -1,3 +1,16 @@
+### 2026-03-13
+🐛 **Fix: Pin uvicorn 0.37.0 and add worker healthcheck timeout (#105)**
+
+Upgraded uvicorn from 0.34.0 to 0.37.0 and added `--timeout-worker-healthcheck 120` to production compose. Uvicorn 0.30+ introduced a 5-second ping/pong worker healthcheck that SIGKILLs workers blocked on long-running agent HTTP calls (10-30 min), causing false-positive worker recycling and dropped connections.
+
+**Files changed:**
+- `docker/backend/Dockerfile` — uvicorn pin 0.34.0 → 0.37.0
+- `docker-compose.prod.yml` — added `--timeout-worker-healthcheck 120` to backend command
+
+**Related:** #101 (scheduler connection drops), #104 (MCP HTTP timeout)
+
+---
+
 ### 2026-03-12
 📝 **Docs: Architecture.md comprehensive update**
 
