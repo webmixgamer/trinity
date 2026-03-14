@@ -1,0 +1,111 @@
+"""
+Cleanup Service Tests (test_cleanup_service.py)
+
+Tests for cleanup service behavior including:
+- Issue #106: No-session execution fast-fail
+- Issue #106: Orphaned skipped execution finalization
+- Cleanup report structure validation
+
+Feature Flow: docs/memory/feature-flows/cleanup-service.md
+"""
+
+import pytest
+from utils.api_client import TrinityApiClient
+from utils.assertions import (
+    assert_status,
+    assert_json_response,
+    assert_has_fields,
+)
+
+
+class TestCleanupStatus:
+    """Tests for cleanup status endpoint."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_cleanup_status_returns_200(self, api_client: TrinityApiClient):
+        """GET /api/monitoring/cleanup-status returns 200."""
+        response = api_client.get("/api/monitoring/cleanup-status")
+        assert_status(response, 200)
+
+    def test_cleanup_status_structure(self, api_client: TrinityApiClient):
+        """Cleanup status includes expected fields."""
+        response = api_client.get("/api/monitoring/cleanup-status")
+        assert_status(response, 200)
+        data = assert_json_response(response)
+        assert_has_fields(data, ["running", "last_run_at"])
+
+    def test_cleanup_status_report_fields(self, api_client: TrinityApiClient):
+        """Cleanup report includes Issue #106 fields for no-session and orphaned skipped."""
+        response = api_client.get("/api/monitoring/cleanup-status")
+        assert_status(response, 200)
+        data = response.json()
+
+        # last_report may be None if cleanup hasn't run yet
+        if data.get("last_report"):
+            report = data["last_report"]
+            # Verify new Issue #106 fields exist
+            assert "no_session_executions" in report, "Missing no_session_executions field"
+            assert "orphaned_skipped" in report, "Missing orphaned_skipped field"
+            # Verify existing fields still present
+            assert "stale_executions" in report
+            assert "stale_activities" in report
+            assert "stale_slots" in report
+            assert "total" in report
+            # Total should be sum of all fields
+            expected_total = (
+                report["stale_executions"]
+                + report["no_session_executions"]
+                + report["orphaned_skipped"]
+                + report["stale_activities"]
+                + report["stale_slots"]
+            )
+            assert report["total"] == expected_total
+
+
+class TestCleanupTrigger:
+    """Tests for manual cleanup trigger."""
+
+    pytestmark = pytest.mark.smoke
+
+    def test_trigger_cleanup_returns_200(self, api_client: TrinityApiClient):
+        """POST /api/monitoring/cleanup-trigger runs cleanup and returns report."""
+        response = api_client.post("/api/monitoring/cleanup-trigger")
+        assert_status(response, 200)
+        data = assert_json_response(response)
+        assert data["status"] == "completed"
+        assert "report" in data
+
+    def test_trigger_cleanup_report_has_issue_106_fields(self, api_client: TrinityApiClient):
+        """Triggered cleanup report includes no_session_executions and orphaned_skipped."""
+        response = api_client.post("/api/monitoring/cleanup-trigger")
+        assert_status(response, 200)
+        data = response.json()
+
+        report = data["report"]
+        assert "no_session_executions" in report, "Missing no_session_executions field"
+        assert "orphaned_skipped" in report, "Missing orphaned_skipped field"
+        assert isinstance(report["no_session_executions"], int)
+        assert isinstance(report["orphaned_skipped"], int)
+        assert report["no_session_executions"] >= 0
+        assert report["orphaned_skipped"] >= 0
+
+    def test_trigger_cleanup_total_includes_new_fields(self, api_client: TrinityApiClient):
+        """Cleanup total correctly sums all fields including Issue #106 additions."""
+        response = api_client.post("/api/monitoring/cleanup-trigger")
+        assert_status(response, 200)
+        report = response.json()["report"]
+
+        expected_total = (
+            report["stale_executions"]
+            + report["no_session_executions"]
+            + report["orphaned_skipped"]
+            + report["stale_activities"]
+            + report["stale_slots"]
+        )
+        assert report["total"] == expected_total
+
+    def test_trigger_cleanup_requires_auth(self, unauthenticated_client: TrinityApiClient):
+        """Cleanup trigger requires authentication."""
+        response = unauthenticated_client.post("/api/monitoring/cleanup-trigger")
+        assert response.status_code in [401, 403]

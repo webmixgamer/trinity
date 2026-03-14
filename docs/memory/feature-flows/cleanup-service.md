@@ -19,19 +19,22 @@ No dedicated frontend UI. The cleanup service is a headless backend service. Sta
 ### Service: CleanupService
 **File**: `src/backend/services/cleanup_service.py`
 
-#### Configuration Constants (lines 23-25)
+#### Configuration Constants (lines 23-26)
 ```python
 CLEANUP_INTERVAL_SECONDS = 300        # 5 minutes
 EXECUTION_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
 ACTIVITY_STALE_TIMEOUT_MINUTES = 120   # SCHED-ASYNC-001: increased from 30 to support long-running tasks
+NO_SESSION_TIMEOUT_SECONDS = 60       # Issue #106: fast-fail executions without Claude session
 ```
 
-#### CleanupReport (lines 28-45)
+#### CleanupReport (lines 29-47)
 Dataclass holding results from a single cleanup cycle:
-- `stale_executions: int` - Executions marked failed
+- `stale_executions: int` - Executions marked failed (stale timeout)
+- `no_session_executions: int` - Executions failed due to no Claude session (Issue #106)
+- `orphaned_skipped: int` - Skipped executions finalized (Issue #106)
 - `stale_activities: int` - Activities marked failed
 - `stale_slots: int` - Redis slots cleaned
-- `total` property: Sum of all three
+- `total` property: Sum of all five fields
 - `to_dict()` method: Serializes for API responses
 
 #### CleanupService class (line 48)
@@ -50,9 +53,9 @@ Singleton pattern via global `cleanup_service` instance (line 141).
 - `run_cleanup()` (line 74): Single cleanup cycle (called by loop and manual trigger)
 - `_cleanup_loop()` (line 114): Main loop - runs initial sweep, then sleeps `poll_interval` between cycles
 
-### Cleanup Cycle (`run_cleanup`, lines 74-112)
+### Cleanup Cycle (`run_cleanup`, lines 74-130)
 
-Three sequential operations, each wrapped in individual try/except:
+Five sequential operations, each wrapped in individual try/except:
 
 1. **Mark stale executions as failed** (lines 80-87)
    ```python
@@ -60,13 +63,25 @@ Three sequential operations, each wrapped in individual try/except:
    ```
    Calls `DatabaseManager.mark_stale_executions_failed()` which delegates to `ScheduleOperations.mark_stale_executions_failed()`.
 
-2. **Mark stale activities as failed** (lines 89-96)
+2. **Fast-fail no-session executions** (lines 89-96, Issue #106)
+   ```python
+   count = db.mark_no_session_executions_failed(NO_SESSION_TIMEOUT_SECONDS)
+   ```
+   Marks `running` executions with no `claude_session_id` older than 60 seconds as failed. These are silent launch failures where the backend failed to start a Claude session.
+
+3. **Finalize orphaned skipped executions** (lines 98-105, Issue #106)
+   ```python
+   count = db.finalize_orphaned_skipped_executions()
+   ```
+   Defensive cleanup for `skipped` executions missing `completed_at`. Sets `completed_at = started_at` and `duration_ms = 0`.
+
+4. **Mark stale activities as failed** (lines 107-114)
    ```python
    count = db.mark_stale_activities_failed(ACTIVITY_STALE_TIMEOUT_MINUTES)
    ```
    Calls `DatabaseManager.mark_stale_activities_failed()` which delegates to `ActivityOperations.mark_stale_activities_failed()`.
 
-3. **Cleanup stale Redis slots** (lines 98-104)
+5. **Cleanup stale Redis slots** (lines 116-122)
    ```python
    slot_service = get_slot_service()
    count = await slot_service.cleanup_stale_slots()
@@ -125,6 +140,8 @@ except Exception as e:
     "last_run_at": "2026-03-11T10:00:00Z",
     "last_report": {
       "stale_executions": 0,
+      "no_session_executions": 0,
+      "orphaned_skipped": 0,
       "stale_activities": 0,
       "stale_slots": 0,
       "total": 0
@@ -141,9 +158,11 @@ except Exception as e:
     "status": "completed",
     "report": {
       "stale_executions": 2,
+      "no_session_executions": 1,
+      "orphaned_skipped": 0,
       "stale_activities": 1,
       "stale_slots": 0,
-      "total": 3
+      "total": 4
     }
   }
   ```
@@ -153,13 +172,13 @@ except Exception as e:
 ### Database Operations
 
 #### mark_stale_executions_failed (ScheduleOperations)
-**File**: `src/backend/db/schedules.py:970-1008`
+**File**: `src/backend/db/schedules.py:971-1013`
 
 **SQL** (finds stale rows):
 ```sql
 SELECT id, started_at FROM schedule_executions
 WHERE status = 'running'
-AND started_at < datetime('now', '-30 minutes')
+AND started_at < datetime('now', '-120 minutes')
 ```
 
 **SQL** (updates each row):
@@ -168,14 +187,42 @@ UPDATE schedule_executions
 SET status = 'failed',
     completed_at = ?,
     duration_ms = ?,
-    error = 'Marked as failed by cleanup: exceeded 30-minute timeout'
+    error = 'Marked as failed by cleanup: exceeded 120-minute timeout'
 WHERE id = ?
 ```
 
-**Delegation chain**:
-- `cleanup_service.run_cleanup()` -> `db.mark_stale_executions_failed(30)`
-- `DatabaseManager.mark_stale_executions_failed()` (line 682-684) -> `self._schedule_ops.mark_stale_executions_failed(30)`
-- `ScheduleOperations.mark_stale_executions_failed()` (line 970)
+#### mark_no_session_executions_failed (ScheduleOperations) — Issue #106
+**File**: `src/backend/db/schedules.py:1015-1055`
+
+**SQL** (finds no-session rows):
+```sql
+SELECT id, started_at FROM schedule_executions
+WHERE status = 'running'
+AND claude_session_id IS NULL
+AND started_at < datetime('now', '-60 seconds')
+```
+
+**SQL** (updates each row):
+```sql
+UPDATE schedule_executions
+SET status = 'failed',
+    completed_at = ?,
+    duration_ms = ?,
+    error = 'Silent launch failure: no Claude session created within 60 seconds'
+WHERE id = ?
+```
+
+#### finalize_orphaned_skipped_executions (ScheduleOperations) — Issue #106
+**File**: `src/backend/db/schedules.py:1057-1075`
+
+**SQL** (single update):
+```sql
+UPDATE schedule_executions
+SET completed_at = COALESCE(started_at, ?),
+    duration_ms = 0
+WHERE status = 'skipped'
+AND completed_at IS NULL
+```
 
 #### mark_stale_activities_failed (ActivityOperations)
 **File**: `src/backend/db/activities.py:187-225`
@@ -303,9 +350,12 @@ This is a purely backend service. The only "UI" is the two admin API endpoints u
 | File | Role |
 |------|------|
 | `src/backend/services/cleanup_service.py` | Service class and global instance |
-| `src/backend/db/schedules.py:970-1008` | `mark_stale_executions_failed()` |
+| `src/backend/db/schedules.py:971-1013` | `mark_stale_executions_failed()` |
+| `src/backend/db/schedules.py:1015-1055` | `mark_no_session_executions_failed()` (Issue #106) |
+| `src/backend/db/schedules.py:1057-1075` | `finalize_orphaned_skipped_executions()` (Issue #106) |
 | `src/backend/db/activities.py:187-225` | `mark_stale_activities_failed()` |
 | `src/backend/database.py:682-688` | Delegation methods on DatabaseManager |
 | `src/backend/services/slot_service.py:247-271` | `cleanup_stale_slots()` Redis cleanup |
 | `src/backend/main.py:86,265-269,300-305` | Import, start in lifespan, stop on shutdown |
 | `src/backend/routers/monitoring.py:455-491` | `/cleanup-status` and `/cleanup-trigger` endpoints |
+| `tests/test_cleanup_service.py` | API integration tests for cleanup (Issue #106) |

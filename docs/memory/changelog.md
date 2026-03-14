@@ -1,3 +1,33 @@
+### 2026-03-13 18:55
+🔧 **Fix: Cleanup service misses skipped executions and slow no-session detection (#106)**
+
+Added two new cleanup passes to the cleanup service:
+1. **No-session fast-fail**: Running executions without a `claude_session_id` after 60 seconds are now marked failed immediately instead of waiting the full 120-minute stale timeout
+2. **Orphaned skipped finalization**: Defensive cleanup for any `skipped` executions missing `completed_at`
+
+**Files changed:**
+- `src/backend/db/schedules.py` — Added `mark_no_session_executions_failed()` and `finalize_orphaned_skipped_executions()`
+- `src/backend/database.py` — Added delegation methods on `DatabaseManager`
+- `src/backend/services/cleanup_service.py` — New `NO_SESSION_TIMEOUT_SECONDS`, expanded `CleanupReport`, two new cleanup steps
+- `tests/test_cleanup_service.py` — 7 API integration tests (all passing)
+- `docs/memory/feature-flows/cleanup-service.md` — Updated with Issue #106 changes
+
+---
+
+### 2026-03-13
+📝 **Docs: Document 60-second MCP call timeout as design limitation (#104)**
+
+Documented the Claude Code 60-second MCP HTTP timeout as a design limitation across all relevant docs. Agent designers must account for this when building agent-to-agent collaboration.
+
+**Files updated:**
+- `README.md` — Note under MCP Communication tools
+- `docs/KNOWN_ISSUES.md` — Full limitation entry with workarounds
+- `docs/MULTI_AGENT_SYSTEM_GUIDE.md` — New "Design Limitation" section with 3 workaround patterns
+- `docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md` — Warning in Inter-Agent Collaboration section
+- `docs/memory/feature-flows/agent-to-agent-collaboration.md` — Limitation section with links
+
+---
+
 ### 2026-03-13 14:36
 🔄 **Refactor: Split db/agents.py into focused modules (#102)**
 

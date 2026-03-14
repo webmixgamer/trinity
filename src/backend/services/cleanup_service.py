@@ -23,22 +23,28 @@ logger = logging.getLogger(__name__)
 CLEANUP_INTERVAL_SECONDS = 300  # 5 minutes
 EXECUTION_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
 ACTIVITY_STALE_TIMEOUT_MINUTES = 120  # SCHED-ASYNC-001: increased from 30 to support long-running tasks
+NO_SESSION_TIMEOUT_SECONDS = 60  # Issue #106: fast-fail executions that never got a Claude session
 
 
 @dataclass
 class CleanupReport:
     """Results from a single cleanup cycle."""
     stale_executions: int = 0
+    no_session_executions: int = 0
+    orphaned_skipped: int = 0
     stale_activities: int = 0
     stale_slots: int = 0
 
     @property
     def total(self) -> int:
-        return self.stale_executions + self.stale_activities + self.stale_slots
+        return (self.stale_executions + self.no_session_executions +
+                self.orphaned_skipped + self.stale_activities + self.stale_slots)
 
     def to_dict(self) -> Dict:
         return {
             "stale_executions": self.stale_executions,
+            "no_session_executions": self.no_session_executions,
+            "orphaned_skipped": self.orphaned_skipped,
             "stale_activities": self.stale_activities,
             "stale_slots": self.stale_slots,
             "total": self.total,
@@ -85,6 +91,24 @@ class CleanupService:
                 logger.info(f"[Cleanup] Marked {count} stale executions as failed")
         except Exception as e:
             logger.error(f"[Cleanup] Error marking stale executions: {e}")
+
+        # 1b. Fast-fail running executions with no Claude session (Issue #106)
+        try:
+            count = db.mark_no_session_executions_failed(NO_SESSION_TIMEOUT_SECONDS)
+            report.no_session_executions = count
+            if count > 0:
+                logger.info(f"[Cleanup] Marked {count} no-session executions as failed")
+        except Exception as e:
+            logger.error(f"[Cleanup] Error marking no-session executions: {e}")
+
+        # 1c. Finalize orphaned skipped executions (Issue #106)
+        try:
+            count = db.finalize_orphaned_skipped_executions()
+            report.orphaned_skipped = count
+            if count > 0:
+                logger.info(f"[Cleanup] Finalized {count} orphaned skipped executions")
+        except Exception as e:
+            logger.error(f"[Cleanup] Error finalizing orphaned skipped executions: {e}")
 
         # 2. Mark stale activities as failed
         try:

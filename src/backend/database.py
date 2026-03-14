@@ -693,6 +693,14 @@ class DatabaseManager:
         """Mark executions stuck in 'running' past threshold as failed."""
         return self._schedule_ops.mark_stale_executions_failed(timeout_minutes)
 
+    def mark_no_session_executions_failed(self, timeout_seconds: int = 60):
+        """Mark running executions with no claude_session_id as failed (Issue #106)."""
+        return self._schedule_ops.mark_no_session_executions_failed(timeout_seconds)
+
+    def finalize_orphaned_skipped_executions(self):
+        """Finalize skipped executions missing completed_at (Issue #106)."""
+        return self._schedule_ops.finalize_orphaned_skipped_executions()
+
     def mark_stale_activities_failed(self, timeout_minutes: int = 30):
         """Mark activities stuck in 'started' past threshold as failed."""
         return self._activity_ops.mark_stale_activities_failed(timeout_minutes)

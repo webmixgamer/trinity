@@ -1012,6 +1012,75 @@ class ScheduleOperations:
             conn.commit()
             return len(stale_rows)
 
+    def mark_no_session_executions_failed(self, timeout_seconds: int = 60) -> int:
+        """Mark running executions with no claude_session_id as failed.
+
+        Executions that are 'running' but never received a claude_session_id
+        are silent launch failures — the backend failed to start a Claude session.
+        These should be cleaned up quickly rather than waiting the full stale timeout.
+
+        Args:
+            timeout_seconds: Executions running longer than this without a session
+                are considered failed launches.
+
+        Returns:
+            Number of executions marked as failed.
+        """
+        now = utc_now_iso()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT id, started_at FROM schedule_executions
+                WHERE status = ?
+                AND claude_session_id IS NULL
+                AND started_at < datetime('now', ? || ' seconds')
+            """, (TaskExecutionStatus.RUNNING, f"-{timeout_seconds}"))
+            no_session_rows = cursor.fetchall()
+
+            if not no_session_rows:
+                return 0
+
+            completed_at = parse_iso_timestamp(now)
+            for row in no_session_rows:
+                started_at = parse_iso_timestamp(row["started_at"])
+                duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+                cursor.execute("""
+                    UPDATE schedule_executions
+                    SET status = ?,
+                        completed_at = ?,
+                        duration_ms = ?,
+                        error = 'Silent launch failure: no Claude session created within ' || ? || ' seconds'
+                    WHERE id = ?
+                """, (TaskExecutionStatus.FAILED, now, duration_ms, str(timeout_seconds), row["id"]))
+
+            conn.commit()
+            return len(no_session_rows)
+
+    def finalize_orphaned_skipped_executions(self) -> int:
+        """Finalize skipped executions that are missing completed_at.
+
+        Defensive cleanup for any skipped execution records that were not
+        properly terminated at creation time.
+
+        Returns:
+            Number of executions finalized.
+        """
+        now = utc_now_iso()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                UPDATE schedule_executions
+                SET completed_at = COALESCE(started_at, ?),
+                    duration_ms = 0
+                WHERE status = ?
+                AND completed_at IS NULL
+            """, (now, TaskExecutionStatus.SKIPPED))
+
+            conn.commit()
+            return cursor.rowcount
+
     def list_git_enabled_agents(self) -> List[AgentGitConfig]:
         """List all agents with git sync enabled."""
         with get_db_connection() as conn:

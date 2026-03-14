@@ -40,6 +40,13 @@
       "added": "2026-03-11",
       "categories": ["scheduler", "backend", "async", "polling"],
       "description": "Tests for scheduler async fire-and-forget dispatch with DB polling: async dispatch, polling, status overwrite guard, backward compatibility, timeout handling"
+    },
+    {
+      "file": "test_cleanup_service.py",
+      "feature": "Issue #106",
+      "added": "2026-03-13",
+      "categories": ["backend", "api", "cleanup", "executions"],
+      "description": "Tests for cleanup service Issue #106 fixes: no-session execution fast-fail, orphaned skipped execution finalization, cleanup report structure"
     }
   ]
 }
