@@ -258,6 +258,22 @@
         </div>
       </div>
 
+      <!-- Stream Error Banner -->
+      <div v-if="streamError" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-start space-x-3">
+        <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-amber-800 dark:text-amber-300">{{ streamError }}</p>
+        </div>
+        <button
+          @click="retryStream"
+          class="flex-shrink-0 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-800/50 rounded hover:bg-amber-200 dark:hover:bg-amber-700 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+
       <!-- Execution Log -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -409,6 +425,10 @@ const eventSource = ref(null)
 const autoScroll = ref(true)
 const logContainer = ref(null)
 const isStopping = ref(false)
+const streamError = ref(null)  // User-visible stream error message
+const pollingInterval = ref(null)  // Fallback polling timer
+const streamRetryCount = ref(0)  // Track retry attempts
+const MAX_STREAM_RETRIES = 12  // Max retries (12 * 5s = 60s)
 
 // Computed
 const statusClass = computed(() => {
@@ -497,11 +517,11 @@ async function loadExecution() {
 }
 
 function startStreaming() {
-  // Don't start if already streaming
-  if (eventSource.value) return
-
   isStreaming.value = true
-  streamingEntries.value = []
+  // Only clear streaming entries on first attempt (not retries)
+  if (streamRetryCount.value === 0) {
+    streamingEntries.value = []
+  }
 
   // Use fetch with ReadableStream for SSE (EventSource doesn't support custom headers)
   const url = `/api/agents/${agentName.value}/executions/${executionId.value}/stream`
@@ -545,6 +565,11 @@ function startStreaming() {
 
               if (data.type === 'error') {
                 console.error('Stream error:', data.message)
+                // Show retryable errors subtly (polling will handle reconnect)
+                // Show non-retryable errors prominently
+                if (!data.retryable) {
+                  streamError.value = data.message || 'Stream error occurred'
+                }
                 continue
               }
 
@@ -580,8 +605,63 @@ function startStreaming() {
 function handleStreamEnd() {
   isStreaming.value = false
 
-  // Reload execution to get final status
-  loadExecutionFinal()
+  // Check if execution is still running — if so, start polling fallback
+  // This handles the race condition where the stream ends before the agent
+  // has registered the execution (404 from agent)
+  if (execution.value?.status === 'running') {
+    startPollingFallback()
+  } else {
+    loadExecutionFinal()
+  }
+}
+
+function startPollingFallback() {
+  // Don't start if already polling
+  if (pollingInterval.value) return
+
+  // Show a waiting state while polling
+  isStreaming.value = true
+
+  pollingInterval.value = setInterval(async () => {
+    try {
+      // Check execution status
+      const execResponse = await axios.get(
+        `/api/agents/${agentName.value}/executions/${executionId.value}`,
+        { headers: authStore.authHeader }
+      )
+      execution.value = execResponse.data
+
+      if (execution.value.status !== 'running') {
+        // Execution completed while we were polling — load final state
+        stopPolling()
+        isStreaming.value = false
+        loadExecutionFinal()
+        return
+      }
+
+      // Execution is still running — try to reconnect the stream
+      if (streamRetryCount.value < MAX_STREAM_RETRIES) {
+        streamRetryCount.value++
+        stopPolling()
+        streamError.value = null
+        startStreaming()
+      } else {
+        // Max retries exceeded — stop polling, keep showing what we have
+        stopPolling()
+        isStreaming.value = false
+        streamError.value = 'Unable to connect to live stream. The execution is still running — refresh the page to check for updates.'
+      }
+    } catch (err) {
+      console.error('Polling error:', err)
+    }
+  }, 5000)
+}
+
+function stopPolling() {
+  if (pollingInterval.value) {
+    clearInterval(pollingInterval.value)
+    pollingInterval.value = null
+  }
 }
 
 async function loadExecutionFinal() {
@@ -601,6 +681,14 @@ async function loadExecutionFinal() {
   } catch (err) {
     console.error('Failed to load final execution state:', err)
   }
+}
+
+function retryStream() {
+  streamError.value = null
+  streamRetryCount.value = 0
+  stopPolling()
+  // Re-check execution status and restart streaming if still running
+  loadExecution()
 }
 
 async function loadExecutionLog() {
@@ -790,6 +878,7 @@ onUnmounted(() => {
     eventSource.value.close()
     eventSource.value = null
   }
+  stopPolling()
   isStreaming.value = false
 })
 </script>

@@ -624,6 +624,7 @@ All execution types now produce logs that `parseExecutionLog()` can render:
 
 | Date | Changes |
 |------|---------|
+| 2026-03-13 | **#68 Fix: Live streaming race condition**. Backend SSE proxy now uses 10s connect timeout (was `timeout=None`). 404 and connection errors return `retryable: true` flag. Frontend `handleStreamEnd()` now starts polling fallback (5s interval, 12 retries) when execution is still running. Stream errors shown as amber banner with Retry button instead of silently swallowed. |
 | 2026-02-21 | **PERF-001**: Added note that `execution_log` is excluded from list endpoint for performance. Log viewer uses dedicated `/log` endpoint which is unaffected. |
 | 2026-02-16 | **Security Fix (Credential Sanitization)**: Execution logs are now sanitized at two layers before storage. Agent-side: `sanitize_subprocess_line()` filters Claude Code output in real-time. Backend-side: `sanitize_execution_log()` provides defense-in-depth. Sensitive patterns (API keys, tokens, auth headers) are replaced with `***REDACTED***`. Updated Security Considerations section. |
 | 2026-01-23 | **Line number update**: Updated all line number references to match current implementation. View Log Button moved to lines 234-243. Modal at lines 316-432. Modal state at lines 499-503. viewExecutionLog() at lines 803-820. parseExecutionLog() at lines 839-930. Visual components at lines 357-425. Backend endpoint at lines 339-379 (using AuthorizedAgent dependency). Agent server execute_claude_code() at lines 389-546, execute_headless_task() at lines 553-766. |

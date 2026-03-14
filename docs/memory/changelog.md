@@ -1,3 +1,12 @@
+### 2026-03-13 23:00
+🐛 **Fix: Live execution output gets stuck on 'Waiting for execution output...' (#68)**
+
+Fixed SSE streaming race condition where frontend stream connects before agent has registered the execution. Added:
+- Polling fallback: when stream ends prematurely (execution still running), polls every 5s and retries stream connection (up to 12 attempts / 60s)
+- Connect timeout: backend SSE proxy now uses 10s connect timeout instead of `timeout=None`, preventing indefinite hangs
+- Error surfacing: stream errors shown as amber banner with Retry button instead of being silently swallowed to console
+- Retryable error classification: 404s and connection errors marked as `retryable` so frontend handles them gracefully
+
 ### 2026-03-13 18:55
 🔧 **Fix: Cleanup service misses skipped executions and slow no-session detection (#106)**
 

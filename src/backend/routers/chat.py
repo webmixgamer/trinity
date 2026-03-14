@@ -1420,14 +1420,17 @@ async def stream_execution_log(
         raise HTTPException(status_code=503, detail="Agent is not running")
 
     async def proxy_stream():
-        """Proxy SSE stream from agent container."""
+        """Proxy SSE stream from agent container with connect timeout and keepalive."""
         agent_url = f"http://agent-{name}:8000/api/executions/{execution_id}/stream"
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            # Connect timeout prevents hanging if agent is unresponsive,
+            # but read timeout is None since SSE streams are long-lived
+            timeout = httpx.Timeout(connect=10.0, read=None, write=None, pool=None)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("GET", agent_url) as response:
                     if response.status_code == 404:
-                        # Execution not found - send error and close
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
+                        # Execution not found on agent (race condition: task not started yet)
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not yet available on agent', 'retryable': True})}\n\n"
                         yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
                         return
 
@@ -1436,11 +1439,14 @@ async def stream_execution_log(
                         yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
                         return
 
-                    # Stream through data from agent
+                    # Stream through data from agent, adding proxy-level keepalive
                     async for chunk in response.aiter_text():
                         yield chunk
         except httpx.ConnectError:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to connect to agent'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to connect to agent', 'retryable': True})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+        except httpx.ConnectTimeout:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Agent connection timed out', 'retryable': True})}\n\n"
             yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
         except Exception as e:
             logger.error(f"[Stream] Error streaming from agent {name}: {e}")

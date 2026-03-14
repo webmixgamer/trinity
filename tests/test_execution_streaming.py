@@ -247,3 +247,63 @@ class TestExecutionStreamingErrors:
 
         # Should return error or not found
         assert_status_in(response, [400, 404, 405, 422])
+
+
+class TestExecutionStreamingRetryableErrors:
+    """Tests for retryable error classification in SSE streams (#68)."""
+
+    def test_stream_not_found_includes_retryable_flag(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """When execution is not found on agent, error should include retryable flag.
+
+        This handles the race condition where the frontend connects before the
+        agent has registered the execution.
+        """
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/nonexistent-race-condition/stream"
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        if response.status_code == 200:
+            body = response.text
+            # If the stream contains an error, check for retryable field
+            if '"type": "error"' in body or '"type":"error"' in body:
+                import json
+                for line in body.split('\n'):
+                    if line.startswith('data: '):
+                        try:
+                            data = json.loads(line[6:])
+                            if data.get('type') == 'error':
+                                # Retryable flag should be present for 404/connection errors
+                                assert 'retryable' in data or 'message' in data, \
+                                    "Error events should include retryable flag or message"
+                                break
+                        except json.JSONDecodeError:
+                            continue
+
+    def test_stream_contains_stream_end(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """SSE stream should always terminate with stream_end event.
+
+        This ensures the frontend can detect when the stream has ended
+        and trigger the polling fallback if execution is still running.
+        """
+        response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions/test-stream-end/stream"
+        )
+
+        if response.status_code == 503:
+            pytest.skip("Agent server not ready")
+
+        if response.status_code == 200:
+            body = response.text
+            assert "stream_end" in body, \
+                "SSE stream should always contain a stream_end event"

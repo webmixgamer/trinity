@@ -484,7 +484,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/execution-detail-page.md`
 
 ### 13.8 Live Execution Streaming
-- **Status**: ✅ Implemented (2026-01-13)
+- **Status**: ✅ Implemented (2026-01-13), hardened (2026-03-13)
 - **Description**: Real-time streaming of Claude Code execution logs to the Execution Detail page
 - **Key Features**:
   - SSE streaming from agent server through backend proxy
@@ -493,6 +493,9 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - "Live" button in TasksPanel (green pulsing badge) for running tasks
   - Stop button integration
   - Late joiner support (buffered entries)
+  - Polling fallback when stream ends prematurely (race condition recovery)
+  - Connect timeout on backend SSE proxy (prevents indefinite hang)
+  - User-visible stream error banner with retry button
 - **Spec**: `docs/requirements/LIVE_EXECUTION_STREAMING.md`
 
 ### 13.9 Continue Execution as Chat (EXEC-023)
