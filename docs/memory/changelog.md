@@ -1,3 +1,24 @@
+### 2026-03-13 23:30
+🧪 **Test: Close test coverage gaps for Avatars, Rate Limits, and Payments (#84)**
+
+Added 71 new tests across 3 new test files to close critical test coverage gaps:
+- `test_avatars.py` — 40 tests for AVATAR-001/002/003 (serving, generation, emotions, identity, defaults, lifecycle)
+- `test_rate_limits.py` — 23 tests for SUB-002 (unit tests for `_is_rate_limit_message`, `_format_rate_limit_error`, `ExecutionMetadata` error fields, 429 queue full)
+- `test_nevermined_payments.py` — 16 tests for NVM-001 (paid chat 402/403 flow, payment info, settlement admin, request validation)
+
+Also updated `.claude/agents/test-runner.md` with accurate test counts, new file entries, and current known issues. Added Trinity platform compatibility files (`template.yaml`, `.mcp.json.template`) and updated `.gitignore` with Claude Code internals.
+
+**Files changed:**
+- `tests/test_avatars.py` — NEW: 40 tests
+- `tests/test_rate_limits.py` — NEW: 23 tests (21 unit + 2 smoke)
+- `tests/test_nevermined_payments.py` — NEW: 16 tests
+- `.claude/agents/test-runner.md` — Updated statistics, categories, recent additions
+- `template.yaml` — NEW: Trinity platform agent metadata
+- `.mcp.json.template` — NEW: MCP server config template
+- `.gitignore` — Added Claude Code internals, runtime exclusions
+
+---
+
 ### 2026-03-13 23:00
 🐛 **Fix: Live execution output gets stuck on 'Waiting for execution output...' (#68)**
 
