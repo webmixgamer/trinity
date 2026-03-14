@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-03-07 - Agent Avatars in Network Graph: AgentNode now displays an `AgentAvatar` component in the node header (line 28), showing the agent's avatar image or initials-based fallback. `avatarUrl` field added to node data in `convertAgentsToNodes()` for both system agents (line 426) and regular agents (line 460) in `network.js`.
+> **Last Updated**: 2026-03-14 - Dashboard header compacted: agents display shortened to "N/N agents" format (running/total), removed redundant "active" collaboration indicator, added whitespace-nowrap to tag selector to prevent two-row wrapping.
+>
+> **Previous (2026-03-07)** - Agent Avatars in Network Graph: AgentNode now displays an `AgentAvatar` component in the node header (line 28), showing the agent's avatar image or initials-based fallback. `avatarUrl` field added to node data in `convertAgentsToNodes()` for both system agents (line 426) and regular agents (line 460) in `network.js`.
 >
 > **Previous (2026-03-03)** - Replace Context Bar with Success Rate Bar (Issue #60): AgentNode and SystemAgentNode now display a success rate progress bar instead of context usage bar. Dual-window stats (24h primary + 7d secondary). Backend `GET /api/agents/execution-stats` extended with `include_7d` parameter and new `get_all_agents_execution_stats_dual()` DB method.
 >
@@ -51,7 +53,7 @@ Main dashboard view component with integrated Agent Network visualization.
 - Lines 84-95: **Time Range Filter** dropdown (1h, 6h, 24h, 3d, 7d)
 - Lines 112-122: Refresh button to reload agents and historical data
 - Lines 124-133: Reset Layout button to clear saved positions
-- Lines 8-57: **Compact Header** with inline stats (agents, running, messages, OTel cost/tokens)
+- Lines 8-55: **Compact Header** with inline stats (N/N agents, messages, OTel cost/tokens, host telemetry)
 - Lines 63-82: **Live/Replay Mode Toggle** buttons
 - Lines 337-414: **Message History Panel** (collapsible) with "Live Feed" and "Historical" sections
 - Lines 138-244: **Replay Controls Panel** (visible in replay mode) with playback controls and timeline scrubber
