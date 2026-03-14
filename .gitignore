@@ -130,13 +130,21 @@ config/agent-templates/**/memory/
 config/agent-templates/**/outputs/
 config/agent-templates/**/metrics.json
 .playwright-mcp/
+.local/
 
 # Claude Code internals
 .claude/projects/
 .claude/statsig/
 .claude/todos/
 .claude/debug/
+.claude/cache/
+.claude/plugins/
+.claude/shell-snapshots/
+.claude.json
 
 # Runtime
+.cache/
+.sudo_as_admin_successful
+.trinity/
 content/
 session-files/
