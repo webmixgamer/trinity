@@ -1,9 +1,10 @@
 # Slack Integration for Public Agents (SLACK-001)
 
-> **Status**: Draft
+> **Status**: Implemented
 > **Priority**: P1
 > **Author**: Claude + Eugene
 > **Created**: 2026-02-25
+> **Implemented**: 2026-03-12
 
 ## Overview
 
@@ -668,37 +669,37 @@ def verify_slack_signature(
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure (MVP)
-- [ ] Database migrations (3 new tables)
-- [ ] Slack signature verification service
-- [ ] Event endpoint with URL verification challenge
-- [ ] Basic DM message → agent → response flow
-- [ ] Settings page for Slack app credentials
-- [ ] `chat.postMessage` integration for responses
+### Phase 1: Core Infrastructure (MVP) ✅
+- [x] Database migrations (3 new tables)
+- [x] Slack signature verification service
+- [x] Event endpoint with URL verification challenge
+- [x] Basic DM message → agent → response flow
+- [x] Settings page for Slack app credentials
+- [x] `chat.postMessage` integration for responses
 
-### Phase 2: OAuth & Connection
-- [ ] OAuth flow endpoints (connect/callback)
-- [ ] PublicLinksPanel Slack connection UI
-- [ ] Token encryption/storage (reuse credential_encryption.py)
-- [ ] Connection status API
-- [ ] Disconnect functionality
+### Phase 2: OAuth & Connection ✅
+- [x] OAuth flow endpoints (connect/callback)
+- [x] PublicLinksPanel Slack connection UI
+- [x] Token encryption/storage (reuse credential_encryption.py)
+- [x] Connection status API
+- [x] Disconnect functionality
 
-### Phase 3: User Authentication
-- [ ] Verification state machine (awaiting_email → awaiting_code → verified)
-- [ ] Email code verification flow
-- [ ] Slack profile email auto-verification (if scope available)
-- [ ] Session persistence for Slack users (reuse public_chat_sessions)
+### Phase 3: User Authentication ✅
+- [x] Verification state machine (awaiting_email → awaiting_code → verified)
+- [x] Email code verification flow
+- [x] Slack profile email auto-verification (if scope available)
+- [x] Session persistence for Slack users (reuse public_chat_sessions)
 
-### Phase 4: Polish
-- [ ] Rich message formatting (markdown → Slack mrkdwn)
-- [ ] Error message templates (rate limit, agent unavailable)
-- [ ] Verification message UX improvements
-- [ ] Admin "test connection" button
+### Phase 4: Polish (Deferred to Hardening)
+- [ ] Rich message formatting (markdown → Slack mrkdwn) → See #64
+- [ ] Error message templates (rate limit, agent unavailable) → See #64
+- [ ] Verification message UX improvements → See #64
+- [ ] Admin "test connection" button → See #64
 
-### Phase 5: Documentation
-- [ ] Feature flow document
-- [ ] Slack App setup guide for admins
-- [ ] Troubleshooting guide
+### Phase 5: Documentation ✅
+- [x] Feature flow document (`docs/memory/feature-flows/slack-integration.md`)
+- [ ] Slack App setup guide for admins → Deferred
+- [ ] Troubleshooting guide → Deferred
 
 ### Future (Not in Scope)
 - Channel @mentions support

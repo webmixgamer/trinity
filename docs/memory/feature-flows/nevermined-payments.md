@@ -38,7 +38,9 @@ Admin/Owner
     POST /api/nevermined/agents/{name}/config
     + Body: { nvm_api_key, nvm_environment, nvm_agent_id, nvm_plan_id, credits_per_request }
     |
-    ├─ _require_write_access() → owner or admin only
+    ├─ _require_write_access()
+    │     ├─ _require_agent_exists() → checks Docker + DB → 404 if not found
+    │     └─ owner or admin only → 403 otherwise
     ├─ NeverminedOperations.create_or_update_config()
     │     ├─ Encrypt nvm_api_key via CredentialEncryptionService (AES-256-GCM)
     │     └─ Upsert nevermined_agent_config row
@@ -52,7 +54,9 @@ Shared User (view-only)
     GET /api/nevermined/agents/{name}/config
     GET /api/nevermined/agents/{name}/payments
     |
-    ├─ _require_read_access() → owner, shared, or admin
+    ├─ _require_read_access()
+    │     ├─ _require_agent_exists() → checks Docker + DB → 404 if not found
+    │     └─ owner, shared, or admin → 403 otherwise
     └─ Returns config (no decrypted key) / payment log
     |
     POST/PUT/DELETE → 403 "Owner access required"
@@ -67,7 +71,7 @@ Shared User (view-only)
 | `src/backend/db/nevermined.py` | `NeverminedOperations` — config CRUD + payment log |
 | `src/backend/services/nevermined_payment_service.py` | `NeverminedPaymentService` — SDK verify/settle |
 | `src/backend/routers/paid.py` | Public paid endpoint (`/api/paid/`) |
-| `src/backend/routers/nevermined.py` | Admin config endpoints (`/api/nevermined/`) |
+| `src/backend/routers/nevermined.py` | Admin config endpoints (`/api/nevermined/`), `_require_agent_exists()` guard |
 | `src/backend/db_models.py` | Pydantic models for config, payment result, payment log |
 | `src/backend/db/schema.py` | Table definitions |
 | `src/backend/db/migrations.py` | Migration #23 |
@@ -113,6 +117,18 @@ Shared User (view-only)
 | `get_nevermined_config` | Read config (no key) |
 | `toggle_nevermined` | Enable/disable |
 | `get_nevermined_payments` | Payment history |
+
+## Error Handling
+
+| Error Case | HTTP Status | Where |
+|------------|-------------|-------|
+| Agent not found (Docker + DB) | 404 | `_require_agent_exists()` in all config/payment endpoints |
+| No access to agent | 403 | `_require_read_access()` |
+| Not owner/admin | 403 | `_require_write_access()` |
+| Config not found | 404 | GET/DELETE/toggle config endpoints |
+| Missing payment-signature | 402 | `/api/paid/{name}/chat` |
+| Invalid payment token | 403 | `/api/paid/{name}/chat` |
+| SDK not installed | 501 | `_check_sdk()` |
 
 ## Isolation Guarantees
 

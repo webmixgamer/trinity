@@ -33,7 +33,7 @@ def get_agent_status_from_container(container) -> AgentStatus:
     labels = container.labels
     # Use container name as authoritative source (handles rename correctly)
     # Container name is "agent-{name}", so strip the prefix
-    agent_name = container.name.replace("agent-", "")
+    agent_name = container.name.removeprefix("agent-")
 
     # Normalize Docker status to simpler values for frontend
     # Docker statuses: created, running, paused, restarting, removing, exited, dead
@@ -127,7 +127,7 @@ def list_all_agents_fast() -> List[AgentStatus]:
         for container in containers:
             labels = container.labels
             # Use container name as authoritative source (handles rename correctly)
-            agent_name = container.name.replace("agent-", "")
+            agent_name = container.name.removeprefix("agent-")
 
             # Normalize Docker status to simpler values for frontend
             docker_status = container.status

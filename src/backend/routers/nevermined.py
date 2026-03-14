@@ -24,14 +24,23 @@ router = APIRouter(prefix="/api/nevermined", tags=["nevermined"])
 logger = logging.getLogger(__name__)
 
 
+def _require_agent_exists(agent_name: str):
+    """Verify the agent exists in the system."""
+    from services.docker_service import get_agent_by_name
+    if not get_agent_by_name(agent_name) and not db.get_agent_owner(agent_name):
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 def _require_read_access(agent_name: str, current_user: User):
     """Verify the user can view agent payment config (owner, shared, or admin)."""
+    _require_agent_exists(agent_name)
     if not db.can_user_access_agent(current_user.username, agent_name):
         raise HTTPException(status_code=403, detail="Access denied")
 
 
 def _require_write_access(agent_name: str, current_user: User):
     """Verify the user can modify agent payment config (owner or admin only)."""
+    _require_agent_exists(agent_name)
     if current_user.role == "admin":
         return
     if not db.can_user_share_agent(current_user.username, agent_name):

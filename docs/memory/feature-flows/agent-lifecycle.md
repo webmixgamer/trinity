@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-03-07 - **AVATAR-001: Avatar lifecycle integration**: Delete agent now cleans up cached avatar file (`/data/avatars/{name}.png`). Rename agent now renames avatar file. Get agent response now includes `avatar_url` field from avatar identity data.
+> **Updated**: 2026-03-13 - **Name handling fixes**: (1) `docker_service.py` lines 36, 130: Changed `.replace("agent-", "")` to `.removeprefix("agent-")` to fix agents with "agent" in their name. (2) `crud.py` line 87-88: Duplicate check now queries both Docker AND database (`db.get_agent_owner()`). HTTP status changed from 400 to 409 for duplicate names.
+>
+> **Previous (2026-03-07)**: **AVATAR-001: Avatar lifecycle integration**: Delete agent now cleans up cached avatar file (`/data/avatars/{name}.png`). Rename agent now renames avatar file. Get agent response now includes `avatar_url` field from avatar identity data.
 >
 > **Previous (2026-03-03)**: **SUB-002: Env-var-based subscription tokens**: Subscription tokens now injected as `CLAUDE_CODE_OAUTH_TOKEN` env var at container creation/recreation, replacing the old SUB-001 post-start `.credentials.json` file injection. Removed `inject_subscription_on_start()` call from `start_agent_internal()`. `check_api_key_env_matches()` now performs three-way env var check (subscription token, API key, or neither). `recreate_container_with_updated_config()` manages `CLAUDE_CODE_OAUTH_TOKEN` env var directly.
 >
@@ -252,7 +254,7 @@ from services.settings_service import get_anthropic_api_key  # Line 29 - central
 
 **Business Logic:**
 1. **Sanitize name** (line 78-82): Lowercase, replace special chars with hyphens via `sanitize_agent_name()`
-2. **Check existence** (line 84-85): Query Docker for existing container via `get_agent_by_name()`
+2. **Check existence** (line 87-88): Query Docker via `get_agent_by_name()` AND database via `db.get_agent_owner()`. Returns HTTP 409 if duplicate found.
 3. **Load template** (line 97-179): GitHub or local template processing, extract shared folder config
 4. **Auto-assign port** (line 180-181): Find next available SSH port (2289+) via `get_next_available_port()`
 5. **Generate credential files** (line 188-200): Create empty template structure (CRED-002: no longer auto-injects credentials)
@@ -566,7 +568,7 @@ async def get_agent_logs_endpoint(agent_name: AuthorizedAgentByName, request: Re
 | Function | Line | Purpose |
 |----------|------|---------|
 | `get_agent_container()` | 18-28 | Get container by name from Docker API |
-| `get_agent_status_from_container()` | 31-83 | Convert Docker container to AgentStatus model (full metadata) |
+| `get_agent_status_from_container()` | 31-83 | Convert Docker container to AgentStatus model. Name extracted via `container.name.removeprefix("agent-")` (fixed from `.replace()` which broke agents with "agent" in name) |
 | `list_all_agents()` | 86-98 | List all containers with full metadata (slower, uses `container.attrs`) |
 | `list_all_agents_fast()` | 101-159 | **Fast listing using labels only** - avoids slow Docker API calls (~50ms vs 2-3s) |
 | `get_agent_by_name()` | 162-167 | Get specific agent status |
@@ -851,7 +853,7 @@ await log_audit_event(
 | Error Case | HTTP Status | Message |
 |------------|-------------|---------|
 | Invalid agent name | 400 | "Invalid agent name - must contain at least one alphanumeric character" |
-| Agent already exists | 400 | "Agent already exists" |
+| Agent already exists | 409 | "Agent already exists" |
 | Agent not found | 404 | "Agent not found" |
 | Permission denied (delete) | 403 | "You don't have permission to delete this agent" |
 | Docker error | 500 | "Failed to create/start/stop agent: {error}" |

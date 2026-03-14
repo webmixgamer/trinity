@@ -2,12 +2,13 @@
 Internal API Tests (test_internal.py)
 
 Tests for internal API endpoints used by scheduler and agent containers.
-These endpoints have no authentication (internal network only).
+These endpoints require X-Internal-Secret header for authentication.
 
 Feature Flow: scheduler-service.md
 Added: 2026-02-11
 """
 
+import os
 import pytest
 import uuid
 from utils.api_client import TrinityApiClient
@@ -19,6 +20,15 @@ from utils.assertions import (
 )
 
 
+def _internal_headers() -> dict:
+    """Get headers required for internal API authentication."""
+    secret = os.getenv("INTERNAL_API_SECRET", "")
+    if not secret:
+        # Fall back to SECRET_KEY which the backend also accepts
+        secret = os.getenv("SECRET_KEY", "")
+    return {"X-Internal-Secret": secret} if secret else {}
+
+
 class TestInternalHealth:
     """Tests for internal health check endpoint."""
 
@@ -26,7 +36,11 @@ class TestInternalHealth:
 
     def test_internal_health(self, api_client: TrinityApiClient):
         """GET /api/internal/health returns ok status."""
-        response = api_client.get("/api/internal/health")
+        headers = _internal_headers()
+        if not headers:
+            pytest.skip("INTERNAL_API_SECRET or SECRET_KEY not set in test env")
+
+        response = api_client.get("/api/internal/health", headers=headers)
 
         assert_status(response, 200)
         data = assert_json_response(response)
@@ -39,6 +53,12 @@ class TestActivityTracking:
     These endpoints are called by the dedicated scheduler service
     to create agent_activities records for Timeline visibility.
     """
+
+    @pytest.fixture(autouse=True)
+    def _skip_without_secret(self):
+        """Skip all tests if internal secret is not configured."""
+        if not _internal_headers():
+            pytest.skip("INTERNAL_API_SECRET or SECRET_KEY not set in test env")
 
     def test_track_activity_creates_record(
         self,
@@ -59,7 +79,8 @@ class TestActivityTracking:
                     "schedule_id": "test-schedule-id",
                     "schedule_name": "Test Schedule"
                 }
-            }
+            },
+            headers=_internal_headers()
         )
 
         assert_status(response, 200)
@@ -84,7 +105,8 @@ class TestActivityTracking:
                 "triggered_by": "manual",
                 "related_execution_id": execution_id,
                 "details": {"manual_trigger": True}
-            }
+            },
+            headers=_internal_headers()
         )
 
         assert_status(response, 200)
@@ -103,7 +125,8 @@ class TestActivityTracking:
                 "agent_name": created_agent["name"],
                 "activity_type": "invalid_type",
                 "triggered_by": "schedule"
-            }
+            },
+            headers=_internal_headers()
         )
 
         assert_status(response, 400)
@@ -123,7 +146,8 @@ class TestActivityTracking:
                 "activity_type": "schedule_start",
                 "triggered_by": "schedule",
                 "related_execution_id": execution_id
-            }
+            },
+            headers=_internal_headers()
         )
 
         if create_response.status_code != 200:
@@ -137,7 +161,8 @@ class TestActivityTracking:
             json={
                 "status": "completed",
                 "details": {"duration_ms": 1000}
-            }
+            },
+            headers=_internal_headers()
         )
 
         assert_status(response, 200)
@@ -160,7 +185,8 @@ class TestActivityTracking:
                 "activity_type": "schedule_start",
                 "triggered_by": "schedule",
                 "related_execution_id": execution_id
-            }
+            },
+            headers=_internal_headers()
         )
 
         if create_response.status_code != 200:
@@ -174,7 +200,8 @@ class TestActivityTracking:
             json={
                 "status": "failed",
                 "error": "Agent not reachable"
-            }
+            },
+            headers=_internal_headers()
         )
 
         assert_status(response, 200)
@@ -188,7 +215,8 @@ class TestActivityTracking:
         """POST /api/internal/activities/{id}/complete returns 404 for unknown ID."""
         response = api_client.post(
             "/api/internal/activities/nonexistent-activity-id/complete",
-            json={"status": "completed"}
+            json={"status": "completed"},
+            headers=_internal_headers()
         )
 
         assert_status(response, 404)

@@ -1,3 +1,20 @@
+### 2026-03-13 14:36
+🔄 **Refactor: Split db/agents.py into focused modules (#102)**
+
+Split the ~1000-line `AgentOperations` class into 6 focused mixin modules under `db/agent_settings/`, each handling a single concern. `AgentOperations` remains as facade class (inherits all mixins) for full backwards compatibility — no API changes, no caller changes.
+
+**New modules:**
+- `db/agent_settings/sharing.py` — Agent sharing operations
+- `db/agent_settings/resources.py` — Memory, CPU, timeout, parallel capacity
+- `db/agent_settings/security.py` — Full capabilities, read-only mode
+- `db/agent_settings/autonomy.py` — Autonomy mode, API key settings
+- `db/agent_settings/avatar.py` — Avatar identity management
+- `db/agent_settings/metadata.py` — Batch queries, rename operations
+
+**Core file:** `db/agents.py` — Slimmed to ownership + access control only (~160 lines)
+
+---
+
 ### 2026-03-13
 🐛 **Fix: Pin uvicorn 0.37.0 and add worker healthcheck timeout (#105)**
 

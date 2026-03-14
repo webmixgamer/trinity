@@ -543,7 +543,7 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
 
 ### 15.1b Slack Integration for Public Links (SLACK-001)
-- **Status**: 🚧 In Progress
+- **Status**: ✅ Implemented (2026-02-25)
 - **Requirement ID**: SLACK-001
 - **Priority**: P1
 - **Description**: Enable Slack as a delivery channel for public agent links. Users chat with agents via DMs to a Slack bot.
@@ -565,6 +565,34 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
   - `POST /api/agents/{name}/public-links/{id}/slack/connect` - Initiate OAuth
 - **Spec**: `docs/requirements/SLACK_INTEGRATION.md`
 - **Flow**: `docs/memory/feature-flows/slack-integration.md`
+
+### 15.1c Telegram Bot Integration (TGRAM-001)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: TGRAM-001
+- **Priority**: P2
+- **Description**: Per-agent Telegram bot integration. Each agent gets its own Telegram bot (via @BotFather), enabling mobile-first chat and notifications.
+- **Key Features**:
+  - Per-agent bots (one bot per agent, token in `.env`)
+  - Bidirectional chat (users message bot → agent responds)
+  - Polling mode (dev) and webhook mode (production)
+  - Reuses CRED-002 credential injection system
+  - Reuses `public_chat_sessions` for conversation context
+  - `/start` and `/help` command handlers
+- **Database Tables**:
+  - `telegram_bindings` - Maps bots to agents (bot_id, bot_username, webhook_secret)
+  - `telegram_chat_links` - Maps Telegram users to sessions
+- **API Endpoints**:
+  - `POST /api/telegram/webhook/{webhook_secret}` - Receive Telegram updates
+  - `GET /api/agents/{name}/telegram` - Bot status
+  - `POST /api/agents/{name}/telegram/register` - Register bot
+  - `DELETE /api/agents/{name}/telegram` - Unregister bot
+  - `POST /api/agents/{name}/telegram/test` - Test message
+- **Dependency**: `aiogram>=3.0.0` (async Telegram Bot API framework)
+- **Spec**: `docs/requirements/TELEGRAM_INTEGRATION.md`
+- **Future Phases**:
+  - Phase 2: Notification forwarding to Telegram
+  - Phase 3: Inline keyboards for approve/reject
+  - Phase 4: Production webhook mode
 
 ### 15.2 First-Time Setup
 - **Status**: ✅ Implemented (2025-12-23)

@@ -266,8 +266,8 @@ async def update_schedule(
                 detail=f"Invalid cron expression: {str(e)}"
             )
 
-    # Build updates dict
-    update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
+    # Build updates dict — use exclude_unset to distinguish "not provided" from "explicitly set to null"
+    update_dict = updates.model_dump(exclude_unset=True)
 
     updated_schedule = db.update_schedule(schedule_id, current_user.username, update_dict)
     if not updated_schedule:

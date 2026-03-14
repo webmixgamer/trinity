@@ -1078,6 +1078,7 @@ The scheduler architecture was consolidated to make the dedicated scheduler the 
 2. **Manual Triggers Delegated**: Backend API now routes manual triggers to dedicated scheduler
 3. **Activity Tracking Added**: Dedicated scheduler creates `agent_activities` records via internal API
 4. **CRUD Simplified**: Backend only updates database; scheduler syncs automatically
+5. **Nullable Field Updates**: Schedule update endpoint uses `model_dump(exclude_unset=True)` to distinguish "field not provided" from "field explicitly set to null" (e.g., clearing the `model` field)
 
 ### Before vs After
 
@@ -1107,6 +1108,19 @@ Backend connects to dedicated scheduler via:
 SCHEDULER_URL = os.getenv("SCHEDULER_URL", "http://scheduler:8001")
 ```
 
+### Schedule Update Serialization
+
+The update endpoint (`src/backend/routers/schedules.py:270`) uses `model_dump(exclude_unset=True)` to build the update dict. This correctly distinguishes between fields that were not included in the request payload vs. fields explicitly set to `null`:
+
+```python
+# Line 270 — allows nullable fields (e.g., model) to be cleared
+update_dict = updates.model_dump(exclude_unset=True)
+```
+
+**Previous behavior** (bug): Used `{k: v for k, v in updates.model_dump().items() if v is not None}`, which silently dropped any field set to `null`. Sending `{"model": null}` had no effect -- the old model value remained.
+
+**Current behavior**: Sending `{"model": null}` correctly clears the model field in the database. Only truly omitted fields are excluded from the update.
+
 ### Database Sync
 
 The dedicated scheduler automatically syncs with the database every 60 seconds:
@@ -1133,6 +1147,7 @@ No immediate notification is needed from the backend.
 
 | Date | Change |
 |------|--------|
+| 2026-03-13 | **Schedule Update Nullable Field Fix**: Changed `schedules.py:270` from `if v is not None` filter to `model_dump(exclude_unset=True)`. Fixes bug where sending `{"model": null}` silently dropped the null value instead of clearing the field. |
 | 2026-03-11 | **Async Fire-and-Forget with DB Polling (SCHED-ASYNC-001, Issue #101)**: Replaced blocking HTTP call with async dispatch + DB polling to prevent TCP connection drops on long-running tasks (10-60+ min). Backend accepts `async_mode=True`, spawns background task, returns immediately. Scheduler polls DB every `poll_interval` seconds. Added status overwrite guard in exception handler. Cleanup service timeouts increased from 30 to 120 min. Added `POLL_INTERVAL` config. 11 new tests in `test_async_dispatch.py`. |
 | 2026-03-09 | **Unified Execution via TaskExecutionService**: Scheduler now calls `POST /api/internal/execute-task` instead of agent containers directly. This routes through `TaskExecutionService` for slot management, activity tracking, credential sanitization, and Dashboard capacity meter visibility. Removed direct `AgentClient` usage and manual activity tracking methods. See [parallel-capacity.md](parallel-capacity.md) and [task-execution-service.md](task-execution-service.md). |
 | 2026-03-02 | **MODEL-001 Model Selection**: `Schedule` dataclass has `model` field. `AgentClient.task()` accepts `model` parameter. `create_execution()` records `model_used`. `service.py` passes `schedule.model` to both execution record and agent client. See [model-selection.md](model-selection.md). |

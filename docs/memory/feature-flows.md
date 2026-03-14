@@ -11,6 +11,8 @@
 
 | Date | ID | Feature | Flow |
 |------|-----|---------|------|
+| 2026-03-12 | TIMEOUT-001 | Per-agent configurable execution timeout (default 15 min), dynamic slot TTL | [task-execution-service.md](feature-flows/task-execution-service.md), [parallel-capacity.md](feature-flows/parallel-capacity.md) |
+| 2026-03-12 | #90 | Fix stuck executions on slot acquisition failure — try block covers all execution steps | [task-execution-service.md](feature-flows/task-execution-service.md) |
 | 2026-03-11 | #81 | Default model for headless tasks — prevents misleading "token expired" errors when agent settings contain incompatible model | [parallel-headless-execution.md](feature-flows/parallel-headless-execution.md) |
 | 2026-03-11 | SCHED-ASYNC-001 | Scheduler async fire-and-forget with DB polling, status overwrite guard, cleanup timeout 30→120 min | [scheduler-service.md](feature-flows/scheduler-service.md), [cleanup-service.md](feature-flows/cleanup-service.md) |
 | 2026-03-11 | CLEANUP-001 | Background cleanup service for stale executions, activities, and slots | [cleanup-service.md](feature-flows/cleanup-service.md) |

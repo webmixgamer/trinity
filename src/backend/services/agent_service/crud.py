@@ -84,8 +84,8 @@ async def create_agent_internal(
     if not config.name:
         raise HTTPException(status_code=400, detail="Invalid agent name - must contain at least one alphanumeric character")
 
-    if get_agent_by_name(config.name):
-        raise HTTPException(status_code=400, detail="Agent already exists")
+    if get_agent_by_name(config.name) or db.get_agent_owner(config.name):
+        raise HTTPException(status_code=409, detail="Agent already exists")
 
     template_data = {}
     github_template_path = None

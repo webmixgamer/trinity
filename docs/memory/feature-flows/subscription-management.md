@@ -362,7 +362,7 @@ Admin             MCP/Claude Code          Backend                     Database
   |  registered"       |                      |                            |
 ```
 
-### Pydantic Validation (`src/backend/db_models.py:621-633`)
+### Pydantic Validation (`src/backend/db_models.py:622-634`)
 
 ```python
 class SubscriptionCredentialCreate(BaseModel):
@@ -935,7 +935,7 @@ ALTER TABLE agent_ownership ADD COLUMN subscription_id TEXT REFERENCES subscript
 
 ---
 
-## Pydantic Models (`src/backend/db_models.py:617-660`)
+## Pydantic Models (`src/backend/db_models.py:618-660`)
 
 ```python
 class SubscriptionCredentialCreate(BaseModel):

@@ -46,7 +46,7 @@ class TestImageModelsEndpoint:
         assert_status(response, 200)
         data = response.json()
 
-        expected_use_cases = ["general", "thumbnail", "diagram", "social"]
+        expected_use_cases = ["general", "thumbnail", "diagram", "social", "avatar"]
         assert data["use_cases"] == expected_use_cases
 
     @pytest.mark.smoke

@@ -149,7 +149,7 @@ class TestImageGenerationPrompts:
 
     def test_valid_use_cases_list(self):
         prompts_mod = _load_prompts()
-        expected = ["general", "thumbnail", "diagram", "social"]
+        expected = ["general", "thumbnail", "diagram", "social", "avatar"]
         assert prompts_mod.VALID_USE_CASES == expected
 
     def test_valid_aspect_ratios_list(self):
@@ -604,7 +604,7 @@ class TestCallGeminiImage:
 
         call_kwargs = mock_http.post.call_args[1]
         payload = call_kwargs["json"]
-        aspect = payload["generationConfig"]["imageSizeOptions"]["aspectRatio"]
+        aspect = payload["generationConfig"]["imageConfig"]["aspectRatio"]
         assert aspect == "16:9"
 
     @pytest.mark.asyncio

@@ -12,7 +12,7 @@ Test tiers:
 
 import pytest
 import uuid
-import json
+
 from utils.api_client import TrinityApiClient
 from utils.assertions import (
     assert_status,
@@ -26,18 +26,9 @@ from utils.assertions import (
 # Test Data
 # =============================================================================
 
-VALID_CREDENTIALS = json.dumps({
-    "claudeAiOauth": {
-        "accessToken": "sk-ant-oat01-test-access-token-12345",
-        "refreshToken": "sk-ant-ort01-test-refresh-token-67890",
-        "expiresAt": 1893456000000,  # 2030-01-01
-        "subscriptionType": "max",
-        "rateLimitTier": "default_claude_max_20x",
-        "scopes": ["user:inference", "user:profile"]
-    }
-})
+VALID_TOKEN = "sk-ant-oat01-test-access-token-12345"
 
-INVALID_CREDENTIALS = "not valid json {"
+INVALID_TOKEN = "invalid-token-no-prefix"
 
 
 # =============================================================================
@@ -64,7 +55,7 @@ class TestSubscriptionCRUD:
             "/api/subscriptions",
             json={
                 "name": name,
-                "credentials_json": VALID_CREDENTIALS,
+                "token": VALID_TOKEN,
                 "subscription_type": "max",
                 "rate_limit_tier": "default_claude_max_20x"
             }
@@ -87,7 +78,7 @@ class TestSubscriptionCRUD:
         # Create first
         response1 = api_client.post(
             "/api/subscriptions",
-            json={"name": name, "credentials_json": VALID_CREDENTIALS, "subscription_type": "max"}
+            json={"name": name, "token": VALID_TOKEN, "subscription_type": "max"}
         )
         assert_status(response1, 200)
         id1 = response1.json()["id"]
@@ -95,7 +86,7 @@ class TestSubscriptionCRUD:
         # Update with same name
         response2 = api_client.post(
             "/api/subscriptions",
-            json={"name": name, "credentials_json": VALID_CREDENTIALS, "subscription_type": "pro"}
+            json={"name": name, "token": VALID_TOKEN, "subscription_type": "pro"}
         )
         assert_status(response2, 200)
         data2 = response2.json()
@@ -108,20 +99,20 @@ class TestSubscriptionCRUD:
         api_client.delete(f"/api/subscriptions/{id1}")
 
     @pytest.mark.smoke
-    def test_register_subscription_invalid_json(self, api_client: TrinityApiClient):
-        """POST /api/subscriptions with invalid JSON returns 400."""
+    def test_register_subscription_invalid_token(self, api_client: TrinityApiClient):
+        """POST /api/subscriptions with invalid token returns 422."""
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": "test-invalid", "credentials_json": INVALID_CREDENTIALS}
+            json={"name": "test-invalid", "token": INVALID_TOKEN}
         )
-        assert_status(response, 400)
+        assert_status(response, 422)
 
     @pytest.mark.smoke
     def test_register_subscription_missing_name(self, api_client: TrinityApiClient):
         """POST /api/subscriptions without name returns 422."""
         response = api_client.post(
             "/api/subscriptions",
-            json={"credentials_json": VALID_CREDENTIALS}
+            json={"token": VALID_TOKEN}
         )
         assert_status(response, 422)
 
@@ -132,7 +123,7 @@ class TestSubscriptionCRUD:
         name = f"test-sub-list-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": name, "token": VALID_TOKEN}
         )
         assert_status(response, 200)
         sub_id = response.json()["id"]
@@ -159,7 +150,7 @@ class TestSubscriptionCRUD:
         name = f"test-sub-del-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": name, "token": VALID_TOKEN}
         )
         sub_id = response.json()["id"]
 
@@ -196,7 +187,7 @@ class TestSubscriptionAssignment:
         sub_name = f"test-sub-assign-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": sub_name, "token": VALID_TOKEN}
         )
         assert_status(response, 200)
         sub_id = response.json()["id"]
@@ -244,7 +235,7 @@ class TestSubscriptionAssignment:
         sub_name = f"test-sub-noagent-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": sub_name, "token": VALID_TOKEN}
         )
         sub_id = response.json()["id"]
 
@@ -269,7 +260,7 @@ class TestSubscriptionAssignment:
         sub_name = f"test-sub-clear-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": sub_name, "token": VALID_TOKEN}
         )
         sub_id = response.json()["id"]
 
@@ -332,7 +323,7 @@ class TestAuthStatus:
         sub_name = f"test-sub-auth-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS, "subscription_type": "max"}
+            json={"name": sub_name, "token": VALID_TOKEN, "subscription_type": "max"}
         )
         sub_id = response.json()["id"]
 
@@ -420,7 +411,7 @@ class TestCredentialInjection:
         sub_name = f"test-sub-inject-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": sub_name, "token": VALID_TOKEN}
         )
         sub_id = response.json()["id"]
 
@@ -461,7 +452,7 @@ class TestSubscriptionCascade:
         sub_name = f"test-sub-cascade-{uuid.uuid4().hex[:8]}"
         response = api_client.post(
             "/api/subscriptions",
-            json={"name": sub_name, "credentials_json": VALID_CREDENTIALS}
+            json={"name": sub_name, "token": VALID_TOKEN}
         )
         sub_id = response.json()["id"]
 

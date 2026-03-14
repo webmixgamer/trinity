@@ -152,6 +152,7 @@ The test suite covers:
 - **Agent Read-Only Mode** (test_read_only_mode.py) - Read-only mode toggle, hook injection, pattern configuration (CFG-007)
 - **Agent Tags** (test_tags.py) - [TESTS NEEDED] Tag CRUD, validation, filtering, agent deletion cleanup (ORG-001)
 - **Agent Capacity** (test_capacity.py) - Parallel execution capacity management, slot tracking, 429 enforcement (CAPACITY-001) [SMOKE + Agent]
+- **Agent Timeout** (test_agent_timeout.py) - Per-agent execution timeout configuration (TIMEOUT-001) [SMOKE + Agent]
 
 ### Credentials & Configuration
 - **Credentials** (test_credentials.py) - Credential management, hot reload
@@ -261,10 +262,52 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 
 | Feature | Test File | Tests |
 |---------|-----------|-------|
+| TIMEOUT-001 Agent Timeout | `test_agent_timeout.py` | ✅ 21 tests |
 | SCHED-ASYNC-001 Async Dispatch | `scheduler_tests/test_async_dispatch.py` | ✅ 11 tests |
 | CAPACITY-001 Capacity | `test_capacity.py` | ✅ 24 tests |
 | SUB-001 Subscriptions | `test_subscriptions.py` | ✅ 18 tests |
 | NOTIF-001 Notifications | `test_notifications.py` | ✅ 40 tests |
+
+## Recent Test Additions (2026-03-12)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_agent_timeout.py` | Agent Execution Timeout (TIMEOUT-001) | 21 tests |
+
+**TIMEOUT-001 Agent Execution Timeout Tests**:
+
+**Authentication (Smoke)** ✅
+- `test_get_timeout_requires_auth` - GET requires authentication
+- `test_put_timeout_requires_auth` - PUT requires authentication
+
+**Timeout GET (Smoke + Agent)** ✅
+- `test_get_timeout_returns_structure` - Returns agent_name, execution_timeout_seconds, execution_timeout_minutes
+- `test_get_timeout_default_is_900` - Default timeout is 900 seconds (15 min)
+- `test_get_timeout_minutes_calculation` - Minutes equals seconds // 60
+- `test_get_timeout_nonexistent_agent_returns_404` - 404 for unknown agent
+
+**Timeout Update (Smoke + Agent)** ✅
+- `test_put_timeout_update_and_restore` - Update and verify change persists
+- `test_put_timeout_minimum_value` - Accepts 60s (1 minute)
+- `test_put_timeout_maximum_value` - Accepts 7200s (2 hours)
+- `test_put_timeout_rejects_below_minimum` - Rejects <60s (400)
+- `test_put_timeout_rejects_zero` - Rejects 0 (400)
+- `test_put_timeout_rejects_negative` - Rejects negative (400)
+- `test_put_timeout_rejects_above_maximum` - Rejects >7200s (400)
+- `test_put_timeout_rejects_non_integer` - Rejects floats (400)
+- `test_put_timeout_rejects_string` - Rejects strings (400)
+- `test_put_timeout_requires_field` - Requires execution_timeout_seconds field
+- `test_put_timeout_nonexistent_agent_returns_404` - 404 for unknown agent
+
+**Common Values (Smoke + Agent)** ✅
+- `test_put_timeout_five_minutes` - Accepts 300s (5 min)
+- `test_put_timeout_thirty_minutes` - Accepts 1800s (30 min)
+- `test_put_timeout_one_hour` - Accepts 3600s (1 hour)
+
+**Response Format (Smoke + Agent)** ✅
+- `test_get_and_put_response_format_match` - Consistent response structure
+
+---
 
 ## Recent Test Additions (2026-03-11)
 
