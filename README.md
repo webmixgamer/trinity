@@ -429,9 +429,11 @@ Trinity includes an MCP server for external orchestration of agents:
 #### Communication
 | Tool | Description |
 |------|-------------|
-| `chat_with_agent` | Send a message and get response (supports parallel mode) |
+| `chat_with_agent` | Send a message and get response (supports parallel and async modes) |
 | `get_chat_history` | Retrieve conversation history |
 | `get_agent_logs` | View container logs |
+
+> **Note**: Claude Code enforces a 60-second timeout on MCP HTTP tool calls. Synchronous `chat_with_agent` calls must complete within 60 seconds. For longer tasks, use `async=true` with `parallel=true` to get an `execution_id` immediately and poll for results. See [Known Issues](docs/KNOWN_ISSUES.md) for details and workaround patterns.
 
 #### System Management
 | Tool | Description |

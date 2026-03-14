@@ -756,7 +756,7 @@ Agent B reads from: /home/developer/shared-in/agent-a/data.json
 ### Strategy 2: MCP Chat (For Real-Time Requests)
 
 **Best For:**
-- Urgent requests
+- Urgent requests that complete within 60 seconds
 - Interactive coordination
 - One-off questions
 - Triggering immediate action
@@ -770,6 +770,7 @@ Agent B reads from: /home/developer/shared-in/agent-a/data.json
 - Ephemeral (not persisted by default)
 - Requires both agents running
 - Higher latency than file read
+- **60-second timeout limit** — see [Design Limitation](#design-limitation-60-second-mcp-call-timeout) below
 
 **Example:**
 ```python
@@ -811,6 +812,58 @@ mcp__trinity__chat_with_agent(
     message="Check directives/urgent.json for schedule update."
 )
 ```
+
+### Design Limitation: 60-Second MCP Call Timeout
+
+> **Important**: Claude Code enforces a **hardcoded 60-second timeout** on all MCP HTTP tool calls. This is an upstream limitation in Claude Code's MCP transport layer — Trinity's `timeout_seconds` parameter controls the backend execution time but cannot override the client-side connection timeout.
+
+**What this means for agent design:**
+- Any `chat_with_agent` call that takes longer than 60 seconds will fail, regardless of `timeout_seconds`
+- The target agent may continue processing, but the calling agent receives no response
+- This affects all synchronous agent-to-agent MCP calls
+
+**Design patterns that work within this constraint:**
+
+#### Pattern 1: Keep Tasks Small (< 60s)
+Break complex work into sub-tasks that each complete within 60 seconds:
+```python
+# Instead of one large task:
+#   chat_with_agent("analyst", "Analyze entire codebase")  # Will timeout!
+
+# Break into focused tasks:
+chat_with_agent("analyst", "List the 5 most critical files in src/backend/")
+chat_with_agent("analyst", "Review src/backend/main.py for security issues")
+```
+
+#### Pattern 2: Async + Polling
+Use fire-and-forget mode for long-running tasks:
+```python
+# Start the task (returns immediately with execution_id)
+result = mcp__trinity__chat_with_agent(
+    agent_name="analyst",
+    message="Analyze entire codebase and write report to shared-out/report.md",
+    parallel=true,
+    async=true
+)
+# result = { "execution_id": "abc123", "status": "accepted" }
+
+# Check results later via shared folder or API
+```
+
+#### Pattern 3: Shared Folder Handoff
+Use MCP only to trigger work; exchange results via shared folders:
+```python
+# 1. Write input to shared folder
+# (write task spec to /home/developer/shared-out/tasks/analysis-request.json)
+
+# 2. Notify the agent (fast, <60s)
+chat_with_agent("analyst", "New task in shared-in/orchestrator/tasks/analysis-request.json")
+
+# 3. Agent writes results to its own shared-out/
+# 4. Orchestrator reads from shared-in/analyst/ on next cycle
+```
+
+**Related:** [Known Issues — 60-Second MCP Timeout](KNOWN_ISSUES.md)
 
 ---
 

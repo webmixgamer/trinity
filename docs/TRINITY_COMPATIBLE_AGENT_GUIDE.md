@@ -537,6 +537,17 @@ Permission checks before any agent-to-agent communication:
 - **Admin**: Allowed (bypass)
 - **Otherwise**: Denied with error
 
+### 60-Second MCP Call Timeout
+
+> **Design Limitation**: Claude Code enforces a hardcoded 60-second timeout on all MCP HTTP tool calls. Any `chat_with_agent` call that takes longer than 60 seconds will fail regardless of the `timeout_seconds` parameter.
+
+When designing agents that collaborate with other agents, ensure that:
+- Synchronous MCP calls complete within 60 seconds
+- Complex tasks use the async pattern (`parallel=true, async=true`) and poll for results
+- Large data exchanges use shared folders instead of MCP return values
+
+See the [Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md#design-limitation-60-second-mcp-call-timeout) for workaround patterns.
+
 ### Delegation Pattern
 
 When an agent needs help from another agent, it can create a delegation task:

@@ -52,6 +52,45 @@
 
 ---
 
+### 🟡 Agent-to-Agent MCP Calls Timeout at 60 Seconds
+
+**Status**: KNOWN LIMITATION (Claude Code upstream)
+**Priority**: HIGH
+**Affects**: All agent-to-agent collaboration via `chat_with_agent` MCP tool
+
+**Symptoms:**
+- Agent A calls `mcp__trinity__chat_with_agent(agent_name="B", message="...", timeout_seconds=900)`
+- After exactly 60 seconds, the call fails with a timeout error
+- Agent B may still be processing, but the result is lost
+- The `timeout_seconds` parameter has no effect on the 60s limit
+
+**Cause:**
+Claude Code has a hardcoded 60-second timeout for all MCP HTTP tool calls. This is an upstream limitation in Claude Code's MCP transport layer, not in Trinity. The `timeout_seconds` parameter controls the backend execution timeout, but Claude Code drops the HTTP connection before the backend timeout is reached.
+
+**Workarounds:**
+1. **Design tasks to complete within 60 seconds** — Break complex work into smaller sub-tasks
+2. **Use async mode with polling** — Fire-and-forget pattern avoids the timeout:
+   ```python
+   # Start task (returns immediately)
+   result = mcp__trinity__chat_with_agent(
+       agent_name="worker",
+       message="Do complex analysis",
+       parallel=true,
+       async=true
+   )
+   # Returns: { "execution_id": "abc123" }
+   # Poll for results later via API or shared folders
+   ```
+3. **Use shared folders** — Write results to `/home/developer/shared-out/` instead of returning them synchronously
+4. **Hybrid pattern** — Use async MCP to trigger work, shared folders for results
+
+**Related:**
+- GitHub Issue: [#104](https://github.com/abilityai/trinity/issues/104)
+- Claude Code Issues: [#16837](https://github.com/anthropics/claude-code/issues/16837), [#424](https://github.com/anthropics/claude-code/issues/424)
+- Docs: [Multi-Agent System Guide](MULTI_AGENT_SYSTEM_GUIDE.md#design-limitation-60-second-mcp-call-timeout)
+
+---
+
 ## Resolved Issues
 
 _No resolved issues yet_

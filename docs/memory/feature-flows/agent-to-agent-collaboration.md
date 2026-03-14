@@ -560,6 +560,23 @@ See `scheduling.md` and `mcp-orchestration.md` for full details on schedule mana
 
 ---
 
+## Design Limitation: 60-Second MCP Call Timeout
+
+Claude Code enforces a hardcoded 60-second timeout on all MCP HTTP tool calls. This means any synchronous `chat_with_agent` call that takes longer than 60 seconds will fail — the calling agent's MCP client drops the connection regardless of the `timeout_seconds` parameter passed to Trinity.
+
+**Impact**: The `timeout_seconds` parameter controls the backend execution timeout (how long Trinity waits for the target agent), but Claude Code kills the HTTP connection after 60s on the client side.
+
+**Workarounds**:
+1. Design tasks to complete within 60 seconds
+2. Use `async=true` with `parallel=true` for long-running tasks (returns `execution_id` immediately)
+3. Use shared folders for result exchange instead of synchronous return values
+
+See [Multi-Agent System Guide](../../../docs/MULTI_AGENT_SYSTEM_GUIDE.md#design-limitation-60-second-mcp-call-timeout) for detailed patterns.
+
+**Related**: [GitHub Issue #104](https://github.com/abilityai/trinity/issues/104), [Claude Code #16837](https://github.com/anthropics/claude-code/issues/16837)
+
+---
+
 ## Parallel Delegation Mode
 
 For orchestrator-worker patterns, use the `parallel` parameter:
