@@ -192,6 +192,7 @@ Trinity implements four foundational capabilities that transform simple AI assis
 - **Paid Agent Access (x402)** — Per-agent monetization via Nevermined x402 payment protocol with verify/settle lifecycle
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
 - **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
+- **Mobile Admin PWA** — Standalone mobile admin at `/m`, installable as a home screen app for on-the-go agent management
 
 <p align="center">
   <img src="docs/assets/screenshots/timeline-collaboration-active.png" alt="Execution Timeline" width="700"/>

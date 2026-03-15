@@ -1196,9 +1196,85 @@ The Process Engine supports six step types:
 
 ---
 
+## 27. Mobile Admin PWA (MOB-001)
+
+Standalone mobile-friendly admin page for managing agents on the go. Designed as a Progressive Web App (PWA) installable from URL — completely separate from the main UI with no navigation links to it.
+
+### 27.1 Mobile Admin Page
+- **Status**: ✅ Implemented (2026-03-14)
+- **Requirement ID**: MOB-001
+- **Description**: Standalone Vue page at `/m` route, admin-only, not linked from main UI navigation. Self-contained login + management interface optimized for mobile devices.
+- **Key Features**:
+  - Admin password login (inline, no redirect to main login page)
+  - Bottom tab navigation (mobile UX pattern): Agents, Ops, System
+  - Dark theme by default (OLED-friendly)
+  - Touch-optimized: 16px min font, large tap targets, no hover-dependent interactions
+  - iOS safe area support (`viewport-fit=cover`, notch handling)
+  - Pull-to-refresh on all tabs
+  - Auto-polling with configurable intervals
+
+### 27.2 Agents Tab
+- **Status**: ⏳ Not Started
+- **Requirement ID**: MOB-001-AGENTS
+- **Description**: Simplified agent list with essential management actions
+- **Key Features**:
+  - Agent cards showing: name, status (running/stopped), type badge
+  - Start/stop toggle per agent (inline)
+  - Tap agent to expand: logs tail, CPU/memory stats, last activity
+  - Search/filter by name
+  - System agents hidden by default
+
+### 27.3 Ops Tab
+- **Status**: ⏳ Not Started
+- **Requirement ID**: MOB-001-OPS
+- **Description**: Mobile-optimized Operating Room showing items needing attention
+- **Key Features**:
+  - Needs Response queue with expandable cards
+  - Respond/acknowledge actions inline
+  - Notification list with priority badges
+  - Badge count on tab icon
+  - Cost alerts summary
+
+### 27.4 System Tab
+- **Status**: ⏳ Not Started
+- **Requirement ID**: MOB-001-SYSTEM
+- **Description**: Fleet-level operations and health overview
+- **Key Features**:
+  - Fleet health summary (running/stopped/error counts)
+  - Emergency stop button (with confirmation)
+  - Fleet restart action
+  - Schedule pause/resume all
+  - Cost overview from `/api/ops/costs`
+
+### 27.5 PWA Configuration
+- **Status**: ⏳ Not Started
+- **Requirement ID**: MOB-001-PWA
+- **Description**: Progressive Web App manifest and service worker for "Add to Home Screen" installation
+- **Key Features**:
+  - Web App Manifest (`mobile-manifest.json`): standalone display, portrait orientation, Trinity branding
+  - Service Worker: network-first with cache fallback for static assets, skip API caching
+  - iOS PWA meta tags: `apple-mobile-web-app-capable`, status bar style, touch icons
+  - Start URL: `/m` (auto-loads mobile admin)
+  - Shortcuts: Agents tab, Ops tab
+- **Reference**: DGX Sparky PWA implementation (`~/Dropbox/Agents/dgx/sparky-ui/`) for patterns
+
+### 27.6 Mobile CSS Optimizations
+- **Status**: ⏳ Not Started
+- **Requirement ID**: MOB-001-CSS
+- **Description**: Mobile-specific CSS for native-feeling interactions
+- **Key Features**:
+  - `touch-action: manipulation` (remove 300ms tap delay)
+  - `-webkit-tap-highlight-color: transparent`
+  - 16px minimum input font size (prevents iOS auto-zoom)
+  - iOS keyboard handling via `visualViewport` API
+  - CSS safe area insets for notched devices
+  - Prevent overscroll bounce on iOS
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)
-- Mobile application
+- ~~Mobile application~~ → See Section 27 (MOB-001) for PWA-based mobile admin
 - Fiat/Stripe payment integration (Nevermined handles crypto payments)
 - Agent marketplace

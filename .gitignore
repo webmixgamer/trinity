@@ -116,6 +116,8 @@ repositories/
 
 # Screenshots in root (test artifacts)
 *.png
+# Allow PWA icons
+!src/frontend/public/icons/*.png
 
 # Frontend build output
 src/frontend/dist/

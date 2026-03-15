@@ -26,7 +26,7 @@ axios.interceptors.response.use(
       const currentPath = router.currentRoute.value.path
 
       // Don't redirect if already on login or setup page
-      if (currentPath !== '/login' && currentPath !== '/setup') {
+      if (currentPath !== '/login' && currentPath !== '/setup' && currentPath !== '/m') {
         console.log('🔐 Session expired - redirecting to login')
 
         // Clear auth state

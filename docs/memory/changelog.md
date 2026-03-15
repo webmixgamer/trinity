@@ -1,3 +1,27 @@
+### 2026-03-14
+
+**feat: Mobile Admin PWA — standalone agent management from phone (#133)**
+
+Added standalone mobile admin page at `/m` route, installable as a PWA via "Add to Home Screen". Completely separate from main UI with no navigation links.
+
+- **Agents tab**: Agent list with start/stop toggle, expandable details (context bar, logs), search/filter, system agents hidden
+- **Ops tab**: Operator queue with inline respond, notifications with acknowledge, badge counts
+- **System tab**: Fleet health summary (running/stopped/high context counts), emergency stop, fleet restart, schedule pause/resume, cost overview
+- **PWA**: Web app manifest, service worker (network-first with cache fallback), iOS meta tags, touch icons
+- **Mobile UX**: Dark theme (OLED-friendly), 16px min font, large tap targets, iOS safe area support, pull-to-refresh, keyboard detection (hides tab bar), 15s auto-polling
+- **Inline auth**: Admin password login directly on the page, no redirect to main login
+
+**Files changed:**
+- `src/frontend/src/views/MobileAdmin.vue` — NEW: Complete mobile admin SPA
+- `src/frontend/src/router/index.js` — Added `/m` route
+- `src/frontend/src/main.js` — Excluded `/m` from 401 redirect
+- `src/frontend/public/mobile-manifest.json` — NEW: PWA manifest
+- `src/frontend/public/mobile-sw.js` — NEW: Service worker
+- `src/frontend/public/icons/` — NEW: PWA icons (192, 512, apple-touch)
+- `docs/memory/requirements.md` — Updated MOB-001 status
+
+---
+
 ### 2026-03-13 23:30
 🧪 **Test: Close test coverage gaps for Avatars, Rate Limits, and Payments (#84)**
 

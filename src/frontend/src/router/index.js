@@ -156,6 +156,13 @@ const routes = [
     path: '/network',
     redirect: '/'
   },
+  // Mobile Admin PWA (MOB-001) — standalone, no NavBar
+  {
+    path: '/m',
+    name: 'MobileAdmin',
+    component: () => import('../views/MobileAdmin.vue'),
+    meta: { requiresAuth: false }  // handles its own inline auth
+  },
   // Catch-all redirect to dashboard
   {
     path: '/:pathMatch(.*)*',
