@@ -456,7 +456,6 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
     """Start an agent."""
     try:
         result = await start_agent_internal(agent_name)
-        trinity_status = result.get("trinity_injection", "unknown")
         credentials_status = result.get("credentials_injection", "unknown")
         credentials_result = result.get("credentials_result", {})
 
@@ -464,7 +463,7 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
             "event": "agent_started",
             "type": "agent_started",  # Normalized type field for filtering
             "name": agent_name,
-            "data": {"name": agent_name, "trinity_injection": trinity_status, "credentials_injection": credentials_status}
+            "data": {"name": agent_name, "credentials_injection": credentials_status}
         }
         if manager:
             await manager.broadcast(json.dumps(event))
@@ -474,7 +473,6 @@ async def start_agent_endpoint(agent_name: AuthorizedAgentByName, request: Reque
 
         return {
             "message": f"Agent {agent_name} started",
-            "trinity_injection": trinity_status,
             "credentials_injection": credentials_status,
             "credentials_result": credentials_result
         }
