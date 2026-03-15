@@ -1,6 +1,8 @@
 # Feature: Agent Lifecycle
 
-> **Updated**: 2026-03-13 - **Name handling fixes**: (1) `docker_service.py` lines 36, 130: Changed `.replace("agent-", "")` to `.removeprefix("agent-")` to fix agents with "agent" in their name. (2) `crud.py` line 87-88: Duplicate check now queries both Docker AND database (`db.get_agent_owner()`). HTTP status changed from 400 to 409 for duplicate names.
+> **Updated**: 2026-03-15 - **Issue #136: Runtime platform prompt injection**: Removed `inject_trinity_meta_prompt()` from startup sequence. Platform instructions are now injected at runtime via `--append-system-prompt` on every chat/task request (see `system-wide-trinity-prompt.md`). Startup injection order reduced to: Credentials → Skills → Read-Only Hooks.
+>
+> **Previous (2026-03-13)**: **Name handling fixes**: (1) `docker_service.py` lines 36, 130: Changed `.replace("agent-", "")` to `.removeprefix("agent-")` to fix agents with "agent" in their name. (2) `crud.py` line 87-88: Duplicate check now queries both Docker AND database (`db.get_agent_owner()`). HTTP status changed from 400 to 409 for duplicate names.
 >
 > **Previous (2026-03-07)**: **AVATAR-001: Avatar lifecycle integration**: Delete agent now cleans up cached avatar file (`/data/avatars/{name}.png`). Rename agent now renames avatar file. Get agent response now includes `avatar_url` field from avatar identity data.
 >

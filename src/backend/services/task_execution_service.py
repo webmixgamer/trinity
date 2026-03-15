@@ -30,6 +30,7 @@ from models import ActivityState, ActivityType, TaskExecutionStatus
 from services.activity_service import activity_service
 from services.slot_service import get_slot_service
 from utils.credential_sanitizer import sanitize_execution_log, sanitize_response
+from services.platform_prompt_service import get_platform_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -215,11 +216,18 @@ class TaskExecutionService:
             except Exception as e:
                 logger.warning(f"[TaskExecService] Failed to track activity start: {e}")
             # ---- 4. Call agent with retry --------------------------------
+            # Prepend platform instructions to any caller-provided system_prompt
+            platform_prompt = get_platform_system_prompt()
+            if system_prompt:
+                effective_system_prompt = platform_prompt + "\n\n" + system_prompt
+            else:
+                effective_system_prompt = platform_prompt
+
             payload = {
                 "message": message,
                 "model": model,
                 "allowed_tools": allowed_tools,
-                "system_prompt": system_prompt,
+                "system_prompt": effective_system_prompt,
                 "timeout_seconds": timeout_seconds,
                 "execution_id": execution_id,
                 "resume_session_id": resume_session_id,

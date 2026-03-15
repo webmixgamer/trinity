@@ -1,12 +1,12 @@
 # Feature: Web Terminal for Agents
 
-> **Updated**: 2026-02-18 - Terminal tab repositioned after Git tab in AgentDetail.vue (was between Dashboard and Logs). New tab order: Tasks, Dashboard*, Schedules, Credentials, Skills, Sharing*, Permissions*, Git*, **Terminal**, Folders*, Public Links*, Info.
+> **⚠️ DEPRECATED (2026-03-15)**: Terminal tab hidden from agent detail page for all users. Candidate for full removal. Backend WebSocket endpoint and SSH service remain intact for API-level access. Frontend components retained but not rendered.
 >
-> **Previous (2026-01-23)**: Verified line numbers across all layers. Database schema uses `agent_ownership` table. Added WebGL/Canvas renderer documentation.
+> **Previous (2026-02-18)**: Terminal tab repositioned after Git tab in AgentDetail.vue.
 
 ## Overview
 
-Browser-based interactive terminal for any agent using xterm.js with full Claude Code TUI support. The terminal replaces the chat tab on the Agent Detail page and provides direct terminal access to agent containers via WebSocket-based PTY forwarding. **Includes per-agent API key control** (Req 11.7) allowing owners to choose between platform API key or terminal-based authentication.
+Browser-based interactive terminal for any agent using xterm.js with full Claude Code TUI support. **UI tab hidden as of 2026-03-15** — backend API remains available. Includes per-agent API key control (Req 11.7) allowing owners to choose between platform API key or terminal-based authentication.
 
 ## User Story
 
@@ -744,6 +744,7 @@ No cleanup required - sessions terminate automatically on disconnect.
 
 | Date | Changes |
 |------|---------|
+| 2026-03-15 | **Terminal tab hidden**: Tab removed from `visibleTabs`, template content commented out, all reconnection/fit logic disabled. Backend endpoints unchanged. Marked as deprecation candidate. |
 | 2026-02-18 | **Terminal tab repositioned**: Tab now appears after Git tab in `visibleTabs` (line 520). Updated Entry Points section with new tab order. |
 | 2026-01-23 | Verified all line numbers across layers. Database schema uses `agent_ownership` table. Added WebGL/Canvas renderer documentation. |
 | 2025-12-28 | Added Gemini CLI runtime support, model selection feature. |

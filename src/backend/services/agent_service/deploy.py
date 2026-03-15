@@ -395,25 +395,10 @@ async def deploy_local_agent_logic(
             except Exception as e:
                 logger.warning(f"Failed to inject credentials: {e}")
 
-        # 12. Inject CLAUDE.md custom instructions if present
-        claude_md_path = extract_root / "CLAUDE.md"
-        if claude_md_path.exists():
-            try:
-                # Wait for agent to be ready if we didn't already wait for credentials
-                if not body.credentials:
-                    await asyncio.sleep(2)
+        # NOTE: Platform instructions are now injected at runtime via --append-system-prompt
+        # on every chat/task request (Issue #136). No file-based injection needed on deploy.
 
-                custom_prompt = claude_md_path.read_text()
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    await client.post(
-                        f"http://agent-{version_name}:8000/api/trinity/inject",
-                        json={"custom_prompt": custom_prompt}
-                    )
-                    logger.info(f"Injected CLAUDE.md ({len(custom_prompt)} chars) into {version_name}")
-            except Exception as e:
-                logger.warning(f"Failed to inject CLAUDE.md: {e}")
-
-        # 13. Return response
+        # 12. Return response
         return DeployLocalResponse(
             status="success",
             agent=agent_status,

@@ -111,35 +111,7 @@
               <DashboardPanel :agent-name="agent.name" :agent-status="agent.status" />
             </div>
 
-            <!-- Terminal Tab Content -->
-            <!-- Using v-show instead of v-if to keep terminal mounted and WebSocket connected when switching tabs -->
-            <div
-              v-show="activeTab === 'terminal'"
-              :class="[
-                'transition-all duration-300',
-                isTerminalFullscreen ? 'fixed inset-0 z-50 bg-gray-900' : ''
-              ]"
-              @keydown="handleTerminalKeydown"
-            >
-              <TerminalPanelContent
-                ref="terminalRef"
-                :agent-name="agent.name"
-                :agent-status="agent.status"
-                :runtime="agent.runtime || 'claude-code'"
-                :model="currentModel"
-                :is-fullscreen="isTerminalFullscreen"
-                :can-share="agent.can_share"
-                :api-key-setting="apiKeySetting"
-                :api-key-setting-loading="apiKeySettingLoading"
-                :action-loading="actionLoading"
-                @toggle-fullscreen="toggleTerminalFullscreen"
-                @connected="onTerminalConnected"
-                @disconnected="onTerminalDisconnected"
-                @error="onTerminalError"
-                @start-agent="startAgent"
-                @update-api-key-setting="updateApiKeySetting"
-              />
-            </div>
+            <!-- DEPRECATED: Terminal tab hidden for all users (candidate for removal) -->
 
             <!-- Logs Tab Content -->
             <div v-if="activeTab === 'logs'">
@@ -607,11 +579,12 @@ const visibleTabs = computed(() => {
     tabs.push({ id: 'permissions', label: 'Permissions' })
   }
 
-  // Git, Terminal, and Files tabs together
+  // Git and Files tabs together
   if (hasGitSync.value) {
     tabs.push({ id: 'git', label: 'Git' })
   }
-  tabs.push({ id: 'terminal', label: 'Terminal' })
+  // DEPRECATED: Terminal tab hidden for all users (candidate for removal)
+  // tabs.push({ id: 'terminal', label: 'Terminal' })
   tabs.push({ id: 'files', label: 'Files' })
 
   // Folders - hide for system agent
@@ -813,10 +786,10 @@ watch(() => route.params.name, async (newName, oldName) => {
     agentTags.value = []
     // Reset auth status for new agent
     authStatus.value = null
-    // Disconnect terminal from old agent
-    if (terminalRef.value?.disconnect) {
-      terminalRef.value.disconnect()
-    }
+    // DEPRECATED: Terminal tab hidden (candidate for removal)
+    // if (terminalRef.value?.disconnect) {
+    //   terminalRef.value.disconnect()
+    // }
     // Load new agent data
     await loadAgent()
     await loadSessionInfo()
@@ -839,14 +812,14 @@ watch(() => route.params.name, async (newName, oldName) => {
       }
     })
     startAllPolling()
-    // Connect terminal to new agent if on terminal tab and agent is running
-    if (activeTab.value === 'terminal' && agent.value?.status === 'running') {
-      nextTick(() => {
-        if (terminalRef.value?.connect) {
-          terminalRef.value.connect()
-        }
-      })
-    }
+    // DEPRECATED: Terminal tab hidden (candidate for removal)
+    // if (activeTab.value === 'terminal' && agent.value?.status === 'running') {
+    //   nextTick(() => {
+    //     if (terminalRef.value?.connect) {
+    //       terminalRef.value.connect()
+    //     }
+    //   })
+    // }
   }
 })
 
@@ -920,7 +893,7 @@ onMounted(async () => {
   // Handle tab query param (from Timeline click navigation)
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['tasks', 'chat', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
+    const validTabs = ['tasks', 'chat', 'dashboard', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }
@@ -945,20 +918,20 @@ onActivated(async () => {
   // Must also check here since onMounted doesn't fire for cached components
   if (route.query.tab) {
     const requestedTab = route.query.tab
-    const validTabs = ['tasks', 'chat', 'dashboard', 'terminal', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
+    const validTabs = ['tasks', 'chat', 'dashboard', 'logs', 'files', 'schedules', 'credentials', 'skills', 'sharing', 'permissions', 'git', 'folders', 'info']
     if (validTabs.includes(requestedTab)) {
       activeTab.value = requestedTab
     }
   }
 
-  // Refit terminal if on terminal tab
-  if (activeTab.value === 'terminal') {
-    nextTick(() => {
-      if (terminalRef.value?.fit) {
-        terminalRef.value.fit()
-      }
-    })
-  }
+  // DEPRECATED: Terminal tab hidden (candidate for removal)
+  // if (activeTab.value === 'terminal') {
+  //   nextTick(() => {
+  //     if (terminalRef.value?.fit) {
+  //       terminalRef.value.fit()
+  //     }
+  //   })
+  // }
 })
 
 // onDeactivated fires when navigating away (component is cached, not destroyed)

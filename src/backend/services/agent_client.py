@@ -86,7 +86,6 @@ class AgentClient:
     # Default timeouts
     CHAT_TIMEOUT = 900.0      # 15 minutes for chat
     SESSION_TIMEOUT = 5.0     # 5 seconds for session info
-    INJECT_TIMEOUT = 10.0     # 10 seconds for Trinity injection
     DEFAULT_TIMEOUT = 30.0    # 30 seconds default
 
     def __init__(self, agent_name: str):
@@ -390,78 +389,6 @@ class AgentClient:
         except AgentClientError:
             pass
         return None
-
-    # ========================================================================
-    # Trinity Injection
-    # ========================================================================
-
-    async def inject_trinity_prompt(
-        self,
-        custom_prompt: Optional[str] = None,
-        force: bool = False,
-        timeout: float = None,
-        max_retries: int = 3,
-        retry_delay: float = 2.0
-    ) -> Dict[str, Any]:
-        """
-        Inject Trinity meta-prompt into the agent.
-
-        Args:
-            custom_prompt: Optional custom prompt to inject
-            force: Force re-injection even if already done
-            timeout: Request timeout
-            max_retries: Number of retry attempts
-            retry_delay: Delay between retries in seconds
-
-        Returns:
-            Injection result dict
-        """
-        timeout = timeout or self.INJECT_TIMEOUT
-        payload = {"force": force}
-        if custom_prompt:
-            payload["custom_prompt"] = custom_prompt
-
-        for attempt in range(max_retries):
-            try:
-                response = await self.post(
-                    "/api/trinity/inject",
-                    json=payload,
-                    timeout=timeout
-                )
-
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.info(
-                        f"Trinity injection successful for {self.agent_name}: "
-                        f"{result.get('status')}"
-                    )
-                    return result
-                else:
-                    logger.warning(
-                        f"Trinity injection returned {response.status_code}: "
-                        f"{response.text}"
-                    )
-                    return {"status": "error", "error": f"HTTP {response.status_code}: {response.text}"}
-
-            except AgentNotReachableError:
-                if attempt < max_retries - 1:
-                    logger.info(
-                        f"Agent {self.agent_name} not ready yet "
-                        f"(attempt {attempt + 1}/{max_retries}), retrying..."
-                    )
-                    await asyncio.sleep(retry_delay)
-                else:
-                    logger.warning(
-                        f"Could not connect to agent {self.agent_name} "
-                        f"after {max_retries} attempts"
-                    )
-                    return {"status": "error", "error": "Agent not reachable after retries"}
-
-            except Exception as e:
-                logger.error(f"Trinity injection error for {self.agent_name}: {e}")
-                return {"status": "error", "error": str(e)}
-
-        return {"status": "error", "error": "Max retries exceeded"}
 
     # ========================================================================
     # File Operations

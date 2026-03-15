@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     message: str
     stream: bool = False
     model: Optional[str] = None  # Model to use: sonnet, opus, haiku, or full model name
+    system_prompt: Optional[str] = None  # Platform instructions (--append-system-prompt)
 
 
 class ChatResponse(BaseModel):
@@ -184,22 +185,6 @@ class FileInfo(BaseModel):
 # ============================================================================
 # Trinity Injection Models
 # ============================================================================
-
-class TrinityInjectRequest(BaseModel):
-    """Request to inject Trinity meta-prompt"""
-    force: bool = False  # If true, re-inject even if already done
-    custom_prompt: Optional[str] = None  # System-wide custom prompt to inject into CLAUDE.md
-
-
-class TrinityInjectResponse(BaseModel):
-    """Response from Trinity injection"""
-    status: str  # "injected", "already_injected", "error"
-    already_injected: bool = False
-    files_created: List[str] = []
-    directories_created: List[str] = []
-    claude_md_updated: bool = False
-    error: Optional[str] = None
-
 
 class TrinityStatusResponse(BaseModel):
     """Response from Trinity status check"""

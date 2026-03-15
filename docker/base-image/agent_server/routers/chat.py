@@ -46,7 +46,8 @@ async def chat(request: ChatRequest):
             prompt=request.message,
             model=effective_model,
             continue_session=True,
-            stream=request.stream
+            stream=request.stream,
+            system_prompt=request.system_prompt
         )
 
         # Add assistant response to history

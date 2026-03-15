@@ -30,16 +30,6 @@ from db.agents import SYSTEM_AGENT_NAME
 router = APIRouter(prefix="/api/system-agent", tags=["system-agent"])
 logger = logging.getLogger(__name__)
 
-# Reference to the agents router's functions - will be imported at runtime to avoid circular imports
-_inject_trinity_meta_prompt = None
-
-
-def set_inject_trinity_meta_prompt(func):
-    """Set the inject_trinity_meta_prompt function from agents router."""
-    global _inject_trinity_meta_prompt
-    _inject_trinity_meta_prompt = func
-
-
 def require_admin(current_user: User):
     """Verify user is an admin."""
     if current_user.role != "admin":
@@ -174,18 +164,8 @@ async def reinitialize_system_agent(
         except Exception as e:
             errors.append(f"Template copy error: {str(e)}")
 
-        # Step 5: Re-inject Trinity meta-prompt
-        if _inject_trinity_meta_prompt:
-            try:
-                injection_result = await _inject_trinity_meta_prompt(SYSTEM_AGENT_NAME)
-                if injection_result.get("status") == "success":
-                    steps_completed.append("trinity_injected")
-                else:
-                    errors.append(f"Trinity injection issue: {injection_result}")
-            except Exception as e:
-                errors.append(f"Trinity injection error: {str(e)}")
-        else:
-            errors.append("Trinity injection function not available")
+        # NOTE: Trinity platform instructions are now injected at runtime via
+        # --append-system-prompt on every chat/task request (Issue #136).
 
         return {
             "success": True,
@@ -233,20 +213,14 @@ async def restart_system_agent(
         await container_start(container)
         await container_reload(container)
 
-        # Re-inject Trinity meta-prompt
-        trinity_result = None
-        if _inject_trinity_meta_prompt:
-            try:
-                trinity_result = await _inject_trinity_meta_prompt(SYSTEM_AGENT_NAME)
-            except Exception as e:
-                logger.warning(f"Trinity injection after restart failed: {e}")
+        # NOTE: Trinity platform instructions are now injected at runtime via
+        # --append-system-prompt on every chat/task request (Issue #136).
 
         return {
             "success": True,
             "message": "System agent restarted successfully",
             "name": SYSTEM_AGENT_NAME,
-            "status": container.status,
-            "trinity_injection": trinity_result.get("status") if trinity_result else None
+            "status": container.status
         }
 
     except Exception as e:
