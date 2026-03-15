@@ -2,7 +2,7 @@
   <img src="docs/assets/trinity-logo.svg" alt="Trinity" width="120"/>
   <h1>Trinity</h1>
   <p><strong>Sovereign infrastructure for autonomous AI agents</strong></p>
-  <p>Deploy, orchestrate, and govern AI agent teams with visual interface, enterprise-grade controls, and complete audit trails.</p>
+  <p>Deploy, orchestrate, and govern fleets of autonomous AI agents with real-time observability, enterprise-grade controls, and complete audit trails.</p>
 
   <p>
     <a href="https://github.com/abilityai/trinity/stargazers"><img src="https://img.shields.io/github/stars/abilityai/trinity?style=social" alt="Stars"></a>
@@ -13,11 +13,11 @@
   </p>
 
   <p>
-    <a href="#ways-to-use-trinity">How to Use</a> •
-    <a href="#-quick-start">Quick Start</a> •
-    <a href="#features">Features</a> •
-    <a href="https://youtu.be/SWpNphnuPpQ">Demo Video</a> •
-    <a href="#documentation">Docs</a> •
+    <a href="#ways-to-use-trinity">How to Use</a> &bull;
+    <a href="#-quick-start">Quick Start</a> &bull;
+    <a href="#features">Features</a> &bull;
+    <a href="https://youtu.be/SWpNphnuPpQ">Demo Video</a> &bull;
+    <a href="#documentation">Docs</a> &bull;
     <a href="#community--support">Community</a>
   </p>
 
@@ -26,22 +26,22 @@
     <img src="https://img.shields.io/badge/▶_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube" alt="Watch the Demo">
   </a>
   <br/><br/>
-  <img src="docs/assets/screenshots/graph-view-collaboration.png" alt="Trinity Agent Collaboration" width="800"/>
+  <img src="docs/assets/screenshots/graph-view-fleet.png" alt="Trinity Agent Fleet — Graph View" width="800"/>
 </div>
 
 ---
 
 ## Why Trinity?
 
-**The problem:** Everyone wants autonomous AI agents. But your options are terrible—SaaS platforms where data leaves your security perimeter, custom builds that take 6-12 months, or frameworks that don't handle governance and audit trails.
+**The problem:** Everyone wants autonomous AI agents. But your options are terrible — SaaS platforms where data leaves your security perimeter, custom builds that take 6-12 months, or frameworks that don't handle governance and audit trails.
 
-**The solution:** Trinity is sovereign infrastructure with enterprise-grade controls. Human approvals where decisions matter. Your infrastructure, your security perimeter.
+**The solution:** Trinity is sovereign infrastructure for autonomous AI agents. Each agent runs in its own isolated Docker container. You get real-time observability, fleet-wide health monitoring, cron-based scheduling, agent-to-agent delegation, and cost tracking — all on your own hardware.
 
 | Option | Problem | Trinity |
 |--------|---------|---------|
 | **SaaS Platforms** | Data leaves your perimeter, vendor lock-in | Your infrastructure, data never leaves |
 | **Build Custom** | 6-12 months, $500K+ engineering | Deploy in minutes |
-| **Frameworks** | No governance, no audit trails | Enterprise controls built-in |
+| **Frameworks** | No observability, no fleet management | Real-time monitoring, scheduling, audit trails |
 
 ---
 
@@ -135,81 +135,76 @@ Trinity implements four foundational capabilities that transform simple AI assis
 
 ## Features
 
-### Core Platform
-- **Isolated Agent Containers** — Each agent runs in its own Docker container with dedicated resources
-- **Template-Based Deployment** — Create agents from pre-configured templates or custom configurations
-- **Agent Rename** — Rename agents via UI, MCP, or API without deleting and recreating
-- **Real-Time Monitoring** — WebSocket-based activity streaming, telemetry, and context tracking
-- **Dashboard Timeline View** — Visual timeline showing executions with trigger-based color coding (manual/scheduled/MCP/agent-triggered)
-- **Host Telemetry** — Real-time CPU, memory, and disk monitoring in the dashboard header
-- **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
-- **Package Persistence** — Installed packages survive container recreation via `~/.trinity/setup.sh`
-- **Base Image Versioning** — Track agent versions and detect when updates are available
+### Fleet Observability
 
-### Process Engine
-- **YAML-Based Workflows** — Define multi-step business processes with declarative YAML syntax
-- **Six Step Types** — agent_task, human_approval, gateway (conditional), timer, notification, sub_process
-- **Human-in-the-Loop** — Approval gates with inbox, timeout handling, and decision tracking
-- **Process Templates** — Pre-built templates for common workflows (content pipelines, onboarding, etc.)
-- **AI Process Assistant** — Chat-based assistant that helps create and edit process definitions
-- **Real-Time Monitoring** — Live execution progress with step-by-step visibility
-- **Analytics & Cost Tracking** — Metrics, trends, and cost threshold alerts per process
+- **Graph View** — Visual topology of your agent fleet with live status, success rates, cost tracking, and resource usage per agent
+- **Timeline View** — Gantt-style execution timeline with trigger-based color coding (manual, scheduled, MCP, agent-triggered, public, paid)
+- **Host Telemetry** — Real-time CPU, memory, and disk monitoring in the dashboard header
+- **Fleet Health Monitoring** — Multi-layer health checks (Docker, network, business) with alerting and WebSocket updates
+- **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking exportable to Grafana/Datadog
 
 <p align="center">
-  <img src="docs/assets/screenshots/process-editor.png" alt="Process Editor" width="700"/>
+  <img src="docs/assets/screenshots/timeline-fleet-activity.png" alt="Trinity Timeline — Fleet Activity" width="700"/>
 </p>
 
-### Agent Capabilities
+### Agent Runtime
+
+- **Isolated Docker Containers** — Each agent runs in its own container with dedicated resources
 - **Multi-Runtime Support** — Choose between Claude Code (Anthropic) or Gemini CLI (Google) per agent
-- **MCP Integration** — 59 tools for external agent orchestration via Model Context Protocol
-- **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
-- **Persistent Memory** — File-based and database-backed memory across sessions
-- **Shared Folders** — File-based state sharing between agents via Docker volumes
 - **Model Selection** — Choose which Claude model (Opus, Sonnet, Haiku) per task or schedule
-- **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
 - **Agent Dashboard** — Custom dashboards defined via `dashboard.yaml` with 11 widget types, historical tracking, and sparkline visualization
+- **Playbooks** — Browse and invoke agent skills (`.claude/skills/`) directly from the UI
+- **Dynamic Thinking Status** — Real-time status labels reflecting agent activity (Reading file, Searching code, etc.)
+- **Persistent Memory** — File-based and database-backed memory across sessions
 - **Full Capabilities Mode** — Optional elevated permissions for agents that need `apt-get`, `sudo`, etc.
-- **Playbooks Tab** — Browse and invoke agent skills (`.claude/skills/`) directly from the UI
-- **Dynamic Thinking Status** — Real-time status labels reflecting agent activity in both authenticated and public chat (Reading file, Searching code, etc.)
 - **Read-Only Mode** — Protect source code from modification while allowing output to designated directories
 - **Runaway Prevention** — `max_turns` parameter limits agent execution depth
 
-### Operations
-- **System Manifest Deployment** — Deploy multi-agent systems from YAML configuration
-- **Internal System Agent** — Platform orchestrator for fleet health monitoring and operations
-- **Fleet Health Monitoring** — Multi-layer health checks (Docker, network, business) with alerting and WebSocket updates
-- **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
-- **Subscription Management** — Centralized Claude Max/Pro subscription tokens (`claude setup-token`) shared across agents via env var injection
-- **Agent Tags & System Views** — Organize agents with tags and saved filter views for fleet management
+<p align="center">
+  <img src="docs/assets/screenshots/agent-dashboard-detail.png" alt="Trinity Agent Dashboard" width="700"/>
+</p>
+
+### Orchestration
+
+- **Agent-to-Agent Communication** — Hierarchical delegation with fine-grained permission controls
+- **Parallel Task Execution** — Stateless parallel tasks for orchestrator-worker patterns
+- **Shared Folders** — File-based state sharing between agents via Docker volumes
+- **System Manifest Deployment** — Deploy multi-agent systems from a single YAML configuration
 - **Scheduling** — Cron-based automation with dedicated scheduler service and Redis distributed locks
+- **MCP Integration** — 59 tools for external agent orchestration via Model Context Protocol
+- **Trinity Connect** — WebSocket event streaming for local Claude Code integration
+
+### Operations
+
+- **Template-Based Deployment** — Create agents from pre-configured templates or GitHub repos
+- **Credential Management** — Direct file injection with encrypted git storage (`.credentials.enc`)
+- **Subscription Management** — Centralized Claude Max/Pro subscription tokens shared across agents
+- **Agent Tags & System Views** — Organize agents with tags and saved filter views for fleet management
 - **Live Execution Streaming** — Real-time streaming of execution logs to the web UI
 - **Execution Termination** — Stop running executions gracefully via SIGINT/SIGKILL
 - **Continue as Chat** — Resume failed or completed executions as interactive chat with full context
 - **Agent Notifications** — Agents send structured notifications to platform with Events page UI
-- **Trinity Connect** — WebSocket event streaming for local Claude Code integration with MCP key authentication
-- **OpenTelemetry Metrics** — Cost, token usage, and productivity tracking
-- **Public Agent Links** — Shareable links for unauthenticated agent access with session persistence and Slack integration
-- **Paid Agent Access (x402)** — Per-agent monetization via Nevermined x402 payment protocol with verify/settle lifecycle
 - **File Manager** — Browse, preview, and download agent workspace files via web UI
-- **Ephemeral SSH Access** — Generate time-limited SSH credentials (key or password) for direct agent access
-- **Mobile Admin PWA** — Standalone mobile admin at `/m`, installable as a home screen app for on-the-go agent management
-
-<p align="center">
-  <img src="docs/assets/screenshots/timeline-collaboration-active.png" alt="Execution Timeline" width="700"/>
-</p>
+- **Ephemeral SSH Access** — Generate time-limited SSH credentials for direct agent terminal access
+- **Public Agent Links** — Shareable links for unauthenticated agent access with session persistence and Slack integration
+- **Paid Agent Access (x402)** — Per-agent monetization via Nevermined x402 payment protocol
+- **Mobile Admin PWA** — Standalone mobile admin at `/m`, installable as a home screen app
+- **First-Time Setup Wizard** — Guided setup for admin password and API key configuration
 
 ## Comparison
 
 | Feature | Trinity | Custom Build | LangChain/CrewAI | SaaS Platforms |
 |---------|:-------:|:------------:|:----------------:|:--------------:|
 | Time to production | Minutes | 6-12 months | Weeks | Instant |
-| Sovereignty | ✅ | ✅ | ✅ | ❌ |
-| Workflow orchestration | ✅ | DIY | ❌ | Limited |
-| Human approval gates | ✅ | DIY | ❌ | ❌ |
+| Data sovereignty | ✅ | ✅ | ✅ | ❌ |
 | Docker isolation per agent | ✅ | DIY | ❌ | ❌ |
+| Fleet observability | ✅ | DIY | ❌ | Basic |
+| Agent-to-agent delegation | ✅ | DIY | Limited | ❌ |
+| Cron scheduling & autonomy | ✅ | DIY | ❌ | Limited |
+| Cost tracking per agent | ✅ | DIY | ❌ | Basic |
 | Complete audit trail | ✅ | DIY | ❌ | Basic |
-| Cost tracking per workflow | ✅ | DIY | ❌ | Basic |
-| State persistence | GitHub sync | DIY | Partial | Session-only |
+| Multi-runtime (Claude/Gemini) | ✅ | DIY | ❌ | ❌ |
+| State persistence (GitHub sync) | ✅ | DIY | Partial | Session-only |
 | Open source | ✅ | N/A | ✅ | ❌ |
 
 ---
@@ -302,8 +297,6 @@ Your agent will start automatically. Use the Chat tab to interact with it.
 trinity/
 ├── src/
 │   ├── backend/          # FastAPI backend API
-│   │   └── services/
-│   │       └── process_engine/  # Process Engine (DDD architecture)
 │   ├── frontend/         # Vue.js 3 + Tailwind CSS web UI
 │   ├── mcp-server/       # Trinity MCP server (59 tools)
 │   └── scheduler/        # Dedicated scheduler service (Redis locks)
@@ -314,8 +307,6 @@ trinity/
 │   └── scheduler/        # Scheduler Dockerfile
 ├── config/
 │   ├── agent-templates/  # Pre-configured agent templates
-│   ├── process-templates/ # Process definition templates
-│   ├── process-docs/     # In-app documentation content
 │   ├── vector.yaml       # Vector log aggregation config
 │   ├── otel-collector.yaml # OpenTelemetry collector config
 │   └── trinity-meta-prompt/ # Platform injection templates
@@ -352,12 +343,6 @@ my-template/
 |-------|----------|
 | [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) | **Single agents** — Template structure, CLAUDE.md, credentials, platform injection |
 | [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) | **Multi-agent systems** — Architecture patterns, shared folders, coordination, deployment |
-
-The Multi-Agent System Guide covers Trinity's platform capabilities that enable autonomous operation:
-- **Scheduling System** — Cron-based autonomous execution
-- **Shared Folders** — File-based state sharing between agents
-- **Agent-to-Agent MCP** — Real-time delegation and collaboration
-- **Centralized Logging** — Vector-based log aggregation from all containers
 
 ### Public Agent Templates
 
@@ -438,7 +423,7 @@ Trinity includes an MCP server for external orchestration of agents:
 | `get_chat_history` | Retrieve conversation history |
 | `get_agent_logs` | View container logs |
 
-> **Note**: Claude Code enforces a 60-second timeout on MCP HTTP tool calls. Synchronous `chat_with_agent` calls must complete within 60 seconds. For longer tasks, use `async=true` with `parallel=true` to get an `execution_id` immediately and poll for results. See [Known Issues](docs/KNOWN_ISSUES.md) for details and workaround patterns.
+> **Note**: Claude Code enforces a 60-second timeout on MCP HTTP tool calls. For longer tasks, use `async=true` with `parallel=true` to get an `execution_id` immediately and poll for results. See [Known Issues](docs/KNOWN_ISSUES.md) for details.
 
 #### System Management
 | Tool | Description |
@@ -519,7 +504,7 @@ export TRINITY_API_KEY="trinity_mcp_xxx"
 ./scripts/trinity-listen.sh my-agent completed
 ```
 
-The listener blocks until a matching event arrives, then prints the event and exits—perfect for event-driven automation loops:
+The listener blocks until a matching event arrives, then prints the event and exits — perfect for event-driven automation loops:
 
 ```bash
 while true; do
@@ -529,66 +514,6 @@ done
 ```
 
 Events include: `agent_started`, `agent_stopped`, `agent_activity` (chat/task completions), and `schedule_execution_completed`.
-
-## Process Engine
-
-Trinity includes a BPMN-inspired Process Engine for orchestrating multi-step workflows with AI agents, human approvals, and automated scheduling.
-
-### Example Process Definition
-
-```yaml
-name: content-review-pipeline
-description: Review and publish content with human approval
-
-triggers:
-  - type: schedule
-    cron: "0 9 * * 1-5"  # Weekdays at 9 AM
-
-steps:
-  - id: draft-content
-    name: Draft Content
-    type: agent_task
-    agent: content-writer
-    task: "Draft the weekly newsletter based on recent updates"
-
-  - id: review-gate
-    name: Editorial Review
-    type: human_approval
-    title: "Approve Newsletter Draft"
-    description: "Review the drafted newsletter before publishing"
-    timeout: 24h
-    depends_on: [draft-content]
-
-  - id: publish
-    name: Publish Content
-    type: agent_task
-    agent: publisher
-    task: "Publish the approved newsletter"
-    depends_on: [review-gate]
-```
-
-### Step Types
-
-| Type | Description |
-|------|-------------|
-| `agent_task` | Execute a task via an AI agent |
-| `human_approval` | Pause for human decision with timeout |
-| `gateway` | Conditional branching based on expressions |
-| `timer` | Delay execution for a specified duration |
-| `notification` | Send notifications to users or systems |
-| `sub_process` | Call another process as a nested workflow |
-
-### AI Process Assistant
-
-The Process Editor includes an AI-powered chat assistant that helps you:
-- Create new processes from natural language descriptions
-- Edit existing YAML with conversational commands
-- Get explanations of step types and syntax
-- Debug validation errors
-
-Access it via the **Chat** tab in the Process Editor.
-
-See `docs/PROCESS_DRIVEN_PLATFORM/` for detailed design documents.
 
 ## Configuration
 
@@ -630,7 +555,6 @@ EMAIL_PROVIDER=console  # Use 'resend' or 'smtp' for production
 - [Trinity Compatible Agent Guide](docs/TRINITY_COMPATIBLE_AGENT_GUIDE.md) — Creating Trinity-compatible agents
 - [Multi-Agent System Guide](docs/MULTI_AGENT_SYSTEM_GUIDE.md) — Building multi-agent systems with coordinated workflows
 - [Use Cases & Evaluation](docs/use-cases-evaluation.md) — Categorized autonomous multi-agent use cases with comparative analysis
-- [Process Engine Design](docs/PROCESS_DRIVEN_PLATFORM/) — Process Engine architecture and design documents
 - [Testing Guide](docs/TESTING_GUIDE.md) — Testing approach and standards
 - [Contributing Guide](CONTRIBUTING.md) — How to contribute (PRs, code standards)
 - [Known Issues](docs/KNOWN_ISSUES.md) — Current limitations and workarounds
