@@ -4,7 +4,8 @@
       <div class="flex justify-between h-16">
         <div class="flex">
           <router-link to="/" class="flex-shrink-0 flex items-center hover:opacity-80 transition-opacity">
-            <img src="../assets/trinity-logo.svg" alt="Trinity Logo" class="h-8 w-8 mr-2" />
+            <img src="../assets/trinity-logo.svg" alt="Trinity Logo" class="h-8 w-8 mr-2 dark:hidden" />
+            <img src="../assets/trinity-logo-white.svg" alt="Trinity Logo" class="h-8 w-8 mr-2 hidden dark:block" />
             <h1 class="text-xl font-bold text-gray-900 dark:text-white">Trinity</h1>
           </router-link>
           <div class="hidden sm:ml-6 sm:flex sm:space-x-8">

@@ -6,7 +6,8 @@
         <!-- Trinity branding row -->
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center">
-            <img src="../assets/trinity-logo.svg" alt="Trinity" class="h-6 w-6 mr-2 dark:invert" />
+            <img src="../assets/trinity-logo.svg" alt="Trinity" class="h-6 w-6 mr-2 dark:hidden" />
+            <img src="../assets/trinity-logo-white.svg" alt="Trinity" class="h-6 w-6 mr-2 hidden dark:block" />
             <span class="text-lg font-bold text-gray-900 dark:text-white">Trinity</span>
           </div>
           <!-- New Conversation button (moved to top right) -->
