@@ -86,7 +86,8 @@ class ClaudeCodeRuntime(AgentRuntime):
         prompt: str,
         model: Optional[str] = None,
         continue_session: bool = False,
-        stream: bool = False
+        stream: bool = False,
+        system_prompt: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """Execute Claude Code with the given prompt.
 
@@ -96,7 +97,7 @@ class ClaudeCodeRuntime(AgentRuntime):
         """
         # Note: continue_session is handled internally by agent_state.session_started
         # The execute_claude_code function checks agent_state and uses --continue automatically
-        return await execute_claude_code(prompt, stream, model)
+        return await execute_claude_code(prompt, stream, model, system_prompt=system_prompt)
 
     async def execute_headless(
         self,
@@ -421,7 +422,7 @@ def process_stream_line(line: str, execution_log: List[ExecutionLogEntry], metad
                     response_parts.append(text)
 
 
-async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
+async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None, system_prompt: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
     """
     Execute Claude Code in headless mode with the given prompt.
 
@@ -430,6 +431,12 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
     Uses: claude --print --output-format stream-json
     Uses --continue flag for subsequent messages to maintain conversation context
     Uses --model to select Claude model (sonnet, opus, haiku, or full model name)
+
+    Args:
+        prompt: User message
+        stream: Whether to stream (unused currently)
+        model: Model override
+        system_prompt: Platform instructions appended via --append-system-prompt
 
     Returns: (response_text, execution_log, metadata, raw_messages)
         - execution_log: Simplified ExecutionLogEntry objects for activity tracking
@@ -475,6 +482,11 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
             # First message in session
             agent_state.session_started = True
             logger.info("Starting new conversation session")
+
+        # Add platform system prompt if provided
+        if system_prompt:
+            cmd.extend(["--append-system-prompt", system_prompt])
+            logger.info(f"Appending system prompt ({len(system_prompt)} chars)")
 
         # Initialize tracking structures
         execution_log: List[ExecutionLogEntry] = []

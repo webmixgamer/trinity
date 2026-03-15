@@ -24,6 +24,7 @@ from services.task_execution_service import (
 )
 from database import db
 from utils.credential_sanitizer import sanitize_execution_log, sanitize_response
+from services.platform_prompt_service import get_platform_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +212,8 @@ async def chat_with_agent(
         payload = {"message": request.message, "stream": False}
         if request.model:
             payload["model"] = request.model
+        # Inject platform instructions into every chat request
+        payload["system_prompt"] = get_platform_system_prompt()
 
         start_time = datetime.utcnow()
 

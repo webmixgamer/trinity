@@ -19,7 +19,6 @@ from services.docker_utils import (
     volume_get, volume_create, containers_run
 )
 from services.settings_service import get_anthropic_api_key, get_agent_full_capabilities
-from services.agent_client import get_agent_client
 from services.skill_service import skill_service
 from .helpers import check_shared_folder_mounts_match, check_api_key_env_matches, check_resource_limits_match, check_full_capabilities_match
 from .read_only import inject_read_only_hooks
@@ -63,36 +62,6 @@ PROHIBITED_CAPABILITIES = [
     'SYS_MODULE',        # Load kernel modules - kernel compromise
     'SYS_BOOT',          # Reboot system
 ]
-
-
-async def inject_trinity_meta_prompt(agent_name: str, max_retries: int = 5, retry_delay: float = 2.0) -> dict:
-    """
-    Inject Trinity meta-prompt into an agent via its internal API.
-
-    This is called after agent startup to inject planning commands
-    and create the necessary directory structure.
-
-    Args:
-        agent_name: Name of the agent
-        max_retries: Number of retries for connection
-        retry_delay: Seconds between retries
-
-    Returns:
-        dict with injection status or error info
-    """
-    # Fetch system-wide custom prompt setting
-    custom_prompt = db.get_setting_value("trinity_prompt", default=None)
-    if custom_prompt:
-        logger.info(f"Found trinity_prompt setting ({len(custom_prompt)} chars), will inject into {agent_name}")
-
-    # Use AgentClient for injection (handles retries internally)
-    client = get_agent_client(agent_name)
-    return await client.inject_trinity_prompt(
-        custom_prompt=custom_prompt,
-        force=False,
-        max_retries=max_retries,
-        retry_delay=retry_delay
-    )
 
 
 async def inject_assigned_credentials(agent_name: str, max_retries: int = 3, retry_delay: float = 2.0) -> dict:
@@ -233,9 +202,9 @@ async def start_agent_internal(agent_name: str) -> dict:
 
     await container_start(container)
 
-    # Inject Trinity meta-prompt
-    trinity_result = await inject_trinity_meta_prompt(agent_name)
-    trinity_status = trinity_result.get("status", "unknown")
+    # NOTE: Trinity platform instructions are now injected at runtime via
+    # --append-system-prompt on every chat/task request (Issue #136).
+    # No file-based injection needed on startup.
 
     # Inject assigned credentials from the Credentials page
     credentials_result = await inject_assigned_credentials(agent_name)
@@ -261,8 +230,6 @@ async def start_agent_internal(agent_name: str) -> dict:
 
     return {
         "message": f"Agent {agent_name} started",
-        "trinity_injection": trinity_status,
-        "trinity_result": trinity_result,
         "credentials_injection": credentials_status,
         "credentials_result": credentials_result,
         "skills_injection": skills_status,

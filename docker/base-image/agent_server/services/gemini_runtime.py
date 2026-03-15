@@ -115,12 +115,15 @@ class GeminiRuntime(AgentRuntime):
         prompt: str,
         model: Optional[str] = None,
         continue_session: bool = False,
-        stream: bool = False
+        stream: bool = False,
+        system_prompt: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """
         Execute Gemini CLI with the given prompt.
 
         Uses same output format as Claude Code for compatibility.
+        Note: system_prompt is accepted for interface compatibility but not yet
+        supported by Gemini CLI.
 
         Returns: (response_text, execution_log, metadata, raw_messages)
             - execution_log: Simplified ExecutionLogEntry objects for activity tracking

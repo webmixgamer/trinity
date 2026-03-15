@@ -10,7 +10,7 @@
 
 | Pillar | Trinity Implementation |
 |--------|----------------------|
-| **I. Explicit Planning** | Scheduling, activity timeline, Trinity meta-prompt injection (Task DAGs removed 2025-12-23) |
+| **I. Explicit Planning** | Scheduling, activity timeline, runtime platform prompt injection (Task DAGs removed 2025-12-23) |
 | **II. Hierarchical Delegation** | Agent-to-Agent via MCP, access control, collaboration dashboard |
 | **III. Persistent Memory** | SQLite chat persistence, virtual filesystems, file browser |
 | **IV. Extreme Context Engineering** | Template system with CLAUDE.md, credential injection, Trinity commands |

@@ -397,8 +397,8 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Flow**: `docs/memory/feature-flows/opentelemetry-integration.md`
 
 ### 12.6 System-Wide Trinity Prompt
-- **Status**: ✅ Implemented (2025-12-14)
-- **Description**: Admin-configurable prompt injected into all agents' CLAUDE.md
+- **Status**: ✅ Implemented (2025-12-14, refactored 2026-03-15 Issue #136)
+- **Description**: Admin-configurable prompt injected at runtime via `--append-system-prompt` on every Claude Code invocation
 - **Flow**: `docs/memory/feature-flows/system-wide-trinity-prompt.md`
 
 ### 12.7 Vector Memory

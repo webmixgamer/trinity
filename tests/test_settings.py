@@ -238,190 +238,119 @@ class TestTrinityPromptSetting:
             api_client.delete("/api/settings/trinity_prompt")
 
 
-class TestTrinityPromptInjection:
-    """Tests for Trinity prompt injection into agent CLAUDE.local.md.
+class TestTrinityPromptRuntimeInjection:
+    """Tests for Trinity prompt runtime injection via --append-system-prompt.
 
-    Platform instructions are written to CLAUDE.local.md (gitignored, survives
-    git operations). These tests require agent creation and are slower.
+    Issue #136: Platform instructions are now injected at runtime on every
+    Claude Code invocation via --append-system-prompt. No file-based injection.
+
+    These tests verify:
+    1. Agent start no longer returns trinity_injection field
+    2. The trinity_prompt setting CRUD still works (read at runtime)
+    3. No CLAUDE.local.md file is written by the platform
     """
 
-    @pytest.mark.slow
-    @pytest.mark.requires_agent
-    def test_agent_receives_prompt_on_creation(self, api_client: TrinityApiClient, request):
-        """New agent receives trinity_prompt in CLAUDE.local.md."""
-        agent_name = f"test-prompt-inj-{uuid.uuid4().hex[:6]}"
-        prompt_text = f"Test injection prompt {uuid.uuid4().hex[:8]}"
+    def test_start_agent_no_trinity_injection_field(self, api_client: TrinityApiClient, created_agent):
+        """Agent start response no longer includes trinity_injection field."""
+        agent_name = created_agent["name"]
+
+        # Stop then start
+        api_client.post(f"/api/agents/{agent_name}/stop")
+        time.sleep(2)
+        response = api_client.post(f"/api/agents/{agent_name}/start")
+
+        if response.status_code == 200:
+            data = response.json()
+            # trinity_injection field should no longer be in the response
+            assert "trinity_injection" not in data, \
+                "Start response should not contain trinity_injection (removed in #136)"
+            assert "trinity_result" not in data, \
+                "Start response should not contain trinity_result (removed in #136)"
+
+        # Wait for agent to be running again
+        max_wait = 30
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            check = api_client.get(f"/api/agents/{agent_name}")
+            if check.status_code == 200 and check.json().get("status") == "running":
+                break
+            time.sleep(1)
+
+    def test_no_claude_local_md_written(self, api_client: TrinityApiClient, created_agent):
+        """Platform no longer writes CLAUDE.local.md into agent containers."""
+        agent_name = created_agent["name"]
+
+        # Check that CLAUDE.local.md does NOT exist (platform no longer writes it)
+        response = api_client.get(f"/api/agents/{agent_name}/files/CLAUDE.local.md")
+        # 404 means the file doesn't exist — correct behavior
+        # 200 means a CLAUDE.local.md exists but could be from the agent's own repo
+        if response.status_code == 200:
+            content = response.json().get("content", "")
+            # If it exists, it should NOT contain platform-injected content
+            assert "Trinity Platform Instructions" not in content, \
+                "CLAUDE.local.md should not contain platform-injected content (now runtime)"
+
+    pytestmark = pytest.mark.smoke
+
+    def test_custom_prompt_crud_still_works(self, api_client: TrinityApiClient):
+        """Trinity prompt CRUD unaffected — setting is read at runtime now."""
+        prompt_text = f"Runtime test prompt {uuid.uuid4().hex[:8]}"
 
         try:
-            # Set trinity_prompt
+            # Set prompt
             response = api_client.put(
                 "/api/settings/trinity_prompt",
                 json={"value": prompt_text}
             )
             assert_status(response, 200)
 
-            # Create agent
-            response = api_client.post(
-                "/api/agents",
-                json={"name": agent_name}
-            )
-            assert_status_in(response, [200, 201])
+            # Read back
+            response = api_client.get("/api/settings/trinity_prompt")
+            assert_status(response, 200)
+            data = response.json()
+            assert data.get("value") == prompt_text
 
-            # Wait for agent to start
-            max_wait = 45
-            start = time.time()
-            while time.time() - start < max_wait:
-                check = api_client.get(f"/api/agents/{agent_name}")
-                if check.status_code == 200 and check.json().get("status") == "running":
-                    time.sleep(5)  # Extra time for Trinity injection
-                    break
-                time.sleep(1)
+            # Delete
+            response = api_client.delete("/api/settings/trinity_prompt")
+            assert_status(response, 200)
 
-            # Verify injection by reading CLAUDE.local.md via files API
-            response = api_client.get(f"/api/agents/{agent_name}/files/CLAUDE.local.md")
-            if response.status_code == 200:
-                content = response.json().get("content", "")
-                # The custom instructions should be in CLAUDE.local.md
-                assert "Custom Instructions" in content, \
-                    "CLAUDE.local.md should contain Custom Instructions section"
-                assert prompt_text in content, \
-                    f"CLAUDE.local.md should contain the prompt text: {prompt_text}"
-            else:
-                # Fall back to checking logs if files API fails
-                response = api_client.get(f"/api/agents/{agent_name}/logs?lines=200")
-                if response.status_code == 200:
-                    logs = response.json().get("logs", "")
-                    assert "CLAUDE.local.md" in logs or "Trinity" in logs, \
-                        "Agent logs should indicate Trinity injection activity"
-
+            # Verify deleted
+            response = api_client.get("/api/settings/trinity_prompt")
+            assert_status(response, 404)
         finally:
-            # Cleanup
             api_client.delete("/api/settings/trinity_prompt")
-            cleanup_test_agent(api_client, agent_name)
 
-    @pytest.mark.slow
-    @pytest.mark.requires_agent
-    def test_prompt_updated_on_agent_restart(self, api_client: TrinityApiClient, request):
-        """Agent receives updated trinity_prompt on restart via CLAUDE.local.md."""
-        agent_name = f"test-prompt-upd-{uuid.uuid4().hex[:6]}"
-        initial_prompt = f"Initial prompt {uuid.uuid4().hex[:8]}"
-        updated_prompt = f"Updated prompt {uuid.uuid4().hex[:8]}"
+    def test_custom_prompt_change_no_restart_needed(self, api_client: TrinityApiClient):
+        """Changing trinity_prompt takes effect immediately — no agent restart needed.
+
+        This is a key behavioral change from Issue #136: the setting is read
+        on every request, so changes are instant.
+        """
+        prompt_v1 = f"Version 1 prompt {uuid.uuid4().hex[:8]}"
+        prompt_v2 = f"Version 2 prompt {uuid.uuid4().hex[:8]}"
 
         try:
-            # Set initial prompt
-            api_client.put(
+            # Set v1
+            response = api_client.put(
                 "/api/settings/trinity_prompt",
-                json={"value": initial_prompt}
+                json={"value": prompt_v1}
             )
+            assert_status(response, 200)
 
-            # Create and start agent
-            api_client.post("/api/agents", json={"name": agent_name})
-
-            # Wait for agent to start
-            max_wait = 45
-            start = time.time()
-            while time.time() - start < max_wait:
-                check = api_client.get(f"/api/agents/{agent_name}")
-                if check.status_code == 200 and check.json().get("status") == "running":
-                    time.sleep(3)
-                    break
-                time.sleep(1)
-
-            # Update prompt
-            api_client.put(
+            # Update to v2 without any agent restart
+            response = api_client.put(
                 "/api/settings/trinity_prompt",
-                json={"value": updated_prompt}
+                json={"value": prompt_v2}
             )
+            assert_status(response, 200)
 
-            # Restart agent
-            api_client.post(f"/api/agents/{agent_name}/stop")
-            time.sleep(2)
-            api_client.post(f"/api/agents/{agent_name}/start")
-            time.sleep(5)
-
-            # Verify updated prompt in CLAUDE.local.md
-            response = api_client.get(f"/api/agents/{agent_name}/files/CLAUDE.local.md")
-            if response.status_code == 200:
-                content = response.json().get("content", "")
-                assert updated_prompt in content, \
-                    "CLAUDE.local.md should contain the updated prompt text"
-                assert initial_prompt not in content, \
-                    "CLAUDE.local.md should NOT contain the old prompt text"
-            else:
-                # Fall back to logs check
-                response = api_client.get(f"/api/agents/{agent_name}/logs")
-                if response.status_code == 200:
-                    logs = response.json().get("logs", "")
-                    assert "CLAUDE.local.md" in logs, \
-                        "Agent logs should show CLAUDE.local.md being written"
+            # Verify v2 is active
+            response = api_client.get("/api/settings/trinity_prompt")
+            assert_status(response, 200)
+            assert response.json().get("value") == prompt_v2
 
         finally:
             api_client.delete("/api/settings/trinity_prompt")
-            cleanup_test_agent(api_client, agent_name)
-
-    @pytest.mark.slow
-    @pytest.mark.requires_agent
-    def test_prompt_removed_when_cleared(self, api_client: TrinityApiClient, request):
-        """Custom Instructions removed from CLAUDE.local.md when prompt cleared."""
-        agent_name = f"test-prompt-clr-{uuid.uuid4().hex[:6]}"
-        prompt_text = f"Temporary prompt {uuid.uuid4().hex[:8]}"
-
-        try:
-            # Set prompt
-            api_client.put(
-                "/api/settings/trinity_prompt",
-                json={"value": prompt_text}
-            )
-
-            # Create and start agent
-            api_client.post("/api/agents", json={"name": agent_name})
-
-            # Wait for agent
-            max_wait = 45
-            start = time.time()
-            while time.time() - start < max_wait:
-                check = api_client.get(f"/api/agents/{agent_name}")
-                if check.status_code == 200 and check.json().get("status") == "running":
-                    time.sleep(5)  # Wait for Trinity injection
-                    break
-                time.sleep(1)
-
-            # Verify custom instructions present first
-            response = api_client.get(f"/api/agents/{agent_name}/files/CLAUDE.local.md")
-            if response.status_code == 200:
-                content = response.json().get("content", "")
-                assert "Custom Instructions" in content, \
-                    "CLAUDE.local.md should have Custom Instructions before clearing"
-
-            # Clear prompt
-            api_client.delete("/api/settings/trinity_prompt")
-
-            # Restart agent
-            api_client.post(f"/api/agents/{agent_name}/stop")
-            time.sleep(2)
-            api_client.post(f"/api/agents/{agent_name}/start")
-            time.sleep(6)  # Wait for startup and injection
-
-            # Verify removal — CLAUDE.local.md is fully rewritten on each start,
-            # so without a custom prompt it simply won't have the section
-            response = api_client.get(f"/api/agents/{agent_name}/files/CLAUDE.local.md")
-            if response.status_code == 200:
-                content = response.json().get("content", "")
-                assert "Custom Instructions" not in content, \
-                    "CLAUDE.local.md should NOT contain Custom Instructions after clearing"
-                assert prompt_text not in content, \
-                    "CLAUDE.local.md should NOT contain the original prompt text"
-            else:
-                # Fall back to logs check
-                response = api_client.get(f"/api/agents/{agent_name}/logs?lines=300")
-                if response.status_code == 200:
-                    logs = response.json().get("logs", "")
-                    assert "CLAUDE.local.md" in logs, \
-                        "Agent logs should indicate CLAUDE.local.md being written"
-
-        finally:
-            api_client.delete("/api/settings/trinity_prompt")
-            cleanup_test_agent(api_client, agent_name)
 
 
 class TestSettingsValidation:

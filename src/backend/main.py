@@ -28,7 +28,7 @@ from services.docker_service import docker_client, list_all_agents_fast
 
 # Import routers
 from routers.auth import router as auth_router
-from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, set_filtered_websocket_manager as set_agents_filtered_ws_manager, inject_trinity_meta_prompt
+from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, set_filtered_websocket_manager as set_agents_filtered_ws_manager
 from routers.credentials import router as credentials_router
 from routers.templates import router as templates_router
 from routers.sharing import router as sharing_router, set_websocket_manager as set_sharing_ws_manager
@@ -40,7 +40,7 @@ from routers.activities import router as activities_router
 from routers.settings import router as settings_router
 from routers.systems import router as systems_router
 from routers.observability import router as observability_router
-from routers.system_agent import router as system_agent_router, set_inject_trinity_meta_prompt
+from routers.system_agent import router as system_agent_router
 from routers.ops import router as ops_router
 from routers.public_links import router as public_links_router, set_websocket_manager as set_public_links_ws_manager
 from routers.public import router as public_router
@@ -197,8 +197,9 @@ set_monitoring_filtered_ws_manager(filtered_manager)
 set_operator_queue_ws_manager(manager)
 set_opqueue_sync_ws_manager(manager)
 
-# Inject trinity meta-prompt function into system agent router
-set_inject_trinity_meta_prompt(inject_trinity_meta_prompt)
+# NOTE: Trinity platform instructions are now injected at runtime via
+# --append-system-prompt on every chat/task request (Issue #136).
+# No startup injection callback needed.
 
 # NOTE: Scheduler broadcast callbacks removed - dedicated scheduler (trinity-scheduler)
 # publishes events to Redis which backend subscribes to, or via internal API calls

@@ -38,7 +38,6 @@ from services.agent_service import (
     check_shared_folder_mounts_match,
     check_api_key_env_matches,
     # Lifecycle
-    inject_trinity_meta_prompt,
     start_agent_internal,
     recreate_container_with_updated_config,
     # CRUD

@@ -1,3 +1,34 @@
+### 2026-03-15
+
+**🔄 Hide Terminal tab from agent detail page (deprecation candidate)**
+
+Removed the Terminal tab from the agent detail page for all users. The tab, its template content, and all associated reconnection/resize logic are commented out with deprecation markers. Backend terminal WebSocket endpoint and SSH service remain intact for API-level access. Frontend components (`TerminalPanelContent.vue`, `AgentTerminal.vue`, `useAgentTerminal.js`) are retained but unused.
+
+- `src/frontend/src/views/AgentDetail.vue` — Commented out terminal tab, template content, reconnection logic, and fit-on-activate
+
+---
+
+### 2026-03-15
+
+**refactor: Runtime injection of platform instructions via --append-system-prompt (#136)**
+
+Replaced fragile file-based platform instruction injection (`CLAUDE.local.md` written via HTTP push) with runtime injection via `--append-system-prompt` on every Claude Code invocation. The backend builds the platform instructions and sends them with every chat/task request. No startup coordination needed — agents receive instructions on first interaction regardless of how they were started.
+
+- `src/backend/services/platform_prompt_service.py` — New: single source of truth for platform instructions
+- `src/backend/routers/chat.py` — Inject `system_prompt` into `/api/chat` payload
+- `src/backend/services/task_execution_service.py` — Prepend platform prompt to task `system_prompt`
+- `docker/base-image/agent_server/models.py` — Add `system_prompt` to `ChatRequest`
+- `docker/base-image/agent_server/routers/chat.py` — Pass `system_prompt` through to runtime
+- `docker/base-image/agent_server/services/runtime_adapter.py` — Add `system_prompt` to `execute()` interface
+- `docker/base-image/agent_server/services/claude_code.py` — Add `--append-system-prompt` to `execute_claude_code()`
+- `docker/base-image/agent_server/routers/trinity.py` — Removed inject/reset endpoints, kept status
+- `src/backend/services/agent_service/lifecycle.py` — Removed `inject_trinity_meta_prompt()`
+- `src/backend/services/agent_client.py` — Removed `inject_trinity_prompt()`
+- `src/backend/routers/system_agent.py` — Removed injection callback wiring
+- `src/backend/main.py` — Removed injection callback wiring
+
+---
+
 ### 2026-03-14
 
 **fix: Move platform instructions from CLAUDE.md to CLAUDE.local.md**

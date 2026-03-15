@@ -14,7 +14,6 @@ from .helpers import (
     check_api_key_env_matches,
 )
 from .lifecycle import (
-    inject_trinity_meta_prompt,
     inject_assigned_credentials,
     start_agent_internal,
     recreate_container_with_updated_config,
@@ -91,7 +90,6 @@ __all__ = [
     "check_shared_folder_mounts_match",
     "check_api_key_env_matches",
     # Lifecycle
-    "inject_trinity_meta_prompt",
     "inject_assigned_credentials",
     "start_agent_internal",
     "recreate_container_with_updated_config",
