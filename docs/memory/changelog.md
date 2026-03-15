@@ -1,5 +1,18 @@
 ### 2026-03-14
 
+**feat: Mobile Admin — agent chat, autonomy toggle, and task sending**
+
+Enhanced mobile admin (`/m`) agents tab with agent management controls and chat:
+
+- **Autonomy toggle**: Switch agents between Auto and Manual mode (PUT `/api/agents/{name}/autonomy`)
+- **Agent chat**: Full-screen chat overlay with session management, async task execution and polling
+- **Removed context bar**: Replaced with more useful controls (mode toggle, chat, logs)
+
+**Files changed:**
+- `src/frontend/src/views/MobileAdmin.vue` — Added chat overlay, autonomy toggle, removed context bar
+
+---
+
 **feat: Mobile Admin PWA — standalone agent management from phone (#133)**
 
 Added standalone mobile admin page at `/m` route, installable as a PWA via "Add to Home Screen". Completely separate from main UI with no navigation links.

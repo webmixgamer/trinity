@@ -10,6 +10,11 @@ Browser (/m)
 │   ├── Inline admin login (no redirect)
 │   ├── Agents tab → GET /api/ops/fleet/status
 │   │                POST /api/agents/{name}/start|stop
+│   │                PUT /api/agents/{name}/autonomy
+│   │                POST /api/agents/{name}/task (chat)
+│   │                GET /api/agents/{name}/chat/sessions
+│   │                GET /api/agents/{name}/chat/sessions/{id}
+│   │                GET /api/agents/{name}/executions/{id}
 │   │                GET /api/agents/{name}/logs
 │   ├── Ops tab → GET /api/operator-queue
 │   │             POST /api/operator-queue/{id}/respond
@@ -38,7 +43,7 @@ Browser (/m)
 
 | File | Purpose |
 |------|---------|
-| `src/frontend/src/views/MobileAdmin.vue` | Complete mobile admin SPA (~850 lines) |
+| `src/frontend/src/views/MobileAdmin.vue` | Complete mobile admin SPA (~1100 lines) |
 | `src/frontend/src/router/index.js` | `/m` route (requiresAuth: false) |
 | `src/frontend/src/main.js` | 401 interceptor exclusion for `/m` |
 | `src/frontend/public/mobile-manifest.json` | PWA manifest (standalone, portrait, dark) |
@@ -48,9 +53,10 @@ Browser (/m)
 ## Tabs
 
 ### Agents Tab
-- Agent cards with name, status dot, type badge
+- Agent cards with name, status dot, autonomy badge (AUTO), type badge
 - Start/stop toggle button per agent
-- Tap to expand: context usage bar, log viewer
+- Tap to expand: autonomy toggle (Auto/Manual), chat button, log viewer
+- Chat overlay: full-screen chat with session management, async task polling
 - Search/filter by name
 - System agents filtered out
 

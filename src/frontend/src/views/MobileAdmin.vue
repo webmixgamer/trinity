@@ -88,6 +88,7 @@
                   <div class="agent-meta">
                     <span class="status-dot" :class="agent.status === 'running' ? 'bg-green-400' : 'bg-gray-500'"></span>
                     <span class="text-xs text-gray-400">{{ agent.status }}</span>
+                    <span v-if="agent.autonomy_enabled" class="autonomy-badge auto">AUTO</span>
                     <span v-if="agent.type" class="type-badge">{{ agent.type }}</span>
                   </div>
                 </div>
@@ -105,17 +106,37 @@
               </div>
 
               <!-- Expanded details -->
-              <div v-if="expandedAgent === agent.name" class="agent-details">
-                <div v-if="agent.context" class="detail-row">
-                  <span class="detail-label">Context</span>
-                  <div class="context-bar-container">
-                    <div class="context-bar" :style="{ width: agent.context.context_percent + '%' }" :class="agent.context.context_percent > 90 ? 'bg-red-500' : agent.context.context_percent > 75 ? 'bg-yellow-500' : 'bg-indigo-500'"></div>
-                  </div>
-                  <span class="text-xs text-gray-400 ml-2">{{ agent.context.context_percent }}%</span>
+              <div v-if="expandedAgent === agent.name" class="agent-details" @click.stop>
+                <!-- Autonomy toggle -->
+                <div class="detail-row">
+                  <span class="detail-label">Mode</span>
+                  <button
+                    @click="toggleAutonomy(agent)"
+                    class="autonomy-toggle-btn"
+                    :class="agent.autonomy_enabled ? 'autonomy-on' : 'autonomy-off'"
+                    :disabled="togglingAutonomy[agent.name]"
+                  >
+                    <span v-if="togglingAutonomy[agent.name]" class="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full"></span>
+                    <span v-else>{{ agent.autonomy_enabled ? 'AUTO' : 'Manual' }}</span>
+                  </button>
                 </div>
+
+                <!-- Chat button -->
+                <div class="detail-row">
+                  <span class="detail-label">Chat</span>
+                  <button
+                    @click="openChat(agent)"
+                    class="chat-open-btn"
+                    :disabled="agent.status !== 'running'"
+                  >
+                    {{ agent.status !== 'running' ? 'Start agent first' : 'Open Chat' }}
+                  </button>
+                </div>
+
+                <!-- Logs -->
                 <div class="detail-row">
                   <span class="detail-label">Logs</span>
-                  <button @click.stop="fetchAgentLogs(agent.name)" class="text-xs text-indigo-400 underline">
+                  <button @click="fetchAgentLogs(agent.name)" class="text-xs text-indigo-400 underline">
                     {{ agentLogs[agent.name] ? 'Refresh' : 'Load' }}
                   </button>
                 </div>
@@ -305,6 +326,86 @@
         </div>
       </main>
 
+      <!-- Chat Overlay -->
+      <div v-if="chatAgent" class="chat-overlay">
+        <div class="chat-header">
+          <button @click="closeChat" class="chat-back-btn">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <div class="chat-header-info">
+            <span class="chat-header-name">{{ chatAgent }}</span>
+            <span class="chat-header-status" :class="chatExecutionStatus === 'running' ? 'text-yellow-400' : ''">
+              {{ chatExecutionStatus === 'running' ? 'Thinking...' : 'Ready' }}
+            </span>
+          </div>
+          <button @click="startNewChat" class="chat-new-btn">New</button>
+        </div>
+
+        <!-- Sessions dropdown -->
+        <div v-if="showSessions" class="chat-sessions">
+          <div
+            v-for="s in chatSessions"
+            :key="s.id"
+            class="session-item"
+            :class="{ active: s.id === chatSessionId }"
+            @click="selectSession(s)"
+          >
+            <span class="session-preview">{{ s.last_message || 'Empty session' }}</span>
+            <span class="session-meta">{{ s.message_count }} msgs &middot; {{ formatTime(s.started_at) }}</span>
+          </div>
+          <div v-if="chatSessions.length === 0" class="empty-state" style="padding: 16px;">No previous sessions</div>
+        </div>
+        <button @click="showSessions = !showSessions" class="sessions-toggle">
+          {{ showSessions ? 'Hide' : 'Sessions' }} ({{ chatSessions.length }})
+        </button>
+
+        <!-- Messages -->
+        <div class="chat-messages" ref="chatMessagesEl">
+          <div v-if="chatMessages.length === 0" class="empty-state" style="padding: 40px 16px;">
+            Send a message to start chatting
+          </div>
+          <div
+            v-for="(msg, i) in chatMessages"
+            :key="i"
+            class="chat-bubble"
+            :class="msg.role === 'user' ? 'bubble-user' : 'bubble-assistant'"
+          >
+            <div class="bubble-content">{{ msg.content }}</div>
+            <div class="bubble-time">{{ formatTime(msg.timestamp) }}</div>
+          </div>
+          <div v-if="chatExecutionStatus === 'running'" class="chat-bubble bubble-assistant">
+            <div class="bubble-content thinking-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="chat-input-bar">
+          <textarea
+            v-model="chatInput"
+            placeholder="Message..."
+            class="chat-input"
+            rows="1"
+            @keydown.enter.exact.prevent="sendChatMessage"
+            @input="autoResizeInput"
+            ref="chatInputEl"
+            :disabled="chatExecutionStatus === 'running'"
+          ></textarea>
+          <button
+            @click="sendChatMessage"
+            class="chat-send-btn"
+            :disabled="!chatInput.trim() || chatExecutionStatus === 'running'"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <!-- Confirmation Dialog -->
       <div v-if="confirmDialog" class="confirm-overlay" @click.self="confirmDialog = null">
         <div class="confirm-dialog">
@@ -381,6 +482,18 @@ const agentSearch = ref('')
 const expandedAgent = ref(null)
 const agentLogs = reactive({})
 const togglingAgents = reactive({})
+const togglingAutonomy = reactive({})
+
+// Chat
+const chatAgent = ref(null)
+const chatInput = ref('')
+const chatMessages = ref([])
+const chatSessions = ref([])
+const chatSessionId = ref(null)
+const chatExecutionStatus = ref(null)
+const showSessions = ref(false)
+const chatMessagesEl = ref(null)
+const chatInputEl = ref(null)
 
 // Ops
 const queueItems = ref([])
@@ -564,6 +677,185 @@ async function toggleAgent(name, currentStatus) {
   } finally {
     togglingAgents[name] = false
   }
+}
+
+async function toggleAutonomy(agent) {
+  togglingAutonomy[agent.name] = true
+  try {
+    const newState = !agent.autonomy_enabled
+    await axios.put(`/api/agents/${agent.name}/autonomy`, { enabled: newState })
+    agent.autonomy_enabled = newState
+  } catch (e) {
+    console.error(`Failed to toggle autonomy for ${agent.name}:`, e)
+  } finally {
+    togglingAutonomy[agent.name] = false
+  }
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+
+async function openChat(agent) {
+  chatAgent.value = agent.name
+  chatMessages.value = []
+  chatSessionId.value = null
+  chatInput.value = ''
+  chatExecutionStatus.value = null
+  showSessions.value = false
+  stopPolling()
+  await loadChatSessions()
+  // Auto-select most recent active session
+  if (chatSessions.value.length > 0) {
+    const active = chatSessions.value.find(s => s.status === 'active')
+    if (active) await selectSession(active)
+  }
+  await nextTick()
+  if (chatInputEl.value) chatInputEl.value.focus()
+}
+
+function closeChat() {
+  chatAgent.value = null
+  chatMessages.value = []
+  chatSessionId.value = null
+  chatExecutionStatus.value = null
+  startPolling()
+}
+
+function startNewChat() {
+  chatMessages.value = []
+  chatSessionId.value = null
+  chatExecutionStatus.value = null
+  showSessions.value = false
+}
+
+async function loadChatSessions() {
+  try {
+    const res = await axios.get(`/api/agents/${chatAgent.value}/chat/sessions`)
+    chatSessions.value = res.data.sessions || []
+  } catch (e) {
+    chatSessions.value = []
+  }
+}
+
+async function selectSession(session) {
+  chatSessionId.value = session.id
+  showSessions.value = false
+  try {
+    const res = await axios.get(`/api/agents/${chatAgent.value}/chat/sessions/${session.id}`)
+    chatMessages.value = res.data.messages || []
+    scrollChatToBottom()
+  } catch (e) {
+    console.error('Failed to load session:', e)
+  }
+}
+
+function buildContextPrompt(userMessage) {
+  // Include last 10 exchanges for context
+  const recent = chatMessages.value.slice(-20)
+  if (recent.length === 0) return userMessage
+  let context = 'Previous conversation:\n'
+  recent.forEach(m => {
+    context += `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}\n`
+  })
+  context += `\nUser: ${userMessage}`
+  return context
+}
+
+async function sendChatMessage() {
+  const message = chatInput.value.trim()
+  if (!message || chatExecutionStatus.value === 'running') return
+
+  chatInput.value = ''
+  if (chatInputEl.value) {
+    chatInputEl.value.style.height = 'auto'
+  }
+
+  // Add user message immediately
+  chatMessages.value.push({
+    role: 'user',
+    content: message,
+    timestamp: new Date().toISOString()
+  })
+  scrollChatToBottom()
+
+  chatExecutionStatus.value = 'running'
+
+  try {
+    const contextPrompt = buildContextPrompt(message)
+    const payload = {
+      message: contextPrompt,
+      save_to_session: true,
+      user_message: message,
+      create_new_session: !chatSessionId.value,
+      chat_session_id: chatSessionId.value || undefined,
+      async_mode: true
+    }
+
+    const submitRes = await axios.post(`/api/agents/${chatAgent.value}/task`, payload)
+    const executionId = submitRes.data.execution_id
+
+    // Poll for completion
+    const result = await pollExecution(chatAgent.value, executionId)
+
+    if (result?.status === 'success' && result.response) {
+      chatMessages.value.push({
+        role: 'assistant',
+        content: result.response,
+        timestamp: new Date().toISOString()
+      })
+    } else if (result?.status === 'failed') {
+      chatMessages.value.push({
+        role: 'assistant',
+        content: `Error: ${result.error || 'Task failed'}`,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    // Refresh sessions to pick up new session ID
+    await loadChatSessions()
+    if (!chatSessionId.value && chatSessions.value.length > 0) {
+      chatSessionId.value = chatSessions.value[0].id
+    }
+  } catch (e) {
+    chatMessages.value.push({
+      role: 'assistant',
+      content: `Error: ${e.response?.data?.detail || e.message || 'Failed to send message'}`,
+      timestamp: new Date().toISOString()
+    })
+  } finally {
+    chatExecutionStatus.value = null
+    scrollChatToBottom()
+  }
+}
+
+async function pollExecution(agentName, executionId) {
+  const maxAttempts = 120  // 10 minutes at 5s intervals
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 5000))
+    try {
+      const res = await axios.get(`/api/agents/${agentName}/executions/${executionId}`)
+      const exec = res.data
+      if (exec.status && exec.status !== 'running' && exec.status !== 'pending') {
+        return exec
+      }
+    } catch (e) {
+      console.error('Poll error:', e)
+    }
+  }
+  return { status: 'failed', error: 'Timed out waiting for response' }
+}
+
+function scrollChatToBottom() {
+  nextTick(() => {
+    if (chatMessagesEl.value) {
+      chatMessagesEl.value.scrollTop = chatMessagesEl.value.scrollHeight
+    }
+  })
+}
+
+function autoResizeInput(e) {
+  const el = e.target
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px'
 }
 
 // ─── Ops Actions ─────────────────────────────────────────────────────────────
@@ -823,6 +1115,7 @@ onMounted(() => {
 onUnmounted(() => {
   cleanupPWA()
   stopPolling()
+  chatAgent.value = null
 
   document.removeEventListener('touchstart', onTouchStart)
   document.removeEventListener('touchmove', onTouchMove)
@@ -1634,5 +1927,286 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ─── Autonomy ─────────────────────────────────────────────────────────── */
+
+.autonomy-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.autonomy-badge.auto {
+  background: #78350f;
+  color: #fbbf24;
+}
+
+.autonomy-toggle-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 70px;
+}
+
+.autonomy-on {
+  background: #78350f;
+  color: #fbbf24;
+}
+
+.autonomy-off {
+  background: #374151;
+  color: #9ca3af;
+}
+
+.autonomy-toggle-btn:disabled {
+  opacity: 0.6;
+}
+
+.chat-open-btn {
+  padding: 6px 14px;
+  background: #312e81;
+  border: none;
+  border-radius: 8px;
+  color: #a5b4fc;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chat-open-btn:disabled {
+  background: #374151;
+  color: #6b7280;
+  cursor: default;
+}
+
+/* ─── Chat Overlay ─────────────────────────────────────────────────────── */
+
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  background: #111827;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.chat-back-btn {
+  padding: 8px;
+  background: none;
+  border: none;
+  color: #818cf8;
+  cursor: pointer;
+}
+
+.chat-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-header-name {
+  display: block;
+  font-weight: 600;
+  font-size: 15px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-header-status {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.chat-new-btn {
+  padding: 6px 12px;
+  background: #374151;
+  border: none;
+  border-radius: 8px;
+  color: #818cf8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sessions-toggle {
+  padding: 6px;
+  background: #1a2332;
+  border: none;
+  border-bottom: 1px solid #374151;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.chat-sessions {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #1a2332;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+
+.session-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid #1f2937;
+  cursor: pointer;
+}
+
+.session-item:active, .session-item.active {
+  background: #263040;
+}
+
+.session-preview {
+  display: block;
+  font-size: 13px;
+  color: #d1d5db;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+  display: block;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bubble-user {
+  align-self: flex-end;
+  background: #4338ca;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.bubble-assistant {
+  align-self: flex-start;
+  background: #1f2937;
+  color: #e5e7eb;
+  border-bottom-left-radius: 4px;
+}
+
+.bubble-content {
+  white-space: pre-wrap;
+}
+
+.bubble-time {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+}
+
+.bubble-assistant .bubble-time {
+  color: #6b7280;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  background: #6b7280;
+  border-radius: 50%;
+  animation: thinking 1.4s infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.chat-input-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1f2937;
+  border-top: 1px solid #374151;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 10px 14px;
+  background: #0f172a;
+  border: 1px solid #374151;
+  border-radius: 20px;
+  color: white;
+  font-size: 16px;
+  outline: none;
+  resize: none;
+  max-height: 120px;
+  line-height: 1.4;
+  font-family: inherit;
+}
+
+.chat-input:focus {
+  border-color: #6366f1;
+}
+
+.chat-send-btn {
+  width: 40px;
+  height: 40px;
+  background: #6366f1;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-send-btn:disabled {
+  background: #374151;
+  color: #6b7280;
 }
 </style>
