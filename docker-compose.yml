@@ -20,7 +20,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}  # For platform image generation (IMG-001)
       - GITHUB_PAT=${GITHUB_PAT:-}
       - HOST_TEMPLATES_PATH=${PWD}/config/agent-templates
-      - HOST_META_PROMPT_PATH=${PWD}/config/trinity-meta-prompt
       # OpenTelemetry Configuration (Optional)
       - OTEL_ENABLED=${OTEL_ENABLED:-0}
       - OTEL_COLLECTOR_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT:-http://trinity-otel-collector:4317}
@@ -48,7 +47,6 @@ services:
       - ./VERSION:/app/VERSION:ro  # Platform version for agent container labels
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/process-templates:/agent-configs/process-templates:ro  # Process templates
-      - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - ./config/hooks:/config/hooks:ro  # Read-only hooks (e.g., read-only-guard.py)
       - ./config/process-docs:/app/config/process-docs:ro  # Process documentation
       - agent-configs:/agent-configs

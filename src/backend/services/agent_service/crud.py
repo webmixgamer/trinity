@@ -362,13 +362,6 @@ async def create_agent_internal(
             if cred_files_volume:
                 volumes.update(cred_files_volume)
 
-            # Phase 9: Mount Trinity meta-prompt for agent collaboration
-            # Check if meta-prompt exists in container, but use HOST path for agent volume mount
-            container_meta_prompt_path = Path("/trinity-meta-prompt")
-            host_meta_prompt_path = os.getenv("HOST_META_PROMPT_PATH", "./config/trinity-meta-prompt")
-            if container_meta_prompt_path.exists():
-                volumes[host_meta_prompt_path] = {'bind': '/trinity-meta-prompt', 'mode': 'ro'}
-
             # Phase 9.11: Agent Shared Folders - mount shared volumes based on config
             # First, write template-defined shared folder config to DB (if defined)
             if template_shared_folders:

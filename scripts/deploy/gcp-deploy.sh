@@ -163,7 +163,6 @@ FRONTEND_PORT=${FRONTEND_PORT:-80}
 
 # Host paths for agent volumes
 HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${REMOTE_DIR}/config/agent-templates}
-HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-${REMOTE_DIR}/config/trinity-meta-prompt}
 TRINITY_DATA_PATH=${TRINITY_DATA_PATH:-${REMOTE_DIR}/trinity-data}
 "
 

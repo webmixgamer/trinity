@@ -188,11 +188,7 @@ class FileInfo(BaseModel):
 
 class TrinityStatusResponse(BaseModel):
     """Response from Trinity status check"""
-    injected: bool
-    meta_prompt_mounted: bool
-    files: Dict[str, bool]
-    directories: Dict[str, bool]
-    claude_md_has_trinity_section: bool
+    injected: bool  # Always true — runtime injection via --append-system-prompt
 
 
 # ============================================================================

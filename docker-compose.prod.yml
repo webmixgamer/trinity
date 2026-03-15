@@ -44,7 +44,6 @@ services:
       - AUTH0_ALLOWED_DOMAIN=${AUTH0_ALLOWED_DOMAIN:-ability.ai}
       # Host paths for volumes (used when creating agent containers)
       - HOST_TEMPLATES_PATH=${HOST_TEMPLATES_PATH:-${PWD}/config/agent-templates}
-      - HOST_META_PROMPT_PATH=${HOST_META_PROMPT_PATH:-${PWD}/config/trinity-meta-prompt}
       # OpenTelemetry Configuration (Optional)
       - OTEL_ENABLED=${OTEL_ENABLED:-0}
       - OTEL_COLLECTOR_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT:-http://trinity-otel-collector:4317}
@@ -60,7 +59,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/agent-templates:/agent-configs/templates:ro
       - ./config/process-templates:/agent-configs/process-templates:ro
-      - ./config/trinity-meta-prompt:/trinity-meta-prompt:ro
       - ./config/process-docs:/app/config/process-docs:ro
       - agent-configs:/agent-configs
       - ${TRINITY_DATA_PATH:-./trinity-data}:/data

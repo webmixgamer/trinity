@@ -21,7 +21,6 @@ PLANS_ACTIVE_DIR = WORKSPACE_DIR / "plans" / "active"
 PLANS_ARCHIVE_DIR = WORKSPACE_DIR / "plans" / "archive"
 TRINITY_DIR = WORKSPACE_DIR / ".trinity"
 CLAUDE_COMMANDS_DIR = WORKSPACE_DIR / ".claude" / "commands" / "trinity"
-TRINITY_META_PROMPT_DIR = Path("/trinity-meta-prompt")
 
 # File size limits
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
@@ -39,5 +38,3 @@ GEMINI_CONTEXT_WINDOW = 1000000  # 1M tokens
 # Git configuration
 GIT_TIMEOUT_SECONDS = 60
 
-# Trinity injection marker
-TRINITY_SECTION_MARKER = "## Trinity Planning System"
