@@ -91,6 +91,17 @@
                     <span v-if="agent.autonomy_enabled" class="autonomy-badge auto">AUTO</span>
                     <span v-if="agent.type" class="type-badge">{{ agent.type }}</span>
                   </div>
+                  <!-- Success rate bar -->
+                  <div v-if="getAgentSuccessPercent(agent.name) > 0" class="success-bar-row">
+                    <div class="success-bar-track">
+                      <div
+                        class="success-bar-fill"
+                        :class="getSuccessBarClass(getAgentSuccessPercent(agent.name))"
+                        :style="{ width: getAgentSuccessPercent(agent.name) + '%' }"
+                      ></div>
+                    </div>
+                    <span class="success-bar-label" :class="getSuccessTextClass(getAgentSuccessPercent(agent.name))">{{ getAgentSuccessPercent(agent.name) }}%</span>
+                  </div>
                 </div>
                 <div class="agent-actions" @click.stop>
                   <button
@@ -291,34 +302,6 @@
             </div>
           </div>
 
-          <!-- Cost Overview -->
-          <div class="system-section">
-            <h2 class="section-title">Costs</h2>
-            <div v-if="loading.costs" class="loading-state">Loading...</div>
-            <div v-else-if="!costs.enabled || !costs.available" class="empty-state">Cost tracking unavailable</div>
-            <div v-else class="cost-summary">
-              <div class="cost-row">
-                <span class="cost-label">Today</span>
-                <span class="cost-value">${{ costs.summary?.total_cost?.toFixed(2) || '0.00' }}</span>
-              </div>
-              <div v-if="costs.summary?.daily_limit" class="cost-row">
-                <span class="cost-label">Limit</span>
-                <span class="cost-value">${{ costs.summary.daily_limit.toFixed(2) }}</span>
-              </div>
-              <div v-if="costs.summary?.cost_percent_of_limit" class="cost-row">
-                <span class="cost-label">Usage</span>
-                <div class="cost-bar-container">
-                  <div
-                    class="cost-bar"
-                    :style="{ width: Math.min(costs.summary.cost_percent_of_limit, 100) + '%' }"
-                    :class="costs.summary.cost_percent_of_limit > 80 ? 'bg-red-500' : 'bg-indigo-500'"
-                  ></div>
-                </div>
-                <span class="text-xs text-gray-400 ml-2">{{ costs.summary.cost_percent_of_limit.toFixed(0) }}%</span>
-              </div>
-            </div>
-          </div>
-
           <!-- Action Result -->
           <div v-if="actionResult" class="action-result" :class="actionResult.success ? 'result-success' : 'result-error'">
             {{ actionResult.message }}
@@ -503,7 +486,7 @@ const respondingItems = reactive({})
 
 // System
 const fleetSummary = ref({ total: 0, running: 0, stopped: 0, high_context: 0 })
-const costs = ref({})
+const executionStats = ref({})
 const confirmDialog = ref(null)
 const actionLoading = ref(false)
 const actionResult = ref(null)
@@ -513,8 +496,7 @@ const loading = reactive({
   agents: false,
   queue: false,
   notifications: false,
-  fleet: false,
-  costs: false
+  fleet: false
 })
 
 // Polling
@@ -575,9 +557,24 @@ function handleLogout() {
 async function fetchAgents() {
   loading.agents = true
   try {
-    const res = await axios.get('/api/ops/fleet/status')
-    agents.value = res.data.agents || []
-    fleetSummary.value = res.data.summary || { total: 0, running: 0, stopped: 0, high_context: 0 }
+    const [fleetRes, autonomyRes, statsRes] = await Promise.all([
+      axios.get('/api/ops/fleet/status'),
+      axios.get('/api/agents/autonomy-status'),
+      axios.get('/api/agents/execution-stats', { params: { include_7d: true } })
+    ])
+    const autonomyMap = autonomyRes.data || {}
+    const agentList = (fleetRes.data.agents || []).map(a => ({
+      ...a,
+      autonomy_enabled: autonomyMap[a.name]?.autonomy_enabled || false
+    }))
+    agents.value = agentList
+    fleetSummary.value = fleetRes.data.summary || { total: 0, running: 0, stopped: 0, high_context: 0 }
+    // Build execution stats map
+    const statsMap = {}
+    for (const stat of (statsRes.data || [])) {
+      statsMap[stat.name] = stat
+    }
+    executionStats.value = statsMap
   } catch (e) {
     console.error('Failed to fetch agents:', e)
   } finally {
@@ -621,18 +618,6 @@ async function fetchFleetHealth() {
   }
 }
 
-async function fetchCosts() {
-  loading.costs = true
-  try {
-    const res = await axios.get('/api/ops/costs')
-    costs.value = res.data
-  } catch (e) {
-    console.error('Failed to fetch costs:', e)
-  } finally {
-    loading.costs = false
-  }
-}
-
 async function fetchAgentLogs(name) {
   try {
     const res = await axios.get(`/api/agents/${name}/logs`, { params: { tail: 30 } })
@@ -646,14 +631,13 @@ function loadAllData() {
   fetchAgents()
   fetchQueue()
   fetchNotifications()
-  fetchCosts()
 }
 
 async function refreshCurrentTab() {
   refreshing.value = true
   if (activeTab.value === 'agents') await fetchAgents()
   else if (activeTab.value === 'ops') { await fetchQueue(); await fetchNotifications() }
-  else if (activeTab.value === 'system') { await fetchFleetHealth(); await fetchCosts() }
+  else if (activeTab.value === 'system') { await fetchFleetHealth() }
   refreshing.value = false
 }
 
@@ -1067,6 +1051,31 @@ function stopPolling() {
   }
 }
 
+// ─── Success Rate Helpers ────────────────────────────────────────────────────
+
+function getAgentSuccessPercent(agentName) {
+  const stats = executionStats.value[agentName]
+  if (stats && stats.task_count_24h > 0) {
+    return Math.round(stats.success_rate || 0)
+  }
+  if (stats && (stats.task_count_7d || 0) > 0) {
+    return Math.round(stats.success_rate_7d || 0)
+  }
+  return 0
+}
+
+function getSuccessBarClass(percent) {
+  if (percent >= 90) return 'bar-green'
+  if (percent >= 50) return 'bar-yellow'
+  return 'bar-red'
+}
+
+function getSuccessTextClass(percent) {
+  if (percent >= 90) return 'text-green'
+  if (percent >= 50) return 'text-yellow'
+  return 'text-red'
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatTime(dateStr) {
@@ -1141,7 +1150,10 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
 
 .mobile-admin {
   position: fixed;
-  inset: 0;
+  top: env(safe-area-inset-top);
+  bottom: 0;
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
   background: #111827;
   color: #e5e7eb;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
@@ -1151,10 +1163,6 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
 }
 
 /* ─── Login ─────────────────────────────────────────────────────────────── */
@@ -1163,8 +1171,7 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
   padding: 24px;
 }
 
@@ -1702,49 +1709,6 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
   background: #374151;
 }
 
-.cost-summary {
-  background: #1f2937;
-  border-radius: 12px;
-  padding: 14px;
-}
-
-.cost-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.cost-row:last-child {
-  margin-bottom: 0;
-}
-
-.cost-label {
-  color: #9ca3af;
-  font-size: 14px;
-  min-width: 56px;
-}
-
-.cost-value {
-  color: white;
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.cost-bar-container {
-  flex: 1;
-  height: 6px;
-  background: #374151;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.cost-bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
 .action-result {
   margin-top: 12px;
   padding: 12px;
@@ -1968,6 +1932,44 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
   opacity: 0.6;
 }
 
+/* ─── Success Rate Bar ─────────────────────────────────────────────────── */
+
+.success-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.success-bar-track {
+  flex: 1;
+  height: 4px;
+  background: #374151;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.success-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.bar-green { background: #22c55e; }
+.bar-yellow { background: #eab308; }
+.bar-red { background: #ef4444; }
+
+.success-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: right;
+}
+
+.text-green { color: #4ade80; }
+.text-yellow { color: #facc15; }
+.text-red { color: #f87171; }
+
 .chat-open-btn {
   padding: 6px 14px;
   background: #312e81;
@@ -1989,12 +1991,14 @@ watch(() => authStore.isAuthenticated, (isAuth) => {
 
 .chat-overlay {
   position: fixed;
-  inset: 0;
+  top: env(safe-area-inset-top);
+  bottom: 0;
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
   background: #111827;
   z-index: 200;
   display: flex;
   flex-direction: column;
-  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
 

@@ -9,6 +9,8 @@ Browser (/m)
 ├── MobileAdmin.vue (self-contained SPA)
 │   ├── Inline admin login (no redirect)
 │   ├── Agents tab → GET /api/ops/fleet/status
+│   │                GET /api/agents/autonomy-status (merged into agent data)
+│   │                GET /api/agents/execution-stats?include_7d=true
 │   │                POST /api/agents/{name}/start|stop
 │   │                PUT /api/agents/{name}/autonomy
 │   │                POST /api/agents/{name}/task (chat)
@@ -24,7 +26,6 @@ Browser (/m)
 │                     POST /api/ops/emergency-stop
 │                     POST /api/ops/fleet/restart
 │                     POST /api/ops/schedules/pause|resume
-│                     GET /api/ops/costs
 ├── mobile-manifest.json (PWA manifest)
 ├── mobile-sw.js (service worker)
 └── icons/ (192, 512, apple-touch)
@@ -54,6 +55,8 @@ Browser (/m)
 
 ### Agents Tab
 - Agent cards with name, status dot, autonomy badge (AUTO), type badge
+- Success rate progress bar per agent (green >=90%, yellow >=50%, red <50%) — uses same `/api/agents/execution-stats` endpoint as desktop timeline view
+- Autonomy status fetched from `/api/agents/autonomy-status` and merged (fleet status API doesn't include it)
 - Start/stop toggle button per agent
 - Tap to expand: autonomy toggle (Auto/Manual), chat button, log viewer
 - Chat overlay: full-screen chat with session management, async task polling
@@ -70,14 +73,13 @@ Browser (/m)
 - Fleet health grid: Total / Running / Stopped / High Context
 - Action buttons: Emergency Stop, Fleet Restart, Pause Schedules, Resume Schedules
 - Confirmation dialog (bottom sheet pattern) for destructive actions
-- Cost overview with usage bar
 
 ## Mobile UX
 
 - `touch-action: manipulation` — removes 300ms tap delay
 - `-webkit-tap-highlight-color: transparent` — no flash on tap
 - `font-size: 16px` on all inputs — prevents iOS auto-zoom
-- `env(safe-area-inset-*)` — notch/home indicator handling
+- `env(safe-area-inset-*)` — notch/home indicator handling via explicit `top/bottom/left/right` positioning (not padding, which causes iOS PWA touch coordinate offset)
 - `overscroll-behavior: none` — prevents iOS rubber-band bounce
 - `visualViewport` API — hides tab bar when keyboard opens
 - Pull-to-refresh via touch event handlers
