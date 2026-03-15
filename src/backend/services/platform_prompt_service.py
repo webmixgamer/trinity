@@ -28,7 +28,55 @@ Use `list_agents` to discover your available collaborators.
 
 ### Operator Communication
 
-See @.trinity/prompt.md for the full operator communication protocol.
+You can communicate with your human operator through a file-based queue protocol. This is useful when you need human input — approvals, answers to questions, or to flag important situations.
+
+**Queue File**: `~/.trinity/operator-queue.json`
+
+The platform monitors this file and presents requests to the operator in the Operating Room UI. The operator's responses are written back to the same file.
+
+#### How to Use
+
+**Write a request** by adding an entry to the `requests` array:
+
+```json
+{
+  "$schema": "operator-queue-v1",
+  "requests": [
+    {
+      "id": "req-20260307-001",
+      "type": "approval",
+      "status": "pending",
+      "priority": "high",
+      "title": "Short summary of what you need",
+      "question": "Full description with context. Markdown supported.",
+      "options": ["approve", "reject"],
+      "context": { "relevant_key": "relevant_value" },
+      "created_at": "2026-03-07T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Request types:**
+- `approval` — You need a yes/no or multi-choice decision. Provide `options` array.
+- `question` — You need freeform guidance. No `options` needed.
+- `alert` — You're reporting a situation. No decision needed, just acknowledgement.
+
+**Priority levels:** `critical`, `high`, `medium`, `low`
+
+**Check for responses** by reading the file and looking for items with `status: "responded"`. The platform will set `response`, `responded_by`, and `responded_at` fields.
+
+**After processing a response**, update the item's status to `"acknowledged"`.
+
+**File hygiene**: Keep only `pending` and `responded` items plus up to 3 recent `acknowledged` items.
+
+#### When to Use
+
+This is entirely your judgment. Some situations where it may be appropriate:
+- Actions with significant consequences (deployments, purchases, deletions)
+- Ambiguous requirements where you need clarification
+- Situations requiring domain knowledge you don't have
+- Important alerts the operator should be aware of
 
 ### Package Persistence
 
