@@ -747,7 +747,7 @@ async function removeTag(tag) {
   }
 }
 
-// Check if agent has a dashboard.yaml file
+// Check if agent has a dashboard.yaml file (or a cached version)
 async function checkDashboardExists() {
   if (!agent.value?.name) {
     hasDashboard.value = false
@@ -755,7 +755,8 @@ async function checkDashboardExists() {
   }
   try {
     const response = await agentsStore.getAgentDashboard(agent.value.name)
-    hasDashboard.value = response?.has_dashboard === true
+    // Show tab if dashboard exists OR if we have a stale cached version
+    hasDashboard.value = response?.has_dashboard === true || response?.stale === true
   } catch (err) {
     hasDashboard.value = false
   }

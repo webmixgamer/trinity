@@ -45,7 +45,7 @@ The Agent Scheduling feature enables users to automate agent tasks by configurin
 │  │  └── SchedulesPanel.vue                                          │    │
 │  │      ├── Schedule List (enable/disable, trigger, edit, delete)   │    │
 │  │      ├── Create/Edit Modal (cron presets, timezone)              │    │
-│  │      └── Execution History (expandable per schedule)             │    │
+│  │      └── Execution History (expandable, auto-polls every 10s)    │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │

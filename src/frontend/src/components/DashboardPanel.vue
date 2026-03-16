@@ -18,7 +18,7 @@
       </p>
     </div>
 
-    <!-- Error State -->
+    <!-- Error State (only when no cached dashboard available) -->
     <div v-else-if="dashboardData?.error && !dashboardData?.has_dashboard" class="text-center py-8">
       <div class="mx-auto w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4">
         <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,6 +49,23 @@
 
     <!-- Dashboard Display -->
     <div v-else class="space-y-6">
+      <!-- Stale Dashboard Warning Banner -->
+      <div v-if="dashboardData.stale" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3">
+        <div class="flex items-start">
+          <svg class="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="ml-3 flex-1">
+            <p class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+              Showing cached dashboard
+            </p>
+            <p class="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
+              {{ dashboardData.stale_reason }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
@@ -63,6 +80,21 @@
           <span v-if="dashboardData.last_modified">
             Updated {{ formatRelativeTime(dashboardData.last_modified) }}
           </span>
+          <button
+            v-if="hasUpdateDashboardPlaybook"
+            @click="triggerUpdateDashboard"
+            :disabled="updatingDashboard"
+            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-900/70 disabled:opacity-50"
+            title="Run /update-dashboard playbook"
+          >
+            <svg v-if="updatingDashboard" class="w-3.5 h-3.5 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <svg v-else class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Update Dashboard
+          </button>
           <button
             @click="loadDashboard"
             :disabled="loading"
@@ -340,6 +372,8 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
 import { useAgentsStore } from '../stores/agents'
+import { useAuthStore } from '../stores/auth'
+import axios from 'axios'
 import SparklineChart from './SparklineChart.vue'
 
 const props = defineProps({
@@ -354,8 +388,11 @@ const props = defineProps({
 })
 
 const agentsStore = useAgentsStore()
+const authStore = useAuthStore()
 const dashboardData = ref(null)
 const loading = ref(true)
+const hasUpdateDashboardPlaybook = ref(false)
+const updatingDashboard = ref(false)
 let refreshInterval = null
 
 const loadDashboard = async () => {
@@ -371,6 +408,41 @@ const loadDashboard = async () => {
     }
   } finally {
     loading.value = false
+  }
+}
+
+// Check if agent has an update-dashboard playbook
+const checkUpdateDashboardPlaybook = async () => {
+  try {
+    const response = await axios.get(`/api/agents/${props.agentName}/playbooks`, {
+      headers: authStore.authHeader
+    })
+    const skills = response.data?.skills || response.data || []
+    hasUpdateDashboardPlaybook.value = skills.some(
+      s => s.name === 'update-dashboard'
+    )
+  } catch {
+    hasUpdateDashboardPlaybook.value = false
+  }
+}
+
+// Trigger the /update-dashboard playbook via task endpoint
+const triggerUpdateDashboard = async () => {
+  updatingDashboard.value = true
+  try {
+    await axios.post(`/api/agents/${props.agentName}/task`, {
+      message: '/update-dashboard'
+    }, {
+      headers: authStore.authHeader
+    })
+    // Wait a bit then refresh the dashboard to show updated data
+    setTimeout(() => {
+      loadDashboard()
+      updatingDashboard.value = false
+    }, 5000)
+  } catch (error) {
+    console.error('Failed to trigger update-dashboard:', error)
+    updatingDashboard.value = false
   }
 }
 
@@ -521,9 +593,11 @@ const stopRefresh = () => {
 watch(() => props.agentName, (newName, oldName) => {
   if (newName && newName !== oldName) {
     dashboardData.value = null
+    hasUpdateDashboardPlaybook.value = false
     stopRefresh()
     if (props.agentStatus === 'running') {
       loadDashboard()
+      checkUpdateDashboardPlaybook()
       startRefresh()
     } else {
       loading.value = false
@@ -534,6 +608,7 @@ watch(() => props.agentName, (newName, oldName) => {
 watch(() => props.agentStatus, (newStatus) => {
   if (newStatus === 'running') {
     loadDashboard()
+    checkUpdateDashboardPlaybook()
     startRefresh()
   } else {
     stopRefresh()
@@ -543,6 +618,7 @@ watch(() => props.agentStatus, (newStatus) => {
 onMounted(() => {
   if (props.agentStatus === 'running') {
     loadDashboard()
+    checkUpdateDashboardPlaybook()
     startRefresh()
   } else {
     loading.value = false

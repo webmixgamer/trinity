@@ -67,7 +67,7 @@ Five sequential operations, each wrapped in individual try/except:
    ```python
    count = db.mark_no_session_executions_failed(NO_SESSION_TIMEOUT_SECONDS)
    ```
-   Marks `running` executions with no `claude_session_id` older than 60 seconds as failed. These are silent launch failures where the backend failed to start a Claude session.
+   Marks `running` executions with `claude_session_id IS NULL` older than 60 seconds as failed. These are silent launch failures where the backend failed to dispatch to the agent. Note: `TaskExecutionService` sets `claude_session_id='dispatched'` before calling the agent (step 3b), so only executions that never reached dispatch are caught here.
 
 3. **Finalize orphaned skipped executions** (lines 98-105, Issue #106)
    ```python
@@ -191,8 +191,22 @@ SET status = 'failed',
 WHERE id = ?
 ```
 
+#### mark_execution_dispatched (ScheduleOperations)
+**File**: `src/backend/db/schedules.py:570-590`
+
+Called by `TaskExecutionService` (step 3b) before the agent HTTP call. Sets `claude_session_id='dispatched'` so the no-session cleanup only catches executions that never reached dispatch.
+
+**SQL**:
+```sql
+UPDATE schedule_executions
+SET claude_session_id = 'dispatched'
+WHERE id = ? AND status = 'running' AND claude_session_id IS NULL
+```
+
 #### mark_no_session_executions_failed (ScheduleOperations) — Issue #106
-**File**: `src/backend/db/schedules.py:1015-1055`
+**File**: `src/backend/db/schedules.py:1036-1076`
+
+Only catches executions where `claude_session_id IS NULL` (never dispatched). Executions that were dispatched have `claude_session_id='dispatched'` and are not affected.
 
 **SQL** (finds no-session rows):
 ```sql
@@ -351,8 +365,9 @@ This is a purely backend service. The only "UI" is the two admin API endpoints u
 |------|------|
 | `src/backend/services/cleanup_service.py` | Service class and global instance |
 | `src/backend/db/schedules.py:971-1013` | `mark_stale_executions_failed()` |
-| `src/backend/db/schedules.py:1015-1055` | `mark_no_session_executions_failed()` (Issue #106) |
-| `src/backend/db/schedules.py:1057-1075` | `finalize_orphaned_skipped_executions()` (Issue #106) |
+| `src/backend/db/schedules.py:570-590` | `mark_execution_dispatched()` — sets sentinel before agent call |
+| `src/backend/db/schedules.py:1036-1076` | `mark_no_session_executions_failed()` (Issue #106) |
+| `src/backend/db/schedules.py:1078-1100` | `finalize_orphaned_skipped_executions()` (Issue #106) |
 | `src/backend/db/activities.py:187-225` | `mark_stale_activities_failed()` |
 | `src/backend/database.py:682-688` | Delegation methods on DatabaseManager |
 | `src/backend/services/slot_service.py:247-271` | `cleanup_stale_slots()` Redis cleanup |

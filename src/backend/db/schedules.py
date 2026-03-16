@@ -567,6 +567,27 @@ class ScheduleOperations:
                 model_used=model_used,
             )
 
+    def mark_execution_dispatched(self, execution_id: str) -> bool:
+        """Mark an execution as dispatched to the agent.
+
+        Sets claude_session_id to 'dispatched' so the no-session cleanup
+        doesn't falsely mark long-running executions as failed.
+        Only executions that never reach dispatch (e.g. backend crash before
+        agent call) will have NULL claude_session_id and be caught by cleanup.
+
+        Returns:
+            True if execution was updated, False if not found.
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE schedule_executions
+                SET claude_session_id = 'dispatched'
+                WHERE id = ? AND status = ? AND claude_session_id IS NULL
+            """, (execution_id, TaskExecutionStatus.RUNNING))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def update_execution_status(
         self,
         execution_id: str,

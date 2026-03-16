@@ -1,5 +1,17 @@
 ### 2026-03-15
 
+**fix: Prevent false "Silent launch failure" for long-running executions**
+
+Fixed cleanup service falsely marking legitimate long-running executions as "Silent launch failure: no Claude session created within 60 seconds". Root cause: `claude_session_id` was only set on execution completion, so any execution taking >60s appeared as a failed launch. Fix: `TaskExecutionService` now sets `claude_session_id='dispatched'` before calling the agent (step 3b), so only truly orphaned executions are caught. Also added auto-polling (10s interval) to SchedulesPanel execution history so running/failed status updates are reflected without manual refresh.
+
+- `src/backend/db/schedules.py` — Added `mark_execution_dispatched()` method
+- `src/backend/services/task_execution_service.py` — Call `mark_execution_dispatched` before agent HTTP call (step 3b)
+- `src/frontend/src/components/SchedulesPanel.vue` — Auto-refresh execution list every 10s when running executions exist
+
+---
+
+### 2026-03-15
+
 **🔄 Hide Terminal tab from agent detail page (deprecation candidate)**
 
 Removed the Terminal tab from the agent detail page for all users. The tab, its template content, and all associated reconnection/resize logic are commented out with deprecation markers. Backend terminal WebSocket endpoint and SSH service remain intact for API-level access. Frontend components (`TerminalPanelContent.vue`, `AgentTerminal.vue`, `useAgentTerminal.js`) are retained but unused.

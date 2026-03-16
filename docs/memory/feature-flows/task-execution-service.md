@@ -71,12 +71,15 @@ Step  Action                                    Line   Dependency
       [try block starts - #90 fix]              166    Ensures FAILED status on any exception
 2     Acquire capacity slot                      168    slot_service.acquire_slot()
 3     Track activity start (CHAT_START)          192    activity_service.track_activity()
-4     POST to agent /api/task with retry         221    agent_post_with_retry()
-5     Sanitize response + execution log          239    sanitize_execution_log(), sanitize_response()
-6     Update execution record with result        254    db.update_execution_status()
-7     Complete activity                          268    activity_service.complete_activity()
-8     Release slot (if acquired, in finally)     375    slot_service.release_slot()
+3b    Mark execution dispatched                  218    db.mark_execution_dispatched()
+4     POST to agent /api/task with retry         232    agent_post_with_retry()
+5     Sanitize response + execution log          250    sanitize_execution_log(), sanitize_response()
+6     Update execution record with result        265    db.update_execution_status()
+7     Complete activity                          279    activity_service.complete_activity()
+8     Release slot (if acquired, in finally)     386    slot_service.release_slot()
 ```
+
+> **Step 3b**: Sets `claude_session_id='dispatched'` before the agent HTTP call. This prevents the cleanup service's no-session check from falsely marking long-running executions as "Silent launch failure". Only executions that never reach dispatch (backend crash before step 3b) will be caught by the 60-second no-session cleanup.
 
 > **Fix #90**: The try block starts at step 2 (slot acquisition) to ensure any exception updates execution status to FAILED. The `slot_acquired` flag ensures we only release slots that were successfully acquired.
 
@@ -263,6 +266,9 @@ execute_task()
   |      +-- FAIL --> return TaskExecutionResult(status="failed")
   |
   +-- 3. activity_service.track_activity(CHAT_START)
+  |
+  +-- 3b. db.mark_execution_dispatched()
+  |       (sets claude_session_id='dispatched' to prevent false cleanup)
   |
   +-- 4. agent_post_with_retry(agent_name, "/api/task", payload)
   |      |

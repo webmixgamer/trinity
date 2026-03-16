@@ -1,10 +1,10 @@
 # Feature: Agent Dashboard
 
-> **Last Updated**: 2026-02-12 - Dashboard tab now conditionally hidden when agent doesn't have `dashboard.yaml` file.
+> **Last Updated**: 2026-03-15 - Added stale dashboard cache (shows last valid dashboard when YAML breaks) and Update Dashboard button.
 
 ## Overview
 
-Agent-defined dashboard system that replaces the static Metrics tab. Agents define a `dashboard.yaml` file with declarative widget configuration, and Trinity renders it in the Dashboard tab. The Dashboard tab is now **conditionally visible** - it only appears when the agent has a `dashboard.yaml` file.
+Agent-defined dashboard system that replaces the static Metrics tab. Agents define a `dashboard.yaml` file with declarative widget configuration, and Trinity renders it in the Dashboard tab. The Dashboard tab is **conditionally visible** - it only appears when the agent has a `dashboard.yaml` file or a cached valid dashboard. If the YAML breaks, the last valid dashboard is displayed with a warning banner instead of hiding the page.
 
 ## User Story
 
@@ -16,50 +16,57 @@ As an agent developer, I want to define a custom dashboard in YAML so that I can
 - **Tab Visibility**: `src/frontend/src/views/AgentDetail.vue:442-444` - Dashboard tab only shown if `hasDashboard.value === true`
 - **API**: `GET /api/agent-dashboard/{name}` - Fetches dashboard configuration from agent
 
+## Dashboard Resilience - Stale Cache (2026-03-15)
+
+When the dashboard YAML becomes invalid (parse error, validation error, HTTP failure, timeout), the backend serves the **last known valid dashboard** from an in-memory cache with a `stale` flag. This prevents the dashboard tab from disappearing when an agent's YAML is temporarily broken.
+
+### Backend Cache (`services/agent_service/dashboard.py`)
+
+```python
+# Module-level in-memory cache
+_last_valid_dashboard: Dict[str, dict] = {}
+```
+
+**Cache lifecycle:**
+1. On every successful dashboard fetch (`has_dashboard: true`), the config is deep-copied into `_last_valid_dashboard[agent_name]`
+2. On error (YAML parse, validation, HTTP error, timeout), check cache first
+3. If cache hit: return cached config with `stale: true` and `stale_reason: "<error message>"`
+4. If cache miss: return original error response (no cache available yet)
+
+**Stale response fields added to normal response:**
+- `stale: true` - indicates this is a cached version
+- `stale_reason: string` - the actual error that triggered cache usage
+
+History enrichment and platform metrics are still applied to stale dashboards.
+
+### Frontend Warning Banner (`DashboardPanel.vue`)
+
+When `dashboardData.stale` is true, a yellow warning banner is shown above the dashboard:
+- "Showing cached dashboard" title
+- The `stale_reason` error message as detail text
+
+### Tab Visibility
+
+`checkDashboardExists()` (`AgentDetail.vue`) considers both `has_dashboard === true` and `stale === true` as valid, keeping the Dashboard tab visible even when the YAML is broken.
+
+```javascript
+hasDashboard.value = response?.has_dashboard === true || response?.stale === true
+```
+
+## Update Dashboard Button (2026-03-15)
+
+An "Update Dashboard" button appears in the dashboard header when the agent has an `update-dashboard` playbook (skill). Clicking it triggers the playbook execution on the agent.
+
+### Frontend (`DashboardPanel.vue`)
+
+1. **Playbook detection**: On mount/agent change, `checkUpdateDashboardPlaybook()` calls `GET /api/agents/{name}/playbooks` and checks for a skill named `update-dashboard`
+2. **Button**: Shown next to the refresh button when `hasUpdateDashboardPlaybook` is true
+3. **Trigger**: `triggerUpdateDashboard()` sends `POST /api/agents/{name}/task` with `{ message: "/update-dashboard" }`
+4. **Feedback**: Button shows spinner during execution, auto-refreshes dashboard after 5 seconds
+
 ## Dashboard Tab Conditional Visibility (2026-02-12)
 
-The Dashboard tab is now **conditionally hidden** when an agent doesn't have a `dashboard.yaml` file. This provides a cleaner UI for agents that don't define custom dashboards.
-
-### Implementation
-
-**State** (`AgentDetail.vue:269`):
-```javascript
-const hasDashboard = ref(false)
-```
-
-**Check Function** (`AgentDetail.vue:491-502`):
-```javascript
-async function checkDashboardExists() {
-  if (!agent.value?.name) {
-    hasDashboard.value = false
-    return
-  }
-  try {
-    const response = await agentsStore.getAgentDashboard(agent.value.name)
-    hasDashboard.value = response?.has_dashboard === true
-  } catch (err) {
-    hasDashboard.value = false
-  }
-}
-```
-
-**Tab Definition** (`AgentDetail.vue:442-444`):
-```javascript
-// Dashboard tab - only show if agent has a dashboard.yaml file
-if (hasDashboard.value) {
-  tabs.push({ id: 'dashboard', label: 'Dashboard' })
-}
-```
-
-**Triggers**:
-1. On mount - if agent is running (`AgentDetail.vue:588-590`)
-2. On agent status change to 'running' (`AgentDetail.vue:545`)
-3. On route change to different agent (`AgentDetail.vue:521-523`)
-4. On component reactivation (`AgentDetail.vue:610-612`)
-
-**Reset**:
-- When agent stops, `hasDashboard` is reset to `false` (`AgentDetail.vue:552`)
-- When navigating to different agent (`AgentDetail.vue:510`)
+The Dashboard tab is **conditionally hidden** when an agent doesn't have a `dashboard.yaml` file (and no cached version). This provides a cleaner UI for agents that don't define custom dashboards.
 
 ## Architecture
 
@@ -369,6 +376,20 @@ sections:
 }
 ```
 
+### Stale/Cached Response (YAML broken, cache available)
+```json
+{
+  "agent_name": "my-agent",
+  "has_dashboard": true,
+  "config": { "title": "...", "sections": [...] },
+  "last_modified": "2024-01-15T10:30:00",
+  "status": "running",
+  "error": null,
+  "stale": true,
+  "stale_reason": "YAML parse error at line 5, column 3: mapping values are not allowed here"
+}
+```
+
 ### Error Responses
 
 **Agent not running:**
@@ -407,7 +428,8 @@ sections:
 
 - **No WebSocket broadcasts**: Dashboard is polled, not pushed
 - **No Audit Log**: Read-only operation
-- **No Database Operations**: Configuration is file-based
+- **In-memory cache**: Last valid dashboard config cached per agent (lost on backend restart)
+- **Update Dashboard button**: Triggers task execution via `POST /api/agents/{name}/task`
 
 ## Error Handling
 
@@ -418,9 +440,12 @@ sections:
 | Agent not found | 404 | Agent not found |
 | Agent not running | 200 | `error: "Agent must be running to read dashboard"` |
 | No dashboard.yaml | 200 | `error: "No dashboard.yaml found..."` |
-| YAML parse error | 200 | `error: "YAML parse error at line X, column Y: ..."` |
-| Validation error | 200 | `error: "Validation errors: ..."` |
-| Agent timeout | 200 | `error: "Agent is starting up, please try again"` |
+| YAML parse error (no cache) | 200 | `error: "YAML parse error at line X, column Y: ..."` |
+| YAML parse error (cached) | 200 | `stale: true, stale_reason: "YAML parse error..."` |
+| Validation error (no cache) | 200 | `error: "Validation errors: ..."` |
+| Validation error (cached) | 200 | `stale: true, stale_reason: "Validation errors..."` |
+| Agent timeout (no cache) | 200 | `error: "Agent is starting up, please try again"` |
+| Agent timeout (cached) | 200 | `stale: true, stale_reason: "Agent is starting up..."` |
 
 ## Security Considerations
 
@@ -485,11 +510,28 @@ const startRefresh = () => {
    - Expected: "Agent Not Running" message
    - Verify: No loading spinner, clear instructions
 
+6. **Stale Dashboard (YAML broken after valid)**
+   - Action: Create valid dashboard, view it, then break YAML syntax
+   - Expected: Yellow "Showing cached dashboard" banner with error message, last valid dashboard still displayed
+   - Verify: Tab remains visible, widgets still render, error reason shown
+
+7. **Update Dashboard Button**
+   - Action: Assign `update-dashboard` skill to agent, view Dashboard tab
+   - Expected: "Update Dashboard" button appears next to refresh
+   - Verify: Clicking triggers task, spinner shown, dashboard refreshes after ~5s
+
+8. **No Update Dashboard Button (no playbook)**
+   - Action: View Dashboard tab for agent without `update-dashboard` skill
+   - Expected: No "Update Dashboard" button shown
+   - Verify: Only refresh button visible
+
 ### Edge Cases
-- YAML syntax error (e.g., bad indentation)
+- YAML syntax error (e.g., bad indentation) with no prior valid cache → error state
+- YAML syntax error with prior valid cache → stale dashboard shown
 - Widget with missing required fields
 - Empty dashboard.yaml file
 - Image widget with invalid path
+- Backend restart clears stale cache → error state until YAML fixed
 
 ### Status
 - Not Tested (new feature)
@@ -504,6 +546,7 @@ const startRefresh = () => {
 
 | Date | Change |
 |------|--------|
-| 2026-02-12 | **Conditional Tab Visibility**: Dashboard tab now hidden when agent doesn't have `dashboard.yaml`. Added `hasDashboard` ref (line 269), `checkDashboardExists()` function (lines 491-502), and conditional tab inclusion (lines 442-444). Tab checked on mount, status change, route change, and component reactivation. |
+| 2026-03-15 | **Dashboard Resilience**: Added stale cache fallback - when YAML breaks, last valid dashboard shown with warning banner. Added "Update Dashboard" button that triggers `/update-dashboard` playbook if available. Tab visibility now considers stale responses. |
+| 2026-02-12 | **Conditional Tab Visibility**: Dashboard tab now hidden when agent doesn't have `dashboard.yaml`. |
 | 2026-02-11 | Fixed workspace path references - dashboard.yaml only at `/home/developer/dashboard.yaml` (no workspace fallback) |
 | 2026-01-12 | Initial documentation - 11 widget types, YAML-based configuration |

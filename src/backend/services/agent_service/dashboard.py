@@ -4,8 +4,9 @@ Agent Service Dashboard - Dashboard configuration operations.
 Handles fetching dashboard configuration from agents, enriching with history,
 and injecting platform metrics (DASH-001).
 """
+import copy
 import logging
-from typing import Optional
+from typing import Optional, Dict
 
 import httpx
 from fastapi import HTTPException
@@ -16,6 +17,10 @@ from services.docker_service import get_agent_container
 from services.docker_utils import container_reload
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache of last valid dashboard configs per agent.
+# Used to display stale dashboards when current YAML is broken.
+_last_valid_dashboard: Dict[str, dict] = {}
 
 
 def _build_platform_metrics_section(agent_name: str, hours: int = 24) -> dict:
@@ -227,19 +232,59 @@ async def get_agent_dashboard_logic(
                 data["agent_name"] = agent_name
                 data["status"] = "running"
 
-                # Capture snapshot if dashboard changed
-                if data.get("has_dashboard") and data.get("config") and data.get("last_modified"):
-                    last_mtime = db.get_last_captured_mtime(agent_name)
-                    current_mtime = data["last_modified"]
+                # If the agent returned an error (YAML parse/validation),
+                # try to serve the last valid cached dashboard instead
+                if data.get("error") and not data.get("has_dashboard"):
+                    cached = _last_valid_dashboard.get(agent_name)
+                    if cached:
+                        stale_data = copy.deepcopy(cached)
+                        stale_data["agent_name"] = agent_name
+                        stale_data["status"] = "running"
+                        stale_data["stale"] = True
+                        stale_data["stale_reason"] = data["error"]
 
-                    if last_mtime != current_mtime:
-                        # Dashboard changed - capture snapshot
-                        db.capture_dashboard_snapshot(
-                            agent_name,
-                            data["config"],
-                            current_mtime
-                        )
-                        logger.debug(f"Captured dashboard snapshot for {agent_name} (mtime: {current_mtime})")
+                        # Still enrich with history and platform metrics
+                        if include_history and stale_data.get("config"):
+                            _enrich_widgets_with_history(stale_data["config"], agent_name, history_hours)
+                        if include_platform_metrics and stale_data.get("config"):
+                            config = stale_data["config"]
+                            if config.get("platform_metrics") is not False:
+                                platform_section = _build_platform_metrics_section(agent_name, history_hours)
+                                if platform_section["widgets"]:
+                                    # Remove any existing platform section from cache
+                                    config["sections"] = [
+                                        s for s in config.get("sections", [])
+                                        if not s.get("platform_managed")
+                                    ]
+                                    config["sections"].append(platform_section)
+
+                        return stale_data
+
+                    # No cache available - return the error as-is
+                    return data
+
+                # Valid dashboard - cache it and process normally
+                if data.get("has_dashboard") and data.get("config"):
+                    # Cache the raw valid response (before enrichment)
+                    _last_valid_dashboard[agent_name] = {
+                        "has_dashboard": True,
+                        "config": copy.deepcopy(data["config"]),
+                        "last_modified": data.get("last_modified"),
+                        "error": None
+                    }
+
+                    # Capture snapshot if dashboard changed
+                    if data.get("last_modified"):
+                        last_mtime = db.get_last_captured_mtime(agent_name)
+                        current_mtime = data["last_modified"]
+
+                        if last_mtime != current_mtime:
+                            db.capture_dashboard_snapshot(
+                                agent_name,
+                                data["config"],
+                                current_mtime
+                            )
+                            logger.debug(f"Captured dashboard snapshot for {agent_name} (mtime: {current_mtime})")
 
                 # Enrich with history if requested
                 if include_history and data.get("has_dashboard") and data.get("config"):
@@ -258,6 +303,15 @@ async def get_agent_dashboard_logic(
 
                 return data
             else:
+                # HTTP error from agent - try cache
+                cached = _last_valid_dashboard.get(agent_name)
+                if cached:
+                    stale_data = copy.deepcopy(cached)
+                    stale_data["agent_name"] = agent_name
+                    stale_data["status"] = "running"
+                    stale_data["stale"] = True
+                    stale_data["stale_reason"] = f"Failed to fetch dashboard: HTTP {response.status_code}"
+                    return stale_data
                 return {
                     "agent_name": agent_name,
                     "has_dashboard": False,
@@ -267,6 +321,14 @@ async def get_agent_dashboard_logic(
                     "error": f"Failed to fetch dashboard: HTTP {response.status_code}"
                 }
     except httpx.TimeoutException:
+        cached = _last_valid_dashboard.get(agent_name)
+        if cached:
+            stale_data = copy.deepcopy(cached)
+            stale_data["agent_name"] = agent_name
+            stale_data["status"] = "running"
+            stale_data["stale"] = True
+            stale_data["stale_reason"] = "Agent is starting up, please try again"
+            return stale_data
         return {
             "agent_name": agent_name,
             "has_dashboard": False,
@@ -277,6 +339,14 @@ async def get_agent_dashboard_logic(
         }
     except Exception as e:
         logger.error(f"Failed to fetch dashboard for agent {agent_name}: {e}")
+        cached = _last_valid_dashboard.get(agent_name)
+        if cached:
+            stale_data = copy.deepcopy(cached)
+            stale_data["agent_name"] = agent_name
+            stale_data["status"] = "running"
+            stale_data["stale"] = True
+            stale_data["stale_reason"] = f"Failed to read dashboard: {str(e)}"
+            return stale_data
         return {
             "agent_name": agent_name,
             "has_dashboard": False,

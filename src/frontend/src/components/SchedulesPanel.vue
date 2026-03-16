@@ -557,7 +557,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -590,6 +590,7 @@ const expandedSchedule = ref(null)
 const executions = ref({})
 const executionsLoading = ref(false)
 const selectedExecution = ref(null)
+let executionPollTimer = null
 
 // Confirm dialog state
 const confirmDialog = reactive({
@@ -830,9 +831,32 @@ async function triggerSchedule(schedule) {
 async function toggleExecutions(scheduleId) {
   if (expandedSchedule.value === scheduleId) {
     expandedSchedule.value = null
+    stopExecutionPolling()
   } else {
     expandedSchedule.value = scheduleId
     await loadExecutions(scheduleId)
+    startExecutionPolling(scheduleId)
+  }
+}
+
+// Auto-refresh execution list when there are running executions
+function startExecutionPolling(scheduleId) {
+  stopExecutionPolling()
+  executionPollTimer = setInterval(async () => {
+    const execs = executions.value[scheduleId]
+    const hasRunning = execs && execs.some(e => e.status === 'running')
+    if (hasRunning && expandedSchedule.value === scheduleId) {
+      await loadExecutions(scheduleId)
+    } else if (!hasRunning) {
+      stopExecutionPolling()
+    }
+  }, 10000) // Poll every 10 seconds
+}
+
+function stopExecutionPolling() {
+  if (executionPollTimer) {
+    clearInterval(executionPollTimer)
+    executionPollTimer = null
   }
 }
 
@@ -969,5 +993,9 @@ watch(() => props.initialMessage, (newMessage) => {
 
 onMounted(() => {
   loadSchedules()
+})
+
+onUnmounted(() => {
+  stopExecutionPolling()
 })
 </script>

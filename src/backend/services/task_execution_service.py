@@ -215,6 +215,17 @@ class TaskExecutionService:
                 )
             except Exception as e:
                 logger.warning(f"[TaskExecService] Failed to track activity start: {e}")
+            # ---- 3b. Mark execution as dispatched ---------------------------
+            # Set claude_session_id='dispatched' BEFORE calling the agent so
+            # the no-session cleanup doesn't falsely mark long-running executions
+            # as "Silent launch failure". Only truly orphaned executions (where
+            # the backend died before reaching this point) will be caught.
+            if execution_id:
+                try:
+                    db.mark_execution_dispatched(execution_id)
+                except Exception as e:
+                    logger.warning(f"[TaskExecService] Failed to mark execution dispatched: {e}")
+
             # ---- 4. Call agent with retry --------------------------------
             # Prepend platform instructions to any caller-provided system_prompt
             platform_prompt = get_platform_system_prompt()
