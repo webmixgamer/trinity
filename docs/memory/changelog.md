@@ -1,3 +1,13 @@
+### 2026-03-16
+
+**fix: Chat tab model default for subscription compatibility (#138)**
+
+The Chat tab's `execute_claude_code()` did not default to a model when neither the request nor `agent_state.current_model` specified one. Claude Code fell back to the agent's `~/.claude/settings.json`, which could contain a model incompatible with the assigned subscription (e.g., `claude-3-5-haiku-latest` on Claude Max), producing a misleading "Subscription token may be expired" error. Applied the same `model="sonnet"` default that Issue #81 added to `execute_headless_task()` (Tasks tab).
+
+- `docker/base-image/agent_server/services/claude_code.py` — Default to `"sonnet"` in `execute_claude_code()` when no model specified
+
+---
+
 ### 2026-03-15
 
 **feat: Unified chat execution tracking (#96)**
