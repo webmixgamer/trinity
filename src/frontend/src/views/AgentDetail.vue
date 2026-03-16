@@ -27,6 +27,8 @@
           <AgentHeader
             :agent="agent"
             :auth-status="authStatus"
+            :subscriptions="availableSubscriptions"
+            :subscription-changing="subscriptionChanging"
             :action-loading="actionLoading"
             :autonomy-loading="autonomyLoading"
             :read-only-loading="readOnlyLoading"
@@ -59,6 +61,7 @@
             @rename="renameAgent"
             @open-avatar-modal="showAvatarModal = true"
             @cycle-emotion="cycleEmotion"
+            @change-subscription="changeSubscription"
             :has-avatar-prompt="!!avatarIdentityPrompt"
             :emotion-avatar-url="emotionAvatarUrl"
           />
@@ -302,6 +305,8 @@ const allTags = ref([])
 
 // Auth status state
 const authStatus = ref(null)
+const availableSubscriptions = ref(null)
+const subscriptionChanging = ref(false)
 
 // Resume mode state (EXEC-023)
 const resumeSessionId = computed(() => route.query.resumeSessionId || null)
@@ -776,6 +781,41 @@ async function loadAuthStatus() {
   }
 }
 
+async function loadAvailableSubscriptions() {
+  try {
+    const response = await axios.get('/api/subscriptions', {
+      headers: authStore.authHeader
+    })
+    availableSubscriptions.value = response.data || []
+  } catch (err) {
+    // Non-admin users get 403 - just hide the dropdown
+    availableSubscriptions.value = null
+  }
+}
+
+async function changeSubscription(subscriptionName) {
+  if (!agent.value?.name) return
+  subscriptionChanging.value = true
+  try {
+    if (subscriptionName) {
+      await axios.put(
+        `/api/subscriptions/agents/${encodeURIComponent(agent.value.name)}?subscription_name=${encodeURIComponent(subscriptionName)}`,
+        {},
+        { headers: authStore.authHeader }
+      )
+    } else {
+      await axios.delete(`/api/subscriptions/agents/${encodeURIComponent(agent.value.name)}`, {
+        headers: authStore.authHeader
+      })
+    }
+    await loadAuthStatus()
+  } catch (err) {
+    showNotification(err.response?.data?.detail || 'Failed to update subscription', 'error')
+  } finally {
+    subscriptionChanging.value = false
+  }
+}
+
 // Watch for route changes (when navigating to a different agent)
 watch(() => route.params.name, async (newName, oldName) => {
   if (newName && newName !== oldName) {
@@ -885,6 +925,7 @@ onMounted(async () => {
   startEmotionCycling()
   // Load auth status
   await loadAuthStatus()
+  await loadAvailableSubscriptions()
   // Check for dashboard if agent is running
   if (agent.value?.status === 'running') {
     await checkDashboardExists()

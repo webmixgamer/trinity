@@ -106,27 +106,43 @@
             <span v-if="agent.is_shared" class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
               Shared by {{ agent.owner }}
             </span>
-            <!-- Auth method badge -->
-            <span
-              v-if="authStatus"
-              class="px-2 py-0.5 text-xs font-medium rounded-full"
-              :class="authStatus.auth_mode === 'subscription'
-                ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
-                : authStatus.auth_mode === 'api_key'
-                  ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                  : 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'"
-              :title="authStatus.auth_mode === 'subscription'
-                ? `Using subscription: ${authStatus.subscription_name}`
-                : authStatus.auth_mode === 'api_key'
-                  ? 'Using platform API key'
-                  : 'No auth configured'"
-            >
-              {{ authStatus.auth_mode === 'subscription'
-                ? authStatus.subscription_name
-                : authStatus.auth_mode === 'api_key'
-                  ? 'API Key'
-                  : 'No Auth' }}
-            </span>
+            <!-- Auth method badge / subscription switcher -->
+            <div v-if="authStatus" class="relative inline-flex items-center">
+              <span
+                class="px-2 py-0.5 text-xs font-medium rounded-full flex items-center gap-0.5"
+                :class="authStatus.auth_mode === 'subscription'
+                  ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+                  : authStatus.auth_mode === 'api_key'
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                    : 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'"
+                :title="authStatus.auth_mode === 'subscription'
+                  ? `Using subscription: ${authStatus.subscription_name}`
+                  : authStatus.auth_mode === 'api_key'
+                    ? 'Using platform API key'
+                    : 'No auth configured'"
+              >
+                <span v-if="subscriptionChanging" class="inline-block w-2 h-2 border border-current border-t-transparent rounded-full animate-spin mr-0.5"></span>
+                {{ authStatus.auth_mode === 'subscription'
+                  ? authStatus.subscription_name
+                  : authStatus.auth_mode === 'api_key'
+                    ? 'API Key'
+                    : 'No Auth' }}
+                <svg v-if="subscriptions !== null && agent.can_share" class="w-2.5 h-2.5 ml-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+              <!-- Invisible native select overlaid on badge for switching -->
+              <select
+                v-if="subscriptions !== null && agent.can_share"
+                class="absolute inset-0 opacity-0 cursor-pointer w-full"
+                :disabled="subscriptionChanging"
+                :value="authStatus.auth_mode === 'subscription' ? authStatus.subscription_name : ''"
+                @change="$emit('change-subscription', $event.target.value)"
+              >
+                <option value="">API Key</option>
+                <option v-for="sub in subscriptions" :key="sub.id" :value="sub.name">{{ sub.name }}</option>
+              </select>
+            </div>
           </div>
         </div>
         <!-- Right: Primary Actions -->
@@ -374,6 +390,14 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  subscriptions: {
+    type: Array,
+    default: null
+  },
+  subscriptionChanging: {
+    type: Boolean,
+    default: false
+  },
   actionLoading: {
     type: Boolean,
     default: false
@@ -474,7 +498,8 @@ const emit = defineEmits([
   'remove-tag',
   'rename',
   'open-avatar-modal',
-  'cycle-emotion'
+  'cycle-emotion',
+  'change-subscription'
 ])
 
 // Name editing functions

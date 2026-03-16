@@ -1272,6 +1272,119 @@ Standalone mobile-friendly admin page for managing agents on the go. Designed as
 
 ---
 
+## 28. Agent Guardrails (GUARD-001)
+
+### 28.1 Overview
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-001
+- **Priority**: HIGH
+- **Description**: Deterministic safety guardrails for autonomous agent execution. Prevents costly mistakes (destructive commands, credential leaks, runaway loops, unauthorized network access) through layered enforcement baked into the base image and agent-server.py — not relying on model compliance alone.
+- **Design Principle**: Trinity controls the base image, the agent server, and the deployment pipeline. Guardrails are injected infrastructure-level, not advisory. Agents cannot opt out.
+
+### 28.2 Claude Code Hooks Injection (GUARD-002)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-002
+- **Priority**: HIGH
+- **Description**: Pre-configure Claude Code hooks in the base image (`~/.claude/settings.json`) that all agents inherit. Hooks fire deterministically on every tool call — including in `--dangerously-skip-permissions` mode.
+- **Key Features**:
+  - `PreToolUse` hooks on `Bash` tool: deny-list of destructive patterns (`rm -rf /`, `rm -rf ~`, `chmod 777`, `curl | sh`, `git push --force`, production domain access)
+  - `PreToolUse` hooks on `Edit`/`Write` tools: block writes to credential files (`.env`, `.mcp.json`, `~/.ssh/`, `~/.aws/`)
+  - `PostToolUse` hooks on `Bash`: scan stdout/stderr for leaked credentials (API key patterns: `sk-`, `ghp_`, `AKIA`, bearer tokens)
+  - Hook scripts installed at `/opt/trinity/hooks/` in base image
+  - Configurable per-agent overrides via `agent-config.yaml` (operator can relax rules for specific agents that need broader access)
+  - All blocked actions logged to Vector pipeline with reason and tool input
+- **Architecture**:
+  - Base image writes `~/.claude/settings.json` with default hooks during build
+  - `startup.sh` merges agent-specific hook overrides from `/config/agent-config.yaml`
+  - Hook scripts receive JSON on stdin, return `permissionDecision: deny` to block
+  - Exit code 2 = block action, exit code 0 = allow
+- **Implementation**:
+  - `/opt/trinity/hooks/bash-guardrail.sh` — Deny-list pattern matching on bash commands
+  - `/opt/trinity/hooks/file-guardrail.sh` — Block credential file modifications
+  - `/opt/trinity/hooks/output-scanner.sh` — Post-execution credential leak detection
+  - `~/.claude/settings.json` — Hook registration (baked into Dockerfile)
+
+### 28.3 CLI Budget & Scope Controls (GUARD-003)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-003
+- **Priority**: HIGH
+- **Description**: Enforce execution limits on every Claude Code invocation via CLI flags in agent-server.py. Prevents runaway cost, infinite loops, and excessive tool access.
+- **Key Features**:
+  - `--max-turns` on all executions (configurable per agent, default: 50 for chat, 20 for tasks)
+  - `--allowedTools` on task/headless executions (restrict to minimum required tools)
+  - `--disallowedTools` for globally banned tools (e.g., block `WebFetch` for agents that shouldn't access the internet)
+  - Execution timeout enforced by agent-server.py (kill process after configurable limit, default: 30 minutes)
+  - Per-agent configuration via backend API and agent-config.yaml
+- **Architecture**:
+  - `claude_code.py` reads guardrail config from agent state/config
+  - CLI flags injected into every `subprocess.Popen` command array
+  - Backend API: `PUT /api/agents/{name}/guardrails` to configure per-agent limits
+  - Defaults set in base image, overridable per-agent by operator
+- **Configuration Model**:
+  ```yaml
+  guardrails:
+    max_turns_chat: 50
+    max_turns_task: 20
+    execution_timeout_minutes: 30
+    allowed_tools: null          # null = all tools allowed
+    disallowed_tools: []         # tools to remove from context
+    deny_patterns: []            # additional bash deny patterns
+    allow_credential_writes: false
+  ```
+
+### 28.4 Credential Isolation (GUARD-004)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-004
+- **Priority**: MEDIUM
+- **Description**: Prevent agents from reading, logging, or exfiltrating their own credentials. Credentials should be usable (via MCP configs, env vars) but not inspectable.
+- **Key Features**:
+  - `PreToolUse` hook blocks `Read`/`Bash(cat|head|tail|less|more)` on `.env`, `.mcp.json`, `~/.ssh/*`
+  - Credential files mounted read-only with restrictive permissions (already 600, enforce via hook)
+  - `PostToolUse` output scanner detects credential values in command output
+  - Environment variable values masked if agent tries to `env` or `printenv`
+- **Limitation**: Agents need env vars to function (e.g., `ANTHROPIC_API_KEY`). The goal is preventing accidental exposure, not defeating a determined adversary — the Docker isolation boundary is the true security layer.
+
+### 28.5 Guardrails Dashboard & Observability (GUARD-005)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-005
+- **Priority**: MEDIUM
+- **Description**: Visibility into guardrail enforcement across the fleet. Operators need to see what's being blocked, how often, and whether guardrails are causing legitimate work to fail.
+- **Key Features**:
+  - Guardrail event log: blocked action, reason, agent, timestamp, tool input
+  - Per-agent guardrail configuration display on Agent Detail page
+  - Fleet-wide guardrail stats on Operating Room dashboard (blocked/allowed ratio, top blocked patterns)
+  - Notifications for high-frequency blocks (may indicate misconfigured agent or attack)
+  - Export guardrail events for compliance reporting
+- **Architecture**:
+  - Hook scripts write structured JSON to `/logs/guardrails.jsonl`
+  - Vector pipeline ingests guardrail logs alongside existing container logs
+  - Backend API: `GET /api/agents/{name}/guardrail-events`, `GET /api/ops/guardrail-stats`
+  - Frontend: Guardrails tab on Agent Detail, summary widget on Operating Room
+
+### 28.6 Network Egress Controls (GUARD-006)
+- **Status**: ⏳ Not Started
+- **Requirement ID**: GUARD-006
+- **Priority**: LOW (Docker network isolation already provides baseline)
+- **Description**: Fine-grained control over which external domains/services each agent can reach. Currently agents share the Docker bridge network and can reach any internet host.
+- **Key Features**:
+  - Per-agent network policy: allowlist of domains the agent can access
+  - Default policy: allow all (backward compatible), restrictable per-agent
+  - DNS-level filtering via container-specific resolv.conf or iptables rules
+  - Log all outbound connections for audit trail
+- **Implementation Options**:
+  - Docker network policies with iptables rules injected on container creation
+  - Sidecar proxy (envoy/nginx) per agent with domain allowlist
+  - Claude Code sandbox mode (`sandbox.network.allowedDomains` in settings.json)
+- **Note**: This is lower priority because Docker isolation already prevents cross-agent access, and most Trinity agents operate within controlled environments. Prioritize when deploying agents that handle sensitive data or untrusted inputs.
+
+### 28.7 Implementation Phases
+1. **Phase 1 — Foundation** (GUARD-002 + GUARD-003): Hook scripts in base image + CLI budget controls in claude_code.py. Immediate protection against the most common failure modes.
+2. **Phase 2 — Credential Protection** (GUARD-004): Prevent agents from inspecting their own credentials. Requires hook scripts + output scanning.
+3. **Phase 3 — Observability** (GUARD-005): Dashboard and logging for guardrail events. Requires Vector pipeline integration + frontend work.
+4. **Phase 4 — Network Controls** (GUARD-006): Per-agent network policies. Requires Docker network configuration changes.
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)

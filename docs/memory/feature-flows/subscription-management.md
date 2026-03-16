@@ -76,7 +76,10 @@ Admin's Machine                  Trinity Backend                    Agent Contai
 
 | UI Location | API Endpoint | Purpose |
 |-------------|--------------|---------|
-| **Agent Detail: AgentHeader badge** | `GET /api/subscriptions/agents/{agent_name}/auth` | Show auth method badge (subscription/API key/none) |
+| **Agent Detail: AgentHeader subscription switcher** | `GET /api/subscriptions/agents/{agent_name}/auth` | Show auth badge; admins see dropdown to switch subscription inline |
+| **Agent Detail: AgentHeader subscription switcher** | `GET /api/subscriptions` | Load available subscriptions for dropdown (admin-only) |
+| **Agent Detail: AgentHeader subscription switcher** | `PUT /api/subscriptions/agents/{agent_name}?subscription_name={name}` | Assign subscription from dropdown |
+| **Agent Detail: AgentHeader subscription switcher** | `DELETE /api/subscriptions/agents/{agent_name}` | Revert to API Key from dropdown |
 | **Settings Page: Claude Subscriptions** | `GET /api/subscriptions` | List subscriptions (Settings UI) |
 | **Settings Page: Add Subscription** | `POST /api/subscriptions` | Register via token input |
 | **Settings Page: Delete Button** | `DELETE /api/subscriptions/{id}` | Delete with cascade confirmation |
@@ -326,6 +329,95 @@ User Action                Frontend                      Backend
     |                         |<-----------------------------|
     | See new subscription    |                             |
     |<------------------------|                             |
+```
+
+---
+
+## Frontend UI: Agent Detail Subscription Switcher
+
+### Overview
+
+On the Agent Detail page, admins see the auth method badge in the `AgentHeader` component as a clickable subscription switcher. Non-admins (and unauthenticated users) see the badge as a static read-only indicator. The switcher allows reassigning or clearing a subscription without leaving the page.
+
+### Location
+
+- **AgentHeader badge/switcher**: `src/frontend/src/components/AgentHeader.vue:109-145`
+- **AgentDetail wiring**: `src/frontend/src/views/AgentDetail.vue:27-65` (template), `303-309` (state), `784-817` (functions), `913-928` (onMounted)
+
+### UI Behavior
+
+The auth badge renders inside a `<div class="relative inline-flex items-center">` wrapper at `AgentHeader.vue:110`. The badge text and color reflect the current auth mode:
+
+| auth_mode | Badge color | Badge text |
+|-----------|-------------|------------|
+| `subscription` | Amber | Subscription name |
+| `api_key` | Gray | API Key |
+| _(none)_ | Red | No Auth |
+
+When `subscriptionChanging` is true, a spinner replaces the normal badge text prefix.
+
+A chevron-down icon is shown (and the invisible `<select>` is rendered) only when both conditions are true:
+- `subscriptions !== null` — admin-only; non-admins get a 403 on `GET /api/subscriptions` and `availableSubscriptions` stays `null`
+- `agent.can_share` — agent is owned by the current user or user is admin
+
+The `<select>` is overlaid absolutely on the badge with `opacity-0` so it uses the native OS picker UI while the badge shows the styled display.
+
+Options in the dropdown:
+- `<option value="">API Key</option>` — clears subscription
+- One `<option>` per subscription from `availableSubscriptions`
+
+### State Variables (`AgentDetail.vue:307-309`)
+
+```javascript
+const authStatus = ref(null)              // Current auth badge state
+const availableSubscriptions = ref(null)  // null = non-admin (hide dropdown), [] or [...] = admin
+const subscriptionChanging = ref(false)   // Spinner while API call in flight
+```
+
+### Functions
+
+#### `loadAvailableSubscriptions()` (`AgentDetail.vue:784-794`)
+
+Called in `onMounted` (line 928) after `loadAuthStatus()`. Calls `GET /api/subscriptions`. On 403, sets `availableSubscriptions.value = null` (hides dropdown for non-admins). On success, sets array (may be empty).
+
+#### `changeSubscription(subscriptionName)` (`AgentDetail.vue:796-817`)
+
+Emitted by AgentHeader `@change-subscription` event. Logic:
+- If `subscriptionName` is non-empty: `PUT /api/subscriptions/agents/{name}?subscription_name={subscriptionName}`
+- If empty string (user selected "API Key"): `DELETE /api/subscriptions/agents/{name}`
+- Sets `subscriptionChanging = true` before call, `false` in `finally`
+- Calls `loadAuthStatus()` on success to refresh the badge
+- Shows error notification on failure
+
+### Props Added to AgentHeader
+
+| Prop | Type | Default | Purpose |
+|------|------|---------|---------|
+| `subscriptions` | Array | `null` | List from `GET /api/subscriptions`; `null` hides dropdown |
+| `subscriptionChanging` | Boolean | `false` | Shows spinner on badge during API call |
+
+New emit: `change-subscription` — payload is the selected `<option value>` string (subscription name or empty string for API Key).
+
+### Data Flow
+
+```
+User selects option in badge dropdown
+          |
+          | @change event on invisible <select>
+          v
+AgentHeader emits 'change-subscription' with value (name or "")
+          |
+          v
+AgentDetail.changeSubscription(subscriptionName)
+          |
+    subscriptionChanging = true
+          |
+    if name:  PUT /api/subscriptions/agents/{name}?subscription_name={name}
+    if "":    DELETE /api/subscriptions/agents/{name}
+          |
+    await loadAuthStatus()   <-- refreshes authStatus badge
+          |
+    subscriptionChanging = false
 ```
 
 ---
