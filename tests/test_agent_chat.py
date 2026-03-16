@@ -389,6 +389,125 @@ class TestResetSession:
 
 
 # =============================================================================
+# CHAT EXECUTION TRACKING TESTS (#96)
+# Verify that /api/chat creates execution records with triggered_by="chat"
+# =============================================================================
+
+
+class TestChatExecutionTracking:
+    """#96: Chat messages create execution records for unified tracking."""
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_chat_creates_execution_record(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """POST /api/agents/{name}/chat creates an execution record."""
+        import uuid
+        unique_id = uuid.uuid4().hex[:8]
+        chat_message = f"Chat execution test {unique_id}"
+
+        # Get initial execution count
+        initial_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions",
+            params={"limit": 100}
+        )
+        initial_count = len(initial_response.json()) if initial_response.status_code == 200 else 0
+
+        # Send chat message
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/chat",
+            json={"message": chat_message},
+            timeout=120.0,
+        )
+
+        if response.status_code in [503, 429]:
+            pytest.skip(f"Agent not ready ({response.status_code})")
+
+        assert_status(response, 200)
+        time.sleep(2)
+
+        # Verify execution record was created
+        exec_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions",
+            params={"limit": 100}
+        )
+        assert_status(exec_response, 200)
+        executions = exec_response.json()
+
+        assert len(executions) > initial_count, \
+            "Chat should create a new execution record"
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_chat_execution_has_chat_trigger(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Chat execution record has triggered_by='chat'."""
+        import uuid
+        unique_id = uuid.uuid4().hex[:8]
+        chat_message = f"Chat trigger test {unique_id}"
+
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/chat",
+            json={"message": chat_message},
+            timeout=120.0,
+        )
+
+        if response.status_code in [503, 429]:
+            pytest.skip(f"Agent not ready ({response.status_code})")
+
+        assert_status(response, 200)
+        time.sleep(2)
+
+        # Find the execution record
+        exec_response = api_client.get(
+            f"/api/agents/{created_agent['name']}/executions"
+        )
+        assert_status(exec_response, 200)
+        executions = exec_response.json()
+
+        matching = [e for e in executions if chat_message in e.get("message", "")]
+        assert len(matching) > 0, f"Should find execution for chat message '{chat_message}'"
+
+        execution = matching[0]
+        assert execution.get("triggered_by") == "chat", \
+            f"Expected triggered_by='chat', got '{execution.get('triggered_by')}'"
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_chat_response_includes_task_execution_id(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Chat response includes task_execution_id in execution metadata."""
+        response = api_client.post(
+            f"/api/agents/{created_agent['name']}/chat",
+            json={"message": "Execution ID test"},
+            timeout=120.0,
+        )
+
+        if response.status_code in [503, 429]:
+            pytest.skip(f"Agent not ready ({response.status_code})")
+
+        assert_status(response, 200)
+        data = response.json()
+
+        # Response should include execution metadata
+        assert "execution" in data, "Chat response should include execution metadata"
+        execution_meta = data["execution"]
+        assert "task_execution_id" in execution_meta, \
+            "Execution metadata should include task_execution_id"
+        assert execution_meta["task_execution_id"] is not None, \
+            "task_execution_id should not be None for chat executions"
+
+
+# =============================================================================
 # IN-MEMORY ACTIVITY TESTS (REQ-ACTIVITY-002)
 # Tests for /api/agents/{name}/activity endpoints (in-memory during chat)
 # =============================================================================

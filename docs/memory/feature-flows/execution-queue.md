@@ -365,7 +365,7 @@ async def chat_with_agent(
 - Handles 429 on queue full
 - Always releases queue in `finally` block
 - Adds execution metadata to response
-- **Agent-to-agent calls**: Creates `schedule_executions` record (added 2025-12-30) so they appear in Tasks tab
+- **All chat calls**: Create `schedule_executions` record (#96) — user chats (`triggered_by=chat`), MCP (`triggered_by=mcp`), agent-to-agent (`triggered_by=agent`)
 
 ### 2. Dedicated Scheduler (`src/scheduler/service.py`)
 
@@ -1095,6 +1095,7 @@ See [execution-termination.md](execution-termination.md) for full documentation.
 | Date | Changes |
 |------|---------|
 | 2026-02-21 | **Bug Fix (EXEC-023)**: Fixed `DatabaseManager.update_execution_status()` wrapper in `src/backend/database.py:1295-1299` - was missing `claude_session_id` parameter. The wrapper now correctly forwards the parameter to `db/schedules.py:update_execution_status()` (lines 559-610). This affected all execution status updates (chat, task, scheduled) that tried to store Claude Code session IDs for the "Continue Execution as Chat" feature. |
+| 2026-03-15 | **Unified chat execution tracking (#96)**: All `/api/chat` calls now create `schedule_executions` records, not just MCP/agent-to-agent. User chats use `triggered_by=chat`. Execution records are updated on success/failure for all chat types. |
 | 2026-02-16 | **Security Fix (Credential Leakage Prevention)**: Backend now sanitizes execution logs, tool calls, and responses before database persistence. Uses `sanitize_execution_log()` and `sanitize_response()` from `src/backend/utils/credential_sanitizer.py`. Both `/chat` (lines 283-286) and `/task` (lines 468-470, 699-712) endpoints sanitize data before calling `db.update_execution_status()`. This is a defense-in-depth layer that catches any credentials that may have bypassed agent-side sanitization. |
 | 2026-02-15 | **Claude Max subscription support**: Documented that Claude Code now uses whatever authentication is available (OAuth session from `/login` or `ANTHROPIC_API_KEY`). The mandatory API key check was removed from `execute_claude_code()` and `execute_headless_task()`. This allows headless executions to use Claude Max subscription billing if user logged in via web terminal. |
 | 2026-02-12 | **Test fix**: `test_parallel_task_does_not_show_in_queue` now uses `async_mode: True` to return immediately instead of waiting for task completion (was timing out after 30s). |

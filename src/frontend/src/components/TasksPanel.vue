@@ -4,7 +4,7 @@
     <div class="flex justify-between items-center">
       <div>
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">Tasks</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400">Headless executions from schedules, agents, or manual triggers</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">All executions — chats, tasks, schedules, and agent-to-agent</p>
       </div>
       <div class="flex items-center space-x-3">
         <!-- Trigger Type Filter -->
@@ -13,6 +13,7 @@
           class="text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         >
           <option value="all">All triggers</option>
+          <option value="chat">Chat</option>
           <option value="manual">Manual</option>
           <option value="schedule">Schedule</option>
           <option value="mcp">MCP</option>
@@ -196,6 +197,7 @@
                 <span
                   :class="[
                     'px-1.5 py-0.5 rounded text-xs',
+                    task.triggered_by === 'chat' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' :
                     task.triggered_by === 'manual' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                     task.triggered_by === 'schedule' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
                     task.triggered_by === 'paid' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' :

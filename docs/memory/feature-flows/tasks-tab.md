@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Tasks tab provides a unified view for headless agent executions within the Agent Detail page. It consolidates all task executions (manual, scheduled, agent-to-agent) into a single interface with the ability to trigger new tasks directly, monitor running tasks and queue status in real-time, and re-run historical tasks.
+The Tasks tab provides a unified view of all agent executions within the Agent Detail page. It consolidates all execution types — chat, manual tasks, scheduled, agent-to-agent, MCP, paid, and public — into a single interface with the ability to trigger new tasks directly, monitor running tasks and queue status in real-time, and re-run historical tasks.
 
 **Performance Optimization (2026-02-21)**: The list endpoint now returns lightweight `ExecutionSummary` objects (excluding large `response`, `error`, `tool_calls`, `execution_log` fields). Task details are fetched on-demand when users expand a task row. This reduces data transfer by 50-100x for agents with many executions.
 
@@ -10,14 +10,14 @@ The Tasks tab provides a unified view for headless agent executions within the A
 
 ## User Story
 
-As an agent operator, I want to view and trigger headless task executions from a single location so that I can manage agent workloads without entering the terminal or managing multiple interfaces.
+As an agent operator, I want to view all agent executions (including chats) from a single location so that I can track total workload, costs, and history without querying multiple tables.
 
 ## Entry Points
 
 - **UI**: `src/frontend/src/views/AgentDetail.vue:201-204` - Tasks tab button
 - **UI**: `src/frontend/src/components/TasksPanel.vue` - Main component
 - **API**: `POST /api/agents/{name}/task` - Execute a parallel task (creates execution record)
-- **API**: `POST /api/agents/{name}/chat` - Agent-to-agent chat (creates execution record when `X-Source-Agent` header present) *(added 2025-12-30)*
+- **API**: `POST /api/agents/{name}/chat` - All chat calls create execution records: user chat (`triggered_by=chat`), MCP (`triggered_by=mcp`), agent-to-agent (`triggered_by=agent`) *(unified #96)*
 - **API**: `GET /api/agents/{name}/executions` - Get execution summaries (lightweight, excludes large fields)
 - **API**: `GET /api/agents/{name}/executions/{id}` - Get full execution details (on-demand)
 - **API**: `GET /api/agents/{name}/executions/{execution_id}/log` - Get full execution log *(added 2025-12-31)*
@@ -592,7 +592,7 @@ def get_execution(self, execution_id: str) -> Optional[ScheduleExecution]:
 | `message` | TEXT | Task message |
 | `response` | TEXT | Claude's response (nullable) |
 | `error` | TEXT | Error message if failed (nullable) |
-| `triggered_by` | TEXT | manual, schedule, agent |
+| `triggered_by` | TEXT | chat, manual, schedule, agent, mcp, paid, public |
 | `context_used` | INTEGER | Tokens used (nullable) |
 | `context_max` | INTEGER | Context window size (nullable) |
 | `cost` | REAL | Cost in USD (nullable) |
@@ -725,10 +725,12 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Trigger | Color |
 |---------|-------|
+| chat | Sky blue |
 | manual | Blue |
 | schedule | Purple |
 | paid | Yellow |
 | public | Teal |
+| mcp | Gray |
 | agent | Gray |
 
 ---
@@ -760,6 +762,7 @@ Tasks are tracked in the `agent_activities` table via `activity_service.track_ac
 
 | Date | Changes |
 |------|---------|
+| 2026-03-15 | **Unified chat execution tracking (#96)**: All `/api/chat` calls now create execution records (previously only MCP/agent-to-agent did). User chats use `triggered_by=chat`. Added "Chat" filter option (sky blue badge) to TasksPanel. Subtitle updated to "All executions". |
 | 2026-03-04 | **Paid/Public trigger types**: Added `paid` (yellow) and `public` (teal) to Trigger Badges table and filter dropdown. |
 | 2026-03-02 | **MODEL-001 Model Selection**: Added `ModelSelector.vue` component above task textarea (line 86). Model persisted per-agent in localStorage. Model sent in POST /task payload. `model_used` displayed in task history rows (line 205). New `model_used TEXT` column in `schedule_executions` table. |
 | 2026-02-21 | **PERF-001 Performance Optimization**: List endpoint now returns `ExecutionSummary` (excludes `response`, `error`, `tool_calls`, `execution_log`). Frontend loads details on-demand when user expands task row via `GET /api/agents/{name}/executions/{id}`. Added `taskDetailsCache` and `fetchTaskDetails()` function. New composite index `idx_executions_agent_started`. Data transfer reduced 50-100x. |

@@ -1,5 +1,16 @@
 ### 2026-03-15
 
+**feat: Unified chat execution tracking (#96)**
+
+All `/api/chat` calls now create execution records in `schedule_executions`, not just MCP/agent-to-agent calls. User chats use `triggered_by="chat"`. This provides a unified view of all agent work in the Tasks tab — chats, tasks, schedules, and agent-to-agent calls are all tracked consistently.
+
+- `src/backend/routers/chat.py` — Always create execution record for all chat calls (user, MCP, agent-to-agent)
+- `src/frontend/src/components/TasksPanel.vue` — Added "Chat" filter option with sky-blue badge, updated subtitle
+
+---
+
+### 2026-03-15
+
 **fix: Prevent false "Silent launch failure" for long-running executions**
 
 Fixed cleanup service falsely marking legitimate long-running executions as "Silent launch failure: no Claude session created within 60 seconds". Root cause: `claude_session_id` was only set on execution completion, so any execution taking >60s appeared as a failed launch. Fix: `TaskExecutionService` now sets `claude_session_id='dispatched'` before calling the agent (step 3b), so only truly orphaned executions are caught. Also added auto-polling (10s interval) to SchedulesPanel execution history so running/failed status updates are reflected without manual refresh.

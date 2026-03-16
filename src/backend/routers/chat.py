@@ -120,28 +120,28 @@ async def chat_with_agent(
     # Track queue position for observability
     is_queued = queue_result.startswith("queued:")
 
-    # Create execution record for all MCP calls (both agent-to-agent and user MCP)
-    # This ensures they appear in the Tasks tab alongside scheduled and manual tasks
+    # Create execution record for ALL chat calls (user, MCP, and agent-to-agent)
+    # This ensures every execution appears in the Tasks tab for unified tracking (#96)
     task_execution_id = None
-    is_mcp_call = x_source_agent or x_via_mcp
-    if is_mcp_call:
-        # Determine triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls
-        triggered_by = "agent" if x_source_agent else "mcp"
-        task_execution = db.create_task_execution(
-            agent_name=name,
-            message=request.message,
-            triggered_by=triggered_by,
-            source_user_id=current_user.id,
-            source_user_email=current_user.email or current_user.username,
-            source_agent_name=x_source_agent,
-            source_mcp_key_id=x_mcp_key_id,
-            source_mcp_key_name=x_mcp_key_name
-        )
-        task_execution_id = task_execution.id if task_execution else None
-        if x_source_agent:
-            logger.info(f"[Chat] Created task execution {task_execution_id} for agent-to-agent call from {x_source_agent}")
-        else:
-            logger.info(f"[Chat] Created task execution {task_execution_id} for MCP call from user {current_user.username}")
+    # Determine triggered_by: "agent" for agent-to-agent, "mcp" for user MCP calls, "chat" for UI chat
+    if x_source_agent:
+        triggered_by = "agent"
+    elif x_via_mcp:
+        triggered_by = "mcp"
+    else:
+        triggered_by = "chat"
+    task_execution = db.create_task_execution(
+        agent_name=name,
+        message=request.message,
+        triggered_by=triggered_by,
+        source_user_id=current_user.id,
+        source_user_email=current_user.email or current_user.username,
+        source_agent_name=x_source_agent,
+        source_mcp_key_id=x_mcp_key_id,
+        source_mcp_key_name=x_mcp_key_name
+    )
+    task_execution_id = task_execution.id if task_execution else None
+    logger.info(f"[Chat] Created task execution {task_execution_id} for {triggered_by} call on agent '{name}'")
 
     # Broadcast collaboration event if this is agent-to-agent communication
     collaboration_activity_id = None
@@ -297,7 +297,7 @@ async def chat_with_agent(
                 }
             )
 
-        # Update task execution record for MCP calls (agent-to-agent or user MCP)
+        # Update task execution record with results (#96: all chat types now have execution records)
         # SECURITY: Use sanitized response and execution logs
         if task_execution_id:
             context_used = session_data.get("context_tokens", 0)
@@ -350,7 +350,7 @@ async def chat_with_agent(
             error=error_msg
         )
 
-        # Update task execution record for agent-to-agent calls on failure
+        # Update task execution record on failure (#96: all chat types now have execution records)
         if task_execution_id:
             db.update_execution_status(
                 execution_id=task_execution_id,
