@@ -986,14 +986,22 @@ When using Claude Max/Pro subscriptions, headless task execution could fail with
 
 ### Solution
 
-`execute_headless_task()` now defaults to `model="sonnet"` when no model is specified:
+Both `execute_headless_task()` and `execute_claude_code()` now default to `model="sonnet"` when no model is specified:
 
-**File**: `docker/base-image/agent_server/services/claude_code.py:732-735`
+**Headless tasks** (Issue #81) — `docker/base-image/agent_server/services/claude_code.py:746-748`:
 ```python
 # Issue #81: Default to "sonnet" when model is not specified.
 if model is None:
     model = "sonnet"
     logger.debug("[Headless Task] No model specified, defaulting to 'sonnet' for subscription compatibility")
+```
+
+**Chat sessions** (Issue #138) — `docker/base-image/agent_server/services/claude_code.py:463-465`:
+```python
+# Issue #138: Default to "sonnet" when no model is specified and none is set on state.
+if not model and not agent_state.current_model:
+    model = "sonnet"
+    logger.debug("[Chat] No model specified, defaulting to 'sonnet' for subscription compatibility")
 ```
 
 ### Error Detection

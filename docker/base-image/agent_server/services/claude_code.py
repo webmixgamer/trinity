@@ -455,6 +455,15 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         # 2. ANTHROPIC_API_KEY environment variable (API billing)
         # We don't require ANTHROPIC_API_KEY since users may be logged in with their subscription.
 
+        # Issue #138: Default to "sonnet" when no model is specified and none is set on state.
+        # Same fix as Issue #81 for execute_headless_task() — without --model, Claude Code
+        # uses the agent's ~/.claude/settings.json model, which may be incompatible with
+        # the assigned subscription (e.g., haiku on Claude Max), causing misleading
+        # "token expired" errors.
+        if not model and not agent_state.current_model:
+            model = "sonnet"
+            logger.debug("[Chat] No model specified, defaulting to 'sonnet' for subscription compatibility")
+
         # Update model if specified (persists for session)
         if model:
             agent_state.current_model = model
