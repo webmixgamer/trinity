@@ -43,7 +43,27 @@ Query P0 issues and the ranked P1 pipeline from the GitHub Project:
 gh issue list --repo abilityai/trinity --label "priority-p0" --state open --json number,title,labels
 
 # Ranked P1 pipeline from Trinity Roadmap project (sorted by Rank field)
-gh project item-list 6 --owner abilityai --format json --limit 20
+gh project item-list 6 --owner abilityai --format json --limit 100
+```
+
+**IMPORTANT**: Parse project items correctly. The `rank`, `status`, and `tier` fields are **top-level** on each item object — NOT nested inside `fieldValues`. Example item structure:
+```json
+{
+  "rank": 1,
+  "status": "Todo",
+  "tier": "P1a",
+  "content": { "number": 128, "title": "..." }
+}
+```
+
+Parse with:
+```python
+import json, sys
+data = json.load(sys.stdin)
+items = sorted([i for i in data['items'] if i.get('status') == 'Todo'], key=lambda x: x.get('rank') or 9999)
+for item in items[:15]:
+    c = item['content']
+    print(f"[{item.get('rank','')}] #{c['number']} [{item.get('tier','')}] {c['title']}")
 ```
 
 The project includes Rank (1-N) and Tier (P1a/P1b/P1c) fields:
