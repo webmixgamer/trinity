@@ -169,6 +169,7 @@ The test suite covers:
 - **System Views** (test_system_views.py) - [TESTS NEEDED] System view CRUD, agent_count, auto-creation from manifest (ORG-001)
 - **Local Deployment** (test_deploy_local.py) - Deploy local agents via MCP (Req 11.2)
 - **Public Links** (test_public_links.py) - Public agent sharing with email verification (Req 11.3)
+- **Public User Memory** (test_public_user_memory.py) - Per-user persistent memory for email-verified public sessions (MEM-001) [SMOKE]
 
 ### Operations & Observability
 - **Fleet Operations** (test_ops.py) - Fleet status/health, restart/stop, schedule list/pause/resume, emergency stop, alerts, costs [SLOW]
@@ -218,8 +219,8 @@ The test suite covers:
 
 ## Test Suite Statistics
 
-**Total Tests**: ~2,130 tests across 111 test files
-**Smoke Tests**: ~540 tests (fast, no agent creation)
+**Total Tests**: ~2,143 tests across 112 test files
+**Smoke Tests**: ~553 tests (fast, no agent creation)
 **Unit Tests**: ~22 tests (no backend needed, rate limit detection/formatting)
 **Core Tests (not slow)**: ~2,040 tests
 **Slow Tests**: ~89 tests (chat execution, fleet ops, system agent ops, execution termination)
@@ -249,6 +250,21 @@ Use these thresholds to assess test health (based on **executed** tests, not inc
 - **Healthy**: >90% pass rate, 0 critical failures
 - **Warning**: 75-90% pass rate, <5 failures
 - **Critical**: <75% pass rate or >5 failures
+
+## Recent Test Additions (2026-03-19)
+
+| Test File | Description | Tests Added |
+|-----------|-------------|-------------|
+| `test_public_user_memory.py` | Per-User Persistent Memory MEM-001 (#147) | ~13 tests (all smoke) |
+
+**MEM-001 Per-User Persistent Memory Tests** (`test_public_user_memory.py`):
+
+- **Table existence (Smoke)**: `public_user_memory` table exists, schema matches spec, UNIQUE constraint present, lookup index exists
+- **Anonymous isolation (Smoke)**: Invalid link 404, anonymous chat does not create memory rows
+- **DB operations (Smoke)**: get_or_create inserts empty row, update writes text, UNIQUE prevents duplicates, memory scoped per-agent
+- **Prompt formatting (Smoke)**: `format_user_memory_block()` — header present, text included, whitespace trimmed, ends with `---` separator
+
+---
 
 ## Known Issues (2026-03-13)
 
