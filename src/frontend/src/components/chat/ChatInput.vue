@@ -1,31 +1,156 @@
 <template>
-  <div class="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg p-3">
+  <div class="relative bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg p-3">
+
+    <!-- ── Autocomplete Dropdown (appears above input) ──────────────────── -->
+    <Transition
+      enter-active-class="transition ease-out duration-100"
+      enter-from-class="opacity-0 translate-y-1"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition ease-in duration-75"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 translate-y-1"
+    >
+      <div
+        v-if="ac.showDropdown.value && ac.filteredPlaybooks.value.length > 0"
+        class="absolute bottom-full mb-2 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden"
+        @mousedown.prevent
+      >
+        <!-- Header hint -->
+        <div class="px-3 py-1.5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <span class="text-xs text-gray-400 dark:text-gray-500 font-medium">Playbooks</span>
+          <span class="text-xs text-gray-400 dark:text-gray-500">
+            <kbd class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">↑↓</kbd>
+            navigate &nbsp;
+            <kbd class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Tab</kbd>
+            accept
+          </span>
+        </div>
+
+        <!-- Suggestion list (max 8 items) -->
+        <ul class="max-h-56 overflow-y-auto py-1">
+          <li
+            v-for="(playbook, idx) in ac.filteredPlaybooks.value.slice(0, 8)"
+            :key="playbook.name"
+            :class="[
+              'flex items-start gap-2 px-3 py-2 cursor-pointer transition-colors',
+              idx === ac.selectedIndex.value
+                ? 'bg-indigo-50 dark:bg-indigo-900/40'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-700/60'
+            ]"
+            @click="onClickSuggestion(playbook)"
+          >
+            <!-- Command name -->
+            <code class="shrink-0 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+              /{{ playbook.name }}
+            </code>
+
+            <!-- Description -->
+            <span class="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate leading-5">
+              {{ playbook.description || '' }}
+            </span>
+
+            <!-- Argument hint preview -->
+            <span
+              v-if="playbook.argument_hint"
+              class="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono hidden sm:block"
+            >
+              {{ playbook.argument_hint }}
+            </span>
+
+            <!-- Tab badge on the highlighted item -->
+            <span
+              v-if="idx === ac.selectedIndex.value"
+              class="shrink-0 ml-auto text-[10px] text-gray-400 dark:text-gray-500 font-mono"
+            >
+              Tab ⇥
+            </span>
+          </li>
+        </ul>
+
+        <!-- Overflow hint -->
+        <div
+          v-if="ac.filteredPlaybooks.value.length > 8"
+          class="px-3 py-1 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500"
+        >
+          {{ ac.filteredPlaybooks.value.length - 8 }} more — keep typing to filter
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ── Input row ─────────────────────────────────────────────────────── -->
     <form @submit.prevent="handleSubmit" class="flex items-end space-x-2">
-      <textarea
-        ref="textareaRef"
-        v-model="localMessage"
-        rows="1"
-        :placeholder="placeholder"
-        class="flex-1 resize-none border-0 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-0 focus:outline-none"
-        :disabled="disabled"
-        @keydown.enter.exact.prevent="handleSubmit"
-        @input="autoResize"
-      ></textarea>
+
+      <!-- Ghost text + textarea wrapper -->
+      <div ref="inputWrapperRef" class="flex-1 relative">
+
+        <!--
+          Ghost-text overlay: shows the typed text (transparent) followed by the
+          predicted completion (gray). Sits behind the textarea.
+        -->
+        <div
+          v-if="ac.ghostCompletion.value"
+          aria-hidden="true"
+          class="ghost-overlay absolute inset-0 pointer-events-none select-none overflow-hidden break-words whitespace-pre-wrap text-sm leading-6"
+        >
+          <span class="text-transparent">{{ localMessage }}</span><span class="text-gray-400 dark:text-gray-500">{{ ac.ghostCompletion.value }}</span>
+        </div>
+
+        <textarea
+          ref="textareaRef"
+          v-model="localMessage"
+          rows="1"
+          :placeholder="showPlaceholder ? placeholder : ''"
+          class="relative z-10 w-full resize-none border-0 p-0 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-0 focus:outline-none text-sm leading-6"
+          :disabled="disabled"
+          @keydown="handleKeydown"
+          @input="handleInput"
+          @blur="handleBlur"
+          @click="handleClick"
+        ></textarea>
+      </div>
+
+      <!-- Send button -->
       <button
         type="submit"
         :disabled="disabled || !localMessage.trim()"
-        class="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors"
+        class="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors shrink-0"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
         </svg>
       </button>
     </form>
+
+    <!-- ── Argument hint bar (shown after "/command " is completed) ──────── -->
+    <Transition
+      enter-active-class="transition ease-out duration-100"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition ease-in duration-75"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="ac.activeArgHint.value"
+        class="mt-1.5 flex items-center gap-1.5 text-xs font-mono text-gray-400 dark:text-gray-500"
+      >
+        <span class="text-indigo-500 dark:text-indigo-400">/{{ ac.activeArgHint.value.name }}</span>
+        <span>{{ ac.activeArgHint.value.argument_hint }}</span>
+        <span
+          v-if="ac.activeArgHint.value.description"
+          class="ml-1 not-italic text-gray-400 dark:text-gray-500 font-sans truncate"
+        >
+          — {{ ac.activeArgHint.value.description }}
+        </span>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
+import { usePlaybookAutocomplete } from '../../composables/usePlaybookAutocomplete'
+import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   modelValue: {
@@ -34,49 +159,178 @@ const props = defineProps({
   },
   placeholder: {
     type: String,
-    default: 'Type your message...'
+    default: 'Type your message or / for playbooks…'
   },
   disabled: {
     type: Boolean,
     default: false
+  },
+  agentName: {
+    type: String,
+    default: null
+  },
+  agentStatus: {
+    type: String,
+    default: 'stopped'
   }
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
 
+const authStore = useAuthStore()
+const ac = usePlaybookAutocomplete()
+
 const localMessage = ref(props.modelValue)
 const textareaRef = ref(null)
+const inputWrapperRef = ref(null)
 
-// Sync with v-model
-watch(() => props.modelValue, (newVal) => {
-  localMessage.value = newVal
+// Hide the default placeholder text while the dropdown/ghost hint is active
+const showPlaceholder = computed(() => !ac.showDropdown.value && !ac.activeArgHint.value)
+
+// ── Sync v-model ────────────────────────────────────────────────────────────
+watch(() => props.modelValue, (val) => {
+  localMessage.value = val
+})
+watch(localMessage, (val) => {
+  emit('update:modelValue', val)
 })
 
-watch(localMessage, (newVal) => {
-  emit('update:modelValue', newVal)
-})
+// ── Load playbooks when the agent is available ───────────────────────────────
+watch(
+  () => [props.agentName, props.agentStatus],
+  ([name, status]) => {
+    if (name && status === 'running') {
+      ac.load(name, authStore.authHeader)
+    }
+  },
+  { immediate: true }
+)
 
-// Auto-resize textarea
-const autoResize = (event) => {
+// ── Input event: parse for slash commands ────────────────────────────────────
+function handleInput(event) {
   const textarea = event.target
+  ac.parse(localMessage.value, textarea.selectionStart)
+  autoResize(textarea)
+}
+
+function handleClick() {
+  // Re-parse on click so caret position is fresh
+  if (textareaRef.value) {
+    ac.parse(localMessage.value, textareaRef.value.selectionStart)
+  }
+}
+
+function handleBlur() {
+  // Delay hiding so click on dropdown item fires first
+  setTimeout(() => ac.hide(), 150)
+}
+
+// ── Keyboard navigation ───────────────────────────────────────────────────────
+function handleKeydown(event) {
+  if (ac.showDropdown.value && ac.filteredPlaybooks.value.length > 0) {
+    if (event.key === 'Tab' || event.key === 'ArrowRight') {
+      if (ac.ghostCompletion.value || ac.showDropdown.value) {
+        event.preventDefault()
+        _commitAccept()
+        return
+      }
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      ac.moveDown()
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      ac.moveUp()
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      _commitAccept()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      ac.hide()
+      return
+    }
+  }
+
+  // Default submit on Enter (no autocomplete active)
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    handleSubmit()
+  }
+}
+
+function _commitAccept() {
+  if (!textareaRef.value) return
+  const result = ac.accept(localMessage.value, textareaRef.value.selectionStart)
+  if (result) {
+    localMessage.value = result.value
+    // Set caret after the inserted command
+    nextTick_(() => {
+      if (textareaRef.value) {
+        textareaRef.value.setSelectionRange(result.caretPos, result.caretPos)
+        autoResize(textareaRef.value)
+      }
+    })
+  }
+}
+
+function onClickSuggestion(playbook) {
+  if (!textareaRef.value) return
+  const result = ac.acceptPlaybook(playbook, localMessage.value, textareaRef.value.selectionStart)
+  if (result) {
+    localMessage.value = result.value
+    nextTick_(() => {
+      if (textareaRef.value) {
+        textareaRef.value.focus()
+        textareaRef.value.setSelectionRange(result.caretPos, result.caretPos)
+        autoResize(textareaRef.value)
+      }
+    })
+  }
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function autoResize(textarea) {
   textarea.style.height = 'auto'
   textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
 }
 
-// Handle submit
-const handleSubmit = () => {
+// ── Submit ────────────────────────────────────────────────────────────────────
+function handleSubmit() {
   if (localMessage.value.trim() && !props.disabled) {
+    ac.hide()
     emit('submit', localMessage.value.trim())
     localMessage.value = ''
-    // Reset textarea height
     if (textareaRef.value) {
       textareaRef.value.style.height = 'auto'
     }
   }
 }
 
-// Expose focus method
+// Micro-task helper (avoid importing nextTick from vue at module level)
+function nextTick_(fn) {
+  Promise.resolve().then(fn)
+}
+
+// ── Expose focus ──────────────────────────────────────────────────────────────
 defineExpose({
   focus: () => textareaRef.value?.focus()
 })
 </script>
+
+<style scoped>
+/* Ensure ghost overlay font metrics match the textarea exactly */
+.ghost-overlay {
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.5rem; /* leading-6 */
+  padding: 0;
+  /* Same font family as textarea inherits from body */
+  font-family: inherit;
+  word-break: break-word;
+}
+</style>

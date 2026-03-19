@@ -55,6 +55,8 @@ Public Agent Links allow agent owners to generate shareable URLs that enable una
 |   usage          |  |                      |  |   -> sanitize    |
 | schedule_        |  |                      |  |                  |
 |   executions     |  |                      |  |                  |
+| public_user_     |  |                      |  |                  |
+|   memory (MEM-001)|  |                      |  |                  |
 +------------------+  +----------------------+  +------------------+
 ```
 
@@ -429,7 +431,10 @@ PUBLIC_CHAT_URL=
 
 | File | Description |
 |------|-------------|
-| `src/backend/db/public_links.py` | Database operations class |
+| `src/backend/db/public_links.py` | Database operations class (includes MEM-001 memory methods at lines 439-522) |
+| `src/backend/db/schema.py` | Table definitions including `public_user_memory` (lines 360-371) and index (line 694) |
+| `src/backend/db/migrations.py` | Migration #28 `_migrate_public_user_memory_table` |
+| `src/backend/services/platform_prompt_service.py` | `format_user_memory_block()` helper (line 97) |
 | `src/backend/routers/public_links.py` | Owner CRUD endpoints (206 lines) |
 | `src/backend/routers/public_links.py:30-39` | URL builders: `_build_public_url()`, `_build_external_url()` |
 | `src/backend/routers/public_links.py:42-61` | `_link_to_response()` - converts DB dict to API model |
@@ -1633,51 +1638,55 @@ Anonymous (unverified) sessions are unaffected — no memory is read or written.
 
 ### New Database Table: `public_user_memory`
 
-`src/backend/db/schema.py` — Added table and unique index.
+`src/backend/db/schema.py` (lines 360-371) — Added table and unique index.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | TEXT PK | Unique record ID |
 | agent_name | TEXT | Target agent |
-| user_email | TEXT | Verified user email |
-| memory_text | TEXT | Plain-text bullet summary of user facts |
+| user_email | TEXT | Verified user email (stored lowercase) |
+| memory_text | TEXT | Plain-text bullet summary of user facts (default `''`) |
 | message_count | INTEGER | Cumulative messages sent by this user |
 | created_at | TEXT | ISO timestamp of first message |
-| updated_at | TEXT | ISO timestamp of last summarization |
+| updated_at | TEXT | ISO timestamp of last write |
 
 UNIQUE constraint on `(agent_name, user_email)` — one memory blob per user per agent, shared across all sessions and public link tokens.
+
+Index: `idx_public_user_memory_lookup ON public_user_memory(agent_name, user_email)` (`src/backend/db/schema.py` line 694).
 
 Migration: `src/backend/db/migrations.py` — migration #28 `_migrate_public_user_memory_table`.
 
 ### Database Operations
 
-New methods on `PublicLinkOperations` in `src/backend/db/public_links.py`:
+New methods on `PublicLinkOperations` (`src/backend/db/public_links.py` lines 439-522):
 
-| Method | Description |
-|--------|-------------|
-| `get_or_create_user_memory(agent_name, user_email)` | Fetch existing record or insert a new blank one; returns the row dict |
-| `increment_message_count(agent_name, user_email)` | Atomically increments `message_count`; returns the new count |
-| `update_user_memory(agent_name, user_email, memory_text)` | Overwrites `memory_text` and sets `updated_at` |
+| Method | Line | Description |
+|--------|------|-------------|
+| `get_or_create_user_memory(agent_name, user_email)` | 439 | Fetch existing record or `INSERT` a blank row; returns the row dict |
+| `increment_message_count(agent_name, user_email)` | 479 | Atomic `UPDATE message_count + 1`; returns the new count |
+| `update_user_memory(agent_name, user_email, memory_text)` | 504 | Overwrites `memory_text` and sets `updated_at`; returns `True` if row found |
 
-Delegation methods added to `src/backend/database.py`:
-- `get_or_create_public_user_memory(agent_name, user_email)`
-- `increment_public_user_memory_count(agent_name, user_email)`
-- `update_public_user_memory(agent_name, user_email, memory_text)`
+Delegation methods on `db` in `src/backend/database.py`:
+- `get_or_create_public_user_memory(agent_name, user_email)` → `PublicLinkOperations.get_or_create_user_memory()`
+- `increment_public_user_memory_count(agent_name, user_email)` → `PublicLinkOperations.increment_message_count()`
+- `update_public_user_memory(agent_name, user_email, memory_text)` → `PublicLinkOperations.update_user_memory()`
 
 ### Request Flow (Memory Injection)
 
-Occurs inside `POST /api/public/chat/{token}` (`src/backend/routers/public.py`) after email session is validated, before `execute_task()` is called:
+Occurs inside `POST /api/public/chat/{token}` (`src/backend/routers/public.py` lines 316-321) after the email session is validated and the context prompt is built, before `execute_task()` is called:
 
 ```
 1. db.get_or_create_public_user_memory(agent_name, verified_email)
 2. If memory_text is non-empty:
-     system_prompt = format_user_memory_block(memory_text)
+     memory_system_prompt = format_user_memory_block(memory_text)
    Else:
-     system_prompt = None
-3. execute_task(..., system_prompt=system_prompt)
+     memory_system_prompt = None
+3. execute_task(..., system_prompt=memory_system_prompt)   # both sync and async paths
 ```
 
-Memory block format (produced by `format_user_memory_block()` in `src/backend/services/platform_prompt_service.py`):
+`memory_system_prompt` is passed as the `system_prompt` kwarg to both the sync `execute_task()` call (line 368) and the async background task via `_execute_public_chat_background()` (line 350).
+
+Memory block format produced by `format_user_memory_block()` (`src/backend/services/platform_prompt_service.py` line 97-104):
 
 ```
 ## What you know about this user
@@ -1689,21 +1698,27 @@ Memory block format (produced by `format_user_memory_block()` in `src/backend/se
 
 ### Memory Update Flow (Background Summarization)
 
-Occurs after execution completes (both sync and async paths), only when `identifier_type == "email"`:
+After execution completes, both the **sync path** (`public.py` lines 401-408) and the **async background task** (`_execute_public_chat_background`, lines 696-704) run the same counter/summarization logic — but only when `identifier_type == "email"`:
 
 ```
 1. new_count = db.increment_public_user_memory_count(agent_name, verified_email)
 2. If new_count % 5 == 0:
-     asyncio.create_task(_summarize_user_memory(agent_name, verified_email, token))
+     asyncio.create_task(_summarize_user_memory(
+         agent_name=agent_name,
+         user_email=verified_email,
+         session_id=chat_session.id,
+     ))
 ```
 
-`_summarize_user_memory()` is fire-and-forget (`src/backend/routers/public.py`):
+`_summarize_user_memory(agent_name, user_email, session_id)` is fire-and-forget (`src/backend/routers/public.py` lines 727-784):
 
-1. Fetches the last 20 messages from `public_chat_messages` for this user+agent.
-2. Calls `claude-haiku-4-5-20251001` via direct `httpx` POST to `api.anthropic.com/v1/messages`.
-3. Summarization prompt instructs the model to extract user facts as a bullet list (max 300 words).
-4. Writes the result to `public_user_memory.memory_text` via `db.update_public_user_memory()`.
-5. Failures are logged but never surfaced to the user or caller.
+1. Reads `ANTHROPIC_API_KEY` via `get_anthropic_api_key()`; skips silently if absent.
+2. Calls `db.get_or_create_public_user_memory()` to retrieve the current `memory_text`.
+3. Calls `db.get_recent_public_chat_messages(session_id, limit=20)` for the last 20 messages.
+4. Formats `_SUMMARIZATION_PROMPT` with `existing_memory` and `conversation` fields.
+5. POSTs to `https://api.anthropic.com/v1/messages` using model `claude-haiku-4-5-20251001`, `max_tokens=512`, 30-second timeout.
+6. On success, writes the returned text to `db.update_public_user_memory()`.
+7. All failures are logged (`[MemSummarize]` prefix) and never surfaced to the user or caller.
 
 Summarization is triggered every 5th message per `(agent_name, user_email)` pair — not per session or per link token.
 
@@ -1713,6 +1728,20 @@ Summarization is triggered every 5th message per `(agent_name, user_email)` pair
 |---|---|---|
 | Email-verified | Yes (if non-empty) | Yes (every 5th message) |
 | Anonymous (no email) | No | No |
+
+### Files
+
+| File | Description |
+|------|-------------|
+| `src/backend/db/schema.py:360-371` | `public_user_memory` table definition |
+| `src/backend/db/schema.py:693-694` | `idx_public_user_memory_lookup` index |
+| `src/backend/db/migrations.py` | Migration #28 `_migrate_public_user_memory_table` |
+| `src/backend/db/public_links.py:439-522` | `PublicLinkOperations` memory methods |
+| `src/backend/routers/public.py:316-321` | Memory injection in `public_chat()` |
+| `src/backend/routers/public.py:401-408` | Counter + summarization trigger (sync path) |
+| `src/backend/routers/public.py:696-704` | Counter + summarization trigger (async path) |
+| `src/backend/routers/public.py:711-784` | `_summarize_user_memory()` background function |
+| `src/backend/services/platform_prompt_service.py:97-104` | `format_user_memory_block()` helper |
 
 ---
 
@@ -1735,5 +1764,5 @@ Summarization is triggered every 5th message per `(agent_name, user_email)` pair
 | 2026-02-17 | **Implemented PUB-006 Public Client Mode Awareness**: Agents now receive `PUBLIC_LINK_MODE_HEADER` constant ("### Trinity: Public Link Access Mode") prepended to all public chat prompts via `build_context_prompt()` in `db/public_chat.py:17-18,265-266`. **UI: Bottom-aligned messages**: Chat messages now stack from bottom up (like iMessage/Slack) using flexbox with spacer div (lines 191-193), new `messagesContainer` ref for scroll handling (line 334). File line count: PublicChat.vue now 684 lines. |
 | 2026-02-25 | **SLACK-001 Slack Integration**: Added Slack as delivery channel for public links. New section documenting Slack integration, updated Related Flows to include slack-integration.md. See [slack-integration.md](slack-integration.md) for full implementation details. |
 | 2026-03-04 | **EXEC-024 TaskExecutionService refactor**: `POST /api/public/chat/{token}` now routes through `TaskExecutionService.execute_task(triggered_by="public")` instead of raw `httpx` call. Public executions now create `schedule_executions` records, appear in Tasks tab and Dashboard timeline, count toward capacity slots (429 when full), and have credential-sanitized logs. Updated architecture diagram, data flow sections, chat endpoint steps, cost tracking, error handling, and file references. Added `task_execution_service.py` to files list. |
-| 2026-03-19 | **MEM-001 Per-User Persistent Memory** (#147): Added `public_user_memory` table (migration #28). Email-verified public chat sessions now inject a per-user memory block into the agent system prompt. Background summarization via `_summarize_user_memory()` fires every 5th message using `claude-haiku-4-5-20251001`. New DB methods: `get_or_create_user_memory`, `increment_message_count`, `update_user_memory` in `db/public_links.py`. New helper `format_user_memory_block()` in `services/platform_prompt_service.py`. Anonymous sessions unaffected. |
+| 2026-03-19 | **MEM-001 Per-User Persistent Memory** (#147): Added `public_user_memory` table (schema.py:360-371, migration #28). Email-verified sessions inject per-user memory via `format_user_memory_block()` (platform_prompt_service.py:97) as `system_prompt` kwarg to `execute_task()` — both sync (public.py:368) and async paths (public.py:685). Background summarization via `_summarize_user_memory()` (public.py:727-784) fires every 5th message using `claude-haiku-4-5-20251001`. New DB methods on `PublicLinkOperations` (public_links.py:439-522). Architecture diagram updated to include `public_user_memory`. Anonymous sessions unaffected. |
 | 2026-03-04 | **THINK-001 Dynamic Thinking Status for Public Chat**: Added async mode (`async_mode` field in `PublicChatRequest`), SSE stream proxy (`GET /api/public/executions/{token}/{id}/stream`), execution status polling (`GET /api/public/executions/{token}/{id}/status`), and background task function (`_execute_public_chat_background`). Frontend updated: `sendMessage()` uses async mode, `subscribeToStream()` for SSE, `pollExecution()` for completion, `updateLoadingText()` with anti-flicker timing, `resetHeartbeat()` fallback. Updated endpoints table, data flow, methods table, components, files. public.py now 764 lines, PublicChat.vue now 786 lines. |

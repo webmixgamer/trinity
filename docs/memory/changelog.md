@@ -1,5 +1,16 @@
 ### 2026-03-19
 
+**feat: Inline playbook autocomplete in agent chat (UI-AUTOCOMPLETE)**
+
+The chat input now supports Claude Code-style slash-command autocomplete for agent playbooks. Typing `/` triggers a dropdown of available playbooks (filtered as you type), with `Tab` or `↵` to accept the top suggestion. An inline ghost-text completion previews the full command name in gray, and once a command is accepted a parameter hint bar appears showing the `argument_hint` from the skill's YAML frontmatter.
+
+- `src/frontend/src/composables/usePlaybookAutocomplete.js` — New composable: fetches playbooks, parses slash-command context, manages dropdown/ghost-text/arg-hint state
+- `src/frontend/src/composables/index.js` — Export new composable
+- `src/frontend/src/components/chat/ChatInput.vue` — Integrated autocomplete UI: floating dropdown, ghost-text overlay, argument-hint bar, keyboard navigation (↑↓ Tab Escape Enter)
+- `src/frontend/src/components/ChatPanel.vue` — Pass `agent-name` and `agent-status` props to `ChatInput`
+
+---
+
 **feat: Per-user persistent memory for public link agents (MEM-001) (#147)**
 
 Email-verified public chat sessions now maintain persistent per-user memory across sessions. Before each agent call, the platform fetches the user's memory blob and injects it into the system prompt. Every 5 messages, a background summarization task (claude-haiku) extracts user facts and updates the stored memory. Anonymous sessions are completely unaffected.

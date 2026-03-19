@@ -155,7 +155,8 @@
           ref="chatInputRef"
           v-model="message"
           :disabled="loading"
-          placeholder="Type your message..."
+          :agent-name="agentName"
+          :agent-status="agentStatus"
           @submit="sendMessage"
         />
       </div>
