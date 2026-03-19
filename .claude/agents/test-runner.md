@@ -24,7 +24,7 @@ Use for: Quick validation, CI pipelines, development feedback
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
 source .venv/bin/activate
-python -m pytest -m smoke -v --tb=short 2>&1
+python -m pytest -m smoke -v --tb=short --ignore=process_engine 2>&1
 ```
 Tests: auth, templates, mcp_keys, setup, settings/api-keys, activities, metrics, folders, deploy-local (no agent creation)
 
@@ -33,7 +33,7 @@ Use for: Standard validation, pre-commit checks, feature verification
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
 source .venv/bin/activate
-python -m pytest -m "not slow" -v --tb=short 2>&1
+python -m pytest -m "not slow" -v --tb=short --ignore=process_engine 2>&1
 ```
 Tests: Everything except slow chat execution tests
 
@@ -42,7 +42,7 @@ Use for: Release validation, comprehensive testing, post-deployment verification
 ```bash
 cd /Users/eugene/Dropbox/trinity/trinity/tests
 source .venv/bin/activate
-python -m pytest -v --tb=short 2>&1
+python -m pytest -v --tb=short --ignore=process_engine 2>&1
 ```
 Tests: All tests including slow chat execution
 
@@ -65,17 +65,17 @@ source .venv/bin/activate
 
 Default (core tests):
 ```bash
-python -m pytest -m "not slow" -v --tb=short 2>&1
+python -m pytest -m "not slow" -v --tb=short --ignore=process_engine 2>&1
 ```
 
 For smoke tests only:
 ```bash
-python -m pytest -m smoke -v --tb=short 2>&1
+python -m pytest -m smoke -v --tb=short --ignore=process_engine 2>&1
 ```
 
 For full suite with HTML report:
 ```bash
-python -m pytest -v --tb=short --html=reports/test-report.html --self-contained-html 2>&1
+python -m pytest -v --tb=short --ignore=process_engine --html=reports/test-report.html --self-contained-html 2>&1
 ```
 
 ### 3. Analyze Results
@@ -703,6 +703,23 @@ Feature implemented 2026-02-05, tests not yet written. Should cover:
 - `get_accessible_agent_names()` returns all agents for admin
 
 See: `docs/memory/feature-flows/trinity-connect.md` for full specification
+
+## Deprecated Tests (Do Not Run)
+
+### Process Engine (`tests/process_engine/`) — DEPRECATED
+
+The process engine test suite is deprecated and **excluded from all test runs** via `--ignore=process_engine`.
+
+**Location**: `tests/process_engine/`
+**Unit tests**: `test_approval_handler`, `test_audit`, `test_authorization`, `test_agent_handler`, `test_alerts`, `test_analytics`, `test_api`, `test_compensation`, `test_cost_tracking`, `test_error_handling`, `test_event_repository`, `test_events`, `test_execution_engine`, `test_execution_repository`, `test_executions_api`, `test_expression_evaluator`, `test_gateway_handler`, `test_informed_notifier`, `test_notification_handler`, `test_output_storage`, `test_process_definition`, `test_process_execution`, `test_repositories`, `test_roles`, `test_schedule_triggers`, `test_sub_process`, `test_sub_process_validation`, `test_templates`, `test_timer_handler`, `test_validator`, `test_value_objects`, `test_webhook_triggers`
+**Integration tests**: `test_error_retry`, `test_event_publishing`, `test_execution_lifecycle`, `test_execution_recovery`, `test_gateway_routing`, `test_output_persistence`, `test_parallel_execution`, `test_sequential_execution`, `test_timer_steps`
+
+If you need to run process engine tests explicitly (not recommended):
+```bash
+python -m pytest process_engine/ -v --tb=short 2>&1
+```
+
+---
 
 ## Important Notes
 
