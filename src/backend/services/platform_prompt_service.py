@@ -94,6 +94,16 @@ echo "sudo apt-get install -y ffmpeg" >> ~/.trinity/setup.sh
 This script runs automatically on container start. Always update it when installing system-level packages."""
 
 
+def format_user_memory_block(memory_text: str) -> str:
+    """
+    Format a user memory blob into a system prompt block for injection.
+
+    This block is passed as system_prompt to execute_task() and gets layered
+    on top of the platform instructions via --append-system-prompt.
+    """
+    return f"## What you know about this user\n\n{memory_text.strip()}\n\n---"
+
+
 def get_platform_system_prompt() -> str:
     """
     Build the full platform system prompt.

@@ -1,3 +1,19 @@
+### 2026-03-19
+
+**feat: Per-user persistent memory for public link agents (MEM-001) (#147)**
+
+Email-verified public chat sessions now maintain persistent per-user memory across sessions. Before each agent call, the platform fetches the user's memory blob and injects it into the system prompt. Every 5 messages, a background summarization task (claude-haiku) extracts user facts and updates the stored memory. Anonymous sessions are completely unaffected.
+
+- `src/backend/db/schema.py` — Added `public_user_memory` table + index
+- `src/backend/db/migrations.py` — Migration #28 for `public_user_memory`
+- `src/backend/db/public_links.py` — Added `get_or_create_user_memory()`, `increment_message_count()`, `update_user_memory()` to `PublicLinkOperations`
+- `src/backend/database.py` — Delegation methods for user memory operations
+- `src/backend/services/platform_prompt_service.py` — Added `format_user_memory_block()` helper
+- `src/backend/routers/public.py` — Memory injection + background `_summarize_user_memory()` task (sync and async paths)
+- `tests/test_public_user_memory.py` — Unit tests for DB ops and prompt formatting
+
+---
+
 ### 2026-03-16
 
 **fix: Chat tab model default for subscription compatibility (#138)**

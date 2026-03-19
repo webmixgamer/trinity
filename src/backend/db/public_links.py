@@ -433,6 +433,95 @@ class PublicLinkOperations:
         return count
 
     # =========================================================================
+    # Per-User Memory (MEM-001)
+    # =========================================================================
+
+    def get_or_create_user_memory(self, agent_name: str, user_email: str) -> dict:
+        """Get or create a memory record for (agent_name, user_email).
+
+        Returns the memory dict with keys: id, agent_name, user_email,
+        memory_text, message_count, created_at, updated_at.
+        """
+        email = user_email.lower()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, agent_name, user_email, memory_text, message_count, created_at, updated_at
+                FROM public_user_memory
+                WHERE agent_name = ? AND user_email = ?
+            """, (agent_name, email))
+            row = cursor.fetchone()
+
+            if row:
+                return {
+                    "id": row[0], "agent_name": row[1], "user_email": row[2],
+                    "memory_text": row[3], "message_count": row[4],
+                    "created_at": row[5], "updated_at": row[6]
+                }
+
+            # Create new record
+            memory_id = secrets.token_urlsafe(16)
+            cursor.execute("""
+                INSERT INTO public_user_memory
+                (id, agent_name, user_email, memory_text, message_count, created_at, updated_at)
+                VALUES (?, ?, ?, '', 0, ?, ?)
+            """, (memory_id, agent_name, email, now, now))
+            conn.commit()
+
+        return {
+            "id": memory_id, "agent_name": agent_name, "user_email": email,
+            "memory_text": "", "message_count": 0,
+            "created_at": now, "updated_at": now
+        }
+
+    def increment_message_count(self, agent_name: str, user_email: str) -> int:
+        """Increment message_count for (agent_name, user_email).
+
+        Returns the new message_count.
+        """
+        email = user_email.lower()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE public_user_memory
+                SET message_count = message_count + 1, updated_at = ?
+                WHERE agent_name = ? AND user_email = ?
+            """, (now, agent_name, email))
+            conn.commit()
+
+            cursor.execute("""
+                SELECT message_count FROM public_user_memory
+                WHERE agent_name = ? AND user_email = ?
+            """, (agent_name, email))
+            row = cursor.fetchone()
+
+        return row[0] if row else 0
+
+    def update_user_memory(self, agent_name: str, user_email: str, memory_text: str) -> bool:
+        """Update memory_text for (agent_name, user_email).
+
+        Returns True if the record was found and updated.
+        """
+        email = user_email.lower()
+        now = datetime.utcnow().isoformat()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE public_user_memory
+                SET memory_text = ?, updated_at = ?
+                WHERE agent_name = ? AND user_email = ?
+            """, (memory_text, now, agent_name, email))
+            updated = cursor.rowcount > 0
+            conn.commit()
+
+        return updated
+
+    # =========================================================================
     # Helpers
     # =========================================================================
 

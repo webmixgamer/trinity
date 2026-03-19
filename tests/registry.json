@@ -47,6 +47,13 @@
       "added": "2026-03-13",
       "categories": ["backend", "api", "cleanup", "executions"],
       "description": "Tests for cleanup service Issue #106 fixes: no-session execution fast-fail, orphaned skipped execution finalization, cleanup report structure"
+    },
+    {
+      "file": "test_public_user_memory.py",
+      "feature": "Issue #147",
+      "added": "2026-03-19",
+      "categories": ["backend", "api", "public-links", "memory"],
+      "description": "Tests for per-user persistent memory for public link agents: DB operations (get_or_create, increment, update), system prompt formatting, anonymous session isolation"
     }
   ]
 }

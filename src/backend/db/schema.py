@@ -14,7 +14,7 @@ Tables are organized by feature area:
 - Shared Folders: agent_shared_folder_config
 - Settings: system_settings
 - Public Links: agent_public_links, public_link_verifications, public_link_usage
-- Public Chat: public_chat_sessions, public_chat_messages
+- Public Chat: public_chat_sessions, public_chat_messages, public_user_memory
 - Git: agent_git_config
 - Skills: agent_skills
 - Tags: agent_tags
@@ -357,6 +357,19 @@ TABLES = {
         )
     """,
 
+    "public_user_memory": """
+        CREATE TABLE IF NOT EXISTS public_user_memory (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            user_email TEXT NOT NULL,
+            memory_text TEXT NOT NULL DEFAULT '',
+            message_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(agent_name, user_email)
+        )
+    """,
+
     # -------------------------------------------------------------------------
     # Git Tables
     # -------------------------------------------------------------------------
@@ -676,6 +689,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_link ON public_chat_sessions(link_id)",
     "CREATE INDEX IF NOT EXISTS idx_public_chat_sessions_identifier ON public_chat_sessions(session_identifier)",
     "CREATE INDEX IF NOT EXISTS idx_public_chat_messages_session ON public_chat_messages(session_id)",
+
+    # Public user memory indexes (MEM-001)
+    "CREATE INDEX IF NOT EXISTS idx_public_user_memory_lookup ON public_user_memory(agent_name, user_email)",
 
     # System views indexes
     "CREATE INDEX IF NOT EXISTS idx_system_views_owner ON system_views(owner_id)",

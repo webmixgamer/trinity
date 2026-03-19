@@ -928,6 +928,16 @@ class DatabaseManager:
     def delete_public_link_sessions(self, link_id: str):
         return self._public_chat_ops.delete_link_sessions(link_id)
 
+    # Public User Memory (MEM-001)
+    def get_or_create_public_user_memory(self, agent_name: str, user_email: str) -> dict:
+        return self._public_link_ops.get_or_create_user_memory(agent_name, user_email)
+
+    def increment_public_user_memory_count(self, agent_name: str, user_email: str) -> int:
+        return self._public_link_ops.increment_message_count(agent_name, user_email)
+
+    def update_public_user_memory(self, agent_name: str, user_email: str, memory_text: str) -> bool:
+        return self._public_link_ops.update_user_memory(agent_name, user_email, memory_text)
+
     # =========================================================================
     # Agent Tags (delegated to db/tags.py) - ORG-001
     # =========================================================================

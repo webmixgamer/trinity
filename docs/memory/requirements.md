@@ -545,6 +545,14 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Key Features**: Session management (email-based or anonymous), message history, New Conversation button, page refresh recovery, context injection for continuity
 - **Flow**: `docs/memory/feature-flows/public-agent-links.md#public-chat-session-persistence-pub-005`
 
+### 15.1a-2 Per-User Persistent Memory for Public Links (MEM-001)
+- **Status**: ✅ Implemented (2026-03-19)
+- **Requirement ID**: MEM-001
+- **GitHub Issue**: #147
+- **Description**: Email-verified public chat sessions maintain persistent per-user memory (text blob) scoped to `(agent_name, user_email)`, injected into every agent call and updated via background summarization every 5 messages.
+- **Database Tables**: `public_user_memory`
+- **Flow**: `docs/memory/feature-flows/public-agent-links.md#per-user-persistent-memory-mem-001`
+
 ### 15.1b Slack Integration for Public Links (SLACK-001)
 - **Status**: ✅ Implemented (2026-02-25)
 - **Requirement ID**: SLACK-001

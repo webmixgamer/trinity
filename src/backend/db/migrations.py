@@ -32,6 +32,7 @@ Migration Order (as of 2026-02-28):
 25. operator_queue_table - OPS-001 Operator Queue & Operating Room
 26. agent_ownership_default_avatar - AVATAR-003 default avatar flag
 27. agent_ownership_execution_timeout - TIMEOUT-001 per-agent execution timeout
+28. public_user_memory_table - MEM-001 per-user persistent memory for public link agents
 """
 
 
@@ -69,6 +70,7 @@ def run_all_migrations(cursor, conn):
         ("operator_queue_table", _migrate_operator_queue_table),
         ("agent_ownership_default_avatar", _migrate_agent_ownership_default_avatar),
         ("agent_ownership_execution_timeout", _migrate_agent_ownership_execution_timeout),
+        ("public_user_memory_table", _migrate_public_user_memory_table),
     ]
 
     for name, migration_fn in migrations:
@@ -737,4 +739,28 @@ def _migrate_agent_ownership_execution_timeout(cursor, conn):
         print("Adding execution_timeout_seconds column to agent_ownership for per-agent timeout...")
         cursor.execute("ALTER TABLE agent_ownership ADD COLUMN execution_timeout_seconds INTEGER DEFAULT 900")
 
+    conn.commit()
+
+
+def _migrate_public_user_memory_table(cursor, conn):
+    """Create public_user_memory table for per-user persistent memory (MEM-001).
+
+    Stores a plain-text memory blob per (agent_name, user_email) pair,
+    updated via background summarization every 5 messages.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS public_user_memory (
+            id TEXT PRIMARY KEY,
+            agent_name TEXT NOT NULL,
+            user_email TEXT NOT NULL,
+            memory_text TEXT NOT NULL DEFAULT '',
+            message_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(agent_name, user_email)
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_public_user_memory_lookup ON public_user_memory(agent_name, user_email)"
+    )
     conn.commit()
