@@ -1,0 +1,487 @@
+"""Per-agent configuration endpoints: api-key, autonomy, read-only, resources, capabilities, capacity, timeout."""
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+from models import User
+from database import db
+from dependencies import get_current_user
+from services.docker_service import get_agent_container
+from services.agent_service import (
+    get_agent_api_key_setting_logic,
+    update_agent_api_key_setting_logic,
+    get_autonomy_status_logic,
+    set_autonomy_status_logic,
+)
+
+router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+# ============================================================================
+# API Key Settings Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/api-key-setting")
+async def get_agent_api_key_setting(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get the API key setting for an agent."""
+    return await get_agent_api_key_setting_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/api-key-setting")
+async def update_agent_api_key_setting(
+    agent_name: str,
+    request: Request,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Update the API key setting for an agent."""
+    return await update_agent_api_key_setting_logic(agent_name, body, current_user, request)
+
+
+# ============================================================================
+# Autonomy Mode Endpoints (per-agent)
+# ============================================================================
+
+@router.get("/{agent_name}/autonomy")
+async def get_agent_autonomy_status(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get the autonomy status for an agent."""
+    return await get_autonomy_status_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/autonomy")
+async def set_agent_autonomy_status(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the autonomy status for an agent.
+
+    Body:
+    - enabled: True to enable autonomy, False to disable
+
+    When autonomy is enabled, all schedules for the agent are enabled.
+    When disabled, all schedules are paused.
+    """
+    return await set_autonomy_status_logic(agent_name, body, current_user)
+
+
+# ============================================================================
+# Read-Only Mode Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/read-only")
+async def get_agent_read_only_status(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the read-only mode status for an agent.
+
+    Returns:
+    - enabled: Whether read-only mode is enabled
+    - config: Current configuration with blocked_patterns and allowed_patterns
+    """
+    from services.agent_service.read_only import get_read_only_status_logic
+    return await get_read_only_status_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/read-only")
+async def set_agent_read_only_status(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the read-only mode status for an agent.
+
+    Body:
+    - enabled: True to enable read-only mode, False to disable
+    - config: Optional dict with 'blocked_patterns' and 'allowed_patterns' lists
+
+    When enabled, the agent cannot modify files matching blocked patterns.
+    Files matching allowed patterns can still be written (e.g., content/, output/).
+    """
+    from services.agent_service.read_only import set_read_only_status_logic
+    return await set_read_only_status_logic(agent_name, body, current_user)
+
+
+# ============================================================================
+# Resource Limits Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/resources")
+async def get_agent_resources(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the resource limits for an agent.
+
+    Returns:
+    - memory: Memory limit (e.g., "4g", "8g", "16g") or null if using template default
+    - cpu: CPU limit (e.g., "2", "4", "8") or null if using template default
+    - current_memory: Current container memory limit
+    - current_cpu: Current container CPU limit
+    """
+    # Check access
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get DB limits (may be None)
+    db_limits = db.get_resource_limits(agent_name)
+
+    # Get current container limits from labels
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_memory = labels.get("trinity.memory", "4g")
+    current_cpu = labels.get("trinity.cpu", "2")
+
+    return {
+        "memory": db_limits.get("memory") if db_limits else None,
+        "cpu": db_limits.get("cpu") if db_limits else None,
+        "current_memory": current_memory,
+        "current_cpu": current_cpu
+    }
+
+
+@router.put("/{agent_name}/resources")
+async def set_agent_resources(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the resource limits for an agent.
+
+    Body:
+    - memory: Memory limit (e.g., "4g", "8g", "16g") or null to use template default
+    - cpu: CPU limit (e.g., "2", "4", "8") or null to use template default
+
+    Changes take effect on next agent restart.
+
+    Valid memory values: 1g, 2g, 4g, 8g, 16g, 32g
+    Valid CPU values: 1, 2, 4, 8, 16
+    """
+    # Only owners can change resources
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change resource limits")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    memory = body.get("memory")
+    cpu = body.get("cpu")
+
+    # Validate memory format
+    valid_memory = ["1g", "2g", "4g", "8g", "16g", "32g", "64g"]
+    if memory and memory not in valid_memory:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid memory value. Must be one of: {', '.join(valid_memory)}"
+        )
+
+    # Validate CPU format
+    valid_cpu = ["1", "2", "4", "8", "16"]
+    if cpu and cpu not in valid_cpu:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid CPU value. Must be one of: {', '.join(valid_cpu)}"
+        )
+
+    # Update database
+    db.set_resource_limits(agent_name, memory=memory, cpu=cpu)
+
+    # Check if restart is needed
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_memory = labels.get("trinity.memory", "4g")
+    current_cpu = labels.get("trinity.cpu", "2")
+
+    restart_needed = (
+        (memory and memory != current_memory) or
+        (cpu and cpu != current_cpu)
+    )
+
+    return {
+        "message": "Resource limits updated",
+        "memory": memory,
+        "cpu": cpu,
+        "restart_needed": restart_needed
+    }
+
+
+# ============================================================================
+# Full Capabilities Endpoints (Container Security)
+# ============================================================================
+
+@router.get("/{agent_name}/capabilities")
+async def get_agent_capabilities(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the capabilities setting for an agent.
+
+    Returns:
+    - full_capabilities: True if agent has full Docker capabilities (apt-get works)
+    - current_full_capabilities: Current container setting
+
+    When full_capabilities=True:
+    - Container runs with Docker default capabilities
+    - Can install packages with apt-get
+    - Can use sudo
+
+    When full_capabilities=False (default):
+    - Container runs with restricted capabilities
+    - More secure but cannot install packages
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get DB setting
+    db_full_caps = db.get_full_capabilities(agent_name)
+
+    # Get current container setting from labels
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_full_caps = labels.get("trinity.full-capabilities", "false").lower() == "true"
+
+    return {
+        "full_capabilities": db_full_caps,
+        "current_full_capabilities": current_full_caps
+    }
+
+
+@router.put("/{agent_name}/capabilities")
+async def set_agent_capabilities(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the capabilities for an agent.
+
+    Body:
+    - full_capabilities: True for full Docker capabilities, False for restricted (secure)
+
+    Note: Agent must be restarted for changes to take effect.
+    The container label is updated on restart.
+    """
+    # Only owners can change capabilities
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change capabilities")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    full_caps = body.get("full_capabilities")
+    if full_caps is None:
+        raise HTTPException(status_code=400, detail="full_capabilities is required")
+
+    if not isinstance(full_caps, bool):
+        raise HTTPException(status_code=400, detail="full_capabilities must be a boolean")
+
+    # Update database
+    db.set_full_capabilities(agent_name, full_caps)
+
+    # Update container label (will be applied on restart/recreate)
+    labels = container.attrs.get("Config", {}).get("Labels", {})
+    current_full_caps = labels.get("trinity.full-capabilities", "false").lower() == "true"
+
+    restart_needed = full_caps != current_full_caps
+
+    return {
+        "message": "Capabilities updated",
+        "full_capabilities": full_caps,
+        "restart_needed": restart_needed
+    }
+
+
+# ============================================================================
+# Parallel Capacity Endpoints (CAPACITY-001)
+# ============================================================================
+
+@router.get("/{agent_name}/capacity")
+async def get_agent_capacity(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the parallel execution capacity and current slot usage for an agent.
+
+    Returns:
+    - agent_name: Name of the agent
+    - max_parallel_tasks: Maximum parallel tasks allowed (1-10)
+    - active_slots: Number of currently running executions
+    - available_slots: Remaining capacity
+    - slots: List of active slot details
+    """
+    from db_models import AgentCapacity, SlotInfo
+    from services.slot_service import get_slot_service
+
+    # Check access
+    if not db.can_user_access_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Get max_parallel_tasks from database
+    max_tasks = db.get_max_parallel_tasks(agent_name)
+
+    # Get slot state from Redis
+    slot_service = get_slot_service()
+    slot_state = await slot_service.get_slot_state(agent_name, max_tasks)
+
+    # Convert to response model
+    slots = [
+        SlotInfo(
+            slot_number=s.slot_number,
+            execution_id=s.execution_id,
+            started_at=s.started_at,
+            message_preview=s.message_preview,
+            duration_seconds=s.duration_seconds
+        )
+        for s in slot_state.slots
+    ]
+
+    return AgentCapacity(
+        agent_name=agent_name,
+        max_parallel_tasks=max_tasks,
+        active_slots=slot_state.active_slots,
+        available_slots=slot_state.available_slots,
+        slots=slots
+    )
+
+
+@router.put("/{agent_name}/capacity")
+async def set_agent_capacity(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the parallel execution capacity for an agent.
+
+    Body:
+    - max_parallel_tasks: Maximum parallel tasks (1-10)
+
+    Only agent owners can modify capacity settings.
+    """
+    # Only owners can change capacity
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change capacity settings")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    max_tasks = body.get("max_parallel_tasks")
+    if max_tasks is None:
+        raise HTTPException(status_code=400, detail="max_parallel_tasks is required")
+
+    # Validate range
+    if not isinstance(max_tasks, int) or max_tasks < 1 or max_tasks > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="max_parallel_tasks must be an integer between 1 and 10"
+        )
+
+    # Update database
+    success = db.set_max_parallel_tasks(agent_name, max_tasks)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update capacity")
+
+    return {
+        "message": "Capacity updated",
+        "agent_name": agent_name,
+        "max_parallel_tasks": max_tasks
+    }
+
+
+# ============================================================================
+# Execution Timeout Endpoints (TIMEOUT-001)
+# ============================================================================
+
+@router.get("/{agent_name}/timeout")
+async def get_agent_timeout(
+    agent_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the execution timeout setting for an agent.
+
+    Returns:
+    - execution_timeout_seconds: Timeout in seconds (default 900 = 15 minutes)
+
+    All execution paths (task API, chat, scheduler, MCP, paid endpoints) use
+    this value when no explicit timeout is provided in the request.
+    """
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    timeout_seconds = db.get_execution_timeout(agent_name)
+
+    return {
+        "agent_name": agent_name,
+        "execution_timeout_seconds": timeout_seconds,
+        "execution_timeout_minutes": timeout_seconds // 60,
+    }
+
+
+@router.put("/{agent_name}/timeout")
+async def set_agent_timeout(
+    agent_name: str,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set the execution timeout for an agent.
+
+    Body:
+    - execution_timeout_seconds: Timeout in seconds (60-7200, i.e., 1 min to 2 hours)
+
+    Only agent owners can modify timeout settings.
+    """
+    # Only owners can change timeout
+    if not db.can_user_share_agent(current_user.username, agent_name):
+        raise HTTPException(status_code=403, detail="Only owners can change timeout settings")
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    timeout_seconds = body.get("execution_timeout_seconds")
+    if timeout_seconds is None:
+        raise HTTPException(status_code=400, detail="execution_timeout_seconds is required")
+
+    # Validate range: 1 minute to 2 hours
+    if not isinstance(timeout_seconds, int) or timeout_seconds < 60 or timeout_seconds > 7200:
+        raise HTTPException(
+            status_code=400,
+            detail="execution_timeout_seconds must be an integer between 60 and 7200 (1 min to 2 hours)"
+        )
+
+    # Update database
+    success = db.set_execution_timeout(agent_name, timeout_seconds)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update timeout")
+
+    return {
+        "message": "Timeout updated",
+        "agent_name": agent_name,
+        "execution_timeout_seconds": timeout_seconds,
+        "execution_timeout_minutes": timeout_seconds // 60,
+    }

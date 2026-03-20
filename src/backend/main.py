@@ -29,6 +29,10 @@ from services.docker_service import docker_client, list_all_agents_fast
 # Import routers
 from routers.auth import router as auth_router
 from routers.agents import router as agents_router, set_websocket_manager as set_agents_ws_manager, set_filtered_websocket_manager as set_agents_filtered_ws_manager
+from routers.agent_config import router as agent_config_router
+from routers.agent_files import router as agent_files_router
+from routers.agent_rename import router as agent_rename_router, set_websocket_manager as set_agent_rename_ws_manager, set_filtered_websocket_manager as set_agent_rename_filtered_ws_manager
+from routers.agent_ssh import router as agent_ssh_router
 from routers.credentials import router as credentials_router
 from routers.templates import router as templates_router
 from routers.sharing import router as sharing_router, set_websocket_manager as set_sharing_ws_manager
@@ -187,6 +191,8 @@ filtered_manager = FilteredWebSocketManager()
 # Inject WebSocket manager into routers that need it
 set_agents_ws_manager(manager)
 set_agents_filtered_ws_manager(filtered_manager)
+set_agent_rename_ws_manager(manager)
+set_agent_rename_filtered_ws_manager(filtered_manager)
 set_sharing_ws_manager(manager)
 set_chat_ws_manager(manager)
 set_public_links_ws_manager(manager)
@@ -333,6 +339,10 @@ app.add_middleware(
 # Include all routers
 app.include_router(auth_router)
 app.include_router(agents_router)
+app.include_router(agent_config_router)
+app.include_router(agent_files_router)
+app.include_router(agent_rename_router)
+app.include_router(agent_ssh_router)
 app.include_router(activities_router)
 app.include_router(credentials_router)
 app.include_router(templates_router)

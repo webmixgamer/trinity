@@ -1,0 +1,329 @@
+"""Agent file management, info, and folder endpoints."""
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+
+from models import User
+from database import db
+from dependencies import get_current_user, AuthorizedAgentByName
+from services.docker_service import get_agent_container
+from services.docker_utils import container_reload
+from services.agent_service import (
+    get_agent_permissions_logic,
+    set_agent_permissions_logic,
+    add_agent_permission_logic,
+    remove_agent_permission_logic,
+    get_agent_folders_logic,
+    update_agent_folders_logic,
+    get_available_shared_folders_logic,
+    get_folder_consumers_logic,
+    list_agent_files_logic,
+    download_agent_file_logic,
+    delete_agent_file_logic,
+    preview_agent_file_logic,
+    update_agent_file_logic,
+    get_agent_metrics_logic,
+)
+
+router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+# ============================================================================
+# Info Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/playbooks")
+async def get_agent_playbooks_endpoint(
+    agent_name: AuthorizedAgentByName,
+    request: Request
+):
+    """
+    Get available skills (playbooks) from an agent's .claude/skills/ directory.
+
+    Returns skill metadata parsed from SKILL.md YAML frontmatter.
+    """
+    import httpx
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    await container_reload(container)
+
+    if container.status != "running":
+        raise HTTPException(
+            status_code=503,
+            detail="Agent is not running. Start the agent to view playbooks."
+        )
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/skills"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent returned error: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent is starting up, please try again")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Could not connect to agent")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch playbooks: {str(e)}")
+
+
+@router.get("/{agent_name}/info")
+async def get_agent_info_endpoint(
+    agent_name: AuthorizedAgentByName,
+    request: Request
+):
+    """Get template info and metadata for an agent."""
+    import httpx
+
+    container = get_agent_container(agent_name)
+    if not container:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    await container_reload(container)
+
+    if container.status != "running":
+        labels = container.labels
+        return {
+            "has_template": bool(labels.get("trinity.template")),
+            "agent_name": agent_name,
+            "template_name": labels.get("trinity.template", ""),
+            "type": labels.get("trinity.agent-type", ""),
+            "resources": {
+                "cpu": labels.get("trinity.cpu", ""),
+                "memory": labels.get("trinity.memory", "")
+            },
+            "status": "stopped",
+            "message": "Agent is stopped. Start the agent to see full template info."
+        }
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/template/info"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                data = response.json()
+                data["status"] = "running"
+                return data
+            else:
+                labels = container.labels
+                return {
+                    "has_template": bool(labels.get("trinity.template")),
+                    "agent_name": agent_name,
+                    "template_name": labels.get("trinity.template", ""),
+                    "type": labels.get("trinity.agent-type", ""),
+                    "resources": {
+                        "cpu": labels.get("trinity.cpu", ""),
+                        "memory": labels.get("trinity.memory", "")
+                    },
+                    "status": "running",
+                    "message": "Template info endpoint not available in this agent version"
+                }
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent is starting up, please try again")
+    except Exception as e:
+        labels = container.labels
+        return {
+            "has_template": bool(labels.get("trinity.template")),
+            "agent_name": agent_name,
+            "template_name": labels.get("trinity.template", ""),
+            "type": labels.get("trinity.agent-type", ""),
+            "resources": {
+                "cpu": labels.get("trinity.cpu", ""),
+                "memory": labels.get("trinity.memory", "")
+            },
+            "status": "running",
+            "message": f"Could not fetch template info: {str(e)}"
+        }
+
+
+# ============================================================================
+# Files Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/files")
+async def list_agent_files_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str = "/home/developer",
+    show_hidden: bool = False,
+    current_user: User = Depends(get_current_user)
+):
+    """List files in the agent's workspace directory.
+
+    Args:
+        path: Directory path to list (default: /home/developer)
+        show_hidden: If True, include hidden files (starting with .)
+    """
+    return await list_agent_files_logic(agent_name, path, current_user, request, show_hidden)
+
+
+@router.get("/{agent_name}/files/download")
+async def download_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Download a file from the agent's workspace."""
+    return await download_agent_file_logic(agent_name, path, current_user, request)
+
+
+@router.get("/{agent_name}/files/preview")
+async def preview_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get file with proper MIME type for preview (images, video, audio, etc.)."""
+    return await preview_agent_file_logic(agent_name, path, current_user, request)
+
+
+@router.delete("/{agent_name}/files")
+async def delete_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a file or directory from the agent's workspace."""
+    return await delete_agent_file_logic(agent_name, path, current_user, request)
+
+
+class FileUpdateRequest(BaseModel):
+    """Request body for file updates."""
+    content: str
+
+
+@router.put("/{agent_name}/files")
+async def update_agent_file_endpoint(
+    agent_name: str,
+    request: Request,
+    path: str,
+    body: FileUpdateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a file's content in the agent's workspace.
+
+    Args:
+        path: File path to update
+        body: Request body with content
+    """
+    return await update_agent_file_logic(agent_name, path, body.content, current_user, request)
+
+
+# ============================================================================
+# Agent Permissions Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/permissions")
+async def get_agent_permissions(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get permissions for an agent."""
+    return await get_agent_permissions_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/permissions")
+async def set_agent_permissions(
+    agent_name: str,
+    request: Request,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Set permissions for an agent (full replacement)."""
+    return await set_agent_permissions_logic(agent_name, body, current_user, request)
+
+
+@router.post("/{agent_name}/permissions/{target_agent}")
+async def add_agent_permission(
+    agent_name: str,
+    target_agent: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Add permission for an agent to communicate with another agent."""
+    return await add_agent_permission_logic(agent_name, target_agent, current_user, request)
+
+
+@router.delete("/{agent_name}/permissions/{target_agent}")
+async def remove_agent_permission(
+    agent_name: str,
+    target_agent: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Remove permission for an agent to communicate with another agent."""
+    return await remove_agent_permission_logic(agent_name, target_agent, current_user, request)
+
+
+# ============================================================================
+# Custom Metrics Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/metrics")
+async def get_agent_metrics(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get agent custom metrics."""
+    return await get_agent_metrics_logic(agent_name, current_user)
+
+
+# ============================================================================
+# Shared Folders Endpoints
+# ============================================================================
+
+@router.get("/{agent_name}/folders")
+async def get_agent_folders(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get shared folder configuration for an agent."""
+    return await get_agent_folders_logic(agent_name, current_user)
+
+
+@router.put("/{agent_name}/folders")
+async def update_agent_folders(
+    agent_name: str,
+    request: Request,
+    body: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Update shared folder configuration for an agent."""
+    return await update_agent_folders_logic(agent_name, body, current_user, request)
+
+
+@router.get("/{agent_name}/folders/available")
+async def get_available_shared_folders(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get list of shared folders available for this agent to mount."""
+    return await get_available_shared_folders_logic(agent_name, current_user)
+
+
+@router.get("/{agent_name}/folders/consumers")
+async def get_folder_consumers(
+    agent_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Get list of agents that can consume this agent's shared folder."""
+    return await get_folder_consumers_logic(agent_name, current_user)
