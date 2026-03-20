@@ -124,6 +124,11 @@ export const useNetworkStore = defineStore('network', () => {
     }
   }
 
+  // Returns [a, b] sorted alphabetically — used to deduplicate bidirectional edges
+  function getCanonicalEdgePair(x, y) {
+    return x < y ? [x, y] : [y, x]
+  }
+
   async function fetchPermissionEdges() {
     try {
       const token = localStorage.getItem('token')
@@ -144,39 +149,48 @@ export const useNetworkStore = defineStore('network', () => {
         )
       )
 
-      const newEdges = []
+      // Collect canonical pairs to avoid two overlapping edges for bidirectional permissions
+      const pairMap = new Map()
 
       results.forEach(result => {
         if (result.status !== 'fulfilled') return
         const { agent: source, permitted } = result.value
 
         permitted.forEach(target => {
-          // Only add if both nodes exist in the current graph
           const sourceExists = nodes.value.some(n => n.id === source)
           const targetExists = nodes.value.some(n => n.id === target)
           if (!sourceExists || !targetExists) return
 
-          newEdges.push({
-            id: `perm-${source}-${target}`,
-            source,
-            target,
-            type: 'smoothstep',
-            animated: false,
-            style: {
-              stroke: '#94a3b8',
-              strokeWidth: 1.5,
-              strokeDasharray: '5,3',
-              opacity: 0.7
-            },
-            markerEnd: {
-              type: 'arrowclosed',
-              color: '#94a3b8',
-              width: 12,
-              height: 12
-            },
-            data: { type: 'permission' }
-          })
+          const [a, b] = getCanonicalEdgePair(source, target)
+          const key = `perm-${a}-${b}`
+          if (!pairMap.has(key)) {
+            pairMap.set(key, { source: a, target: b, hasForward: false, hasReverse: false })
+          }
+          const pair = pairMap.get(key)
+          if (source === a) pair.hasForward = true
+          else pair.hasReverse = true
         })
+      })
+
+      const newEdges = []
+      pairMap.forEach((pair, key) => {
+        const edge = {
+          id: key,
+          source: pair.source,
+          target: pair.target,
+          type: 'smoothstep',
+          animated: false,
+          style: {
+            stroke: '#94a3b8',
+            strokeWidth: 1.5,
+            strokeDasharray: '5,3',
+            opacity: 0.7
+          },
+          data: { type: 'permission', hasForward: pair.hasForward, hasReverse: pair.hasReverse }
+        }
+        if (pair.hasForward) edge.markerEnd = { type: 'arrowclosed', color: '#94a3b8', width: 12, height: 12 }
+        if (pair.hasReverse) edge.markerStart = { type: 'arrowclosed', color: '#94a3b8', width: 12, height: 12 }
+        newEdges.push(edge)
       })
 
       permissionEdges.value = newEdges
@@ -279,20 +293,23 @@ export const useNetworkStore = defineStore('network', () => {
   }
 
   function createHistoricalEdges(collaborations) {
-    // Group by source-target pair to avoid duplicate edges
+    // Group by canonical pair to avoid two overlapping edges for bidirectional communication
     const edgeMap = new Map()
 
     collaborations.forEach(collab => {
-      const edgeId = `e-${collab.source_agent}-${collab.target_agent}`
+      const [a, b] = getCanonicalEdgePair(collab.source_agent, collab.target_agent)
+      const edgeId = `e-${a}-${b}`
 
       if (!edgeMap.has(edgeId)) {
         edgeMap.set(edgeId, {
           id: edgeId,
-          source: collab.source_agent,
-          target: collab.target_agent,
+          source: a,
+          target: b,
           count: 1,
           lastTimestamp: collab.timestamp,
-          timestamps: [collab.timestamp]
+          timestamps: [collab.timestamp],
+          hasForward: false,
+          hasReverse: false
         })
       } else {
         const existing = edgeMap.get(edgeId)
@@ -302,6 +319,9 @@ export const useNetworkStore = defineStore('network', () => {
           existing.lastTimestamp = collab.timestamp
         }
       }
+      const existing = edgeMap.get(edgeId)
+      if (collab.source_agent === a) existing.hasForward = true
+      else existing.hasReverse = true
     })
 
     // Clear existing collaboration edges before rebuilding
@@ -314,7 +334,7 @@ export const useNetworkStore = defineStore('network', () => {
       const targetExists = nodes.value.some(n => n.id === edgeData.target)
 
       if (sourceExists && targetExists) {
-        collaborationEdges.value.push({
+        const edge = {
           id: edgeId,
           source: edgeData.source,
           target: edgeData.target,
@@ -327,12 +347,6 @@ export const useNetworkStore = defineStore('network', () => {
             opacity: 0.5,
             transition: 'all 0.5s ease-in-out'
           },
-          markerEnd: {
-            type: 'arrowclosed',
-            color: '#cbd5e1',
-            width: 15,
-            height: 15
-          },
           label: edgeData.count > 1 ? `${edgeData.count}x` : undefined,
           labelStyle: {
             fontSize: '10px',
@@ -341,9 +355,14 @@ export const useNetworkStore = defineStore('network', () => {
           data: {
             collaborationCount: edgeData.count,
             lastTimestamp: edgeData.lastTimestamp,
-            timestamps: edgeData.timestamps
+            timestamps: edgeData.timestamps,
+            hasForward: edgeData.hasForward,
+            hasReverse: edgeData.hasReverse
           }
-        })
+        }
+        if (edgeData.hasForward) edge.markerEnd = { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 }
+        if (edgeData.hasReverse) edge.markerStart = { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 }
+        collaborationEdges.value.push(edge)
       }
     })
   }
@@ -720,7 +739,9 @@ export const useNetworkStore = defineStore('network', () => {
   const edgeTimeouts = ref({})
 
   function animateEdge(sourceId, targetId, extendedDuration = false) {
-    const edgeId = `e-${sourceId}-${targetId}`
+    const [a, b] = getCanonicalEdgePair(sourceId, targetId)
+    const edgeId = `e-${a}-${b}`
+    const isForward = sourceId === a  // a→b direction
 
     // Clear any existing timeout for this edge (edge stays active longer if retriggered)
     if (edgeTimeouts.value[edgeId]) {
@@ -735,8 +756,8 @@ export const useNetworkStore = defineStore('network', () => {
       // Create new edge with fade-in effect
       edge = {
         id: edgeId,
-        source: sourceId,
-        target: targetId,
+        source: a,
+        target: b,
         type: 'smoothstep',
         animated: true,
         className: 'collaboration-edge-active',
@@ -747,19 +768,18 @@ export const useNetworkStore = defineStore('network', () => {
           transition: 'all 0.5s ease-in-out',
           filter: 'drop-shadow(0 0 4px rgba(6, 182, 212, 0.5))'
         },
-        markerEnd: {
-          type: 'arrowclosed',
-          color: '#06b6d4',
-          width: 18,
-          height: 18
-        },
         data: {
           gradientId: edgeId,
           collaborationCount: 1,
           timestamps: [new Date().toISOString()],
-          targetAgent: targetId
+          targetAgent: targetId,
+          hasForward: isForward,
+          hasReverse: !isForward
         }
       }
+      if (isForward) edge.markerEnd = { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 }
+      else edge.markerStart = { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 }
+
       collaborationEdges.value.push(edge)
 
       // Trigger fade-in animation
@@ -779,12 +799,14 @@ export const useNetworkStore = defineStore('network', () => {
         transition: 'all 0.5s ease-in-out',
         filter: 'drop-shadow(0 0 4px rgba(6, 182, 212, 0.5))'
       }
-      edge.markerEnd = {
-        type: 'arrowclosed',
-        color: '#06b6d4',
-        width: 18,
-        height: 18
+
+      // Update direction tracking and set active arrowhead for this direction
+      if (edge.data) {
+        if (isForward) edge.data.hasForward = true
+        else edge.data.hasReverse = true
       }
+      if (isForward) edge.markerEnd = { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 }
+      else edge.markerStart = { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 }
 
       // Increment collaboration count for this edge
       if (edge.data) {
@@ -855,12 +877,9 @@ export const useNetworkStore = defineStore('network', () => {
         transition: 'all 0.8s ease-out',
         filter: 'none'
       }
-      edge.markerEnd = {
-        type: 'arrowclosed',
-        color: '#cbd5e1',
-        width: 15,
-        height: 15
-      }
+      // Restore direction-aware arrowheads
+      edge.markerEnd = edge.data?.hasForward ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined
+      edge.markerStart = edge.data?.hasReverse ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined
 
       // Keep the count label but make it gray
       if (edge.data && edge.data.collaborationCount > 1) {
@@ -1428,12 +1447,9 @@ export const useNetworkStore = defineStore('network', () => {
         transition: 'all 0.5s ease-in-out',
         filter: 'none'
       }
-      edge.markerEnd = {
-        type: 'arrowclosed',
-        color: '#cbd5e1',
-        width: 15,
-        height: 15
-      }
+      // Restore direction-aware arrowheads
+      edge.markerEnd = edge.data?.hasForward ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined
+      edge.markerStart = edge.data?.hasReverse ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined
 
       // Keep count labels gray
       if (edge.data && edge.data.collaborationCount > 1) {

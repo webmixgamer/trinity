@@ -1,6 +1,8 @@
 # Feature: Agent Network
 
-> **Last Updated**: 2026-03-18 - Graph edges simplified to permission-only: `edges` computed now returns `permissionEdges.value` directly (old merge logic combining collaborationEdges + permissionEdges removed). `collaborationEdges` still exists in state and is populated by WebSocket events for live animation purposes, but is NOT rendered in the graph.
+> **Last Updated**: 2026-03-20 - Canonical edge deduplication: bidirectional agent connections now render as ONE line with arrowheads on appropriate ends, instead of TWO overlapping lines. New `getCanonicalEdgePair(x, y)` helper (line 128) returns alphabetically sorted pair. `fetchPermissionEdges()`, `createHistoricalEdges()`, `animateEdge()`, `clearEdgeAnimation()`, and `resetAllEdges()` all use canonical IDs and track `hasForward`/`hasReverse` in edge data for direction-aware `markerStart`/`markerEnd` arrowheads.
+>
+> **Previous (2026-03-18)** - Graph edges simplified to permission-only: `edges` computed now returns `permissionEdges.value` directly (old merge logic combining collaborationEdges + permissionEdges removed). `collaborationEdges` still exists in state and is populated by WebSocket events for live animation purposes, but is NOT rendered in the graph.
 >
 > **Previous (2026-03-17)** - Permission edges now populated: `fetchPermissionEdges()` implemented in network.js, fetching `GET /api/agents/{name}/permissions` for all non-system agents in parallel and rendering dashed gray directional arrows (`perm-{source}-{target}` IDs) that represent static agent-to-agent communication permissions.
 >
@@ -261,7 +263,7 @@ Pinia store managing graph state and WebSocket communication. **Note**: Previous
 
 **Actions**:
 
-##### fetchAgents() (Lines 134-147)
+##### fetchAgents() (Lines 112-125)
 ```javascript
 await axios.get('/api/agents')
 // -> convertAgentsToNodes()
@@ -269,7 +271,15 @@ await axios.get('/api/agents')
 ```
 Fetches all agents, converts to Vue Flow nodes with grid layout, then populates permission edges. Also called by `setFilterTags()` when the tag filter changes.
 
-##### fetchPermissionEdges() (Lines 149-208)
+##### getCanonicalEdgePair() (Line 128)
+```javascript
+function getCanonicalEdgePair(x, y) {
+  return x < y ? [x, y] : [y, x]
+}
+```
+Returns alphabetically sorted `[a, b]` pair. Used by `fetchPermissionEdges()`, `createHistoricalEdges()`, and `animateEdge()` to ensure bidirectional connections between two agents always map to the same canonical edge ID, eliminating duplicate overlapping edges.
+
+##### fetchPermissionEdges() (Lines 132-200)
 ```javascript
 // Runs after fetchAgents() populates nodes.value
 // Skips system agents and agents where permissions return 403.
@@ -279,18 +289,19 @@ const results = await Promise.allSettled(
       .then(r => ({ agent: name, permitted: r.data.permitted_agents.map(p => p.name) }))
   )
 )
-// For each fulfilled result, create one edge per permitted target
-// (only when both source and target nodes exist in current graph)
+// Collect canonical pairs via pairMap to deduplicate bidirectional permissions
+// For each pair, track hasForward (a->b) and hasReverse (b->a)
+// Set markerEnd for forward, markerStart for reverse
 permissionEdges.value = newEdges
 ```
-Fetches agent-to-agent communication permissions for all non-system agents in parallel via `GET /api/agents/{name}/permissions`. Builds `permissionEdges` with dashed gray directional arrows.
+Fetches agent-to-agent communication permissions for all non-system agents in parallel via `GET /api/agents/{name}/permissions`. Uses `getCanonicalEdgePair()` and a `pairMap` to collapse bidirectional permissions into a single edge with direction-appropriate arrowheads (`markerStart`/`markerEnd`).
 
 **Edge format**:
 ```javascript
 {
-  id: `perm-${source}-${target}`,   // e.g. "perm-alice-bob"
-  source,
-  target,
+  id: `perm-${a}-${b}`,             // canonical: alphabetically sorted, e.g. "perm-alice-bob"
+  source: a,                         // alphabetically first
+  target: b,                         // alphabetically second
   type: 'smoothstep',
   animated: false,
   style: {
@@ -299,8 +310,9 @@ Fetches agent-to-agent communication permissions for all non-system agents in pa
     strokeDasharray: '5,3',         // Dashed pattern
     opacity: 0.7
   },
-  markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 12, height: 12 },
-  data: { type: 'permission' }
+  markerEnd: pair.hasForward ? { type: 'arrowclosed', color: '#94a3b8', width: 12, height: 12 } : undefined,
+  markerStart: pair.hasReverse ? { type: 'arrowclosed', color: '#94a3b8', width: 12, height: 12 } : undefined,
+  data: { type: 'permission', hasForward: true, hasReverse: true }  // example: both directions permitted
 }
 ```
 
@@ -308,7 +320,9 @@ Fetches agent-to-agent communication permissions for all non-system agents in pa
 - Only non-system agents are queried (system agents have no permission entries).
 - `Promise.allSettled` means 403s (inaccessible agents) are silently skipped — only `fulfilled` results produce edges.
 - Both source and target node IDs must exist in `nodes.value` before an edge is added; stale agent references are discarded.
-- Bidirectional permissions (A can call B AND B can call A) produce two separate directional dashed edges (`perm-A-B` and `perm-B-A`).
+- **Canonical edge deduplication**: Bidirectional permissions (A can call B AND B can call A) produce ONE edge with `markerEnd` (forward arrowhead) and `markerStart` (reverse arrowhead). The edge ID is `perm-{a}-{b}` where `a < b` alphabetically.
+- One-way permissions produce a single edge with only `markerEnd` or `markerStart` (one arrowhead).
+- `edge.data.hasForward` / `edge.data.hasReverse` track which directions are permitted, used by `clearEdgeAnimation()` and `resetAllEdges()` to restore correct arrowheads after animation.
 - Re-runs on every `fetchAgents()` call (including tag-filter changes and periodic refreshes), replacing `permissionEdges.value` in full.
 
 **`edges` computed** (Line 15):
@@ -317,7 +331,7 @@ const edges = computed(() => permissionEdges.value)
 ```
 The graph renders only permission-based edges. There is no merge with `collaborationEdges`. `collaborationEdges` remains in state because WebSocket `agent_collaboration` events still populate it (used for tracking `activeCollaborationCount` and the animated-edge indicator in the header), but those edges are never passed to Vue Flow's `<VueFlow :edges="...">` binding.
 
-##### fetchHistoricalCollaborations() (Lines 118-177)
+##### fetchHistoricalCollaborations() (Lines 202-293)
 ```javascript
 import { getTimestampMs } from '@/utils/timestamps'
 
@@ -359,12 +373,14 @@ async function fetchHistoricalCollaborations(hours = null) {
 
 Queries Activity Stream API for communication history in selected time range. Creates gray inactive edges on graph with count labels.
 
-##### createHistoricalEdges() (Lines 179-248)
-Groups communications by source-target pair and creates inactive edges:
+##### createHistoricalEdges() (Lines 295-368)
+Groups communications by canonical pair (using `getCanonicalEdgePair()`) and creates inactive edges. Bidirectional communications collapse into a single edge with direction-aware arrowheads:
 ```javascript
 // Edge style for historical data
 {
-  id: `e-${source}-${target}`,
+  id: `e-${a}-${b}`,          // canonical: alphabetically sorted
+  source: a,
+  target: b,
   animated: false,
   className: 'collaboration-edge-inactive',
   style: {
@@ -373,30 +389,34 @@ Groups communications by source-target pair and creates inactive edges:
     opacity: 0.5
   },
   label: count > 1 ? `${count}x` : undefined,  // Show count
+  markerEnd: hasForward ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined,
+  markerStart: hasReverse ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined,
   data: {
     collaborationCount: count,
     lastTimestamp: lastTimestamp,
-    timestamps: [...]
+    timestamps: [...],
+    hasForward: true,        // a->b communications observed
+    hasReverse: true         // b->a communications observed
   }
 }
 ```
 
-##### convertAgentsToNodes() (Lines 311-469)
+##### convertAgentsToNodes() (Lines 370-529)
 - Separates system agent from regular agents; groups regular agents by primary tag for layout
 - Loads saved positions from localStorage or uses default grid
 - Creates node objects with `type: 'agent'`, draggable, and status data
-- **Avatar Data**: Includes `avatarUrl: agent.avatar_url || null` in node data for both system agents (line 426) and regular agents (line 460), sourced from the `GET /api/agents` response
+- **Avatar Data**: Includes `avatarUrl: agent.avatar_url || null` in node data for both system agents (line 485) and regular agents (line 518), sourced from the `GET /api/agents` response
 - **Bug Fix (2025-12-09)**: Sets initial `activityState` based on agent status:
   ```javascript
   activityState: agent.status === 'running' ? 'idle' : 'offline'
   ```
   This prevents running agents from briefly showing "Offline" before the first context-stats poll completes.
 
-##### connectWebSocket() (Lines 289-336)
+##### connectWebSocket() (Lines 529-600)
 WebSocket connection with auto-reconnect:
-- Line 290: Constructs WebSocket URL from window.location
-- Lines 295-298: `onopen` - Sets `isConnected = true`, **starts heartbeat (REFRESH-001)**
-- Lines 300-314: `onmessage` - Routes events to handlers:
+- Line 530: Constructs WebSocket URL from window.location
+- Lines 535-538: `onopen` - Sets `isConnected = true`, **starts heartbeat (REFRESH-001)**
+- Lines 540-554: `onmessage` - Routes events to handlers:
   - `agent_collaboration` -> `handleCollaborationEvent()`
   - `agent_status` -> `handleAgentStatusChange()`
   - `agent_deleted` -> `handleAgentDeleted()`
@@ -435,7 +455,7 @@ async def websocket_endpoint(websocket: WebSocket):
 3. If pong not received, browser detects dead connection and triggers `onclose`
 4. `onclose` handler stops heartbeat and schedules reconnect after 5s
 
-##### handleCollaborationEvent() (Lines 338-363)
+##### handleCollaborationEvent() (Lines 601-627)
 ```javascript
 // Event format: {type, source_agent, target_agent, action, timestamp}
 1. Add to in-memory history (max 100 events, for real-time feed)
@@ -452,13 +472,18 @@ async def websocket_endpoint(websocket: WebSocket):
 - After 6 seconds, edge fades back to gray (extended from 3s)
 - Communication count increments (e.g., "5x" -> "6x")
 
-##### animateEdge() (Lines 395-492)
-Creates or updates edge with animation:
+##### animateEdge() (Lines 741-845)
+Creates or updates edge with animation. Uses canonical edge IDs via `getCanonicalEdgePair()` and sets direction-appropriate arrowheads (cyan for active direction):
 ```javascript
+const [a, b] = getCanonicalEdgePair(sourceId, targetId)
+const edgeId = `e-${a}-${b}`
+const isForward = sourceId === a  // a->b direction
+
+// New edge:
 {
-  id: `e-${sourceId}-${targetId}`,
-  source: sourceId,
-  target: targetId,
+  id: edgeId,
+  source: a,
+  target: b,
   type: 'smoothstep',
   animated: true,
   style: {
@@ -466,38 +491,44 @@ Creates or updates edge with animation:
     strokeWidth: 3,
     filter: 'drop-shadow(0 0 4px rgba(6, 182, 212, 0.5))'
   },
-  markerEnd: { type: 'arrowclosed', color: '#06b6d4' }
+  // Only the active direction gets the cyan arrowhead:
+  markerEnd: isForward ? { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 } : undefined,
+  markerStart: !isForward ? { type: 'arrowclosed', color: '#06b6d4', width: 18, height: 18 } : undefined,
+  data: { hasForward: isForward, hasReverse: !isForward, ... }
 }
 ```
-- Line 481: Increments `activeCollaborations`
-- Lines 485-491: Sets 6-second (or 8-second extended) timeout to fade edge
+- When updating an existing edge, merges direction flags (`hasForward`/`hasReverse`) and sets the active-direction arrowhead to cyan.
+- Line 831: Increments `activeCollaborations`
+- Lines 841-844: Sets 6-second (or 8-second extended) timeout to fade edge
 
-##### fadeEdgeAnimation() / clearEdgeAnimation() (Lines 494-543)
-Fades edge back to inactive state:
+##### fadeEdgeAnimation() / clearEdgeAnimation() (Lines 847-899)
+Fades edge back to inactive state with direction-aware arrowhead restoration:
 ```javascript
 {
   animated: false,
   style: { stroke: '#cbd5e1', strokeWidth: 2, opacity: 0.5 },
-  markerEnd: { type: 'arrowclosed', color: '#cbd5e1' }
+  // Restore arrowheads based on tracked directions (gray inactive color)
+  markerEnd: edge.data?.hasForward ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined,
+  markerStart: edge.data?.hasReverse ? { type: 'arrowclosed', color: '#cbd5e1', width: 15, height: 15 } : undefined
 }
 ```
 
-##### saveNodePositions() / loadNodePositions() (Lines 545-566)
+##### saveNodePositions() / loadNodePositions() (Lines 901-920)
 - Stores node positions in `localStorage` key: `trinity-collaboration-node-positions`
 - Saves on every drag stop event
 - Loads on initial render
 
-##### handleAgentStatusChange() (Lines 365-377)
+##### handleAgentStatusChange() (Lines 628-641)
 Updates node color when agent starts/stops.
 
-##### handleAgentDeleted() (Lines 379-390)
+##### handleAgentDeleted() (Lines 642-660)
 Removes node and all connected edges.
 
-##### fetchContextStats() (Lines 583-620)
+##### fetchContextStats() (Lines 944-983)
 - Fetches context stats from `/api/agents/context-stats`
 - Updates node data with context percentage and activity state
 
-##### fetchExecutionStats() (Lines 922-963)
+##### fetchExecutionStats() (Lines 984-1027)
 ```javascript
 async function fetchExecutionStats() {
   const response = await axios.get('/api/agents/execution-stats', {
@@ -536,12 +567,12 @@ async function fetchExecutionStats() {
 
 **Note**: The `include_7d: true` parameter triggers the backend to use `get_all_agents_execution_stats_dual()` which returns both 24h and 7d stats in a single SQL query.
 
-##### startContextPolling() / stopContextPolling() (Lines 660-686)
+##### startContextPolling() / stopContextPolling() (Lines 1061-1090)
 - Polls every 10 seconds for context stats AND execution stats
 - Calls both `fetchContextStats()` and `fetchExecutionStats()` on each poll
 - Automatically starts on dashboard mount, stops on unmount
 
-##### startAgentRefresh() / stopAgentRefresh() (Lines 647-687)
+##### startAgentRefresh() / stopAgentRefresh() (Lines 1091-1137)
 - Polls every 15 seconds for agent list changes
 - Detects new/deleted agents and updates graph
 
@@ -585,7 +616,7 @@ function handleActivityStatusChange(event) {
 }
 ```
 
-##### toggleAutonomy() (Lines 1173-1209)
+##### toggleAutonomy() (Lines 1498-1536)
 ```javascript
 async function toggleAutonomy(agentName) {
   const node = nodes.value.find(n => n.id === agentName)
@@ -599,7 +630,7 @@ async function toggleAutonomy(agentName) {
 ```
 Toggles autonomy mode for an agent and updates the node data reactively.
 
-##### toggleAgentRunning() (Lines 1211-1250) - NEW 2026-01-26
+##### toggleAgentRunning() (Lines 1551-1595) - NEW 2026-01-26
 ```javascript
 async function toggleAgentRunning(agentName) {
   const node = nodes.value.find(n => n.id === agentName)
@@ -626,7 +657,7 @@ async function toggleAgentRunning(agentName) {
 ```
 Toggles running state (start/stop) for an agent from the Dashboard. Updates node status and activity state reactively.
 
-##### isTogglingRunning() (Lines 1252-1254) - NEW 2026-01-26
+##### isTogglingRunning() (Lines 1596-1598) - NEW 2026-01-26
 ```javascript
 function isTogglingRunning(agentName) {
   return runningToggleLoading.value[agentName] || false
@@ -634,16 +665,16 @@ function isTogglingRunning(agentName) {
 ```
 Helper to check if an agent is currently toggling running state (for loading UI).
 
-##### Replay Mode Functions (Lines 689-897)
-- `setReplayMode()` (690-708): Toggle between live and replay mode
-- `startReplay()` (710-728): Begin playback from current position
-- `pauseReplay()` (730-737): Pause at current event
-- `stopReplay()` (739-753): Reset to beginning
-- `setReplaySpeed()` (755-764): Change playback speed (1x-50x)
-- `scheduleNextEvent()` (766-797): Schedule next event with time-compressed delay
-- `jumpToTime()` / `jumpToEvent()` (799-837): Seek to specific point
-- `resetAllEdges()` (839-870): Set all edges to inactive state
-- `getEventPosition()` / `handleTimelineClick()` (872-897): Timeline scrubber support
+##### Replay Mode Functions (Lines 1188-1497)
+- `setReplayMode()` (1188-1191): Toggle between live and replay mode
+- `startReplay()` (1192-1219): Begin playback from current position
+- `pauseReplay()` (1220-1228): Pause at current event
+- `stopReplay()` (1229-1261): Reset to beginning
+- `setReplaySpeed()` (1262-1275): Change playback speed (1x-50x)
+- `scheduleNextEvent()` (1353-1395): Schedule next event with time-compressed delay
+- `jumpToTime()` / `jumpToEvent()` (1396-1435): Seek to specific point
+- `resetAllEdges()` (1437-1468): Set all edges to inactive state with **direction-aware arrowhead restoration** (restores `markerEnd`/`markerStart` based on `edge.data.hasForward`/`hasReverse`)
+- `getEventPosition()` / `handleTimelineClick()` (1470-1497): Timeline scrubber support
 
 ### Dependencies
 
