@@ -1,5 +1,15 @@
 ### 2026-03-21
 
+**fix: Agent server stream-json parser crashes on non-dict JSON lines (#151)**
+
+Added `isinstance(raw_msg, dict)` guards in all four stream-json parsing locations in `claude_code.py`. Previously, `json.loads()` could return a string literal (valid JSON), and calling `.get()` on it raised `AttributeError`, killing the stdout loop and discarding all execution results.
+
+- `parse_stream_json_output()` (line ~148) — skip non-dict after json.loads
+- `process_stream_line()` (line ~283) — skip non-dict after json.loads
+- `_run_headless_with_streaming()` (line ~547, ~882) — skip non-dict before sanitize_dict
+
+---
+
 **feat: Add chart widget type to agent dashboards**
 
 Agents can now display charts (line, bar, area, pie, donut) in their dashboard via a new `type: chart` widget. Uses Chart.js/vue-chartjs (already in deps). Fully additive — no breaking changes to existing dashboards.

@@ -148,6 +148,10 @@ def parse_stream_json_output(output: str) -> tuple[str, List[ExecutionLogEntry],
             logger.warning(f"Failed to parse line as JSON: {line[:100]}")
             continue
 
+        if not isinstance(msg, dict):
+            # stream-json can emit string literals; skip them
+            continue
+
         msg_type = msg.get("type")
 
         if msg_type == "init":
@@ -277,6 +281,10 @@ def process_stream_line(line: str, execution_log: List[ExecutionLogEntry], metad
         msg = json.loads(line)
     except json.JSONDecodeError:
         logger.warning(f"Failed to parse line as JSON: {line[:100]}")
+        return
+
+    if not isinstance(msg, dict):
+        # stream-json can emit string literals; skip them
         return
 
     msg_type = msg.get("type")
@@ -539,6 +547,9 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
                     # Capture raw JSON for full execution log (same as execute_headless_task)
                     try:
                         raw_msg = json.loads(line.strip())
+                        if not isinstance(raw_msg, dict):
+                            # stream-json can emit string literals; skip them
+                            continue
                         # SECURITY: Sanitize credentials from output before storing
                         raw_msg = sanitize_dict(raw_msg)
                         raw_messages.append(raw_msg)
@@ -871,6 +882,9 @@ async def execute_headless_task(
                     # Capture raw JSON for full execution log
                     try:
                         raw_msg = json.loads(line.strip())
+                        if not isinstance(raw_msg, dict):
+                            # stream-json can emit string literals; skip them
+                            continue
                         # SECURITY: Sanitize credentials from output before storing
                         raw_msg = sanitize_dict(raw_msg)
                         raw_messages.append(raw_msg)
