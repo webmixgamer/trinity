@@ -1,3 +1,14 @@
+### 2026-03-22
+
+**fix: Auto-switch subscriptions now covers scheduled executions (SUB-003)**
+
+The auto-switch hook only fired from `routers/chat.py` (interactive chat and background tasks). Scheduled executions, MCP calls, and agent-to-agent tasks go through `TaskExecutionService.execute_task()` which had no 429 detection. Agents running overnight on schedules would hit rate limits repeatedly without ever triggering a subscription switch.
+
+- `src/backend/services/task_execution_service.py` — Added `handle_rate_limit_error` call in the `httpx.HTTPError` handler when status code is 429
+- `docs/memory/feature-flows/subscription-auto-switch.md` — Updated flow diagram and file table
+
+---
+
 ### 2026-03-21
 
 **feat: Auto-switch subscriptions on repeated rate-limit errors (#153, SUB-003)**

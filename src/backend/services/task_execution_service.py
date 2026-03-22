@@ -353,6 +353,15 @@ class TaskExecutionService:
                         error_msg = e.response.text[:500]
             logger.error(f"[TaskExecService] Failed to execute task on {agent_name}: {error_msg}")
 
+            # SUB-003: Auto-switch subscription on rate-limit errors
+            agent_status_code = getattr(getattr(e, "response", None), "status_code", None)
+            if agent_status_code == 429:
+                try:
+                    from services.subscription_auto_switch import handle_rate_limit_error
+                    await handle_rate_limit_error(agent_name=agent_name, error_message=error_msg)
+                except Exception as switch_err:
+                    logger.error(f"[SUB-003] Auto-switch check failed for '{agent_name}': {switch_err}")
+
             if execution_id:
                 existing = db.get_execution(execution_id)
                 if not existing or existing.status != TaskExecutionStatus.CANCELLED:

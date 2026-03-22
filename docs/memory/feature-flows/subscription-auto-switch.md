@@ -13,7 +13,10 @@ Automatically switches an agent to a different subscription when it encounters 2
 ```
 Agent container detects rate limit → returns 429 to backend
     ↓
-Backend chat/task handler catches 429
+Backend catches 429 in:
+  - TaskExecutionService.execute_task() [schedules, MCP, agent-to-agent]
+  - chat_with_agent() [interactive chat]
+  - background task handler [async tasks]
     ↓
 subscription_auto_switch.handle_rate_limit_error(agent_name)
     ↓
@@ -43,6 +46,7 @@ Return switch result to caller → 429 response includes auto_switch info
 | DB | `src/backend/database.py` | Delegation methods |
 | Service | `src/backend/services/subscription_auto_switch.py` | Orchestration: detect, switch, log, notify |
 | Router | `src/backend/routers/subscriptions.py` | Setting GET/PUT endpoints |
+| Service | `src/backend/services/task_execution_service.py` | 429 interception for all execution paths (schedules, MCP, agent-to-agent) |
 | Router | `src/backend/routers/chat.py` | 429 interception in chat proxy + background tasks |
 | Frontend | `src/frontend/src/views/Settings.vue` | Toggle in Subscriptions section |
 | Tests | `tests/test_subscription_auto_switch.py` | Smoke tests |
