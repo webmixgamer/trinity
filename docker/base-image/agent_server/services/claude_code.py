@@ -98,7 +98,7 @@ class ClaudeCodeRuntime(AgentRuntime):
         """
         # Note: continue_session is handled internally by agent_state.session_started
         # The execute_claude_code function checks agent_state and uses --continue automatically
-        return await execute_claude_code(prompt, stream, model, system_prompt=system_prompt)
+        return await execute_claude_code(prompt, stream, model, system_prompt=system_prompt, execution_id=execution_id)
 
     async def execute_headless(
         self,
@@ -431,7 +431,7 @@ def process_stream_line(line: str, execution_log: List[ExecutionLogEntry], metad
                     response_parts.append(text)
 
 
-async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None, system_prompt: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
+async def execute_claude_code(prompt: str, stream: bool = False, model: Optional[str] = None, system_prompt: Optional[str] = None, execution_id: Optional[str] = None) -> tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
     """
     Execute Claude Code in headless mode with the given prompt.
 
