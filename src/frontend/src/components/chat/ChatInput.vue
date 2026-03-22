@@ -172,6 +172,10 @@ const props = defineProps({
   agentStatus: {
     type: String,
     default: 'stopped'
+  },
+  publicToken: {
+    type: String,
+    default: null
   }
 })
 
@@ -201,6 +205,17 @@ watch(
   ([name, status]) => {
     if (name && status === 'running') {
       ac.load(name, authStore.authHeader)
+    }
+  },
+  { immediate: true }
+)
+
+// ── Load playbooks via public token (no auth) ────────────────────────────────
+watch(
+  () => props.publicToken,
+  (token) => {
+    if (token) {
+      ac.loadPublic(token)
     }
   },
   { immediate: true }

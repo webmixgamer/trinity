@@ -244,7 +244,8 @@
         <ChatInput
           v-model="message"
           :disabled="chatLoading"
-          placeholder="Type your message..."
+          :public-token="token"
+          placeholder="Type your message or / for playbooks..."
           @submit="sendMessage"
         />
       </div>

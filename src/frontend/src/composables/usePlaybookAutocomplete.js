@@ -55,6 +55,17 @@ export function usePlaybookAutocomplete() {
     }
   }
 
+  /** Load playbooks via public link token (no auth required). */
+  async function loadPublic(publicToken) {
+    if (!publicToken) return
+    try {
+      const response = await axios.get(`/api/public/playbooks/${publicToken}`)
+      playbooks.value = response.data.skills || []
+    } catch {
+      // Autocomplete is a nice-to-have – fail silently
+    }
+  }
+
   /**
    * Call on every input event.
    * Returns the current mode: 'completion' | 'argument' | 'none'
@@ -166,6 +177,7 @@ export function usePlaybookAutocomplete() {
     activeArgHint,
     slashStart,
     load,
+    loadPublic,
     parse,
     accept,
     acceptPlaybook,

@@ -124,6 +124,47 @@ async def get_public_link_info(token: str, request: Request):
     )
 
 
+@router.get("/playbooks/{token}")
+async def get_public_playbooks(token: str, request: Request):
+    """
+    Get available skills (playbooks) for a public link's agent.
+
+    Proxies the request to the agent's internal skills endpoint.
+    No authentication required — the link token is validated instead.
+    """
+    # Validate link token
+    is_valid, reason, link = db.is_public_link_valid(token)
+    if not is_valid:
+        raise HTTPException(status_code=404, detail=f"Invalid link: {reason}")
+
+    agent_name = link["agent_name"]
+
+    # Check if agent is available
+    container = get_agent_container(agent_name)
+    if not container or container.status != "running":
+        raise HTTPException(status_code=503, detail="Agent is not running")
+
+    try:
+        agent_url = f"http://agent-{agent_name}:8000/api/skills"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(agent_url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent returned error: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Agent is starting up, please try again")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Could not connect to agent")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch playbooks: {str(e)}")
+
+
 @router.post("/verify/request")
 async def request_verification_code(
     verification: VerificationRequest,
