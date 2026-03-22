@@ -32,7 +32,8 @@ class AgentRuntime(ABC):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """
         Execute agent with the given prompt.
@@ -43,6 +44,7 @@ class AgentRuntime(ABC):
             continue_session: Whether to continue previous conversation context
             stream: Whether to stream responses (for future use)
             system_prompt: Platform instructions appended via --append-system-prompt
+            execution_id: Optional execution ID for process registry (enables termination tracking)
 
         Returns:
             Tuple of (response_text, execution_log, metadata, raw_messages)

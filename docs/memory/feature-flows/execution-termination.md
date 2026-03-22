@@ -108,10 +108,12 @@ def terminate(self, execution_id: str, graceful_timeout: int = 5) -> dict:
 
 ### Process Registration in Claude Code (`docker/base-image/agent_server/services/claude_code.py`)
 
+Both chat and headless task paths use the same pattern: use the backend-provided `execution_id` if available, otherwise generate a new UUID. This ensures the process registry key matches the database execution ID, enabling termination from the UI.
+
 **Conversational Chat** (lines 468-536):
 ```python
-# Generate execution_id
-execution_id = str(uuid.uuid4())
+# Use provided execution_id if available (enables termination tracking from backend)
+execution_id = execution_id or str(uuid.uuid4())
 
 # Register process after Popen
 registry = get_process_registry()
@@ -131,7 +133,6 @@ finally:
 **Headless Task** (lines 625-655):
 ```python
 # Use provided execution_id if available (from backend database)
-# This enables termination tracking with unified ID
 task_session_id = execution_id or str(uuid.uuid4())
 
 registry = get_process_registry()
@@ -148,6 +149,19 @@ finally:
 ```
 
 ### Agent Server Endpoints (`docker/base-image/agent_server/routers/chat.py`)
+
+**POST /api/chat** (lines 24-51):
+```python
+@router.post("/api/chat")
+async def chat(request: ChatRequest):
+    # Execute via runtime adapter — passes execution_id for process registry
+    runtime = get_runtime()
+    response_text, execution_log, metadata, raw_messages = await runtime.execute(
+        prompt=request.message,
+        model=effective_model,
+        execution_id=request.execution_id  # Use provided ID for process registry
+    )
+```
 
 **POST /api/task** (lines 94-135):
 ```python
@@ -194,17 +208,16 @@ async def list_running_executions():
 
 ### Proxy Endpoints (`src/backend/routers/chat.py`)
 
-**Passing Execution ID to Agent** (lines 486-496):
-```python
-# Create execution record in database first
-execution = db.create_task_execution(
-    agent_name=name,
-    message=request.message,
-    triggered_by=triggered_by
-)
-execution_id = execution.id if execution else None
+**Passing Execution ID to Agent** — Both `/api/chat` and `/api/task` paths pass the database execution ID to the agent container so the process registry uses the same ID:
 
-# Pass execution_id to agent in payload
+```python
+# /api/chat path (lines 236-243):
+payload = {"message": request.message, "stream": False}
+payload["system_prompt"] = get_platform_system_prompt()
+if task_execution_id:
+    payload["execution_id"] = task_execution_id  # Enables termination tracking
+
+# /api/task path (lines 462-470):
 payload = {
     "message": request.message,
     "execution_id": execution_id  # Database execution ID for process registry
@@ -237,47 +250,24 @@ except httpx.HTTPError as e:
             db.update_execution_status(execution_id, status="failed", error=error_msg)
 ```
 
-**POST /api/agents/{name}/executions/{execution_id}/terminate** (lines 1073-1158):
+**POST /api/agents/{name}/executions/{execution_id}/terminate** (lines 1363-1443):
 ```python
 @router.post("/{name}/executions/{execution_id}/terminate")
 async def terminate_agent_execution(
     name: str,
     execution_id: str,
-    task_execution_id: Optional[str] = None,  # Query param for database update
+    task_execution_id: Optional[str] = None,  # Defaults to execution_id
     current_user: User = Depends(get_current_user)
 ):
+    # execution_id IS the database execution ID (unified with process registry)
+    if not task_execution_id:
+        task_execution_id = execution_id
+
     # 1. Validate agent exists and is running
-    container = get_agent_container(name)
-    if not container or container.status != "running":
-        raise HTTPException(...)
-
     # 2. Proxy termination request to agent container
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(
-            f"http://agent-{name}:8000/api/executions/{execution_id}/terminate"
-        )
-
-    # 3. Clear queue state if termination succeeded
-    if result.get("status") in ["terminated", "already_finished"]:
-        queue = get_execution_queue()
-        await queue.force_release(name)
-
-        # 4. Update database execution record to "cancelled"
-        if task_execution_id:
-            db.update_execution_status(
-                execution_id=task_execution_id,
-                status="cancelled",
-                error="Execution terminated by user"
-            )
-
+    # 3. Clear queue state + release capacity slot
+    # 4. Update database execution record to "cancelled"
     # 5. Track activity
-    await activity_service.track_activity(
-        agent_name=name,
-        activity_type=ActivityType.EXECUTION_CANCELLED,
-        details={"execution_id": execution_id, "status": result.get("status")}
-    )
-
-    return result
 ```
 
 ---
@@ -401,7 +391,17 @@ async function terminateTask(task) {
 
 ## Data Models
 
-### ParallelTaskRequest (`docker/base-image/agent_server/models.py:215-223`)
+### ChatRequest (`docker/base-image/agent_server/models.py:19-24`)
+```python
+class ChatRequest(BaseModel):
+    message: str
+    stream: bool = False
+    model: Optional[str] = None
+    system_prompt: Optional[str] = None
+    execution_id: Optional[str] = None  # Database execution ID (enables termination tracking)
+```
+
+### ParallelTaskRequest (`docker/base-image/agent_server/models.py:198-207`)
 ```python
 class ParallelTaskRequest(BaseModel):
     message: str
@@ -514,6 +514,7 @@ Claude Code handles SIGINT gracefully, finishing its current operation before ex
 
 | Date | Changes |
 |------|---------|
+| 2026-03-22 | Fix: `/api/chat` path now passes `execution_id` to agent (was only `/api/task`). Added `execution_id` to `ChatRequest` model, `execute()` runtime interface, and backend chat payload. Terminate endpoint defaults `task_execution_id` to `execution_id` for DB update. |
 | 2026-01-13 | Added "Live" button entry point (lines 213-232) - green badge with pulsing dot for running tasks, navigates to Execution Detail page for real-time monitoring |
 | 2026-01-13 | Updated: Unified execution ID flow (backend passes to agent), status preservation in error handlers, frontend polling improvements, cancelled status styling |
 | 2026-01-12 | Initial documentation - Execution Termination feature |

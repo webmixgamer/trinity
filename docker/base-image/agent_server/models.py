@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     stream: bool = False
     model: Optional[str] = None  # Model to use: sonnet, opus, haiku, or full model name
     system_prompt: Optional[str] = None  # Platform instructions (--append-system-prompt)
+    execution_id: Optional[str] = None  # Database execution ID (enables termination tracking)
 
 
 class ChatResponse(BaseModel):

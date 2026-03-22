@@ -87,7 +87,8 @@ class ClaudeCodeRuntime(AgentRuntime):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """Execute Claude Code with the given prompt.
 
@@ -511,7 +512,8 @@ async def execute_claude_code(prompt: str, stream: bool = False, model: Optional
         metadata = ExecutionMetadata()
         tool_start_times: Dict[str, datetime] = {}
         response_parts: List[str] = []
-        execution_id = str(uuid.uuid4())
+        # Use provided execution_id if available (enables termination tracking from backend)
+        execution_id = execution_id or str(uuid.uuid4())
 
         # Mark session as potentially running (will be set to running when first tool starts)
         logger.info(f"Starting Claude Code with streaming: {' '.join(cmd[:5])}...")

@@ -399,3 +399,237 @@ class TestTerminationActivityTracking:
             # Just verify that more activities exist if termination succeeded
             assert len(activities) >= initial_count, \
                 "Activity count should not decrease after termination"
+
+
+class TestTerminateChatExecution:
+    """Tests for terminating chat-path executions (not just /task).
+
+    The chat path (/api/agents/{name}/chat) previously did not pass the
+    database execution_id to the agent container, causing the process
+    registry to use a different random UUID. This made termination fail
+    with 404 for chat executions. These tests verify the fix.
+    """
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_chat_execution_creates_db_record_with_execution_metadata(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Chat execution creates a DB record and returns execution metadata.
+
+        Verifies the backend creates a task execution record for chat calls
+        and includes the execution ID in the response. This is a prerequisite
+        for termination — the DB execution_id is what the frontend sends to
+        the terminate endpoint.
+        """
+        agent_name = created_agent['name']
+
+        # Send a simple chat message
+        response = api_client.post(
+            f"/api/agents/{agent_name}/chat",
+            json={"message": "Hello, just say hi back."},
+            timeout=60.0
+        )
+
+        # Chat should succeed (or at least return a response)
+        if response.status_code != 200:
+            pytest.skip(f"Chat failed with {response.status_code}, cannot test execution metadata")
+
+        data = response.json()
+
+        # Verify execution metadata is present in the response
+        assert "execution" in data, "Chat response should include execution metadata"
+        execution = data["execution"]
+        assert "task_execution_id" in execution, "Execution metadata should have task_execution_id"
+        task_execution_id = execution["task_execution_id"]
+        assert task_execution_id is not None, "task_execution_id should not be None"
+
+        # Verify the DB record exists and has correct status
+        exec_detail = api_client.get(
+            f"/api/agents/{agent_name}/executions/{task_execution_id}"
+        )
+        assert_status(exec_detail, 200)
+        detail_data = exec_detail.json()
+        assert detail_data.get("status") == "success", \
+            f"Completed chat execution should be 'success', got {detail_data.get('status')}"
+        assert detail_data.get("triggered_by") == "chat", \
+            f"Chat execution should have triggered_by='chat', got {detail_data.get('triggered_by')}"
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_chat_execution_can_be_terminated(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Chat execution can be terminated using the database execution ID.
+
+        This is the key regression test: previously the /api/chat path
+        generated its own random execution_id internally, so the stop
+        button (which uses the DB execution_id) would get a 404.
+
+        Note: /api/chat is synchronous, so the execution window is small.
+        We poll aggressively (0.3s intervals) and accept a skip if the
+        chat completes before we can terminate.
+        """
+        agent_name = created_agent['name']
+        chat_execution_id = None
+        chat_completed = False
+
+        def start_chat():
+            nonlocal chat_completed
+            try:
+                api_client.post(
+                    f"/api/agents/{agent_name}/chat",
+                    json={
+                        "message": (
+                            "Write an extremely detailed and comprehensive analysis of every "
+                            "programming language ever created, from FORTRAN to Rust. For each "
+                            "language, describe its type system, memory model, concurrency "
+                            "primitives, notable projects built with it, and its influence on "
+                            "subsequent languages. Include at least 20 languages."
+                        )
+                    },
+                    timeout=180.0
+                )
+                chat_completed = True
+            except Exception:
+                pass
+
+        # Start chat in background thread
+        chat_thread = threading.Thread(target=start_chat)
+        chat_thread.start()
+
+        # Poll aggressively for a running execution record
+        max_wait = 20
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            exec_response = api_client.get(
+                f"/api/agents/{agent_name}/executions",
+                params={"status": "running", "limit": 1}
+            )
+            if exec_response.status_code == 200:
+                execs = exec_response.json()
+                if isinstance(execs, list) and execs:
+                    # Find a chat-triggered execution
+                    for ex in execs:
+                        if ex.get("triggered_by") == "chat":
+                            chat_execution_id = ex.get("id")
+                            break
+                    if chat_execution_id:
+                        break
+            time.sleep(0.3)  # Aggressive polling for narrow window
+
+        if not chat_execution_id:
+            chat_thread.join(timeout=5)
+            if chat_completed:
+                pytest.skip("Chat completed before we could capture execution_id (synchronous /api/chat has narrow termination window)")
+            pytest.skip("Could not capture chat execution_id from DB")
+
+        # Terminate using the DATABASE execution ID (this is what the UI does)
+        terminate_response = api_client.post(
+            f"/api/agents/{agent_name}/executions/{chat_execution_id}/terminate"
+        )
+
+        # Accept 200 (terminated/already_finished) — both mean the ID was recognized
+        # 404 would mean the execution_id mismatch bug is still present
+        if terminate_response.status_code == 200:
+            data = terminate_response.json()
+            assert data.get("status") in ["terminated", "already_finished"], \
+                f"Expected terminated or already_finished, got {data.get('status')}"
+        elif terminate_response.status_code == 404:
+            # This is the bug we're testing for — execution_id mismatch
+            chat_thread.join(timeout=15)
+            # Check if chat already completed (race condition, not a bug)
+            exec_detail = api_client.get(
+                f"/api/agents/{agent_name}/executions/{chat_execution_id}"
+            )
+            if exec_detail.status_code == 200 and exec_detail.json().get("status") in ["success", "failed"]:
+                pytest.skip("Chat completed before terminate reached agent (timing)")
+            pytest.fail(
+                f"Terminate returned 404 — execution_id mismatch bug: {terminate_response.json()}"
+            )
+
+        chat_thread.join(timeout=30)
+
+        # Verify the execution record was updated to cancelled in the database
+        time.sleep(1)
+        exec_detail = api_client.get(
+            f"/api/agents/{agent_name}/executions/{chat_execution_id}"
+        )
+        if exec_detail.status_code == 200:
+            status = exec_detail.json().get("status")
+            # After termination, status should be 'cancelled' (or 'success'/'failed' if it finished first)
+            assert status in ["cancelled", "success", "failed"], \
+                f"DB execution status should be terminal, got {status}"
+
+    @pytest.mark.slow
+    @pytest.mark.requires_agent
+    def test_terminate_defaults_task_execution_id_to_execution_id(
+        self,
+        api_client: TrinityApiClient,
+        created_agent
+    ):
+        """Terminate endpoint defaults task_execution_id to execution_id for DB update.
+
+        Previously task_execution_id was sent in the JSON body but FastAPI
+        treated it as a query parameter, so the DB status was never updated.
+        Now the backend defaults to using execution_id from the path.
+        """
+        agent_name = created_agent['name']
+        execution_id = None
+
+        def start_task():
+            try:
+                api_client.post(
+                    f"/api/agents/{agent_name}/task",
+                    json={"message": "Write a comprehensive guide to all programming paradigms."},
+                    timeout=120.0
+                )
+            except Exception:
+                pass
+
+        task_thread = threading.Thread(target=start_task)
+        task_thread.start()
+
+        # Wait for execution to appear
+        max_wait = 15
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            exec_response = api_client.get(
+                f"/api/agents/{agent_name}/executions",
+                params={"status": "running", "limit": 1}
+            )
+            if exec_response.status_code == 200:
+                execs = exec_response.json()
+                if isinstance(execs, list) and execs:
+                    execution_id = execs[0].get("id")
+                    if execution_id:
+                        break
+            time.sleep(1)
+
+        if not execution_id:
+            task_thread.join(timeout=5)
+            pytest.skip("Could not capture execution_id")
+
+        # Terminate WITHOUT passing task_execution_id (no query param, no body)
+        terminate_response = api_client.post(
+            f"/api/agents/{agent_name}/executions/{execution_id}/terminate"
+        )
+
+        task_thread.join(timeout=15)
+
+        if terminate_response.status_code != 200:
+            pytest.skip("Termination did not succeed")
+
+        # Verify DB status updated to cancelled even without explicit task_execution_id
+        time.sleep(1)
+        exec_detail = api_client.get(
+            f"/api/agents/{agent_name}/executions/{execution_id}"
+        )
+        if exec_detail.status_code == 200:
+            detail_data = exec_detail.json()
+            assert detail_data.get("status") == "cancelled", \
+                f"DB execution should be 'cancelled' (defaulted from path param), got {detail_data.get('status')}"

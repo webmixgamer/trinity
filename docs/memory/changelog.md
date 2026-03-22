@@ -1,5 +1,18 @@
 ### 2026-03-22
 
+**fix: Execution termination (Stop button) fails for interactive chat executions**
+
+The Stop button on the Execution Detail page did not work reliably for interactive chat executions. Root cause: the `/api/chat` path never passed the database execution ID to the agent container, so the process registry used a different random UUID — causing a 404 when termination was attempted. A secondary bug: the `task_execution_id` body param in the terminate endpoint was never parsed by FastAPI, so the DB status was never updated to "cancelled".
+
+- `docker/base-image/agent_server/models.py` — Added `execution_id` field to `ChatRequest`
+- `docker/base-image/agent_server/services/runtime_adapter.py` — Added `execution_id` param to abstract `execute()` interface
+- `docker/base-image/agent_server/services/claude_code.py` — Accept `execution_id` in `execute()`, use provided ID instead of generating random UUID
+- `docker/base-image/agent_server/services/gemini_runtime.py` — Accept `execution_id` in `execute()` (interface compliance)
+- `docker/base-image/agent_server/routers/chat.py` — Pass `request.execution_id` to `runtime.execute()`
+- `src/backend/routers/chat.py` — Pass `task_execution_id` in chat payload; default `task_execution_id` to `execution_id` in terminate handler
+
+---
+
 **fix: Auto-switch subscriptions now covers scheduled executions (SUB-003)**
 
 The auto-switch hook only fired from `routers/chat.py` (interactive chat and background tasks). Scheduled executions, MCP calls, and agent-to-agent tasks go through `TaskExecutionService.execute_task()` which had no 429 detection. Agents running overnight on schedules would hit rate limits repeatedly without ever triggering a subscription switch.

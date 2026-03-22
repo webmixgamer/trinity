@@ -116,7 +116,8 @@ class GeminiRuntime(AgentRuntime):
         model: Optional[str] = None,
         continue_session: bool = False,
         stream: bool = False,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        execution_id: Optional[str] = None
     ) -> Tuple[str, List[ExecutionLogEntry], ExecutionMetadata, List[Dict]]:
         """
         Execute Gemini CLI with the given prompt.

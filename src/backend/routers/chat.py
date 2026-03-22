@@ -238,6 +238,9 @@ async def chat_with_agent(
             payload["model"] = request.model
         # Inject platform instructions into every chat request
         payload["system_prompt"] = get_platform_system_prompt()
+        # Pass execution ID so agent registers process under the same ID (enables termination)
+        if task_execution_id:
+            payload["execution_id"] = task_execution_id
 
         start_time = datetime.utcnow()
 
@@ -1372,9 +1375,14 @@ async def terminate_agent_execution(
 
     Args:
         name: Agent name
-        execution_id: The execution ID to terminate (from process registry)
-        task_execution_id: Optional database execution ID to update status
+        execution_id: The execution ID to terminate (same as database execution ID)
+        task_execution_id: Optional override for database execution ID (defaults to execution_id)
     """
+    # execution_id is now the database execution ID (passed through to agent process registry)
+    # Fall back to using execution_id for DB update if task_execution_id not separately provided
+    if not task_execution_id:
+        task_execution_id = execution_id
+
     container = get_agent_container(name)
     if not container:
         raise HTTPException(status_code=404, detail="Agent not found")
