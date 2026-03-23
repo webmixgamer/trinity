@@ -234,6 +234,7 @@ class ChatMessage(BaseModel):
     context_max: Optional[int] = None
     tool_calls: Optional[str] = None  # JSON array
     execution_time_ms: Optional[int] = None
+    source: Optional[str] = "text"  # "text" or "voice" (VOICE-003)
 
 
 # =========================================================================

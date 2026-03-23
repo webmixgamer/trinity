@@ -24,7 +24,8 @@ RUN pip install --no-cache-dir \
     pytz==2024.2 \
     psutil==6.1.1 \
     payments-py==1.2.1 \
-    Pillow==11.1.0
+    Pillow==11.1.0 \
+    google-genai==1.12.1
 
 # Copy all backend source files
 COPY ../../src/backend/main.py /app/

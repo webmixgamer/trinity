@@ -21,7 +21,7 @@
 
         <!-- Message list -->
         <div v-for="(msg, index) in messages" :key="index" class="px-2">
-          <ChatBubble :role="msg.role" :content="msg.content" :timestamp="msg.timestamp" />
+          <ChatBubble :role="msg.role" :content="msg.content" :timestamp="msg.timestamp" :source="msg.source || 'text'" />
         </div>
 
         <!-- Loading indicator -->

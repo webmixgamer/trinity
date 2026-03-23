@@ -73,6 +73,8 @@ def run_all_migrations(cursor, conn):
         ("agent_ownership_execution_timeout", _migrate_agent_ownership_execution_timeout),
         ("public_user_memory_table", _migrate_public_user_memory_table),
         ("subscription_rate_limit_tracking", _migrate_subscription_rate_limit_tracking),
+        ("chat_messages_source_column", _migrate_chat_messages_source_column),
+        ("agent_ownership_voice_prompt", _migrate_agent_ownership_voice_prompt),
     ]
 
     for name, migration_fn in migrations:
@@ -794,3 +796,28 @@ def _migrate_subscription_rate_limit_tracking(cursor, conn):
         "ON subscription_rate_limit_events(subscription_id, occurred_at DESC)"
     )
     conn.commit()
+
+
+def _migrate_chat_messages_source_column(cursor, conn):
+    """Add source column to chat_messages (VOICE-003).
+
+    Distinguishes voice messages from text messages.
+    Values: 'text' (default), 'voice'.
+    """
+    try:
+        cursor.execute("ALTER TABLE chat_messages ADD COLUMN source TEXT DEFAULT 'text'")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
+
+
+def _migrate_agent_ownership_voice_prompt(cursor, conn):
+    """Add voice_system_prompt column to agent_ownership (VOICE-005).
+
+    Stores the per-agent voice personality prompt for Gemini Live API.
+    """
+    try:
+        cursor.execute("ALTER TABLE agent_ownership ADD COLUMN voice_system_prompt TEXT")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists

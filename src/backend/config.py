@@ -99,9 +99,14 @@ CORS_ORIGINS = [
     "http://localhost:8080",
 ] + _extra_origins
 
-# Google Gemini API Key (for platform image generation - IMG-001)
+# Google Gemini API Key (for platform image generation - IMG-001, voice chat - VOICE-001)
 # Falls back to GOOGLE_API_KEY (used for Gemini-powered agents) if GEMINI_API_KEY not set
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+
+# Voice Chat Configuration (VOICE-001)
+VOICE_ENABLED = os.getenv("VOICE_ENABLED", "true").lower() == "true"
+VOICE_MODEL = os.getenv("VOICE_MODEL", "gemini-2.5-flash-native-audio-preview-12-2025")
+VOICE_MAX_DURATION = int(os.getenv("VOICE_MAX_DURATION", "300"))  # seconds
 
 # Default GitHub Template Repositories
 # Just repo identifiers — metadata is fetched from each repo's template.yaml at runtime.

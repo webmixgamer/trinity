@@ -1,3 +1,32 @@
+### 2026-03-23
+
+**feat: Voice Chat — real-time voice conversations with agents via Gemini Live API (VOICE-001)**
+
+Phase 1 MVP implementation of voice chat. Users click a microphone button in the Chat tab to start a real-time voice conversation with any agent. Audio streams bidirectionally through a backend WebSocket proxy to Google's Gemini 2.5 Flash Native Audio model (~280ms latency). Transcripts are automatically saved to the existing chat session with `source="voice"` markers. Uses the platform's existing `GEMINI_API_KEY`.
+
+**Backend:**
+- `src/backend/services/gemini_voice.py` — Gemini Live API client wrapper using `google-genai` SDK
+- `src/backend/routers/voice.py` — Voice endpoints: start, stop, status, prompt CRUD, WebSocket audio bridge
+- `src/backend/config.py` — Added `VOICE_ENABLED`, `VOICE_MODEL`, `VOICE_MAX_DURATION` config
+- `src/backend/main.py` — Registered voice router
+- `src/backend/db/schema.py` — Added `source` column to `chat_messages` table
+- `src/backend/db_models.py` — Added `source` field to `ChatMessage` model
+- `src/backend/db/chat.py` — Updated message creation and retrieval to handle `source` field
+- `src/backend/db/migrations.py` — Added migrations for `source` column and `voice_system_prompt` on agent_ownership
+
+**Frontend:**
+- `src/frontend/src/utils/audio.js` — Microphone capture (PCM 16kHz) and audio playback (PCM 24kHz)
+- `src/frontend/src/composables/useVoiceSession.js` — Voice session state management and WebSocket lifecycle
+- `src/frontend/src/components/chat/VoiceOverlay.vue` — Voice session UI overlay with status, mute, end controls
+- `src/frontend/src/components/ChatPanel.vue` — Added mic button and voice overlay integration
+- `src/frontend/src/components/chat/ChatBubble.vue` — Voice message indicator badge
+- `src/frontend/src/components/chat/ChatMessages.vue` — Pass source prop to bubbles
+
+**Dependencies:**
+- `docker/backend/Dockerfile` — Added `google-genai==1.12.1`
+
+---
+
 ### 2026-03-22
 
 **fix: Execution termination (Stop button) fails for interactive chat executions**

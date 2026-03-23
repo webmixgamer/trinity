@@ -48,7 +48,8 @@ class ChatOperations:
             context_used=row["context_used"],
             context_max=row["context_max"],
             tool_calls=row["tool_calls"],
-            execution_time_ms=row["execution_time_ms"]
+            execution_time_ms=row["execution_time_ms"],
+            source=row["source"] if "source" in row.keys() else "text"
         )
 
     def get_or_create_chat_session(self, agent_name: str, user_id: int, user_email: str) -> ChatSession:
@@ -101,7 +102,8 @@ class ChatOperations:
         context_used: Optional[int] = None,
         context_max: Optional[int] = None,
         tool_calls: Optional[str] = None,
-        execution_time_ms: Optional[int] = None
+        execution_time_ms: Optional[int] = None,
+        source: Optional[str] = "text"
     ) -> ChatMessage:
         """Add a message to a chat session and update session stats."""
         with get_db_connection() as conn:
@@ -115,13 +117,15 @@ class ChatOperations:
                 INSERT INTO chat_messages (
                     id, session_id, agent_name, user_id, user_email,
                     role, content, timestamp,
-                    cost, context_used, context_max, tool_calls, execution_time_ms
+                    cost, context_used, context_max, tool_calls, execution_time_ms,
+                    source
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 message_id, session_id, agent_name, user_id, user_email,
                 role, content, now,
-                cost, context_used, context_max, tool_calls, execution_time_ms
+                cost, context_used, context_max, tool_calls, execution_time_ms,
+                source or "text"
             ))
 
             # Update session stats

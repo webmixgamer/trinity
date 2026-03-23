@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-[600px]">
+  <div class="flex flex-col h-[600px] relative">
     <!-- Header with session selector -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
       <div class="flex items-center space-x-3">
@@ -149,15 +149,24 @@
         <p class="text-sm" :class="isRateLimitError ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'">{{ error }}</p>
       </div>
 
+      <!-- Voice overlay (VOICE-004) -->
+      <VoiceOverlay
+        :voice="voice"
+        @end="endVoice"
+      />
+
       <!-- Input area -->
       <div class="px-4 pb-4">
         <ChatInput
           ref="chatInputRef"
           v-model="message"
-          :disabled="loading"
+          :disabled="loading || voice.isActive.value"
           :agent-name="agentName"
           :agent-status="agentStatus"
+          :voice-available="voiceAvailable"
+          :voice-active="voice.isActive.value"
           @submit="sendMessage"
+          @voice="startVoice"
         />
       </div>
     </template>
@@ -169,8 +178,10 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { ChatMessages, ChatInput } from './chat'
+import VoiceOverlay from './chat/VoiceOverlay.vue'
 import ModelSelector from './ModelSelector.vue'
 import { getStatusFromStreamEvent, MIN_LABEL_DISPLAY_MS, HEARTBEAT_TIMEOUT_MS } from '../utils/execution-status'
+import { useVoiceSession } from '../composables/useVoiceSession'
 
 const props = defineProps({
   agentName: {
@@ -193,6 +204,53 @@ const props = defineProps({
 })
 
 const authStore = useAuthStore()
+
+// Voice chat (VOICE-004)
+const voice = useVoiceSession(props.agentName)
+const voiceAvailable = ref(false)
+
+// Check voice availability
+const checkVoiceAvailability = async () => {
+  try {
+    const response = await axios.get(
+      `/api/agents/${props.agentName}/voice/status`,
+      { headers: authStore.authHeader }
+    )
+    voiceAvailable.value = response.data.enabled && response.data.available
+  } catch {
+    voiceAvailable.value = false
+  }
+}
+
+const startVoice = () => {
+  voice.start(currentSessionId.value)
+}
+
+const endVoice = async () => {
+  await voice.stop()
+  // Refresh messages to show the saved transcript
+  if (currentSessionId.value) {
+    try {
+      const response = await axios.get(
+        `/api/agents/${props.agentName}/chat/sessions/${currentSessionId.value}`,
+        { headers: authStore.authHeader }
+      )
+      messages.value = (response.data.messages || []).map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        source: msg.source || 'text',
+      }))
+    } catch (err) {
+      console.error('Failed to reload messages after voice session:', err)
+    }
+  }
+  // If voice session created a new chat session, refresh sessions list
+  if (voice.chatSessionId.value && !currentSessionId.value) {
+    currentSessionId.value = voice.chatSessionId.value
+  }
+  await loadSessions(false)
+}
 
 // State
 const message = ref('')
@@ -324,7 +382,8 @@ const selectSession = async (session, closeDropdown = true) => {
     messages.value = (response.data.messages || []).map(msg => ({
       role: msg.role,
       content: msg.content,
-      timestamp: msg.timestamp
+      timestamp: msg.timestamp,
+      source: msg.source || 'text',
     }))
   } catch (err) {
     console.error('Failed to load session:', err)
@@ -648,6 +707,7 @@ watch(selectedModel, (val) => {
 watch(() => props.agentStatus, (newStatus) => {
   if (newStatus === 'running') {
     loadSessions()
+    checkVoiceAvailability()
   }
 })
 
@@ -680,11 +740,16 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   if (props.agentStatus === 'running') {
     loadSessions()
+    checkVoiceAvailability()
   }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   closeSSE()
+  // End voice session on unmount
+  if (voice.isActive.value) {
+    voice.stop()
+  }
 })
 </script>

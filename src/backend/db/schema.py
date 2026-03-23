@@ -210,6 +210,7 @@ TABLES = {
             context_max INTEGER,
             tool_calls TEXT,
             execution_time_ms INTEGER,
+            source TEXT DEFAULT 'text',
             FOREIGN KEY (session_id) REFERENCES chat_sessions(id),
             FOREIGN KEY (user_id) REFERENCES users(id)
         )

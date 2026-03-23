@@ -1463,6 +1463,46 @@ Standalone mobile-friendly admin page for managing agents on the go. Designed as
 
 ---
 
+## 29. Voice Chat (VOICE-001)
+
+### 29.1 Voice Session Initialization (VOICE-001)
+- **Status**: 🚧 In Progress (Phase 1 MVP)
+- **Description**: Real-time voice conversations with agents via Gemini 2.5 Flash Native Audio
+- **Key Features**: `POST /api/agents/{name}/voice/start` loads voice prompt + summarizes prior chat, opens Gemini Live API WebSocket connection
+- **Architecture**: Browser (mic) → WebSocket → Backend (proxy) → Gemini Live API → Backend → WebSocket → Browser (speaker)
+
+### 29.2 Audio Streaming Bridge (VOICE-002)
+- **Status**: 🚧 In Progress
+- **Description**: WebSocket proxy: browser ↔ backend ↔ Gemini, <100ms added latency
+- **Key Features**: PCM 16kHz mono input, 24kHz mono output, base64 frame encoding
+
+### 29.3 Transcript Persistence (VOICE-003)
+- **Status**: 🚧 In Progress
+- **Description**: Voice transcripts saved as ChatMessage rows with `source="voice"`, inline in existing chat sessions
+- **Key Features**: Automatic transcript extraction from Gemini, `source` column on chat_messages table
+
+### 29.4 Frontend Voice UI (VOICE-004)
+- **Status**: 🚧 In Progress
+- **Description**: Mic button next to chat input, voice overlay with status/mute/end controls
+- **Key Features**: VoiceOverlay component, pulsing status indicators, live transcript display, mute toggle
+
+### 29.5 Voice System Prompt (VOICE-005)
+- **Status**: 🚧 In Progress
+- **Description**: Per-agent `voice_system_prompt` field for voice personality
+- **Key Features**: Stored on agent_ownership table, fallback to auto-generated prompt from agent name
+
+### 29.6 Context Summary (VOICE-006)
+- **Status**: 🚧 In Progress
+- **Description**: On voice start, summarize prior messages and inject into Gemini system prompt
+- **Key Features**: Last 20 messages truncated to ~750 tokens, injected as conversation context
+
+### Phase Roadmap
+1. **Phase 1 (MVP)**: Authenticated chat only, basic overlay, transcript on session end, manual voice prompt
+2. **Phase 2 (Polish)**: Real-time waveform, incremental transcript, auto-generate voice prompt from CLAUDE.md
+3. **Phase 3 (Advanced)**: Function calling, multi-language auto-detection, custom voice per agent
+
+---
+
 ## Out of Scope
 
 - Multi-tenant deployment (single org only)

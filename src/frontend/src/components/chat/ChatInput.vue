@@ -109,6 +109,23 @@
         ></textarea>
       </div>
 
+      <!-- Voice button (VOICE-004) -->
+      <button
+        v-if="voiceAvailable"
+        type="button"
+        @click="$emit('voice')"
+        :disabled="disabled || voiceActive"
+        class="p-2 rounded-lg transition-colors shrink-0"
+        :class="voiceActive
+          ? 'bg-red-500 hover:bg-red-600 text-white'
+          : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50'"
+        :title="voiceActive ? 'Voice session active' : 'Start voice conversation'"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z" />
+        </svg>
+      </button>
+
       <!-- Send button -->
       <button
         type="submit"
@@ -176,10 +193,18 @@ const props = defineProps({
   publicToken: {
     type: String,
     default: null
+  },
+  voiceAvailable: {
+    type: Boolean,
+    default: false
+  },
+  voiceActive: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'submit'])
+const emit = defineEmits(['update:modelValue', 'submit', 'voice'])
 
 const authStore = useAuthStore()
 const ac = usePlaybookAutocomplete()

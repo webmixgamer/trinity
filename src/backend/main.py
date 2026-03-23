@@ -21,7 +21,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request, Q
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
-from config import CORS_ORIGINS
+from config import CORS_ORIGINS, VOICE_ENABLED, GEMINI_API_KEY
 from models import User
 from dependencies import get_current_user
 from services.docker_service import docker_client, list_all_agents_fast
@@ -73,6 +73,7 @@ from routers.nevermined import router as nevermined_router
 from routers.image_generation import router as image_generation_router
 from routers.avatar import router as avatar_router
 from routers.operator_queue import router as operator_queue_router, set_websocket_manager as set_operator_queue_ws_manager
+from routers.voice import router as voice_router
 
 # Import activity service
 from services.activity_service import activity_service
@@ -384,6 +385,7 @@ app.include_router(nevermined_router)  # Nevermined Admin Config (NVM-001)
 app.include_router(image_generation_router)  # Image Generation (IMG-001)
 app.include_router(avatar_router)  # Agent Avatars (AVATAR-001)
 app.include_router(operator_queue_router)  # Operator Queue (OPS-001)
+app.include_router(voice_router)  # Voice Chat (VOICE-001)
 
 
 # WebSocket endpoint
@@ -575,7 +577,8 @@ async def get_version():
             "base_image": f"trinity-agent-base:{version}"
         },
         "runtimes": ["claude-code", "gemini-cli"],
-        "build_date": os.getenv("BUILD_DATE", "unknown")
+        "build_date": os.getenv("BUILD_DATE", "unknown"),
+        "voice_enabled": VOICE_ENABLED and bool(GEMINI_API_KEY),
     }
 
 

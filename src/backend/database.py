@@ -637,10 +637,11 @@ class DatabaseManager:
 
     def add_chat_message(self, session_id: str, agent_name: str, user_id: int, user_email: str,
                          role: str, content: str, cost: float = None, context_used: int = None,
-                         context_max: int = None, tool_calls: str = None, execution_time_ms: int = None):
+                         context_max: int = None, tool_calls: str = None, execution_time_ms: int = None,
+                         source: str = "text"):
         return self._chat_ops.add_chat_message(session_id, agent_name, user_id, user_email,
                                                role, content, cost, context_used, context_max,
-                                               tool_calls, execution_time_ms)
+                                               tool_calls, execution_time_ms, source=source)
 
     def get_chat_session(self, session_id: str):
         return self._chat_ops.get_chat_session(session_id)
