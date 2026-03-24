@@ -57,6 +57,13 @@ class SchedulerConfig:
         "POLL_INTERVAL", "10"
     )))  # seconds between DB polls while waiting for task completion
 
+    # Misfire grace time — how long after a missed trigger APScheduler will
+    # still execute the job.  Default 30s is far too low for weekly cron jobs
+    # whose container may restart.  3600s (1 hour) gives ample runway.
+    misfire_grace_time: int = field(default_factory=lambda: int(os.getenv(
+        "MISFIRE_GRACE_TIME", "3600"
+    )))  # seconds (Issue #145)
+
     # Backend API (for process executions)
     backend_url: str = field(default_factory=lambda: os.getenv(
         "BACKEND_URL", "http://backend:8000"

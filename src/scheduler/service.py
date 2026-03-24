@@ -98,6 +98,12 @@ class SchedulerService:
 
         # Load all enabled agent schedules from database
         schedules = self.db.list_all_enabled_schedules()
+
+        # Detect missed schedules BEFORE _add_job overwrites next_run_at
+        # (Issue #145). _add_job recalculates next_run_at via croniter,
+        # which advances past the missed window, so we must snapshot first.
+        self._missed_schedules = self._get_missed_schedules(schedules)
+
         for schedule in schedules:
             self._add_job(schedule)
             # Capture snapshot for sync detection
@@ -131,6 +137,61 @@ class SchedulerService:
         logger.info(f"Scheduler initialized with {len(schedules)} agent schedules, {len(process_schedules)} process schedules")
         logger.info(f"Instance ID: {self._instance_id}")
         logger.info(f"Schedule sync interval: {config.schedule_reload_interval}s")
+        logger.info(f"Misfire grace time: {config.misfire_grace_time}s")
+
+    def _get_missed_schedules(self, schedules: List[Schedule]) -> List[Schedule]:
+        """
+        Detect schedules that missed their last expected run (Issue #145).
+
+        A schedule is considered missed when:
+        - It has a next_run_at that is in the past
+        - The miss is within the misfire_grace_time window
+        - It hasn't already been executed at that time (last_run_at < next_run_at)
+
+        This covers the case where the scheduler container was down during
+        a trigger window and APScheduler's in-memory job store lost the job.
+        """
+        now = datetime.utcnow()
+        grace = config.misfire_grace_time
+        missed = []
+
+        for schedule in schedules:
+            if not schedule.next_run_at:
+                continue
+
+            # Normalize next_run_at to naive UTC for comparison
+            expected = schedule.next_run_at
+            if expected.tzinfo is not None:
+                expected = expected.replace(tzinfo=None)
+
+            # Skip if the next run is in the future — not missed
+            if expected > now:
+                continue
+
+            # How long ago was it missed?
+            missed_seconds = (now - expected).total_seconds()
+            if missed_seconds > grace:
+                logger.info(
+                    f"Schedule {schedule.name} ({schedule.agent_name}) missed by "
+                    f"{missed_seconds:.0f}s — exceeds grace time {grace}s, skipping catch-up"
+                )
+                continue
+
+            # Check it wasn't already executed at the expected time
+            if schedule.last_run_at:
+                last = schedule.last_run_at
+                if last.tzinfo is not None:
+                    last = last.replace(tzinfo=None)
+                if last >= expected:
+                    continue  # Already ran
+
+            logger.warning(
+                f"Schedule {schedule.name} ({schedule.agent_name}) missed by "
+                f"{missed_seconds:.0f}s — queuing catch-up execution"
+            )
+            missed.append(schedule)
+
+        return missed
 
     def shutdown(self):
         """Shutdown the scheduler gracefully."""
@@ -145,9 +206,25 @@ class SchedulerService:
 
         self.lock_manager.close()
 
+    async def fire_missed_schedules(self):
+        """
+        Execute schedules missed while the container was down (Issue #145).
+
+        Must be called after initialize(). The missed list was captured during
+        initialize() BEFORE _add_job overwrote next_run_at with the next
+        future occurrence.
+        """
+        missed = getattr(self, '_missed_schedules', [])
+        logger.info(f"Startup catch-up: {len(missed)} missed schedule(s) to recover")
+        for schedule in missed:
+            logger.info(f"Startup catch-up: firing {schedule.name} ({schedule.agent_name})")
+            asyncio.ensure_future(self._execute_schedule(schedule.id))
+        self._missed_schedules = []
+
     async def run_forever(self):
         """Run the scheduler until interrupted."""
         self.initialize()
+        await self.fire_missed_schedules()
 
         sync_interval = config.schedule_reload_interval
         heartbeat_interval = 30
@@ -222,7 +299,10 @@ class SchedulerService:
                 id=job_id,
                 args=[schedule.id],
                 replace_existing=True,
-                name=f"{schedule.agent_name}:{schedule.name}"
+                name=f"{schedule.agent_name}:{schedule.name}",
+                misfire_grace_time=config.misfire_grace_time,
+                coalesce=True,
+                max_instances=1,
             )
 
             # Calculate and store next run time
@@ -877,7 +957,10 @@ class SchedulerService:
                 id=job_id,
                 args=[schedule.id],
                 replace_existing=True,
-                name=f"process:{schedule.process_name}:{schedule.trigger_id}"
+                name=f"process:{schedule.process_name}:{schedule.trigger_id}",
+                misfire_grace_time=config.misfire_grace_time,
+                coalesce=True,
+                max_instances=1,
             )
 
             # Calculate and store next run time

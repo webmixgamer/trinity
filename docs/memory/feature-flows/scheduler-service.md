@@ -106,6 +106,7 @@ As a **platform administrator**, I want **scheduled tasks to execute exactly onc
 | `PUBLISH_EVENTS` | `true` | Enable Redis event publishing |
 | `INTERNAL_API_SECRET` | _(empty)_ | Shared secret for backend internal API auth (C-003). Must match backend's `INTERNAL_API_SECRET` or `SECRET_KEY`. |
 | `POLL_INTERVAL` | `10` | Seconds between DB polls while waiting for async task completion (SCHED-ASYNC-001) |
+| `MISFIRE_GRACE_TIME` | `3600` | Seconds after a missed trigger that APScheduler will still execute the job (Issue #145). Also used as the window for startup catch-up sweep. |
 
 ---
 

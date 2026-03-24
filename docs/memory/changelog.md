@@ -25,6 +25,17 @@ Phase 1 MVP implementation of voice chat. Users click a microphone button in the
 **Dependencies:**
 - `docker/backend/Dockerfile` — Added `google-genai==1.12.1`
 
+**fix: Scheduler fires Monday cron jobs on Tuesday — missing misfire handling (#145)**
+
+APScheduler's `add_job()` calls had no `misfire_grace_time` parameter, defaulting to 30 seconds. When the scheduler container restarted (even briefly), any cron job whose window passed more than 30 seconds ago was silently dropped. Weekly schedules (e.g. Monday 9 AM) would then not fire until the next occurrence (Tuesday for daily, next Monday for weekly), appearing as a consistent +1 day shift. The in-memory job store (`MemoryJobStore`) compounded this — all jobs are lost on restart and reloaded from DB, but APScheduler still applies the 30s grace check.
+
+**Fix**: Added `misfire_grace_time=3600` (1 hour, configurable via `MISFIRE_GRACE_TIME` env var), `coalesce=True`, and `max_instances=1` to both agent schedule and process schedule `add_job()` calls. Added startup catch-up logic that detects missed schedules (DB `next_run_at` in the past within grace window) and fires them immediately on container start.
+
+- `src/scheduler/service.py` — Added misfire_grace_time, coalesce, max_instances to both `_add_job()` and `_add_process_job()`; added `_get_missed_schedules()` method; added startup catch-up sweep in `run_forever()`
+- `src/scheduler/config.py` — Added `MISFIRE_GRACE_TIME` env var (default 3600s)
+- `docker-compose.yml` — Added `MISFIRE_GRACE_TIME=3600` to scheduler environment
+- `docker-compose.prod.yml` — Added `MISFIRE_GRACE_TIME=3600` to scheduler environment
+
 ---
 
 ### 2026-03-22

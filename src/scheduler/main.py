@@ -67,6 +67,9 @@ class SchedulerApp:
         # Initialize and run scheduler
         self.scheduler_service.initialize()
 
+        # Fire any schedules missed while container was down (Issue #145)
+        await self.scheduler_service.fire_missed_schedules()
+
         # Run until shutdown
         await self._run_until_shutdown()
 
