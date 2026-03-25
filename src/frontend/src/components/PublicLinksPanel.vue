@@ -545,8 +545,20 @@ const connectSlack = async (link) => {
       {},
       { headers: authStore.authHeader }
     )
-    // Redirect to Slack OAuth
-    window.location.href = response.data.oauth_url
+    const data = response.data
+
+    if (data.status === 'connected') {
+      // Workspace already connected — channel was created and bound
+      await loadSlackConnection(link.id)
+      copyNotification.value = 'slack-connected'
+      setTimeout(() => { copyNotification.value = null }, 3000)
+    } else if (data.status === 'oauth_required' && data.oauth_url) {
+      // Need OAuth — redirect to Slack
+      window.location.href = data.oauth_url
+    } else if (data.oauth_url) {
+      // Legacy response format
+      window.location.href = data.oauth_url
+    }
   } catch (err) {
     console.error('Failed to initiate Slack connection:', err)
     alert(err.response?.data?.detail || 'Failed to connect Slack')

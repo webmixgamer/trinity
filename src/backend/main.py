@@ -292,6 +292,43 @@ async def lifespan(app: FastAPI):
         print(f"Error recovering task executions: {e}")
         # Don't fail startup - recovery is important but not critical
 
+    # Start Slack channel transport (Socket Mode or webhook)
+    try:
+        from adapters.slack_adapter import SlackAdapter
+        from adapters.message_router import message_router
+        from services.settings_service import get_slack_transport_mode, get_slack_app_token, get_slack_signing_secret
+
+        _slack_adapter = SlackAdapter()
+        _slack_transport = None
+        slack_mode = get_slack_transport_mode()
+
+        if slack_mode == "socket":
+            app_token = get_slack_app_token()
+            if app_token:
+                from adapters.transports.slack_socket import SlackSocketTransport
+                _slack_transport = SlackSocketTransport(app_token, _slack_adapter, message_router)
+                await _slack_transport.start()
+                print(f"Slack transport started (Socket Mode)")
+            else:
+                print("Slack Socket Mode: no app token configured (set slack_app_token in Settings)")
+        else:
+            signing_secret = get_slack_signing_secret()
+            if signing_secret:
+                from adapters.transports.slack_webhook import SlackWebhookTransport
+                from routers.slack import set_webhook_transport
+                _slack_transport = SlackWebhookTransport(signing_secret, _slack_adapter, message_router)
+                await _slack_transport.start()
+                set_webhook_transport(_slack_transport)
+                print(f"Slack transport started (webhook mode)")
+            else:
+                print("Slack webhook mode: no signing secret configured")
+
+        # Store transport for shutdown
+        app.state.slack_transport = _slack_transport
+    except Exception as e:
+        print(f"Error starting Slack transport: {e}")
+        # Don't fail startup — Slack is optional
+
     # Run process execution recovery (IT5 P0 reliability feature)
     try:
         recovery_report = await run_execution_recovery()
@@ -327,6 +364,15 @@ async def lifespan(app: FastAPI):
         print("Cleanup service stopped")
     except Exception as e:
         print(f"Error stopping cleanup service: {e}")
+
+    # Shutdown Slack transport
+    try:
+        slack_transport = getattr(app.state, 'slack_transport', None)
+        if slack_transport:
+            await slack_transport.stop()
+            print("Slack transport stopped")
+    except Exception as e:
+        print(f"Error stopping Slack transport: {e}")
 
     # Shutdown operator queue sync service
     try:

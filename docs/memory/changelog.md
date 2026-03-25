@@ -54,6 +54,40 @@ Three new MCP tools enabling agents to query execution history and poll for asyn
 
 ### 2026-03-23
 
+✨ **feat: Channel adapter abstraction + multi-agent Slack integration (SLACK-002)**
+
+Added pluggable channel adapter architecture for external messaging platforms (Slack, future Telegram/Discord). Single Slack App supports multiple agents, each with a dedicated channel. Messages flow: Transport → Adapter → Router → Agent → Response.
+
+**Channel Adapter Abstraction:**
+- `src/backend/adapters/base.py` — `ChannelAdapter` base class: `parse_message()`, `send_response()`, `get_agent_name()`, `indicate_processing()`, `indicate_done()`, `handle_verification()`, `on_response_sent()`
+- `src/backend/adapters/transports/base.py` — `ChannelTransport` base class: `start()`, `stop()`, `on_event()`
+- `src/backend/adapters/message_router.py` — Channel-agnostic dispatcher with TaskExecutionService integration, rate limiting, configurable allowed tools
+
+**Slack Implementation:**
+- `src/backend/adapters/slack_adapter.py` — DMs, @mentions, thread replies without @mention, agent identity via `chat:write.customize`
+- `src/backend/adapters/transports/slack_socket.py` — Socket Mode transport (no public URL needed)
+- `src/backend/adapters/transports/slack_webhook.py` — HTTP webhook transport (backward compatible fallback)
+- `src/backend/services/slack_service.py` — Channel creation (`conversations.create`), reaction emoji (⏳→✅), `chat:write.customize` params, new OAuth scopes
+- `src/backend/routers/slack.py` — Refactored: multi-agent "Connect Slack" (auto-creates channel per agent), webhook endpoint delegates to transport
+
+**Database & Security:**
+- `src/backend/db/slack_channels.py` — `SlackChannelOperations` with AES-256-GCM encrypted bot tokens
+- `src/backend/db/migrations.py` — New tables: `slack_workspaces`, `slack_channel_agents`, `slack_active_threads`
+- `src/backend/database.py` — Wired `SlackChannelOperations` delegation methods
+- Tool restrictions for public Slack users (`--allowedTools WebSearch,WebFetch`)
+- Rate limiting: 30 msg/min per Slack user (configurable via settings)
+
+**Settings & Config:**
+- `src/backend/services/settings_service.py` — `public_chat_url`, `slack_transport_mode`, `slack_app_token`, `channel_rate_limit_max`, `channel_timeout_seconds`, `channel_allowed_tools`
+- `src/backend/routers/public_links.py` — Uses `get_public_chat_url()` from settings (was env-only)
+- `src/backend/main.py` — Startup/shutdown hooks for Slack transport
+- `docker/backend/Dockerfile` — Added `slack_sdk[socket-mode]` dependency
+- `src/frontend/src/components/PublicLinksPanel.vue` — Handle new Connect Slack response format
+
+---
+
+### 2026-03-23
+
 **feat: Voice Chat — real-time voice conversations with agents via Gemini Live API (VOICE-001)**
 
 Phase 1 MVP implementation of voice chat. Users click a microphone button in the Chat tab to start a real-time voice conversation with any agent. Audio streams bidirectionally through a backend WebSocket proxy to Google's Gemini 2.5 Flash Native Audio model (~280ms latency). Transcripts are automatically saved to the existing chat session with `source="voice"` markers. Uses the platform's existing `GEMINI_API_KEY`.

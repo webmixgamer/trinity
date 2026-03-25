@@ -18,7 +18,6 @@ from urllib.parse import urlencode
 import httpx
 
 from config import (
-    PUBLIC_CHAT_URL,
     FRONTEND_URL,
     SECRET_KEY
 )
@@ -26,6 +25,7 @@ from services.settings_service import (
     get_slack_signing_secret,
     get_slack_client_id,
     get_slack_client_secret,
+    get_public_chat_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,14 +94,15 @@ class SlackService:
 
     def get_oauth_url(self, state: str) -> str:
         """Generate Slack OAuth URL for workspace installation."""
-        if not PUBLIC_CHAT_URL:
+        public_chat_url = get_public_chat_url()
+        if not public_chat_url:
             raise ValueError("PUBLIC_CHAT_URL not configured")
 
-        redirect_uri = f"{PUBLIC_CHAT_URL}/api/public/slack/oauth/callback"
+        redirect_uri = f"{public_chat_url}/api/public/slack/oauth/callback"
 
         params = {
             "client_id": get_slack_client_id(),
-            "scope": "im:history,im:read,im:write,chat:write,users:read,users:read.email",
+            "scope": "im:history,im:read,im:write,chat:write,chat:write.customize,users:read,users:read.email,app_mentions:read,channels:history,channels:read,channels:join,channels:manage,reactions:write",
             "redirect_uri": redirect_uri,
             "state": state
         }
@@ -115,10 +116,11 @@ class SlackService:
         Returns (success, result_dict).
         result_dict contains either the token info or error info.
         """
-        if not PUBLIC_CHAT_URL:
+        public_chat_url = get_public_chat_url()
+        if not public_chat_url:
             return False, {"error": "PUBLIC_CHAT_URL not configured"}
 
-        redirect_uri = f"{PUBLIC_CHAT_URL}/api/public/slack/oauth/callback"
+        redirect_uri = f"{public_chat_url}/api/public/slack/oauth/callback"
 
         try:
             response = await self.client.post(
@@ -210,21 +212,41 @@ class SlackService:
         self,
         bot_token: str,
         channel: str,
-        text: str
+        text: str,
+        username: Optional[str] = None,
+        icon_url: Optional[str] = None,
+        thread_ts: Optional[str] = None,
+        blocks: Optional[list] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Send a message to a Slack channel/DM.
 
+        Supports chat:write.customize for per-message agent identity:
+        - username: Override display name (requires chat:write.customize scope)
+        - icon_url: Override avatar (requires chat:write.customize scope)
+        - thread_ts: Reply in thread
+        - blocks: Block Kit formatted content
+
         Returns (success, error_message).
         """
         try:
+            payload = {
+                "channel": channel,
+                "text": text,
+            }
+            if username:
+                payload["username"] = username
+            if icon_url:
+                payload["icon_url"] = icon_url
+            if thread_ts:
+                payload["thread_ts"] = thread_ts
+            if blocks:
+                payload["blocks"] = blocks
+
             response = await self.client.post(
                 f"{self.SLACK_API_BASE}/chat.postMessage",
                 headers={"Authorization": f"Bearer {bot_token}"},
-                json={
-                    "channel": channel,
-                    "text": text
-                }
+                json=payload,
             )
             data = response.json()
 
@@ -297,6 +319,133 @@ class SlackService:
         except Exception as e:
             logger.error(f"Failed to open Slack DM channel: {e}")
             return None
+
+    async def add_reaction(
+        self,
+        bot_token: str,
+        channel: str,
+        timestamp: str,
+        emoji: str = "hourglass_flowing_sand",
+    ) -> bool:
+        """Add a reaction emoji to a message. Returns True on success."""
+        try:
+            response = await self.client.post(
+                f"{self.SLACK_API_BASE}/reactions.add",
+                headers={"Authorization": f"Bearer {bot_token}"},
+                json={"channel": channel, "timestamp": timestamp, "name": emoji}
+            )
+            data = response.json()
+            if not data.get("ok") and data.get("error") != "already_reacted":
+                logger.warning(f"Failed to add reaction: {data.get('error')}")
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to add reaction: {e}")
+            return False
+
+    async def remove_reaction(
+        self,
+        bot_token: str,
+        channel: str,
+        timestamp: str,
+        emoji: str = "hourglass_flowing_sand",
+    ) -> bool:
+        """Remove a reaction emoji from a message. Returns True on success."""
+        try:
+            response = await self.client.post(
+                f"{self.SLACK_API_BASE}/reactions.remove",
+                headers={"Authorization": f"Bearer {bot_token}"},
+                json={"channel": channel, "timestamp": timestamp, "name": emoji}
+            )
+            data = response.json()
+            if not data.get("ok") and data.get("error") != "no_reaction":
+                logger.warning(f"Failed to remove reaction: {data.get('error')}")
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to remove reaction: {e}")
+            return False
+
+    async def create_channel(
+        self,
+        bot_token: str,
+        channel_name: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Create a Slack channel with the given name.
+
+        Returns (success, channel_id, error).
+        If channel already exists, joins it instead.
+        """
+        try:
+            # Try to create
+            response = await self.client.post(
+                f"{self.SLACK_API_BASE}/conversations.create",
+                headers={"Authorization": f"Bearer {bot_token}"},
+                json={"name": channel_name, "is_private": False}
+            )
+            data = response.json()
+
+            if data.get("ok"):
+                channel_id = data["channel"]["id"]
+                logger.info(f"Created Slack channel #{channel_name} ({channel_id})")
+                return True, channel_id, None
+
+            error = data.get("error", "unknown_error")
+
+            # Channel already exists — find and join it
+            if error == "name_taken":
+                join_ok, channel_id, join_err = await self._find_and_join_channel(
+                    bot_token, channel_name
+                )
+                if join_ok:
+                    return True, channel_id, None
+                return False, None, join_err
+
+            logger.error(f"Failed to create Slack channel: {error}")
+            return False, None, error
+
+        except Exception as e:
+            logger.error(f"Failed to create Slack channel: {e}")
+            return False, None, str(e)
+
+    async def _find_and_join_channel(
+        self,
+        bot_token: str,
+        channel_name: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """Find a channel by name and join it."""
+        try:
+            # List channels to find the ID
+            response = await self.client.get(
+                f"{self.SLACK_API_BASE}/conversations.list",
+                headers={"Authorization": f"Bearer {bot_token}"},
+                params={"types": "public_channel", "limit": 200}
+            )
+            data = response.json()
+
+            if not data.get("ok"):
+                return False, None, data.get("error")
+
+            for channel in data.get("channels", []):
+                if channel.get("name") == channel_name:
+                    channel_id = channel["id"]
+                    # Join the channel
+                    join_resp = await self.client.post(
+                        f"{self.SLACK_API_BASE}/conversations.join",
+                        headers={"Authorization": f"Bearer {bot_token}"},
+                        json={"channel": channel_id}
+                    )
+                    join_data = join_resp.json()
+                    if join_data.get("ok"):
+                        logger.info(f"Joined existing Slack channel #{channel_name} ({channel_id})")
+                        return True, channel_id, None
+                    return False, None, join_data.get("error")
+
+            return False, None, "channel_not_found"
+
+        except Exception as e:
+            return False, None, str(e)
 
     def get_oauth_callback_redirect(
         self,

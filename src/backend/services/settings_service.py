@@ -108,6 +108,27 @@ class SettingsService:
             return key
         return os.getenv('SLACK_SIGNING_SECRET', '')
 
+    def get_public_chat_url(self) -> str:
+        """Get Public Chat URL from settings, fallback to env var."""
+        url = self.get_setting('public_chat_url')
+        if url:
+            return url.rstrip('/')
+        return os.getenv('PUBLIC_CHAT_URL', '').rstrip('/')
+
+    def get_slack_transport_mode(self) -> str:
+        """Get Slack transport mode: 'socket' (default) or 'webhook'."""
+        mode = self.get_setting('slack_transport_mode')
+        if mode:
+            return mode
+        return os.getenv('SLACK_TRANSPORT_MODE', 'socket')
+
+    def get_slack_app_token(self) -> str:
+        """Get Slack App-Level Token (xapp-...) for Socket Mode."""
+        token = self.get_setting('slack_app_token')
+        if token:
+            return token
+        return os.getenv('SLACK_APP_TOKEN', '')
+
     # =========================================================================
     # GitHub Templates (TMPL-001)
     # =========================================================================
@@ -191,6 +212,21 @@ def get_slack_client_secret() -> str:
 def get_slack_signing_secret() -> str:
     """Get Slack Signing Secret from settings, fallback to env var."""
     return settings_service.get_slack_signing_secret()
+
+
+def get_public_chat_url() -> str:
+    """Get Public Chat URL from settings, fallback to env var."""
+    return settings_service.get_public_chat_url()
+
+
+def get_slack_transport_mode() -> str:
+    """Get Slack transport mode: 'socket' or 'webhook'."""
+    return settings_service.get_slack_transport_mode()
+
+
+def get_slack_app_token() -> str:
+    """Get Slack App-Level Token for Socket Mode."""
+    return settings_service.get_slack_app_token()
 
 
 def get_ops_setting(key: str, as_type: type = str):

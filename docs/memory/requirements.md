@@ -585,6 +585,30 @@ Trinity implements infrastructure for "System 2" AI — Deep Agents that plan, r
 - **Spec**: `docs/requirements/SLACK_INTEGRATION.md`
 - **Flow**: `docs/memory/feature-flows/slack-integration.md`
 
+### 15.1b-ii Channel Adapters + Multi-Agent Slack (SLACK-002)
+- **Status**: ✅ Implemented (2026-03-23)
+- **Requirement ID**: SLACK-002
+- **Priority**: P1
+- **Description**: Pluggable channel adapter abstraction for external messaging platforms. Extends SLACK-001 with multi-agent routing (multiple agents per workspace), @mention support in channels, thread continuity (reply-without-mention), and configurable operational limits.
+- **Key Features**:
+  - Channel-agnostic adapter pattern (`ChannelAdapter` base class) supporting Slack, future Telegram/Discord
+  - `ChannelMessageRouter` — unified message pipeline: resolve agent → rate limit → verify → execute → respond
+  - Multi-agent workspace: bind different agents to different Slack channels
+  - @mention routing in channels + DM default agent
+  - Thread tracking: bot auto-responds to thread replies without requiring @mention
+  - Configurable rate limits, execution timeout, and allowed tools via `settings_service`
+  - Periodic pruning of rate-limit buckets to prevent memory leaks
+- **Database Tables**:
+  - `slack_workspaces` — Workspace connections (team_id, bot_token)
+  - `slack_channel_agents` — Channel-to-agent bindings (multi-agent routing)
+  - `slack_active_threads` — Active thread tracking (reply-without-mention)
+- **Configurable Settings** (via Settings UI or DB):
+  - `channel_rate_limit_max` — Messages per window (default: 30)
+  - `channel_rate_limit_window` — Window in seconds (default: 60)
+  - `channel_timeout_seconds` — Execution timeout (default: 120)
+  - `channel_allowed_tools` — Comma-separated tool list (default: WebSearch,WebFetch)
+- **Flow**: `docs/memory/feature-flows/slack-channel-routing.md`
+
 ### 15.1c Telegram Bot Integration (TGRAM-001)
 - **Status**: ⏳ Not Started
 - **Requirement ID**: TGRAM-001

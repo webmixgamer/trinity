@@ -25,7 +25,9 @@ RUN pip install --no-cache-dir \
     psutil==6.1.1 \
     payments-py==1.2.1 \
     Pillow==11.1.0 \
-    google-genai==1.12.1
+    google-genai==1.12.1 \
+    "slack_sdk[socket-mode]==3.41.0" \
+    aiohttp
 
 # Copy all backend source files
 COPY ../../src/backend/main.py /app/
